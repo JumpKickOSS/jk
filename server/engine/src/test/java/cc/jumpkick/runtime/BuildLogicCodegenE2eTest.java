@@ -43,7 +43,7 @@ class BuildLogicCodegenE2eTest {
                 name    = "gen"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
 
                 """ + REPOS);

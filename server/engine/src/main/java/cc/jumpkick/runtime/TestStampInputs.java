@@ -249,6 +249,12 @@ public record TestStampInputs(
         return ToolchainPolicy.level(facts.project().project().javaRelease(), facts.javaHome());
     }
 
+    /** What a reader of this suite's marker accepts, as {@link #key} states it for the run. */
+    ToolchainPolicy.@Nullable Expectation expectation() {
+        return ToolchainPolicy.expectation(
+                facts.javaHome(), level(), ToolchainPolicy.tiedToMajor(jvmArgs), facts.dir());
+    }
+
     /**
      * The {@code main:} token of a module that writes {@code [build-info]} files into its classes
      * tree: the tree with those files keyed by their stable entries ({@link BuildInfoKeys}), so the

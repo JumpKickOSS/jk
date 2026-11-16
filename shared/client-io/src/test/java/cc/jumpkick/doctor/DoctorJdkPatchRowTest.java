@@ -47,8 +47,9 @@ class DoctorJdkPatchRowTest {
     @Test
     void a_binding_requirement_is_named(@TempDir Path project) throws Exception {
         Files.writeString(
-                project.resolve("jk.toml"), "name = \"app\"\njdk = \"=corretto-21\"\njdk-cache = \"required\"\n");
+                project.resolve("jk.toml"),
+                "name = \"app\"\njdk = { vendor = \"corretto\", version = \"21\", required = true }\n");
         assertThat(DoctorChecks.jdkPatch(project, List.of(21), null, null).detail())
-                .startsWith("requires corretto-21 (jdk-cache = required)");
+                .startsWith("requires corretto 21 (jdk required = true)");
     }
 }

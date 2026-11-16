@@ -31,7 +31,7 @@ class IdeEngineClientTest {
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
@@ -53,7 +53,7 @@ class IdeEngineClientTest {
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
@@ -87,7 +87,7 @@ class IdeEngineClientTest {
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Path cache = Files.createDirectories(tmp.resolve("cache"));
@@ -125,7 +125,7 @@ class IdeEngineClientTest {
                 name = "app"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.createDirectories(project.resolve("src"));

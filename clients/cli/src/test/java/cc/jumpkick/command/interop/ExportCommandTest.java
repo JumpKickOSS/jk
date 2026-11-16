@@ -28,7 +28,7 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
-                jdk  = 25
+                jdk  = { version = "25" }
                 java = 25
 
                 [application]
@@ -119,7 +119,7 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk  = 25
+                jdk  = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -131,7 +131,7 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
-                jdk  = 25
+                jdk  = { version = "25" }
                 java = 25
                 """);
 
@@ -153,7 +153,7 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk  = 25
+                jdk  = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -165,7 +165,7 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
-                jdk  = 25
+                jdk  = { version = "25" }
                 java = 25
                 """);
 

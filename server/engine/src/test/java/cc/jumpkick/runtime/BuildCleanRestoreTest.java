@@ -47,7 +47,7 @@ class BuildCleanRestoreTest {
             name    = "cleanlib"
             group   = "com.example"
             version = "1.0.0"
-            jdk     = 25
+            jdk     = { version = "25" }
             java    = 25
 
             # This project runs no tests; owning [test-dependencies] keeps the injected
@@ -135,7 +135,7 @@ class BuildCleanRestoreTest {
                 name    = "cleanapp"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
 
                 [test-dependencies]

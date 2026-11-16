@@ -29,8 +29,7 @@ class TierPartitionTest {
             group = "t"
             name = "ws"
             version = "0.0.1"
-            jdk = 25
-
+            jdk = { version = "25" }
             """;
 
     private static TierPartition.Table table(Path root, String body) throws IOException {

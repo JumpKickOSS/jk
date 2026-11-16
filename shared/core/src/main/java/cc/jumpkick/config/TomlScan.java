@@ -21,7 +21,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Line scanner for a handful of flat TOML scalars on hot, engine-free paths — not a full parser.
- * Tracks {@code [section]} headers; exotic TOML for a wanted key reads as absent, never a wrong
+ * Tracks {@code [section]} headers and reads a flat one-line inline table's keys as {@code
+ * key.sub}; exotic TOML for a wanted key reads as absent, never a wrong
  * value. Stops early once every requested key is found.
  */
 @RequiredArgsConstructor(access = AccessLevel.PRIVATE)
@@ -223,8 +224,18 @@ public final class TomlScan {
                 if (eq <= 0) continue;
                 String key = line.substring(0, eq).strip();
                 String qualified = section.isEmpty() ? key : section + "." + key;
-                if (!wanted.contains(qualified)) continue;
                 String rest = line.substring(eq + 1).strip();
+                // A one-line inline table (jdk = { vendor = "corretto", required = true }): each of
+                // its keys reads as "key.sub", the way the same keys under a [key] header do.
+                if (rest.startsWith("{") && wantsUnder(wanted, qualified)) {
+                    for (Map.Entry<String, String> e : inlineTable(rest).entrySet()) {
+                        String sub = qualified + "." + e.getKey();
+                        if (wanted.contains(sub) && !values.containsKey(sub)) values.put(sub, e.getValue());
+                    }
+                    if (values.size() + arrays.size() == wanted.size()) break;
+                    continue;
+                }
+                if (!wanted.contains(qualified)) continue;
                 if (rest.startsWith("[")) {
                     if (arrays.containsKey(qualified)) continue;
                     List<String> elements = new ArrayList<>();
@@ -242,6 +253,51 @@ public final class TomlScan {
             }
         }
         return new TomlScan(values, arrays, sections);
+    }
+
+    private static boolean wantsUnder(Set<String> wanted, String key) {
+        for (String w : wanted) if (w.startsWith(key + ".")) return true;
+        return false;
+    }
+
+    /**
+     * The scalar entries of a one-line inline table {@code { a = "x", b = 2, c = true }}, values as
+     * {@link #scalar} reads them; empty for one that does not close on its line or nests a table or
+     * an array (exotic, so absent).
+     */
+    static Map<String, String> inlineTable(String text) {
+        Map<String, String> out = new HashMap<>();
+        int close = text.lastIndexOf('}');
+        if (!text.startsWith("{") || close < 0) return out;
+        String body = text.substring(1, close);
+        List<String> parts = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        char quote = 0;
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            if (quote != 0) {
+                cur.append(c);
+                if (c == '\\' && quote == '"' && i + 1 < body.length()) cur.append(body.charAt(++i));
+                else if (c == quote) quote = 0;
+            } else if (c == '"' || c == '\'') {
+                quote = c;
+                cur.append(c);
+            } else if (c == '{' || c == '[' || c == '#') {
+                return new HashMap<>(); // nested or commented: exotic, reads as absent
+            } else if (c == ',') {
+                parts.add(cur.toString());
+                cur.setLength(0);
+            } else {
+                cur.append(c);
+            }
+        }
+        parts.add(cur.toString());
+        for (String part : parts) {
+            int eq = part.indexOf('=');
+            if (eq <= 0) continue;
+            out.put(part.substring(0, eq).strip(), scalar(part.substring(eq + 1).strip()));
+        }
+        return out;
     }
 
     /**

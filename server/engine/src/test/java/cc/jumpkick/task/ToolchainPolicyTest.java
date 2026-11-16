@@ -56,7 +56,7 @@ class ToolchainPolicyTest {
 
     @Test
     void a_binding_requirement_rejects_what_it_does_not_admit_at_any_match() {
-        Requirement corretto21 = new Requirement("corretto", "21", true);
+        Requirement corretto21 = new Requirement("corretto", "21");
         Expectation required = new Expectation(CORRETTO_21, 21, Match.LEVEL, corretto21);
         assertThat(required.accepts(CORRETTO_21)).isTrue();
         assertThat(required.accepts("toolchain:jdk:amazon.com-inc./21.0.3+9-LTS/1111111111111111"))
@@ -67,10 +67,16 @@ class ToolchainPolicyTest {
                 .isFalse();
         assertThat(required.accepts(CORRETTO_25)).as("Corretto, another major").isFalse();
 
-        Requirement notBinding = new Requirement("corretto", "21", false);
-        assertThat(new Expectation(CORRETTO_21, 21, Match.LEVEL, notBinding).accepts(TEMURIN_25_0_5))
-                .as("a pin without jdk-cache = required chooses the JDK, not the records")
+        assertThat(new Expectation(CORRETTO_21, 21, Match.LEVEL, null).accepts(TEMURIN_25_0_5))
+                .as("a suggestion (required = false) chooses the JDK, not the records")
                 .isTrue();
+        Requirement floor = new Requirement("", ">=25.0.5");
+        Expectation floored = new Expectation(TEMURIN_25_0_5, 25, Match.MAJOR, floor);
+        assertThat(floored.accepts(TEMURIN_25_0_5)).isTrue();
+        assertThat(floored.accepts("toolchain:jdk:eclipse-adoptium/25.0.4.1+1-LTS/2222222222222222"))
+                .as("below the patch floor")
+                .isFalse();
+        assertThat(floored.accepts(CORRETTO_25)).as("any vendor at the floor").isTrue();
     }
 
     @Test

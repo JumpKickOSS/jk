@@ -22,8 +22,7 @@ class NativeArgsContributionTest {
                 group = "com.example"
                 name = "svc"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [micronaut]
                 version = "5"
 
@@ -44,8 +43,7 @@ class NativeArgsContributionTest {
                 group = "com.example"
                 name = "svc"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [micronaut]
                 version = "5"
                 """);
@@ -59,8 +57,7 @@ class NativeArgsContributionTest {
                 group = "com.example"
                 name = "svc"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [native]
                 enabled = "always"
                 """);

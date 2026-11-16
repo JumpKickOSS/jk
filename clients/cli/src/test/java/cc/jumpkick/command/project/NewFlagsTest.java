@@ -48,7 +48,7 @@ class NewFlagsTest {
         vendor.jdk = "temurin-25";
         assertThat(vendor.refusal())
                 .isEqualTo(
-                        "jk new: --jdk takes a Java major, as in --jdk 25; for a vendor set jdk = \"temurin-25\" in jk.toml");
+                        "jk new: --jdk takes a Java major, as in --jdk 25; for a vendor set jdk = { vendor = \"temurin\", version = \"25\" } in jk.toml");
         NewCommand major = new NewCommand();
         major.jdk = "21";
         assertThat(major.refusal()).isNull();

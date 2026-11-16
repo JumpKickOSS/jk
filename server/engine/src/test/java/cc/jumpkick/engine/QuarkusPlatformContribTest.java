@@ -38,8 +38,7 @@ class QuarkusPlatformContribTest {
             name = "q"
             group = "g"
             version = "0.1.0"
-            jdk = 25
-
+            jdk = { version = "25" }
             [quarkus]
             version = "3.38.0"
 

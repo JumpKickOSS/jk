@@ -98,7 +98,7 @@ class TaskForecasterExtraRootTest {
             group = "t"
             name = "ws"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             java = 25
 
             [workspace]
@@ -109,7 +109,7 @@ class TaskForecasterExtraRootTest {
             group = "t"
             name = "a"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             groovy = "5.0.4"
 
             [build]

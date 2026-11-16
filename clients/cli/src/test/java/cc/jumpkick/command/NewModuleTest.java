@@ -36,7 +36,7 @@ class NewModuleTest {
             group    = "com.acme"
             name     = "root"
             version  = "0.1.0"
-            jdk      = 25
+            jdk      = { version = "25" }
             java     = 25
             """;
 
@@ -73,7 +73,7 @@ class NewModuleTest {
                 group    = "com.acme"
                 name     = "root"
                 version  = "0.1.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 java     = 17
                 """);
         Path module = tempDir.resolve("widget");
@@ -93,7 +93,7 @@ class NewModuleTest {
                 group    = "com.acme"
                 name     = "root"
                 version  = "0.1.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 kotlin   = "2.3.21"
                 """);
         Path module = tempDir.resolve("k");

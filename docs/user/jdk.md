@@ -1,8 +1,8 @@
 # JDK
 
 JumpKick **requires JDK 25+ to run** and will install one if needed. Project language
-level is **`java = N`** (`--release`). A `jdk =` pin is only for choosing a specific
-*install*. Read [Concepts](concepts.md) before pinning runtimes. A pinned JDK a build needs, and
+level is **`java = N`** (`--release`), a plain integer. A `jdk = { … }` table is only for choosing a
+specific vendor or version ([below](#the-jdk-table)). Read [Concepts](concepts.md) before pinning runtimes. A pinned JDK a build needs, and
 the GraalVM a native build links with, install as part of the run: the download is a row in the
 run's Download block with its other downloads, and one line says where it went (`installed JDK
 azul-21.0.13.0.3 to ~/.jdks/azul-21.0.13.0.3`). The engine's own runtime, needed before any engine
@@ -18,7 +18,7 @@ the JDK's name and the `jk jdk install …` command.
 
 Supported **project** floor: **JDK 17+** (no Java 8 or 11). 17 and 21 compile with the
 host JDK 25 via `--release` — do **not** download those obsolete runtimes for bytecode. A `jdk`
-pin also chooses the compiler: `jdk = 21` compiles with JDK 21's javac (see
+table also chooses the compiler: `jdk = { version = "21" }` compiles with JDK 21's javac (see
 [Concepts](concepts.md#java--vs-jdk-)).
 
 ```bash
@@ -33,31 +33,67 @@ jk jdk verify                  # fingerprint managed trees (`jk jdks verify`)
 jk shell                       # subshell with the project JDK
 ```
 
-## Unpinned modules prefer this release's JDK
+## The `jdk` table
 
-A module with no JDK pin (no `jdk` in `jk.toml`, no `.jdk-version`, no `required-*` in the lock,
-no `--jdk` or `JK_JDK`) builds on any installed JDK that satisfies its `java` level. Among those it
-prefers the build this JumpKick release names for its major (the latest LTS, or its `java` level when
-that is newer), when that build is installed or is the shell's `JAVA_HOME`:
+```toml
+java = 25
+jdk = { vendor = "corretto" }                                        # a suggestion
+jdk = { vendor = "corretto", version = "21", required = true }       # Corretto 21.x, binding
+jdk = { vendor = "temurin", version = "25.0.4.1", required = true }  # one exact build, binding
+jdk = { version = ">=25.0.5", required = true }                      # a patch floor, any vendor
+```
 
-| Major | Preferred build |
+`vendor` and `version` are each optional. `version` is a major (`"21"`), an exact build
+(`"25.0.4.1"`) or a floor within one major (`">=25.0.5"`). A range across majors is refused: any JDK
+at or above a level is what `java = N` already says, and taking cached results across majors is
+`jdk-match = "level"` ([below](#which-cached-results-a-build-takes)). A `jdk` of a lower major than
+`java` is refused; a higher one builds that level on it.
+
+Without `required` the table is a suggestion: that JDK is preferred when it is installed, or when
+JumpKick has to install one, and never forced. With `required = true` it binds both which JDK builds
+the module (installed if absent; the build fails, naming the JDK, when it cannot be) and which cached
+results serve it. A workspace root's `jdk` applies to the members that write none
+(`jdk = { workspace = true }` says so outright); a member's own table chooses its JDK, and a root's
+`required = true` still binds the member's cached results.
+
+The string forms (`jdk = "temurin-25"`, `"=temurin-25.0.4"`, `jdk = 25`) and `jdk-vendor` /
+`jdk-version` are retired: the refusal prints the table to write. The command line keeps the short
+names: `jk jdk install temurin-25`, `--jdk temurin-25`, and `jk jdk pin temurin-25`, which writes
+`.jdk-version` as `<vendor>-<major>`, a choice of JDK on this checkout that binds no cached result.
+
+## Which JDK builds an unpinned module
+
+A module with no JDK named (no `jdk` table, no `.jdk-version`, no `required-*` in the lock, no
+`--jdk` or `JK_JDK`) builds on any installed JDK that satisfies its `java` level: one whose major is
+the level first, then the nearest newer major. JumpKick installs a JDK only when nothing installed
+satisfies the level, and never forces a particular patch.
+
+## Which cached results a build takes
+
+Compile and test keys name the module's Java level (`java:<N>`, or the JDK's own major when the
+module names none), not the JDK build, so hosts on different JDKs compute the same keys. Each record
+names the JDK that made it, and a reader takes records by `[cache] jdk-match` (in the module's
+`jk.toml`, the workspace root's, `~/.jk/config.toml`, or `JK_CACHE_JDK_MATCH`):
+
+| `jdk-match` | Takes records made on |
 |---|---|
-| 17 | `temurin-17.0.20.1` |
-| 21 | `temurin-21.0.12.1` |
-| 25 | `temurin-25.0.4.1` |
-| 26 | `temurin-26.0.2.1` |
-| 27 | `temurin-27.0.1.0.2` |
+| `major` (default) | any vendor and patch of the major this build uses |
+| `level` | any JDK at or above the module's level |
+| `build` | this exact JDK build only |
 
-The preference is never a requirement: JumpKick does not download the preferred build, a build never
-fails for want of it, under `CI` or not, and an organisation's newer patch is used as it is. JumpKick
-installs a JDK only when nothing installed satisfies the module, and then the newest build of the
-major. The engine prefers the build for its own major the same way when `[toolchain] jdk` names no
-other. A pin still wins.
+A record from a JDK below the module's level is never taken, `--enable-preview` holds at least
+`major`, and a `required = true` table admits only what it names. Among acceptable records the
+closest is taken: the same build, then the same vendor and major, then the same major, then the
+nearest. A hit made on another JDK says so (`made on eclipse-adoptium 25.0.5+11-LTS, linux-x86_64;
+this build uses oracle-corporation 27.0.1+9`).
 
-Cache keys name the JDK build that ran ([Cache](cache.md)), so two hosts on the same build share a
-module's compile and test results and hosts on different builds do not share those steps; nothing
-built with one JDK is served to another. `jk doctor`'s `jdk-patch` row says, as a note, which build a
-project uses here, and `jk explain` names both builds when a step reruns because the JDK moved.
+When the records here were made on another major than the JDK in use, the build says once, as a
+note and never an error, with the two ways out: `cached results here were made on JDK 25; this build
+uses 27: jk jdk install temurin-25, or set [cache] jdk-match = "level"`. `jk explain` gives it as
+the reason a step will run, and `jk doctor`'s `jdk-patch` row says which major a project builds on and
+which results serve it. Nothing is downloaded for it.
+
+AOT caches, `jlink` images and native images stay keyed on the exact JDK build.
 
 Discovery looks at existing installs before downloading from the JetBrains JDK feed (or a mirror of
 it and its vendor hosts: [Config § Tool mirrors](config.md#tool-mirrors)). Each JDK `jk jdk list`

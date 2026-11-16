@@ -23,7 +23,7 @@ class AssemblyCommandTest {
             group = "t"
             name = "t"
             version = "0.0.1"
-            jdk = 25
+            jdk = { version = "25" }
             [application]
             main = "demo.App"
             """;

@@ -68,7 +68,7 @@ class PreflightGraphMemoTest {
                 group = "t"
                 name = "a"
                 version = "0.2.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
@@ -100,7 +100,7 @@ class PreflightGraphMemoTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]

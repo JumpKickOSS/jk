@@ -105,8 +105,7 @@ class PolicyCheckerTest {
                 group    = "g"
                 name     = "a"
                 version  = "1"
-                jdk      = 25
-
+                jdk      = { version = "25" }
                 [deny.sources]
                 deny = ["jcenter.bintray.com"]
                 """);
@@ -121,7 +120,7 @@ class PolicyCheckerTest {
                 group = "g"
                 name = "a"
                 version = "1"
-                jdk = 25
+                jdk = { version = "25" }
                 [deny.licenses]
                 deny = ["GPL-*", "AGPL-*"]
                 """);
@@ -142,7 +141,7 @@ class PolicyCheckerTest {
                 group = "g"
                 name = "a"
                 version = "1"
-                jdk = 25
+                jdk = { version = "25" }
                 [deny.licenses]
                 allow = ["Apache-2.0", "MIT", "BSD-*"]
                 """);
@@ -162,7 +161,7 @@ class PolicyCheckerTest {
                 group = "g"
                 name = "a"
                 version = "1"
-                jdk = 25
+                jdk = { version = "25" }
                 [deny]
                 yanked = "deny"
                 """)).isInstanceOf(JkBuildParseException.class);
@@ -174,7 +173,7 @@ class PolicyCheckerTest {
                 group    = "g"
                 name     = "a"
                 version  = "1"
-                jdk      = 25
+                jdk      = { version = "25" }
                 """);
         assertThat(policy.isEmpty()).isTrue();
     }

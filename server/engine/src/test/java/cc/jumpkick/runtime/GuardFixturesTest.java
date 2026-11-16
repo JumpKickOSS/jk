@@ -30,7 +30,9 @@ import org.junit.jupiter.api.io.TempDir;
 class GuardFixturesTest {
 
     private static void project(Path root) throws IOException {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.writeString(root.resolve("jk-guards.toml"), """
                 [guards.no-sysprop]
                 kind       = "forbid"
@@ -219,7 +221,9 @@ class GuardFixturesTest {
     @Test
     void a_tree_fixture_on_a_toml_rule_is_an_error_and_compiles_nothing(@TempDir Path root, @TempDir Path store)
             throws Exception {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.writeString(root.resolve("jk-guards.toml"), """
                 [guards.no-exit]
                 kind       = "forbid"
@@ -262,7 +266,9 @@ class GuardFixturesTest {
 
     @Test
     void load_errors_are_all_listed_and_nothing_compiles(@TempDir Path root, @TempDir Path store) throws Exception {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.writeString(
                 root.resolve("jk-guards.toml"),
                 "[guards.a]\nkind = \"forbid\"\nwhy = \"w\"\n\n[guards.b]\nkind = \"nope\"\nwhy = \"w\"\n");

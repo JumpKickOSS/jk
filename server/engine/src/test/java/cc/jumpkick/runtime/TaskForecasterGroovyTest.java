@@ -28,7 +28,7 @@ class TaskForecasterGroovyTest {
             group = "t"
             name = "ws"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             java = 25
 
             [workspace]
@@ -39,7 +39,7 @@ class TaskForecasterGroovyTest {
             group = "t"
             name = "a"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             groovy = "5.0.4"
             """);
         Path src = Files.createDirectories(mod.resolve("src"));

@@ -49,7 +49,7 @@ class RebuildRunTestsMarkerTest {
                 name    = "markerapp"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
 
                 [test-dependencies]

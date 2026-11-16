@@ -85,7 +85,7 @@ class JkBuildParserWorkspaceTest {
                 group   = "com.example"
                 name    = "mod"
                 version.workspace = true
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
         assertThat(dotted.project().inheritsVersionFromWorkspace()).isTrue();
@@ -96,7 +96,7 @@ class JkBuildParserWorkspaceTest {
                 group   = "com.example"
                 name    = "mod"
                 version = { workspace = true }
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
         assertThat(inline.project().inheritsVersionFromWorkspace()).isTrue();

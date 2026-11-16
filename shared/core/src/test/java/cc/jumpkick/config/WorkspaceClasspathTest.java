@@ -57,8 +57,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app", "top"]
                 """);
@@ -114,8 +113,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app", "top", "not-created-yet"]
                 """);
@@ -135,8 +133,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core", "mid", "app"]
                 """);
@@ -148,7 +145,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "mid"
                 version = "0.1.0"
-                jdk = "25"
+                jdk = { version = "25" }
                 kotlin = "2.0.21"
 
                 [export-dependencies]
@@ -172,8 +169,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app", "top"]
                 """);
@@ -194,8 +190,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "%s"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 %s""".formatted(name, depsBlock));
     }
 
@@ -205,8 +200,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);
@@ -242,8 +236,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);
@@ -254,8 +247,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "app"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [dependencies]
                 lib = { workspace = true, kind = "tests" }
                 """);
@@ -269,8 +261,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);
@@ -316,8 +307,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["model", "host", "core"]
                 """);
@@ -357,8 +347,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);
@@ -369,8 +358,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "app"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [dependencies]
                 lib = { workspace = true, fixtures = true }
                 """);
@@ -439,8 +427,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "lib"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [library]
                 relocate = { "com.ex.lib" = "com.ex.shaded.lib" }
                 """);
@@ -480,8 +467,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "app"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [library]
                 relocate = { "com.ex.lib" = "com.ex.shaded.lib" }
 
@@ -526,8 +512,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["api", "plugin"]
                 """);
@@ -562,8 +547,7 @@ class WorkspaceClasspathTest {
                 group = "com.ex"
                 name = "ws"
                 version = "0.1.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);

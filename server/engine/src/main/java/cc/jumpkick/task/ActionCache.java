@@ -19,6 +19,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.ToolchainPolicy.Expectation;
 import cc.jumpkick.util.FileLocks;
 import java.io.File;
 import java.io.IOException;
@@ -162,14 +163,23 @@ public final class ActionCache {
      * whole is restorable, and the restore fetches the blobs this disk lacks.
      */
     public Optional<ActionRecord> restorable(@Nullable String actionKey) {
+        return actionKey == null ? Optional.empty() : restorable(actionKey, ToolchainPolicy.of(actionKey));
+    }
+
+    /** As {@link #restorable(String)} under {@code expected}: for a caller off a job's request (the forecast). */
+    public Optional<ActionRecord> restorable(String actionKey, @Nullable Expectation expected) {
         try {
-            if (actionKey == null) return Optional.empty();
-            Optional<ActionRecord> rec = lookupLocal(actionKey);
+            Optional<ActionRecord> rec = lookupLocal(actionKey, expected);
             if (rec.isPresent() && local.missing(rec.get().outputs().values()).isEmpty()) return rec;
-            return lookupRemote(actionKey);
+            return lookupRemote(actionKey, expected);
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
+    }
+
+    /** Why no record of {@code actionKey} kept here serves {@code expected}'s reader; null when one does. */
+    public @Nullable String declined(String actionKey, Expectation expected) {
+        return ToolchainChoice.declined(local, actionKey, expected);
     }
 
     /** Resolve a blob path: cache CAS first, then store CAS (promoted Class-C). */
@@ -185,9 +195,10 @@ public final class ActionCache {
      * ranks it by last use.
      */
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
-        Optional<ActionRecord> here = lookupLocal(actionKey);
+        Expectation expected = ToolchainPolicy.of(actionKey);
+        Optional<ActionRecord> here = lookupLocal(actionKey, expected);
         boolean remote = here.isEmpty();
-        Optional<ActionRecord> found = remote ? lookupRemote(actionKey) : here;
+        Optional<ActionRecord> found = remote ? lookupRemote(actionKey, expected) : here;
         if (found.isPresent() && StepCacheNotes.inStep()) {
             ActionRecordText.Writes kind = found.get().meta().writes();
             // A marker or verdict is the result itself: reading it is the step's hit, unless the
@@ -199,14 +210,11 @@ public final class ActionCache {
         return found;
     }
 
-    private Optional<ActionRecord> lookupLocal(String actionKey) throws IOException {
+    private Optional<ActionRecord> lookupLocal(String actionKey, @Nullable Expectation expected) throws IOException {
         Optional<String> content = local.record(actionKey);
         if (content.isEmpty()) return Optional.empty();
-        ToolchainPolicy.Expectation expected = ToolchainPolicy.of(actionKey);
-        if (expected != null) {
-            content = ToolchainChoice.choose(local, actionKey, content.get(), expected);
-            if (content.isEmpty()) return Optional.empty();
-        }
+        content = ToolchainChoice.choose(local, actionKey, content.get(), expected);
+        if (content.isEmpty()) return Optional.empty();
         ActionRecord record;
         try {
             record = parse(content.get(), actionKey);
@@ -235,7 +243,7 @@ public final class ActionCache {
      * others share. One that names no blob this disk lacks (a verdict, a test marker) is kept here
      * at once, so the next build finds it locally.
      */
-    private Optional<ActionRecord> lookupRemote(String actionKey) throws IOException {
+    private Optional<ActionRecord> lookupRemote(String actionKey, @Nullable Expectation expected) throws IOException {
         if (remote == null || actionKey.isBlank()) return Optional.empty();
         String text = remote.record(actionKey);
         if (text == null) return Optional.empty();
@@ -247,11 +255,8 @@ public final class ActionCache {
             remote.forget(actionKey);
             return Optional.empty();
         }
-        ToolchainPolicy.Expectation expected = ToolchainPolicy.of(actionKey);
-        if (expected != null && !expected.accepts(record.meta().toolchain())) {
-            // Made by a JDK this build's policy does not take: a miss here, kept for those it suits.
-            ToolchainChoice.mismatch(actionKey, record.meta().toolchain(), expected);
-            remote.forget(actionKey);
+        if (ToolchainChoice.refuses(actionKey, record.meta().toolchain(), expected)) {
+            remote.forget(actionKey); // a miss here, kept for the readers it suits
             return Optional.empty();
         }
         if (!forThisPlatform(record.meta().target(), remote.platform())) {
@@ -632,10 +637,7 @@ public final class ActionCache {
         try {
             String text = render(record);
             local.putRecord(key, text);
-            // A key that names the Java level holds a record per JDK: this one is kept beside the
-            // latest, so a reader on another JDK still finds the closest it may take.
-            if (meta.toolchain() != null && ToolchainPolicy.of(key) != null)
-                local.putVariant(key, meta.toolchain(), text);
+            if (ToolchainPolicy.of(key) != null) local.putVariant(key, meta.toolchain(), text);
             Path pointer = tasksDir().resolve(task);
             if (HeavyActionPolicy.generations(task) == Integer.MAX_VALUE || outputRoot == null) {
                 AtomicWrites.replace(pointer, key); // not Class-C: no generation list to agree with
@@ -672,7 +674,7 @@ public final class ActionCache {
         StepCache.Reason reason;
         String changed = null;
         try {
-            Optional<ActionRecord> same = lookupLocal(key);
+            Optional<ActionRecord> same = lookupLocal(key, ToolchainPolicy.of(key));
             Optional<ActionRecord> previous = previousRecord(task);
             if (SessionContext.current().config().forceOr(false)
                     || SessionContext.current().config().rebuildOr(false)) {
@@ -722,7 +724,7 @@ public final class ActionCache {
         } catch (NoSuchFileException absent) {
             return Optional.empty();
         }
-        return key.isEmpty() ? Optional.empty() : lookupLocal(key);
+        return key.isEmpty() ? Optional.empty() : lookupLocal(key, ToolchainPolicy.of(key));
     }
 
     /** The input names whose values differ between {@code prior} and {@code now}, sorted. */

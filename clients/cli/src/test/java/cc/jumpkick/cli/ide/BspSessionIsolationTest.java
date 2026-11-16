@@ -25,7 +25,7 @@ class BspSessionIsolationTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Path cache = Files.createDirectories(dir.resolve("cache"));
         IdeEngineClient failing = new IdeEngineClient(dir, cache, null) {

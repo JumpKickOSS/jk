@@ -26,7 +26,7 @@ class ExplainCommandTest {
                 group   = "com.example"
                 name    = "%s"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """.formatted(name));
         if (deps.length > 0) {

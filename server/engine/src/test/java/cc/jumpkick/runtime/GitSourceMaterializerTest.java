@@ -33,7 +33,7 @@ class GitSourceMaterializerTest {
                 group    = "com.acme"
                 name     = "widgets"
                 version  = "0.1.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 java     = 25
                 """);
         Path src = repoDir.resolve("src/main/java/acme/Widget.java");

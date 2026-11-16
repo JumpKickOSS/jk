@@ -27,7 +27,7 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -38,7 +38,7 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [dependencies]
@@ -49,7 +49,7 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [dependencies]
@@ -132,7 +132,7 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
 

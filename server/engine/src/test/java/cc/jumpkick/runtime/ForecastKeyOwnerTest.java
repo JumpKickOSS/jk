@@ -53,7 +53,7 @@ class ForecastKeyOwnerTest {
                 group = "t"
                 name = "m"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(module, project);
@@ -112,7 +112,7 @@ class ForecastKeyOwnerTest {
                 group = "t"
                 name = "m"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(module, project);
@@ -371,8 +371,7 @@ class ForecastKeyOwnerTest {
                 group = "t"
                 name = "m"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [build]
                 extra-src = ["src/overlay"]
                 """);
@@ -399,8 +398,7 @@ class ForecastKeyOwnerTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [application]
                 main = "t.Main"
                 assembly = true
@@ -481,7 +479,7 @@ class ForecastKeyOwnerTest {
                 group = "t"
                 name = "w"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Path services = Files.createDirectories(worker.resolve("src/main/resources/META-INF/services"));
         Files.writeString(services.resolve("cc.jumpkick.plugin.Plugin"), "t.Worker\n");
@@ -495,8 +493,7 @@ class ForecastKeyOwnerTest {
                 group = "t"
                 name = "a"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [application]
                 main = "t.Main"
                 """);

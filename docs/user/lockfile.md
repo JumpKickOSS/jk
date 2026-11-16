@@ -256,14 +256,15 @@ that names a vendor JumpKick cannot install is dropped and rewritten from the to
 Copying `nosuchvendor-99` forward would make the next `jk build` try to install a catalog-missing
 spec after the agent already removed the pin.
 
-`required-*` is a pin the project asked for, and only an `=` in `jk.toml` writes one:
+`required-*` is a pin the project asked for, and only `required = true` in `jk.toml`'s `jdk` table (or
+an `=` in `[native] graal`) writes one:
 
 | jk.toml | lock |
 | --- | --- |
-| `jdk = "temurin-25"` | `suggested-vendor`, `suggested-version` |
-| `jdk = "=temurin-25.0.4"` | `required-vendor`, `required-version` |
-| `jdk = "=temurin-25"` | `required-vendor` + `suggested-version` (no patch to be exact about) |
-| `jdk-vendor = "=corretto"`, `jdk-version = 25` | `required-vendor` + `suggested-version` |
+| `jdk = { vendor = "temurin", version = "25" }` | `suggested-vendor`, `suggested-version` |
+| `jdk = { vendor = "temurin", version = "25.0.4", required = true }` | `required-vendor`, `required-version` |
+| `jdk = { vendor = "corretto", version = "25", required = true }` | `required-vendor` + `suggested-version` (no patch to be exact about) |
+| `jdk = { version = ">=25.0.5", required = true }` | `suggested-version` (the major; the floor binds cached results) |
 | `[native] graal = "=25.2.4-graalce"` | `required-vendor`, `required-version` (SDKMAN order) |
 
 The fields mix freely, and each axis is written on one side only — a required vendor makes the

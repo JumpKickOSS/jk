@@ -17,7 +17,7 @@ class IdeSourceRootsTest {
                 group = "t"
                 name = "app"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.createDirectories(tmp.resolve("src"));
@@ -86,7 +86,7 @@ class IdeSourceRootsTest {
                 group = "t"
                 name = "app"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Path main = tmp.resolve("src/main/java");
@@ -112,7 +112,7 @@ class IdeSourceRootsTest {
                 group = "t"
                 name = "app"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 groovy = "5.0.4"
                 """);
         Path main = tmp.resolve("src/main/groovy");
@@ -134,7 +134,7 @@ class IdeSourceRootsTest {
                 group = "t"
                 name = "app"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.createDirectories(tmp.resolve("src"));
@@ -150,7 +150,7 @@ class IdeSourceRootsTest {
                 group = "t"
                 name = "app"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.createDirectories(tmp.resolve("src"));

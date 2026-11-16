@@ -61,7 +61,7 @@ class GuardPackPinTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.writeString(project.resolve(GuardsPresence.RULES_FILE), """
@@ -120,7 +120,7 @@ class GuardPackPinTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.writeString(project.resolve(GuardsPresence.RULES_FILE), """

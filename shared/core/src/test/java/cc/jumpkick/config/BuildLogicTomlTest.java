@@ -76,16 +76,16 @@ class BuildLogicTomlTest {
     }
 
     /**
-     * The documented narrowing. {@link TomlScan} cannot see a key inside an inline table, so it
-     * reads as absent and the default applies — the same answer on both sides, which is the
-     * property that matters. If this ever has to change it changes for the engine and the CLI at
-     * once, because there is only one reader to change.
+     * A flat one-line inline table reads as {@code [build] logic} does; a nested one is exotic and
+     * reads as absent, so the default applies. Both sides share the one reader, so they agree.
      */
     @Test
-    void an_inline_build_table_reads_as_absent_and_defaults() throws IOException {
+    void an_inline_build_table_reads_its_logic_and_a_nested_one_defaults() throws IOException {
         manifest("build = { logic = \"buildsrc\" }\n");
         Files.createDirectory(dir.resolve("buildsrc"));
         Files.createDirectories(dir.resolve(BuildLogicToml.DEFAULT_DIR));
+        assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve("buildsrc"));
+        manifest("build = { logic = \"buildsrc\", x = { y = 1 } }\n");
         assertThat(BuildLogicToml.resolve(dir).orElseThrow().dir()).isEqualTo(dir.resolve(BuildLogicToml.DEFAULT_DIR));
     }
 

@@ -184,7 +184,7 @@ class GuardLaneE2eTest {
                 name    = "proj"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
         Path src = Files.createDirectories(project.resolve("src/main/java/demo"));

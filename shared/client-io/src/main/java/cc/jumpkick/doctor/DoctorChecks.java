@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.doctor;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHttpConfig;
@@ -23,6 +24,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -177,7 +179,7 @@ public final class DoctorChecks {
      * the JDK major this build uses). The row says which major the project builds on here and, when
      * no JDK of its own level is installed, that results cached on that level (as a CI runner on it
      * most likely made them) will not serve it, with the two ways out. A {@code jdk} requirement
-     * made binding with {@code jdk-cache = "required"} is named.
+     * made binding with {@code jdk = { …, required = true }} is named.
      *
      * @param installedMajors the majors of the JDKs installed here
      * @param envMatch the shell's {@code JK_CACHE_JDK_MATCH}, or null
@@ -188,7 +190,7 @@ public final class DoctorChecks {
         Path owner = LockPaths.lockOwnerDir(project);
         Path manifest = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(manifest)) return row("jdk-patch", Status.OK, "no jk.toml to check");
-        TomlScan scan = TomlScan.scan(manifest, "jdk", "java", "jdk-cache", "cache.jdk-match");
+        TomlScan scan = TomlScan.scan(manifest, "jdk.vendor", "jdk.version", "jdk.required", "java", "cache.jdk-match");
         String match = envMatch != null && !envMatch.isBlank() ? envMatch.strip() : scan.get("cache.jdk-match");
         if (match == null || match.isBlank()) match = "major";
         if (jkJdk != null && !jkJdk.isBlank()) {
@@ -198,20 +200,23 @@ public final class DoctorChecks {
                     "JK_JDK=" + jkJdk + " picks every build's JDK in this shell; cached results"
                             + " are taken from JDKs it matches (jdk-match = " + match + ")");
         }
-        String jdk = scan.get("jdk");
-        if (jdk != null && jdk.startsWith("=") && "required".equals(scan.get("jdk-cache"))) {
+        String vendor = scan.get("jdk.vendor");
+        String version = scan.get("jdk.version");
+        String named = String.join(
+                " ",
+                Stream.of(vendor, version)
+                        .filter(x -> x != null && !x.isBlank())
+                        .toList());
+        if (EnvValues.parseBool(scan.get("jdk.required")).orElse(false)) {
             return row(
                     "jdk-patch",
                     Status.OK,
-                    "requires " + jdk.substring(1)
-                            + " (jdk-cache = required): it builds only on it, and only results made on it serve it");
+                    "requires " + (named.isEmpty() ? "a JDK" : named)
+                            + " (jdk required = true): it builds only on a JDK it admits, and only results made on one serve it");
         }
-        if (jdk != null && !jdk.isBlank()) {
+        if (!named.isEmpty()) {
             return row(
-                    "jdk-patch",
-                    Status.OK,
-                    "pinned to " + jdk.replace("=", "")
-                            + "; cached results are taken from JDKs it matches (jdk-match = " + match + ")");
+                    "jdk-patch", Status.OK, "suggests " + named + "; cached results are taken by jdk-match = " + match);
         }
         int level = scan.getInt("java", 0);
         if (level <= 0) {

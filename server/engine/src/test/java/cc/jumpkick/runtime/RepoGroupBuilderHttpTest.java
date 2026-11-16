@@ -28,7 +28,7 @@ class RepoGroupBuilderHttpTest {
                 group = "demo"
                 name = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         var project = JkBuildParser.parse(tmp.resolve("jk.toml"));
 

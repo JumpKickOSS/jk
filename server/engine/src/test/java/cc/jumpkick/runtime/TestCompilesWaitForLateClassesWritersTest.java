@@ -63,7 +63,7 @@ class TestCompilesWaitForLateClassesWritersTest {
     private static void scaffold(Path dir, String tables) throws Exception {
         Files.writeString(
                 dir.resolve("jk.toml"),
-                "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk=25\njava=25\n" + tables);
+                "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\njava=25\n" + tables);
         Files.createDirectories(dir.resolve("src/main/java/com/example"));
         Files.writeString(
                 dir.resolve("src/main/java/com/example/Hello.java"), "package com.example;\nclass Hello {}\n");

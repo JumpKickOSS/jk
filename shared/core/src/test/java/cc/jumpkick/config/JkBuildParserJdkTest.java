@@ -10,47 +10,120 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ToolchainSpec;
 import org.junit.jupiter.api.Test;
 
+/**
+ * {@code jdk} is a table, the one spelling of a project's JDK vendor and version (JK-74S9K):
+ * {@code vendor} and {@code version} each optional, {@code version} a major, an exact build or a
+ * floor within one major, {@code required} binding them; the string forms are retired.
+ */
 class JkBuildParserJdkTest {
 
+    private static JkBuild parse(String jdkLine) {
+        return JkBuildParser.parse(
+                "group = \"com.example\"\nname = \"widget\"\nversion = \"1.0.0\"\n" + jdkLine + "\n");
+    }
+
     @Test
-    void parses_jdk_vendor_major_spec() {
-        JkBuild parsed = JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = "temurin-25"
-                """);
+    void a_vendor_and_major_is_a_suggestion() {
+        JkBuild parsed = parse("jdk = { vendor = \"temurin\", version = \"25\" }");
         assertThat(parsed.project().jdk()).isEqualTo("temurin-25");
         assertThat(parsed.project().jdkMajor()).isEqualTo(25);
+        assertThat(parsed.project().jdkSpec().requiredVendor()).isEmpty();
         // java falls back to the jdk major when not given explicitly.
         assertThat(parsed.project().javaRelease()).isEqualTo(25);
     }
 
     @Test
-    void parses_jdk_keyword_specs() {
-        // lts/stable/latest/native are accepted as-is (the same keywords --jdk/JK_JDK/
-        // .jdk-version accept) — resolved downstream by JdkKeywords, not by this parser.
-        for (String keyword : new String[] {"lts", "stable", "latest", "native"}) {
-            JkBuild parsed = JkBuildParser.parse("""
-                    group    = "com.example"
-                    name     = "widget"
-                    version  = "1.0.0"
-                    jdk      = "%s"
-                    """.formatted(keyword));
-            assertThat(parsed.project().jdk()).isEqualTo(keyword);
-        }
+    void vendor_and_version_are_each_optional() {
+        assertThat(parse("jdk = { vendor = \"corretto\" }").project().jdkSpec().suggestedVendor())
+                .isEqualTo("corretto");
+        assertThat(parse("jdk = { version = \"25\" }").project().jdkMajor()).isEqualTo(25);
+        assertThat(parse("jdk = { version = 25 }").project().jdkMajor())
+                .as("an integer major")
+                .isEqualTo(25);
     }
 
     @Test
-    void parses_jdk_bare_major_string() {
-        JkBuild parsed = JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = "25"
-                """);
-        assertThat(parsed.project().jdk()).isEqualTo("25");
-        assertThat(parsed.project().jdkMajor()).isEqualTo(25);
+    void required_binds_the_vendor_and_the_version() {
+        ToolchainSpec major = parse("jdk = { vendor = \"corretto\", version = \"21\", required = true }")
+                .project()
+                .jdkSpec();
+        assertThat(major.requiredVendor()).isEqualTo("corretto");
+        assertThat(major.suggestedVersion()).isEqualTo("21");
+        ToolchainSpec exact = parse("jdk = { vendor = \"temurin\", version = \"25.0.4.1\", required = true }")
+                .project()
+                .jdkSpec();
+        assertThat(exact.requiredVendor()).isEqualTo("temurin");
+        assertThat(exact.requiredVersion()).isEqualTo("25.0.4.1");
+        ToolchainSpec floor = parse("jdk = { version = \">=25.0.5\", required = true }")
+                .project()
+                .jdkSpec();
+        assertThat(floor.requiredVendor()).isEmpty();
+        assertThat(floor.suggestedVersion()).isEqualTo("25");
+    }
+
+    @Test
+    void an_exact_build_without_required_is_a_suggestion() {
+        ToolchainSpec spec = parse("jdk = { vendor = \"temurin\", version = \"25.0.3\" }")
+                .project()
+                .jdkSpec();
+        assertThat(spec.suggestedVersion()).isEqualTo("25.0.3");
+        assertThat(spec.requiredVersion()).isEmpty();
+    }
+
+    @Test
+    void a_range_across_majors_is_refused_and_points_at_java() {
+        for (String v : new String[] {">=21", ">=21, <27", "[21,27)"}) {
+            assertThatThrownBy(() -> parse("jdk = { version = \"" + v + "\" }"))
+                    .as(v)
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining("spans Java majors")
+                    .hasMessageContaining("java = N");
+        }
+        assertThatThrownBy(() -> parse("jdk = { version = \"lts\" }"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("must be a major");
+    }
+
+    @Test
+    void an_unknown_key_is_refused() {
+        assertThatThrownBy(() -> parse("jdk = { vendor = \"temurin\", pin = true }"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("not `pin`");
+    }
+
+    @Test
+    void a_jdk_below_the_java_level_is_refused_and_above_is_allowed() {
+        assertThatThrownBy(() -> parse("java = 25\njdk = { version = \"21\" }"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("below java = 25");
+        assertThat(parse("java = 21\njdk = { version = \"25\" }").project().javaRelease())
+                .isEqualTo(21);
+    }
+
+    @Test
+    void java_as_a_table_is_refused_and_points_at_jdk() {
+        assertThatThrownBy(() -> parse("java = { version = 25 }"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("plain integer")
+                .hasMessageContaining("jdk = {");
+    }
+
+    @Test
+    void the_string_forms_are_retired_with_the_table_to_write() {
+        assertThatThrownBy(() -> parse("jdk = \"temurin-25\""))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("retired")
+                .hasMessageContaining("jdk = { vendor = \"temurin\", version = \"25\" }");
+        assertThatThrownBy(() -> parse("jdk = \"=temurin-25.0.4\""))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jdk = { vendor = \"temurin\", version = \"25.0.4\", required = true }");
+        assertThatThrownBy(() -> parse("jdk = 25"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jdk = { version = \"25\" }");
+        assertThatThrownBy(() -> parse("jdk-vendor = \"corretto\""))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("jdk-vendor")
+                .hasMessageContaining("retired");
     }
 
     @Test
@@ -79,97 +152,5 @@ class JkBuildParserJdkTest {
         ToolchainSpec spec = parsed.nativeConfigOpt().orElseThrow().graalSpec();
         assertThat(spec.requiredVendor()).isEqualTo("graalce");
         assertThat(spec.requiredVersion()).isEqualTo("25.2.4");
-    }
-
-    @Test
-    void accepts_unquoted_integer_jdk_as_bare_major() {
-        // Unquoted integer {@code jdk} coerces to a bare-major string.
-        JkBuild parsed = JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = 25
-                """);
-        assertThat(parsed.project().jdk()).isEqualTo("25");
-    }
-
-    @Test
-    void accepts_a_jdk_point_release_as_a_floor_on_the_major() {
-        // A bare point release records what built the lock. It is not a pin: the major is the
-        // floor, so 25.0.1 and 26.x both clear it. Pinning takes an = (jdk = "=25.0.3").
-        ToolchainSpec spec = JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = "25.0.3"
-                """).project().jdkSpec();
-        assertThat(spec.suggestedVersion()).isEqualTo("25.0.3");
-        assertThat(spec.requiredVersion()).isEmpty();
-    }
-
-    @Test
-    void an_equals_jdk_spec_requires_the_vendor_and_the_version() {
-        ToolchainSpec spec = JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = "=temurin-25.0.4"
-                """).project().jdkSpec();
-        assertThat(spec.requiredVendor()).isEqualTo("temurin");
-        assertThat(spec.requiredVersion()).isEqualTo("25.0.4");
-        assertThat(spec.suggestedVendor()).isEmpty();
-        assertThat(spec.suggestedVersion()).isEmpty();
-    }
-
-    @Test
-    void the_vendor_and_version_keys_carry_requiredness_separately() {
-        ToolchainSpec spec = JkBuildParser.parse("""
-                group       = "com.example"
-                name        = "widget"
-                version     = "1.0.0"
-                jdk-vendor  = "=Corretto"
-                jdk-version = 25
-                """).project().jdkSpec();
-        assertThat(spec.requiredVendor()).isEqualTo("corretto");
-        assertThat(spec.suggestedVersion()).isEqualTo("25");
-        assertThat(spec.requiredVersion()).isEmpty();
-    }
-
-    @Test
-    void naming_both_the_combined_key_and_the_pair_is_an_error() {
-        assertThatThrownBy(() -> JkBuildParser.parse("""
-                group       = "com.example"
-                name        = "widget"
-                version     = "1.0.0"
-                jdk         = "temurin-25"
-                jdk-version = 25
-                """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("both set");
-    }
-
-    @Test
-    void an_equals_bare_major_with_no_vendor_pins_nothing() {
-        assertThatThrownBy(() -> JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = "=25"
-                """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("an exact pin needs a full version or a vendor");
-    }
-
-    @Test
-    void a_vendor_and_point_release_reduces_to_a_bare_major_for_the_resolver() {
-        // `jdk` stays the resolver-facing projection: vendor plus major, no patch.
-        JkBuild parsed = JkBuildParser.parse("""
-                group    = "com.example"
-                name     = "widget"
-                version  = "1.0.0"
-                jdk      = "temurin-25.0.3"
-                """);
-        assertThat(parsed.project().jdk()).isEqualTo("temurin-25");
-        assertThat(parsed.project().jdkSpec().suggestedVersion()).isEqualTo("25.0.3");
     }
 }

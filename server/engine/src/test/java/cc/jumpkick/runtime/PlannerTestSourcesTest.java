@@ -59,7 +59,7 @@ class PlannerTestSourcesTest {
                 group = "ex"
                 name = "m"
                 version = "1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """ + tail);
         return JkBuildParser.parse(module.resolve("jk.toml"));
     }

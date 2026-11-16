@@ -33,7 +33,7 @@ class ModuleFlagValidationTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["mods/a", "mods/b"]
                 """);
@@ -44,7 +44,7 @@ class ModuleFlagValidationTest {
                     group = "t"
                     name = "%s"
                     version = "0.0.1"
-                    jdk = 25
+                    jdk = { version = "25" }
                     java = 25
                     [application]
                     main = "t.Main"
@@ -90,7 +90,7 @@ class ModuleFlagValidationTest {
                 group = "t"
                 name = "solo"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 [application]
                 main = "t.Main"

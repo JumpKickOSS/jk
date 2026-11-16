@@ -5,6 +5,7 @@ import static cc.jumpkick.config.JkBuildParser.*;
 
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JavadocMode;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ProjectInherit;
@@ -33,9 +34,6 @@ public final class ManifestProject {
             "group",
             "version",
             "jdk",
-            "jdk-vendor",
-            "jdk-version",
-            "jdk-cache",
             "node",
             "java",
             "kotlin",
@@ -101,7 +99,7 @@ public final class ManifestProject {
         String version = parseInheritableString(root, "version", ProjectInherit.VERSION, inherits, workspaceRoot);
 
         ToolchainSpec jdkSpec;
-        boolean declaresJdk = root.contains("jdk") || root.contains("jdk-vendor") || root.contains("jdk-version");
+        boolean declaresJdk = root.contains("jdk");
         if (isWorkspaceInherit(root, "jdk") || (!workspaceRoot && !declaresJdk)) {
             inherits.add(ProjectInherit.JDK);
             jdkSpec = ToolchainSpec.NONE;
@@ -123,6 +121,8 @@ public final class ManifestProject {
             java = parseJavaRelease(root);
             requireCompilableRelease(java);
         }
+        // A jdk of a lower major than java cannot build it; a higher one builds that level on it.
+        if (java > 0 && !jdkSpec.isEmpty() && root.isTable("jdk")) parseJdkToolchain(root, java);
 
         VersionSelector kotlin;
         if (isWorkspaceInherit(root, "kotlin") || (!workspaceRoot && !root.contains("kotlin"))) {
@@ -341,6 +341,8 @@ public final class ManifestProject {
     static boolean isWorkspaceInherit(TomlTable root, String key) {
         if (!root.contains(key) || !root.isTable(key)) return false;
         TomlTable t = root.getTable(key);
+        // A table without workspace is the key's own table form (jdk = { vendor = … }), read by its parser.
+        if (t != null && !t.contains("workspace")) return false;
         Boolean ws = t == null ? null : t.getBoolean("workspace");
         if (t == null || !Boolean.TRUE.equals(ws)) {
             throw new JkBuildParseException(key + ".workspace can only be `true`; or set " + key + " directly");
@@ -354,14 +356,51 @@ public final class ManifestProject {
     }
 
     /**
-     * {@code jdk} / {@code jdk-vendor} / {@code jdk-version}, as a suggestion or — with a leading
-     * {@code =} — a pin. Absent → {@link ToolchainSpec#NONE}.
+     * The {@code jdk} table, the one spelling of a project's JDK vendor and version: {@code jdk = {
+     * vendor = "corretto", version = "21", required = true }}. {@code vendor} and {@code version} are
+     * each optional; {@code version} is a major ({@code "21"}), an exact build ({@code "25.0.4.1"})
+     * or a floor within one major ({@code ">=25.0.5"}); {@code required} (default false) makes the
+     * table binding for which JDK builds the project and which cached results serve it, where by
+     * default it is a suggestion. The string forms ({@code "temurin-25"}, {@code "=temurin-25.0.4"})
+     * are retired, with the table to write in their place. Absent → {@link ToolchainSpec#NONE}.
+     * {@code javaLevel} is the module's {@code java}, which a {@code jdk} of a lower major contradicts.
      */
     static ToolchainSpec parseJdkToolchain(TomlTable root) {
-        ToolchainSpec spec = parseToolchain(root, "jdk", "jdk", "\"temurin-25\" or \"25\"");
-        if (spec.isEmpty() || ToolchainSpec.isKeyword(spec.version())) return spec;
-        if (spec.version().isEmpty()) return spec; // vendor alone; the major comes from `java`
-        requireSupportedMajor("jdk", Project.majorOf(spec.version()));
+        return parseJdkToolchain(root, 0);
+    }
+
+    static ToolchainSpec parseJdkToolchain(TomlTable root, int javaLevel) {
+        if (!root.contains("jdk")) return ToolchainSpec.NONE;
+        if (!root.isTable("jdk")) {
+            RetiredKeys.refuse(root); // the string forms are retired, with the table to write
+            throw JkBuildParseException.at(
+                    root, "jdk", "jdk must be a table: jdk = { vendor = \"…\", version = \"…\" }");
+        }
+        TomlTable table = root.getTable("jdk");
+        if (table == null) return ToolchainSpec.NONE;
+        for (String k : table.keySet()) {
+            if (!Set.of("vendor", "version", "required").contains(k)) {
+                throw new JkBuildParseException("jdk takes vendor, version and required, not `" + k + "`");
+            }
+        }
+        String vendor = table.contains("vendor") ? scalarSpec(table, "vendor", "jdk.vendor", "\"corretto\"") : null;
+        String version = table.contains("version") ? scalarSpec(table, "version", "jdk.version", "\"21\"") : null;
+        Object req = table.get("required");
+        if (req != null && !(req instanceof Boolean))
+            throw new JkBuildParseException("jdk.required must be true or false");
+        boolean required = Boolean.TRUE.equals(req);
+        ToolchainSpec spec;
+        try {
+            spec = JdkTable.spec(vendor, version, required);
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(e.getMessage());
+        }
+        int major = version == null ? 0 : JdkTable.major(version);
+        if (major > 0) requireSupportedMajor("jdk", major);
+        if (javaLevel > 0 && major > 0 && major < javaLevel) {
+            throw new JkBuildParseException("jdk.version = \"" + version + "\" is JDK " + major + ", below java = "
+                    + javaLevel + ": a JDK cannot build a level above its own; raise the jdk version or lower java");
+        }
         return spec;
     }
 
@@ -451,6 +490,12 @@ public final class ManifestProject {
             } catch (NumberFormatException e) {
                 throw JkBuildParseException.at(root, "java", "java must be an integer, got: \"" + s + "\"");
             }
+        } else if (raw instanceof TomlTable) {
+            throw JkBuildParseException.at(
+                    root,
+                    "java",
+                    "java is the language level, a plain integer (java = 25);"
+                            + " a JDK vendor or version goes on jdk = { vendor = \"corretto\", version = \"21\" }");
         } else {
             throw JkBuildParseException.at(root, "java", "java must be an integer");
         }

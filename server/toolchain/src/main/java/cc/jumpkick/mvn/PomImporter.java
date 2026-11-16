@@ -16,6 +16,7 @@ import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.Features;
 import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.PluginConfig;
@@ -759,8 +760,8 @@ public final class PomImporter {
                     + "; no jdk written");
             return null;
         }
-        report.warning("<toolchains> JDK " + spec + " written as jdk = \"" + spec
-                + "\", which installs it; drop it if java = is enough");
+        report.warning("<toolchains> JDK " + spec + " written as " + JdkTable.fromRetired(spec)
+                + ", which installs it; drop it if java = is enough");
         return spec;
     }
 

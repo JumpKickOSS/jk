@@ -39,7 +39,8 @@ class StarterPacksTest {
         Path resources = RepoRoot.dir(StarterPacksTest.class, "server/guard/packs/" + pack + "/src/main/resources");
         Path root = Files.createDirectories(tmp.resolve("proj"));
         Files.writeString(
-                root.resolve("jk.toml"), "group = \"t\"\nname = \"consumer\"\nversion = \"0.0.1\"\njdk = 25\n");
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"consumer\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.copy(resources.resolve(GuardsPresence.RULES_FILE), root.resolve(GuardsPresence.RULES_FILE));
         copyTree(resources.resolve("guard-fixtures"), root.resolve("guard-fixtures"));
 

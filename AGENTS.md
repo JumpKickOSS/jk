@@ -81,17 +81,18 @@ Rules of thumb:
 
 - **`java = 25`** — default; host LTS, no extra install.
 - **`java = 21` / `17`** — still build with the host JDK 25, emit older bytecode. **Do not**
-  write `jdk = 21` or `jdk = 17` for that; it forces a download of an obsolete runtime.
+  write `jdk = { version = "21" }` for that; it forces a download of an obsolete runtime.
 - **`java = 26`** (newer than LTS) — may provision e.g. `temurin-26` so the toolchain can
   compile/run that level.
-- **`jdk = "temurin-…"` / vendor pin** — only when deliberately selecting a specific install
-  (Graal, Corretto, exact major). Not the default teaching path.
+- **`jdk = { vendor = "corretto", version = "21" }`** — the only spelling of a vendor/version
+  (add `required = true` to bind it); only when deliberately selecting a specific install. The
+  string forms (`jdk = "temurin-25"`) are retired. Not the default teaching path.
 
-**Examples and docs:** use `java = 25` (or omit if inherited). Avoid `jdk = 17` / `jdk = 21`
-almost always; avoid casual `jdk = 25` in samples so users do not learn to pin runtimes.
+**Examples and docs:** use `java = 25` (or omit if inherited). Avoid a `jdk` table almost always,
+so users do not learn to pin runtimes.
 Containers / packaging can ship a matching JRE — stop teaching legacy JDK pins.
 
-**Tests:** `jdk = 17` / `21` only in fixtures that **must** exercise provisioning / first-run
+**Tests:** a `jdk` table only in fixtures that **must** exercise provisioning / first-run
 pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java = N` alone
 (or `java = 25` + no `jdk` line).
 

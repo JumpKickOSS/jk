@@ -47,7 +47,7 @@ their plugins.
 | `name` | Artifact id (required; workspace members may omit other identity fields) |
 | `version` | Project version |
 | `java` | Language + bytecode (`--release`). Default **25**. Prefer this over `jdk` — [Concepts](concepts.md). JumpKick's floor is **17**: a lower level down to 8 still parses and the toolchain JDK cross-compiles for it, with one warning per module — the place for it is a module whose sources or dependencies need an API a later JDK removed (`java.security.acl`, Pack200, Nashorn, RMI activation); a compile for a newer release that misses one names the API and the level to write. Such a module compiles without incremental analysis when a library supertype's signature names the removed type — the analysis reflects over supertypes with the compiler worker's JDK — so a warning says it is compiled in full every build; a change to the compile classpath — the library that carried the supertype moves — tries the analysis again |
-| `jdk` | Specific JDK *install* (rare) |
+| `jdk` | The JDK's vendor and version, a table: `jdk = { vendor = "corretto" }` suggests one, `jdk = { vendor = "corretto", version = "21", required = true }` binds it (rare). `version` is a major, an exact build (`"25.0.4.1"`) or a floor within one major (`">=25.0.5"`). The string forms (`jdk = "temurin-25"`) are retired; the refusal prints the table to write. [JDKs](jdk.md) |
 | `node` | Node.js version for a node build: `24` (a floor), `"24.21.0"` (a suggestion), `"=24.21.0"` (exact) or `"lts"`. Inherited from the workspace root. In a manifest that also writes a `[node]` table, put it there as `[node] version = 24` (TOML allows one or the other) |
 | `kotlin` | Kotlin compiler version (Kotlin modules). JumpKick's floor is **2.4.10**, the oldest Kotlin its compile path drives: a version below it compiles with the floor — the lock pins `2.4.10` and notes it, the build warns once per module — and `jk import` writes the floor with a row. The stdlib family (`kotlin-stdlib*`, `kotlin-reflect`, `kotlin-test*`) is the compiler's: a platform BOM or a declared root that holds it at another version follows the compiler in the lock, with a note, so one stdlib reaches the compile classpath |
 | `groovy` | Groovy compiler version (Groovy modules). JumpKick's floor is **5.0**, the oldest line its compiler worker drives: a version below it compiles and runs with JumpKick's bundled Groovy (`5.0.4`) — the lock carries that runtime and notes it, the build warns once per module |
@@ -245,6 +245,9 @@ it and what to write instead. `jk new`, `jk init` and `jk import` never write on
 | `[test] parallel` | 0.51.1 | `[test] workers = 1` |
 | `[build] test-workers` | 0.51.1 | `[test] workers` |
 | `[build] test-parallel` | 0.51.1 | `[test] workers = 1` |
+| `jdk-vendor` | 0.51.2 | `jdk = { vendor = "…" }` |
+| `jdk-version` | 0.51.2 | `jdk = { version = "…" }` |
+| `jdk = "…"` (a string or number) | 0.51.2 | `jdk = { vendor = "…", version = "…" }` |
 <!-- retired-keys:end -->
 
 ## Related

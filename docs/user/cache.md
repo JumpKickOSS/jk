@@ -63,16 +63,18 @@ which JumpKick version, on which host (`linux-x86_64`, `macos-aarch64`, ...), ho
 output holds, and how long the step that made it worked. The host is a statement about the record,
 not part of its key: class files and jars are the same wherever they are made.
 
-A key names a JDK by its build: vendor, version with build number and the content of its compiler
-(`toolchain:jdk:eclipse-adoptium/25.0.4.1+1-LTS/…`), never its OS, architecture or install path, so
-a Linux laptop and a macOS runner on the same Temurin build share compile, packaging, plugin and
-test keys. A jlink image and a native binary are for one platform: their keys and records also name
-it (`TARGET linux-x86_64-gnu`). A module without a JDK pin builds on any installed JDK that
-satisfies its `java` level, preferring this release's build of its major when it is installed
-([JDK](jdk.md#unpinned-modules-prefer-this-releases-jdk)); keys name the build that ran, so hosts on
-different builds do not share its compile and test steps. `jk doctor`'s `jdk-patch` row says which
-build a project uses here, as a note, and `jk explain` names both builds when a compile reruns for
-the JDK. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
+Compile and test keys name the module's Java level (`java:21`), not the JDK that ran, so hosts on
+different JDKs compute the same keys; each record names the JDK that made it (`TOOLCHAIN
+toolchain:jdk:eclipse-adoptium/25.0.5+11-LTS/…`: vendor, version with build number and the content
+of its compiler, never its OS, architecture or install path). One key can hold a record per JDK, and
+a reader takes the closest one its `[cache] jdk-match` accepts: by default any vendor and patch of
+the major it builds on ([JDK](jdk.md#which-cached-results-a-build-takes)). A hit made on another JDK
+says which; when the records here were all made on another major, the build says so once with the two
+ways out, and `jk explain` gives that as the reason the step will run. A step's local stamp, which
+decides whether its own outputs on disk are current, still names the exact JDK. AOT caches, jlink
+images and native binaries keep the exact build in their keys, and a jlink image and a native binary
+are for one platform: their keys and records also name it (`TARGET linux-x86_64-gnu`). A remote
+cache keeps one record per key, JDK and target, written once. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
 unless the module's `[test] locale` or `[test] timezone` says otherwise,
 [Test](test.md#the-test-jvms-locale-and-time-zone-test-locale-test-timezone)), so the shell's
 `LANG`, `LC_*` and `TZ` key no suite; only `inherit` keys them. A hit on a machine with no history of the step (a fresh checkout, a record
@@ -129,7 +131,7 @@ step as `cache`, for a workspace build's module steps as for a single module's.
 | `forced` | `--force`, `--redo` or `--rebuild`, or a whole record was run anyway |
 
 A suite's green or red marker names what its stamp hashed (the test sources, the main classes,
-the lock, the runtime classpath, the test JDK and the suite's other tokens, environment variables
+the lock, the runtime classpath, the module's Java level and the suite's other tokens, environment variables
 by name only), so a suite that runs again says which of those moved, like any other step.
 
 The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from

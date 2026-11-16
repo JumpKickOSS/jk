@@ -198,7 +198,7 @@ class JkBuildWorkspaceTest {
                 group   = "com.example"
                 name    = "good"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
         Path broken = Files.createDirectories(tempDir.resolve("broken"));
@@ -256,7 +256,7 @@ class JkBuildWorkspaceTest {
                 group   = "com.example"
                 name    = "root"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
 
                 [workspace]
@@ -267,7 +267,7 @@ class JkBuildWorkspaceTest {
                 group   = "com.other"
                 name    = "pinned"
                 version = "9.9.9"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
 
@@ -293,7 +293,7 @@ class JkBuildWorkspaceTest {
                 group   = "com.example"
                 name    = "lib"
                 version.workspace = true
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
 
@@ -312,7 +312,7 @@ class JkBuildWorkspaceTest {
                 name        = "root"
                 version     = "3.0.0"
                 java        = 25
-                jdk         = "temurin-25"
+                jdk         = { vendor = "temurin", version = "25" }
                 description = "Root description"
 
                 [workspace]
@@ -349,7 +349,7 @@ class JkBuildWorkspaceTest {
                 name        = "root"
                 version     = "1.0.0"
                 java        = 25
-                jdk         = "25"
+                jdk         = { version = "25" }
                 description = "Root only"
 
                 [workspace]

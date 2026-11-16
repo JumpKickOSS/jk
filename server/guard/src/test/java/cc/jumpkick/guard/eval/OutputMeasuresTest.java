@@ -166,8 +166,7 @@ class OutputMeasuresTest {
                 group = "com.acme"
                 name = "core"
                 version = "1.0.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [lint]
                 checkstyle = "config/checkstyle.xml"
 
@@ -220,7 +219,7 @@ class OutputMeasuresTest {
         Files.createDirectories(root.resolve("generated-x"));
         Files.writeString(
                 root.resolve("generated-x/jk.toml"),
-                "group = \"com.acme\"\nname = \"gen\"\nversion = \"1.0.0\"\njdk = 25\n");
+                "group = \"com.acme\"\nname = \"gen\"\nversion = \"1.0.0\"\njdk = { version = \"25\" }\n");
         String rules = """
                 [guards.coverage-floor]
                 kind    = "metric"

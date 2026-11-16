@@ -27,8 +27,7 @@ class PluginContributionsTest {
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [spring-boot]
                 version = "4.0.0"
                 """ + extra);
@@ -53,8 +52,7 @@ class PluginContributionsTest {
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [spring-boot]
                 version = "^4"
                 """);
@@ -98,7 +96,7 @@ class PluginContributionsTest {
                 name = "plain"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = "25"
+                jdk = { version = "25" }
                 """);
         assertThat(PluginContributions.javacArgs(build, null, Set.of())).isEmpty();
         assertThat(PluginContributions.kotlinPlugins(build, null, "2.3.0", Set.of()))
@@ -137,7 +135,7 @@ class PluginContributionsTest {
                 name = "gapp"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = "25"
+                jdk = { version = "25" }
                 groovy = "5.0.7"
 
                 [grails]
@@ -340,8 +338,7 @@ class PluginContributionsTest {
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [cmdlane-fixture]
                 """);
 
@@ -377,8 +374,7 @@ class PluginContributionsTest {
                 name = "demo"
                 group = "com.example"
                 version = "1.0.0"
-                jdk = "25"
-
+                jdk = { version = "25" }
                 [urltool-fixture]
                 """;
 

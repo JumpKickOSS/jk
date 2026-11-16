@@ -36,29 +36,15 @@
       ]
     },
     "jdk": {
-      "description": "JDK pin: a major (25) or <vendor>-<major> (temurin-25).",
-      "oneOf": [
-        {
-          "type": "integer"
-        },
-        {
-          "type": "string"
-        },
-        {
-          "$ref": "#/$defs/inherit"
-        }
-      ]
-    },
-    "jdk-vendor": {
-      "type": "string"
-    },
-    "jdk-version": {
-      "type": "string"
-    },
-    "jdk-cache": {
-      "type": "string",
-      "enum": ["required"],
-      "description": "With a required jdk pin (jdk = \"=corretto-21\"), only cached results made on a JDK the pin admits serve this project (the record's TOOLCHAIN); without it the pin chooses the JDK and the cache takes results by [cache] jdk-match."
+      "description": "The project's JDK vendor and version, the one spelling: jdk = { vendor = \"corretto\", version = \"21\", required = true }. Each key is optional; version is a major (\"21\"), an exact build (\"25.0.4.1\") or a floor within one major (\">=25.0.5\"); required (default false) binds which JDK builds the project and which cached results serve it, where by default it is a suggestion. A workspace root's jdk applies to members; { workspace = true } inherits it explicitly. The string forms (\"temurin-25\", \"=temurin-25.0.4\") are retired.",
+      "type": "object",
+      "properties": {
+        "vendor": { "type": "string" },
+        "version": { "type": ["string", "integer"] },
+        "required": { "type": "boolean" },
+        "workspace": { "type": "boolean" }
+      },
+      "additionalProperties": false
     },
     "cache": {
       "type": "object",

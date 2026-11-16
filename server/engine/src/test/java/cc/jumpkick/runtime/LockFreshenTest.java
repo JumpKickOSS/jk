@@ -182,7 +182,7 @@ class LockFreshenTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [dependencies]
@@ -220,7 +220,7 @@ class LockFreshenTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 kotlin = "2.4.20"
 
@@ -297,7 +297,7 @@ class LockFreshenTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 groovy = "4.0.28"
 
                 [dependencies]
@@ -383,7 +383,7 @@ class LockFreshenTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [dependencies]

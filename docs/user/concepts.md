@@ -34,18 +34,18 @@ already have a modern JDK. Prefer **language level**, not extra runtime download
 | Field | Meaning | Prefer |
 |-------|---------|--------|
 | **`java = N`** | Language + bytecode (`--release N`) | **Yes** — default 25; 17 and 21 are fine (host JDK 25 cross-compiles). Below 17 the build warns once per module — keep it only while the module needs an API a later JDK removed |
-| **`jdk = …`** | Which JDK *install* to use / provision, and the JDK whose javac compiles the module | **Rare** — only when you truly need that runtime (Graal, a vendor pin, a major newer than the host, a specific javac) |
+| **`jdk = { … }`** | Which JDK vendor or version to use / provision ([JDK](jdk.md#the-jdk-table)), and the JDK whose javac compiles the module | **Rare** — only when you truly need that runtime (Graal, a vendor pin, a major newer than the host, a specific javac) |
 
-Do **not** write `jdk = 17` or `jdk = 21` just to emit older bytecode. That forces an obsolete
+Do **not** write `jdk = { version = "17" }` just to emit older bytecode. That forces an obsolete
 runtime download. Use `java = 17` / `java = 21` instead.
 
 `java = 26` (newer than the host LTS) may provision a 26 toolchain.
 
 Which javac compiles a module follows the same split. A language level alone compiles on JumpKick's own
 JDK 25 whenever that javac can emit it (`java = 17`, `21` or `25`), in the compiler worker that is
-already warm, and on the project's JDK only for a newer level (`java = 27`). A JDK pin (`jdk = 21`,
-`jdk-vendor` / `jdk-version`, `--jdk`) is a choice of compiler: the module compiles on that JDK even
-when JDK 25 could have emitted its level, in a worker of its own, down to JumpKick's floor, `jdk = 17`.
+already warm, and on the project's JDK only for a newer level (`java = 27`). A JDK pin (`jdk = { version = "21" }`,
+`--jdk`) is a choice of compiler: the module compiles on that JDK even
+when JDK 25 could have emitted its level, in a worker of its own, down to JumpKick's floor, 17.
 On JDK 17 javac does not say which sources an annotation processor's output came from, so a module
 there that runs processors compiles whole on every change. Each JDK's worker idles out on its own.
 

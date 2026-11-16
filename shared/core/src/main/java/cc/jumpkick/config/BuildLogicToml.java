@@ -28,11 +28,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The CLI cannot reach the full parser: {@code checkCliNoParseTypes} keeps {@code JkBuildParser}
  * — and, with it, tomlj and ANTLR — off the native image's reachability graph. So the one
- * substrate both sides can share is the line scanner. That is a real narrowing and it is stated
- * rather than hidden: a {@code logic} key written as part of an inline {@code build = { … }} table
- * reads as absent and the convention directories apply. {@code TomlScan}'s contract is that exotic
- * TOML degrades to absent, never to a wrong value, so the failure mode is "jk uses {@value
- * #DEFAULT_DIR}/", identically on both sides.
+ * substrate both sides can share is the line scanner. It reads {@code [build] logic} and a flat
+ * one-line {@code build = { logic = "…" }}; anything more exotic reads as absent and the convention
+ * directories apply. {@code TomlScan}'s contract is that exotic TOML degrades to absent, never to a
+ * wrong value, so the failure mode is "jk uses {@value #DEFAULT_DIR}/", identically on both sides.
  *
  * <p>Nothing else in {@code [build]} comes through here. The rest of the table feeds compile and
  * package action keys and stays with the full parser, where a misread would be a correctness bug

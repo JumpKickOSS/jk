@@ -20,7 +20,7 @@ class BuildPlannerKotlinStepTest {
 
     @Test
     void jdk_alone_is_a_java_project(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         assertThat(stepNames(dir)).contains("compile-java").doesNotContain("compile-kotlin");
     }
 
@@ -32,7 +32,9 @@ class BuildPlannerKotlinStepTest {
 
     @Test
     void jdk_plus_kotlin_is_kotlin_only(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"k\"\nversion=\"0.1.0\"\njdk=25\nkotlin=\"2.3.21\"\n");
+        writeManifest(
+                dir,
+                "group=\"com.example\"\nname=\"k\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\nkotlin=\"2.3.21\"\n");
         assertThat(stepNames(dir))
                 .contains("compile-kotlin", "write-stamp-kotlin")
                 // no Java ⇒ no javac step and no assembler (Kotlin publishes directly)
@@ -42,7 +44,8 @@ class BuildPlannerKotlinStepTest {
     @Test
     void jdk_plus_java_plus_kotlin_enables_both(@TempDir Path dir) throws Exception {
         writeManifest(
-                dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\njava=25\nkotlin=\"2.3.21\"\n");
+                dir,
+                "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\njava=25\nkotlin=\"2.3.21\"\n");
         assertThat(stepNames(dir))
                 .contains(
                         "compile-java",
@@ -57,21 +60,21 @@ class BuildPlannerKotlinStepTest {
 
     @Test
     void detects_kotlin_from_src_main_kotlin(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"k\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"k\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         Files.createDirectories(dir.resolve("src/main/kotlin"));
         assertThat(stepNames(dir)).contains("compile-kotlin").doesNotContain("compile-java");
     }
 
     @Test
     void detects_java_from_src_main_java(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         Files.createDirectories(dir.resolve("src/main/java"));
         assertThat(stepNames(dir)).contains("compile-java").doesNotContain("compile-kotlin");
     }
 
     @Test
     void detects_both_from_a_stray_kt_and_java_file(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         Path kt = dir.resolve("src/app/Foo.kt");
         Files.createDirectories(kt.getParent());
         Files.writeString(kt, "class Foo");
@@ -89,7 +92,7 @@ class BuildPlannerKotlinStepTest {
 
     @Test
     void empty_project_defaults_to_java(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"e\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"e\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         assertThat(stepNames(dir)).contains("compile-java").doesNotContain("compile-kotlin");
     }
 

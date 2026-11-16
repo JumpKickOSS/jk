@@ -49,7 +49,7 @@ class GuardLayersTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core", "app"]
                 """);
@@ -57,7 +57,7 @@ class GuardLayersTest {
             Files.createDirectories(root.resolve(m));
             Files.writeString(
                     root.resolve(m + "/jk.toml"),
-                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         }
         if (coreRules != null) Files.writeString(root.resolve("core/jk-guards.toml"), coreRules);
         if (appRules != null) Files.writeString(root.resolve("app/jk-guards.toml"), appRules);
@@ -218,7 +218,9 @@ class GuardLayersTest {
     @Test
     void a_pack_that_is_declared_but_not_unpacked_is_a_load_error_naming_the_fix(@TempDir Path dir) throws IOException {
         Path root = Files.createDirectories(dir.resolve("ws"));
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
                 [guards]
                 extends = ["com.acme:house-rules:2.0.0", "floating:pack:2"]

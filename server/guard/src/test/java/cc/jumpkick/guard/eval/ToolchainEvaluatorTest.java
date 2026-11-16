@@ -35,7 +35,7 @@ class ToolchainEvaluatorTest {
                 group = "acme"
                 name = "ws"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 17
                 kotlin = "1.9.20"
 

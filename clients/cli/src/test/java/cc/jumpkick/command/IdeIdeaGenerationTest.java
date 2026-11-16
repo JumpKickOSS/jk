@@ -37,8 +37,7 @@ class IdeIdeaGenerationTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);
@@ -49,7 +48,7 @@ class IdeIdeaGenerationTest {
                 group = "com.example"
                 name  = "libcore"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(lib.resolve("src/main/java/lib/Lib.java"), "package lib; public class Lib {}");
 
@@ -59,8 +58,7 @@ class IdeIdeaGenerationTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [dependencies]
                 libcore.workspace = true
                 """);
@@ -111,7 +109,7 @@ class IdeIdeaGenerationTest {
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         // Traditional layout with a main source root and a main resource root.
         Files.createDirectories(ws.resolve("src/main/java/example"));
@@ -202,8 +200,7 @@ class IdeIdeaGenerationTest {
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["a", "b"]
                 """);
@@ -244,8 +241,7 @@ class IdeIdeaGenerationTest {
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["a", "b"]
                 """);
@@ -257,8 +253,7 @@ class IdeIdeaGenerationTest {
                 group = "dev.example"
                 name = "b"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [dependencies]
                 a = { workspace = true }
                 """);
@@ -290,7 +285,7 @@ class IdeIdeaGenerationTest {
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
 
         // A lock with a single processor-scoped dependency, pinned to the real digest of the
@@ -375,7 +370,7 @@ class IdeIdeaGenerationTest {
                 group = "dev.example"
                 name = "%s"
                 version = "0.1.0"
-                jdk = %d
+                jdk = { version = "%d" }
                 """.formatted(name, jdk));
     }
 }

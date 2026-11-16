@@ -139,7 +139,7 @@ class ImagePlansOfflineTest {
             group = "t"
             name = "app"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             """);
         JkBuild project = JkBuildParser.parse(tmp.resolve("jk.toml"));
         BuildLayout layout = BuildLayout.of(tmp, project);

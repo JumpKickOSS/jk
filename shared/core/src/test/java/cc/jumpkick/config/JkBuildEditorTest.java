@@ -25,7 +25,7 @@ class JkBuildEditorTest {
             group    = "com.example"
             name     = "widget"
             version  = "0.1.0"
-            jdk      = 25
+            jdk      = { version = "25" }
             java     = 25
             """;
 
@@ -387,7 +387,7 @@ class JkBuildEditorTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "0.1.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 java     = 25
 
                 # User comment above deps.
@@ -514,8 +514,7 @@ class JkBuildEditorTest {
                 group   = "com.example"
                 name    = "widget"
                 version = "0.1.0"
-                jdk     = 25
-
+                jdk     = { version = "25" }
                 [application]
                 main = "demo.App"
                 """;
@@ -552,7 +551,7 @@ class JkBuildEditorTest {
                 name    = "widget"
                 group   = "com.example"
                 version = "0.1.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 17  # bumped when the CI image moves
 
                 [dependencies]

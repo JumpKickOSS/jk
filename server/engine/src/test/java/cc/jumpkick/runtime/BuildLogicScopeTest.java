@@ -69,8 +69,7 @@ class BuildLogicScopeTest {
                 group = "t"
                 name = "%s"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 """.formatted(dir.getFileName()) + tail);
         return dir;
     }

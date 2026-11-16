@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JdkTable;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -50,6 +51,9 @@ public final class RetiredKeys {
     private static final String JVM_ARGS = "write jvm-args = [...], the one name for these JVM flags";
 
     private static final String WORKERS = "write [test] workers = N (1 runs this module's tests in one JVM)";
+
+    private static final String JDK_TABLE = "write jdk = { vendor = \"…\", version = \"…\" }, the one spelling of a"
+            + " JDK's vendor and version (each optional; required = true binds them)";
 
     /** Every retired key, oldest release first. */
     public static final List<Retired> ALL = List.of(
@@ -104,7 +108,9 @@ public final class RetiredKeys {
             new Retired("profiles.*", "java-opts", "0.51.1", "`jvm-args`", JVM_ARGS),
             new Retired("test", "parallel", "0.51.1", "`[test] workers = 1`", WORKERS),
             new Retired("build", "test-workers", "0.51.1", "`[test] workers`", WORKERS),
-            new Retired("build", "test-parallel", "0.51.1", "`[test] workers = 1`", WORKERS));
+            new Retired("build", "test-parallel", "0.51.1", "`[test] workers = 1`", WORKERS),
+            new Retired("", "jdk-vendor", "0.51.2", "`jdk = { vendor = \"…\" }`", JDK_TABLE),
+            new Retired("", "jdk-version", "0.51.2", "`jdk = { version = \"…\" }`", JDK_TABLE));
 
     /** Refuse the first retired key {@code root} carries, with its remedy. */
     public static void refuse(TomlTable root) {
@@ -122,8 +128,18 @@ public final class RetiredKeys {
                 if (r.key() == null || at.contains(List.of(r.key()))) out.add(r.refusal(String.join(".", path)));
             }
         }
+        // A retired form of a key that lives on: jdk as a string or a number, where it is a table now.
+        if (root.contains("jdk") && !root.isTable("jdk")) {
+            Object old = root.get("jdk");
+            out.add("`jdk = \"" + old + "\"` " + JDK_STRING_RETIRED + JdkTable.fromRetired(String.valueOf(old))
+                    + " (vendor and version are each optional; required = true binds them)");
+        }
         return out;
     }
+
+    private static final String JDK_STRING_SINCE = "0.51.2";
+
+    private static final String JDK_STRING_RETIRED = "was retired in JumpKick " + JDK_STRING_SINCE + ": write ";
 
     /** The tables {@code pattern} names in {@code root}, as key paths: a {@code .*} pattern expands to each subtable. */
     private static List<List<String>> tables(TomlTable root, String pattern) {
@@ -156,6 +172,9 @@ public final class RetiredKeys {
                     .append(r.replacement())
                     .append(" |\n");
         }
+        sb.append("| `jdk = \"…\"` (a string or number) | ")
+                .append(JDK_STRING_SINCE)
+                .append(" | `jdk = { vendor = \"…\", version = \"…\" }` |\n");
         return sb.append("<!-- retired-keys:end -->").toString();
     }
 }

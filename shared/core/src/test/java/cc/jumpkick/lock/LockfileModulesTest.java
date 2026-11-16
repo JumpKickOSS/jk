@@ -19,7 +19,7 @@ class LockfileModulesTest {
                 name        = "root"
                 version     = "9.9.9"
                 java        = 25
-                jdk         = "temurin-25"
+                jdk         = { vendor = "temurin", version = "25" }
                 description = "workspace root"
 
                 [workspace]

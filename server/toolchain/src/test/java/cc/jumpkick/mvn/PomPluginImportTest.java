@@ -473,7 +473,8 @@ class PomPluginImportTest {
         assertThat(pinned.jkBuild().project().jdk()).isEqualTo("temurin-21");
         assertThat(pinned.jkBuild().project().java()).isEqualTo(17);
         assertThat(messages(pinned))
-                .anyMatch(m -> m.startsWith("<toolchains> JDK temurin-21 written as jdk = \"temurin-21\""));
+                .anyMatch(m -> m.startsWith(
+                        "<toolchains> JDK temurin-21 written as jdk = { vendor = \"temurin\", version = \"21\" }"));
 
         PomImporter.Result below = importXml(tempDir, """
                 <project>

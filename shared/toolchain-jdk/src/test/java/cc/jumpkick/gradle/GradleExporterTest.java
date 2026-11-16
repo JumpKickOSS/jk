@@ -20,7 +20,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
-                jdk  = 25
+                jdk  = { version = "25" }
                 java = 25
 
                 [application]

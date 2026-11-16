@@ -19,7 +19,7 @@ class ExecPlansWorkspaceRunTest {
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -46,7 +46,7 @@ class ExecPlansWorkspaceRunTest {
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -78,7 +78,7 @@ class ExecPlansWorkspaceRunTest {
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -91,7 +91,7 @@ class ExecPlansWorkspaceRunTest {
                     group = "com.example"
                     name = "%s"
                     version = "0.1.0"
-                    jdk = 25
+                    jdk = { version = "25" }
                     java = 25
 
                     [application]
@@ -115,8 +115,7 @@ class ExecPlansWorkspaceRunTest {
                 group = "com.example"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib"]
                 """);
@@ -132,7 +131,7 @@ class ExecPlansWorkspaceRunTest {
                 group = "com.example"
                 name = "lib"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.createDirectories(dir.resolve("src"));
@@ -149,7 +148,7 @@ class ExecPlansWorkspaceRunTest {
                 group = "com.example"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 %s

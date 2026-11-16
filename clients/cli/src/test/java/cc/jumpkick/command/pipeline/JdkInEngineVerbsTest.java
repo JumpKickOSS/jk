@@ -105,8 +105,7 @@ class JdkInEngineVerbsTest {
                 group = "example"
                 version = "0.1.0"
                 java = 21
-                jdk = "=dragonwell-21"
-
+                jdk = { vendor = "dragonwell", version = "21", required = true }
                 [application]
                 main = "example.Main"
                 """);

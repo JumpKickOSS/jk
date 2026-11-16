@@ -29,8 +29,7 @@ class McpManifestTest {
             group   = "com.example"
             name    = "widget"
             version = "0.1.0"
-            jdk     = 25
-
+            jdk     = { version = "25" }
             [dependencies]
 
             [test-dependencies]

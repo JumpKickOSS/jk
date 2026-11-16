@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KotlinClasspathAbi;
+import cc.jumpkick.task.ToolchainPolicy;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -38,8 +41,10 @@ class KotlincSpecTest {
 
     /**
      * The pairing the cache depends on: whatever JDK reaches kotlinc as {@code -jdk-home} is the
-     * JDK {@link ActionKey#forKotlinc} hashes. Break either half and a project that switches
-     * {@code jdk = 17} to {@code 21} silently restores bytecode linked against 17.
+     * JDK the reader's expectation names. The key names the Java level, so a switch from JDK 17 to
+     * 21 at one {@code jvmTarget} keeps it; the record names the JDK that made it, and a reader on
+     * 21 under the default {@code jdk-match = "major"} takes nothing 17 made (JK-74S9K). Break
+     * either half and a project that switches JDKs silently restores bytecode linked against 17.
      */
     @Test
     void jdk_home_reaches_kotlinc_and_the_action_key_together(@TempDir Path tempDir) throws IOException {
@@ -55,7 +60,12 @@ class KotlincSpecTest {
         // jvmTarget is identical on both requests — only -jdk-home moved.
         assertThat(on17.jvmTarget()).isEqualTo(on21.jvmTarget());
         assertThat(ActionKey.forKotlinc("compile-kotlin", on17, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY))
-                .isNotEqualTo(ActionKey.forKotlinc("compile-kotlin", on21, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY));
+                .isEqualTo(ActionKey.forKotlinc("compile-kotlin", on21, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY));
+        ToolchainPolicy.Expectation reader =
+                Objects.requireNonNull(ToolchainPolicy.expectation(jdk21, 17, false, null));
+        assertThat(reader.accepts(JdkToolchain.token(jdk17)))
+                .as("a reader on JDK 21 takes no record JDK 17 made")
+                .isFalse();
     }
 
     /** The value the spec hands the compiler after {@code -jdk-home}. */

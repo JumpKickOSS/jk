@@ -16,6 +16,7 @@ import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCommand;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.model.Layout;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.command.Arity;
@@ -318,7 +319,8 @@ public final class NewCommand implements CliCommand {
             return c + templateFlag + " and -t both pick a template; keep one";
         }
         if (jdk != null && javaLevel(jdk) == null) {
-            return c + "--jdk takes a Java major, as in --jdk 25; for a vendor set jdk = \"" + jdk + "\" in jk.toml";
+            return c + "--jdk takes a Java major, as in --jdk 25; for a vendor set " + JdkTable.fromRetired(jdk)
+                    + " in jk.toml";
         }
         return null;
     }

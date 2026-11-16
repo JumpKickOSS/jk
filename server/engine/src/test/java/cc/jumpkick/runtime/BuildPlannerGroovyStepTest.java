@@ -22,7 +22,9 @@ class BuildPlannerGroovyStepTest {
 
     @Test
     void jdk_plus_groovy_is_groovy_only(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk=25\ngroovy=\"5.0.4\"\n");
+        writeManifest(
+                dir,
+                "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\ngroovy=\"5.0.4\"\n");
         assertThat(stepNames(dir))
                 .contains("compile-groovy", "write-stamp-groovy")
                 // no Java ⇒ no javac step and no assembler (Groovy publishes directly)
@@ -31,7 +33,9 @@ class BuildPlannerGroovyStepTest {
 
     @Test
     void jdk_plus_java_plus_groovy_enables_both(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\njava=25\ngroovy=\"5.0.4\"\n");
+        writeManifest(
+                dir,
+                "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\njava=25\ngroovy=\"5.0.4\"\n");
         BuildPlan plan = plan(dir);
         assertThat(plan.steps().stream().map(Task::name))
                 .contains(
@@ -58,14 +62,14 @@ class BuildPlannerGroovyStepTest {
 
     @Test
     void detects_groovy_from_src_main_groovy(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         Files.createDirectories(dir.resolve("src/main/groovy"));
         assertThat(stepNames(dir)).contains("compile-groovy").doesNotContain("compile-java", "compile-kotlin");
     }
 
     @Test
     void detects_both_from_a_stray_groovy_and_java_file(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         Path gv = dir.resolve("src/app/Foo.groovy");
         Files.createDirectories(gv.getParent());
         Files.writeString(gv, "class Foo {}");
@@ -86,7 +90,7 @@ class BuildPlannerGroovyStepTest {
     void declared_groovy_plus_kotlin_compiles_kotlin_then_groovy(@TempDir Path dir) throws Exception {
         writeManifest(
                 dir,
-                "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
+                "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
         BuildPlan plan = plan(dir);
         assertThat(plan.steps().stream().map(Task::name))
                 .contains("compile-kotlin", "compile-groovy", "write-stamp-kotlin", "write-stamp-groovy")
@@ -101,7 +105,7 @@ class BuildPlannerGroovyStepTest {
 
     @Test
     void detected_groovy_plus_kotlin_plans_both(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\n");
         Path src = Files.createDirectories(dir.resolve("src/app"));
         Files.writeString(src.resolve("A.kt"), "class A");
         Files.writeString(src.resolve("B.groovy"), "class B {}");
@@ -112,7 +116,7 @@ class BuildPlannerGroovyStepTest {
     void java_kotlin_and_groovy_compile_kotlin_groovy_then_javac(@TempDir Path dir) throws Exception {
         writeManifest(
                 dir,
-                "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\njava=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
+                "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\njava=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
         BuildPlan plan = plan(dir);
         assertThat(step(plan, "compile-groovy").requires()).contains("compile-kotlin");
         assertThat(step(plan, "compile-java").requires()).contains("compile-kotlin", "compile-groovy");
@@ -124,7 +128,7 @@ class BuildPlannerGroovyStepTest {
     void groovy_reads_kotlin_output_only_when_kotlin_compiled(@TempDir Path dir) throws Exception {
         writeManifest(
                 dir,
-                "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk=25\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
+                "group=\"com.example\"\nname=\"x\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\nkotlin=\"2.3.21\"\ngroovy=\"5.0.4\"\n");
         BuildLayout layout = BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
         List<Path> cp = List.of(dir.resolve("a.jar"));
         assertThat(CompileInputs.groovyClasspath(cp, layout, false)).isEqualTo(cp);

@@ -80,7 +80,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                     group   = "com.example"
                     name    = "app"
                     version = "1.0.0"
-                    jdk     = 25
+                    jdk     = { version = "25" }
                     java    = 25
 
                     [dependencies]

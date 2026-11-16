@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.WorkspaceScan;
@@ -23,8 +24,8 @@ import org.jspecify.annotations.Nullable;
  * module's Java level ({@code java:<level>}), not the JDK that ran; a record says which JDK made
  * it in its {@code TOOLCHAIN} line, and this class is the reader's policy over that field: the match
  * level ({@link Match}, {@code major} by default), a record from a JDK below the module's level
- * never, and an organisation's hard requirement ({@link Requirement}) when the project makes it
- * binding for the cache. Among acceptable records the closest wins ({@link Expectation#closeness}).
+ * never, and an organisation's hard requirement ({@link Requirement}, {@code jdk = { …, required =
+ * true }}). Among acceptable records the closest wins ({@link Expectation#closeness}).
  *
  * <p>The step that computes a key says what its reader expects ({@link #expect}), for the rest of
  * the request; the action cache consults that when it reads the key ({@link #of}). A key no step described (packaging, plugin
@@ -61,17 +62,24 @@ public final class ToolchainPolicy {
     }
 
     /**
-     * An organisation's requirement, from the project's {@code jdk = "=<vendor>-<version>"} pin: a
-     * vendor and a version that is a major ({@code 21}) or a version prefix ({@code 21.0.4}), binding
-     * for the cache when {@code jdk-cache = "required"} sits beside it.
+     * An organisation's requirement, from the project's {@code jdk = { …, required = true }}: a
+     * vendor (or any, when empty) and a version that is a major ({@code 21}), an exact build ({@code
+     * 25.0.4.1}) or a floor within one major ({@code >=25.0.5}), or any when empty. Binding for which
+     * JDK builds the project and for which cached records serve it.
      */
-    public record Requirement(String vendor, String version, boolean bindsCache) {
+    public record Requirement(String vendor, String version) {
 
         /** Whether {@code toolchain} (a {@link JdkToolchain} token) is a JDK this requirement admits. */
         public boolean admits(String toolchain) {
             Toolchain t = Toolchain.parse(toolchain);
             if (t == null) return false;
-            return vendorMatches(t.vendor()) && versionMatches(t.version());
+            return (vendor.isEmpty() || vendorMatches(t.vendor()))
+                    && (version.isEmpty() || versionMatches(t.version()));
+        }
+
+        /** Always: a requirement binds the cache; the field keeps call sites readable. */
+        public boolean bindsCache() {
+            return true;
         }
 
         private boolean vendorMatches(String tokenVendor) {
@@ -94,7 +102,39 @@ public final class ToolchainPolicy {
         private boolean versionMatches(String tokenVersion) {
             String plain =
                     tokenVersion.contains("+") ? tokenVersion.substring(0, tokenVersion.indexOf('+')) : tokenVersion;
+            if (version.startsWith(">=")) {
+                String floor = version.substring(2).strip();
+                return major(plain) == major(floor) && compareDotted(plain, floor) >= 0;
+            }
             return plain.equals(version) || plain.startsWith(version + ".");
+        }
+
+        private static int major(String v) {
+            int dot = v.indexOf('.');
+            try {
+                return Integer.parseInt(dot < 0 ? v : v.substring(0, dot));
+            } catch (NumberFormatException e) {
+                return -1;
+            }
+        }
+
+        private static int compareDotted(String a, String b) {
+            String[] x = a.split("\\.");
+            String[] y = b.split("\\.");
+            for (int i = 0; i < Math.max(x.length, y.length); i++) {
+                int c = Integer.compare(part(x, i), part(y, i));
+                if (c != 0) return c;
+            }
+            return 0;
+        }
+
+        private static int part(String[] p, int i) {
+            if (i >= p.length) return 0;
+            try {
+                return Integer.parseInt(p[i].replaceAll("\\D.*", ""));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
         }
     }
 
@@ -175,27 +215,48 @@ public final class ToolchainPolicy {
     private static final Expected EXPECTED = new Expected();
 
     /** This request's expectations, key to expectation; a fresh map off a request. */
-    private static Map<String, Expectation> expected() {
+    private static Map<String, Object> expected() {
         return RequestScope.current().get(EXPECTED, k -> new ConcurrentHashMap<>());
     }
+
+    /** What {@link #expect} was told, resolved to an {@link Expectation} by the first lookup that asks. */
+    private record Stated(
+            @Nullable Path jdkHome,
+            int level,
+            boolean tiedToMajor,
+            @Nullable Path moduleHint) {}
 
     /**
      * Note what a step that computed {@code key} on {@code jdkHome} for a module at {@code level}
      * accepts when it reads it. {@code moduleHint} is any path inside the module (its output
      * directory will do); its {@code jk.toml}, and its workspace root's, give the match level and the
      * requirement. {@code tiedToMajor}: class files only one major reads ({@code --enable-preview}).
+     * Nothing is read until a lookup asks ({@link #of}): a key computed and never looked up (the
+     * preflight's) costs no JDK digest.
      */
     public static void expect(
             String key, @Nullable Path jdkHome, int level, boolean tiedToMajor, @Nullable Path moduleHint) {
+        RequestScope scope = RequestScope.current();
+        if (scope.remembers()) expected().put(key, new Stated(jdkHome, level, tiedToMajor, moduleHint));
+    }
+
+    /**
+     * What a step on {@code jdkHome} for a module at {@code level} accepts, as {@link #expect} states
+     * it; null when the JDK cannot be read (the key then reads as it always did, any record taken —
+     * the key itself still names the level, so nothing below it can match). For a caller off a
+     * job's request, which keeps no expectations ({@code jk explain}'s forecast), to hand to {@link
+     * ActionCache#restorable(String, Expectation)} itself.
+     */
+    public static @Nullable Expectation expectation(
+            @Nullable Path jdkHome, int level, boolean tiedToMajor, @Nullable Path moduleHint) {
         try {
             String toolchain = JdkToolchain.token(jdkHome);
             Path module = moduleHint == null ? null : moduleDir(moduleHint);
             Match match = match(module);
             if (tiedToMajor && match == Match.LEVEL) match = Match.MAJOR;
-            expected().put(key, new Expectation(toolchain, level, match, requirement(module)));
+            return new Expectation(toolchain, level, match, requirement(module));
         } catch (IOException | RuntimeException unread) {
-            // No expectation: the key reads as it always did, any record taken. The key itself
-            // still names the level, so nothing below it can match.
+            return null;
         }
     }
 
@@ -206,7 +267,18 @@ public final class ToolchainPolicy {
 
     /** What the step that computed {@code key} accepts, or null when no step said. */
     public static @Nullable Expectation of(String key) {
-        return expected().get(key);
+        Map<String, Object> all = expected();
+        Object known = all.get(key);
+        if (known instanceof Stated st) {
+            Expectation e = expectation(st.jdkHome(), st.level(), st.tiedToMajor(), st.moduleHint());
+            if (e == null) {
+                all.remove(key, known);
+                return null;
+            }
+            all.put(key, e);
+            return e;
+        }
+        return known instanceof Expectation e ? e : null;
     }
 
     /** The effective level of a compile or a suite: {@code release} when set, else {@code jdkHome}'s major. */
@@ -252,20 +324,17 @@ public final class ToolchainPolicy {
 
     /**
      * The requirement the module's {@code jk.toml}, else its workspace root's, states: a {@code jdk}
-     * pin with {@code =} naming a vendor ({@code =corretto-21}, {@code =temurin-25.0.4}), with {@code
-     * jdk-cache = "required"} making it binding for the cache. Null without one.
+     * table with {@code required = true}. Null without one.
      */
     public static @Nullable Requirement requirement(@Nullable Path moduleDir) {
         for (Path manifest : manifests(moduleDir)) {
-            TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-cache");
-            String jdk = scan.get("jdk");
-            if (jdk == null || jdk.isBlank()) continue;
-            if (!jdk.startsWith("=")) return null;
-            String spec = jdk.substring(1).strip();
-            int dash = spec.lastIndexOf('-');
-            if (dash <= 0 || dash == spec.length() - 1) return null;
-            boolean binds = "required".equals(scan.get("jdk-cache"));
-            return new Requirement(spec.substring(0, dash), spec.substring(dash + 1), binds);
+            TomlScan scan = TomlScan.scan(manifest, "jdk.vendor", "jdk.version", "jdk.required");
+            if (!scan.hasKey("jdk.vendor") && !scan.hasKey("jdk.version") && !scan.hasKey("jdk.required")) continue;
+            if (!EnvValues.parseBool(scan.get("jdk.required")).orElse(false))
+                continue; // a member cannot loosen the root
+            String vendor = scan.get("jdk.vendor");
+            String version = scan.get("jdk.version");
+            return new Requirement(vendor == null ? "" : vendor.strip(), version == null ? "" : version.strip());
         }
         return null;
     }

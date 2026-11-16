@@ -17,7 +17,9 @@ class PlannerGuardSuiteTest {
 
     @Test
     void a_src_guard_directory_declares_the_suite_with_no_manifest_edit(@TempDir Path module) throws Exception {
-        Files.writeString(module.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(
+                module.resolve("jk.toml"),
+                "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         assertThat(PlannerGuardSuite.declared(module, false)).isFalse();
         Path src = Files.createDirectories(module.resolve("src/guard/java/rules"));
         Files.writeString(src.resolve("HouseRules.java"), "package rules; class HouseRules {}\n");
@@ -34,8 +36,7 @@ class PlannerGuardSuiteTest {
                 group = "t"
                 name = "m"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [test]
                 fixtures = true
                 """);

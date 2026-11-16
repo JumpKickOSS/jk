@@ -25,7 +25,7 @@ class ToolRunModuleResolutionTest {
                 group = "com.example"
                 name  = "%s"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """.formatted(name));
     }
@@ -40,7 +40,7 @@ class ToolRunModuleResolutionTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -94,7 +94,7 @@ class ToolRunModuleResolutionTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]

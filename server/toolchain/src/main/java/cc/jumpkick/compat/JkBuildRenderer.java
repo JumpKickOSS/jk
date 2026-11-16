@@ -11,6 +11,7 @@ import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.model.JavacConfig;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Jlink;
 import cc.jumpkick.model.LibDir;
@@ -456,8 +457,10 @@ public final class JkBuildRenderer {
             // Longer key than the rest of the block; emit unpadded.
             sb.append("description = ").append(quote(p.description())).append('\n');
         }
-        if (p.jdk() != null) {
-            sb.append("jdk      = ").append(quote(p.jdk())).append('\n');
+        String jdkTable = JdkTable.render(p.jdkSpec());
+        if (jdkTable == null && p.jdk() != null) jdkTable = JdkTable.fromRetired(p.jdk());
+        if (jdkTable != null) {
+            sb.append(jdkTable.replaceFirst("^jdk = ", "jdk      = ")).append('\n');
         }
         if (p.sourcesMode() == SourcesMode.ALWAYS) {
             sb.append("sources  = \"always\"\n");

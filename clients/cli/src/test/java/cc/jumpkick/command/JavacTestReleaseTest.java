@@ -83,7 +83,7 @@ class JavacTestReleaseTest {
         Files.createDirectories(dir);
         Files.writeString(
                 dir.resolve("jk.toml"),
-                "group = \"com.example\"\nname = \"lib\"\nversion = \"0.1.0\"\njdk = \"25\"\njava = 17\n\n"
+                "group = \"com.example\"\nname = \"lib\"\nversion = \"0.1.0\"\njdk = { version = \"25\" }\njava = 17\n\n"
                         + "[test-dependencies]\njunit-jupiter = \"latest\"\n\n"
                         + javacTest);
         Path main = dir.resolve("src/main/java/example/Lib.java");

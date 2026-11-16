@@ -125,8 +125,7 @@ class GuardLanePlanTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core", "app"]
                 """);
@@ -134,7 +133,7 @@ class GuardLanePlanTest {
             Files.createDirectories(root.resolve(m).resolve("src/main/java/demo"));
             Files.writeString(
                     root.resolve(m).resolve("jk.toml"),
-                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
             Files.writeString(
                     root.resolve(m).resolve("src/main/java/demo/" + m + ".java"),
                     "package demo; public class " + m + " {}\n");
@@ -209,7 +208,7 @@ class GuardLanePlanTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
         if (withRules) Files.writeString(project.resolve("jk-guards.toml"), RULES);

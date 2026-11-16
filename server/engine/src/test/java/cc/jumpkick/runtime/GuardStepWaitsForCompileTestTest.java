@@ -97,7 +97,8 @@ class GuardStepWaitsForCompileTestTest {
 
     private static void scaffold(Path dir) throws Exception {
         Files.writeString(
-                dir.resolve("jk.toml"), "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk=25\njava=25\n");
+                dir.resolve("jk.toml"),
+                "group=\"com.example\"\nname=\"g\"\nversion=\"0.1.0\"\njdk = { version = \"25\" }\njava=25\n");
         Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), "");
         Files.createDirectories(dir.resolve("src/main/java/com/example"));
         Files.writeString(

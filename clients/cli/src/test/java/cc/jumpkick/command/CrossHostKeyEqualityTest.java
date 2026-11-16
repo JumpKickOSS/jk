@@ -7,14 +7,17 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
-import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.ReleaseJdks;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,11 +37,16 @@ import org.junit.jupiter.api.io.TempDir;
  * of its own, computes every action key alike. The two sides differ in the jk home (and so the
  * store, cache, state and engine), the checkout path and its depth, {@code $HOME}, the user name,
  * the temp root, the locale ({@code en_US.UTF-8} against {@code de_DE.UTF-8} with {@code LC_ALL})
- * and the time zone, and in the JDKs installed: each side's JDK root holds this jk release's build
- * of Java 25 ({@code ReleaseJdks}) beside a newer patch of its own ({@code 25.0.98} on one,
- * {@code 25.0.99} on the other, the real JDK under another {@code release} file), which the
- * resolution before release builds took for an unpinned module. Both share the Maven local
- * repository the tier points at, so nothing is fetched.
+ * and the time zone, and in the JDK each builds on: the module says {@code java = 21}, and each
+ * side's JDK root ({@code JK_JDKS_DIR}, the only place it looks: {@code JK_JDK_PROBES=jk}, its own
+ * {@code $HOME}, no {@code JAVA_HOME}) holds one JDK, Temurin 25.0.5 on one and an OpenJDK 27.0.1
+ * build on the other (the running JDK under a {@code release} file of each name). Compile and test
+ * keys name the level, not the JDK, so they match; each record names the JDK that made it
+ * (JK-74S9K). Both share the Maven local repository the tier points at, so nothing is fetched.
+ *
+ * <p>Then the 27 side takes the 25 side's cache: under {@code jdk-match = level} its build is
+ * served, with a note naming the JDK the results were made on; under the default {@code major} it
+ * builds again on its own and says once why, naming both ways out.
  *
  * <p>The comparison is over each home's task pointers ({@code cache/actions/tasks/<step>@<tag>},
  * the tag being the project id and the output's workspace-relative path, both portable). A key that
@@ -54,6 +62,7 @@ class CrossHostKeyEqualityTest {
             group   = "com.example"
             name    = "keyeq"
             version = "1.0.0"
+            java    = 21
 
             [application]
             main = "com.example.Main"
@@ -97,13 +106,13 @@ class CrossHostKeyEqualityTest {
     private record Side(String name, Path root, Path home, Path checkout, Map<String, String> env) {}
 
     @Test
-    @Timeout(value = 12, unit = TimeUnit.MINUTES) // two cold engines in fresh homes, each building and testing
+    @Timeout(value = 25, unit = TimeUnit.MINUTES) // two cold engines in fresh homes, then the 27 side twice more
     void two_hosts_compute_every_action_key_alike(@TempDir Path tmp) throws Exception {
         assumeFalse(Os.isWindows(), "the sides are POSIX shells' environments");
         Side a = side(tmp, "a", "work/app", "keyeqa", "en_US.UTF-8", "America/New_York");
         Side b = side(tmp, "b", "elsewhere/much/deeper/checkout-two", "keyeqb", "de_DE.UTF-8", "Asia/Tokyo");
-        jdkInventory(a, "25.0.98");
-        jdkInventory(b, "25.0.99");
+        jdkInventory(a, "temurin-25.0.5", "Eclipse Adoptium", "25.0.5", "25.0.5+11-LTS");
+        jdkInventory(b, "openjdk-27.0.1", "Oracle Corporation", "27.0.1", "27.0.1+9");
         b.env().put("LC_ALL", "de_DE.UTF-8");
         b.env().put("LANGUAGE", "de");
         try {
@@ -112,15 +121,6 @@ class CrossHostKeyEqualityTest {
             copySources(a.checkout(), b.checkout());
             assertThat(jk(b, "build")).as("site b builds").isZero();
 
-            for (Side side : List.of(a, b)) {
-                if (!side.env().containsKey("JK_JDKS_DIR")) continue;
-                jk(side, "jdk", "list");
-                assertThat(side.root().resolve("jk-jdk-list.log"))
-                        .as("site " + side.name()
-                                + " sees its own newer patch, which an unpinned module no longer takes")
-                        .content()
-                        .contains(side.name().equals("a") ? "25.0.98" : "25.0.99");
-            }
             Map<String, String> keysA = tasks(a.home());
             Map<String, String> keysB = tasks(b.home());
             // Each home's engine also builds a warm-up project of its own under its own path; the
@@ -146,9 +146,94 @@ class CrossHostKeyEqualityTest {
                     .as("action keys that differ between two hosts building one commit, with the inputs that"
                             + " differ (site a | site b); each is a leak of the host into the key")
                     .isEmpty();
+
+            // The suite runs on the JDK the module resolved, from the side's own root; javac may run
+            // in the engine's own JVM, whose JDK is not the module's choice, so the suite is the probe.
+            String suite = keysA.keySet().stream()
+                    .filter(t -> t.startsWith("run-tests@") && !t.contains("#"))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(toolchain(a.home(), keysA.getOrDefault(suite, "")))
+                    .as("site a's record names the JDK it built on, from its own JDK root only")
+                    .contains("/25.0.5+11-LTS/");
+            assertThat(toolchain(b.home(), keysB.getOrDefault(suite, "")))
+                    .as("site b's record names the JDK it built on, from its own JDK root only")
+                    .contains("/27.0.1+9/");
+
+            // The 27 side takes the 25 side's cache, as a shared cache would hand it over.
+            jk(b, "engine", "stop");
+            replaceCache(a.home(), b.home());
+            deleteTree(b.checkout().resolve("target")); // a fresh clone: nothing of its own built yet
+            // What a suite was found to read is kept under the checkout's absolute path, which a
+            // shared cache does not carry (JK-PCXMC); hand it over as that fix will.
+            Path readsA = b.home().resolve("cache/projects").resolve(moduleId(a.checkout()));
+            if (Files.isDirectory(readsA)) {
+                Files.move(readsA, b.home().resolve("cache/projects").resolve(moduleId(b.checkout())));
+            }
+            b.env().put("JK_CACHE_JDK_MATCH", "level");
+            assertThat(jk(b, "build")).as("site b builds from site a's records").isZero();
+            assertThat(b.root().resolve("jk-build.log"))
+                    .as("a hit made on another JDK says which")
+                    .content()
+                    .contains("made on")
+                    .contains("25.0.5");
+            jk(b, "engine", "stop");
+            b.env().remove("JK_CACHE_JDK_MATCH");
+            Files.move(b.root().resolve("jk-build.log"), b.root().resolve("jk-build-level.log"));
+            deleteTree(b.checkout().resolve("target"));
+            assertThat(jk(b, "explain", "-v"))
+                    .as("site b forecasts under jdk-match = major")
+                    .isZero();
+            assertThat(b.root().resolve("jk-explain--v.log"))
+                    .as("under major, records made on JDK 25 do not serve 27, and jk says how to change that")
+                    .content()
+                    .contains("made on JDK 25")
+                    .contains("jk jdk install temurin-25")
+                    .contains("jdk-match = \"level\"");
         } finally {
             jk(a, "engine", "stop");
             jk(b, "engine", "stop");
+        }
+    }
+
+    /** {@code TOOLCHAIN} of the record {@code key} names in {@code home}'s action cache. */
+    private static String toolchain(Path home, String key) throws IOException {
+        Path record = home.resolve("cache/actions/keys").resolve(key);
+        for (String line : Files.readAllLines(record, StandardCharsets.UTF_8)) {
+            if (line.startsWith("TOOLCHAIN ")) return line.substring("TOOLCHAIN ".length());
+        }
+        return "";
+    }
+
+    /** The id jk keeps a module's discovered suite reads under: its real path's digest. */
+    private static String moduleId(Path dir) throws IOException {
+        try {
+            byte[] d = MessageDigest.getInstance("SHA-256")
+                    .digest(dir.toRealPath().toString().getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(d).substring(0, 16);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void deleteTree(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        try (Stream<Path> files = Files.walk(dir)) {
+            for (Path f : files.sorted(Comparator.reverseOrder()).toList()) Files.delete(f);
+        }
+    }
+
+    /** {@code to}'s action cache and CAS become a copy of {@code from}'s. */
+    private static void replaceCache(Path from, Path to) throws IOException {
+        Path src = from.resolve("cache");
+        Path dst = to.resolve("cache");
+        deleteTree(dst);
+        try (Stream<Path> files = Files.walk(src)) {
+            for (Path f : files.toList()) {
+                Path t = dst.resolve(src.relativize(f).toString());
+                if (Files.isDirectory(f)) Files.createDirectories(t);
+                else if (Files.isRegularFile(f)) Files.copy(f, t);
+            }
         }
     }
 
@@ -178,32 +263,50 @@ class CrossHostKeyEqualityTest {
     }
 
     /**
-     * A JDK root of the side's own ({@code JK_JDKS_DIR}): this release's build of Java 25, linked to
-     * where it is installed, and a newer patch that is the same JDK under a {@code release} file
-     * naming {@code patch}. Without the release build installed the side keeps the host's JDKs.
+     * A JDK root of the side's own ({@code JK_JDKS_DIR}) holding one JDK, {@code dir}: the running
+     * JDK, linked file by file, under a {@code release} file naming {@code implementor} and the
+     * version. Discovery looks nowhere else ({@code JK_JDK_PROBES=jk}).
      */
-    private static void jdkInventory(Side side, String patch) throws IOException {
-        String spec = ReleaseJdks.spec(25).orElseThrow();
-        Path real = new JdkRegistry()
-                .hitsMatching(spec).stream()
-                        .filter(h -> ReleaseJdks.isBuild(spec, h.version()))
-                        .map(h -> h.home())
-                        .findFirst()
-                        .orElse(null);
-        if (real == null) return;
+    private static void jdkInventory(Side side, String dir, String implementor, String version, String runtime)
+            throws IOException {
+        Path real = JavaHomes.runningJavaHome().toRealPath();
         Path root = Files.createDirectories(side.root().resolve("jdks"));
-        Symlinks.create(root.resolve(spec), real.toRealPath());
-        Path fake = Files.createDirectories(root.resolve("temurin-" + patch));
-        try (Stream<Path> children = Files.list(real.toRealPath())) {
+        Path fake = Files.createDirectories(root.resolve(dir));
+        try (Stream<Path> children = Files.list(real)) {
             for (Path child : children.toList()) {
                 String name = child.getFileName().toString();
-                if (!name.equals("release")) Symlinks.create(fake.resolve(name), child);
+                if (name.equals("bin")) linkFiles(child, Files.createDirectories(fake.resolve(name)));
+                else if (!name.equals("release")) Symlinks.create(fake.resolve(name), child);
             }
         }
-        Files.writeString(
-                fake.resolve("release"),
-                Files.readString(real.resolve("release")).replace(ReleaseJdks.version(spec), patch));
+        StringBuilder release = new StringBuilder();
+        for (String line : Files.readAllLines(real.resolve("release"), StandardCharsets.UTF_8)) {
+            if (line.startsWith("IMPLEMENTOR=")) line = "IMPLEMENTOR=\"" + implementor + "\"";
+            else if (line.startsWith("IMPLEMENTOR_VERSION=")) continue;
+            else if (line.startsWith("JAVA_VERSION=")) line = "JAVA_VERSION=\"" + version + "\"";
+            else if (line.startsWith("JAVA_RUNTIME_VERSION=")) line = "JAVA_RUNTIME_VERSION=\"" + runtime + "\"";
+            release.append(line).append('\n');
+        }
+        Files.writeString(fake.resolve("release"), release.toString());
         side.env().put("JK_JDKS_DIR", root.toString());
+        side.env().put("JK_JDK_PROBES", "jk");
+    }
+
+    /**
+     * The launchers as files of the fake home's own (hard links, else copies): a launcher reached
+     * through a symlink resolves to the real JDK's home, and the build would name that JDK.
+     */
+    private static void linkFiles(Path from, Path to) throws IOException {
+        try (Stream<Path> files = Files.list(from)) {
+            for (Path f : files.toList()) {
+                Path t = to.resolve(f.getFileName().toString());
+                try {
+                    Files.createLink(t, f.toRealPath());
+                } catch (IOException | UnsupportedOperationException crossDevice) {
+                    Files.copy(f, t, StandardCopyOption.COPY_ATTRIBUTES);
+                }
+            }
+        }
     }
 
     /** The engine under test, materialized under {@code home} as the tier does under its own. */

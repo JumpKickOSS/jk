@@ -36,6 +36,7 @@ import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
+import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.StampTokens;
@@ -741,9 +742,11 @@ final class TestSteps {
         String finalMainFp = mainFp;
         String stampKey = stamp.forecastKey(compact, layout.classesDir(), finalMainFp);
         Perf.end("  test-stamp-key", ts);
+        // The forecast is no job, so no step stated what the marker's reader accepts: the stamp says.
+        ToolchainPolicy.Expectation expected = stamp.expectation();
         var marker = stampKey == null
                 ? Optional.<ActionCache.ActionRecord>empty()
-                : ForecastSteps.presentRecord(s.actionCache, stampKey);
+                : s.actionCache.restorable(stampKey, expected);
         boolean hit = marker.isPresent() && TestStamp.green(marker.get());
         // The same key with a red record is the one shape a live run never skips: say so, or the
         // ETA reads "only the suite is dirty" as stamp drift.
@@ -769,12 +772,18 @@ final class TestSteps {
         // A miss for none of the reasons above says which input of the last green run's key moved.
         // As the run decides it: a suite whose last recording could not be read stored no marker.
         String unread = red || network ? null : SuiteReads.unread(s.dir);
-        String moved = red || network || unread != null
+        // As the run decides it: records under this key made on a JDK this build's policy declines.
+        String declined = stampKey == null || expected == null || red || network
                 ? null
-                : StampTokens.reason(
-                        s.dir,
-                        SessionContext.current().testSelection(),
-                        () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
+                : s.actionCache.declined(stampKey, expected);
+        String moved = declined != null
+                ? declined
+                : red || network || unread != null
+                        ? null
+                        : StampTokens.reason(
+                                s.dir,
+                                SessionContext.current().testSelection(),
+                                () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
         return new TaskForecast.Task(
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,

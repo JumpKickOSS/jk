@@ -79,7 +79,7 @@ class InstallCommandTest {
                 group    = "com.example"
                 name     = "lib-only"
                 version  = "0.1.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 java           = 25
                 [install]
                 destination = "jk"
@@ -179,7 +179,7 @@ class InstallCommandTest {
                 group     = "com.example"
                 name      = "lib-m2"
                 version   = "0.1.0"
-                jdk       = 25
+                jdk       = { version = "25" }
                 java      = 25
 
                 [application]
@@ -220,7 +220,7 @@ class InstallCommandTest {
                 group     = "com.example"
                 name      = "lib-flag"
                 version   = "0.1.0"
-                jdk       = 25
+                jdk       = { version = "25" }
                 java      = 25
 
                 [application]

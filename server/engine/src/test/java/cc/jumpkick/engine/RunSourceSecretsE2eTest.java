@@ -108,9 +108,7 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
         try {
             // The JDK this test runs on, named by its home as `--jdk <home>` names it, and as a
             // client sends its JAVA_HOME: typed, beside a shell that names none. The build then
-            // runs on it whatever the host has installed and whatever JDK this jk release names
-            // for an unpinned module, with no lookup and nothing to fetch: this request's shell
-            // says CI, and a CI build does not fall back from a JDK it cannot install.
+            // runs on it whatever the host has installed, with no lookup and nothing to fetch.
             String home = System.getProperty("java.home");
             String request = ProtoSession.withToolchain(build(project, cache), home, null, null, home);
             List<String> lines = runToWorkspaceFinish(p, ProtoSession.withShell(request, shell));

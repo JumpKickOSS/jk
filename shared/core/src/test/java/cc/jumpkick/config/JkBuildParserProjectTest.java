@@ -155,7 +155,7 @@ class JkBuildParserProjectTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 groovy   = "=5.0.4"
                 """);
         assertThat(parsed.project().isGroovy()).isTrue();
@@ -186,7 +186,7 @@ class JkBuildParserProjectTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 scala    = "=3.8.4"
                 """);
         assertThat(parsed.project().isScala()).isTrue();
@@ -736,7 +736,7 @@ class JkBuildParserProjectTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 8
+                jdk      = { version = "8" }
                 java     = 25
                 """))
                 .isInstanceOf(JkBuildParseException.class)

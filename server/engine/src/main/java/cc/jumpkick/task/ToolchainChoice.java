@@ -26,8 +26,9 @@ final class ToolchainChoice {
      * does not parse is handed back for the caller's own read to refuse or discard.
      */
     static Optional<String> choose(
-            LocalCacheBackend local, String key, String latest, ToolchainPolicy.Expectation expected)
+            LocalCacheBackend local, String key, String latest, ToolchainPolicy.@Nullable Expectation expected)
             throws IOException {
+        if (expected == null) return Optional.of(latest); // no step said: as it was keyed
         String latestToolchain;
         try {
             latestToolchain = ActionRecordText.parse(latest, key).meta().toolchain();
@@ -53,6 +54,32 @@ final class ToolchainChoice {
         }
         if (best != latest) ActionRecordText.markRead(local.variantPath(key, chosenToolchain(best, key)));
         return Optional.of(best);
+    }
+
+    /**
+     * Why no record of {@code key} serves a reader expecting {@code expected} although one is kept
+     * here: the note naming the JDK they were made on and the two ways out. Null when one serves,
+     * none is kept, or the records predate a JDK's name.
+     */
+    static @Nullable String declined(LocalCacheBackend local, String key, ToolchainPolicy.Expectation expected) {
+        try {
+            Optional<String> latest = local.record(key);
+            if (latest.isEmpty()) return null;
+            if (choose(local, key, latest.get(), expected).isPresent()) return null;
+            return note(ActionRecordText.parse(latest.get(), key).meta().toolchain(), expected);
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether {@code expected} refuses a remote record of {@code key} made on {@code offered}: a miss,
+     * noted as {@link #mismatch} notes it. False when no step said what it accepts.
+     */
+    static boolean refuses(String key, @Nullable String offered, ToolchainPolicy.@Nullable Expectation expected) {
+        if (expected == null || expected.accepts(offered)) return false;
+        mismatch(key, offered, expected);
+        return true;
     }
 
     private static String chosenToolchain(String text, String key) {

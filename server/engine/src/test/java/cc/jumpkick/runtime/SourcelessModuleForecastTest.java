@@ -43,7 +43,7 @@ class SourcelessModuleForecastTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -54,7 +54,7 @@ class SourcelessModuleForecastTest {
                 group = "t"
                 name = "libb"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         // A fresh (non-stale) workspace lock so the forecast reaches the per-step walk.

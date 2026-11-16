@@ -122,7 +122,7 @@ class TestCommandTest {
                 group = "com.example"
                 name = "root"
                 version = "0.1.0"
-                jdk = "25"
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -130,7 +130,7 @@ class TestCommandTest {
                 """);
         Files.writeString(
                 project.resolve("core/jk.toml"),
-                "group = \"com.example\"\nname = \"core\"\nversion = \"0.1.0\"\njdk = \"25\"\njava = 25\n");
+                "group = \"com.example\"\nname = \"core\"\nversion = \"0.1.0\"\njdk = { version = \"25\" }\njava = 25\n");
         Files.writeString(
                 project.resolve("core/src/main/java/example/App.java"),
                 "package example; public class App { public static void main(String[] a) {} }\n");
@@ -163,7 +163,7 @@ class TestCommandTest {
         Files.createDirectories(dir);
         Files.writeString(
                 dir.resolve("jk.toml"),
-                "group = \"com.example\"\nname = \"x\"\nversion = \"0.1.0\"\njdk = \"25\"\njava = 25\n");
+                "group = \"com.example\"\nname = \"x\"\nversion = \"0.1.0\"\njdk = { version = \"25\" }\njava = 25\n");
         ScaffoldTestSupport.writeEmptyLock(dir); // jk test needs a lock; nothing to resolve
     }
 }

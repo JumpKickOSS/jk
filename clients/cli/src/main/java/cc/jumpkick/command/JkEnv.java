@@ -18,6 +18,7 @@ import cc.jumpkick.jdk.LockPinMatch;
 import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.ToolchainPins;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.node.DiscoveredNode;
 import cc.jumpkick.node.NodeDiscovery;
 import cc.jumpkick.node.PackageManagerShims;
@@ -122,8 +123,9 @@ public final class JkEnv {
         String projectGraal = null;
         int javaRelease = 0;
         if (root.isPresent()) {
-            var scan = TomlScan.scan(root.get().resolve(ManifestPaths.MANIFEST), "jdk", "java", "native.graal");
-            projectJdk = scan.get("jdk");
+            var scan = TomlScan.scan(
+                    ManifestPaths.manifestIn(root.get()), "jdk.vendor", "jdk.version", "java", "native.graal");
+            projectJdk = JdkTable.resolverSpec(scan.get("jdk.vendor"), scan.get("jdk.version"));
             javaRelease = scan.getInt("java", 0);
             // [native] present without an explicit graal spec defaults to "graalvm" —
             // same native.graal probe the engine uses for project-info native flags.

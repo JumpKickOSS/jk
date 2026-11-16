@@ -18,7 +18,7 @@ final class JkBuildParserFixtures {
             group    = "com.example"
             name     = "widget"
             version  = "1.0.0"
-            jdk      = 25
+            jdk      = { version = "25" }
             java     = 25
             """;
 

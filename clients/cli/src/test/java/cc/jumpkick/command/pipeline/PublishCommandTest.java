@@ -80,7 +80,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 sources  = true
                 """);
         writeJar(tempDir.resolve("target/widget-1.0.0.jar"));
@@ -112,7 +112,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0-SNAPSHOT"
-                jdk      = 25
+                jdk      = { version = "25" }
                 """);
         writeJar(tempDir.resolve("target/widget-1.0.0-SNAPSHOT.jar"));
 
@@ -138,8 +138,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
-
+                jdk      = { version = "25" }
                 [release]
                 tag = "widget-{version}"
                 """);
@@ -157,8 +156,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
-
+                jdk      = { version = "25" }
                 [repositories.releases]
                 url = "%s"
                 allow-insecure = true
@@ -180,7 +178,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0-SNAPSHOT"
-                jdk      = 25
+                jdk      = { version = "25" }
                 """);
         writeJar(tempDir.resolve("target/widget-1.0.0-SNAPSHOT.jar"));
 
@@ -360,7 +358,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 """);
     }
 
@@ -370,8 +368,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 25
-
+                jdk      = { version = "25" }
                 [dependencies]
                 lib = { path = "../lib" }
                 """);
@@ -405,7 +402,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "%s"
-                jdk      = 25
+                jdk      = { version = "25" }
                 """;
 
         Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.1.0"));
@@ -437,7 +434,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "%s"
-                jdk      = 25
+                jdk      = { version = "25" }
                 """;
 
         Files.writeString(tempDir.resolve("jk.toml"), manifest.formatted("0.1.0"));

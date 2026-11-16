@@ -109,12 +109,13 @@ class CyclesAndSplitPackageTest {
         Path root = Files.createDirectories(dir.resolve("ws"));
         Files.writeString(
                 root.resolve("jk.toml"),
-                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = 25\n\n[workspace]\nmodules = [\"a\", \"b\", \"c\"]\n");
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n\n[workspace]\nmodules = [\"a\", \"b\", \"c\"]\n");
         for (String[] m : new String[][] {{"a", "b"}, {"b", "a"}, {"c", "a"}}) {
             Files.createDirectories(root.resolve(m[0]));
             Files.writeString(
                     root.resolve(m[0]).resolve("jk.toml"),
-                    "group = \"t\"\nname = \"" + m[0] + "\"\nversion = \"0.0.1\"\njdk = 25\n\n[dependencies]\n" + m[1]
+                    "group = \"t\"\nname = \"" + m[0]
+                            + "\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n\n[dependencies]\n" + m[1]
                             + " = { group = \"t\", name = \"" + m[1] + "\", version = \"0.0.1\" }\n");
         }
         List<Path> modules = List.of(root.resolve("a"), root.resolve("b"), root.resolve("c"));

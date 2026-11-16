@@ -181,8 +181,13 @@ public final class LocalCacheBackend implements CacheBackend {
     /** The separator between a key and its variant's suffix. */
     static final String VARIANT = "~";
 
-    /** Keep {@code recordText} as {@code key}'s variant made by {@code toolchain}, and list it in the index. */
-    void putVariant(String key, String toolchain, String recordText) throws IOException {
+    /**
+     * Keep {@code recordText} as {@code key}'s variant made by {@code toolchain}, and list it in the
+     * index: a key naming the Java level keeps a record per JDK beside the latest. Nothing for a
+     * record that names no JDK.
+     */
+    void putVariant(String key, @Nullable String toolchain, String recordText) throws IOException {
+        if (toolchain == null) return;
         Files.createDirectories(ActionTree.KEYS.under(root));
         AtomicWrites.replace(variantPath(key, toolchain), recordText);
         List<String> known = variants(key);

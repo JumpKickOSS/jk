@@ -107,7 +107,7 @@ class BspServerTest {
                 group = "t"
                 name = "app"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Path cache = Files.createDirectories(dir.resolve("cache"));
@@ -185,7 +185,7 @@ class BspServerTest {
                 group = "t"
                 name = "app"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.writeString(src.resolve("App.java"), """
@@ -214,7 +214,7 @@ class BspServerTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         IdeEngineClient ide = IdeEngineClient.open(dir, dir.resolve("cache"), null);
         String init = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"build/initialize\","
@@ -244,7 +244,7 @@ class BspServerTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         IdeEngineClient ide = IdeEngineClient.open(dir, dir.resolve("cache"), null);
         String body = """

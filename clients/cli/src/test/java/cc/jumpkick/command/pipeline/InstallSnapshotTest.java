@@ -19,7 +19,7 @@ class InstallSnapshotTest {
             group     = "com.example"
             name      = "%s"
             version   = "1.0.0"
-            jdk       = 25
+            jdk       = { version = "25" }
             java      = 25
             """;
 

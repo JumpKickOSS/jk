@@ -12,6 +12,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import java.io.IOException;
@@ -95,16 +96,18 @@ public final class JavaHomes {
         try {
             Path toml = ManifestPaths.manifestIn(projectDir);
             if (!Files.isRegularFile(toml)) return null;
-            var scan = TomlScan.scan(toml, "jdk", "java");
-            String jdk = scan.get("jdk");
+            var scan = TomlScan.scan(toml, "jdk.vendor", "jdk.version", "java");
+            String jdk = JdkTable.resolverSpec(scan.get("jdk.vendor"), scan.get("jdk.version"));
             String java = scan.get("java");
             if (isBlank(jdk) || isBlank(java)) {
                 // A workspace member auto-inherits jdk/java from its root. Mirror it per key —
                 // same bootstrap pattern as ProjectIdentity.coordOf's group inheritance.
                 var root = WorkspaceScan.findRoot(projectDir);
                 if (root.isPresent()) {
-                    var rootScan = TomlScan.scan(ManifestPaths.manifestIn(root.get()), "jdk", "java");
-                    if (isBlank(jdk)) jdk = rootScan.get("jdk");
+                    var rootScan =
+                            TomlScan.scan(ManifestPaths.manifestIn(root.get()), "jdk.vendor", "jdk.version", "java");
+                    if (isBlank(jdk))
+                        jdk = JdkTable.resolverSpec(rootScan.get("jdk.vendor"), rootScan.get("jdk.version"));
                     if (isBlank(java)) java = rootScan.get("java");
                 }
             }

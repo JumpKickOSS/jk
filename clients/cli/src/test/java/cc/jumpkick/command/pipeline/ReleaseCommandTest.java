@@ -28,7 +28,7 @@ class ReleaseCommandTest {
             group     = "com.example"
             name      = "rel-lib"
             version   = "%s"
-            jdk       = 25
+            jdk       = { version = "25" }
             java      = 25
             """;
 

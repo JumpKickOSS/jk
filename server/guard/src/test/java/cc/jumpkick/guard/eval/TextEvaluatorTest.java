@@ -267,7 +267,7 @@ class TextEvaluatorTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core", "core/plugin", "app"]
                 """);
@@ -275,7 +275,8 @@ class TextEvaluatorTest {
             Path src = Files.createDirectories(root.resolve(m + "/src/main/java/p"));
             Files.writeString(
                     root.resolve(m + "/jk.toml"),
-                    "group = \"t\"\nname = \"" + m.replace('/', '-') + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+                    "group = \"t\"\nname = \"" + m.replace('/', '-')
+                            + "\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
             Files.writeString(src.resolve("X.java"), "package p;\nclass X { String s = \"bananas\"; }\n");
         }
         Files.writeString(root.resolve(GuardsPresence.RULES_FILE), "");
@@ -314,7 +315,7 @@ class TextEvaluatorTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core", "app"]
                 """);
@@ -322,7 +323,7 @@ class TextEvaluatorTest {
             Files.createDirectories(root.resolve(m + "/src/main/java/p"));
             Files.writeString(
                     root.resolve(m + "/jk.toml"),
-                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = 25\n");
+                    "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         }
         Files.writeString(
                 root.resolve("core/src/main/java/p/Wire.java"), "package p;\nclass Wire { String p = \"##JKX:\"; }\n");

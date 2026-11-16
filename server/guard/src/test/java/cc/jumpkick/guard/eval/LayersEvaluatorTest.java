@@ -35,8 +35,7 @@ class LayersEvaluatorTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["web", "service", "repo"]
                 """);
@@ -54,7 +53,7 @@ class LayersEvaluatorTest {
         Path m = Files.createDirectories(root.resolve(name).resolve("src/main/java/demo/" + name));
         Files.writeString(
                 root.resolve(name).resolve("jk.toml"),
-                "group = \"t\"\nname = \"" + name + "\"\nversion = \"0.0.1\"\njdk = 25\n"
+                "group = \"t\"\nname = \"" + name + "\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n"
                         + (deps.isEmpty() ? "" : "\n[dependencies]\n" + deps));
         Files.writeString(m.resolve("A.java"), "package demo." + name + "; public class A {}\n");
     }

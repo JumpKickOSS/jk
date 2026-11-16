@@ -40,7 +40,7 @@ class BuildServiceForecastDirtyTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -53,7 +53,7 @@ class BuildServiceForecastDirtyTest {
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
-                    jdk = 25
+                    jdk = { version = "25" }
                     java = 25
                     """.formatted(m));
         }
@@ -78,7 +78,7 @@ class BuildServiceForecastDirtyTest {
                 group = "t"
                 name = "only"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
 

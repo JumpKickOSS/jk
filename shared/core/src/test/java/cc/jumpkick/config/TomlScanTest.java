@@ -34,6 +34,24 @@ class TomlScanTest {
     }
 
     @Test
+    void an_inline_table_reads_as_its_dotted_keys(@TempDir Path tmp) throws Exception {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, """
+                name = "widget"
+                jdk  = { vendor = "corretto", version = ">=21.0.4", required = true }  # binding
+                java = 21
+                """);
+        TomlScan scan = TomlScan.scan(toml, "jdk.vendor", "jdk.version", "jdk.required", "java");
+        assertThat(scan.get("jdk.vendor")).isEqualTo("corretto");
+        assertThat(scan.get("jdk.version")).isEqualTo(">=21.0.4");
+        assertThat(scan.get("jdk.required")).isEqualTo("true");
+        assertThat(scan.getInt("java", 0)).isEqualTo(21);
+        assertThat(TomlScan.inlineTable("{ a = \"x, y\", b = 2 }"))
+                .containsEntry("a", "x, y")
+                .containsEntry("b", "2");
+    }
+
+    @Test
     void nested_jdk_pin_stops_early_before_array_tables(@TempDir Path tmp) throws Exception {
         Path lock = tmp.resolve("jk-lock.toml");
         Files.writeString(lock, """

@@ -33,7 +33,7 @@ class SourceProjectBuilderTest {
                 group    = "com.example"
                 name     = "widgets"
                 version  = "0.1.0"
-                jdk      = 25
+                jdk      = { version = "25" }
                 java     = 25
                 """);
         Path src = dir.resolve("src/main/java/example/Hello.java");
@@ -70,7 +70,7 @@ class SourceProjectBuilderTest {
                 group   = "com.example"
                 name    = "lib"
                 version = "2.5.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 """);
         Path src = dir.resolve("src/main/java/example/A.java");

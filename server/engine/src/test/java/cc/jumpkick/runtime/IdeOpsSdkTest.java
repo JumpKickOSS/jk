@@ -48,23 +48,24 @@ class IdeOpsSdkTest {
                 group = "com.example"
                 name = "pinned"
                 version = "1.0.0"
-                jdk = "corretto-24"
+                jdk = { vendor = "corretto", version = "24" }
                 """);
 
         Files.writeString(ws.resolve("older/jk.toml"), """
                 group = "com.example"
                 name = "older"
                 version = "1.0.0"
-                jdk = 21
+                jdk = { version = "21" }
                 """);
 
         IdeWireModel model = IdeOps.ideModel(ws, tmp.resolve("cache"), jdks, false, ProvidedJars.NONE);
         assertThat(model.error()).isNull();
 
         int legacy = model.names().indexOf("legacy");
-        assertThat(model.sdkNames().get(legacy)).isEqualTo("jk-temurin-25");
+        // No JDK 17 installed: the nearest newer major builds level 17 (JK-74S9K).
+        assertThat(model.sdkNames().get(legacy)).isEqualTo("jk-temurin-21");
         assertThat(model.sdkLevels().get(legacy)).isEqualTo("17");
-        assertThat(model.sdkVersions().get(legacy)).isEqualTo("25.0.1");
+        assertThat(model.sdkVersions().get(legacy)).isEqualTo("21.0.5");
 
         int pinned = model.names().indexOf("pinned");
         assertThat(model.sdkNames().get(pinned)).isEqualTo("jk-corretto-24");
@@ -93,8 +94,7 @@ class IdeOpsSdkTest {
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["b"]
                 """);
@@ -102,7 +102,7 @@ class IdeOpsSdkTest {
                 group = "com.example"
                 name = "b"
                 version = "1.0.0"
-                jdk = 21
+                jdk = { version = "21" }
                 """);
         Files.writeString(ws.resolve("jk-lock.toml"), """
                 version = 1

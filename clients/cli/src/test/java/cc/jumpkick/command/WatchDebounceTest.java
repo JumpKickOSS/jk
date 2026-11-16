@@ -19,7 +19,7 @@ class WatchDebounceTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         int code = Jk.execute("watch", "build", "--debounce-ms", "abc", "-C", dir.toString());
         assertThat(code).isNotZero();

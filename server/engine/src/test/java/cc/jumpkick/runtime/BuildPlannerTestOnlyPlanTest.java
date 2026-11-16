@@ -229,7 +229,7 @@ class BuildPlannerTestOnlyPlanTest {
                 group = "ex"
                 name = "m"
                 version = "1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 kotlin = "2.3.21"
                 """);
@@ -250,7 +250,7 @@ class BuildPlannerTestOnlyPlanTest {
                 group = "ex"
                 name = "m"
                 version = "1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 kotlin = "2.3.21"
                 """);

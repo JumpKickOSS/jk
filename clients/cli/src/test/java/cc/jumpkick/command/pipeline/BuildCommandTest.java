@@ -155,7 +155,7 @@ class BuildCommandTest {
                 group = "com.example"
                 name  = "ws"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -244,7 +244,7 @@ class BuildCommandTest {
                 group = "com.example"
                 name  = "%s"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 %s
                 """.formatted(name, extra), StandardCharsets.UTF_8);

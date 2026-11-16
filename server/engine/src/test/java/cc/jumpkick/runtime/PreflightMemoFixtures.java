@@ -15,7 +15,7 @@ final class PreflightMemoFixtures {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Path src = dir.resolve("src/main/java");
@@ -33,7 +33,7 @@ final class PreflightMemoFixtures {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [workspace]
@@ -50,7 +50,7 @@ final class PreflightMemoFixtures {
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
-                    jdk = 25
+                    jdk = { version = "25" }
                     java = 25
                     """.formatted(m));
             Files.writeString(md.resolve("src/main/java/M.java"), "class M {}\n");

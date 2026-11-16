@@ -23,7 +23,7 @@ class JavaHomesTest {
                 name = "ws"
                 group = "g"
                 version = "1"
-                jdk = "temurin-21"
+                jdk = { vendor = "temurin", version = "21" }
                 java = 21
 
                 [workspace]
@@ -45,7 +45,7 @@ class JavaHomesTest {
                 name = "ws"
                 group = "g"
                 version = "1"
-                jdk = "temurin-21"
+                jdk = { vendor = "temurin", version = "21" }
                 java = 21
 
                 [workspace]

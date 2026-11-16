@@ -58,7 +58,7 @@ class JdkFloorTest {
                 name    = "floor%s"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = %s
+                jdk     = { version = "%s" }
                 kotlin  = "^2.4.10"
 
                 [test-dependencies]

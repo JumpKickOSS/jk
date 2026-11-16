@@ -50,7 +50,7 @@ class GroovyBuildE2eTest {
                 name    = "gapp"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 groovy  = "5.0.4"
 
                 """ + REPOS);
@@ -85,7 +85,7 @@ class GroovyBuildE2eTest {
                 name    = "mixed"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 25
+                jdk     = { version = "25" }
                 java    = 25
                 groovy  = "5.0.4"
 

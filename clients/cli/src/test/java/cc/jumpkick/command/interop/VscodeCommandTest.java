@@ -36,8 +36,7 @@ class VscodeCommandTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["lib", "app"]
                 """);
@@ -48,7 +47,7 @@ class VscodeCommandTest {
                 group = "com.example"
                 name  = "libcore"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(lib.resolve("src/main/java/lib/Lib.java"), "package lib; public class Lib {}");
 
@@ -58,8 +57,7 @@ class VscodeCommandTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [dependencies]
                 libcore.workspace = true
                 """);
@@ -93,7 +91,7 @@ class VscodeCommandTest {
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
 
         Path jdks = tmp.resolve("jdks");
@@ -136,8 +134,7 @@ class VscodeCommandTest {
                 group = "dev.example"
                 name = "root"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["a", "b"]
                 """);
@@ -171,7 +168,7 @@ class VscodeCommandTest {
                 group = "dev.example"
                 name = "widget"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
 
         // Pinned to the real digest of the stub JAR staged below — the store hash-verifies every
@@ -229,8 +226,7 @@ class VscodeCommandTest {
                 group = "dev.example"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [application]
                 main = "app.Main"
                 """);
@@ -263,7 +259,7 @@ class VscodeCommandTest {
                 group = "dev.example"
                 name = "%s"
                 version = "0.1.0"
-                jdk = %d
+                jdk = { version = "%d" }
                 """.formatted(name, jdk));
     }
 }

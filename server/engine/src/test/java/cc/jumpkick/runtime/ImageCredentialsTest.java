@@ -211,7 +211,7 @@ class ImageCredentialsTest {
             group = "t"
             name = "app"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             java = 25
             """);
         if (dotEnv != null) Files.writeString(module.resolve(".env"), dotEnv);

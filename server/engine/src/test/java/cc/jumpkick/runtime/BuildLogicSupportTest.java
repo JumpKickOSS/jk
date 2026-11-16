@@ -73,7 +73,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 [build]
                 logic = "custom-logic"
                 """);
@@ -290,8 +290,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [build]
                 extra-src = ["gen/java"]
                 """);
@@ -329,8 +328,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [test]
                 extra-src = ["shared/Parser.java"]
                 """);
@@ -453,7 +451,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "t"
                 version = "0.0.2"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
@@ -472,7 +470,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 [build]
                 logic = "off"
                 """);
@@ -513,8 +511,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = []
                 """);
@@ -547,8 +544,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = []
                 """);
@@ -574,8 +570,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core"]
                 """);
@@ -674,8 +669,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core"]
                 """);
@@ -684,7 +678,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "core"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A {}\n");
         Path ran = dir.resolve("root-ran.log");
@@ -726,8 +720,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = []
                 """);
@@ -752,8 +745,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core"]
                 """);
@@ -761,7 +753,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "core"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(core.resolve("src/main/java/demo/A.java"), "package demo; class A {}\n");
         Files.writeString(core.resolve(".jk/scripts/guard.groovy"), "// wrong scope\n");
@@ -834,8 +826,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = []
                 """);
@@ -943,8 +934,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "ws"
                 version = "0.0.1"
-                jdk = 25
-
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core"]
                 """);
@@ -953,7 +943,7 @@ class BuildLogicSupportTest {
                 group = "t"
                 name = "core"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(root.resolve("core/src/main/java/demo/A.java"), "package demo; class A {}\n");
         return root;

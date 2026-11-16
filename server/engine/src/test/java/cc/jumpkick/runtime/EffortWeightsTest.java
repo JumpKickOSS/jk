@@ -121,7 +121,7 @@ class EffortWeightsTest {
             group = "t"
             name = "g"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             groovy = "5.0.4"
             """);
         Path src = Files.createDirectories(dir.resolve("src"));
@@ -171,7 +171,7 @@ class EffortWeightsTest {
             group = "t"
             name = "m"
             version = "0.1.0"
-            jdk = 25
+            jdk = { version = "25" }
             """);
         StringBuilder lock =
                 new StringBuilder("version = 1\ngenerated-by = \"test\"\nresolution-algorithm = \"pubgrub-v1\"\n");

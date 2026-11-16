@@ -72,7 +72,7 @@ class BuildLogicScriptLanguageTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(
                 project.resolve(".jk/scripts/after-resources.groovy"),
@@ -230,7 +230,7 @@ class BuildLogicScriptLanguageTest {
                 group = "t"
                 name = "t"
                 version = "0.0.1"
-                jdk = 25
+                jdk = { version = "25" }
                 """);
         Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
         return project;

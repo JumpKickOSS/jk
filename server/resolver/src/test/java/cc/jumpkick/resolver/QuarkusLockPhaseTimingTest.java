@@ -40,7 +40,7 @@ class QuarkusLockPhaseTimingTest {
                 name = "q-phase"
                 group = "demo"
                 version = "0.1.0"
-                jdk = "25"
+                jdk = { version = "25" }
                 java = 25
 
                 [quarkus]

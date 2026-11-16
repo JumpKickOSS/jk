@@ -314,9 +314,9 @@ class PreflightMemoTest {
             assertThat(PreflightMemo.fingerprintModule(tmp, false)).isInstanceOf(PreflightMemo.Known.class);
             long readsAfterPreflight = FileHashMemo.contentReads();
             assertThat(readsAfterPreflight)
-                    .as(
-                            "manifest, lock, the two sources and the release file of the JDK the tests run on: each read once")
-                    .isEqualTo(5);
+                    .as("manifest, lock and the two sources, each read once; the suite keys the Java level, so"
+                            + " no JDK file is read (JK-74S9K)")
+                    .isEqualTo(4);
 
             TestStamp.computeKey(List.of(testSrc), tmp.resolve("target/classes"), List.of(), List.of(), List.of());
             assertThat(FileHashMemo.contentReads())
@@ -400,7 +400,7 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [build]
@@ -426,7 +426,7 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [test]
@@ -452,7 +452,7 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
 
                 [test]
@@ -675,7 +675,7 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = "temurin-99"
+                jdk = { vendor = "temurin", version = "99" }
                 java = 25
                 """);
         Files.createDirectories(project.resolve("src/main/java"));
@@ -801,7 +801,7 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 25
+                jdk = { version = "25" }
                 java = 25
                 """);
         Files.writeString(dir.resolve("jk-lock.toml"), """

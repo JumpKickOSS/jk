@@ -59,7 +59,7 @@ class McpGuardsResourceTest {
     }
 
     private static void project(Path root) throws IOException {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.writeString(root.resolve("jk-guards.toml"), """
                 [guards.no-todo]
                 kind    = "text"
@@ -152,7 +152,7 @@ class McpGuardsResourceTest {
 
     @Test
     void a_project_without_guards_says_so(@TempDir Path root) throws Exception {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = 25\n");
+        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         McpHandler mcp = handler();
         String session = boundTo(mcp, root);
         assertThat(text(read(mcp, session, 2, "jk://guards"))).contains("no guards here");

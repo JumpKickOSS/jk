@@ -32,13 +32,14 @@ class OutputEvaluatorTest {
                 group = "com.acme"
                 name = "ws"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core"]
                 """);
         Files.createDirectories(root.resolve("core"));
         Files.writeString(
-                root.resolve("core/jk.toml"), "group = \"com.acme\"\nname = \"core\"\nversion = \"1.0.0\"\njdk = 25\n");
+                root.resolve("core/jk.toml"),
+                "group = \"com.acme\"\nname = \"core\"\nversion = \"1.0.0\"\njdk = { version = \"25\" }\n");
         List<OutputArtifacts.Module> mods = OutputArtifacts.of(root, List.of(root.resolve("core")), null);
         assertThat(mods).hasSize(1);
         return mods.get(0);
@@ -182,7 +183,7 @@ class OutputEvaluatorTest {
                 group = "com.acme"
                 name = "ws"
                 version = "1.0.0"
-                jdk = 25
+                jdk = { version = "25" }
                 [workspace]
                 modules = ["core", "api"]
                 """);
@@ -190,7 +191,8 @@ class OutputEvaluatorTest {
             Files.createDirectories(root.resolve(member));
             Files.writeString(
                     root.resolve(member + "/jk.toml"),
-                    "group = \"com.acme\"\nname = \"" + member + "\"\nversion = \"1.0.0\"\njdk = 25\n");
+                    "group = \"com.acme\"\nname = \"" + member
+                            + "\"\nversion = \"1.0.0\"\njdk = { version = \"25\" }\n");
         }
         return OutputArtifacts.of(root, List.of(root.resolve("core"), root.resolve("api")), null);
     }

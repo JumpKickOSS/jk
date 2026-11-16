@@ -11,7 +11,7 @@ class GuardDependenciesRefusedTest {
     @Test
     void a_guard_dependencies_table_is_refused_with_the_alternative() {
         String toml =
-                "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = 25\n\n[guard-dependencies]\narchunit = { group = \"com.tngtech.archunit\", version = \"1.3.0\" }\n";
+                "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n\n[guard-dependencies]\narchunit = { group = \"com.tngtech.archunit\", version = \"1.3.0\" }\n";
         assertThatThrownBy(() -> JkBuildParser.parse(toml))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[guard-dependencies] is not a scope")
