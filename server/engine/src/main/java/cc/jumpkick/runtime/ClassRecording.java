@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.test.ClassReads;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestTelemetry;
@@ -95,7 +95,7 @@ final class ClassRecording {
                     seen,
                     TestClassRecords.Lookups.read(EnvReadReport.recordDir(moduleDir)),
                     workspace,
-                    javaHome == null ? null : "toolchain:jdk:" + ActionKey.platformJdkToken(javaHome),
+                    javaHome == null ? null : JdkToolchain.token(javaHome),
                     shadow == null ? Map.of() : shadow.keys(),
                     shadow == null ? Map.of() : shadow.cones());
             Log.debug("test class records: " + moduleDir + " " + seen.classes().size() + " classes, " + seen.jvms()
