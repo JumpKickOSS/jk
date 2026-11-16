@@ -199,19 +199,10 @@ public final class DoctorCommand implements CliCommand {
         CommandWedge.envelopeStart();
         CliOutput.out(CommandWedge.menu("Doctor"));
 
-        printCheck(config, t);
-        printCheck(client, t);
-        printCheck(engine, t);
-        printCheck(cache, t);
-        printCheck(state, t);
-        printCheck(jdk, t);
-        printCheck(jdkPatch, t);
-        printCheck(lock, t);
-        printCheck(pins, t);
-        printCheck(suites, t);
-        printCheck(shell, t);
-        printCheck(mvn, t);
-        printCheck(m2, t);
+        for (Check c :
+                List.of(config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, shell, mvn, m2)) {
+            printCheck(c, t);
+        }
         if (group != null) printCheck(group, t);
         for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
         for (String line : WindowsSection.render(windows, t)) CliOutput.out(line);
@@ -924,6 +915,7 @@ public final class DoctorCommand implements CliCommand {
                 cache,
                 state,
                 jdk,
+                jdkPatch,
                 lock,
                 pins,
                 null,
@@ -952,6 +944,7 @@ public final class DoctorCommand implements CliCommand {
             Check cache,
             Check state,
             Check jdk,
+            Check jdkPatch,
             Check lock,
             Check pins,
             @Nullable Check suites,
