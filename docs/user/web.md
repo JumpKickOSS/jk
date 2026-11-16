@@ -275,6 +275,15 @@ page loads 50 entries at a time; **Show older** loads the next.
 #activity/change:<id>                       # one entry, opened
 ```
 
+## Machine
+
+On Windows the header has a **Machine** tab: JumpKick for Windows and each WSL distro, with the
+JumpKick it has (a stopped distro is not started just to look), whether its engine is paired with this
+dashboard, and its last install or remove. **Install** puts the JumpKick release that matches yours
+into the distro and pairs it; **Remove** takes JumpKick out of that distro and leaves Windows' own
+alone. A distro you declined in the setup decision installs from here like any other. It is the same
+operation as `jk self setup-wsl` ([Engine](engine.md#http-and-mcp)); each outcome is in Activity.
+
 ## Admin
 
 **Admin** holds the engine's vitals: host CPU and RAM, version, pid, uptime, connections, the

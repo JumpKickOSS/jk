@@ -3137,3 +3137,8 @@ main.activity-page { max-width: min(64rem, 100%); }
 .lane > .lane-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--det-mid); }
 .lane-idle .lane-dot { color: var(--dim); }
 .lane-idle-text { color: var(--dim); font-style: italic; }
+
+/* The Machine page (machine.js): one row per WSL distro. */
+.machine-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+.machine-table th, .machine-table td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--bd); vertical-align: top; }
+.machine-error { color: var(--err); }

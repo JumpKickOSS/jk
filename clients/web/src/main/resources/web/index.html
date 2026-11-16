@@ -54,6 +54,7 @@
         <button :class="{ active: view === 'console' }" @click="setView('console')">Console</button>
         <button :class="{ active: view === 'projects' }" @click="setView('projects')">Projects</button>
         <button :class="{ active: view === 'activity' }" @click="setView('activity')">Activity</button>
+        <button v-if="machineAvailable" :class="{ active: view === 'machine' }" @click="setView('machine')">Machine</button>
         <button :class="{ active: view === 'status' }" @click="setView('status')">Admin</button>
       </nav>
 
@@ -123,6 +124,32 @@
 
     <!-- Activity: what happened on this machine, newest first (activity.js). Opening it clears the
          bell's count; history lives here, not in the bell. -->
+    <main v-if="view === 'machine'" class="activity-page machine-page">
+      <div class="activity-head">
+        <h1>Machine</h1>
+        <span class="dim small">JumpKick for Windows <span v-if="machine && machine.host">{{ machine.host.version }}</span> and your WSL distros. Install puts the matching JumpKick release into a distro and pairs its engine with this one; Remove takes it out of that distro and leaves Windows' own alone.</span>
+      </div>
+      <p v-if="machineError" class="machine-error" role="alert">{{ machineError.name }}: {{ machineError.text }}</p>
+      <p v-if="!machineAvailable" class="dim">This engine has no Machine page: it is JumpKick for Windows' own.</p>
+      <table v-if="machine" class="machine-table">
+        <thead><tr><th>Distro</th><th>JumpKick</th><th>Engine</th><th>Last operation</th><th></th></tr></thead>
+        <tbody>
+          <tr v-for="row in machine.environments" :key="row.name">
+            <td>{{ row.name }}<span v-if="row.default" class="dim small"> (default)</span></td>
+            <td>{{ machineState(row) }}</td>
+            <td>{{ machinePairing(row) }}</td>
+            <td class="small">{{ machineOperation(row) }}</td>
+            <td>
+              <button v-if="machineRowAction(row) === 'install'" type="button" @click="machineAction(row.name, 'install')">Install</button>
+              <button v-if="machineRowAction(row) === 'remove'" type="button" @click="machineAction(row.name, 'remove')">Remove</button>
+              <span v-if="machineRowBusy(row)" class="dim small">working…</span>
+            </td>
+          </tr>
+          <tr v-if="!machine.environments.length"><td colspan="5" class="dim">No WSL distros.</td></tr>
+        </tbody>
+      </table>
+    </main>
+
     <main v-if="view === 'activity'" class="activity-page">
       <div class="activity-head">
         <h1>Activity</h1>

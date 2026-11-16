@@ -29,6 +29,7 @@ import { consoleComputed, consoleData, consoleMethods } from './consoleview.js';
 import { DecisionDialog, decisionData, decisionMethods } from './decisions.js';
 import { whatsNewData, whatsNewMethods } from './whatsnew.js';
 import { selfUpdateData, selfUpdateMethods, updatePill } from './selfupdate.js';
+import { machineData, machineMethods, operationLabel, pairingLabel, rowAction, stateLabel, busy as machineBusy } from './machine.js';
 import { askLine, notifyData, notifyMethods } from './notify.js';
 import { activityData, activityFilters, activityMethods, activityKindLabel, channelLabel, diffLines, surfaceLabel } from './activity.js';
 import { bellLook, justNow, noticeData, noticeMethods } from './notices.js';
@@ -92,6 +93,7 @@ export const appOptions = {
     ...decisionData(routeFromHash()),
     ...whatsNewData(),
     ...selfUpdateData(),
+    ...machineData(),
     ...notifyData(),
     ...noticeData(),
     ...activityData(routeFromHash()),
@@ -168,6 +170,7 @@ export const appOptions = {
       if (this.view === 'activity') this.loadActivity();
       if (routeFromHash().whatsNew) this.openWhatsNew();
       this.watchSelfUpdate(window, document); // the header's Update pill (selfupdate.js)
+      this.loadMachine(); // whether this engine has a Machine page (machine.js)
       this.refreshEngines();
       this._enginesTimer = setInterval(() => this.refreshEngines(), 30_000);
     }
@@ -235,6 +238,12 @@ export const appOptions = {
     ...noticeMethods,
     ...whatsNewMethods,
     ...selfUpdateMethods,
+    ...machineMethods,
+    machineState: stateLabel,
+    machinePairing: pairingLabel,
+    machineOperation: operationLabel,
+    machineRowAction: rowAction,
+    machineRowBusy: machineBusy,
     ...activityMethods,
     ...installMethods,
     ...cardMethods,
@@ -479,6 +488,7 @@ export const appOptions = {
       this.view = view;
       history.replaceState(null, '', '#' + view);
       if (view === 'status') this.refresh(); // full cache + metrics + log
+      if (view === 'machine') this.loadMachine();
       if (view === 'console') {
         this.consoleSession = null; // the bare #console route: the held first session
         this.loadConsole();
@@ -566,6 +576,7 @@ export const appOptions = {
         this.refreshMetrics();
       }
       if (r.view === 'status') this.refresh();
+      if (r.view === 'machine') this.loadMachine();
       if (r.view === 'new') this.enterWizard();
       if (r.view === 'console' && !this.sessionsLoaded) this.loadConsole();
       if (r.view === 'project' && r.tab === 'sessions') this.loadProjectSessions(r.projectId);

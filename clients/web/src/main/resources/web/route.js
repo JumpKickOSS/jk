@@ -54,6 +54,7 @@ export function parseTruthy(raw) {
  *  #decision/<id>                             (a decision's dialog over the page under it; decisions.js)
  *  #whats-new                                 (the highlights of the last update, over the page; whatsnew.js)
  *  #activity?kind=…&project=…&session=…&surface=…   (the Activity page, filtered; activity.js)
+ *  #machine                                   (the Windows engine's Machine page: WSL distros; machine.js)
  *  #activity/<entryId>                        (the Activity page with one entry open)
  *  #project/<id>
  *  #project/<id>/run/<buildNumber>            (pin one run; without it the page follows the newest)
@@ -98,6 +99,9 @@ export function routeFromHash(hash = typeof location !== 'undefined' ? location.
   }
   if (pathPart === '#status') {
     return routeFields({ view: 'status' });
+  }
+  if (pathPart === '#machine') {
+    return routeFields({ view: 'machine' });
   }
   if (pathPart === '#activity' || pathPart.startsWith('#activity/')) {
     const entry = pathPart === '#activity' ? null : decodeComp(pathPart.slice('#activity/'.length)) || null;
