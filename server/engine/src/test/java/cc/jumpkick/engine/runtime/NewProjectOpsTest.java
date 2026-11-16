@@ -4,6 +4,8 @@ package cc.jumpkick.engine.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.testing.RepoRoot;
@@ -351,10 +353,13 @@ class NewProjectOpsTest {
                     .path();
             assertThat(answered.resolve("jk.toml")).content().contains("java = 17");
 
-            // A module keeps what its caller sent, else the template's own.
+            // A module keeps what its caller sent, else the template's own: no workspace names a level here.
             Path module = NewProjectOps.create(request(parent, "member", g8.toString(), false, Map.of(), null))
                     .path();
             assertThat(module.resolve("jk.toml")).content().contains("java = 25");
+            Path sent = NewProjectOps.create(request(parent, "sent", g8.toString(), false, Map.of("java", "17"), null))
+                    .path();
+            assertThat(sent.resolve("jk.toml")).content().contains("java = 17");
         } finally {
             NewProjectJava.inventory(null);
         }
@@ -389,6 +394,85 @@ class NewProjectOpsTest {
             @Nullable String cwd) {
         return new NewProjectOps.Request(
                 name, parent.toString(), "com.acme", null, null, template, standalone, params, false, null, cwd);
+    }
+
+    /**
+     * The shipped library template rendered as a module of a workspace whose root owns test suites:
+     * the member takes the member form (no inherited identity, no suite, format or rules file of its
+     * own), keeps what the template adds, and the workspace loads it, where the standalone form was
+     * refused at the next build for setting a root suite's tags.
+     */
+    @Test
+    void a_template_rendered_as_a_workspace_module_writes_the_member_form_the_workspace_loads(@TempDir Path temp)
+            throws Exception {
+        Path library = RepoRoot.find(NewProjectOpsTest.class).resolve("templates/java/library.g8");
+        Path ws = Files.createDirectories(temp.resolve("ws"));
+        Files.writeString(ws.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "ws"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = ["api"]
+
+                [test.suites.network]
+                tags = ["network"]
+                """);
+
+        Path api = NewProjectOps.create(new NewProjectOps.Request(
+                        "api",
+                        ws.toString(),
+                        "com.acme",
+                        null,
+                        null,
+                        library.toString(),
+                        false,
+                        Map.of(),
+                        false,
+                        null,
+                        ws.toString()))
+                .path();
+
+        String manifest = Files.readString(api.resolve("jk.toml"));
+        assertThat(manifest)
+                .contains("name = \"api\"", "[nullness]", "[build-info]")
+                .doesNotContain("group =", "version =", "java =", "[test.suites", "[format]", "tags =");
+        assertThat(api.resolve("jk-guards.toml")).doesNotExist();
+        assertThat(WorkspaceLoader.loadModules(ws, JkBuildParser.parseLocal(ws.resolve("jk.toml"))))
+                .as("the workspace loads the module it scaffolded")
+                .containsKey(api);
+    }
+
+    @Test
+    void member_manifest_keeps_a_kept_tables_comment_and_drops_a_dropped_ones() {
+        String member = MemberScaffold.memberManifest("""
+                group = "x"
+                name = "a"
+                version = "1"
+
+                # Formatting.
+                [format]
+                enforce = true
+
+                # The app.
+                [application]
+                main = "x.Main"
+
+                [image]
+                base = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+                aot-cache = true
+                """);
+        assertThat(member).isEqualTo("""
+                name = "a"
+
+                # The app.
+                [application]
+                main = "x.Main"
+
+                [image]
+                aot-cache = true
+                """);
     }
 
     @Test

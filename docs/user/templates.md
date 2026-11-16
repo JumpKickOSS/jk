@@ -83,7 +83,14 @@ A standalone template scaffold gets what a plain `jk new` gets: [JumpKick's sect
 shipped one), the files of each [agent in use](agents.md) and a first code graph, and JumpKick's
 `.gitignore` unless the template ships its own. Workspace modules get none of these — the root
 owns them. A template scaffolded inside a project is listed in the root's `[workspace].modules`,
-as a plain `jk new` module is, so the next `jk build` builds it.
+as a plain `jk new` module is, so the next `jk build` builds it. Its `jk.toml` takes the member
+form: `group`, `version` and `java` are left to the root when the root names them and no flag or
+`-p` answered something else, and the template renders at the root's `java`; a root that names no
+`java` leaves the module the template's own level, never the machine's default JDK. The tables the
+root owns — the test suites, `[format]` and the rules file `jk-guards.toml` — are left to it, and
+so is `[image] base`, a workspace fact: the root's base applies, else the default base for the
+module's `java`. What the template adds (its dependencies, `[application]`, a framework's table,
+`[nullness]`) stays.
 
 "Inside a project" means the nearest `jk.toml` at or above the new project's parent directory,
 looking no higher than the top of its git repository (a `.git` directory, or the `.git` file of a

@@ -56,7 +56,12 @@ class NewDefaultJdkTest {
         Path app = tempDir.resolve("app");
         Run run = jk("new", app.toString());
         assertThat(run.exit()).as(run.err()).isZero();
-        assertThat(Files.readString(app.resolve("jk.toml"))).contains("java = 17");
+        // The member form leaves the level to the root it inherits from: read the module as a build does.
+        assertThat(JkBuildParser.parse(app.resolve("jk.toml")).project().java()).isEqualTo(17);
+        assertThat(Files.readString(app.resolve("jk.toml")))
+                .as("whatever names a Java version follows the workspace's, not the default JDK's")
+                .doesNotContain("jre-21")
+                .doesNotContain("jre-25");
 
         // A workspace that names no level leaves its module the template's own.
         Path plain = Files.createDirectories(tempDir.resolve("plain"));

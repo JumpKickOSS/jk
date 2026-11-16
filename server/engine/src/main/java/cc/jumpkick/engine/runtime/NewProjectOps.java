@@ -291,6 +291,10 @@ public final class NewProjectOps {
             String host = NewProjectJava.hostMajor();
             if (host != null) params.put("java", host);
         }
+        // A module renders at its workspace's level, so whatever in the template names a Java version
+        // (an image's JRE tag, a toolchain) follows the level the module inherits.
+        Map<String, String> root = req.standalone() ? Map.of() : MemberScaffold.rootIdentity(target);
+        if (root.containsKey("java")) params.putIfAbsent("java", root.get("java"));
         boolean offline = SessionContext.current().config().offlineOr(false);
         // Resolution lang stays null unless the user asked: a bare name then searches every
         // language, so a kotlin-only template is reached without --lang.
@@ -346,6 +350,7 @@ public final class NewProjectOps {
             throw new IOException("template did not produce jk.toml: " + prep.template());
         }
         if (req.standalone()) NewProjectSeed.finish(target);
+        else MemberScaffold.apply(target, req.templateParams() == null ? Map.of() : req.templateParams(), root);
     }
 
     private static Prepared prepare(Request req) throws IOException {
