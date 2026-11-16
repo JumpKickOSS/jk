@@ -361,6 +361,7 @@ jobs:
   fixtures-macos:
     name: Shell fixtures (installer, wrapper, publish, release, curated lane) on macOS
     needs: [vscode-extension-windows, installer-windows, node-windows]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
@@ -370,6 +371,7 @@ jobs:
   vscode-extension-macos:
     name: VS Code extension (macos-latest)
     needs: [vscode-extension-windows, installer-windows, node-windows]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
