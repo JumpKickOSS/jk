@@ -59,6 +59,7 @@ question finds the YAML line, the annotation and the string literal together.
 jk graph callers config:server.port        # every definition and use, at file:line
 jk graph callers shop.max-items            # a label only an anchor has works too
 jk graph find -t config 'shop.*'           # a kind's anchors, with counts
+jk graph callers 'route:*'                 # the same listing through callers (MCP: address=route:*)
 ```
 
 ```

@@ -193,6 +193,17 @@ class RouteAnchorsTest {
     }
 
     @Test
+    void callersOfAKindsStarOrGlobListsItsAnchors() {
+        GraphTools tools = new GraphTools(hotel());
+        assertThat(tools.callers("route:*", 1, 2000)).startsWith("5 matches\n").contains("route  route:GET /hotels/**");
+        assertThat(tools.callers("route:GET /api/hotels*", 1, 2000))
+                .isEqualTo(SymbolFinder.of(Map.of("kind", "route"), "GET /api/hotels*")
+                        .find(hotel(), Scope.ALL, 2000))
+                .startsWith("2 matches");
+        assertThat(tools.anchorUses("route:*", 2000)).startsWith("5 matches");
+    }
+
+    @Test
     void aRouteAnswersByMethodAndPathAndItsHandlersCallersNameIt() {
         CodeGraph g = hotel();
         String answer = new GraphTools(g).callers("route:get /api/hotels/{slug}", 1, 2000);

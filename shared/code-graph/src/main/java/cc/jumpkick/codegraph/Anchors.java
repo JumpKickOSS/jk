@@ -93,6 +93,20 @@ public final class Anchors {
         return id(kind, t.substring(kind.length() + 1));
     }
 
+    /**
+     * The kind and name glob of a listing address: {@code route:*} (every route) or {@code
+     * route:GET /owners/*} (the routes the glob fits), a kind this class lists with a {@code *} in its
+     * name; {@code null} for anything else. The glob is {@code null} for a bare {@code *}.
+     */
+    public static String @Nullable [] listing(String text) {
+        String t = text.strip();
+        String kind = kindOf(t);
+        if (kind == null || !KINDS.contains(kind)) return null;
+        String name = t.substring(kind.length() + 1).strip();
+        if (!name.contains("*")) return null;
+        return new String[] {kind, name.equals("*") ? "" : name};
+    }
+
     /** The node of anchor {@code name} of {@code kind}: no source file, its places are its edges. */
     public static GraphNode node(String kind, String name) {
         return new GraphNode(id(kind, name), display(kind, name), FILE_TYPE, "", "", Map.of("node_kind", kind));

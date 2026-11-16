@@ -35,6 +35,11 @@ final class AnchorAnswers {
      */
     @Nullable
     String answer(String wanted, boolean noMethod, int budget) {
+        String[] listing = Anchors.listing(wanted);
+        if (listing != null) {
+            return SymbolFinder.of(Map.of("kind", listing[0]), listing[1].isEmpty() ? null : listing[1])
+                    .find(graph, scope, budget);
+        }
         if (Anchors.parse(wanted) != null || Anchors.is(graph.node(wanted))) {
             return String.valueOf(uses(wanted, budget));
         }

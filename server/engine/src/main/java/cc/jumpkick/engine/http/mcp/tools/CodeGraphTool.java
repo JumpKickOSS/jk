@@ -46,13 +46,21 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 spec(
                         "callers",
-                        "Who calls Type.method or uses Type.field, Type or @Annotation, at file:line, complete."
+                        "Who calls Type.method or uses a field, type, @Annotation or anchor at file:line, complete."
                                 + " transitive=true: all that reach it. Call it first, before any search.",
                         scoped(Map.of(
-                                "address", McpSchemas.string(),
-                                "transitive", McpSchemas.bool(),
-                                "max_hops", McpSchemas.integer(),
-                                "token_budget", McpSchemas.integer())),
+                                "address",
+                                McpSchemas.string(
+                                        "Type.method, Type.field, Type, @Annotation, or an anchor, whose answer"
+                                                + " adds the uses no compiler checks (scripts, SQL, YAML, front end):"
+                                                + " route:GET /x/{}, table:t, column:t.c, env:NAME, config:key; route:* lists"
+                                                + " a kind's."),
+                                "transitive",
+                                McpSchemas.bool(),
+                                "max_hops",
+                                McpSchemas.integer(),
+                                "token_budget",
+                                McpSchemas.integer())),
                         List.of("address")),
                 "callers",
                 in -> List.of(required(in, "address")));

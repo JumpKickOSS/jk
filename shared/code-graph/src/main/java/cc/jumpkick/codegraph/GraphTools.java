@@ -854,6 +854,7 @@ public final class GraphTools {
 
     /** Every definition and use of an anchor ({@link AnchorAnswers#uses}); {@code null} when {@code name} is none. */
     public @Nullable String anchorUses(String name, int budget) {
+        if (Anchors.listing(name) != null) return anchors.answer(name, false, budget);
         return anchors.uses(name, budget);
     }
 

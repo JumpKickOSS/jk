@@ -217,7 +217,8 @@ public final class GraphService {
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());
             GraphTools tools = tools(w, g, scope);
             // An address written <kind>:<name> is an anchor's, never a symbol's: answered before the symbol readers.
-            if (Anchors.parse(arg(r.args(), 0, "a method")) != null) {
+            String address = arg(r.args(), 0, "a method");
+            if (Anchors.parse(address) != null || Anchors.listing(address) != null) {
                 return Reply.of(w, String.valueOf(tools.anchorUses(arg(r.args(), 0, "a method"), r.budget())));
             }
             Reply uses = GraphUses.answer(w, g, scope, tools, arg(r.args(), 0, "a method"), r.budget());
