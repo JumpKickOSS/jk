@@ -144,6 +144,21 @@ class NewGroupGuessTest {
         }
     }
 
+    /**
+     * The engine's form reads git's user file and walks nothing: the engine's working directory is
+     * whichever one it started in, and from a checkout the walk read that repository's .git/config.
+     */
+    @Test
+    void the_form_guess_reads_the_users_file_and_walks_nothing(@TempDir Path tempDir) throws IOException {
+        Path home = Files.createDirectories(tempDir.resolve("home"));
+        // A repository config right under the home's parent: a walk from anywhere below would read it.
+        Files.createDirectories(tempDir.resolve(".git"));
+        Files.writeString(tempDir.resolve(".git/config"), "[user]\n    email = dave@corp.io\n");
+        assertThat(NewGroupGuess.forUser(home)).isEqualTo("com.example");
+        Files.writeString(home.resolve(".gitconfig"), "[user]\n    email = carol@github.com\n");
+        assertThat(NewGroupGuess.forUser(home)).isEqualTo("io.github.carol");
+    }
+
     /** A temp dir whose ancestor chain carries no git config (unlike a @TempDir under the checkout). */
     private static Path walkCleanDir() throws IOException {
         return Files.createTempDirectory(ShortTempDirs.root(), "jk-grp-test-");

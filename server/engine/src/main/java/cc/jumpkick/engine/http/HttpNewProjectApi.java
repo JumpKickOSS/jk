@@ -211,8 +211,9 @@ final class HttpNewProjectApi {
     static final int HISTORY_GUESS_RUNS = 200;
 
     /**
-     * This machine's values for the form's derived defaults: the group from the git email, as
-     * {@code jk new} guesses it, and the parent directory from build history and well-known roots.
+     * This machine's values for the form's derived defaults: the group from the email in git's user
+     * file (the engine's working directory belongs to no project, so no repository is walked), and
+     * the parent directory from build history and well-known roots.
      */
     private Map<String, String> derived() {
         List<Path> historyDirs = new ArrayList<>();
@@ -227,7 +228,7 @@ final class HttpNewProjectApi {
         }
         String home = System.getProperty("user.home");
         Map<String, String> out = new LinkedHashMap<>();
-        out.put(NewProjectStep.GIT_EMAIL, NewGroupGuess.guess());
+        out.put(NewProjectStep.GIT_EMAIL, NewGroupGuess.forUser());
         out.put(
                 NewProjectStep.PARENT_DIR,
                 NewParentDirGuess.guess(home == null ? null : Path.of(home), historyDirs)

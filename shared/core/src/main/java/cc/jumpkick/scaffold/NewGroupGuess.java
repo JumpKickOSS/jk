@@ -55,6 +55,23 @@ public final class NewGroupGuess {
                         .orElse(null));
     }
 
+    /**
+     * The group from git's user file alone, walking no directory: for the engine's new-project form,
+     * whose process has a working directory that belongs to no project. The walk {@link #guess()}
+     * makes from there read whichever repository the engine happened to start in (under a test
+     * JVM, the checkout's own {@code .git/config}).
+     */
+    public static String forUser() {
+        return forUser(Optional.ofNullable(System.getProperty("user.home"))
+                .map(Path::of)
+                .orElse(null));
+    }
+
+    /** As {@link #forUser()}, for the user whose home is {@code home}. */
+    static String forUser(@Nullable Path home) {
+        return userEmail(home).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
+    }
+
     /** Caller supplies cwd + home (tests and {@code jk new}). */
     public static String guess(Path cwd, @Nullable Path home) {
         return readEmail(cwd, home).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
@@ -139,11 +156,12 @@ public final class NewGroupGuess {
             var found = parseEmail(p.resolve(".gitconfig"));
             if (found.isPresent()) return found;
         }
-        if (home != null) {
-            var found = parseEmail(home.resolve(".gitconfig"));
-            if (found.isPresent()) return found;
-        }
-        return Optional.empty();
+        return userEmail(home);
+    }
+
+    /** The {@code user.email} of git's user file, {@code ~/.gitconfig}. */
+    static Optional<String> userEmail(@Nullable Path home) {
+        return home == null ? Optional.empty() : parseEmail(home.resolve(".gitconfig"));
     }
 
     private static Optional<String> parseEmail(Path file) {
