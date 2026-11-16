@@ -58,6 +58,18 @@ final class SuiteDiscovery {
             boolean networkAllowed,
             boolean whole) {
 
+        /** Keep each class's record of this run ({@link ClassRecording}). */
+        void recordClasses(
+                TestClassLedger ledger,
+                String moduleLabel,
+                Path testClasses,
+                Path mainClasses,
+                List<Path> runtimeCp,
+                @Nullable Path javaHome) {
+            ClassRecording.record(
+                    moduleDir, layout, keyed, ledger, moduleLabel, testClasses, mainClasses, runtimeCp, javaHome);
+        }
+
         /** As {@link SuiteDiscovery#settle}, for this run. */
         @Nullable
         String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey) throws Exception {

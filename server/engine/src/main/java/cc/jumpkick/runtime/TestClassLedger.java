@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TestClassResult;
@@ -22,6 +23,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
@@ -59,21 +61,32 @@ final class TestClassLedger {
     /** Appended to the run-tests task id: the ledger's own task, so it moves no pointer the marker owns. */
     static final String TASK_SUFFIX = "#classes";
 
-    /** One class's counts as last recorded. */
-    record Entry(long tests, long failed, long skipped) {
+    /**
+     * One class's counts as last recorded, when it ran (epoch millis, 0 when the record does not
+     * say) and its wall.
+     */
+    record Entry(long tests, long failed, long skipped, long ranAt, long millis) {
+        Entry(long tests, long failed, long skipped) {
+            this(tests, failed, skipped, 0, 0);
+        }
+
         boolean green() {
             return failed == 0;
         }
 
         String encode() {
-            return tests + "," + failed + "," + skipped;
+            return tests + "," + failed + "," + skipped + "," + ranAt + "," + millis;
         }
 
         static @Nullable Entry decode(String value) {
             String[] parts = value.split(",");
-            if (parts.length != 3) return null;
+            if (parts.length != 3 && parts.length != 5) return null;
             try {
-                return new Entry(Long.parseLong(parts[0]), Long.parseLong(parts[1]), Long.parseLong(parts[2]));
+                long tests = Long.parseLong(parts[0]);
+                long failed = Long.parseLong(parts[1]);
+                long skipped = Long.parseLong(parts[2]);
+                if (parts.length == 3) return new Entry(tests, failed, skipped);
+                return new Entry(tests, failed, skipped, Long.parseLong(parts[3]), Long.parseLong(parts[4]));
             } catch (NumberFormatException torn) {
                 return null;
             }
@@ -90,10 +103,14 @@ final class TestClassLedger {
 
     private final Map<String, Entry> recorded = new ConcurrentHashMap<>();
     private final TestClassTally tally;
+    private final String module;
+    private final String tier;
 
     private TestClassLedger(Map<String, Entry> previous, String module, String tier) {
         this.previous = previous;
         this.tally = new TestClassTally(module, tier);
+        this.module = module;
+        this.tier = tier;
     }
 
     /** The ledger stored under {@code stampKey}; empty when there is none or the stamp failed open. */
@@ -324,7 +341,51 @@ final class TestClassLedger {
     }
 
     private void record(TestClassResult r) {
-        recorded.put(entryKey(launch, r.className()), new Entry(r.tests(), r.failed(), r.skipped()));
+        recorded.put(
+                entryKey(launch, r.className()),
+                new Entry(r.tests(), r.failed(), r.skipped(), Clock.SYSTEM.millis(), r.durationMs()));
+    }
+
+    /** The outcomes this run recorded, by {@link #entryKey}. */
+    Map<String, Entry> recorded() {
+        return Map.copyOf(recorded);
+    }
+
+    /**
+     * Say in build history that each class the launches left out ({@link #enter}) was replayed:
+     * one row per class recorded under this stamp whose top-level class was left out, with when it
+     * last ran.
+     */
+    void replaySettled(TaskContext ctx) {
+        if (leftOut.isEmpty()) return;
+        replayRows(ctx, (launch, cls) -> leftOut.contains(entryKey(launch, topLevel(cls))));
+    }
+
+    /**
+     * Say in build history that the classes of a suite served from its green marker were replayed:
+     * one row per class recorded under the marker's stamp that {@code classRuns} admits, in the
+     * launches {@code suiteRuns} admits one suite of, with when it last ran.
+     */
+    void replayCovered(TaskContext ctx, Predicate<String> classRuns, Predicate<String> suiteRuns) {
+        replayRows(ctx, (launch, cls) -> launchRuns(launch, suiteRuns) && classRuns.test(cls));
+    }
+
+    private void replayRows(TaskContext ctx, BiPredicate<String, String> replayed) {
+        for (Map.Entry<String, Entry> e : previous.entrySet()) {
+            String[] key = splitKey(e.getKey());
+            if (!replayed.test(key[0], key[1])) continue;
+            Entry v = e.getValue();
+            ctx.testClass(new TestClassResult(
+                    module,
+                    key[1],
+                    (int) v.tests(),
+                    (int) v.failed(),
+                    (int) v.skipped(),
+                    v.millis(),
+                    tier,
+                    List.of(),
+                    v.ranAt() > 0 ? v.ranAt() : TestClassResult.REPLAYED_UNDATED));
+        }
     }
 
     /**
