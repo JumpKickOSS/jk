@@ -218,7 +218,7 @@ public record TestStampInputs(
     /**
      * The run-tests stamp a green run is stored under and the forecast looks up: the suite's sources
      * and resources, the main classes ({@code mainClassesFingerprint} stands for a tree {@code jk
-     * clean} took, null to read it), the lock, this record's runtime classpath under its identity,
+     * clean} took, null to read it), this record's runtime classpath under its identity,
      * and {@code extras}. Null when an input could not be read.
      */
     @KeyOwner(step = TaskNames.RUN_TESTS)
@@ -228,7 +228,6 @@ public record TestStampInputs(
             Path mainClasses,
             @Nullable String mainClassesFingerprint,
             List<Path> resources,
-            Path lockFile,
             List<String> extras) {
         String main = mainClassesFingerprint;
         if (main == null) {
@@ -238,8 +237,7 @@ public record TestStampInputs(
                 return null; // fail open: retest
             }
         }
-        return TestStamp.computeKey(
-                sources, mainClasses, main, resources, lockFile, runtimeClasspath, extras, identity);
+        return TestStamp.computeKey(sources, mainClasses, main, resources, runtimeClasspath, extras, identity);
     }
 
     /**
@@ -281,8 +279,7 @@ public record TestStampInputs(
      * gone until the build restores them, and the forecast reads each as the bytes that come back.
      */
     @Nullable
-    String forecastKey(boolean compact, Path mainClasses, @Nullable String mainClassesFingerprint, Path lockFile)
-            throws IOException {
+    String forecastKey(boolean compact, Path mainClasses, @Nullable String mainClassesFingerprint) throws IOException {
         Path dir = facts.dir();
         JkBuild project = facts.project();
         // The suites the run runs, as the planner resolves them: --all widens the set, and the
@@ -308,7 +305,7 @@ public record TestStampInputs(
             if (FilteredResources.testStageOutOfSync(dir, project, layout)) return null;
             stampRes.addAll(FilteredResources.testRootsAsStaged(dir, project, layout));
         }
-        String key = key(stampSrcs, mainClasses, mainClassesFingerprint, stampRes, lockFile, stampExtras);
+        String key = key(stampSrcs, mainClasses, mainClassesFingerprint, stampRes, stampExtras);
         if (Perf.enabled()) {
             // The key itself, not just its inputs: when this disagrees with `live-test-stamp` for
             // the same module, the forecast is predicting a suite re-run the build will skip. That

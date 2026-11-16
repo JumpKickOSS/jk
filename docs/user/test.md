@@ -632,7 +632,10 @@ class still shard with their class. When `W = 1` the setting is a no-op.
 ## External tools the suite shells out to (`[test] tools`)
 
 A suite is replayed from its stamp when nothing it depends on has moved: its sources, the main
-classes, the runtime classpath, the lock, the selection, `[test] env`. The files `[build-info]`
+classes, the runtime classpath, the selection, `[test] env`. The lock reaches it through the jars
+the module resolves, not as a file: bumping a dependency of one workspace member re-runs the members
+whose test classpath holds the new jar and leaves the others replayed. A suite that reads
+`jk-lock.toml` itself keys it as a file it was found to read. The files `[build-info]`
 writes into the main classes count by their stable entries only: a commit or the first edit after a
 clean checkout moves `git.commit.id`, `git.dirty` and the times without re-running the suite, unless
 its sources name one of those values ([Packaging](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)). A test that runs `git` or

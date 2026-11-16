@@ -14,8 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The test-skip freshness key: it must stay stable when nothing changed, and bust when the module's
- * own main code, a test source, a dependency's content, the lock, or the toolchain identity
- * changed.
+ * own main code, a test source, a dependency's content or the toolchain identity changed; the
+ * lock reaches it only through the jars a module resolves.
  */
 class TestStampTest {
 
@@ -30,13 +30,12 @@ class TestStampTest {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         write(mainClasses.resolve("Foo.class"), "AAAA");
-        Path lock = write(dir.resolve("jk-lock.toml"), "version = 1");
         Path sibJar = write(dir.resolve("dep/target/dep.jar"), "DEPBYTES");
 
         String k1 = TestStamp.computeKey(
-                List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of("jk:1.0", "runner:abc"));
+                List.of(testSrc), mainClasses, List.of(), List.of(sibJar), List.of("jk:1.0", "runner:abc"));
         String k2 = TestStamp.computeKey(
-                List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of("jk:1.0", "runner:abc"));
+                List.of(testSrc), mainClasses, List.of(), List.of(sibJar), List.of("jk:1.0", "runner:abc"));
         assertThat(k1).isNotNull().isEqualTo(k2);
     }
 
@@ -45,11 +44,10 @@ class TestStampTest {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         Path mainClass = write(mainClasses.resolve("Foo.class"), "AAAA");
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
 
-        String before = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
+        String before = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), List.of());
         Files.writeString(mainClass, "BBBB"); // main code changed; test source untouched
-        String after = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
+        String after = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), List.of());
 
         assertThat(after).isNotEqualTo(before);
     }
@@ -59,23 +57,22 @@ class TestStampTest {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         write(mainClasses.resolve("Foo.class"), "AAAA");
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
 
-        String live = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
+        String live = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), List.of());
         String projected = ClasspathFingerprint.entry(mainClasses);
         String viaOverride =
-                TestStamp.computeKey(List.of(testSrc), mainClasses, projected, List.of(), lock, List.of(), List.of());
+                TestStamp.computeKey(List.of(testSrc), mainClasses, projected, List.of(), List.of(), List.of());
         assertThat(viaOverride).isEqualTo(live);
 
         // Wiped classes + missing: token must NOT match the live green key.
         Path wiped = dir.resolve("classes/wiped");
         String missing = ClasspathFingerprint.entry(wiped);
         assertThat(missing).startsWith("missing:");
-        String afterCleanWrong = TestStamp.computeKey(List.of(testSrc), wiped, List.of(), lock, List.of(), List.of());
+        String afterCleanWrong = TestStamp.computeKey(List.of(testSrc), wiped, List.of(), List.of(), List.of());
         assertThat(afterCleanWrong).isNotEqualTo(live);
         // Same wipe with the projected fingerprint recovers the green key.
         String afterCleanProjected =
-                TestStamp.computeKey(List.of(testSrc), wiped, projected, List.of(), lock, List.of(), List.of());
+                TestStamp.computeKey(List.of(testSrc), wiped, projected, List.of(), List.of(), List.of());
         assertThat(afterCleanProjected).isEqualTo(live);
     }
 
@@ -83,47 +80,69 @@ class TestStampTest {
     void dependency_content_change_busts_but_identical_rebuild_does_not(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
         Path sibJar = write(dir.resolve("dep/target/dep.jar"), "DEP-V1");
 
-        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of());
+        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(sibJar), List.of());
 
         // jk re-jars every build: identical bytes, new file mtime → must NOT bust.
         Files.writeString(sibJar, "DEP-V1");
         Files.setLastModifiedTime(sibJar, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(sibJar), List.of()))
                 .as("byte-identical sibling rebuild keeps the key")
                 .isEqualTo(base);
 
         // A real content change in the dependency → must bust (retest the dependent).
         Files.writeString(sibJar, "DEP-V2");
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(sibJar), List.of()))
                 .as("dependency content change busts the dependent's key")
                 .isNotEqualTo(base);
     }
 
     @Test
-    void test_source_lock_and_extras_changes_bust_the_key(@TempDir Path dir) throws IOException {
+    void test_source_and_extras_changes_bust_the_key(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
 
-        String base =
-                TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0"));
+        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), List.of("jk:1.0"));
 
         Files.writeString(testSrc, "class FooTest { void t() {} }");
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0")))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), List.of("jk:1.0")))
                 .isNotEqualTo(base);
 
         Files.writeString(testSrc, "class FooTest {}"); // restore
-        Files.writeString(lock, "v=2"); // dep set changed
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0")))
-                .isNotEqualTo(base);
-
-        Files.writeString(lock, "v=1"); // restore
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:2.0")))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), List.of("jk:2.0")))
                 .as("a toolchain/runner identity change retests")
                 .isNotEqualTo(base);
+    }
+
+    /**
+     * The workspace's one {@code jk-lock.toml} is no stamp input: a member's tests are keyed on the
+     * jars they run with, so a dependency another member bumped leaves them replayed (JK-VW9QQ),
+     * and a bump that reaches this member's runtime classpath re-runs them through those jars.
+     */
+    @Test
+    void the_lock_keys_a_suite_only_through_the_jars_it_resolves(@TempDir Path dir) throws IOException {
+        Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        Path lock = write(
+                dir.resolve("jk-lock.toml"),
+                "[[library]]\ncoordinate = \"org.postgresql:postgresql\"\nversion = \"42.7.14\"\n");
+        Path driver = write(dir.resolve("repo/postgresql-42.7.14.jar"), "DRIVER-42.7.14");
+        Path junit = write(dir.resolve("repo/junit.jar"), "JUNIT");
+
+        String core = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(junit), List.of());
+        String service =
+                TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(junit, driver), List.of());
+
+        // service bumps the driver: the lock moves, and so does the jar service runs with.
+        Files.writeString(lock, "[[library]]\ncoordinate = \"org.postgresql:postgresql\"\nversion = \"42.7.11\"\n");
+        Path older = write(dir.resolve("repo/postgresql-42.7.11.jar"), "DRIVER-42.7.11");
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(junit), List.of()))
+                .as("a member whose classpath does not hold the driver stays replayed")
+                .isEqualTo(core);
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(junit, older), List.of()))
+                .as("the member that runs with the driver re-runs")
+                .isNotEqualTo(service);
     }
 
     /**
@@ -134,22 +153,19 @@ class TestStampTest {
     void the_test_compile_key_is_a_stamp_input(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
         List<String> extras = List.of("jk:1.0");
 
-        String bare = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), extras);
+        String bare = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(), extras);
         String underOneCompile = TestStamp.computeKey(
                 List.of(testSrc),
                 mainClasses,
                 List.of(),
-                lock,
                 List.of(),
                 TestStamp.withCompileTest(extras, javac("compile-key-one")));
         String underAnotherCompile = TestStamp.computeKey(
                 List.of(testSrc),
                 mainClasses,
                 List.of(),
-                lock,
                 List.of(),
                 TestStamp.withCompileTest(extras, javac("compile-key-two")));
 
@@ -168,14 +184,13 @@ class TestStampTest {
     void a_changed_kotlin_or_groovy_test_compile_key_changes_the_stamp(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.kt"), "class FooTest");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
         List<String> extras = List.of("jk:1.0");
 
-        String kotlinOne = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys(null, "kt-one", null));
-        String kotlinTwo = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys(null, "kt-two", null));
-        String groovyOne = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys(null, null, "kt-one"));
-        String javacOne = key(testSrc, mainClasses, lock, javac("kt-one"));
-        String mixed = key(testSrc, mainClasses, lock, new TestStamp.CompileTestKeys("j", "kt-one", null));
+        String kotlinOne = key(testSrc, mainClasses, new TestStamp.CompileTestKeys(null, "kt-one", null));
+        String kotlinTwo = key(testSrc, mainClasses, new TestStamp.CompileTestKeys(null, "kt-two", null));
+        String groovyOne = key(testSrc, mainClasses, new TestStamp.CompileTestKeys(null, null, "kt-one"));
+        String javacOne = key(testSrc, mainClasses, javac("kt-one"));
+        String mixed = key(testSrc, mainClasses, new TestStamp.CompileTestKeys("j", "kt-one", null));
 
         assertThat(kotlinOne)
                 .as("a changed Kotlin test-compile key changes the stamp")
@@ -193,13 +208,11 @@ class TestStampTest {
         return new TestStamp.CompileTestKeys(key, null, null);
     }
 
-    private static String key(Path testSrc, Path mainClasses, Path lock, TestStamp.CompileTestKeys keys)
-            throws IOException {
+    private static String key(Path testSrc, Path mainClasses, TestStamp.CompileTestKeys keys) throws IOException {
         return Objects.requireNonNull(TestStamp.computeKey(
                 List.of(testSrc),
                 mainClasses,
                 List.of(),
-                lock,
                 List.of(),
                 TestStamp.withCompileTest(List.of("jk:1.0"), keys)));
     }
@@ -208,28 +221,27 @@ class TestStampTest {
     void resource_fixture_change_busts_but_identical_rewrite_does_not(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
         Path resDir = dir.resolve("test/resources");
         Path fixture = write(resDir.resolve("fixture.json"), "{\"v\":1}");
 
-        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of());
+        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), List.of(), List.of());
 
         // Byte-identical rewrite (new mtime) must NOT bust.
         Files.writeString(fixture, "{\"v\":1}");
         Files.setLastModifiedTime(fixture, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), List.of(), List.of()))
                 .isEqualTo(base);
 
         // A fixture-only edit must retestfalse green).
         Files.writeString(fixture, "{\"v\":2}");
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), List.of(), List.of()))
                 .as("resource-only edit busts the key")
                 .isNotEqualTo(base);
 
         // A new fixture file must retest too.
         write(resDir.resolve("extra.txt"), "x");
         Files.writeString(fixture, "{\"v\":1}"); // restore original content
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), List.of(), List.of()))
                 .as("added resource file busts the key")
                 .isNotEqualTo(base);
 
@@ -238,7 +250,6 @@ class TestStampTest {
                         List.of(testSrc),
                         mainClasses,
                         List.of(dir.resolve("integration/resources")),
-                        lock,
                         List.of(),
                         List.of()))
                 .isNotNull();

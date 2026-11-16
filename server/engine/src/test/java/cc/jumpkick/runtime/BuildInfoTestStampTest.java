@@ -104,7 +104,6 @@ class BuildInfoTestStampTest {
 
     private static String key(Path dir, Path src, String gitProperties) throws Exception {
         Path manifest = Files.writeString(dir.resolve("jk.toml"), MANIFEST);
-        Path lock = Files.writeString(dir.resolve("jk-lock.toml"), "");
         JkBuild project = JkBuildParser.parseLocal(manifest);
         BuildLayout layout = BuildLayout.of(dir, project);
         Files.createDirectories(layout.classesDir().resolve("app"));
@@ -124,7 +123,7 @@ class BuildInfoTestStampTest {
                         List.of(),
                         TestStamp.CompileTestKeys.NONE),
                 ClasspathFingerprint.ON_DISK);
-        String key = stamp.key(List.of(src), layout.classesDir(), null, List.of(), lock, stamp.extras());
+        String key = stamp.key(List.of(src), layout.classesDir(), null, List.of(), stamp.extras());
         return Objects.requireNonNull(key, "every input readable");
     }
 }

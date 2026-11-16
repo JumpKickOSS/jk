@@ -387,8 +387,9 @@ final class TestSteps {
             List<Path> runtimeCp,
             Map<String, String> workerJars)
             throws IOException {
-        List<Path> roots =
-                new ArrayList<>(List.of(ctx.require(PARSED_BUILD).testClassesDir(), mainClasses(ctx), in.lockFile()));
+        // Not the lock: the stamp keys the jars the suite resolves, not the workspace's lock file, so a
+        // suite that reads the file itself keys it as a discovered input (JK-VW9QQ).
+        List<Path> roots = new ArrayList<>(List.of(ctx.require(PARSED_BUILD).testClassesDir(), mainClasses(ctx)));
         // The temp roots the suite was handed: what it makes there is its own.
         for (String name : List.of("TMPDIR", "TMP", "TEMP")) {
             String tmp = testEnv.extras().get(name);
@@ -534,7 +535,7 @@ final class TestSteps {
             extras.add("affected:" + affected.stampToken());
         }
         // Unchanged inputs replay the green run; null (an unreadable input) is "not cached".
-        String key = stamp.key(testSrcs, mainClasses(ctx), null, testResDirs, in.lockFile(), extras);
+        String key = stamp.key(testSrcs, mainClasses(ctx), null, testResDirs, extras);
         TestLaunch.noteStampKey(ctx, in, key, testSrcs, testResDirs, stamp.runtimeClasspath(), extras);
         return key;
     }
@@ -721,7 +722,7 @@ final class TestSteps {
             if (mainFp != null && mainFp.startsWith("missing:")) mainFp = null;
         }
         String finalMainFp = mainFp;
-        String stampKey = stamp.forecastKey(compact, layout.classesDir(), finalMainFp, s.lockFile);
+        String stampKey = stamp.forecastKey(compact, layout.classesDir(), finalMainFp);
         Perf.end("  test-stamp-key", ts);
         var marker = stampKey == null
                 ? Optional.<ActionCache.ActionRecord>empty()
@@ -741,8 +742,7 @@ final class TestSteps {
         if (hit) return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
         // As the run decides it: the guard's green run over the same tree ran these tests too.
         TestStampInputs guard = stamp.underGuard();
-        String guardKey =
-                guard == null ? null : guard.forecastKey(compact, layout.classesDir(), finalMainFp, s.lockFile);
+        String guardKey = guard == null ? null : guard.forecastKey(compact, layout.classesDir(), finalMainFp);
         if (guardKey != null
                 && ForecastSteps.presentRecord(s.actionCache, guardKey)
                         .filter(TestStamp::green)
@@ -755,7 +755,7 @@ final class TestSteps {
                 : StampTokens.reason(
                         s.dir,
                         SessionContext.current().testSelection(),
-                        () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp, s.lockFile));
+                        () -> stamp.forecastKey(compact, layout.classesDir(), finalMainFp));
         return new TaskForecast.Task(
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,

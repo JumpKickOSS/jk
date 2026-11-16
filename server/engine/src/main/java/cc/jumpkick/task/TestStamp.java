@@ -4,7 +4,6 @@ package cc.jumpkick.task;
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -16,14 +15,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * Content-hashed key for incremental test skipping. On green runs the build stores a CAS marker
  * under this key (survives {@code jk clean}); a later matching key skips the runner. Inputs: test
- * sources, main classes, suite resource dirs, lockfile, runtime classpath by content
- * ({@link ClasspathFingerprint}), and toolchain/runner tokens. {@link #computeKey} returns
+ * sources, main classes, suite resource dirs, runtime classpath by content
+ * ({@link ClasspathFingerprint}), and toolchain/runner tokens. Not the lockfile: a workspace has one,
+ * and a member's tests see of it only the jars they resolve, which the classpath keys (JK-VW9QQ). {@link #computeKey} returns
  * {@code null} on any I/O failure — callers treat that as uncached and retest.
  */
 public final class TestStamp {
 
-    /** Prefix embedded in the key so a future format change invalidates it. */
-    private static final String FORMAT_VERSION = "test-stamp-v3";
+    /** Prefix embedded in the key so a future format change invalidates it. v4: no {@code lock:} line. */
+    private static final String FORMAT_VERSION = "test-stamp-v4";
 
     private TestStamp() {}
 
@@ -122,14 +122,13 @@ public final class TestStamp {
             List<Path> testSources,
             Path mainClasses,
             List<Path> resourceRoots,
-            Path lockFile,
             List<Path> runtimeCp,
             List<String> extraInputs) {
-        return computeKey(testSources, mainClasses, null, resourceRoots, lockFile, runtimeCp, extraInputs);
+        return computeKey(testSources, mainClasses, null, resourceRoots, runtimeCp, extraInputs);
     }
 
     /**
-     * Like {@link #computeKey(List, Path, List, Path, List, List)} but with an optional projected
+     * Like {@link #computeKey(List, Path, List, List, List)} but with an optional projected
      * {@code main:} fingerprint. After {@code jk clean} the classes tree is gone; callers pass the
      * same {@code dir:…} token the live restore will produce (from the compile action record) so the
      * green marker still matches instead of forecasting a full suite against {@code missing:…}.
@@ -139,7 +138,6 @@ public final class TestStamp {
             Path mainClasses,
             @Nullable String mainClassesFingerprint,
             List<Path> resourceRoots,
-            Path lockFile,
             List<Path> runtimeCp,
             List<String> extraInputs) {
         return computeKey(
@@ -147,7 +145,6 @@ public final class TestStamp {
                 mainClasses,
                 mainClassesFingerprint,
                 resourceRoots,
-                lockFile,
                 runtimeCp,
                 extraInputs,
                 ClasspathFingerprint.ON_DISK);
@@ -164,7 +161,6 @@ public final class TestStamp {
             Path mainClasses,
             @Nullable String mainClassesFingerprint,
             List<Path> resourceRoots,
-            Path lockFile,
             List<Path> runtimeCp,
             List<String> extraInputs,
             ClasspathFingerprint.EntryIdentity identity) {
@@ -197,11 +193,6 @@ public final class TestStamp {
                     if (!ProjectedFiles.isDirectory(res)) continue;
                     feed(md, "res:" + PortablePath.of(res) + ":" + ClasspathFingerprint.entry(res));
                 }
-            }
-
-            // Lock file: content hash — catches any dep version / JDK change.
-            if (Files.isRegularFile(lockFile)) {
-                feed(md, "lock:" + FileHashMemo.contentHash(lockFile));
             }
 
             // Runtime classpath by CONTENT: a sibling module's change ripples in,

@@ -88,10 +88,9 @@ class PlannerTestGreenStampTest {
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         Path lock = Files.writeString(dir.resolve("jk-lock.toml"), "v=1");
 
-        String helpersOnly = TestStamp.computeKey(List.of(helper), mainClasses, List.of(), lock, List.of(), List.of());
+        String helpersOnly = TestStamp.computeKey(List.of(helper), mainClasses, List.of(), List.of(), List.of());
         Path added = Files.writeString(dir.resolve("FooTest.java"), "class FooTest { void t() {} }");
-        String withTest =
-                TestStamp.computeKey(List.of(helper, added), mainClasses, List.of(), lock, List.of(), List.of());
+        String withTest = TestStamp.computeKey(List.of(helper, added), mainClasses, List.of(), List.of(), List.of());
 
         assertThat(helpersOnly).isNotNull().isNotEqualTo(withTest);
     }

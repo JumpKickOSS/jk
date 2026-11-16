@@ -128,14 +128,12 @@ class ActionKeyTest {
                 List.of(a.resolve("src/test/java/AppTest.java")),
                 a.resolve("target/classes/main"),
                 List.of(),
-                a.resolve("jk-lock.toml"),
                 List.of(a.resolve("target/classes/main")),
                 extrasA);
         String stampB = TestStamp.computeKey(
                 List.of(b.resolve("src/test/java/AppTest.java")),
                 b.resolve("target/classes/main"),
                 List.of(),
-                b.resolve("jk-lock.toml"),
                 List.of(b.resolve("target/classes/main")),
                 extrasB);
         assertThat(stampA).as("run-tests stamp").isNotNull().isEqualTo(stampB);

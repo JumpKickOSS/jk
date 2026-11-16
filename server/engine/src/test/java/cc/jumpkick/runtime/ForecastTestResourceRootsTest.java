@@ -46,7 +46,7 @@ class ForecastTestResourceRootsTest {
     private static @Nullable String key(Path dir, JkBuild project) throws Exception {
         Path classes = Files.createDirectories(dir.resolve("target/classes"));
         return TestStampInputs.of(TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
-                .forecastKey(false, classes, null, dir.resolve("jk-lock.toml"));
+                .forecastKey(false, classes, null);
     }
 
     @Test

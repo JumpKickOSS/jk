@@ -413,7 +413,7 @@ class TestEnvTest {
         // Cold: nothing cached for this module.
         assertThatThrownBy(
                         () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
-                                .forecastKey(false, classes, null, lock))
+                                .forecastKey(false, classes, null))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY");
 
@@ -422,7 +422,7 @@ class TestEnvTest {
         Files.writeString(tmp.resolve(".env"), UNSET + "=a-value-long-enough-to-count\n");
         String key =
                 requireNonNull(TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
-                        .forecastKey(false, classes, null, lock));
+                        .forecastKey(false, classes, null));
         cache.storeWithOutputs("run-tests", key, Map.of(), Map.of("tests.total", "1"));
         assertThat(cache.lookup(key)).isPresent();
 
@@ -431,7 +431,7 @@ class TestEnvTest {
         Files.delete(tmp.resolve(".env"));
         assertThatThrownBy(
                         () -> TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
-                                .forecastKey(false, classes, null, lock))
+                                .forecastKey(false, classes, null))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("[test].env.API_KEY");
     }

@@ -76,7 +76,7 @@ class IntegrationSuiteStampTest {
         Path classes = Files.createDirectories(dir.resolve("target/classes"));
         String key = SessionContext.where(Session.defaults().withTestSelection(sel), () -> TestStampInputs.of(
                         TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
-                .forecastKey(false, classes, null, dir.resolve("jk-lock.toml")));
+                .forecastKey(false, classes, null));
         return Objects.requireNonNull(key, "every input readable");
     }
 

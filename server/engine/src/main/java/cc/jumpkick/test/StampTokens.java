@@ -126,7 +126,6 @@ public final class StampTokens {
         if (name.startsWith("src:")) return "test source " + tail(name.substring(4)) + " changed";
         if (name.startsWith("main")) return "main classes changed";
         if (name.startsWith("res:")) return "test resources changed";
-        if (name.startsWith("lock")) return "lockfile changed";
         if (name.startsWith("cp")) return "runtime classpath changed";
         if (name.startsWith("x:read:")) return tail(name.substring(7)) + " changed";
         if (name.startsWith("x:list:")) return "the listing of " + tail(name.substring(7)) + " changed";

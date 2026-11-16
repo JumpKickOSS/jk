@@ -15,6 +15,6 @@ class BadKeyFamilies {
     }
 
     static String testStamp(List<Path> sources, Path classes, Path lock) {
-        return TestStamp.computeKey(sources, classes, List.of(), lock, List.of(), List.of());
+        return TestStamp.computeKey(sources, classes, List.of(), List.of(), List.of());
     }
 }

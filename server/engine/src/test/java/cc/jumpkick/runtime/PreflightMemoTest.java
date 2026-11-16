@@ -318,10 +318,9 @@ class PreflightMemoTest {
                             "manifest, lock, the two sources and the release file of the JDK the tests run on: each read once")
                     .isEqualTo(5);
 
-            TestStamp.computeKey(
-                    List.of(testSrc), tmp.resolve("target/classes"), List.of(), lock, List.of(), List.of());
+            TestStamp.computeKey(List.of(testSrc), tmp.resolve("target/classes"), List.of(), List.of(), List.of());
             assertThat(FileHashMemo.contentReads())
-                    .as("the stamp's test source and lock are memo hits")
+                    .as("the stamp's test source is a memo hit")
                     .isEqualTo(readsAfterPreflight);
 
             PreflightMemo.fingerprintModule(tmp, false);

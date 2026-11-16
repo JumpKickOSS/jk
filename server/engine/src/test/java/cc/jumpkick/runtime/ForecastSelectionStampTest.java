@@ -72,8 +72,8 @@ class ForecastSelectionStampTest {
                                 TestStampInputs.Facts.of(dir, project), ClasspathFingerprint.ON_DISK)
                         .extras());
 
-        String wholeKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), lock, List.of(), whole);
-        String partialKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), lock, List.of(), partial);
+        String wholeKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), List.of(), whole);
+        String partialKey = TestStamp.computeKey(List.of(src), mainClasses, List.of(), List.of(), partial);
         assertThat(wholeKey).isNotNull();
         assertThat(partialKey).isNotNull().isNotEqualTo(wholeKey);
     }

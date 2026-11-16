@@ -85,7 +85,7 @@ class SuiteExplicitStampTest {
                         List.of(),
                         TestStamp.CompileTestKeys.NONE),
                 ClasspathFingerprint.ON_DISK);
-        String key = stamp.key(List.of(src), layout.classesDir(), null, List.of(), lock, stamp.extras());
+        String key = stamp.key(List.of(src), layout.classesDir(), null, List.of(), stamp.extras());
         assertThat(key).as("every input readable").isNotNull();
         return new Run(resolved.suites(), compiled, Objects.requireNonNull(key));
     }
