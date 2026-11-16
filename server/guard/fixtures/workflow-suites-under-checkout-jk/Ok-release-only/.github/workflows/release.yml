@@ -1,0 +1,15 @@
+# A job that only drives the release itself may run it as bootstrapped: no suite runs.
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bash scripts/ci-bootstrap.sh
+      - run: jk release --minor --skip-tests --no-ansi

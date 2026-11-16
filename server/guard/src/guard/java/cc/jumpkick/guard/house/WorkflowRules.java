@@ -15,7 +15,8 @@ import java.util.regex.Pattern;
 /**
  * The hygiene every workflow under {@code .github/workflows/} is held to, the same three rules
  * {@code scripts/check-workflows.sh} applies in CI's workflow-lint job, so a contributor's {@code jk
- * guard} refuses a workflow edit before the push does. Read from the raw lines: the release tag a
+ * guard} refuses a workflow edit before the push does; and that a job runs the tree's suites under
+ * the checkout's own jk, not the release it bootstraps from. Read from the raw lines: the release tag a
  * pin stands for is a YAML comment, and the comment is part of the rule.
  */
 @GuardSuite(scope = Scope.WORKSPACE)
@@ -142,6 +143,56 @@ final class WorkflowRules {
                     new TextSite(wf, 1, "permissions"),
                     wf
                             + ": no top-level permissions: block — every workflow opens with 'permissions:' and 'contents: read'");
+    }
+
+    // ---- suites under the checkout's jk ------------------------------------------------------
+
+    private static final Pattern JOB = Pattern.compile("^  ([A-Za-z0-9_-]+):\\s*$");
+    private static final Pattern BOOTSTRAP = Pattern.compile("scripts/ci-bootstrap\\.sh");
+    private static final Pattern TAKEOVER = Pattern.compile("scripts/ci-takeover\\.sh");
+    private static final Pattern SUITES = Pattern.compile("\\bjk (?:test|guard)\\b|scripts/ci-node-windows\\.sh");
+
+    @Guard(
+            id = "workflow-suites-under-checkout-jk",
+            why =
+                    "a job that installs the pinned release and then runs the tree's suites runs them under the release's engine: engine-side fixes the tree carries are not in it, so the job reports what the release does (on Windows CI, jk-cli's suite replayed on 'C:/Program' long after the tree had fixed that)",
+            instead =
+                    "after scripts/ci-bootstrap.sh, run scripts/ci-takeover.sh (--install-only when the job only needs the checkout's jk installed) before any step that runs jk test, jk guard or a suite script")
+    @Fixture("server/guard/fixtures/workflow-suites-under-checkout-jk")
+    void workflowSuitesUnderCheckoutJk(Text text, Violations v) {
+        List<String> workflows = text.files(WORKFLOWS);
+        for (String wf : workflows) {
+            List<String> lines = text.lines(wf);
+            boolean inJobs = false;
+            String job = null;
+            boolean bootstrapped = false;
+            boolean tookOver = false;
+            for (int i = 0; i < lines.size(); i++) {
+                String line = lines.get(i);
+                if (line.startsWith("jobs:")) {
+                    inJobs = true;
+                    continue;
+                }
+                if (!inJobs || line.strip().startsWith("#")) continue;
+                Matcher m = JOB.matcher(line);
+                if (m.matches()) {
+                    job = m.group(1);
+                    bootstrapped = false;
+                    tookOver = false;
+                    continue;
+                }
+                if (job == null) continue;
+                String code = stripComment(line);
+                if (BOOTSTRAP.matcher(code).find()) bootstrapped = true;
+                else if (TAKEOVER.matcher(code).find()) tookOver = true;
+                else if (bootstrapped && !tookOver && SUITES.matcher(code).find())
+                    v.add(
+                            new TextSite(wf, i + 1, code.strip()),
+                            wf + ": job " + job + " runs the tree's suites under the pinned release: " + code.strip()
+                                    + " — take over with scripts/ci-takeover.sh first");
+            }
+        }
+        v.population(workflows.size());
     }
 
     private static String stripComment(String value) {

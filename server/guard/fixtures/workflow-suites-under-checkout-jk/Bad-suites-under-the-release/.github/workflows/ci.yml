@@ -1,0 +1,17 @@
+# The Node.js toolchain job as it was: the suites ran under the pinned release's engine.
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Bootstrap jk from the hosted release
+        run: bash scripts/ci-bootstrap.sh
+      - name: Node.js toolchain suites
+        run: bash scripts/ci-node-windows.sh

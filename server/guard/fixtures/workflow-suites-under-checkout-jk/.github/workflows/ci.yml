@@ -1,0 +1,20 @@
+# The tree every case starts from: the checkout's jk takes over before the suites run.
+name: CI
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  suites:
+    runs-on: windows-2022
+    steps:
+      - name: Bootstrap jk from the hosted release
+        run: bash scripts/ci-bootstrap.sh
+      - name: The checkout's own jk takes over
+        run: bash scripts/ci-takeover.sh --install-only
+      - name: Suites
+        run: bash scripts/ci-node-windows.sh
+      - run: jk test --no-ansi

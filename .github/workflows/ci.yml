@@ -387,10 +387,12 @@ jobs:
         run: .\scripts\test-installer-verification.ps1
 
   # The Node.js toolchain on Windows: provisioning from the win-x64 zip, `jk node`, and the node
-  # build e2e, on the hosted jk. The runner image's Node.js serves the suites that run on the host's.
+  # build e2e, under the checkout's own jk. The runner image's Node.js serves the suites that run
+  # on the host's. windows-2022 for the reason the product smoke gives: the checkout's install links
+  # a native client.
   node-windows:
     name: Node.js toolchain (Windows)
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -411,6 +413,12 @@ jobs:
         env:
           JK_CLIENT: native
         run: bash scripts/ci-bootstrap.sh
+
+      # The suites run under the checkout's jk: under the pinned release they ran on its engine, so
+      # an engine-side fix the tree carries never reached them (workflow-suites-under-checkout-jk).
+      - name: The checkout's own jk takes over
+        shell: bash
+        run: bash scripts/ci-takeover.sh --install-only
 
       - name: Node.js toolchain suites
         shell: bash
