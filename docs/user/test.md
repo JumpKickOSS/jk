@@ -51,7 +51,10 @@ it runs: `jk build`, `jk test`, `jk install`, with or without `-g`, leave the sa
 tests run is the selection's alone. So after `jk install -g` the plain verbs are up to date: the
 guard's green run ran the default suite too, and `jk build` and `jk test` replay it rather than
 running those tests again (the replayed count is the guard run's). A selection with tags,
-`--class` or `--all` is never served by the guard's run.
+`--class` or `--all` is never served by the guard's run. The test compile keys the main classes
+tree once every step that writes into it has run (`[build-info]`'s `git.properties` and Boot's
+`META-INF/build-info.properties`, `[build] module-services`), so the order the steps happen to run
+in under one verb or another never makes a second key for the same tree.
 
 Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that

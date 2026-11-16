@@ -409,10 +409,21 @@ public final class PlannerResources {
      * #CLASSES_WHOLE} itself.
      */
     static List<String> lastClassesWriters(boolean buildInfo, boolean moduleServices) {
+        List<String> out = lateClassesWriters(buildInfo, moduleServices);
+        if (out.isEmpty()) out.add(CLASSES_WHOLE);
+        return out;
+    }
+
+    /**
+     * The planned steps that write the main classes tree after {@link #CLASSES_WHOLE}: {@code
+     * build-info} and {@code module-services}, empty when neither is. A step that keys the tree (a
+     * test compile reads its {@code META-INF} resources) waits for them, or its key depends on which
+     * one the scheduler ran first (JK-NVBS1).
+     */
+    static List<String> lateClassesWriters(boolean buildInfo, boolean moduleServices) {
         List<String> out = new ArrayList<>();
         if (buildInfo) out.add(TaskNames.BUILD_INFO);
         if (moduleServices) out.add(TaskNames.MODULE_SERVICES);
-        if (out.isEmpty()) out.add(CLASSES_WHOLE);
         return out;
     }
 

@@ -66,8 +66,14 @@ final class TestCompileSteps {
     private final boolean hasFixtures;
     private final @Nullable PluginDeclarations pluginDecls;
     private final KspArm ksp;
+    private final List<String> lateWriters;
 
-    TestCompileSteps(BuildPlanner.Ctx cx, boolean hasFixtures, @Nullable PluginDeclarations pluginDecls, KspArm ksp) {
+    TestCompileSteps(
+            BuildPlanner.Ctx cx,
+            boolean hasFixtures,
+            @Nullable PluginDeclarations pluginDecls,
+            KspArm ksp,
+            List<String> lateWriters) {
         this.in = cx.in();
         this.cas = cx.cas();
         this.actionCache = cx.actionCache();
@@ -77,6 +83,7 @@ final class TestCompileSteps {
         this.hasFixtures = hasFixtures;
         this.pluginDecls = pluginDecls;
         this.ksp = ksp;
+        this.lateWriters = List.copyOf(lateWriters);
     }
 
     Task compileTest() {
@@ -87,6 +94,9 @@ final class TestCompileSteps {
         List<String> requires = new ArrayList<>(
                 List.of(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES));
         if (hasFixtures) requires.add(TaskNames.COMPILE_TEST_FIXTURES);
+        // So do build-info and module-services, which write that tree after the compile: a key taken
+        // before META-INF/build-info.properties landed differs from one taken after (JK-NVBS1).
+        requires.addAll(lateWriters);
         requires.addAll(testSourceGenSteps(pluginDecls));
         return Task.builder(TaskNames.COMPILE_TEST)
                 .forecast(StepForecast.priced(this::forecastCompileTest))

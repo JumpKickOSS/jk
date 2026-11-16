@@ -578,6 +578,15 @@ build-info wrote into the tree, the preflight memo's guard salt before a pack wa
 suite's stamp over a listing its own fixtures wrote into). On content the action cache has seen,
 both keys hit and the defect hides, so it is checked mechanically rather than found by hand.
 
+Nor does it depend on the schedule: a step that keys a tree another step of the same module writes
+into waits for that step. `build-info` and `module-services` write the main classes tree after
+`CLASSES_WHOLE`, and the test compiles (`compile-test`, `compile-test-fixtures`, `compile-guard`)
+key that tree with its `META-INF` resources, so they wait for both
+(`PlannerResources.lateClassesWriters`). Without the edge a test compile the scheduler ran first
+keyed the tree without Boot's `META-INF/build-info.properties` and one it ran after keyed it with:
+two keys for one tree, and the suite, whose stamp names the compile key, ran again under whichever
+verb drew the other order (JK-NVBS1).
+
 `JK_KEY_AUDIT=warn` (or `strict`) on the client turns on the **key audit** for that build
 (`KeyAudit`; the session's `keyAudit`, sent as `keyAudit` on the request; `-Djk.keyAudit=` in a
 test JVM). Every step that keys its work registers the key it looked up or stored under and a

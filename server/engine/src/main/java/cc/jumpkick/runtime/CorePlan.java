@@ -264,10 +264,14 @@ final class CorePlan {
         Task moduleServices =
                 parsedBuild != null && parsedBuild.build().moduleServices() ? PlannerModuleServices.step(cx) : null;
         boolean hasFixtures = parsedBuild != null && PlannerFixtures.declared(parsedBuild);
-        Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx);
+        // The test compiles key the main classes tree with its META-INF resources, and build-info
+        // and module-services write into it after the compile: a compile that keyed it before they
+        // wrote took another key than one that keyed it after, whichever the scheduler ran first.
+        List<String> lateWriters = PlannerResources.lateClassesWriters(buildInfo != null, moduleServices != null);
+        Task compileTestFixtures = PlannerFixtures.compileTestFixturesStep(cx, lateWriters);
         boolean hasGuardSuite = PlannerGuardSuite.declared(in.dir(), shape.compact());
-        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact(), hasFixtures);
-        Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls, kspArm).compileTest();
+        Task compileGuard = PlannerGuardSuite.compileGuardStep(cx, shape.compact(), hasFixtures, lateWriters);
+        Task compileTest = new TestCompileSteps(cx, hasFixtures, pluginDecls, kspArm, lateWriters).compileTest();
         // In testOnly plans no package path exists to anchor the freshness stamps, so
         // run-tests carries them in its requires — otherwise the target-closure prune drops
         // them and the edit→test loop re-runs the main compile every invocation.

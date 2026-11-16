@@ -78,7 +78,7 @@ class VerbMatrixNoopE2eTest {
         }
     }
 
-    private static void upToDate(Path home, Path ws, String... verb) throws IOException, InterruptedException {
+    static void upToDate(Path home, Path ws, String... verb) throws IOException, InterruptedException {
         List<String> args = new ArrayList<>(List.of(verb));
         args.add("--agent"); // the terse verdict, which names a no-op "up to date" in every verb
         Run run = jk(home, ws, args.toArray(new String[0]));
@@ -88,7 +88,7 @@ class VerbMatrixNoopE2eTest {
                 .contains("up to date");
     }
 
-    private static void nothingForecast(Path home, Path ws, String... verb) throws IOException, InterruptedException {
+    static void nothingForecast(Path home, Path ws, String... verb) throws IOException, InterruptedException {
         List<String> args = new ArrayList<>(List.of(verb));
         args.addAll(List.of("-O", "jsonl"));
         Run run = jk(home, ws, args.toArray(new String[0]));
@@ -197,15 +197,15 @@ class VerbMatrixNoopE2eTest {
         return root;
     }
 
-    private static void write(Path file, String text) throws IOException {
+    static void write(Path file, String text) throws IOException {
         Files.createDirectories(file.getParent());
         Files.writeString(file, text);
     }
 
-    private record Run(int exit, String output) {}
+    record Run(int exit, String output) {}
 
     /** Fork the CLI on this JVM's classpath against {@code home} in {@code ws}; bounded, output captured. */
-    private static Run jk(Path home, Path ws, String... args) throws IOException, InterruptedException {
+    static Run jk(Path home, Path ws, String... args) throws IOException, InterruptedException {
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         cmd.addAll(EngineSpawn.forwardedJvmArgs()); // the worker-jar overrides, for the engine this client spawns
@@ -227,7 +227,7 @@ class VerbMatrixNoopE2eTest {
         return new Run(run.exit(), "jk " + String.join(" ", args) + "\n" + run.output());
     }
 
-    private static void copyTree(Path from, Path to) throws IOException {
+    static void copyTree(Path from, Path to) throws IOException {
         try (Stream<Path> files = Files.walk(from)) {
             for (Path src : files.toList()) {
                 Path dst = to.resolve(from.relativize(src).toString());

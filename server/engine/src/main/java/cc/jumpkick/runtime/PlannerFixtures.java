@@ -38,6 +38,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -190,7 +191,7 @@ public final class PlannerFixtures {
         return !fxStep.cached();
     }
 
-    static Task compileTestFixturesStep(BuildPlanner.Ctx cx) {
+    static Task compileTestFixturesStep(BuildPlanner.Ctx cx, List<String> lateWriters) {
         BuildPlanner.Inputs in = cx.in();
         Cas cas = cx.cas();
         ActionCache actionCache = cx.actionCache();
@@ -201,7 +202,14 @@ public final class PlannerFixtures {
                 .stage(BuildStage.COMPILE)
                 .label("Test Fixtures")
                 .kind(TaskKind.CPU)
-                .requires(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES)
+                // The main classes tree is on its classpath, keyed once its last writers are done.
+                .requires(Stream.concat(
+                                Stream.of(
+                                        TaskNames.BUILD_LOGIC_AFTER_COMPILE,
+                                        TaskNames.RESOLVE_DEPS,
+                                        TaskNames.COPY_RESOURCES),
+                                lateWriters.stream())
+                        .toArray(String[]::new))
                 .weight(() -> plan.get().compileTest())
                 .ticks(1)
                 .execute(ctx -> {
