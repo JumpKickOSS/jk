@@ -754,8 +754,8 @@ public final class MavenRepo {
                     if (local.isPresent()) return local.get();
                 }
             }
-            URI uri = fetchBase.resolve(relativePath);
             refuseIfUnreachable();
+            URI uri = fetchBase.resolve(sourcePath(relativePath));
             storeMissed.run();
             // The same file into the same store under the same pin and credential: one download,
             // whoever asks. Two repositories at one URL with different credentials never share one.
@@ -769,6 +769,13 @@ public final class MavenRepo {
                 return fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force);
             });
         }
+    }
+
+    /** Where a {@code file:} repository keeps {@code relativePath} ({@link SnapshotFiles#source}); a remote, as asked. */
+    private String sourcePath(String relativePath) throws InterruptedException {
+        return local()
+                ? SnapshotFiles.source(relativePath, p -> transport.fetch(fetchBase.resolve(p), credential))
+                : relativePath;
     }
 
     /**
@@ -1117,8 +1124,8 @@ public final class MavenRepo {
      * its bytes; else the copy is evicted and empty, so the fetch reads the file again. The file's
      * digest is remembered under its stat identity, so an unchanged file costs one stat.
      */
-    private Optional<Fetched> sourceHolds(String relativePath, Fetched stored) {
-        if (MovingSnapshots.sourceDigest(fetchBase.resolve(relativePath))
+    private Optional<Fetched> sourceHolds(String relativePath, Fetched stored) throws InterruptedException {
+        if (MovingSnapshots.sourceDigest(fetchBase.resolve(sourcePath(relativePath)))
                 .filter(stored.sha256()::equalsIgnoreCase)
                 .isPresent()) {
             verified.put(relativePath, stored.sha256());
