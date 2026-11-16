@@ -540,7 +540,10 @@ class OfficialTemplatesFreshenTest {
                     "the miss was not remembered");
 
             Files.delete(git);
-            fakeGit(git, "git version 2.40.1");
+            // Another size: on ext4 a same-size rewrite inside one clock tick reuses the inode and
+            // every stamp (size, mtime, ctime) in about 1 of 40 tries, and the settled clock above
+            // tells the memo to trust a stamp it cannot tell from the old one.
+            fakeGit(git, "git version 2.40.10");
             assertEquals(new GitVersion(2, 40), OfficialTemplatesFreshen.gitVersion(git.toString()));
         } finally {
             Settled.aheadForTests(null);
