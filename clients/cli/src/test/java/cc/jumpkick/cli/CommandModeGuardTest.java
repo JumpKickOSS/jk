@@ -17,16 +17,19 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Every registered command, hidden ones included, in every output mode, checked from the command
@@ -37,6 +40,10 @@ import org.junit.jupiter.api.io.TempDir;
  * directory and user home, offline, with no engine (the fast tier forbids spawning one); the commands that cannot
  * run that way are in {@link #NOT_RUN}, each with its reason, and that list is checked against the
  * registry too.
+ *
+ * <p>Each command in each mode is a test of its own, so each gets the tier's per-method limit: one
+ * method looping over the registry passed 20 s on a loaded budget Windows host, where the whole walk
+ * takes about 13 s idle and a single run well under one.
  */
 class CommandModeGuardTest {
 
@@ -154,6 +161,13 @@ class CommandModeGuardTest {
 
     private record Run(int exit, String out, String err) {}
 
+    /**
+     * The limit on one run, under the fast tier's 20 s per method so that a hung command fails here,
+     * naming itself, rather than at the tier's limit. The slowest single run on the budget Windows host
+     * (bocaminipc) takes about a second.
+     */
+    static final int RUN_SECONDS = 15;
+
     /** {@code args} run in-process on a thread of its own, failing the test past {@code seconds}. */
     private static Run run(List<String> args, int seconds) throws Exception {
         int[] exit = {Integer.MIN_VALUE};
@@ -231,88 +245,120 @@ class CommandModeGuardTest {
     @Test
     void an_unknown_verb_fails_in_every_mode() throws Exception {
         for (Mode mode : Mode.values()) {
-            Run r = run(argv("jk nosuchverb", mode.flags), 30);
+            Run r = run(argv("jk nosuchverb", mode.flags), RUN_SECONDS);
             assertThat(r.exit()).as("jk nosuchverb %s", mode.flags).isEqualTo(Exit.USAGE);
             assertThat(r.out()).as("jk nosuchverb %s: stdout", mode.flags).isEmpty();
         }
     }
 
-    @Test
-    void help_works_for_every_command_in_every_mode() throws Exception {
-        for (var e : allCommands().entrySet()) {
-            String name = e.getKey();
-            // A passthrough command's --help after its name is the tool's; jk's page is jk --help <name>.
-            List<String> helpArgs = e.getValue().passthrough()
-                    ? new ArrayList<>(List.of("--help", name.substring("jk ".length())))
-                    : argv(name, List.of("--help"));
-            for (Mode mode : Mode.values()) {
-                // Flags before a passthrough command's name are jk's; after it, the tool's.
-                List<String> args = new ArrayList<>(e.getValue().passthrough() ? mode.flags : helpArgs);
-                args.addAll(e.getValue().passthrough() ? helpArgs : mode.flags);
-                Run r = run(args, 30);
-                String what = "jk " + String.join(" ", args);
-                assertThat(r.exit()).as(what).isZero();
-                assertThat(r.out()).as(what).contains("Usage");
-                assertNoEscape(what, r);
-                if (mode == Mode.ASCII) assertAscii(what, r);
-            }
-            // On this thread: the terminal stand-in is bound to it.
-            Run onTerminal = StreamCaps.asTerminal(true, true, () -> runHere(helpArgs));
-            assertThat(onTerminal.exit()).as("%s on a terminal", helpArgs).isZero();
-        }
+    /** The registered command at {@code name}, which the sources above took from the registry. */
+    private static CliCommand command(String name) {
+        return Objects.requireNonNull(allCommands().get(name), name);
+    }
+
+    /** Every command path paired with every mode. */
+    static Stream<Arguments> everyCommandInEveryMode() {
+        return allCommands().keySet().stream()
+                .flatMap(name -> Stream.of(Mode.values()).map(mode -> Arguments.of(name, mode)));
+    }
+
+    /** Every command path, for the run on a terminal. */
+    static Stream<String> everyCommand() {
+        return allCommands().keySet().stream();
+    }
+
+    /** The leaves that run headless, each paired with every mode. */
+    static Stream<Arguments> runnableInEveryMode() {
+        return runnable().stream().flatMap(name -> Stream.of(Mode.values()).map(mode -> Arguments.of(name, mode)));
+    }
+
+    /** The leaves that run headless: neither in {@link #NOT_RUN} nor a passthrough. */
+    static List<String> runnable() {
+        List<String> out = new ArrayList<>();
+        leaves().forEach((name, leaf) -> {
+            if (!notRun(name) && !leaf.passthrough()) out.add(name);
+        });
+        return out;
+    }
+
+    /** The leaves with no machine output, which must refuse {@code -O jsonl}. */
+    static Stream<String> withNoMachineOutput() {
+        return leaves().entrySet().stream()
+                .filter(e -> e.getValue().machineOutput() == MachineOutput.NONE
+                        && !e.getValue().passthrough())
+                .map(Map.Entry::getKey);
+    }
+
+    /** {@code name}'s help page: after its name, or jk's own for a passthrough command, whose --help is the tool's. */
+    private static List<String> helpArgs(String name) {
+        return command(name).passthrough()
+                ? new ArrayList<>(List.of("--help", name.substring("jk ".length())))
+                : argv(name, List.of("--help"));
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("everyCommandInEveryMode")
+    void help_works_for_every_command_in_every_mode(String name, Mode mode) throws Exception {
+        boolean passthrough = command(name).passthrough();
+        List<String> helpArgs = helpArgs(name);
+        // Flags before a passthrough command's name are jk's; after it, the tool's.
+        List<String> args = new ArrayList<>(passthrough ? mode.flags : helpArgs);
+        args.addAll(passthrough ? helpArgs : mode.flags);
+        Run r = run(args, RUN_SECONDS);
+        String what = "jk " + String.join(" ", args);
+        assertThat(r.exit()).as(what).isZero();
+        assertThat(r.out()).as(what).contains("Usage");
+        assertNoEscape(what, r);
+        if (mode == Mode.ASCII) assertAscii(what, r);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("everyCommand")
+    void help_works_for_every_command_on_a_terminal(String name) throws Exception {
+        List<String> helpArgs = helpArgs(name);
+        // On this thread: the terminal stand-in is bound to it.
+        Run onTerminal = StreamCaps.asTerminal(true, true, () -> runHere(helpArgs));
+        assertThat(onTerminal.exit()).as("%s on a terminal", helpArgs).isZero();
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("withNoMachineOutput")
+    void a_command_with_no_machine_output_refuses_jsonl(String name) throws Exception {
+        CliCommand leaf = command(name);
+        Run r = run(argv(name, DispatchFoldsGlobalsTest.satisfying(leaf, "-O", "jsonl")), RUN_SECONDS);
+        String what = name + " -O jsonl";
+        assertThat(r.exit()).as(what).isEqualTo(Exit.USAGE);
+        assertThat(r.out()).as(what).isEmpty();
+        assertThat(r.err()).as(what).contains("has no -O jsonl output");
     }
 
     @Test
-    void a_command_with_no_machine_output_refuses_jsonl() throws Exception {
-        for (var e : leaves().entrySet()) {
-            CliCommand leaf = e.getValue();
-            if (leaf.machineOutput() != MachineOutput.NONE || leaf.passthrough()) continue;
-            Run r = run(argv(e.getKey(), DispatchFoldsGlobalsTest.satisfying(leaf, "-O", "jsonl")), 30);
-            String what = e.getKey() + " -O jsonl";
-            assertThat(r.exit()).as(what).isEqualTo(Exit.USAGE);
-            assertThat(r.out()).as(what).isEmpty();
-            assertThat(r.err()).as(what).contains("has no -O jsonl output");
-        }
+    void some_commands_run_headless() {
+        assertThat(runnable()).as("commands run headless").isNotEmpty();
     }
 
-    @Test
-    void every_runnable_command_honours_every_mode() throws Exception {
-        Map<String, List<String>> failures = new LinkedHashMap<>();
-        TreeSet<String> ran = new TreeSet<>();
-        for (var e : leaves().entrySet()) {
-            String name = e.getKey();
-            CliCommand leaf = e.getValue();
-            if (notRun(name) || leaf.passthrough()) continue;
-            ran.add(name);
-            for (Mode mode : Mode.values()) {
-                Path cwd = Files.createTempDirectory(tmp, "cwd");
-                List<String> tail = new ArrayList<>(DispatchFoldsGlobalsTest.satisfying(leaf));
-                tail.addAll(List.of("-C", cwd.toString(), "-o"));
-                tail.addAll(mode.flags);
-                Run r = run(argv(name, tail), 60);
-                String what = name + " " + mode.flags;
-                try {
-                    assertNoEscape(what, r);
-                    if (mode == Mode.ASCII) {
-                        // A script-mode command's stdout is its payload, byte-exact (a playbook, a path).
-                        if (leaf.scriptMode(Invocation.builder().build())) {
-                            assertThat(nonAscii(r.err()))
-                                    .as("%s: non-ASCII on stderr", what)
-                                    .isEmpty();
-                        } else {
-                            assertAscii(what, r);
-                        }
-                    }
-                    if (mode == Mode.JSONL) {
-                        if (leaf.machineOutput() == MachineOutput.JSONL) assertJsonl(what, r);
-                        else assertThat(r.exit()).as(what).isEqualTo(Exit.USAGE);
-                    }
-                } catch (AssertionError failure) {
-                    failures.computeIfAbsent(name, k -> new ArrayList<>()).add(failure.getMessage());
-                }
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("runnableInEveryMode")
+    void every_runnable_command_honours_every_mode(String name, Mode mode) throws Exception {
+        CliCommand leaf = command(name);
+        Path cwd = Files.createTempDirectory(tmp, "cwd");
+        List<String> tail = new ArrayList<>(DispatchFoldsGlobalsTest.satisfying(leaf));
+        tail.addAll(List.of("-C", cwd.toString(), "-o"));
+        tail.addAll(mode.flags);
+        Run r = run(argv(name, tail), RUN_SECONDS);
+        String what = name + " " + mode.flags;
+        assertNoEscape(what, r);
+        if (mode == Mode.ASCII) {
+            // A script-mode command's stdout is its payload, byte-exact (a playbook, a path).
+            if (leaf.scriptMode(Invocation.builder().build())) {
+                assertThat(nonAscii(r.err())).as("%s: non-ASCII on stderr", what).isEmpty();
+            } else {
+                assertAscii(what, r);
             }
         }
-        assertThat(ran).as("commands run headless").isNotEmpty();
-        assertThat(failures).as("commands that broke an output-mode rule").isEmpty();
+        if (mode == Mode.JSONL) {
+            if (leaf.machineOutput() == MachineOutput.JSONL) assertJsonl(what, r);
+            else assertThat(r.exit()).as(what).isEqualTo(Exit.USAGE);
+        }
     }
 }
