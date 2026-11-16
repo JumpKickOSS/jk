@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +45,38 @@ class WorkerArgfileTest {
         assertThat(file).doesNotExist();
     }
 
+    /**
+     * A short command with a quote inside a spaced argument, as the suite's out-of-memory hook
+     * writes under a home with a space: the host's own launch must hand it to the JVM whole.
+     */
+    @Test
+    void a_quote_inside_an_argument_reaches_the_jvm_whole_on_this_host(@TempDir Path tmp) throws Exception {
+        Path marker = tmp.resolve("has space").resolve("out.txt");
+        Files.createDirectories(marker.getParent());
+        String value = "type nul > \"" + tmp.resolve("jk home").resolve("oom-%p") + "\"";
+        List<String> cmd = List.of(
+                JdkFingerprint.java(Path.of(System.getProperty("java.home"))).toString(),
+                "-Dprobe.path=" + marker,
+                "-Dprobe.value=" + value,
+                "-cp",
+                probeClassPath(),
+                Probe.class.getName());
+        WorkerArgfile launched = WorkerArgfile.shorten(cmd);
+        try {
+            Processes.Captured run = Processes.capture(launched.command(), Duration.ofSeconds(60));
+            assertThat(run.timedOut()).as("launcher exited").isFalse();
+            assertThat(run.exit()).as(run.output()).isZero();
+            assertThat(Files.readString(marker)).isEqualTo(value);
+        } finally {
+            launched.delete();
+        }
+        WorkerArgfile onWindows = WorkerArgfile.shorten(cmd, true, WorkerArgfile.LIMIT);
+        onWindows.delete();
+        assertThat(onWindows.file())
+                .as("Windows launches it through an argfile however short it is")
+                .isNotNull();
+    }
+
     @Test
     void quoting_escapes_the_two_characters_the_launcher_reads_specially() {
         assertThat(WorkerArgfile.quote("plain")).isEqualTo("\"plain\"");
@@ -79,6 +112,15 @@ class WorkerArgfileTest {
         } finally {
             shortened.delete();
         }
+    }
+
+    /** The one class-path entry that holds {@link Probe}, so the command stays far below the length cap. */
+    private static String probeClassPath() {
+        String probe = Probe.class.getName().replace('.', '/') + ".class";
+        for (String entry : System.getProperty("java.class.path").split(File.pathSeparator)) {
+            if (Files.isRegularFile(Path.of(entry).resolve(probe))) return entry;
+        }
+        throw new AssertionError("no class-path folder holds " + probe);
     }
 
     /** Writes {@code probe.value} into the file {@code probe.path} names. */

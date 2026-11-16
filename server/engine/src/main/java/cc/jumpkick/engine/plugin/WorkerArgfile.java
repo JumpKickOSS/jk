@@ -13,8 +13,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * A worker command line that fits the host. Windows caps a process command line at 32 K
  * characters and a test classpath alone can reach it, so past {@link #LIMIT} every launcher
- * argument moves into a Java {@code @argfile} and the command becomes {@code java @file}. Each
- * argument is written on its own line, double-quoted, with {@code \} and {@code "} escaped the
+ * argument moves into a Java {@code @argfile} and the command becomes {@code java @file}. So does a
+ * command with a {@code "} in an argument: {@link ProcessBuilder} quotes a Windows argument without
+ * escaping the quotes inside it, so the child splits {@code type nul > "C:\a b\c"} at the space.
+ * Each argument is written on its own line, double-quoted, with {@code \} and {@code "} escaped the
  * way the launcher reads them.
  */
 record WorkerArgfile(List<String> command, @Nullable Path file) {
@@ -22,13 +24,17 @@ record WorkerArgfile(List<String> command, @Nullable Path file) {
     /** Below Windows' 32 767-character cap with room for the launcher's own quoting. */
     static final int LIMIT = 30_000;
 
-    /** {@code command} as the host can launch it; on Windows a long one is rewritten through an argfile. */
+    /**
+     * {@code command} as the host can launch it; on Windows a long one, or one with a quote in an
+     * argument, is rewritten through an argfile.
+     */
     static WorkerArgfile shorten(List<String> command) throws IOException {
         return shorten(command, Os.isWindows(), LIMIT);
     }
 
     static WorkerArgfile shorten(List<String> command, boolean windows, int limit) throws IOException {
-        if (!windows || command.size() < 2 || length(command) <= limit) return new WorkerArgfile(command, null);
+        if (!windows || command.size() < 2 || (length(command) <= limit && !quoted(command)))
+            return new WorkerArgfile(command, null);
         Path file = Files.createTempFile("jk-worker-", ".args");
         StringBuilder body = new StringBuilder();
         for (String arg : command.subList(1, command.size()))
@@ -42,6 +48,14 @@ record WorkerArgfile(List<String> command, @Nullable Path file) {
         int n = 0;
         for (String arg : command) n += arg.length() + 3;
         return n;
+    }
+
+    /** Whether an argument after the launcher holds a {@code "}, which ProcessBuilder's Windows line splits. */
+    static boolean quoted(List<String> command) {
+        for (String arg : command.subList(1, command.size())) {
+            if (arg.indexOf('"') >= 0) return true;
+        }
+        return false;
     }
 
     /** One argfile token: double-quoted, with the launcher's two escapes. */
