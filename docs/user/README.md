@@ -41,6 +41,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 ### Project shape
 
 - [Install](install.md) — installer, on-disk layout, env
+- [Windows setup](windows.md) — Smart App Control, Defender, where to keep code, Dev Drive
 - [What's new](whats-new.md) — each release's highlights
 - [Projects and `jk.toml`](projects.md)
 - [Workspaces](workspaces.md)

@@ -22,6 +22,9 @@ jk test
 jk web        # watch every build, test, and agent run live
 ```
 
+On Windows, the [Windows setup guide](docs/user/windows.md) gets a stock Windows 11 machine building
+fast: Smart App Control, Defender, where to keep code, and the optional Dev Drive.
+
 `jk new` wires your agent in for you: Claude Code, Cursor, VS Code, Gemini CLI, and opencode. On
 an existing project, run `jk agents`.
 

@@ -12,6 +12,8 @@ irm https://jumpkick.build/install.ps1 | iex
 jk --help
 ```
 
+On Windows, [Windows setup](windows.md) takes a stock Windows 11 machine from installed to fast.
+
 The installer puts **`jk`** and **`jkx`** on your PATH. JumpKick requires **JDK 25+** to
 run and will install one if needed. After that, prefer `java = N` in `jk.toml` for
 language level — [Concepts](concepts.md).
@@ -266,7 +268,7 @@ non-default home anyway. On Windows a `JK_HOME` set as a User environment variab
 (`[Environment]::SetEnvironmentVariable('JK_HOME', 'D:\jk', 'User')`, before installing) is an
 install of its own, as the default home is: the installer puts it on the User PATH, and its engine
 registers JumpKick's name and icon for notifications. That is how a home on a Dev Drive is set up
-; a `JK_HOME` set in one shell alone stays private. The
+(see [Windows setup](windows.md)); a `JK_HOME` set in one shell alone stays private. The
 root-specific variables win over `JK_HOME`, and they compose:
 `JK_HOME=/tmp/cold JK_STORE_DIR=$HOME/.jk/store` gives you a scratch everything with a warm store.
 Such a home builds against that store but never installs into it: its `jk install`, and the
