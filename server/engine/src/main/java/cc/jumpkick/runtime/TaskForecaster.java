@@ -528,7 +528,10 @@ public final class TaskForecaster {
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
             Log.debug("forecast " + u.coord() + ": could not predict", e);
-            return s.failed("could not predict (" + e.getClass().getSimpleName() + ")");
+            // The message too: the class alone ("could not predict (NoSuchFileException)") named no
+            // file, and the exception itself is only at debug.
+            String why = e.getMessage() == null ? "" : ": " + e.getMessage();
+            return s.failed("could not predict (" + e.getClass().getSimpleName() + why + ")");
         }
     }
 

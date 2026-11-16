@@ -87,12 +87,22 @@ class EnvProcessorE2eTest {
             ActionCache actionCache =
                     new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
             List<TaskForecast.Module> plan = ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true);
-            return plan.stream()
+            TaskForecast.Module app = plan.stream()
                     .filter(m -> m.dir().getFileName().toString().equals("app"))
-                    .flatMap(m -> m.steps().stream())
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("the forecast has no app module: " + plan));
+            Optional<Boolean> cached = app.steps().stream()
                     .filter(s -> s.name().equals(TaskNames.COMPILE_JAVA))
                     .findFirst()
                     .map(TaskForecast.Task::cached);
+            // A forecast that threw degrades to a module with no steps and a reason; name it, so a
+            // failure under load says why the compile is missing (JK-9MA5G).
+            if (cached.isEmpty()) {
+                throw new AssertionError("no " + TaskNames.COMPILE_JAVA + " in app's forecast under " + mode
+                        + ": reason " + app.reason() + ", steps "
+                        + app.steps().stream().map(TaskForecast.Task::name).toList());
+            }
+            return cached;
         });
     }
 
