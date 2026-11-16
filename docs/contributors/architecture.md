@@ -692,9 +692,10 @@ keys. Local restore remains copy-not-link (see CAS invariant tests).
 
 **Record format.** A key record (`ActionRecordText`) is UTF-8 lines: `TASK <task id>`,
 `KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `KIND <kind>`,
-`CREATED
-<instant>`, `PRODUCER jk/<cache-key version>`, `PLATFORM <os>-<arch>` (where the outputs were
-made: a statement, never key material), `WALL <millis>` (the storing step's own time, waits
+`CREATED <instant>`, `PRODUCER jk/<cache-key version>`, `HOST <os>-<arch>` (where the outputs
+were made), `TOOLCHAIN toolchain:<kind>:<identity>` and `TARGET <os>-<arch>[-<libc>]` (the platform
+the outputs are for; absent for outputs that run anywhere, so bytecode and jars name none; nothing
+writes either line yet), all statements and never key material, `WALL <millis>` (the storing step's own time, waits
 excluded, when it stored inside a step), then `INPUT <value> <name>`, `OUTPUT <sha256>/<bytes>
 <path>` (a marker scalar in place of a blob carries no size) and `EXEC <path>` in name order, then
 `SAID <line>` in order, then `END <output count>`. A reader skips a line it does not know, and a
@@ -711,6 +712,9 @@ may leave the machine (`renderShared`) keeps every header line and drops absolut
 | `alias` | `storeAlias` | latest write | write-once |
 | `test-marker` | `storeMarkers` (a suite's counts, red or green) | latest write: red turns green under one stamp | an observation per writer; green only |
 | `class-ledger` | `storeMarkers` (per-class outcomes, empty when cleared) | merged and rewritten | an observation per writer; green classes only |
+
+A store shared across machines may serve a record made on any host to any reader when the
+record names no `TARGET`; a record that names one is for that platform only.
 
 `ActionRecordText.shareable` is the one predicate for what may leave the machine: a result JumpKick
 would replay where it was produced. Outputs, aliases and verdicts are; a test marker only when

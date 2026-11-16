@@ -59,9 +59,9 @@ an absolute path anywhere else (a jar declared by absolute path, a JDK outside `
 which names sources by absolute path, stay local. Of the environment, only the names of the
 variables a key read leave the machine (`env:DB_PIN=-`): no value, and no digest of one, since a
 digest of a short secret can be guessed; the key itself, hashed here from the values, is unchanged. Every record also says when it was made, by
-which JumpKick version, on which platform (`linux-x86_64`, `macos-aarch64`, ...), and how many bytes each output
-holds, and how long the step that made it worked; the platform is a statement about the record,
-not part of its key. A hit on a machine with no history of the step (a fresh checkout, a record
+which JumpKick version, on which host (`linux-x86_64`, `macos-aarch64`, ...), how many bytes each
+output holds, and how long the step that made it worked. The host is a statement about the record,
+not part of its key: class files and jars are the same wherever they are made. A hit on a machine with no history of the step (a fresh checkout, a record
 another machine made) counts what it saved from that time, so `jk history show`'s saved figure and
 its coverage include it.
 

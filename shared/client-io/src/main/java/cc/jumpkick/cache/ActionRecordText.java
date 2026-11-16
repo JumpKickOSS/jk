@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
  * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code KIND},
- * {@code CREATED}, {@code PRODUCER}, {@code PLATFORM}, {@code WALL}), then {@code INPUT <value> <name>}, {@code OUTPUT
+ * {@code CREATED}, {@code PRODUCER}, {@code HOST}, {@code TOOLCHAIN}, {@code TARGET}, {@code WALL}), then {@code INPUT <value> <name>}, {@code OUTPUT
  * <sha256>/<bytes> <path>} and {@code EXEC <path>} lines in name order, then {@code SAID <line>}
  * lines in the order the action said them, then {@code END <outputCount>}. An output that is a
  * marker scalar rather than a blob carries no size. A record without that last line, or whose count disagrees with its
@@ -102,36 +102,46 @@ public final class ActionRecordText {
 
     /**
      * What a record says about itself beside its inputs and outputs: the format it is written in,
-     * when and by which jk ({@code jk/<cache-key version>}) on which platform ({@code <os>-<arch>})
-     * it was made, how long the step that made it worked ({@code wallMillis}, {@code -1} when not
-     * known), and the byte size of each output that is a blob, by output path. The platform is
-     * a statement of where the outputs were made, never part of the key. A record written without
-     * a field reads it as null, zero or empty.
+     * when and by which jk ({@code jk/<cache-key version>}) on which host ({@code <os>-<arch>}) it
+     * was made, the toolchain that made it ({@code toolchain:<kind>:<identity>}) and the platform
+     * its outputs are for ({@code <os>-<arch>[-<libc>]}), how long the step that made it worked
+     * ({@code wallMillis}, {@code -1} when not known), and the byte size of each output that is a
+     * blob, by output path. The host is where the outputs were made; the target is what they run
+     * on, absent for outputs that run anywhere (bytecode, resources, a jar), so a reader may take a
+     * record made on any host unless it names a target. Neither is part of the key. A record
+     * written without a field reads it as null, zero or empty.
      */
     public record Meta(
             int format,
             @Nullable Kind kind,
             @Nullable Instant created,
             @Nullable String producer,
-            @Nullable String platform,
+            @Nullable String host,
+            @Nullable String toolchain,
+            @Nullable String target,
             long wallMillis,
             Map<String, Long> sizes) {
 
-        public static final Meta NONE = new Meta(0, null, null, null, null, -1, Map.of());
+        public static final Meta NONE = new Meta(0, null, null, null, null, null, null, -1, Map.of());
 
         public Meta {
             sizes = Map.copyOf(sizes);
         }
 
-        /** A {@code kind} record made now, to the second, by {@code producer} on {@code platform}, its blobs {@code sizes} bytes each. */
+        /**
+         * A {@code kind} record made now, to the second, by {@code producer} on {@code host}, for no
+         * particular target, its blobs {@code sizes} bytes each.
+         */
         public static Meta now(
-                @Nullable Kind kind, String producer, String platform, long wallMillis, Map<String, Long> sizes) {
+                @Nullable Kind kind, String producer, String host, long wallMillis, Map<String, Long> sizes) {
             return new Meta(
                     FORMAT,
                     kind,
                     Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000),
                     producer,
-                    platform,
+                    host,
+                    null,
+                    null,
                     wallMillis,
                     sizes);
         }
@@ -269,8 +279,11 @@ public final class ActionRecordText {
         if (meta.created() != null) sb.append("CREATED ").append(meta.created()).append('\n');
         if (meta.producer() != null)
             sb.append("PRODUCER ").append(oneWord(meta.producer())).append('\n');
-        if (meta.platform() != null)
-            sb.append("PLATFORM ").append(oneWord(meta.platform())).append('\n');
+        if (meta.host() != null) sb.append("HOST ").append(oneWord(meta.host())).append('\n');
+        if (meta.toolchain() != null)
+            sb.append("TOOLCHAIN ").append(oneWord(meta.toolchain())).append('\n');
+        if (meta.target() != null)
+            sb.append("TARGET ").append(oneWord(meta.target())).append('\n');
         if (meta.wallMillis() >= 0) sb.append("WALL ").append(meta.wallMillis()).append('\n');
         for (Map.Entry<String, String> e : new TreeMap<>(inputs).entrySet()) {
             sb.append("INPUT ")
@@ -413,7 +426,9 @@ public final class ActionRecordText {
         @Nullable Kind kind = null;
         @Nullable Instant created = null;
         @Nullable String producer = null;
-        @Nullable String platform = null;
+        @Nullable String host = null;
+        @Nullable String toolchain = null;
+        @Nullable String target = null;
         long wallMillis = -1;
         int declaredOutputs = -1;
         for (String line : content.split("\n")) {
@@ -450,8 +465,12 @@ public final class ActionRecordText {
                 producer = line.substring("PRODUCER ".length()).trim();
             } else if (line.startsWith("WALL ")) {
                 wallMillis = Long.parseLong(line.substring("WALL ".length()).trim());
-            } else if (line.startsWith("PLATFORM ")) {
-                platform = line.substring("PLATFORM ".length()).trim();
+            } else if (line.startsWith("HOST ")) {
+                host = line.substring("HOST ".length()).trim();
+            } else if (line.startsWith("TOOLCHAIN ")) {
+                toolchain = line.substring("TOOLCHAIN ".length()).trim();
+            } else if (line.startsWith("TARGET ")) {
+                target = line.substring("TARGET ".length()).trim();
             } else if (line.startsWith("EXEC ")) {
                 executables.add(line.substring("EXEC ".length()).trim());
             } else if (line.startsWith("SAID ")) {
@@ -483,7 +502,7 @@ public final class ActionRecordText {
                 outputs,
                 executables,
                 List.copyOf(said),
-                new Meta(format, kind, created, producer, platform, wallMillis, sizes));
+                new Meta(format, kind, created, producer, host, toolchain, target, wallMillis, sizes));
     }
 
     private static boolean isSize(String digits) {

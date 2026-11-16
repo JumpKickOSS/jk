@@ -45,7 +45,7 @@ class ActionRecordMetaTest {
         assertThat(meta.kind()).isEqualTo(ActionRecordText.Kind.OUTPUTS);
         assertThat(meta.created()).isNotNull().isBetween(before, Instant.now());
         assertThat(meta.producer()).isEqualTo(ActionCache.producer()).startsWith("jk/");
-        assertThat(meta.platform()).isEqualTo(CachePlatform.current()).matches("[a-z]+-[a-z0-9_]+");
+        assertThat(meta.host()).isEqualTo(CachePlatform.current()).matches("[a-z]+-[a-z0-9_]+");
         assertThat(meta.sizes())
                 .containsEntry("p/A.class", 7L)
                 .containsEntry("p/B.class", 15L)
@@ -54,7 +54,9 @@ class ActionRecordMetaTest {
                 .as("A and C are one blob; no blob is left to stat")
                 .isEqualTo(22L);
         assertThat(record.outputs().get("p/A.class")).hasSize(64);
-        assertThat(text).contains("\nFORMAT 1\n").contains("\nPLATFORM " + CachePlatform.current() + "\n");
+        assertThat(text).contains("\nFORMAT 1\n").contains("\nHOST " + CachePlatform.current() + "\n");
+        assertThat(meta.target()).as("bytecode names no target").isNull();
+        assertThat(text).doesNotContain("TARGET");
         assertThat(text).containsPattern("OUTPUT [0-9a-f]{64}/15 p/B\\.class");
     }
 
@@ -67,6 +69,8 @@ class ActionRecordMetaTest {
                 Instant.parse("2026-11-15T17:03:11Z"),
                 "jk/0.51.2#8",
                 "linux-x86_64",
+                "toolchain:jdk:25.0.4+7",
+                "linux-aarch64",
                 4120,
                 Map.of("A.class", 812L));
         String local = ActionRecordText.render(
