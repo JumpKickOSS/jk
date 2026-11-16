@@ -430,7 +430,7 @@ public final class PomRuntimeClasspath {
                             if ("JK_HOME".equals(name)) return null;
                             return BuildEnv.get(name);
                         },
-                        System.getProperty("user.home"))
+                        JkDirs.userHome())
                 .storeDir()
                 .toAbsolutePath()
                 .normalize();

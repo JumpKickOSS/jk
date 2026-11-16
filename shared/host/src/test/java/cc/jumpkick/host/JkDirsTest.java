@@ -478,4 +478,37 @@ class JkDirsTest {
         assertThat(dirs.storeDir()).isEqualTo(home.resolve("store"));
         assertThat(dirs.borrowedDefaultStore(dirs.storeDir())).isEqualTo(defaultStore.toRealPath());
     }
+
+    /**
+     * The home follows {@code $HOME}, as the shell does: a JVM's {@code user.home} comes from the
+     * password database, so {@code HOME=/x jk} resolved the client and the engine it spawned to
+     * different homes (JK-TCMEN). Windows keeps {@code user.home}; an in-process change of {@code
+     * user.home} and a {@code jk.env.HOME} override win.
+     */
+    @Test
+    void the_user_home_is_dollar_home_where_the_shell_sets_it() {
+        Function<String, @Nullable String> none = n -> null;
+        Function<String, @Nullable String> scratch = n -> "HOME".equals(n) ? "/scratch" : null;
+
+        assertThat(JkDirs.userHome(none, scratch, "/home/real", "/home/real", "Linux"))
+                .isEqualTo("/scratch");
+        assertThat(JkDirs.userHome(none, scratch, "/home/real", "/home/real", "Mac OS X"))
+                .isEqualTo("/scratch");
+        assertThat(JkDirs.userHome(none, scratch, "C:\\Users\\real", "C:\\Users\\real", "Windows 11"))
+                .as("Windows: the profile directory")
+                .isEqualTo("C:\\Users\\real");
+        assertThat(JkDirs.userHome(none, none, "/home/real", "/home/real", "Linux"))
+                .as("no HOME")
+                .isEqualTo("/home/real");
+        assertThat(JkDirs.userHome(
+                        none, n -> "HOME".equals(n) ? "relative" : null, "/home/real", "/home/real", "Linux"))
+                .as("a relative HOME is no home")
+                .isEqualTo("/home/real");
+        assertThat(JkDirs.userHome(none, scratch, "/tmp/fake", "/home/real", "Linux"))
+                .as("user.home changed in process")
+                .isEqualTo("/tmp/fake");
+        assertThat(JkDirs.userHome(
+                        n -> "HOME".equals(n) ? "/over" : null, scratch, "/home/real", "/home/real", "Linux"))
+                .isEqualTo("/over");
+    }
 }

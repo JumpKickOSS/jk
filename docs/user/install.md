@@ -184,6 +184,10 @@ Everything JumpKick owns lives under **one directory**, `$HOME/.jk`, and it is t
 Linux, macOS and Windows. There is no platform table to consult and no environment variable
 to decode: if you want to know where a file is, it is under `~/.jk`.
 
+`$HOME` is read as the shell sets it, by the client, the engine it starts and every worker alike, so
+`HOME=/scratch jk build` runs entirely under `/scratch/.jk`: its own engine, store and state (on
+Windows the home is your profile directory). `JK_HOME` names the directory itself and wins over both.
+
 ```
 ~/.jk/
   config.toml   your settings
