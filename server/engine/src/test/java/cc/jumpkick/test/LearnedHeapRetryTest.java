@@ -10,6 +10,7 @@ import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.RunSnapshots;
 import cc.jumpkick.engine.plugin.AsOneStep;
+import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -114,6 +115,57 @@ class LearnedHeapRetryTest {
         assertThat(HeapNotes.drain()).isEmpty();
         assertThat(Files.readString(home.resolve("heaps"))).contains("-Xmx512m").doesNotContain("-Xmx256m");
         assertPeaks(state, 2);
+    }
+
+    /**
+     * The words alone are no heap exhaustion: a suite that prints HotSpot's out-of-memory line and
+     * passes, or fails an assertion quoting it, runs once at its heap and teaches nothing. Only the
+     * JVM's own {@code -XX:OnOutOfMemoryError} mark does (the other cases here).
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"printed", "asserted"})
+    void the_words_of_a_heap_error_alone_move_no_heap(String mode, @TempDir Path dir) throws Exception {
+        Path home = fakeJdk(dir, mode);
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        Path cache = Files.createDirectories(dir.resolve("cache"));
+        Path state = dir.resolve("state");
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        JUnitLauncher launcher =
+                new JUnitLauncher().withModuleLabel("g:app").withHeaps(new LearnedHeaps(state, 128L << 20));
+        TestSummary run = launcher.run(home, classes, List.of(), cache, 1, Map.of(), TestProgressListener.noop());
+        assertThat(HeapNotes.drain()).as("no retry").isEmpty();
+        assertThat(Files.readString(home.resolve("heaps")).lines().toList())
+                .as("one JVM, at its planned heap")
+                .containsExactly("-Xmx128m");
+        LearnedHeaps learned = new LearnedHeaps(state);
+        HeapScope.Key key = new HeapScope.Key(
+                dir, "g:app", HeapScope.TEST, Runtime.version().feature());
+        assertThat(learned.good(key)).isZero();
+        assertThat(learned.peak(key)).as("no heap noted as filled").isLessThan(128L << 20);
+        if (mode.equals("printed")) {
+            assertThat(run.failed()).isZero();
+        } else {
+            assertThat(run.failed()).as("the assertion is the test's failure").isEqualTo(1);
+        }
+    }
+
+    /** A learned heap past a quarter of RAM is never asked for: the run takes the ceiling and says so. */
+    @Test
+    void a_learned_heap_past_the_ceiling_runs_at_the_ceiling(@TempDir Path dir) throws Exception {
+        long ceiling = SuiteRetry.ceiling();
+        assumeTrue(ceiling > 0, "host memory known");
+        List<String> flags = SuiteRetry.tune(
+                new ArrayList<>(List.of("-Xmx256m")),
+                dir,
+                "g:app",
+                Runtime.version().feature(),
+                null,
+                new LearnedHeaps(dir.resolve("state"), 1L << 42));
+        assertThat(HeapFlags.parseXmx(flags)).isLessThanOrEqualTo(ceiling);
+        assertThat(HeapNotes.drain())
+                .singleElement()
+                .asString()
+                .contains("g:app learned a test heap of", "a quarter of RAM", "Forget it");
     }
 
     @Test
@@ -361,12 +413,16 @@ class LearnedHeapRetryTest {
                 #!/bin/sh
                 mx=""
                 gc=""
+                oom=""
                 for a in "$@"; do
                   case "$a" in
                     -Xmx*) mx="$a" ;;
                     -Xlog:gc:file=*) gc="${a#-Xlog:gc:file=}"; gc="${gc%%::*}" ;;
+                    -XX:OnOutOfMemoryError=*) oom="${a#-XX:OnOutOfMemoryError=}" ;;
                   esac
                 done
+                # The JVM's own word that its heap ran out: what HotSpot does for -XX:OnOutOfMemoryError.
+                ranout() { [ -n "$oom" ] && sh -c "$(printf '%s' "$oom" | sed "s/%p/$$/g")"; }
                 echo "$mx" >> "$(dirname "$0")/../heaps"
                 mode="MODE"
                 if [ "$mode" = "partial" ]; then
@@ -375,9 +431,10 @@ class LearnedHeapRetryTest {
                   heap=',"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}'
                   assertion=',"throwable":{"class":"java.lang.AssertionError","message":"expected 1","stack":""}'
                   case "$mx" in
-                    -Xmx128m) f demo.A SUCCESSFUL ""; f demo.B FAILED "$heap"; f demo.C FAILED "$heap"; plan_done; exit 1 ;;
-                    -Xmx256m) f demo.B FAILED "$assertion"; f demo.C FAILED "$heap"; plan_done; exit 1 ;;
+                    -Xmx128m) ranout; f demo.A SUCCESSFUL ""; f demo.B FAILED "$heap"; f demo.C FAILED "$heap"; plan_done; exit 1 ;;
+                    -Xmx256m) ranout; f demo.B FAILED "$assertion"; f demo.C FAILED "$heap"; plan_done; exit 1 ;;
                   esac
+                  ranout
                   echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                   exit 3
                 fi
@@ -386,15 +443,18 @@ class LearnedHeapRetryTest {
                   -Xmx128m|-Xmx64m) small=1 ;;
                   -Xmx256m) [ "$mode" = "big" ] && small=1 ;;
                 esac
+                case "$mode" in printed|asserted) small=0 ;; esac
                 if [ "$mode" = "escaped" ]; then
                   printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:warm()]","testClass":"demo.Big","testMethod":"warm()","duration_ms":1}'
                 fi
                 if [ "$mode" = "escaped" ] && [ "$small" = 1 ]; then
+                  ranout
                   printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"FAILED","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1,"throwable":{"class":"java.lang.OutOfMemoryError","message":"Java heap space","stack":""}}'
                   printf '%s\\n' '##JKT:{"event":"plan_finished","duration_ms":1,"failed":true}'
                   exit 1
                 fi
                 if [ "$mode" = "runner" ] && [ "$small" = 1 ]; then
+                  ranout
                   printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:warm()]","testClass":"demo.Big","testMethod":"warm()","duration_ms":1}'
                   echo "jk-test-runner: java.lang.OutOfMemoryError: Java heap space" >&2
                   exit 70
@@ -403,8 +463,18 @@ class LearnedHeapRetryTest {
                   if [ "$mode" = "after" ] || [ "$mode" = "always" ]; then
                     printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"SUCCESSFUL","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1}'
                   fi
+                  ranout
                   echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                   exit 3
+                fi
+                if [ "$mode" = "printed" ]; then
+                  # The words, with no heap exhaustion behind them: a test printing a child's output.
+                  echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
+                fi
+                if [ "$mode" = "asserted" ]; then
+                  printf '%s\\n' '##JKT:{"event":"finished","type":"TEST","status":"FAILED","uniqueId":"[engine:junit-jupiter]/[class:demo.Big]/[method:alloc()]","testClass":"demo.Big","testMethod":"alloc()","duration_ms":1,"throwable":{"class":"java.lang.AssertionError","message":"child said: java.lang.OutOfMemoryError: Java heap space","stack":""}}'
+                  printf '%s\\n' '##JKT:{"event":"plan_finished","duration_ms":1,"failed":true}'
+                  exit 1
                 fi
                 if [ -n "$gc" ]; then
                   printf '%s\\n' '[0.2s][info][gc] GC(0) Pause Young (Normal) (G1 Evacuation Pause) 180M->20M(256M) 1.0ms' > "$gc"

@@ -54,6 +54,28 @@ class LearnedHeapsTest {
                 .isEqualTo(128L << 20);
     }
 
+    /**
+     * The floor holds while the suite keeps failing, and comes down once it passes without running
+     * out: a green run relaxes it to what the newest peaks call for, so a heap a suite was wrongly
+     * taught does not hold for good.
+     */
+    @Test
+    void a_green_run_relaxes_the_floor_to_what_the_peaks_call_for(@TempDir Path dir) throws Exception {
+        LearnedHeaps heaps = new LearnedHeaps(dir);
+        Path project = dir.resolve("app");
+        HeapScope.Key key = new HeapScope.Key(project, "g:app", HeapScope.TEST, 25);
+        heaps.note(key, 200L << 20);
+        heaps.good(key, 4096L << 20);
+        long budget = WorkerLeases.engine().capacityBytes();
+        heaps.relax(key);
+        assertThat(heaps.good(key)).isEqualTo(LearnedHeaps.size(200L << 20, budget));
+        assertThat(heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20))
+                .isEqualTo(LearnedHeaps.size(200L << 20, budget));
+        HeapScope.Key unseen = new HeapScope.Key(project, "g:other", HeapScope.TEST, 25);
+        heaps.relax(unseen);
+        assertThat(Files.readString(heaps.file(project))).doesNotContain("g:other");
+    }
+
     @Test
     void a_heap_that_succeeded_after_an_exhaustion_is_the_floor_from_then_on(@TempDir Path dir) throws Exception {
         LearnedHeaps heaps = new LearnedHeaps(dir);

@@ -331,6 +331,8 @@ public final class JUnitLauncher {
                     : Runtime.version().feature();
             planned = SuiteRetry.tune(
                     planned, SuiteRetry.project(inferredModuleDir), moduleLabel, jdk, heapOverride, heaps);
+            String onOom = heapRun.flag();
+            if (onOom != null) planned.add(onOom);
         }
         List<String> flags = new ArrayList<>(planned);
         // Surefire and Gradle fork test JVMs with assertions on; a Java or Kotlin `assert` in a
@@ -428,6 +430,9 @@ public final class JUnitLauncher {
 
     /** Set when {@link #run} starts — the sandboxed temp root; see {@link TestTmpDir}. */
     private @Nullable Path testTmpDir;
+
+    /** This run's heap-retry state: where its JVMs mark running out, and whether it climbed. */
+    private final SuiteHeapRun heapRun = new SuiteHeapRun();
 
     /**
      * Set when {@link #run} starts — whether jk-cli's {@code @TempDir} factory and deletion
@@ -664,6 +669,7 @@ public final class JUnitLauncher {
         this.testClassesDir = testClassesDir.toAbsolutePath().normalize();
         this.inferredModuleDir = inferModuleDir(testClassesDir);
         this.testTmpDir = TestTmpDir.fresh(this.testEnv.extras().get("TMPDIR"));
+        heapRun.start(testTmpDir);
 
         Path runnerJar = locateRunner(cacheRoot);
         var classpathBase = new LinkedHashSet<Path>();
@@ -818,37 +824,33 @@ public final class JUnitLauncher {
             TestSummary first,
             List<String> undispatched) {
         if (!SuiteRetry.planned(jvmArgs)) return first;
+        boolean ranOut = heapRun.ranOut();
+        // A run that passed at its planned heap lets a heap learned from an older, larger peak come down.
+        if (heapRun.green(!first.failures().isEmpty())) heaps.relax(filledKey(javaHome));
         // A suite JVM that dies after reporting tests leaves no class name. Run the selection again.
-        boolean whole = SuiteRetry.wholeSuite(first) && SuiteRetry.onlyHeap(first);
-        List<String> again =
-                whole ? (onlyClasses != null ? onlyClasses : classNames) : SuiteRetry.classes(first, undispatched);
+        boolean whole = SuiteRetry.wholeSuite(first, ranOut) && SuiteRetry.onlyHeap(first, ranOut);
+        List<String> again = whole ? selection() : SuiteRetry.classes(first, undispatched, ranOut);
         if (!whole && again.isEmpty()) return first;
-        boolean killed = first.failures().stream().filter(SuiteRetry::retryable).allMatch(SuiteRetry::killed);
-        TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, whole ? null : first);
+        boolean killed = SuiteRetry.onlyKilled(first, ranOut);
+        TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, whole ? null : first, ranOut);
         return second == null ? first : second;
     }
 
     private TestSummary retryLaunch(
             Path javaHome, String classpath, List<String> flags, TestProgressListener listener, TestLauncherFailure e)
             throws IOException, InterruptedException {
-        if (!SuiteRetry.planned(jvmArgs)) {
-            if (WorkerFate.heapExhausted(e.exit(), e.output())) {
-                throw TestLauncherFailure.heap(
-                        moduleLabel,
-                        e.exit(),
-                        e.output(),
-                        e.command(),
-                        SuiteRetry.pinned("test runner", SuiteRetry.pin(jvmArgs)));
-            }
-            throw e;
-        }
-        WorkerFate.Cause cause = SuiteRetry.cause(e);
+        if (!SuiteRetry.planned(jvmArgs)) throw SuiteRetry.unplanned(e, moduleLabel, jvmArgs);
+        WorkerFate.Cause cause = SuiteRetry.cause(e, heapRun.ranOut());
         if (cause != WorkerFate.Cause.HEAP_EXHAUSTED && cause != WorkerFate.Cause.KILLED_FOR_MEMORY) throw e;
         boolean killed = cause == WorkerFate.Cause.KILLED_FOR_MEMORY;
-        List<String> again = onlyClasses != null ? onlyClasses : classNames;
-        TestSummary second = rerun(javaHome, classpath, flags, again, listener, killed, null);
+        TestSummary second = rerun(javaHome, classpath, flags, selection(), listener, killed, null, true);
         if (second == null) throw e;
         return second;
+    }
+
+    /** The classes this run was asked for. */
+    private List<String> selection() {
+        return onlyClasses != null ? onlyClasses : classNames;
     }
 
     private HeapScope.@Nullable Key filledKey(@Nullable Path javaHome) {
@@ -870,19 +872,23 @@ public final class JUnitLauncher {
             List<String> classes,
             TestProgressListener listener,
             boolean killed,
-            @Nullable TestSummary first) {
+            @Nullable TestSummary first,
+            boolean firstRanOut) {
+        heapRun.climbed();
         long heap = HeapFlags.parseXmx(flags);
         try {
             if (killed) {
                 HeapNotes.note(HeapNotes.line(heap, heap, true));
                 MarkdownTestReport.Tally share = share(classes);
+                heapRun.forget();
                 TestSummary again = rung(javaHome, classpath, classes, listener, heap, new CaptureBuffer())
                         .run();
-                return first == null ? again : SuiteRetry.merge(first, classes, share, again);
+                return first == null ? again : SuiteRetry.merge(first, classes, share, again, firstRanOut);
             }
             HeapScope.Key key = filledKey(javaHome);
             List<Long> ranOut = new ArrayList<>(List.of(heap));
             TestSummary settled = first;
+            boolean settledRanOut = firstRanOut;
             @Nullable TestSummary partial = null;
             List<String> selection = classes;
             MarkdownTestReport.Tally share = share(selection);
@@ -893,7 +899,8 @@ public final class JUnitLauncher {
                 long failed = ranOut.getLast();
                 // It filled this heap. Remember that, so the next plan starts above the cap that failed.
                 heaps.note(key, failed);
-                Long next = HeapLadder.next(ranOut);
+                long ceiling = SuiteRetry.ceiling();
+                Long next = ceiling > 0 ? HeapLadder.next(ranOut, ceiling) : HeapLadder.next(ranOut);
                 if (next == null) {
                     if (ranOut.size() == 1) return first;
                     if (partial != null) return partial;
@@ -908,17 +915,19 @@ public final class JUnitLauncher {
                 ranOut.add(next);
                 var crash = new CaptureBuffer();
                 Rung attempt;
+                heapRun.forget();
                 try {
                     attempt = rung(javaHome, classpath, selection, listener, next, crash);
                 } catch (TestLauncherFailure e) {
-                    if (SuiteRetry.cause(e) != WorkerFate.Cause.HEAP_EXHAUSTED) throw e;
+                    if (SuiteRetry.cause(e, heapRun.ranOut()) != WorkerFate.Cause.HEAP_EXHAUSTED) throw e;
                     diedExit = e.exit();
                     diedOutput = e.output();
                     diedCommand = e.command();
                     continue;
                 }
                 TestSummary run = attempt.run();
-                if (SuiteRetry.onlyHeap(run)) {
+                boolean rungRanOut = heapRun.ranOut();
+                if (SuiteRetry.onlyHeap(run, rungRanOut)) {
                     // Nothing this rung reported outlives it; the record it displaced is the report's.
                     attempt.held().restore();
                     diedExit = WorkerFate.EXIT_ON_OUT_OF_MEMORY;
@@ -926,14 +935,16 @@ public final class JUnitLauncher {
                     diedCommand = List.of();
                     continue;
                 }
-                TestSummary merged = settled == null ? run : SuiteRetry.merge(settled, selection, share, run);
-                List<String> still = SuiteRetry.heapClasses(run);
-                if (still.isEmpty() && !SuiteRetry.wholeSuite(run)) {
+                TestSummary merged =
+                        settled == null ? run : SuiteRetry.merge(settled, selection, share, run, settledRanOut);
+                List<String> still = SuiteRetry.heapClasses(run, rungRanOut);
+                if (still.isEmpty() && !SuiteRetry.wholeSuite(run, rungRanOut)) {
                     heaps.good(key, next);
                     return merged;
                 }
                 partial = merged;
-                if (!SuiteRetry.wholeSuite(run)) {
+                if (!SuiteRetry.wholeSuite(run, rungRanOut)) {
+                    settledRanOut = rungRanOut;
                     settled = merged;
                     selection = still;
                     share = share(still);
@@ -1067,15 +1078,7 @@ public final class JUnitLauncher {
                     classes.isEmpty() ? new TestSummary(0, 0, 0, 0, List.of()) : pool.run(workers, classes, xml, md, 0);
         } catch (TestLauncherFailure e) {
             if (!SuiteRetry.planned(jvmArgs) || heapOverride != null) {
-                if (WorkerFate.heapExhausted(e.exit(), e.output())) {
-                    throw TestLauncherFailure.heap(
-                            moduleLabel,
-                            e.exit(),
-                            e.output(),
-                            e.command(),
-                            SuiteRetry.pinned("test runner", SuiteRetry.pin(jvmArgs)));
-                }
-                throw e;
+                throw SuiteRetry.unplanned(e, moduleLabel, jvmArgs);
             }
             summary = retryLaunch(javaHome, classpath, jvmFlags(JvmRole.SUITE, 1, testTmpDir), listener, e);
         }

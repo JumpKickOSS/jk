@@ -77,9 +77,11 @@ class JUnitLauncherPoolRetryTest {
                 t() { e "{\\"event\\":\\"finished\\",\\"type\\":\\"TEST\\",\\"status\\":\\"SUCCESSFUL\\",\\"uniqueId\\":\\"[engine:junit-jupiter]/[class:$1]/[method:t()]\\",\\"testClass\\":\\"$1\\",\\"testMethod\\":\\"t()\\",\\"duration_ms\\":1}"; }
                 mx=""
                 filter=""
+                oom=""
                 for a in "$@"; do
                   case "$a" in
                     -Xmx*) mx="$a" ;;
+                    -XX:OnOutOfMemoryError=*) oom="${a#-XX:OnOutOfMemoryError=}" ;;
                     --filter=*) filter="${a#--filter=}" ;;
                   esac
                 done
@@ -95,6 +97,7 @@ class JUnitLauncherPoolRetryTest {
                     t "${line#RUN }"
                     e '{"event":"ready"}'
                     read -r line <&3
+                    [ -n "$oom" ] && sh -c "$(printf '%s' "$oom" | sed "s/%p/$$/g")"
                     echo "Terminating due to java.lang.OutOfMemoryError: Java heap space"
                     exit 3 ;;
                 esac

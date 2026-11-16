@@ -18,10 +18,10 @@ class SuiteRetryTest {
     @Test
     void a_suite_that_dies_after_reporting_tests_is_retried_as_a_whole() {
         TestSummary died = summary(new TestFailureInfo("g:app", "", "", "(test run)", "", "worker exited 3", ""));
-        assertThat(SuiteRetry.retryable(died.failures().getFirst())).isTrue();
-        assertThat(SuiteRetry.wholeSuite(died)).isTrue();
-        assertThat(SuiteRetry.onlyHeap(died)).isTrue();
-        assertThat(SuiteRetry.classes(died, List.of())).isEmpty();
+        assertThat(SuiteRetry.retryable(died.failures().getFirst(), true)).isTrue();
+        assertThat(SuiteRetry.wholeSuite(died, true)).isTrue();
+        assertThat(SuiteRetry.onlyHeap(died, true)).isTrue();
+        assertThat(SuiteRetry.classes(died, List.of(), true)).isEmpty();
         assertThat(SuiteRetry.killed(died.failures().getFirst())).isFalse();
     }
 
@@ -31,17 +31,17 @@ class SuiteRetryTest {
                 "g:app", "", "com.acme.BigTest", "(worker 1)", "", "test worker exited 3 mid-run", "");
         TestFailureInfo assertion =
                 new TestFailureInfo("g:app", "", "com.acme.OtherTest", "nope()", "AssertionError", "expected 1", "");
-        assertThat(SuiteRetry.classes(summary(worker), List.of())).containsExactly("com.acme.BigTest");
-        assertThat(SuiteRetry.wholeSuite(summary(worker))).isFalse();
-        assertThat(SuiteRetry.onlyHeap(summary(worker, assertion))).isFalse();
-        assertThat(SuiteRetry.retryable(assertion)).isFalse();
+        assertThat(SuiteRetry.classes(summary(worker), List.of(), true)).containsExactly("com.acme.BigTest");
+        assertThat(SuiteRetry.wholeSuite(summary(worker), true)).isFalse();
+        assertThat(SuiteRetry.onlyHeap(summary(worker, assertion), true)).isFalse();
+        assertThat(SuiteRetry.retryable(assertion, true)).isFalse();
     }
 
     @Test
     void a_memory_kill_is_retried_without_being_called_a_heap_exhaustion() {
         TestFailureInfo kill = new TestFailureInfo(
                 "g:app", "", "com.acme.BigTest", "(worker 1)", "", "test worker killed for memory", "");
-        assertThat(SuiteRetry.retryable(kill)).isTrue();
+        assertThat(SuiteRetry.retryable(kill, true)).isTrue();
         assertThat(SuiteRetry.killed(kill)).isTrue();
     }
 
@@ -53,9 +53,9 @@ class SuiteRetryTest {
                 "g:app", "", "com.acme.QuitTest", "(worker 2)", "", "test worker exited 0 before it was told DONE", "");
         TestFailureInfo shortfall = requireNonNull(RunShortfall.row("g:app", false, true, 2));
         List<String> queued = List.of("com.acme.LateTest", "com.acme.LastTest");
-        assertThat(SuiteRetry.classes(summary(kill, quit, shortfall), queued))
+        assertThat(SuiteRetry.classes(summary(kill, quit, shortfall), queued, true))
                 .containsExactly("com.acme.BigTest", "com.acme.LateTest", "com.acme.LastTest");
-        assertThat(SuiteRetry.classes(summary(quit, shortfall), queued)).isEmpty();
+        assertThat(SuiteRetry.classes(summary(quit, shortfall), queued, true)).isEmpty();
     }
 
     @Test
@@ -68,7 +68,11 @@ class SuiteRetryTest {
         TestSummary first = new TestSummary(4, 1, 3, 0, 1, List.of(kill, quit, shortfall));
         TestSummary second = new TestSummary(2, 2, 0, 0, 2, List.of());
         TestSummary merged = SuiteRetry.merge(
-                first, List.of("com.acme.BigTest", "com.acme.LateTest"), new MarkdownTestReport.Tally(0, 0, 0), second);
+                first,
+                List.of("com.acme.BigTest", "com.acme.LateTest"),
+                new MarkdownTestReport.Tally(0, 0, 0),
+                second,
+                true);
         assertThat(merged.failures()).containsExactly(quit);
         assertThat(merged.total()).isEqualTo(4);
         assertThat(merged.succeeded()).isEqualTo(3);
@@ -85,9 +89,9 @@ class SuiteRetryTest {
                 "",
                 "test worker " + WorkerContainment.capPhrase(10L << 30),
                 "");
-        assertThat(SuiteRetry.retryable(capped)).isFalse();
+        assertThat(SuiteRetry.retryable(capped, true)).isFalse();
         assertThat(SuiteRetry.killed(capped)).isFalse();
-        assertThat(SuiteRetry.classes(summary(capped), List.of())).isEmpty();
+        assertThat(SuiteRetry.classes(summary(capped), List.of(), true)).isEmpty();
     }
 
     @Test
@@ -103,8 +107,8 @@ class SuiteRetryTest {
                 new TestSummary(7, 3, 3, 1, 2, List.of(heap, assertion, other), Map.of("com.acme.OtherTest", 40L), 1);
         TestSummary second = new TestSummary(4, 3, 1, 0, 1, List.of(assertion), Map.of("com.acme.BigTest", 90L), 1);
 
-        TestSummary merged =
-                SuiteRetry.merge(first, List.of("com.acme.BigTest"), new MarkdownTestReport.Tally(2, 1, 1), second);
+        TestSummary merged = SuiteRetry.merge(
+                first, List.of("com.acme.BigTest"), new MarkdownTestReport.Tally(2, 1, 1), second, true);
 
         assertThat(merged.total()).isEqualTo(6);
         assertThat(merged.succeeded()).isEqualTo(4);
@@ -120,8 +124,8 @@ class SuiteRetryTest {
         TestFailureInfo died = new TestFailureInfo("g:app", "", "", "(test run)", "", "worker exited 3", "");
         TestSummary first = new TestSummary(2, 1, 1, 0, 1, List.of(died));
         TestSummary second = new TestSummary(1, 1, 0, 0, 1, List.of());
-        TestSummary merged =
-                SuiteRetry.merge(first, List.of("com.acme.BigTest"), new MarkdownTestReport.Tally(1, 0, 1), second);
+        TestSummary merged = SuiteRetry.merge(
+                first, List.of("com.acme.BigTest"), new MarkdownTestReport.Tally(1, 0, 1), second, true);
         assertThat(merged.failures()).isEmpty();
         assertThat(merged.total()).isEqualTo(1);
         assertThat(merged.succeeded()).isEqualTo(1);
@@ -131,5 +135,25 @@ class SuiteRetryTest {
 
     private static TestSummary summary(TestFailureInfo... failures) {
         return new TestSummary(failures.length, 0, failures.length, 0, List.of(failures));
+    }
+
+    /** A heap row with no mark of the JVM's own is no heap exhaustion: a test can print the words. */
+    @Test
+    void a_heap_row_without_the_jvm_s_mark_is_not_retried() {
+        TestFailureInfo printed = new TestFailureInfo(
+                "g:app",
+                "",
+                "com.acme.ChildTest",
+                "runs()",
+                "java.lang.AssertionError",
+                "child said: java.lang.OutOfMemoryError: Java heap space",
+                "");
+        TestFailureInfo exited = new TestFailureInfo("g:app", "", "", "(test run)", "", "worker exited 3", "");
+        assertThat(SuiteRetry.retryable(exited, false))
+                .as("exit 3 is a test's own System.exit(3) unless the JVM marked its heap")
+                .isFalse();
+        assertThat(SuiteRetry.retryable(printed, false)).isFalse();
+        assertThat(SuiteRetry.classes(summary(printed), List.of(), false)).isEmpty();
+        assertThat(SuiteRetry.onlyHeap(summary(printed), false)).isFalse();
     }
 }

@@ -265,6 +265,24 @@ public final class LearnedHeaps {
                         stored.peaks(), Math.max(stored.good(), heapBytes), stored.inputs(), stored.resident()));
     }
 
+    /**
+     * {@code key}'s worker passed without running out: its known-good heap comes down to what its
+     * newest peaks call for ({@link #size}), so a heap it once needed, or was wrongly taught, ages out
+     * with the peaks that justified it instead of holding for good.
+     */
+    public void relax(HeapScope.@Nullable Key key) {
+        if (key == null || key.module().isBlank()) return;
+        long budget = budget();
+        Row now = stored(key.project(), key.module(), key.kind(), key.jdk());
+        if (now == null || now.good() <= 0 || now.peaks().length == 0) return;
+        if (size(max(now.peaks()), budget) >= now.good()) return;
+        update(key.project(), row(key.module(), key.kind(), key.jdk()), stored -> {
+            if (stored.good() <= 0 || stored.peaks().length == 0) return stored;
+            long sized = size(max(stored.peaks()), budget);
+            return sized >= stored.good() ? stored : new Row(stored.peaks(), sized, stored.inputs(), stored.resident());
+        });
+    }
+
     /** The input fingerprint stored for {@code key}, or {@code ""} when it has none. */
     public String inputs(HeapScope.@Nullable Key key) {
         if (key == null) return "";
