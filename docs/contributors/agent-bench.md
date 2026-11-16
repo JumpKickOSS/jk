@@ -40,7 +40,24 @@ records its `jk_build`.
 
 **Split wall time.** Each transcript event carries `_t_ms`, its arrival since the agent started, so wall
 time splits into model time and tool time. A rename that "got slower" is usually a test run, not
-reasoning.
+reasoning. Every change-task row records `wall_s` (the agent's start to its final answer), `tool_s`
+(the union of the spans from each tool call to its result), `jk_s` (the same over jk's MCP tools and
+shell calls that run `jk`) and `model_s` (the rest), and the table shows all four: a jk tool that saves
+three turns but takes 40 s itself shows up. The split needs a transcript that pairs calls with results
+(Claude Code's stream-json does); it is empty for a driver whose events do not. Fewer turns is not
+assumed to mean less wall: compare `wall_s`.
+
+**Hold walls comparable.** Every jk arm runs `jk graph build` in the sandbox before the agent starts,
+untimed (`warmup_s`), so no arm's first call pays a cold engine or graph worker. Only one heavy job
+runs on the machine at a time, and the prepared baseline (build, tests, graph) is built before
+timing and cached per jk build. Network fetches inside a run (a dependency the agent adds) are not
+held constant and are read from the transcript when a wall surprises.
+
+**Net gain, not only a gain over no graph.** `--arm jk-before` runs the graph as it was: another jk (a
+release) installed in its own home, named by `$JK_BEFORE_HOME` (its `bin/jk` is the client), used for
+the run's prepare, agent and verification. A graph change ships when it beats `jk-before` summed over
+the tasks it does not target and does not lose on the ones it does; `jk-nograph` alone says only that
+a graph helps.
 
 ## Goal presence from real use
 

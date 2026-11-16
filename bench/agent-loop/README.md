@@ -308,6 +308,7 @@ starts, not tested.
 |---|---|---|---|
 | `jk` | jk | `jk mcp`: the default list, whose one graph card is `callers` | the product as installed |
 | `jk-nograph` | jk | `jk mcp` through `wrappers/mcp-filter --drop`: no graph tool listed or callable | the no-graph baseline |
+| `jk-before` | jk | another jk, `$JK_BEFORE_HOME/bin/jk` in its own `JK_HOME` (a release), for prepare, agent and verification | the graph as it was: is new graph work a net gain |
 | `jk-nograph-noline` | jk | as `jk-nograph`, and the `jk graph callers` line taken out of the sandbox's `AGENTS.md` | with `--shell`, what that line alone moves |
 | `jk-graph` | jk | `jk mcp` through `wrappers/mcp-filter --extended --keep`: the loop tools plus `callers`, `query`, `read`, `find` | the graph as MCP cards |
 | `jk-hooks` | jk | `jk mcp`, plus `wrappers/jk-graph-hook` on `Grep`, `Glob` and `Read`: the graph's answer (callers with each call's line quoted, subtypes, a long file's outline) beside the search | the graph, delivered where the agent already looks |

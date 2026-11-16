@@ -233,7 +233,9 @@ def main() -> int:
                             print(f"{'PASS' if ok else 'FAIL'} {driver} {arm} {name} #{run_no}: "
                                   f"first={row['first_nav'] or '-'} share={'-' if share is None else f'{share:.2f}'} "
                                   f"text={row['text_calls']} turns={row.get('turns', '-')} "
-                                  f"tokens={row.get('tokens', '-')} {row.get('wall_s', '-')}s"
+                                  f"tokens={row.get('tokens', '-')} wall={row.get('wall_s', '-')}s"
+                                  f" (model {row.get('model_s', '-')}s, tools {row.get('tool_s', '-')}s,"
+                                  f" jk {row.get('jk_s', '-')}s)"
                                   + (f"  [{why}]" if why else ""), flush=True)
             finally:
                 ct.DRIVERS[driver] = real

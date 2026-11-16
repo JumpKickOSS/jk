@@ -90,6 +90,9 @@ ARMS = {
     "jk": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt=""),
     # The no-graph baseline: callers (and every other graph tool) gone from the list and refused.
     "jk-nograph": dict(tool="jk", extra=[], hide_graph=True, hooks=None, prompt=""),
+    # The graph as it was: another jk (a release) in its own home, from $JK_BEFORE_HOME (its bin/jk is the
+    # client). Against jk it says whether new graph work is a net gain, not only a gain over no graph.
+    "jk-before": dict(tool="jk", extra=[], hide_graph=False, hooks=None, prompt="", before=True),
     # No graph tool on MCP and no callers line in AGENTS.md: with --shell, what jk graph callers adds
     # when the only pointer to it is AGENTS.md (against jk-nograph, which keeps the line).
     # jk as shipped plus a callers line in the sandbox's AGENTS.md section: whether a line that says
@@ -515,7 +518,88 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     return {**meta, "prepared": "miss"}
 
 
+class other_jk:
+    """For the jk-before arm: $JK_BEFORE_HOME as JK_HOME and its bin/ first on PATH for the run's prepare,
+    agent (whose MCP server inherits the environment) and verification; a no-op for every other arm."""
+
+    def __init__(self, spec: dict):
+        self.on = bool(spec.get("before"))
+        self.saved: dict[str, str | None] = {}
+
+    def __enter__(self):
+        if not self.on:
+            return self
+        home = os.environ.get("JK_BEFORE_HOME")
+        if not home or not (Path(home) / "bin" / "jk").exists():
+            raise RuntimeError("the jk-before arm needs $JK_BEFORE_HOME, a jk home whose bin/jk is the client")
+        for k in ("JK_HOME", "PATH"):
+            self.saved[k] = os.environ.get(k)
+        os.environ["JK_HOME"] = home
+        os.environ["PATH"] = str(Path(home) / "bin") + os.pathsep + os.environ.get("PATH", "")
+        return self
+
+    def __exit__(self, *exc):
+        for k, v in self.saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        return False
+
+
+def timing(transcript: Path, wall_s: float) -> dict:
+    """Wall time split from a stream-json transcript's ``_t_ms`` stamps: tool time is the union of the
+    intervals from each tool call's assistant event to its result's event, jk time the same over jk's MCP
+    tools and shell calls that run jk, model time the rest of the wall. None where the transcript carries
+    no matched call ids (a driver whose events do not pair calls with results)."""
+    calls: dict[str, tuple[int, bool]] = {}
+    spans: list[tuple[int, int, bool]] = []
+    try:
+        lines = transcript.read_text(errors="replace").splitlines()
+    except OSError:
+        return {"tool_s": None, "jk_s": None, "model_s": None}
+    for line in lines:
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        t = ev.get("_t_ms") if isinstance(ev, dict) else None
+        if t is None:
+            continue
+        for block in ((ev.get("message") or {}).get("content") or []) if isinstance(ev.get("message"), dict) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use" and block.get("id"):
+                name = str(block.get("name") or "")
+                cmd = str((block.get("input") or {}).get("command") or "") if isinstance(block.get("input"), dict) else ""
+                is_jk = name.startswith("mcp__jk__") or bool(re.match(r"^\s*(?:\S*/)?jk\b", cmd))
+                calls[block["id"]] = (t, is_jk)
+            elif block.get("type") == "tool_result" and block.get("tool_use_id") in calls:
+                start, is_jk = calls.pop(block["tool_use_id"])
+                spans.append((start, t, is_jk))
+    if not spans:
+        return {"tool_s": None, "jk_s": None, "model_s": None}
+
+    def union(ss: list[tuple[int, int]]) -> float:
+        total, end = 0, -1
+        for a, b in sorted(ss):
+            if b <= end:
+                continue
+            total += b - max(a, end)
+            end = b
+        return round(total / 1000, 1)
+
+    tool = union([(a, b) for a, b, _ in spans])
+    jk = union([(a, b) for a, b, j in spans if j])
+    return {"tool_s": tool, "jk_s": jk, "model_s": round(max(0.0, wall_s - tool), 1)}
+
+
 def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -> dict:
+    with other_jk(ARMS[arm]):
+        return _run_one(name, task, arm, run_no, ns, run_root)
+
+
+def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -> dict:
     spec = ARMS[arm]
     question = task["kind"] == "question"
     tool, extra, hide_graph = spec["tool"], spec["extra"], spec["hide_graph"]
@@ -587,6 +671,11 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
             servers=servers,
             shell=shell,
             hide_graph=bool(spec.get("hide_graph")))
+        if tool == "jk":
+            # Every jk arm starts timing with a warm engine and graph worker: a prepared sandbox copied
+            # from the cache ran no jk, and a cold engine or worker would land in one arm's first call.
+            wcode, _, wwall = sh(["jk", "-u", "-x", "graph", "build"], sandbox, 900)
+            row["warmup_s"] = round(wwall, 1)
         started = time.monotonic()
         try:
             res = DRIVERS[ns.driver](tool, sandbox, ns.model, ns.max_turns, ns.max_minutes * 60, transcript,
@@ -594,6 +683,7 @@ def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) ->
         finally:
             agents.TASK = None
         row["wall_s"] = round(time.monotonic() - started, 1)
+        row.update(timing(transcript, row["wall_s"]))
         usage = res.usage or {}
         texts = [e["text"] for e in res.transcript if "text" in e]
         reply = (texts[-1] if texts else "").strip()
@@ -691,10 +781,12 @@ def render(out_dir: Path) -> None:
     lines = [f"# Change tasks — {out_dir.name}", "",
              "Medians over runs. Tokens are input + output + cache read + cache write as the API reports them; "
              "a run stopped before it reported usage is left out of the token medians and counted as unreported. "
-             "Graph share is graph calls over graph + Grep/Glob/Read calls.", "",
-             "| Driver | Task | Arm | Runs | Green | Median tokens | Uncached in | Output | Turns | Wall s | Graph share "
-             "| Median F1 |",
-             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+             "Graph share is graph calls over graph + Grep/Glob/Read calls. Wall is the agent's start to its "
+             "final answer; tool s and jk s are the time inside tool calls and inside jk calls (MCP and shell) "
+             "from the transcript's stamps, model s the rest; every jk arm starts on a warm engine.", "",
+             "| Driver | Task | Arm | Runs | Green | Median tokens | Uncached in | Output | Turns | Wall s | Model s "
+             "| Tool s | jk s | Graph share | Median F1 |",
+             "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for driver, task, arm in sorted({(r.get("driver", "claude-code"), r["task"], r["arm"]) for r in rows}):
         rs = [r for r in rows if (r.get("driver", "claude-code"), r["task"], r["arm"]) == (driver, task, arm)
               and "tokens" in r]
@@ -708,7 +800,8 @@ def render(out_dir: Path) -> None:
         lines.append(f"| {driver} | {task} | {arm} | {len(rs)} | {sum(r['outcome'] == 'green' for r in rs)} "
                      f"| {med('tokens'):.0f}{f' ({unknown} unreported)' if unknown else ''} "
                      f"| {med('input_tokens'):.0f} | {med('output_tokens'):.0f} "
-                     f"| {med('turns'):.0f} | {med('wall_s'):.0f} "
+                     f"| {med('turns'):.0f} | {med('wall_s'):.0f} | {med('model_s'):.0f} | {med('tool_s'):.0f} "
+                     f"| {med('jk_s'):.0f} "
                      f"| {statistics.median(shares) if shares else 0:.2f} "
                      f"| {statistics.median(r['f1'] for r in rs) if all('f1' in r for r in rs) else '-'} |")
     (out_dir / "TABLE.md").write_text("\n".join(lines) + "\n")
