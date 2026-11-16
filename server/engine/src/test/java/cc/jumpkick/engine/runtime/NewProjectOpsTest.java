@@ -262,6 +262,22 @@ class NewProjectOpsTest {
         assertThat(parent.resolve("widget")).doesNotExist();
     }
 
+    /**
+     * The miss names where a user template goes with its placeholders as text: on Windows they are
+     * not legal path characters, and a hint built as a Path threw "Illegal char <<> at index 0:
+     * <lang>" instead of saying the template was not found.
+     */
+    @Test
+    void a_catalog_miss_says_where_a_template_would_go_on_every_os() {
+        String windows = NewProjectOps.notFound(
+                "java/quarkus/hello", false, "C:\\Users\\me\\.jk\\store\\templates", "https://example.test/t");
+        assertThat(windows)
+                .startsWith("template not found: java/quarkus/hello")
+                .contains("C:\\Users\\me\\.jk\\store\\templates\\<lang>\\<framework>\\java/quarkus/hello.g8");
+        String posix = NewProjectOps.notFound("quarkus/hello", true, "/home/me/.jk/store/templates", "u");
+        assertThat(posix).contains("/home/me/.jk/store/templates/<lang>/<framework>/hello.g8");
+    }
+
     @Test
     void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
         // Unique short name so the official cache cannot steal the hit.

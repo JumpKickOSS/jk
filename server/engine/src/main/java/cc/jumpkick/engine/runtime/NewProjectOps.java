@@ -572,10 +572,8 @@ public final class NewProjectOps {
                 return cloneRemoteTemplate(ref);
             }
             JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
-            throw new IllegalArgumentException("template not found: " + ref + "\nlooked in $JK_TEMPLATES, "
-                    + JkDirs.templates() + ", templates/ and " + cfg.officialUrl() + "\nto add one, write "
-                    + JkDirs.templates().resolve("<lang>").resolve("<framework>") + "/"
-                    + (twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref) + ".g8 with a .jk-template.toml");
+            throw new IllegalArgumentException(
+                    notFound(ref, twoSegments, JkDirs.templates().toString(), cfg.officialUrl()));
         }
         if (looksRemoteTemplate(ref)) {
             return cloneRemoteTemplate(ref);
@@ -635,6 +633,19 @@ public final class NewProjectOps {
                 : framework + " templates: " + String.join(", ", ids);
         return "template not found: " + ref + "; " + have + "\nfor a template in a GitHub repository, give its URL:"
                 + " https://github.com/<owner>/<repo>";
+    }
+
+    /**
+     * The message for a catalog ref no source holds, naming where a user template would go. The
+     * placeholders stay text: {@code <} and {@code >} are not legal in a Windows path, so building
+     * the hint as a {@link Path} threw InvalidPathException there and hid the message.
+     */
+    static String notFound(String ref, boolean twoSegments, String templatesDir, String officialUrl) {
+        String sep = templatesDir.contains("\\") ? "\\" : "/";
+        String name = twoSegments ? ref.substring(ref.indexOf('/') + 1) : ref;
+        return "template not found: " + ref + "\nlooked in $JK_TEMPLATES, " + templatesDir + ", templates/ and "
+                + officialUrl + "\nto add one, write " + templatesDir + sep + "<lang>" + sep + "<framework>" + sep
+                + name + ".g8 with a .jk-template.toml";
     }
 
     private static boolean looksRemoteTemplate(String ref) {
