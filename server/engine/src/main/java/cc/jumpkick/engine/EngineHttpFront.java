@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.FrontDoorScope;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.desktop.WslWindowsDesktop;
@@ -44,6 +45,7 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.Supplier;
@@ -87,6 +89,23 @@ public final class EngineHttpFront {
     /** Set by {@link #stopNow} and {@link #close}: a bind still retrying then lets its server go. */
     private volatile boolean stopped;
 
+    /** Whether this engine takes part in the front door ({@link FrontDoorScope}); read at {@link #start}. */
+    private volatile boolean frontDoor;
+
+    /** Test seams: which guest this is, the environment the scope reads, and the guest's pairing. */
+    private Supplier<Guest> guest = Guest::detect;
+
+    private Function<String, @Nullable String> env = ProcessEnv::get;
+
+    private Consumer<HttpEngineServer> pairWith = this::pairWithWindows;
+
+    /** Test seam, before {@link #start}: the guest detection, the environment and the guest's pairing. */
+    void seams(Supplier<Guest> guest, Function<String, @Nullable String> env, Consumer<HttpEngineServer> pairing) {
+        this.guest = guest;
+        this.env = env;
+        this.pairWith = pairing;
+    }
+
     /** What the dashboard's Update pill reads and drives; before {@link #start}. */
     public void selfUpdate(Supplier<SelfUpdateControl> control) {
         this.selfUpdate = control;
@@ -114,11 +133,13 @@ public final class EngineHttpFront {
         // The hub and the config are created together: no [http] table, neither of them.
         HttpEvents hub = events;
         if (config == null || hub == null) return;
-        EngineIdentity id = EngineIdentity.current(version);
+        EngineIdentity id = EngineIdentity.current(version, guest.get());
+        frontDoor = FrontDoorScope.active(env, JkDirs.home());
+        if (!frontDoor) log.accept("jk engine: a test sandbox, private home or CI: no front-door duty");
         Path bandFile =
                 id.guest().guest() && !JkHttpConfig.portNamed() ? paths.dir().resolve(BandPort.FILE) : null;
         JkHttpConfig first = bandFile == null ? config : config.withPort(BandPort.preferred(bandFile, id.id()));
-        if (!id.guest().guest()) FrontDoorToken.align(paths.dir(), paths.httpToken());
+        if (frontDoor && !id.guest().guest()) FrontDoorToken.align(paths.dir(), paths.httpToken());
         HttpEngineServer candidate = candidate(first, hub, id);
         try {
             candidate.start(1);
@@ -210,7 +231,7 @@ public final class EngineHttpFront {
         candidate.setSelfUpdate(selfUpdate);
         candidate.setActivity(new Activity(ChangeJournal::current, decisions, notices));
         candidate.setIdentity(id);
-        if (!id.guest().guest()) {
+        if (frontDoor && !id.guest().guest()) {
             candidate.setFrontDoor(
                     new FrontDoor(() -> id, candidate::port, paths.dir().resolve(GuestPairing.DIR), FrontDoor.band()));
         }
@@ -224,7 +245,7 @@ public final class EngineHttpFront {
             return;
         }
         if (bandFile != null) BandPort.remember(bandFile, candidate.port());
-        pairWithWindows(candidate);
+        if (frontDoor) pairWith.accept(candidate);
         Files.writeString(paths.http(), candidate.url());
         server = candidate;
         error = null;
@@ -336,6 +357,9 @@ public final class EngineHttpFront {
                             () -> frontListener(engineDir, id),
                             DecisionAlerts.wslDesktop(id.guest()),
                             log);
+                    // Stopped while this pairing ran: close() found no duty to end, so its loop
+                    // would run, tick and probe Windows for the rest of the process's life.
+                    if (stopped) endDuty();
                 }
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: could not pair with the Windows engine (" + e.getMessage() + ")");

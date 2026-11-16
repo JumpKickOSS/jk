@@ -819,6 +819,11 @@ public final class EngineServer implements AutoCloseable {
         log.accept("jk engine: closed an idle connection (no request within the idle bound)");
     }
 
+    /** Test seam: the HTTP front, to set its seams before {@link #run}. */
+    EngineHttpFront httpFront() {
+        return http;
+    }
+
     private @Nullable HttpEngineServer httpServer() {
         return http.server();
     }

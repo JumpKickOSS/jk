@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.decisions;
 
+import cc.jumpkick.config.FrontDoorScope;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
@@ -116,7 +117,14 @@ public final class DecisionAlerts implements AutoCloseable {
     private volatile @Nullable Boolean actions;
 
     public DecisionAlerts() {
-        this(new RealLauncher(), Os.name(), ProcessEnv::get, DesktopIdentity.current(), wslDesktop(Guest.detect()));
+        // Toasts on Windows only from the person's own engine: never from a test sandbox, a private
+        // home or CI (FrontDoorScope), which would each start powershell.exe through interop.
+        this(
+                new RealLauncher(),
+                Os.name(),
+                ProcessEnv::get,
+                DesktopIdentity.current(),
+                FrontDoorScope.active() ? wslDesktop(Guest.detect()) : null);
     }
 
     public DecisionAlerts(

@@ -145,6 +145,12 @@ off` in `~/.jk/config.toml` turns that off. When the two speak different front-d
 older JumpKick on one side), the WSL engine does not pair, keeps its own dashboard on its port, and
 its log names the side to update.
 
+Only your own engine takes part in the front door. An engine in a test sandbox, in a private home
+(`JK_HOME` set) or under CI does none of it: it serves no engine list, never takes 8910, writes no
+pairing into your Windows profile, starts no Windows engine, runs no check from Windows and raises no
+Windows toast, so it starts no Windows program at all. `JK_FRONT_DOOR=true` in its environment opts
+such an engine in; `JK_FRONT_DOOR=false` opts any engine out.
+
 `jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
 (`jk web -O jsonl` prints `url`, `token` and `engineId`). The id stays the same across restarts and

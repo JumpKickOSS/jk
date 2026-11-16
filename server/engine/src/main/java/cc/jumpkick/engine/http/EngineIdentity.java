@@ -29,6 +29,11 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
 
     /** This process's identity. */
     public static EngineIdentity current(String version) {
+        return current(version, Guest.detect());
+    }
+
+    /** This process's identity as guest {@code guest}. */
+    public static EngineIdentity current(String version, Guest guest) {
         String os = Os.isWindows() ? "windows" : Os.isDarwin() ? "macos" : "linux";
         Path home = JkDirs.home();
         String jkHome;
@@ -38,7 +43,6 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
             jkHome = home.toAbsolutePath().normalize().toString();
         }
         String hostname = localHostname();
-        Guest guest = Guest.detect();
         return new EngineIdentity(idOf(os, guest, hostname, jkHome), os, guest, hostname, jkHome, version);
     }
 
