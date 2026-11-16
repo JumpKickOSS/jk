@@ -2,6 +2,8 @@
 package cc.jumpkick.secret;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.util.KeychainSandbox;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -62,9 +64,15 @@ public final class WindowsCredentialBackend implements SecretBackend {
     /** The calls, or why there are none. */
     private final Supplier<Advapi32Credentials.Binding> binding;
 
-    /** This machine's Credential Manager. */
+    /**
+     * This machine's Credential Manager. On Windows, in a test sandbox, every call refuses ({@link
+     * KeychainSandbox}) before the credential set is touched.
+     */
     public WindowsCredentialBackend() {
-        this(Advapi32Credentials::binding);
+        this(() -> {
+            if (Os.isWindows()) KeychainSandbox.refuse("Windows Credential Manager");
+            return Advapi32Credentials.binding();
+        });
     }
 
     /** Over {@code calls}: tests. */

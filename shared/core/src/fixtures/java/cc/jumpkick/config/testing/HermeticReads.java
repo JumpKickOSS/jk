@@ -4,6 +4,7 @@ package cc.jumpkick.config.testing;
 import cc.jumpkick.host.GitConfigFiles;
 import cc.jumpkick.testing.CheckoutUntouched;
 import cc.jumpkick.testing.RepoRoot;
+import cc.jumpkick.util.KeychainSandbox;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,10 +15,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import jdk.jfr.EventSettings;
 import jdk.jfr.consumer.RecordedEvent;
@@ -32,7 +35,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 /**
  * Fails a test class whose JVM read, wrote or ran {@code git} in what a suite of jk's own may not
  * touch: the developer's real jk home, the {@code .git} of the checkout the suite runs from, and
- * the user's and the system's git configuration, and the user's Maven repository and settings.
+ * the user's and the system's git configuration, and the user's Maven repository and settings;
+ * and one that reached for the user's OS keychain ({@link #keychain}).
  * Before each class it points jk's Maven user configuration into the sandbox ({@link #sandboxMaven}).
  *
  * <p>Each of these is outside what a suite's key names. A read of the checkout's {@code .git} made
@@ -57,6 +61,12 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * environment points it, which jk's test environment sets to the sandbox ({@code GIT_CONFIG_GLOBAL},
  * {@code GIT_CONFIG_NOSYSTEM}); in process, JGit is pointed there before each class ({@link
  * #sandboxJGit}).
+ *
+ * <p>The keychain is judged on two signs. A backend over the real Secret Service, macOS Keychain
+ * or Windows Credential Manager refuses in a test JVM ({@link KeychainSandbox}), and the class that
+ * made it refuse fails at its end even when the code under test swallowed the error; and a keychain
+ * tool started from this JVM ({@code secret-tool}, {@code security}, a {@code busctl} or {@code
+ * gdbus} call to {@code org.freedesktop.secrets}) is caught like a {@code git} in the checkout.
  *
  * <p>Off outside a jk test sandbox (no {@code test-homes} in {@code JK_HOME}): the real home is then
  * unknown. {@code -Djk.test.hermetic=off} turns it off for one run. {@link CheckoutUntouched}'s own
@@ -313,12 +323,20 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
 
     @Override
     public void afterAll(ExtensionContext context) {
+        String keychain = keychain(context.getRequiredTestClass().getName(), KeychainSandbox.drainRefusals());
         Window window = context.getStore(NS).remove(WATCH, Window.class);
         Watcher w = watcher;
-        if (window == null || w == null) return;
+        if (window == null || w == null) {
+            if (keychain != null) throw new AssertionError(keychain);
+            return;
+        }
         List<Window> due = w.close(window);
-        if (due.isEmpty()) return;
+        if (due.isEmpty()) {
+            if (keychain != null) throw new AssertionError(keychain);
+            return;
+        }
         StringBuilder failure = new StringBuilder();
+        if (keychain != null) failure.append(keychain);
         for (Window x : due) {
             keep(x.testClass, x.caught);
             if (failure.length() > 0) failure.append("\n");
@@ -332,6 +350,23 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
             }
         }
         throw new AssertionError(failure.toString());
+    }
+
+    /**
+     * The failure for {@code testClass} having asked the real OS keychain, once per refusal {@link
+     * KeychainSandbox} kept while it ran; null when it asked none.
+     */
+    static @Nullable String keychain(String testClass, List<String> refusals) {
+        if (refusals.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder(testClass)
+                .append(" reached for the user's OS keychain, which no test may read, write or delete in;")
+                .append(" a test JVM's logins go to its sandbox keychain (")
+                .append(KeychainSandbox.ENV)
+                .append("). Use SecretVault.current() or a fake SecretBackend, never a backend over the real")
+                .append(" keychain:");
+        for (String what : refusals.stream().distinct().limit(SHOWN).toList())
+            sb.append("\n  ").append(what);
+        return sb.toString();
     }
 
     /**
@@ -402,8 +437,9 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
     /** The failure for {@code testClass}, naming up to {@link #SHOWN} paths with the frames that reached each. */
     static String message(String testClass, Map<String, String> caught) {
         StringBuilder sb = new StringBuilder(testClass)
-                .append(" reached outside its sandbox: the real jk home, the checkout's .git or git's own")
-                .append(" configuration. Give the test a temp home, a temp repository and the sandbox's")
+                .append(" reached outside its sandbox: the real jk home, the checkout's .git, git's own")
+                .append(
+                        " configuration or the OS keychain. Give the test a temp home, a temp repository and the sandbox's")
                 .append(
                         " git configuration (jk's test JVMs carry all three); see cc.jumpkick.config.testing.HermeticReads; jk test --jvm-arg=-Djk.test.hermetic=frames shows the code that reached each path.");
         int shown = 0;
@@ -453,6 +489,7 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
         if (type.equals("jdk.ProcessStart")) {
             String command = event.string("command");
             if (command == null) return null;
+            if (isKeychainTool(command)) return "ran " + command + " (the OS keychain)";
             return fence.deniesGit(event.string("directory"), command) ? "ran " + command : null;
         }
         String raw = event.string("path");
@@ -571,6 +608,24 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
         }
         return out;
     }
+
+    /**
+     * Whether {@code command} asks the user's keychain: libsecret's {@code secret-tool}, macOS's
+     * {@code security}, or the Secret Service's bus name through {@code busctl} or {@code gdbus}.
+     */
+    static boolean isKeychainTool(String command) {
+        Matcher m = PROGRAM.matcher(command.strip());
+        if (!m.find()) return false;
+        String program = m.group(1).toLowerCase(Locale.ROOT);
+        return switch (program) {
+            case "secret-tool", "security" -> true;
+            case "busctl", "gdbus" -> command.contains("org.freedesktop.secrets");
+            default -> false;
+        };
+    }
+
+    /** A command's program, its last path segment without {@code .exe}. */
+    private static final Pattern PROGRAM = Pattern.compile("^(?:\\S*[\\\\/])?([^\\s\\\\/]+?)(?:\\.exe)?(?:\\s|$)");
 
     /** Whether {@code command}'s program is git. */
     static boolean isGit(String command) {

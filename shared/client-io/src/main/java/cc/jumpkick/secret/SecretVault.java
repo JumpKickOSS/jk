@@ -6,6 +6,7 @@ import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.util.KeychainSandbox;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -157,8 +158,13 @@ public final class SecretVault {
                 .orElse(Choice.AUTO);
     }
 
-    /** The keychain this OS has, in preference order. */
+    /**
+     * The keychain this OS has, in preference order; in a test sandbox ({@link KeychainSandbox})
+     * only the sandbox's own, so nothing a test runs can reach the machine's.
+     */
     public static List<SecretBackend> hostBackends(SecretCommand command, HostSession session) {
+        Path sandbox = KeychainSandbox.dir();
+        if (sandbox != null) return List.of(new SandboxKeychainBackend(sandbox));
         if (Os.isDarwin()) return List.of(new MacKeychainBackend(command));
         if (Os.isWindows()) return List.of(new WindowsCredentialBackend());
         if (Os.isLinux()) return List.of(new SecretServiceBackend(command, session));
@@ -171,6 +177,7 @@ public final class SecretVault {
             case "secret-service" -> "Secret Service";
             case "macos-keychain" -> "macOS Keychain";
             case "windows-credential-manager" -> "Windows Credential Manager";
+            case SandboxKeychainBackend.ID -> "sandbox keychain";
             default -> backendId;
         };
     }

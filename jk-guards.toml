@@ -2050,6 +2050,10 @@ in     = "cc.jumpkick.runtime.base.RunShapes#SHAPES"
 reason = "live registry: each live run's shape by request id, read as the journal records the run, at most 256"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.util.KeychainSandbox#REFUSED"
+reason = "live registry: a test JVM's refused asks of the real OS keychain, drained by HermeticReads at each class's end, at most 16, and empty outside a test sandbox"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.runtime.base.RunShapes#PRICED"
 reason = "live registry: each live run's priced work set and curves by request id, read as the journal records the run, at most 256"
 

@@ -100,6 +100,40 @@ class HermeticReadsTest {
                 .isTrue();
     }
 
+    /** A keychain tool started from a test JVM is caught wherever it runs (JK-PB8M1). */
+    @Test
+    void a_keychain_tool_is_an_offence_and_other_commands_are_not() {
+        assertThat(HermeticReads.isKeychainTool("secret-tool lookup service jk account repo/central"))
+                .isTrue();
+        assertThat(HermeticReads.isKeychainTool("/usr/bin/security find-generic-password -s jk -a repo/x -w"))
+                .isTrue();
+        assertThat(HermeticReads.isKeychainTool("busctl --user get-property org.freedesktop.secrets"
+                        + " /org/freedesktop/secrets/aliases/default org.freedesktop.Secret.Collection Locked"))
+                .isTrue();
+        assertThat(HermeticReads.isKeychainTool("gdbus call --session --dest org.freedesktop.secrets"))
+                .isTrue();
+        assertThat(HermeticReads.isKeychainTool("busctl --user status")).isFalse();
+        assertThat(HermeticReads.isKeychainTool("git -C /w status")).isFalse();
+        assertThat(HermeticReads.isKeychainTool("/opt/secret-tools/bin/java -version"))
+                .isFalse();
+        assertThat(HermeticReads.isKeychainTool("")).isFalse();
+    }
+
+    /** A refusal the sandbox kept fails the class that made it, even when the code swallowed it. */
+    @Test
+    void a_kept_keychain_refusal_names_the_class_and_what_it_asked() {
+        assertThat(HermeticReads.keychain("a.BTest", List.of())).isNull();
+        String message = HermeticReads.keychain(
+                "a.BTest",
+                List.of(
+                        "asked the real Secret Service while JK_KEYCHAIN_SANDBOX is set",
+                        "asked the real Secret Service while JK_KEYCHAIN_SANDBOX is set"));
+        assertThat(message)
+                .startsWith("a.BTest reached for the user's OS keychain")
+                .contains("JK_KEYCHAIN_SANDBOX")
+                .containsOnlyOnce("\n  asked the real Secret Service");
+    }
+
     @Test
     void the_failure_names_each_path_with_the_frames_that_reached_it() {
         String message = HermeticReads.message(

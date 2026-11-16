@@ -524,6 +524,13 @@ it except the next login. `jk repo logout <id>` and `jk auth logout` remove the 
 then the record; a keychain that refuses (locked) keeps the record, so the logout can be retried.
 `jk doctor` lists every login with where its secret is.
 
+A test JVM JumpKick launches never reaches your keychain: its environment carries
+`JK_KEYCHAIN_SANDBOX`, a directory in the module's test home, and a `jk repo login` or `jk auth
+login` a test runs keeps the secret in a file there (`sandbox-keychain repo/<id>`). JumpKick
+refuses to ask the real Secret Service, macOS Keychain or Windows Credential Manager while the
+variable names a directory; `JK_KEYCHAIN_SANDBOX = "off"` in a suite's `env` lifts it. See
+[Isolation contract](test.md#isolation-contract).
+
 A resident engine keeps the session of whichever shell started it, and the next `jk` may run in
 another: the Secret Service is found through the shell's D-Bus variables (none when the engine was
 started over SSH or by systemd), a Windows engine started over SSH has no credential set, and a

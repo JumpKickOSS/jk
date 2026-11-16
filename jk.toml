@@ -183,11 +183,13 @@ exclude-tags = ["live", "bench"]
 # private gpg-agent it starts in a scratch GNUPGHOME and stops. Off every gate and every CI run,
 # which have no desktop session; on demand on a desktop. The env entries are each live test's own
 # opt-in, and the suite runs only when named, so `jk test --all` leaves the user's keychain alone.
+# JK_KEYCHAIN_SANDBOX = "off" lifts the sandbox keychain every other test JVM gets: here alone a
+# backend over the real keychain answers, and each live test touches only items it created.
 [test.suites.live]
 tags = ["live"]
 exclude-tags = ["bench"]
 explicit = true
-env = { JK_TEST_SECRET_SERVICE = "1", JK_TEST_GPG_AGENT = "1" }
+env = { JK_TEST_SECRET_SERVICE = "1", JK_TEST_GPG_AGENT = "1", JK_KEYCHAIN_SANDBOX = "off" }
 
 # Microbenchmarks print medians and assert nothing about deltas, so gating on them would
 # gate on CI noise. They still need a tier, or nothing runs them at all.

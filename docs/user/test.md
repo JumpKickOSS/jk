@@ -983,6 +983,23 @@ file and none of your `~/.gitconfig`: a commit in a fixture repository needs its
 (`git -c user.name=… -c user.email=… commit`), and passes or fails the same for whoever runs it.
 Declare `GIT_CONFIG_GLOBAL` in `[test] env` for a suite that needs yours.
 
+The OS keychain is the sandbox's too. A test JVM gets `JK_KEYCHAIN_SANDBOX` naming `keychain` in
+the module's test home, and a `jk` the test runs, in process or as a child (and an engine that `jk`
+starts), keeps every login's secret there, one owner-only file per item, instead of in the Secret
+Service, the macOS Keychain or the Windows Credential Manager: a `jk repo login` in a test records
+`sandbox-keychain repo/<id>` where a desktop would record `secret-service repo/<id>`. Code in the
+test JVM that builds a backend over the real keychain fails with an error naming the variable before
+anything reaches the keychain, so no test reads, writes or deletes the credentials of whoever runs
+it. A test that is about the real keychain is tagged for a suite that runs only when named
+(`explicit = true`), touches only items it creates, and lifts the sandbox in that suite's `env`:
+
+```toml
+[test.suites.live]
+tags = ["live"]
+explicit = true
+env = { JK_KEYCHAIN_SANDBOX = "off" }
+```
+
 A test JVM's stdin is closed. `System.in` reads end-of-input at once, and so does every child the
 test gives that stdin to (`inheritIO()`, a REPL, `jk run` driven in-process): a prompt sees no
 answer, it does not wait for one. Feed input through the child's own pipe.

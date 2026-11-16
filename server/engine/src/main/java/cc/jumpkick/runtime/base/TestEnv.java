@@ -14,6 +14,7 @@ import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.TestJvm;
+import cc.jumpkick.util.KeychainSandbox;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -33,8 +34,8 @@ import org.jspecify.annotations.Nullable;
  * instead of the shell that ran {@code jk}. The sandbox redirects the product layout per module
  * for exactly that reason; the machine seed is the matching answer for tools on {@code PATH}.
  *
- * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR} and {@code JK_M2_LOCAL} point at the module's throwaway
- * sandbox ({@link TestHomes}) and the temp root at that sandbox's slot, unless the module says
+ * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR}, {@code JK_M2_LOCAL} and {@code JK_KEYCHAIN_SANDBOX} point
+ * at the module's throwaway sandbox ({@link TestHomes}) and the temp root at that sandbox's slot, unless the module says
  * otherwise. The three roots with their own override — {@code JK_STATE_DIR}, {@code JK_STORE_DIR},
  * {@code JK_CACHE_DIR} — are pinned under that home too: {@link WorkerEnv} lets the engine's own
  * spellings of them through, and an engine started with {@code JK_STATE_DIR} in its shell would
@@ -221,6 +222,10 @@ public final class TestEnv {
         // makes lands in the sandbox. JGit reads the same two variables (JGitEnvironment).
         out.put(GIT_CONFIG_NOSYSTEM, "1");
         out.put(GIT_CONFIG_GLOBAL, sandboxHome.resolve(GIT_CONFIG_FILE).toString());
+        // The OS keychain is the sandbox's: a login's secret goes to a file under the sandbox home,
+        // and a backend over the real Secret Service, macOS Keychain or Windows Credential Manager
+        // refuses, so no test reads, writes or deletes the credentials of whoever runs it.
+        out.put(KeychainSandbox.ENV, sandboxHome.resolve(KeychainSandbox.DIR).toString());
         EnvConfig policy = project.build().env();
         out.putAll(WorkerEnv.declared(policy, moduleDir, target));
         Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);

@@ -20,6 +20,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.util.KeychainSandbox;
 import cc.jumpkick.util.TestHomes;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -212,6 +213,20 @@ class TestEnvTest {
                 .extras();
         assertThat(Path.of(mine.get("GIT_CONFIG_GLOBAL")))
                 .isEqualTo(tmp.resolve("target/gitconfig").toAbsolutePath());
+    }
+
+    /**
+     * The OS keychain is the sandbox's: a test JVM keeps a login's secret in a directory under its
+     * sandbox home, and a backend over the user's real keychain refuses there (JK-PB8M1).
+     */
+    @Test
+    void the_keychain_is_the_sandboxs_not_the_users(@TempDir Path tmp) throws Exception {
+        JkBuild project = project(tmp, "");
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
+
+        assertThat(env.get(KeychainSandbox.ENV))
+                .isEqualTo(TestHomes.pathFor(tmp).resolve("keychain").toString());
     }
 
     @Test

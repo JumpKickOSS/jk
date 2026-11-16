@@ -274,6 +274,15 @@ started with `JK_STATE_DIR` or `JK_STORE_DIR` in its shell would otherwise hand 
 real build history — and a nested `jk self nuke` its real store. With `W > 1` each runner gets a
 child state dir and a jqwik database of its own under its temp root.
 
+The OS keychain is sandboxed the same way: `JK_KEYCHAIN_SANDBOX` names `<home>/keychain`, so
+`SecretVault.current()` in a test JVM (and in every `jk` and engine it starts) is a file-backed
+`SandboxKeychainBackend`, and a `SecretServiceBackend` or `MacKeychainBackend` over the real tool,
+or the real `WindowsCredentialBackend` on Windows, throws `KeychainSandbox.Refused` (an `Error`)
+before it reaches anything. `HermeticReads` fails a class that made one refuse, even when the code
+swallowed it, and one that started `secret-tool`, `security` or a `busctl`/`gdbus` call to
+`org.freedesktop.secrets`. Only the root's `live` suite sets `JK_KEYCHAIN_SANDBOX = "off"`; its
+keychain tests write and remove items named `test/<uuid>` and nothing else.
+
 The sandbox is shared by every suite of the module and kept between runs, so a loopback stub's
 identity must not be its port: `LoopbackHttp` (and `MockMavenServer` on it) spells its base
 `http://127.0.0.1:<port>/<token>` with a token no other start has had, because version lists,

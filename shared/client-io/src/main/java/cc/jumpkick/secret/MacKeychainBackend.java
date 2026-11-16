@@ -2,6 +2,7 @@
 package cc.jumpkick.secret;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.util.KeychainSandbox;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -76,6 +77,7 @@ public final class MacKeychainBackend implements SecretBackend {
 
     @Override
     public Probe probe() {
+        requireReachable();
         MacKeychainLock.Status status = lock.status();
         switch (status.state()) {
             case UNLOCKED -> {
@@ -172,7 +174,16 @@ public final class MacKeychainBackend implements SecretBackend {
         }
     }
 
+    /**
+     * Over the real {@code security} or the real lock status, refuse in a test sandbox ({@link
+     * KeychainSandbox}).
+     */
+    private void requireReachable() {
+        if (command == SecretCommand.REAL || lock == MacKeychainLock.HOST) KeychainSandbox.refuse(displayName());
+    }
+
     private SecretCommand.Result run(List<String> argv, byte @Nullable [] stdin) {
+        requireReachable();
         try {
             return command.run(argv, stdin, CAP);
         } catch (IOException e) {

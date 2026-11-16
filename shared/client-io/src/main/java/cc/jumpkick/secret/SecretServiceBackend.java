@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.secret;
 
+import cc.jumpkick.util.KeychainSandbox;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -81,6 +82,7 @@ public final class SecretServiceBackend implements SecretBackend {
 
     @Override
     public Probe probe() {
+        requireReachable();
         if (!session.sessionBus()) return Probe.unavailable("no D-Bus session bus");
         if (!session.onPath(TOOL)) return Probe.unavailable(TOOL + " is not installed");
         @Nullable List<String> ask = session.onPath("busctl") ? BUSCTL : session.onPath("gdbus") ? GDBUS : null;
@@ -154,7 +156,13 @@ public final class SecretServiceBackend implements SecretBackend {
         }
     }
 
+    /** Over the real {@code secret-tool}, refuse in a test sandbox ({@link KeychainSandbox}). */
+    private void requireReachable() {
+        if (command == SecretCommand.REAL) KeychainSandbox.refuse(displayName());
+    }
+
     private SecretCommand.Result run(List<String> argv, byte @Nullable [] stdin) {
+        requireReachable();
         try {
             return command.run(argv, stdin, CAP);
         } catch (IOException e) {
