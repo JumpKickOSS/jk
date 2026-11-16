@@ -28,6 +28,23 @@ import org.junit.jupiter.api.io.TempDir;
 /** A suite JVM's reads are recorded, and those no key covers are what it is found to depend on. */
 class SuiteReadsTest {
 
+    /**
+     * A file under a recording's name that is no recording (a torn write, a test's stand-in) is
+     * reported unreadable and left closed: RecordingFile's constructor fails after opening such a
+     * file and keeps it open, which on Windows kept it, and its directory, from being deleted.
+     */
+    @Test
+    void a_file_that_is_no_recording_reads_as_incomplete_and_is_not_held_open(@TempDir Path tmp) throws Exception {
+        Path reads = Files.createDirectories(tmp.resolve("suite-reads"));
+        Path torn = Files.writeString(reads.resolve("torn.jfr"), "not a recording");
+
+        SuiteReads.Observed seen = SuiteReads.collect(reads, tmp);
+
+        assertThat(seen.complete()).as("a torn recording vouches for nothing").isFalse();
+        Files.delete(torn);
+        assertThat(torn).doesNotExist();
+    }
+
     @Test
     void a_recorded_jvm_reports_the_files_it_read(@TempDir Path tmp) throws Exception {
         Path data = Files.writeString(tmp.resolve("data.txt"), "payload");

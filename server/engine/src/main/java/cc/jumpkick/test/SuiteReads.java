@@ -15,6 +15,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -23,6 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -123,6 +125,21 @@ public final class SuiteReads {
         }
     }
 
+    /** The bytes every JFR recording begins with, and the size of its first chunk's header. */
+    private static final byte[] JFR_MAGIC = {'F', 'L', 'R', 0};
+
+    private static final int JFR_CHUNK_HEADER = 68;
+
+    /** Whether {@code jfr} begins as a recording does: the magic, and room for a chunk header. */
+    static boolean framed(Path jfr) {
+        try (InputStream in = Files.newInputStream(jfr)) {
+            byte[] head = in.readNBytes(JFR_CHUNK_HEADER);
+            return head.length == JFR_CHUNK_HEADER && Arrays.equals(Arrays.copyOf(head, 4), JFR_MAGIC);
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
+    }
+
     /** Every recording under {@code dir}, relative paths resolved against {@code cwd}. */
     public static Observed collect(Path dir, Path cwd) {
         Set<Path> files = new TreeSet<>();
@@ -140,6 +157,13 @@ public final class SuiteReads {
             return new Observed(files, commands, hosts, false);
         }
         for (Path jfr : recordings) {
+            if (!framed(jfr)) {
+                // Not a recording at all (torn, or something else under the name): RecordingFile's
+                // constructor would fail after opening it and leave it open, which on Windows keeps
+                // the file, and the directory holding it, from being deleted until a GC.
+                complete = false;
+                continue;
+            }
             try (RecordingFile in = new RecordingFile(jfr)) {
                 while (in.hasMoreEvents()) {
                     RecordedEvent e = in.readEvent();
