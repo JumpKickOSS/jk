@@ -36,6 +36,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.KeyAudit;
+import cc.jumpkick.task.LockSlice;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -718,7 +719,11 @@ public final class PreflightMemo {
             both(md, out, "mode=" + fingerprintMode());
             if (!guardSalt.isEmpty()) both(md, out, guardSalt);
             feedFile(md, out, ManifestPaths.manifestIn(moduleDir));
-            feedFile(md, out, LockPaths.lockFile(moduleDir));
+            Path lockFile = LockPaths.lockFile(moduleDir);
+            feedFile(md, lockFile);
+            // The outputs part reads the rows this module builds from, not the workspace's whole
+            // lock: one member's bump left every other module's outputs "from other inputs".
+            raw(out, LockSlice.outputsDigest(moduleDir, project, lockFile));
             // Plugin workers keep jk-plugin.toml at the module root (copied onto the jar root).
             if (PluginModule.isWorker(moduleDir)) {
                 feedFile(md, out, moduleDir.resolve(ManifestPaths.PLUGIN_MANIFEST));
