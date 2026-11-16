@@ -20,11 +20,12 @@ opt-in = true
 kind = "change"
 repo = "smoke"
 prompt = "Rename the field `Account.owner` to `holder`, with its getter and setter, and every use of them, including the template that shows it. The database column stays `owner`."
-test = ["sh", "-c", "jk -u -x -a build -S && grep -q 'account.holder' src/main/resources/templates/statement.html && grep -q 'owner VARCHAR' src/main/resources/db/schema.sql"]
+# The baseline must pass before the agent; smoke-check.sh arrives with the hidden files.
+test = ["sh", "-c", "jk -u -x -a build -S && { test ! -f smoke-check.sh || sh smoke-check.sh; }"]
 
 [tasks.smoke-rename-class]
 opt-in = true
 kind = "change"
 repo = "smoke"
 prompt = "Rename the class `Journal` to `Diary`, its file and every use of it, so ServiceLoader still finds it."
-test = ["sh", "-c", "jk -u -x -a build -S && grep -qx 'com.acme.ledger.Diary' src/main/resources/META-INF/services/com.acme.ledger.Sink"]
+test = ["sh", "-c", "jk -u -x -a build -S && { test ! -f smoke-check.sh || sh smoke-check.sh; }"]
