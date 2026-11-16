@@ -87,4 +87,43 @@ class RenameTypeTest {
                 .contains("src/main/java/org/acme/petclinic/vet/Both.java");
         assertThat(ws.exists(OWNER_DIR + "Owner.java")).isTrue();
     }
+
+    @Test
+    void aPackageMovesItsSourcesItsResourcesAndEveryQualifiedName(@TempDir Path dir) throws IOException {
+        Map<String, String> files = RenameFieldTest.petclinic();
+        files.put("src/main/resources/org/acme/petclinic/owner/owners.txt", "george\n");
+        files.put("src/main/java/org/acme/petclinic/App.java", """
+                package org.acme.petclinic;
+
+                @Scan("org.acme.petclinic.owner")
+                public class App {}
+
+                @interface Scan {
+                    String value();
+                }
+                """);
+        RenameFixture ws = new RenameFixture(dir, files);
+        String answer = ws.rename("org.acme.petclinic.owner", "org.acme.petclinic.customer");
+
+        String moved = "src/main/java/org/acme/petclinic/customer/";
+        assertThat(answer).startsWith("Renamed package org.acme.petclinic.owner to org.acme.petclinic.customer:");
+        assertThat(ws.exists(OWNER_DIR + "Owner.java")).isFalse();
+        assertThat(ws.read(moved + "Owner.java")).startsWith("package org.acme.petclinic.customer;");
+        assertThat(ws.read("src/test/java/org/acme/petclinic/customer/OwnerTests.java"))
+                .startsWith("package org.acme.petclinic.customer;");
+        assertThat(ws.read("src/main/java/org/acme/petclinic/vet/Clinic.java"))
+                .contains("import org.acme.petclinic.customer.*;");
+        assertThat(ws.read("src/main/java/org/acme/petclinic/vet/Vets.java"))
+                .contains("org.acme.petclinic.customer.Owner first;");
+        assertThat(ws.exists("src/main/resources/org/acme/petclinic/customer/owners.txt"))
+                .isTrue();
+        assertThat(answer)
+                .containsPattern(
+                        "c\\d+ declared, class list: src/main/resources/META-INF/services/org.acme.petclinic.Plugin:1")
+                .containsPattern(
+                        "c\\d+ inferred, package name in a string: src/main/java/org/acme/petclinic/App.java:3")
+                .containsPattern(
+                        "c\\d+ inferred, Kotlin source in the package: src/main/kotlin/org/acme/petclinic/owner/Report.kt:1");
+        assertThat(ws.check()).startsWith("Proven: it compiles, and the ");
+    }
 }

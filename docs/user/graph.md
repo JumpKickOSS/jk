@@ -332,8 +332,9 @@ search. Reflection and names in strings are not uses.
 | `Type.method`, `Type.method(int,String)` | a method: every overload, or one; every override, implementation, call, method reference and `{@link}` |
 | `Type.field` | a field as a bean property: the field, its `getX`/`isX`/`setX` and their overrides, a record component's accessor; `--no-accessors` for the field alone |
 | `Type`, `Outer.Inner`, `a.b.Type` | a type: every use, its constructors, its file (`Owner.java` → `Customer.java`) |
+| `a.b` → `a.c` | a package and its subpackages: every source and the resources under its path move, in main, test and every suite; package lines, imports, qualified names, `module-info` |
 
-`--kind method|field|type` settles an address that could be two.
+`--kind method|field|type|package` settles an address that could be two.
 
 **What it edits, and what it hands back.** It edits a use only where a compiler bound it to the symbol:
 javac's reference index for Java (every name javac resolved, at its exact span), or for a method the

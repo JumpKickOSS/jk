@@ -3,6 +3,9 @@ package cc.jumpkick.graph;
 
 import cc.jumpkick.codegraph.Budget;
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.Decl;
+import cc.jumpkick.codegraph.GraphNode;
+import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.config.EnvValues;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -123,7 +126,17 @@ final class RenameOp {
                 if (t.simple().equals(to)) throw new RenameRefusal("'" + address + "' is already named " + to + ".");
                 return SymbolRename.type(c, t, to, textFiles);
             }
-            default -> throw new IllegalArgumentException("kind is method, field or type, not '" + kind + "'");
+            case "package" -> {
+                if (!qualified(to) && !RenameNames.identifier(to)) {
+                    throw new IllegalArgumentException("'" + to + "' is not a package name");
+                }
+                if (address.equals(to)) throw new RenameRefusal("'" + address + "' is already named " + to + ".");
+                if (to.startsWith(address + ".")) {
+                    throw new RenameRefusal("Not renamed: " + to + " is inside " + address + ".");
+                }
+                return PackageMove.renamePackage(c, address, to, textFiles);
+            }
+            default -> throw new IllegalArgumentException("kind is method, field, type or package, not '" + kind + "'");
         }
     }
 
@@ -154,7 +167,17 @@ final class RenameOp {
                 return "method";
             }
         }
+        if (packageExists(graph, address)) return "package";
         return "method";
+    }
+
+    static boolean packageExists(CodeGraph graph, String pkg) {
+        for (GraphNode n : graph.nodes()) {
+            if (!Decl.isType(n) || !(n.extra().get(Linker.QUALIFIED_NAME) instanceof String q)) continue;
+            String p = PackageMove.pkgOf(q);
+            if (p.equals(pkg) || p.startsWith(pkg + ".")) return true;
+        }
+        return false;
     }
 
     private static SymbolRename.Type one(CodeGraph graph, String name) {
@@ -169,5 +192,12 @@ final class RenameOp {
                     "'" + name + "' names " + types.size() + " types; qualify it:\n  " + String.join("\n  ", shown));
         }
         return types.getFirst();
+    }
+
+    static boolean qualified(String name) {
+        for (String part : name.split("\\.", -1)) {
+            if (!RenameNames.identifier(part)) return false;
+        }
+        return true;
     }
 }
