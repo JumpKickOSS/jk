@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -99,5 +102,72 @@ class WslDistrosTest {
         assertThat(WslDistros.tooling("rancher-desktop")).isTrue();
         assertThat(WslDistros.tooling("podman-machine-default")).isTrue();
         assertThat(WslDistros.tooling("Ubuntu")).isFalse();
+    }
+
+    @Test
+    void a_container_tools_distro_is_left_out_by_the_folder_it_lives_in_whatever_its_name() {
+        assertThat(WslDistros.tooling("engine", "C:\\Users\\a\\AppData\\Local\\Docker\\wsl\\main"))
+                .isTrue();
+        assertThat(WslDistros.tooling("rd", "C:\\Users\\a\\AppData\\Local\\rancher-desktop\\distro"))
+                .isTrue();
+        assertThat(WslDistros.tooling(
+                        "machine", "C:\\Users\\a\\.local\\share\\containers\\podman\\machine\\wsl\\wsldist\\m"))
+                .isTrue();
+        assertThat(WslDistros.tooling(
+                        "Ubuntu-26.10", "C:\\Users\\a\\AppData\\Local\\wsl\\{e44179b5-1e0e-423b-b12c-01d7bd3be7d4}"))
+                .isFalse();
+        assertThat(WslDistros.tooling("Ubuntu", null)).isFalse();
+    }
+
+    /**
+     * Each running distro is asked at once: here every probe answers only once all four have started,
+     * so probes asked one after another would each wait out their latch and answer nothing.
+     */
+    @Test
+    void the_running_distros_are_asked_together() {
+        List<String> names = List.of("a", "b", "c", "d");
+        Map<String, String> strings = new HashMap<>();
+        Map<String, Integer> dwords = new HashMap<>();
+        for (String n : names) {
+            strings.put(WslDistros.LXSS + "\\{" + n + "}|DistributionName", n);
+            dwords.put(WslDistros.LXSS + "\\{" + n + "}|Version", 2);
+        }
+        Registry registry = new Registry() {
+            @Override
+            public @Nullable Integer dword(Hive hive, String key, String value) {
+                return dwords.get(key + "|" + value);
+            }
+
+            @Override
+            public @Nullable String string(Hive hive, String key, String value) {
+                return strings.get(key + "|" + value);
+            }
+
+            @Override
+            public List<String> subkeys(Hive hive, String key) {
+                return key.equals(WslDistros.LXSS)
+                        ? names.stream().map(n -> "{" + n + "}").toList()
+                        : List.of();
+            }
+        };
+        CountDownLatch started = new CountDownLatch(names.size());
+        WslDistros.Runner runner = (argv, limit) -> {
+            if (argv.contains("--running")) return String.join("\r\n", names).getBytes(StandardCharsets.UTF_16LE);
+            started.countDown();
+            try {
+                if (!started.await(5, TimeUnit.SECONDS)) return null;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+            return ("jk 0.51." + argv.get(2) + "\n").getBytes(StandardCharsets.UTF_8);
+        };
+
+        List<WslDistros.Distro> distros = WslDistros.list(registry, runner);
+
+        assertThat(distros).extracting(WslDistros.Distro::name).containsExactly("a", "b", "c", "d");
+        assertThat(distros)
+                .extracting(WslDistros.Distro::jumpKick)
+                .containsExactly("jk 0.51.a", "jk 0.51.b", "jk 0.51.c", "jk 0.51.d");
     }
 }

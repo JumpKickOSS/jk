@@ -19,6 +19,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
@@ -179,6 +180,42 @@ class MachineEnvironmentsTest {
                 .isEqualTo("done");
         assertThat(rows.get(1).get("state")).isEqualTo("unknown");
         assertThat(rows.get(1).get("operation")).isNull();
+    }
+
+    /**
+     * Every listing asks each running distro which JumpKick it has, so one is reused for a few
+     * seconds, asked again once that passes, and forgotten when an operation ends, since the
+     * operation changed what a distro has.
+     */
+    @Test
+    void the_listing_is_reused_briefly_then_asked_again() throws Exception {
+        AtomicInteger asked = new AtomicInteger();
+        MachineEnvironments m = new MachineEnvironments(
+                () -> {
+                    asked.incrementAndGet();
+                    return List.of(UBUNTU);
+                },
+                List::of,
+                new WslSetup(shell, downloads),
+                () -> new ReleasePin.Pin("0.51.1", "why"),
+                scratch,
+                "0.51.2-SNAPSHOT",
+                clock,
+                ms -> now.addAndGet(ms));
+
+        m.list();
+        m.list();
+        assertThat(asked.get()).as("reused within its few seconds").isEqualTo(1);
+
+        now.addAndGet(MachineEnvironments.LIST_FOR.toMillis() + 1);
+        m.list();
+        assertThat(asked.get()).as("asked again once stale").isEqualTo(2);
+
+        m.start(MachineEnvironments.Action.REMOVE, List.of("Ubuntu-26.10"));
+        awaitEnd(m, "Ubuntu-26.10");
+        int afterOperation = asked.get();
+        m.list();
+        assertThat(asked.get()).as("an ended operation forgets the listing").isEqualTo(afterOperation + 1);
     }
 
     @Test

@@ -1,22 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.winhost.Registry.Hive;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The user's WSL distros, found without starting one. The list, the default and each distro's WSL
  * version come from the registry, which wakes no VM; {@code wsl.exe -l --running} says which run, and
- * only those are asked which JumpKick they have, under a time limit. Opening {@code \\wsl.localhost}
- * or running {@code wsl.exe -d} on a stopped distro would boot it, so nothing here does. The distros
- * Docker Desktop, Rancher Desktop and Podman keep for themselves are left out.
+ * only those are asked which JumpKick they have, all at once under one time limit, so a listing takes
+ * about one probe's time however many distros run. Opening {@code \\wsl.localhost} or running {@code
+ * wsl.exe -d} on a stopped distro would boot it, so nothing here does. The distros Docker Desktop,
+ * Rancher Desktop and Podman keep for themselves are left out, known by their name or by the folder
+ * the tool keeps them in, whichever it was named.
  */
 public final class WslDistros {
 
@@ -56,22 +64,55 @@ public final class WslDistros {
         if (ids.isEmpty()) return List.of();
         Set<String> running = running(runner.run(List.of("wsl.exe", "--list", "--running", "--quiet"), JK_PROBE));
         List<Distro> out = new ArrayList<>();
+        Map<String, Future<@Nullable String>> probes = new LinkedHashMap<>();
+        ExecutorService pool = JkThreads.io();
         for (String id : ids) {
             String key = LXSS + "\\" + id;
             String name = registry.string(Hive.CURRENT_USER, key, "DistributionName");
-            if (name == null || name.isBlank() || tooling(name)) continue;
+            if (name == null || name.isBlank() || tooling(name, registry.string(Hive.CURRENT_USER, key, "BasePath")))
+                continue;
             Integer version = registry.dword(Hive.CURRENT_USER, key, "Version");
             boolean up = running.contains(name.toLowerCase(Locale.ROOT));
-            String jk = up ? jumpKick(runner, name) : null;
-            out.add(new Distro(name, version == null ? 1 : version, id.equalsIgnoreCase(defaultId), up, jk));
+            if (up) probes.put(name, pool.submit(() -> jumpKick(runner, name)));
+            out.add(new Distro(name, version == null ? 1 : version, id.equalsIgnoreCase(defaultId), up, null));
         }
-        return List.copyOf(out);
+        List<Distro> answered = new ArrayList<>();
+        for (Distro d : out) {
+            Future<@Nullable String> probe = probes.get(d.name());
+            answered.add(
+                    probe == null ? d : new Distro(d.name(), d.version(), d.isDefault(), d.running(), answer(probe)));
+        }
+        return List.copyOf(answered);
+    }
+
+    /** A probe's answer; null when it failed or was cut short. */
+    private static @Nullable String answer(Future<@Nullable String> probe) {
+        try {
+            return probe.get();
+        } catch (ExecutionException failed) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
     }
 
     /** True for a distro a container tool keeps for itself; offering JumpKick there would look broken. */
     static boolean tooling(String name) {
+        return tooling(name, null);
+    }
+
+    /**
+     * True for a distro a container tool keeps for itself, by its {@code name} or by {@code basePath},
+     * the folder WSL keeps it in: under the tool's own data ({@code Docker\wsl}, {@code
+     * rancher-desktop}, {@code containers\podman}), whatever the distro is called.
+     */
+    static boolean tooling(String name, @Nullable String basePath) {
         String n = name.toLowerCase(Locale.ROOT);
-        return n.startsWith("docker-desktop") || n.startsWith("rancher-desktop") || n.startsWith("podman-");
+        if (n.startsWith("docker-desktop") || n.startsWith("rancher-desktop") || n.startsWith("podman-")) return true;
+        if (basePath == null) return false;
+        String b = basePath.toLowerCase(Locale.ROOT).replace('/', '\\');
+        return b.contains("\\docker\\wsl") || b.contains("\\rancher-desktop\\") || b.contains("\\containers\\podman\\");
     }
 
     /** The running distros' names, lower-cased, from {@code wsl.exe --list --running --quiet}. */
