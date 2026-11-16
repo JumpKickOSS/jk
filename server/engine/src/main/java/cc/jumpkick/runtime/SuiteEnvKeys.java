@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What reaches a suite besides its declared inputs, as run-tests stamp tokens: the locale every
- * test JVM inherits, jk's test runner by content, and the inputs its runs were found to read
+ * test JVM runs in, jk's test runner by content, and the inputs its runs were found to read
  * ({@link SuiteReads}). What the manifest hands it of the environment is {@link ModuleEnvKeys}'s.
  */
 final class SuiteEnvKeys {
@@ -29,9 +29,13 @@ final class SuiteEnvKeys {
 
     static List<String> tokens(BuildBlock build, Path moduleDir, TestSelection selection) {
         List<String> out = new ArrayList<>();
-        // The locale every test JVM is seeded with (TestEnv), the caller's over the engine's. Its
-        // TERM is fixed, so it keys nothing.
-        BuildEnv.locale().forEach((name, value) -> out.add("machine-env:" + name + "=" + value));
+        // The locale the test JVM runs in (TestEnv.localeEnv): the module's fixed tag, which also
+        // rides its -Duser.* flags, or under "inherit" the caller's variables, over the engine's.
+        // A fixed locale keys no variable of the shell, so en_US, C.UTF-8 and de_DE hosts share the
+        // suite. Its TERM is fixed, so it keys nothing.
+        if (build.testJvm().inheritsLocale())
+            BuildEnv.locale().forEach((name, value) -> out.add("machine-env:" + name + "=" + value));
+        else out.add("test-locale:" + build.testJvm().locale());
         // The runner that launches the suite and reads its outcome is part of every run.
         try {
             for (String token : WorkerClosure.tokens(PluginJar.TEST_RUNNER)) out.add("runner:" + token);

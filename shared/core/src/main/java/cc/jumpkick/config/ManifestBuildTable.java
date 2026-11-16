@@ -7,6 +7,7 @@ import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.TestFailureMode;
+import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
@@ -72,6 +73,7 @@ final class ManifestBuildTable {
         final List<String> testTools = new ArrayList<>();
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
+        String testLocale = TestJvm.DEFAULT_LOCALE;
     }
 
     /** The keys {@code [build]} may carry; {@code logic} is read by {@link BuildLogicToml}. */
@@ -263,6 +265,15 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[test].network must be \"allowed\" (or left out)");
             }
             s.testNetworkAllowed = true;
+        }
+        // [test] locale — the test JVM's default locale, en-US unless the module names another or
+        // "inherit"s the caller's.
+        if (test.contains("locale")) {
+            if (!(test.get("locale") instanceof String tag) || !TestJvm.validLocale(tag)) {
+                throw new JkBuildParseException(
+                        "[test].locale must be a BCP 47 tag such as \"de-DE\", or \"inherit\" for the caller's locale");
+            }
+            s.testLocale = tag;
         }
         // [test] coverage — every test JVM of this module runs under the JaCoCo agent and the
         // module leaves its coverage report, as `jk test -T` does for the whole run.

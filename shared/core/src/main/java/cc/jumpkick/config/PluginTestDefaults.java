@@ -34,6 +34,6 @@ final class PluginTestDefaults {
         });
         if (properties.isEmpty()) return build;
         properties.putAll(declared.systemProperties());
-        return build.withTestJvm(new TestJvm(declared.jvmArgs(), properties));
+        return build.withTestJvm(declared.withSystemProperties(properties));
     }
 }

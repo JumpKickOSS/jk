@@ -386,7 +386,7 @@ public final class ManifestBuild {
                 policies.unmapped(),
                 List.of(),
                 s.testTools,
-                new TestJvm(s.testJvmArgs, s.testSystemProperties),
+                new TestJvm(s.testJvmArgs, s.testSystemProperties, s.testLocale),
                 List.of(),
                 null,
                 List.of(),

@@ -7,11 +7,13 @@ import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
+import cc.jumpkick.model.TestJvm;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -169,8 +171,8 @@ public final class TestEnv {
         Map<String, String> out = new LinkedHashMap<>();
         // Caller's PATH/HOME/… first so a declared [test] env entry can still replace them.
         out.putAll(BuildEnv.machine());
-        // The caller's locale, over the engine's: what the suite is keyed on.
-        out.putAll(BuildEnv.locale());
+        // The locale: a fixed one unless the module inherits the caller's, which then keys the suite.
+        out.putAll(localeEnv(project.build().testJvm(), Os.isWindows(), Os.isDarwin()));
         // A fixed terminal, keyed by nothing: a suite started from a tmux pane, an IDE or an agent
         // shell runs the same. A module that needs the caller's declares TERM in [env].
         out.put("TERM", TERM);
@@ -213,6 +215,23 @@ public final class TestEnv {
         out.putAll(testEnv);
         out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR)));
         return WorkerEnv.policy(policy).with(out);
+    }
+
+    /**
+     * The locale variables a test JVM gets. By default a fixed UTF-8 locale every host has: {@code
+     * LC_ALL} and {@code LANG} are {@code C.UTF-8} ({@code en_US.UTF-8} on macOS, which has no
+     * {@code C.UTF-8}), and {@code LANGUAGE} is empty, so the caller's and the engine's {@code LC_*}
+     * and translation list change nothing the suite or a tool it runs sees. The JVM's own default
+     * locale is the module's {@code [test] locale} through {@code -Duser.*} ({@link
+     * TestJvm#localeFlags}). Under {@code [test] locale = "inherit"}, the caller's locale variables
+     * ({@link BuildEnv#locale}), which the suite is then keyed on. Windows takes neither: its JVM
+     * reads the locale from the user's settings, which the {@code -Duser.*} flags override.
+     */
+    static Map<String, String> localeEnv(TestJvm jvm, boolean windows, boolean mac) {
+        if (jvm.inheritsLocale()) return BuildEnv.locale();
+        if (windows) return Map.of();
+        String fixed = mac ? "en_US.UTF-8" : "C.UTF-8";
+        return Map.of("LC_ALL", fixed, "LANG", fixed, "LANGUAGE", "");
     }
 
     /**

@@ -28,8 +28,10 @@ class JkBuildParserTestJvmTest {
                         Map.entry("answer", "42"),
                         Map.entry("headless", "true"));
         assertThat(jvm.flags())
-                .as("the command-line form: the args, then one -D per property")
+                .as("the command-line form: the default locale's flags, the args, then one -D per property")
                 .containsExactly(
+                        "-Duser.language=en",
+                        "-Duser.country=US",
                         "-Dprobe=1",
                         "--add-opens",
                         "java.base/java.lang=ALL-UNNAMED",

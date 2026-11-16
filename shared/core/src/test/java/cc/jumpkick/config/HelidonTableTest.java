@@ -114,7 +114,8 @@ class HelidonTableTest {
                 jvm-args = ["-Dhelidon.config.profile=ci"]
                 """);
         assertThat(flag.build().testJvm().systemProperties()).isEmpty();
-        assertThat(flag.build().testJvm().flags()).containsExactly("-Dhelidon.config.profile=ci");
+        assertThat(flag.build().testJvm().flags())
+                .containsExactly("-Duser.language=en", "-Duser.country=US", "-Dhelidon.config.profile=ci");
     }
 
     @Test

@@ -71,7 +71,9 @@ it (`TARGET linux-x86_64-gnu`). A module without an exact JDK pin compiles and t
 JDK build, so two hosts a patch apart (25.0.4.1 and 25.0.5) share none of its compile or test keys;
 `jk doctor` says so on its `jdk-patch` row and names the pin that fixes it (`jdk =
 "=temurin-25.0.4.1"` in `jk.toml`, which every host then installs), and `jk explain` names both
-builds when a compile reruns for it. A hit on a machine with no history of the step (a fresh checkout, a record
+builds when a compile reruns for it. A test JVM runs in a fixed locale (`en-US` unless the module's
+`[test] locale` says otherwise, [Test](test.md#the-test-jvms-locale-test-locale)), so the shell's
+`LANG` and `LC_*` key no suite; only `locale = "inherit"` keys them. A hit on a machine with no history of the step (a fresh checkout, a record
 another machine made) counts what it saved from that time, so `jk history show`'s saved figure and
 its coverage include it.
 
