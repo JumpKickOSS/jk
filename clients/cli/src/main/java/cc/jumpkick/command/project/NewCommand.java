@@ -24,6 +24,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.scaffold.NewGroupGuess;
 import cc.jumpkick.scaffold.NewProjectStep;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.NewProjectFormAck;
