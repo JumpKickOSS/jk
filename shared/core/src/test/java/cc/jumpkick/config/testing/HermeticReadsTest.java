@@ -109,4 +109,30 @@ class HermeticReadsTest {
                 .startsWith("a.BTest reached outside its sandbox")
                 .contains("\n  read /h/.jk/state/engine/k.endpoint\n      at EngineFleet.list:180 <- BTest.lists:12");
     }
+
+    /**
+     * Only the three watched types are judged, and a field the event does not carry reads as absent:
+     * the JVM-wide stream also sees the suite recording's socket events, which have no path, and a
+     * read of a missing field threw on the JFR thread, whose stack landed in a test's stderr.
+     */
+    @Test
+    void an_event_without_a_path_or_of_another_type_is_not_an_offence_and_never_throws(@TempDir Path tmp) {
+        Path home = tmp.resolve("jk home");
+        HermeticReads.Fence fence = Objects.requireNonNull(HermeticReads.fence(
+                HermeticReadsTest.class, home.resolve("test-homes/0a1b2c/home").toString()));
+        String endpoint = home.resolve("state/engine/k.endpoint").toString();
+
+        assertThat(HermeticReads.judged(fence, "jdk.FileRead", name -> null)).isNull();
+        assertThat(HermeticReads.judged(fence, "jdk.SocketRead", name -> "path".equals(name) ? endpoint : null))
+                .as("not a watched type")
+                .isNull();
+        assertThat(HermeticReads.judged(fence, "jdk.FileRead", name -> "path".equals(name) ? endpoint : null))
+                .isEqualTo("read " + Path.of(endpoint).toAbsolutePath().normalize());
+        assertThat(HermeticReads.judged(fence, "jdk.FileWrite", name -> {
+                    throw new IllegalArgumentException("Attempt to get unknown field \"" + name + "\"");
+                }))
+                .as("a failure is the guard's own report, not an exception")
+                .startsWith("guard error on a jdk.FileWrite event")
+                .contains("unknown field \"path\"");
+    }
 }

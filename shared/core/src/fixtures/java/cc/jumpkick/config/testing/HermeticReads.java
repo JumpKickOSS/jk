@@ -159,11 +159,9 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
                 write.withoutStackTrace();
             }
             stream.enable("jdk.ProcessStart").withStackTrace();
-            stream.onEvent(event -> {
-                String what = offence(fence, event);
-                if (what == null || isHarness(event.getStackTrace()) || isHarnessGit(event)) return;
-                caught(event.getStartTime(), what, frames(event.getStackTrace()));
-            });
+            // By name: an unfiltered handler also gets every other event in the repository, those
+            // the suite's own recording enables (jdk.SocketRead and jdk.SocketWrite have no path).
+            for (String type : WATCHED) stream.onEvent(type, event -> take(fence, event));
             // Every event recorded before a flush is delivered before onFlush runs.
             stream.onFlush(() -> flushed = Instant.now());
             stream.setReuse(true);
@@ -171,6 +169,30 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
             stream.startAsync();
             Thread hook = new Thread(this::atExit, "hermetic-reads-exit");
             Runtime.getRuntime().addShutdownHook(hook);
+        }
+
+        /**
+         * Judge one event. Nothing thrown here reaches the JFR thread, whose default is to print the
+         * stack on the test JVM's stderr, where a test asserting on its own output reads it: a
+         * failure is caught in the class's window as a guard error naming the event type.
+         */
+        void take(Fence fence, RecordedEvent event) {
+            Instant at;
+            try {
+                at = event.getStartTime();
+            } catch (RuntimeException e) {
+                at = Instant.now();
+            }
+            String type = "?";
+            try {
+                type = event.getEventType().getName();
+                Fields fields = fields(event);
+                String what = judged(fence, type, fields);
+                if (what == null || isHarness(event.getStackTrace()) || isHarnessGit(type, fields)) return;
+                caught(at, what, frames(event.getStackTrace()));
+            } catch (RuntimeException e) {
+                caught(at, guardError(type, e), "");
+            }
         }
 
         synchronized Window open(String testClass) {
@@ -271,9 +293,9 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
      * {@link CheckoutUntouched}'s own {@code git status} of the checkout, told by its arguments where
      * no stack trace is recorded.
      */
-    static boolean isHarnessGit(RecordedEvent event) {
-        if (!event.getEventType().getName().equals("jdk.ProcessStart")) return false;
-        String command = event.getString("command");
+    static boolean isHarnessGit(String type, Fields event) {
+        if (!type.equals("jdk.ProcessStart")) return false;
+        String command = event.string("command");
         return command != null && command.contains(" --no-optional-locks status --porcelain=v1 -z ");
     }
 
@@ -396,15 +418,44 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
         return sb.toString();
     }
 
-    /** What {@code event} touched that {@code fence} denies, as shown in the failure; null when nothing. */
-    static @Nullable String offence(Fence fence, RecordedEvent event) {
-        String type = event.getEventType().getName();
-        if (type.equals("jdk.ProcessStart")) {
-            String command = event.getString("command");
-            if (command == null) return null;
-            return fence.deniesGit(event.getString("directory"), command) ? "ran " + command : null;
+    /** The event types the guard subscribes to and judges; any other is none of its business. */
+    static final List<String> WATCHED = List.of("jdk.FileRead", "jdk.FileWrite", "jdk.ProcessStart");
+
+    /** An event's string fields, absent ones as null: what {@link #offence} reads of a recorded event. */
+    @FunctionalInterface
+    interface Fields {
+        @Nullable
+        String string(String name);
+    }
+
+    /** {@code event}'s fields, a field this JDK's event type does not have read as absent. */
+    static Fields fields(RecordedEvent event) {
+        return name -> event.hasField(name) ? event.getString(name) : null;
+    }
+
+    /** {@link #offence}, a failure reading the event turned into a {@link #guardError} rather than thrown. */
+    static @Nullable String judged(Fence fence, String type, Fields event) {
+        try {
+            return offence(fence, type, event);
+        } catch (RuntimeException e) {
+            return guardError(type, e);
         }
-        String raw = event.getString("path");
+    }
+
+    /** What a guard failure on one event reads as in the class's report: the type and the error. */
+    static String guardError(String type, RuntimeException e) {
+        return "guard error on a " + type + " event (the class was not judged on it): " + e;
+    }
+
+    /** What {@code event} touched that {@code fence} denies, as shown in the failure; null when nothing. */
+    static @Nullable String offence(Fence fence, String type, Fields event) {
+        if (!WATCHED.contains(type)) return null;
+        if (type.equals("jdk.ProcessStart")) {
+            String command = event.string("command");
+            if (command == null) return null;
+            return fence.deniesGit(event.string("directory"), command) ? "ran " + command : null;
+        }
+        String raw = event.string("path");
         if (raw == null || raw.isBlank()) return null;
         Path p = path(raw);
         if (p == null || !fence.denies(p)) return null;
