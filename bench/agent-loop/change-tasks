@@ -491,7 +491,10 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     rev = subprocess.run(["git", "-C", str(CORPUS / task["repo"]), "rev-parse", "HEAD"], capture_output=True,
                          text=True).stdout.strip()
     build = jk_build_id()
-    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build]).encode()).hexdigest()[:16]
+    # A task that plants files or edits has a sandbox of its own: shared by repository, the first task's
+    # sandbox stood in for every later task of that repository, and a planted trap never reached the agent.
+    planted = task["name"] if (TASK_FILES / task["name"] / "inject").exists() or task.get("inject") else ""
+    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted]).encode()).hexdigest()[:16]
     slot = PREPARED / f"{task['repo']}-{key}"
     if (slot / "meta.json").exists():
         sandbox.parent.mkdir(parents=True, exist_ok=True)
