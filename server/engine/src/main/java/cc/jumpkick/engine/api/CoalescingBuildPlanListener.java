@@ -7,6 +7,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
@@ -266,6 +267,11 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     @Override
     public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         structural(() -> delegate.error(step, code, message, failure));
+    }
+
+    @Override
+    public void stepCache(String step, StepCache cache) {
+        structural(() -> delegate.stepCache(step, cache));
     }
 
     @Override

@@ -8,6 +8,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
 import cc.jumpkick.run.SourceLocation;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -192,6 +193,11 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
                 hooks.trackStep(d, step, false);
                 nested.stepFinished(d, step, phase, status, millis, waitMillis);
+            }
+
+            @Override
+            public void stepCache(String d, String step, StepCache cache) {
+                nested.stepCache(d, step, cache);
             }
 
             @Override

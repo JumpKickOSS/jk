@@ -47,6 +47,26 @@ class BuildAccumulatorStepCacheTest {
         assertThat(Json.read(json).steps()).contains(compile);
     }
 
+    /**
+     * The order a real plan tells it in: the step reports finishing inside its scope, and the
+     * action cache's note arrives as the scope closes, after the row exists.
+     */
+    @Test
+    void a_cache_outcome_told_after_the_step_finished_lands_on_its_row() {
+        BuildAccumulator a = new BuildAccumulator("build", "/ws", "g:web", "cli");
+        StepCache hit = new StepCache(StepCache.Outcome.REMOTE_HIT, null, null, "k".repeat(64), 640, 0, 1_200);
+        a.addTask("", "compile-java", "compile", "SKIPPED", 12, 0);
+        a.noteCache("", "compile-java", hit);
+
+        BuildRecord.Task compile = a.toRecord(2_000L, true, 1_000L, "9.9", null).steps().stream()
+                .filter(t -> t.name().equals("compile-java"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(compile.cache()).isEqualTo(hit);
+        assertThat(compile.status()).isEqualTo("SKIPPED");
+        assertThat(compile.millis()).isEqualTo(12);
+    }
+
     @Test
     void remote_cache_traffic_is_counted_apart_from_repository_traffic() {
         BuildAccumulator a = new BuildAccumulator("build", "/proj", "g:web", "cli");

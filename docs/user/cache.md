@@ -100,7 +100,8 @@ off by default. Report what it names: it is a JumpKick defect, or a plugin's.
 Every step that consulted the action cache records what it did in the run's history: `local-hit`,
 `remote-hit` or `miss`, the action key, the bytes it restored and stored, and for a miss one reason
 from a closed set. `jk history show <id>` prints it after the step (`· ran: inputs changed
-(src/main/java/A.java)`), and `GET /api/history` carries it on each step as `cache`.
+(src/main/java/A.java)`), and `GET /api/history` (one run: `?id=<run id>`) carries it on each
+step as `cache`, for a workspace build's module steps as for a single module's.
 
 | Reason | Meaning |
 |--------|---------|

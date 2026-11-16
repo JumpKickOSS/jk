@@ -710,7 +710,13 @@ public final class BuildAccumulator {
     /** What the action cache did for a step; it rides the step's row when the step finishes. */
     public void noteCache(String dir, String step, StepCache cache) {
         if (step == null || step.isBlank() || cache == null) return;
-        lastCaches.put(stepKey(dirKey(dir), step), cache);
+        // A step is told as its scope closes, after it reported finishing: its row is there then.
+        String d = dirKey(dir);
+        lastCaches.put(stepKey(d, step), cache);
+        Map<String, BuildRecord.Task> rows = stepsByDir.get(d);
+        if (rows != null)
+            rows.computeIfPresent(
+                    step, (s, row) -> isTerminalTaskStatus(row.status()) ? TaskRows.withCache(row, cache) : row);
     }
 
     /** A step's latest label; the last one it set before finishing is its {@code detail}. */
