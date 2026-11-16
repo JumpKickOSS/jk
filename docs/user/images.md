@@ -9,7 +9,7 @@ container runtime is only needed for some [AOT training](#aot-cache-in-the-image
 
 ```toml
 [image]
-base = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+# base      = "eclipse-temurin:{java-major-version}-jre"   # default: a JRE of the module's java
 # name      = "gyggly-app"        # image repository; default the module's artifact id
 # registry  = "ghcr.io/acme"      # push target; default a local daemon load
 # tag       = "edge"              # default the module version
@@ -27,6 +27,15 @@ at `/app/classpath/`. In a workspace that closure is the module's own — its de
 sibling modules' externals, and the siblings' thin jars — exactly what `jk build`'s fat jar nests,
 never the whole workspace lock. The entrypoint is
 `java <JAVA_OPTS…> -cp /app/classpath/*:/app/libs/* <main>`.
+
+With no `base`, the image is built on `bellsoft/liberica-runtime-container:jre-<N>-slim-glibc`,
+where `<N>` is the module's Java level: its `java`, else its `jdk` major, else the major of the JDK
+that compiles it. The templates write no base, so a project made at `java = 27` gets a JRE 27 and
+one at 21 a JRE 21. A `base` you write may say `{java-major-version}` for that level. A base
+whose reference names a Java older than the level (`eclipse-temurin:21-jre` for a `java = 25`
+module, `gcr.io/distroless/java21-debian12`, `…:jre-21-slim-glibc`) is refused, since its JVM
+cannot load the module's classes; a base whose Java the reference does not say (`latest`, a
+digest alone, a company image tagged with its own version) is taken as written.
 
 A module with [`[application] lib-dir`](packaging.md#lib-dir-layout) ships that layout instead: the
 same dependency layers under `/app/<lib-dir>/`, named and filtered as the lib directory is, then
@@ -80,7 +89,7 @@ push over each other. `env` and `labels` merge key by key, the member's entry wi
 ```toml
 # jk.toml (workspace root)
 [image]
-base     = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
+base     = "docker.io/bellsoft/liberica-runtime-container:jre-{java-major-version}-slim-glibc"
 registry = "ghcr.io/acme"
 labels   = { team = "core" }
 

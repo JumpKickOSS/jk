@@ -12,10 +12,10 @@ assembly = true
 $else$
 
 $endif$
-# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+# `jk image`: the default base, a JRE of this project's `java`, and a JEP 514 AOT cache trained
+# with the image's own JVM.
 [image]
 name      = "$name$"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
 [dependencies]

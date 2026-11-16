@@ -60,10 +60,10 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 
@@ -236,10 +236,10 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 
@@ -428,10 +428,10 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 
@@ -691,10 +691,10 @@ helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 

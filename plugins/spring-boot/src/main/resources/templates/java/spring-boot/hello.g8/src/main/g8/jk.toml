@@ -15,10 +15,10 @@ starter-webmvc = { group = "org.springframework.boot", name = "spring-boot-start
 [dev-dependencies]
 devtools = { group = "org.springframework.boot", name = "spring-boot-devtools" }
 
-# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+# `jk image`: the default base, a JRE of this project's `java`, and a JEP 514 AOT cache trained
+# with the image's own JVM.
 [image]
 name      = "$name$"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in

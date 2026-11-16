@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.image.ImageConfig;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.MainClassScanner;
@@ -82,13 +83,6 @@ public final class ImagePlans {
     public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.scalar("image-ref", String.class);
 
     /**
-     * The base image template used when no {@code image.base} is set in the project or global
-     * config. {@code {java-major-version}} is replaced with the project's resolved JDK major.
-     */
-    public static final String DEFAULT_BASE_TEMPLATE =
-            "bellsoft/liberica-runtime-container:jre-{java-major-version}-slim-glibc";
-
-    /**
      * {@code jk image}'s tail: {@code image-plan} then {@code write-image} (a node module's own pair
      * for a node module). {@code tarballArg} is tri-state exactly like {@code --tarball}'s optional
      * value: {@code null} (no tarball), {@code ""} (default layout path), or an explicit path.
@@ -107,14 +101,7 @@ public final class ImagePlans {
             }
             plan.stateKeys(CONFIG, TARBALL_PATH, RUNTIME_JARS, IMAGE_REF)
                     .extend(imagePlanStep(
-                            projectDir,
-                            in.cache(),
-                            in.buildFile(),
-                            mainClass,
-                            registry,
-                            tag,
-                            tarballArg,
-                            dockerExecutableArg))
+                            projectDir, in.cache(), mainClass, registry, tag, tarballArg, dockerExecutableArg))
                     .extend(writeImageStep(projectDir, in.cache(), mainClass));
         };
     }
@@ -123,7 +110,6 @@ public final class ImagePlans {
     private static Task imagePlanStep(
             Path projectDir,
             Path cache,
-            Path jkBuildPath,
             @Nullable String mainClass,
             @Nullable String registry,
             @Nullable String tag,
@@ -140,11 +126,19 @@ public final class ImagePlans {
                     BuildLayout layout = ctx.require(BuildPlanner.MODULE).layout();
                     Path tarballPath = resolveTarballPath(tarballArg, layout);
                     if (tarballPath != null) ctx.put(TARBALL_PATH, tarballPath);
-                    ImageConfig config = buildConfig(jkBuildPath, project, registry, tag, dockerExecutableArg);
+                    int level = javaLevel(project, projectDir);
+                    ImageConfig config = buildConfig(project, level, registry, tag, dockerExecutableArg);
                     ctx.put(CONFIG, config);
                     boolean dockerfileMode =
                             config.dockerFile() != null && !config.dockerFile().isBlank();
                     if (!dockerfileMode) {
+                        // A base whose tag names an older Java than the module's level holds a
+                        // JVM that cannot load these classes: the image would not start.
+                        String tooOld = config.base() == null ? null : ImageBaseJava.tooOld(config.base(), level);
+                        if (tooOld != null) {
+                            ctx.error("image-base-java", tooOld);
+                            throw new RuntimeException(tooOld);
+                        }
                         // Jib mode: main class required; load dep jars for classpath layering.
                         String chosen = resolveMainClass(mainClass, config, project, projectDir);
                         if (chosen == null || chosen.isBlank()) {
@@ -286,14 +280,13 @@ public final class ImagePlans {
      *   <li>Parse project-local {@code [image]} from {@code jk.toml}.
      *   <li>Parse user-global {@code [image]} from {@code ~/.jk/config.toml} (if present).
      *   <li>Merge: project values win over global values.
-     *   <li>Substitute {@code {java-major-version}} in {@code image.base} with the project's JDK
-     *       major (falling back to 21 when undeclared).
-     *   <li>Apply {@link #DEFAULT_BASE_TEMPLATE} when no base is set after all layers.
+     *   <li>Substitute {@code {java-major-version}} in {@code image.base} with the module's Java
+     *       level, else take {@link ImageBaseJava#DEFAULT_BASE_TEMPLATE}, a JRE of that level.
      * </ol>
      */
     private static ImageConfig buildConfig(
-            Path jkBuild,
             JkBuild project,
+            int level,
             @Nullable String registry,
             @Nullable String tag,
             @Nullable String dockerExecutableArg)
@@ -301,14 +294,7 @@ public final class ImagePlans {
         // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
         ImageTable data = ManifestImage.merge(project.image(), GlobalConfig.image());
 
-        // Resolve the java major version for template substitution.
-        int javaMajor = project.project().javaRelease();
-        if (javaMajor <= 0) javaMajor = 21; // LTS fallback
-
-        // Apply {java-major-version} substitution and default base.
-        String base = data.base();
-        if (base == null || base.isBlank()) base = DEFAULT_BASE_TEMPLATE;
-        base = base.replace("{java-major-version}", String.valueOf(javaMajor));
+        String base = ImageBaseJava.resolve(data.base(), level);
 
         // Docker/Podman executable: CLI flag > image.docker-executable > auto-detect.
         String dockerExe = dockerExecutableArg != null ? dockerExecutableArg : data.dockerExecutable();
@@ -329,6 +315,16 @@ public final class ImagePlans {
                 dockerExe,
                 data.dockerFile(),
                 Boolean.TRUE.equals(data.aotCache()));
+    }
+
+    /**
+     * The Java level the module's classes are built for: its {@code java} (else its {@code jdk}
+     * major), and for a module that names neither, the major of the JDK that compiles it, as the
+     * compile keys take it. Never a fixed fallback: a JRE below the classes cannot start them.
+     */
+    static int javaLevel(JkBuild project, Path projectDir) {
+        int declared = project.project().javaRelease();
+        return declared > 0 ? declared : JavaHomes.featureVersion(JavaHomes.resolveJavaHome(projectDir));
     }
 
     /**

@@ -61,10 +61,10 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 
 $if(docker.truthy)$
 # `jk image`: target/$name$.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "$name$"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 

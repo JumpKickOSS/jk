@@ -76,10 +76,10 @@ junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
 helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
@@ -275,10 +275,10 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # The tests run on an in-memory H2 (application-test.yaml).
 h2 = { group = "com.h2database", name = "h2" }
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 # The AOT cache is trained by starting the application, which needs its database up.
 aot-cache = false
@@ -495,10 +495,10 @@ helidon-dbclient-jdbc = { group = "io.helidon.dbclient", name = "helidon-dbclien
 helidon-dbclient-hikari = { group = "io.helidon.dbclient", name = "helidon-dbclient-hikari" }
 
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 # The AOT cache is trained by starting the application, which needs its database up.
 aot-cache = false
@@ -799,10 +799,10 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # The tests run on an in-memory H2 (application-test.yaml).
 h2 = { group = "com.h2database", name = "h2" }
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 # The AOT cache is trained by starting the application, which needs its database up.
 aot-cache = false
@@ -1003,10 +1003,10 @@ junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter" }
 helidon-webserver-testing-junit5 = { group = "io.helidon.webserver.testing.junit5", name = "helidon-webserver-testing-junit5" }
 hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 # `jk image`: target/demo.jar and target/libs/ as image layers, started with java -jar, as
-# Helidon's Dockerfile does; and a JEP 514 AOT cache trained with the image's own JVM.
+# Helidon's Dockerfile does, on the default base (a JRE of this project's `java`); and a JEP 514
+# AOT cache trained with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-27-slim-glibc"
 ports     = [8080]
 aot-cache = true
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at

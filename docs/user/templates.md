@@ -88,8 +88,10 @@ form: `group`, `version` and `java` are left to the root when the root names the
 `-p` answered something else, and the template renders at the root's `java`; a root that names no
 `java` leaves the module the template's own level, never the machine's default JDK. The tables the
 root owns — the test suites, `[format]` and the rules file `jk-guards.toml` — are left to it, and
-so is `[image] base`, a workspace fact: the root's base applies, else the default base for the
-module's `java`. What the template adds (its dependencies, `[application]`, a framework's table,
+so is an `[image] base` a template writes, a workspace fact: the root's base applies, else the
+default base for the module's `java`. The official templates write no base anywhere, so a standalone
+project or a workspace root takes the default too, a JRE of its own `java`
+([Container images](images.md)). What the template adds (its dependencies, `[application]`, a framework's table,
 `[nullness]`) stays.
 
 "Inside a project" means the nearest `jk.toml` at or above the new project's parent directory,

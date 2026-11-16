@@ -10,7 +10,9 @@ import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.model.ImageTable;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.runtime.workspace.ImageBaseJava;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
@@ -465,6 +467,51 @@ class NewProjectOpsTest {
         assertThat(WorkspaceLoader.loadModules(ws, JkBuildParser.parseLocal(ws.resolve("jk.toml"))))
                 .as("the workspace loads the module it scaffolded")
                 .containsKey(api);
+    }
+
+    /**
+     * {@code jk new} at Java 21, 25 and 27 scaffolds an image whose base runs that level: the
+     * templates write no base, so {@code jk image} takes the default, a JRE of the project's own
+     * {@code java}. On the base, every template wrote {@code jre-25} (Helidon {@code jre-27}), so a
+     * project at 27 got a JRE 25 it could not start on, and one at 21 a JRE above its level.
+     */
+    @Test
+    void a_new_project_s_image_base_runs_the_java_it_was_created_at(@TempDir Path temp) throws Exception {
+        Path repo = RepoRoot.find(NewProjectOpsTest.class);
+        // Helidon's templates are written for Java 27 alone (java = 27, not a parameter).
+        Map<String, Path> templates = Map.of(
+                "java/app",
+                repo.resolve("templates/java/app.g8"),
+                "kotlin/app",
+                repo.resolve("templates/kotlin/app.g8"),
+                "java/cli",
+                repo.resolve("templates/java/cli.g8"),
+                "helidon/quickstart",
+                repo.resolve("plugins/helidon/src/main/resources/templates/java/helidon/quickstart.g8"));
+        Path parent = Files.createDirectories(temp.resolve("apps"));
+        for (var template : templates.entrySet()) {
+            int[] levels = template.getKey().startsWith("helidon/") ? new int[] {27} : new int[] {21, 25, 27};
+            for (int level : levels) {
+                String name = template.getKey().replace('/', '-') + "-" + level;
+                Path project = NewProjectOps.create(request(
+                                parent,
+                                name,
+                                template.getValue().toString(),
+                                true,
+                                Map.of("java", String.valueOf(level)),
+                                null))
+                        .path();
+                var build = JkBuildParser.parseLocal(project.resolve("jk.toml"));
+                assertThat(build.project().javaRelease()).as(name).isEqualTo(level);
+                assertThat(build.image()).as("%s has an [image]", name).isNotEqualTo(ImageTable.EMPTY);
+                String base = ImageBaseJava.resolve(
+                        build.image().base(), build.project().javaRelease());
+                assertThat(ImageBaseJava.javaMajor(base))
+                        .as("%s's image base %s", name, base)
+                        .hasValue(level);
+                assertThat(ImageBaseJava.tooOld(base, level)).as(name).isNull();
+            }
+        }
     }
 
     @Test

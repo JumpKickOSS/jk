@@ -18,6 +18,7 @@ import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
+import cc.jumpkick.runtime.workspace.ImageBaseJava;
 import cc.jumpkick.scaffold.testing.AnswerVectors;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
@@ -54,7 +55,7 @@ import org.tomlj.Toml;
  * template's form ({@link AnswerVectors}: the defaults, then a pairwise set in which every option of
  * the layout and of every {@code [[ask]]} appears), so an option added to a template changes its
  * vectors, and the corpus fails until the snapshot holds the new one. No vector may write a key
- * {@link RetiredKeys} lists, in any of its manifests.
+ * {@link RetiredKeys} lists, in any of its manifests, nor an {@code [image] base} naming a Java major.
  *
  * <p>A snapshot holds nothing that differs between machines or moves on its own: the name, group
  * and default JDK are fixed (the JDK through {@link NewProjectJava}'s seam, never the machine's),
@@ -309,6 +310,7 @@ class NewProjectCorpusTest {
                                     : List.of(String.valueOf(value))));
             Path project = scaffold(template, v.answers(), scratch.resolve(id.replace('/', '-') + "-" + n++));
             noRetiredKeys(id + " " + v.label(), project);
+            namesNoJavaInItsBase(id + " " + v.label(), project);
             declaresTheDocumentedDefaults(id, v.label(), project);
             out.append("\n=== ").append(v.label()).append('\n');
             settled.forEach((k, value) -> out.append(k)
@@ -338,6 +340,27 @@ class NewProjectCorpusTest {
                 String text = Files.readString(manifest);
                 assertThat(RetiredKeys.found(Toml.parse(text)))
                         .as("%s writes a retired key in %s:%n%s", vector, project.relativize(manifest), text)
+                        .isEmpty();
+            }
+        }
+    }
+
+    /**
+     * No {@code jk.toml} {@code project} holds writes an {@code [image] base} that names a Java
+     * major: a fixed JRE tag disagrees with the project's {@code java} as soon as it moves (a
+     * {@code java = 27} project on a JRE 25 base cannot start), so a template leaves the base to
+     * the default, a JRE of the module's level, or writes {@code {java-major-version}}.
+     */
+    private static void namesNoJavaInItsBase(String vector, Path project) throws IOException {
+        try (Stream<Path> walk = Files.walk(project)) {
+            for (Path manifest : walk.filter(p -> p.getFileName().toString().equals("jk.toml"))
+                    .toList()) {
+                String base = Toml.parse(Files.readString(manifest)).getString("image.base");
+                if (base == null || base.contains("{java-major-version}")) continue;
+                assertThat(ImageBaseJava.javaMajor(base))
+                        .as(
+                                "%s writes [image] base = \"%s\" in %s, a JRE tag that can disagree with java",
+                                vector, base, project.relativize(manifest))
                         .isEmpty();
             }
         }

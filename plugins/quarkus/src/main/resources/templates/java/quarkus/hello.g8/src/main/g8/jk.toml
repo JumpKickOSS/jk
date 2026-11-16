@@ -18,10 +18,10 @@ quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }
 quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
 rest-assured = { group = "io.rest-assured", name = "rest-assured" }
 
-# `jk image`: a JRE base. Quarkus's fast-jar starts quickly on its own; `jk native` is its startup path.
+# `jk image`: the default base, a JRE of this project's `java`. Quarkus's fast-jar starts quickly
+# on its own; `jk native` is its startup path.
 [image]
 name      = "$name$"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = false
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in

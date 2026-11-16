@@ -39,10 +39,10 @@ micronaut-test-junit5 = { group = "io.micronaut.test", name = "micronaut-test-ju
 micronaut-http-client = { group = "io.micronaut", name = "micronaut-http-client" }
 junit-jupiter = "…"
 
-# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+# `jk image`: the default base, a JRE of this project's `java`, and a JEP 514 AOT cache trained
+# with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
@@ -105,10 +105,10 @@ micronaut-test-junit5 = { group = "io.micronaut.test", name = "micronaut-test-ju
 micronaut-http-client = { group = "io.micronaut", name = "micronaut-http-client" }
 junit-jupiter = "…"
 
-# `jk image`: a JRE base and a JEP 514 AOT cache trained with the image's own JVM.
+# `jk image`: the default base, a JRE of this project's `java`, and a JEP 514 AOT cache trained
+# with the image's own JVM.
 [image]
 name      = "demo"
-base      = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc"
 aot-cache = true
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
