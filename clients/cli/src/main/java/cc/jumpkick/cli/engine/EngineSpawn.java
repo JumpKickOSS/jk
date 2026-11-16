@@ -773,8 +773,10 @@ public final class EngineSpawn {
                         : ProcessBuilder.Redirect.to(paths.log().toFile()));
         pb.redirectInput(ProcessBuilder.Redirect.PIPE);
         // A Windows client in a job (an ssh session's kills its processes when it ends) starts the
-        // engine outside it, so the engine outlives the shell that started it (JobBreakaway).
-        Process p = JobBreakaway.start(pb, paths.log(), append, ProcessBuilder::start);
+        // engine outside it, so the engine outlives the shell that started it (JobBreakaway); and it
+        // must not hold the client's stdout, which may be the pipe a script or an installer reads to
+        // its end (DetachedStart says why on Windows).
+        Process p = JobBreakaway.start(pb, paths.log(), append, DetachedStart::startDetached);
         p.getOutputStream().close(); // EOF immediately; the engine doesn't read stdin
         return new Spawned(p, logOffset);
     }
