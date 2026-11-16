@@ -16,6 +16,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -76,6 +79,33 @@ class RemoteTierTest {
 
         assertThat(remote.lookups).hasSize(1);
         assertThat(remote.lookups.getFirst().keys()).containsExactly("k1", "k2", "k3");
+    }
+
+    @Test
+    void asks_that_arrive_together_share_one_lookup(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(storedElsewhere(tmp), "k1");
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+        int lanes = 8;
+        CyclicBarrier together = new CyclicBarrier(lanes);
+        List<Future<Boolean>> asks = new ArrayList<>();
+        try (var pool = Executors.newFixedThreadPool(lanes)) {
+            for (int i = 0; i < lanes; i++) {
+                String key = i == 0 ? "k1" : "absent-" + i;
+                asks.add(pool.submit(() -> {
+                    together.await();
+                    return RemoteCaches.where(
+                            tier,
+                            () -> cache(tmp.resolve("here")).restorable(key).isPresent());
+                }));
+            }
+            for (int i = 0; i < lanes; i++) assertThat(asks.get(i).get()).isEqualTo(i == 0);
+        }
+
+        assertThat(remote.lookups)
+                .as("eight lanes asking at once, one round trip or very few")
+                .hasSizeLessThanOrEqualTo(2);
+        assertThat(remote.lookups.stream().mapToInt(l -> l.keys().size()).sum()).isEqualTo(lanes);
     }
 
     @Test

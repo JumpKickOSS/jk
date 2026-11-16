@@ -729,8 +729,12 @@ alone. With a tier bound, a key this disk cannot restore is asked of the tier: a
 holds whole is `restorable` without a download, so the forecast and `jk explain` price it as a
 hit, and the restore fetches the missing blobs (each verified by `Cas.putVerified`, a mismatch is
 a miss) and keeps the record locally. A record with no blob to fetch (a verdict, a test marker) is
-kept locally on its first lookup. The tier remembers each key's answer for the build, and
-`RemoteTier.prefetch` asks for many keys in one call. A remote record is parsed as untrusted as a
+kept locally on its first lookup. The tier remembers each key's answer for the build;
+`RemoteTier.prefetch` asks for many keys in one call, and single asks that arrive within a
+few milliseconds of each other share one lookup, so the preflight forecast, whose lanes price a
+wave of independent modules at once, costs one round trip per wave. Within one module the keys
+stay a chain (a package key reads its compile's record), so a cold module costs one round trip
+per step. A remote record is parsed as untrusted as a
 local one, and a refusal is a miss for this build only: the interface has no delete, so no reader
 removes a record from a store others share (`LocalCacheBackend.discard` is the local disk's own).
 A tier that fails is off for the rest of the build after one `remote-cache-unreachable` warning on

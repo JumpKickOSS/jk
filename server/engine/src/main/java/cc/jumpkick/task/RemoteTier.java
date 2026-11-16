@@ -15,11 +15,13 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
@@ -28,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -186,13 +189,66 @@ public final class RemoteTier {
         }
     }
 
-    /** The record text the backend holds for {@code key}, or null when it has none or is off. */
+    /**
+     * The record text the backend holds for {@code key}, or null when it has none or is off.
+     *
+     * <p>Asks that arrive together share one lookup: the first unknown key opens a batch and waits
+     * {@link #BATCH_WINDOW_NANOS} for others, so the forecast's lanes, which price a wave of
+     * independent modules at once, cost one round trip per wave rather than one per key.
+     */
     @Nullable
     String record(String key) {
         String known = found.get(key);
         if (known != null || absent.contains(key) || off.get()) return known;
-        prefetch(List.of(key));
+        Batch batch;
+        boolean leads;
+        synchronized (batches) {
+            leads = open == null || open.keys.size() >= MAX_BATCH;
+            if (leads) open = new Batch();
+            batch = Objects.requireNonNull(open);
+            batch.keys.add(key);
+        }
+        if (leads) {
+            LockSupport.parkNanos(BATCH_WINDOW_NANOS);
+            List<String> ask;
+            synchronized (batches) {
+                if (open == batch) open = null;
+                ask = List.copyOf(batch.keys);
+            }
+            try {
+                prefetch(ask);
+            } finally {
+                batch.done.complete(null);
+            }
+        } else {
+            try {
+                batch.done.get(BATCH_WAIT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            } catch (ExecutionException | TimeoutException e) {
+                return null;
+            }
+        }
         return found.get(key);
+    }
+
+    /** How long the first ask of a batch waits for others: short beside a round trip, long beside a lane's next ask. */
+    static final long BATCH_WINDOW_NANOS = TimeUnit.MILLISECONDS.toNanos(2);
+
+    /** Keys one lookup carries at most; a fuller batch opens the next. */
+    static final int MAX_BATCH = 500;
+
+    /** How long a key waits for the batch it joined before it reads as a miss. */
+    private static final long BATCH_WAIT_SECONDS = 30;
+
+    private final Object batches = new Object();
+    private @Nullable Batch open;
+
+    /** Keys asked together, and when their lookup has answered. */
+    private static final class Batch {
+        private final Set<String> keys = new LinkedHashSet<>();
+        private final CompletableFuture<@Nullable Void> done = new CompletableFuture<>();
     }
 
     /**
