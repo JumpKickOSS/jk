@@ -4,12 +4,21 @@
 # template it was started from, a converted one (05-recipes/migrate/*) through `jk import` of the
 # build it carries. What the example adds, drops or sets differently is a finding unless its
 # README names the key or its table (the example's documented deviations); identity, the example's
-# own dependencies and the lock are the example's own and never compared.
+# own dependencies and the lock are the example's own and never compared. A scaffolded example's
+# jk-guards.toml rule packs and its plugin manifest's sdk and jk-compat are compared with what jk new
+# writes too.
+#
+# JumpKick's own pins are the template's, never the example's: every cc.jumpkick rule pack in a
+# jk-guards.toml extends, cc.jumpkick coordinate in a jk.toml dependency table and plugin manifest
+# sdk, in every example (workspace roots and members included), must name the generating jk's
+# release, and one that does not is a finding no README excuses. JumpKick removes older releases
+# from its repository, so such a pin resolves today and fails later.
 #
 # Usage: scripts/examples-regen-check.sh <jk-examples checkout> [--only <substring>]... [--out <dir>]
 #   --only  only the examples whose path contains the substring (repeatable)
 #   --out   where generated projects, logs and the report go (default target/examples-regen-check)
-# Env: JK  the jk to run (default: jk on PATH)
+# Env: JK           the jk to run (default: jk on PATH)
+#      JK_RELEASE   the release JumpKick's pins must name (default: the numeric version jk --version prints)
 #
 # The template an example was started from is read from the example: its framework table
 # ([spring-boot], [quarkus], [micronaut], [helidon], [grails], [android]), a Ktor dependency, a
@@ -31,7 +40,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --only) ONLY+=("$2"); shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     -*) echo "unknown argument: $1" >&2; exit 2 ;;
     *) EXAMPLES="$(cd "$1" && pwd)" || exit 2; shift ;;
   esac
@@ -46,6 +55,9 @@ TEMPLATE_OF=(
   "05-recipes/build-logic/line-count=app java"
   "05-recipes/plugins/jk-plugin/hello-plugin=plugin"
 )
+
+JK_RELEASE="${JK_RELEASE:-$("$JK" --version 2>/dev/null | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)}"
+[[ -n "$JK_RELEASE" ]] || { echo "cannot read the release of $JK; set JK_RELEASE" >&2; exit 2; }
 
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
@@ -161,6 +173,108 @@ for p in sorted(set(fa) | set(fb)):
 PY
 }
 
+# diff_side_files <committed project> <generated project> <readme file>: the files beside jk.toml a
+# template writes, in diff_manifests' line format: jk-guards.toml's [guards] extends rule packs, and
+# the plugin manifest's [plugin] sdk and jk-compat. A pack's version that differs, and either plugin
+# key, is never documented: they are the template's, set to the generating jk.
+diff_side_files() {
+  python3 -I - "$@" <<'PY'
+import sys, tomllib, os
+
+committed, generated, readme_path = sys.argv[1:4]
+readme = open(readme_path, encoding="utf-8", errors="replace").read()
+
+def load(path):
+    if not os.path.isfile(path): return None
+    with open(path, "rb") as f: return tomllib.load(f)
+
+def packs(doc):
+    out = {}
+    ext = ((doc or {}).get("guards") or {}).get("extends") or []
+    if isinstance(ext, str): ext = [ext]
+    for gav in ext:
+        parts = str(gav).split(":")
+        if len(parts) == 3: out[parts[0] + ":" + parts[1]] = parts[2]
+    return out
+
+ca, cb = packs(load(os.path.join(committed, "jk-guards.toml"))), packs(load(os.path.join(generated, "jk-guards.toml")))
+for ga in sorted(set(ca) | set(cb)):
+    doc = 1 if ga in readme else 0
+    if ga not in ca:
+        print(f"missing|{doc}|jk-guards.toml: [guards] extends {ga}:{cb[ga]} (jk new writes it)")
+    elif ga not in cb:
+        print(f"extra|{doc}|jk-guards.toml: [guards] extends {ga}:{ca[ga]}")
+    elif ca[ga] != cb[ga]:
+        print(f"differs|0|jk-guards.toml: [guards] extends {ga}: {ca[ga]}, jk new writes {cb[ga]}")
+
+manifest = os.path.join("src", "main", "resources", "jk-plugin.toml")
+pa, pb = load(os.path.join(committed, manifest)), load(os.path.join(generated, manifest))
+if pa is not None and pb is not None:
+    for key in ("sdk", "jk-compat"):
+        va, vb = (pa.get("plugin") or {}).get(key), (pb.get("plugin") or {}).get(key)
+        if va != vb:
+            print(f"differs|0|jk-plugin.toml: [plugin] {key}: {va!r}, jk new writes {vb!r}".replace("'", '"'))
+PY
+}
+
+# stale_pins <examples checkout> <release> [<only>...]: one line per JumpKick pin in any example
+# (whose path contains an <only> substring, when given) that does not name <release>, as
+# "<file>: <what>"; nothing when every one does.
+stale_pins() {
+  python3 -I - "$@" <<'PY'
+import sys, tomllib, os
+
+root, release = sys.argv[1:3]
+only = sys.argv[3:]
+SKIP = {"target", "node_modules", ".git", "build"}
+
+def jumpkick(group): return group == "cc.jumpkick" or group.startswith("cc.jumpkick.")
+
+def dep_pins(doc):
+    # every *dependencies table at any depth (variant overlays included), as (table, key, ga, version)
+    def walk(t, path):
+        for k, v in t.items():
+            if isinstance(v, dict) and k.endswith("dependencies"):
+                for key, spec in v.items():
+                    ga = ver = None
+                    if isinstance(spec, str) and spec.count(":") == 2:
+                        g, a, ver = spec.split(":"); ga = g + ":" + a
+                    elif isinstance(spec, dict) and isinstance(spec.get("version"), str) and spec.get("group"):
+                        ga, ver = spec["group"] + ":" + spec.get("name", key), spec["version"]
+                    if ga and jumpkick(ga.split(":")[0]): yield ".".join(path + [k]), key, ga, ver
+            elif isinstance(v, dict):
+                yield from walk(v, path + [k])
+    yield from walk(doc, [])
+
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = sorted(d for d in dirnames if d not in SKIP)
+    rel = os.path.relpath(dirpath, root)
+    for name in sorted(filenames):
+        path = os.path.join(dirpath, name)
+        shown = os.path.normpath(os.path.join(rel, name))
+        if name not in ("jk.toml", "jk-guards.toml", "jk-plugin.toml"): continue
+        if only and not any(o in shown for o in only): continue
+        try:
+            with open(path, "rb") as f: doc = tomllib.load(f)
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        if name == "jk-guards.toml":
+            ext = (doc.get("guards") or {}).get("extends") or []
+            for gav in [ext] if isinstance(ext, str) else ext:
+                parts = str(gav).split(":")
+                if len(parts) == 3 and jumpkick(parts[0]) and parts[2] != release:
+                    print(f"{shown}: [guards] extends {gav}, jk {release} writes {parts[0]}:{parts[1]}:{release}")
+        elif name == "jk.toml":
+            for table, key, ga, ver in dep_pins(doc):
+                if ver != release:
+                    print(f"{shown}: [{table}] {key} = {ga}:{ver}, jk {release} writes {ga}:{release}")
+        elif name == "jk-plugin.toml":
+            sdk = (doc.get("plugin") or {}).get("sdk")
+            if isinstance(sdk, str) and sdk != release:
+                print(f"{shown}: [plugin] sdk = \"{sdk}\", jk {release} writes \"{release}\"")
+PY
+}
+
 # Record one example's findings; returns 1 when any is undocumented.
 record() {
   local rel="$1" route="$2" lines="$3" undoc doc
@@ -198,7 +312,8 @@ regen_new() {
     return 1
   fi
   readme_of "$dir" >"$work/README.txt"
-  lines="$(diff_manifests "" "$dir/jk.toml" "$work/$name/jk.toml" "$work/README.txt")"
+  lines="$(diff_manifests "" "$dir/jk.toml" "$work/$name/jk.toml" "$work/README.txt"
+    diff_side_files "$dir" "$work/$name" "$work/README.txt")"
   record "$rel" "jk new -t $id -l $lang" "$lines"
 }
 
@@ -260,6 +375,20 @@ done < <(find "$EXAMPLES" -name jk.toml -not -path '*/target/*' -not -path '*/no
 
 if [[ -s "$FINDINGS" ]]; then
   { echo; echo "## Findings"; cat "$FINDINGS"; } >>"$REPORT"
+fi
+
+# JumpKick's own pins across every example, whichever route (or none) regenerates it.
+STALE="$(stale_pins "$EXAMPLES" "$JK_RELEASE" ${ONLY[@]+"${ONLY[@]}"})"
+if [[ -n "$STALE" ]]; then
+  FAILED=1
+  {
+    echo
+    echo "## JumpKick pins behind jk $JK_RELEASE"
+    echo
+    while IFS= read -r line; do echo "- **stale**: $line"; done <<<"$STALE"
+  } >>"$REPORT"
+else
+  { echo; echo "Every JumpKick pin names jk $JK_RELEASE."; } >>"$REPORT"
 fi
 cat "$REPORT"
 exit "$FAILED"

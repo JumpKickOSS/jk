@@ -441,7 +441,12 @@ is regenerated as a user would start it today, `jk new` with the template it was
 against the committed one: a key the scaffold writes and the example lacks, or the reverse, or a
 different value, is a finding unless the example's README names the key or its table. Identity,
 the example's own dependencies and its main class are never compared; workspace roots, front ends
-alone, ports and benchmarks are reported as skipped. The report is `target/examples-regen-check/report.md`.
+alone, ports and benchmarks are reported as skipped. A scaffolded example's `jk-guards.toml` rule
+packs and its plugin manifest's `sdk` and `jk-compat` are compared with the scaffold's the same way.
+JumpKick's own pins are the template's, never the example's: every `cc.jumpkick` rule pack,
+dependency-table coordinate and plugin `sdk` in any example, skipped ones included, must name the
+release of the JumpKick that generated it (`JK_RELEASE` overrides it), and one that does not fails the check whatever
+the README says. The report is `target/examples-regen-check/report.md`.
 
 **Lanes** (`scripts/release-lane.sh`). One per platform: linux-x86_64 and windows-x86_64 on
 machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
