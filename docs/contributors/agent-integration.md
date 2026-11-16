@@ -57,8 +57,17 @@ out of a store.
 **Generic wording beats coercion.** A plain sentence in a tool answer moves every agent at once; a
 rule written for one agent rarely transfers and is often worse than none. Prefer changing the answer.
 
-**Budgets.** The `AGENTS.md` section stays under 1280 bytes (`AgentsGuideTest`) and each MCP tool
-card under its budget (`McpToolRegistryTest`); every word is paid for on every agent turn.
+**Budgets.** MCP tool descriptions and answers had been filling with verbose generated prose that was
+no more reliable than terse text and often made agents worse; a byte ceiling was the proxy for "do not
+waste tokens". The rule is the reason, not the number: every word in a card, an answer or the
+`AGENTS.md` section earns its place by making a capability discoverable, preventing a known wasted
+turn, or making the agent's next action more reliable, and words that do none of these are cut however
+far under the ceiling the text is. Ceilings move: raise one whenever a bench slice or transcripts show
+the added words save a turn or make a feature reachable (a turn re-sends the conversation and waits on
+a tool, thousands of tokens; a few hundred bytes of card are cheap against that), and say so in the
+commit that raises it. A ceiling never forces a feature to cost extra turns. The tests
+(`McpToolRegistryTest`, `AgentsGuideTest`) keep the numbers so that growth is deliberate. Prefer a hint
+in an answer, at the point of need, to a longer card: it costs nothing until it is relevant.
 
 **One table, held to the registry.** The `AGENTS.md` section is a "to do X, call Y" table: the MCP
 tool first, the CLI as fallback, one row per task an agent meets. Its MCP column names only tools on

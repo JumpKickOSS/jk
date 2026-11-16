@@ -40,14 +40,15 @@ public final class AgentsGuide {
             | build | `run(kind=build)` | `jk -a build` |
             | every error of the last run | `diagnostics()` | `jk results -A` |
             | add / remove / pin a dependency | `deps` | `jk add` / `jk remove` |
-            | who uses `T.m` / rename, move it | `callers` / `rename` | `jk graph callers\\|rename` |
+            | who uses `T.m`, `T.f`, `T` / rename or move it | `callers` / `rename` | `jk graph callers\\|rename` |
             | what a build would run | | `jk explain` |
             | finish: tests + guards | `run(kind=gate)` | `jk -a test -g` |
             | anything else | `skill(topic=…)` | `jk skill <topic>` |
 
             - Done when the gate is OK; `· up to date` means nothing was left to run. A `W` saying an input
               moved: rerun. A guard rule id: `jk guard explain <id>`.
-            - `callers` and `rename` answers are compiled facts and final: do not grep or re-read to check.
+            - `callers` and `rename` answers are compiled facts and final: do not grep, re-read or re-test to check;
+              apply the uses `rename` lists with its `also`.
             - Never add `pom.xml` or Gradle files, run `mvn` or `./gradlew`, or edit `jk-guards-baseline.toml`.
             - `node = N` in `jk.toml` pins Node.js: `jk node exec -- <cmd>`, never a host `node` or `npm`.
             """;

@@ -68,14 +68,20 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 new Spec(
                         "rename",
-                        "Rename Type.method/.field, Type or a.pkg to `to` (qualified moves it); bound uses edited, also=c1"
-                                + " applies the rest.",
+                        "Rename Type.method, Type.field, Type or a.pkg to `to` (qualified: moves it); edits, compiles, proves,"
+                                + " runs tests+guard: done unless it says otherwise.",
                         McpSchemas.withGoal(
                                 props(Map.of(
-                                        "address", McpSchemas.string(),
-                                        "to", McpSchemas.string(),
-                                        "also", McpSchemas.string(),
-                                        "check", McpSchemas.bool())),
+                                        "address",
+                                        McpSchemas.string(),
+                                        "to",
+                                        McpSchemas.string(),
+                                        "also",
+                                        McpSchemas.string(
+                                                "Apply uses it listed but did not edit: c1,c3 / c2-c5 / declared"
+                                                        + " / inferred / all; on the same call or the next."),
+                                        "check",
+                                        McpSchemas.bool())),
                                 List.of("address", "to"))),
                 "rename",
                 in -> List.of(required(in, "address"), required(in, "to")));

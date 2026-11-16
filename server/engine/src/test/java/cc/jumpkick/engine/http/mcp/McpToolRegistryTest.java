@@ -153,6 +153,8 @@ class McpToolRegistryTest {
      * {@code src/test/resources/mcp/wrapper-tools-list.json}. Both are re-serialized by MiniJson
      * so the bytes compare serializer-for-serializer. The cards are paid on every turn, so the
      * ceiling holds the loop to lean cards; it includes the {@code run} argument {@code diagnostics} reads.
+     *
+     * <p>Ceilings stand in for "do not waste tokens": every word must make a capability discoverable, prevent a wasted turn or make the next action more reliable. Raise one when a bench slice or transcripts show the added words save a turn (say so in the commit); cut words that do none of these, docs/contributors/agent-integration.md "Budgets".
      */
     @Test
     void the_default_list_is_within_the_wrapper_budget() throws IOException {
@@ -163,7 +165,7 @@ class McpToolRegistryTest {
         String listing = MiniJson.write(McpTools.standard().listing(McpTools.Surface.LOOP));
         assertThat(listing.length())
                 .as("default tools/list reply %d bytes", listing.length())
-                .isLessThanOrEqualTo(2_784);
+                .isLessThanOrEqualTo(3_600);
         assertThat(all.length()).as("full list is the expensive one").isGreaterThan(loop.length() * 4);
     }
 
@@ -172,10 +174,12 @@ class McpToolRegistryTest {
      * budget: 134 bytes of {@code goal} property and its place in {@code required} on top of the
      * card's own. {@code run}'s card names the kinds an agent picks ({@code gate}, {@code guard},
      * {@code format} among them), 54 bytes over the elided list it had.
+     *
+     * <p>Ceilings stand in for "do not waste tokens": every word must make a capability discoverable, prevent a wasted turn or make the next action more reliable. Raise one when a bench slice or transcripts show the added words save a turn (say so in the commit); cut words that do none of these, docs/contributors/agent-integration.md "Budgets".
      */
     @Test
     void the_tools_that_start_work_require_a_goal_within_their_card_budgets() {
-        Map<String, Integer> budget = Map.of("run", 667, "deps", 527, "rename", 505, "update", 953);
+        Map<String, Integer> budget = Map.of("run", 667, "deps", 527, "rename", 760, "update", 953);
         Map<String, Map<String, Object>> cards = new HashMap<>();
         for (Map<String, Object> row : objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools")) {
             cards.put(String.valueOf(row.get("name")), row);

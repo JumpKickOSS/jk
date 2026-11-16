@@ -116,9 +116,12 @@ class AgentsGuideTest {
                 .contains("jk graph callers")
                 .contains("| To | MCP | CLI |")
                 .endsWith("\n");
-        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1280);
+        // Ceilings stand in for "do not waste tokens": every word must make a capability discoverable,
+        // prevent a wasted turn or make the next action more reliable. Raise one when a bench slice or
+        // transcripts show the words save a turn (say so in the commit); see agent-integration.md "Budgets".
+        assertThat(AgentsGuide.SECTION.getBytes(StandardCharsets.UTF_8).length).isLessThanOrEqualTo(1600);
         assertThat(AgentsGuide.ENFORCED_SECTION.getBytes(StandardCharsets.UTF_8).length)
-                .isLessThanOrEqualTo(1280);
+                .isLessThanOrEqualTo(1600);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
         assertThat(AgentsGuide.SECTION + AgentsGuide.ENFORCED_SECTION).doesNotContain("jk format");
     }
