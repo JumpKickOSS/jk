@@ -813,6 +813,13 @@ public final class LockOrchestrator {
         // its engine's floor.
         TestEngines.checkManagedFloors(project, bomConstraints);
         bomConstraints.putAll(TestEngines.declaredTriggerPins(project));
+        // The declared (or managed) Jupiter decides the JUnit train: a prior lock's pin from another
+        // line is no preference and no floor, or keep-pins leaves Platform 6 beside Jupiter 5.
+        String jupiterTrain = JupiterLine.trainVersion(project, bomConstraints);
+        if (jupiterTrain != null) {
+            prefs = JupiterLine.onTrain(prefs, jupiterTrain);
+            floors = JupiterLine.onTrain(floors, jupiterTrain);
+        }
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
         // Shared package source across main/test/processor so version/deps caches survive scope splits.

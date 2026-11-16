@@ -6,6 +6,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -68,6 +69,60 @@ public final class JupiterLine {
 
     private static VersionSelector latest() {
         return VersionSelector.parse("latest");
+    }
+
+    /**
+     * The Jupiter version a module's JUnit release train follows: the version its declared Jupiter
+     * names ({@link #declaredJupiter}; an exact, caret or tilde selector's number), else the one
+     * {@code managed} (a platform table, module to version) holds for a Jupiter artifact, else null
+     * (no Jupiter declared or managed: an implicit one, or a selector that names no line).
+     */
+    public static @Nullable String trainVersion(JkBuild project, Map<String, String> managed) {
+        Dependency jupiter = declaredJupiter(project);
+        if (jupiter != null) {
+            String declared =
+                    switch (jupiter.version()) {
+                        case VersionSelector.Exact e -> e.version();
+                        case VersionSelector.Caret c -> c.version();
+                        case VersionSelector.Tilde t -> t.version();
+                        default -> null;
+                    };
+            if (declared != null && !declared.isBlank()) return declared;
+        }
+        for (var e : managed.entrySet()) {
+            if (e.getKey().startsWith(JUPITER_GROUP + ":junit-jupiter")) return e.getValue();
+        }
+        return null;
+    }
+
+    /**
+     * {@code pins} (package key or {@code group:artifact} to version, as a prior lock held them)
+     * without the JUnit pins off the release train of Jupiter {@code jupiter}: a Jupiter or Vintage
+     * artifact on another major, a Platform artifact on another major than {@link #platformVersion}'s.
+     * JUnit ships as one train, and a pin a lock kept from another line (an implicit Jupiter 6 before
+     * the module declared 5.12.2) beside the declared Jupiter fails every test with a
+     * NoSuchMethodError: the declared Jupiter decides the train, as it would in a fresh lock.
+     */
+    public static Map<String, String> onTrain(Map<String, String> pins, String jupiter) {
+        String jupiterMajor = major(jupiter);
+        String platformMajor = major(platformVersion(jupiter));
+        Map<String, String> out = null;
+        for (var e : pins.entrySet()) {
+            String key = e.getKey();
+            String want;
+            if (key.startsWith(JUPITER_GROUP + ":") || key.startsWith("org.junit.vintage:")) want = jupiterMajor;
+            else if (key.startsWith("org.junit.platform:")) want = platformMajor;
+            else continue;
+            if (major(e.getValue()).equals(want)) continue;
+            if (out == null) out = new HashMap<>(pins);
+            out.remove(key);
+        }
+        return out == null ? pins : out;
+    }
+
+    private static String major(String version) {
+        int dot = version.indexOf('.');
+        return dot < 0 ? version : version.substring(0, dot);
     }
 
     /**

@@ -680,7 +680,11 @@ JumpKick departs from Surefire in one place: Vintage joins only for a `junit:jun
 a test library such as Testcontainers 1.x brings in. Your `jk.toml` is not touched; the lock records
 the result. A launcher you declare yourself always wins, so a Platform 6 launcher beside a Jupiter
 5 engine — which would drop the engine without a word and report success with no tests — can only
-be your own pin, and `jk lock` refuses it with the pin that aligns them. In a workspace each member
+be your own pin, and `jk lock` refuses it with the pin that aligns them. JUnit ships as one train,
+and a declared Jupiter decides it on every relock too: a module first locked with the implicit
+Jupiter 6 that then declares `junit-jupiter = "5.12.2"` moves its Jupiter, Platform engine, commons
+and launcher to 5.12.2 and 1.12.2 under a plain `jk lock`, rather than keeping the old lock's
+Platform 6 pins beside the new Jupiter. In a workspace each member
 is judged on the rows it reads: a member whose tests reach no Jupiter gets no Jupiter engine, and
 the refusal names the member.
 
