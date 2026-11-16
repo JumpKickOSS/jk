@@ -317,3 +317,23 @@ Rename the configuration property `petclinic.visits.max-per-day` to `petclinic.v
 and its Java property `maxPerDay` on `VisitLimits` to `dailyLimit`. Everything in the repository that
 sets or reads it must use the new name.
 """
+
+[tasks.petclinic-anchor-composed-route]
+repo   = "spring-petclinic"
+kind   = "change-route"
+tools  = ["jk"]
+prompt = """
+In `OwnerApiController`, rename the pets endpoint to animals: the method `pets` becomes `animals` and
+its path segment `pets` becomes `animals`. Everything in the repository that requests the endpoint
+must use the new address; the old one need not keep working.
+"""
+
+[tasks.petclinic-anchor-column-case]
+repo   = "spring-petclinic"
+kind   = "rename-column"
+tools  = ["jk"]
+prompt = """
+The pets table's `birth_date` column is renamed to `date_of_birth`. Rename it in every database's
+schema, keep the Java property `birthDate` (mapped to the new column), and update everything else in
+the repository that names the column.
+"""

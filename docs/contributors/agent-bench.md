@@ -55,7 +55,9 @@ held constant and are read from the transcript when a wall surprises.
 
 **Net gain, not only a gain over no graph.** `--arm jk-before` runs the graph as it was: another JumpKick (a
 release) installed in its own home, named by `$JK_BEFORE_HOME` (its `bin/jk` is the client), used for
-the run's prepare, agent and verification. A graph change ships when it beats `jk-before` summed over
+the run's prepare, agent and verification, on a free HTTP port. Stop that home's engine after installing
+it (`JK_HOME=$JK_BEFORE_HOME jk engine stop -A`): the installer starts one on JumpKick's default port, and the
+build under test's engine then serves no MCP. A graph change ships when it beats `jk-before` summed over
 the tasks it does not target and does not lose on the ones it does; `jk-nograph` alone says only that
 a graph helps.
 
