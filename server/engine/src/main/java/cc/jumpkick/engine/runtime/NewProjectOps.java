@@ -29,6 +29,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Layout;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.scaffold.NewProjectSeed;
 import cc.jumpkick.scaffold.NewProjectStep;
@@ -472,6 +473,7 @@ public final class NewProjectOps {
         Optional<Path> local = localTemplate(ref, cwd);
         if (local.isPresent()) return new Located(local.get(), Optional.empty(), null, true);
         Optional<TemplateSpec> spec = resolveIndexed(ref, lang, cwd);
+        if (spec.isEmpty() && fetchFrameworkPlugin(ref)) spec = resolveIndexed(ref, lang, cwd);
         if (spec.isPresent() && inJar(spec.get())) {
             Path extracted = extract(spec.get());
             return new Located(extracted, spec, extracted, false);
@@ -559,6 +561,11 @@ public final class NewProjectOps {
             Optional<Path> indexed = indexedRoot(ref, lang, cwd);
             if (indexed.isPresent()) return indexed.get();
 
+            // A framework jk knows names its templates, never a GitHub owner: a miss lists them.
+            String framework = frameworkOf(ref);
+            if (framework != null && knownFramework(framework, cwd)) {
+                throw new IllegalArgumentException(noSuchTemplate(ref, framework, cwd));
+            }
             // A two-segment ref that misses the catalog may be a GitHub owner/repo shorthand —
             // catalog first (framework/name is the documented meaning), remote clone on miss.
             if (twoSegments && looksRemoteTemplate(ref)) {
@@ -574,6 +581,60 @@ public final class NewProjectOps {
             return cloneRemoteTemplate(ref);
         }
         throw new IllegalArgumentException("unknown template ref: " + ref);
+    }
+
+    /**
+     * The framework segment of a catalogue-shaped ref: {@code helidon} of {@code helidon/quickstart}
+     * and of {@code java/helidon/quickstart}; null for a bare name or a {@code lang/name}.
+     */
+    static @Nullable String frameworkOf(String ref) {
+        String[] parts = ref.strip().toLowerCase(Locale.ROOT).split("/");
+        if (parts.length == 3) return parts[1];
+        if (parts.length == 2 && !JkTemplateToml.isLang(parts[0])) return parts[0];
+        return null;
+    }
+
+    /**
+     * Install the first-party plugin a catalogue-shaped ref names by its framework when this
+     * machine does not hold it yet, so its bundled templates are listed: a framework's templates
+     * ship in its plugin, which a project fetches only once it declares the plugin's table. True
+     * when a plugin was installed and the index should be asked again.
+     */
+    private static boolean fetchFrameworkPlugin(String ref) {
+        String framework = frameworkOf(ref);
+        if (framework == null) return false;
+        String id = PluginTableRegistry.builtInId(framework).orElse(null);
+        // The templates are read from the plugin's jar: a plugin known without one lists none.
+        if (id == null || PluginTableRegistry.archive(id) != null) return false;
+        String failure = PluginTableRegistry.tryFetchMissingBuiltIn(framework);
+        if (failure != null) {
+            Log.debug("fetchFrameworkPlugin: " + framework + ": " + failure);
+            return false;
+        }
+        Giter8TemplateIndex.invalidate();
+        return PluginTableRegistry.archive(id) != null;
+    }
+
+    /** A first-party plugin's framework, or one some listed template is under. */
+    private static boolean knownFramework(String framework, Path cwd) {
+        if (PluginTableRegistry.builtInId(framework).isPresent()) return true;
+        return Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots(cwd)).stream()
+                .anyMatch(t -> t.framework().equals(framework));
+    }
+
+    /** The miss of {@code ref} under a framework jk knows, with the templates it does have. */
+    private static String noSuchTemplate(String ref, String framework, Path cwd) {
+        List<String> ids = Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots(cwd)).stream()
+                .filter(t -> t.framework().equals(framework))
+                .map(t -> framework + "/" + t.name())
+                .distinct()
+                .sorted()
+                .toList();
+        String have = ids.isEmpty()
+                ? "no " + framework + " template is installed (its plugin could not be fetched)"
+                : framework + " templates: " + String.join(", ", ids);
+        return "template not found: " + ref + "; " + have + "\nfor a template in a GitHub repository, give its URL:"
+                + " https://github.com/<owner>/<repo>";
     }
 
     private static boolean looksRemoteTemplate(String ref) {

@@ -6,14 +6,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkInventory;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.testing.RepoRoot;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -473,6 +480,68 @@ class NewProjectOpsTest {
                 [image]
                 aot-cache = true
                 """);
+    }
+
+    /**
+     * A ref under a framework jk knows names one of its templates, never a GitHub owner: a miss
+     * says so and lists that framework's templates rather than cloning {@code github.com/<framework>/<name>}.
+     */
+    @Test
+    void a_missing_template_under_a_known_framework_lists_its_templates_and_clones_nothing(@TempDir Path temp) {
+        for (String ref : new String[] {"helidon/no-such-template", "java/helidon/no-such-template"}) {
+            assertThatThrownBy(() -> NewProjectOps.resolveTemplate(ref, temp))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageStartingWith("template not found: " + ref + "; ")
+                    .hasMessageNotContaining("git clone");
+        }
+        assertThat(NewProjectOps.frameworkOf("helidon/quickstart")).isEqualTo("helidon");
+        assertThat(NewProjectOps.frameworkOf("java/helidon/quickstart")).isEqualTo("helidon");
+        assertThat(NewProjectOps.frameworkOf("java/app")).isNull();
+        assertThat(NewProjectOps.frameworkOf("app")).isNull();
+    }
+
+    /**
+     * A framework's templates ship in its plugin, which a machine holds only once some project
+     * declared the plugin's table: a ref under a first-party framework this machine has no plugin
+     * for fetches the plugin, as a project declaring its table would, and resolves its template.
+     */
+    @Test
+    void a_template_of_a_first_party_plugin_this_machine_lacks_fetches_the_plugin(@TempDir Path temp) throws Exception {
+        // A machine without the plugin's jar: whatever this test JVM was handed is put back after.
+        var before = PluginTableRegistry.byIdOrTable("helidon");
+        Path beforeArchive = PluginTableRegistry.archive("helidon");
+        if (before != null) PluginTableRegistry.restoreBuiltIn(before, null);
+        Path root = RepoRoot.find(NewProjectOpsTest.class);
+        Path jar = temp.resolve("jk-helidon.jar");
+        try (var out = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zip(out, "jk-plugin.toml", Files.readAllBytes(root.resolve("plugins/helidon/jk-plugin.toml")));
+            Path tree = root.resolve("plugins/helidon/src/main/resources");
+            List<Path> files = new ArrayList<>();
+            PathUtil.forEachRegularFile(tree.resolve("templates/java/helidon/quickstart.g8"), (f, a) -> files.add(f));
+            for (Path f : files) zip(out, tree.relativize(f).toString().replace('\\', '/'), Files.readAllBytes(f));
+        }
+        List<String> asked = new ArrayList<>();
+        PluginTableRegistry.missingBuiltInFetcher(table -> {
+            asked.add(table);
+            PluginTableRegistry.installFromJar(jar);
+            return null;
+        });
+        Giter8TemplateIndex.invalidate();
+        try {
+            NewProjectOps.TemplateForm form = NewProjectOps.templateForm("helidon/quickstart", null, temp);
+            assertThat(asked).containsExactly("helidon");
+            assertThat(form.id()).isEqualTo("java/helidon/quickstart");
+        } finally {
+            PluginTableRegistry.missingBuiltInFetcher(null);
+            if (before != null) PluginTableRegistry.restoreBuiltIn(before, beforeArchive);
+            Giter8TemplateIndex.invalidate();
+        }
+    }
+
+    private static void zip(ZipOutputStream out, String name, byte[] bytes) throws IOException {
+        out.putNextEntry(new ZipEntry(name));
+        out.write(bytes);
+        out.closeEntry();
     }
 
     @Test

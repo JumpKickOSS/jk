@@ -146,8 +146,18 @@ the working directory (`--dir` when given), wherever the project goes: `jk new -
 template (a `.jk-template.toml`, a `default.properties` or `src/main/g8/`), so `-t app` still
 means the catalogue's `app` beside an `app/` that is not a template.
 
+An `owner/repo` is tried on GitHub only when `owner` is not a framework JumpKick knows: a ref
+under a first-party plugin's framework (`helidon/…`, `quarkus/…`, `spring-boot/…`) or under a
+framework some installed template belongs to that matches no template fails with that framework's
+templates (`template not found: helidon/quikstart; helidon templates: helidon/database,
+helidon/declarative, helidon/quickstart`), and a template in a GitHub repository is then named by
+its URL.
+
 Official catalog: [JumpKickOSS/jk-templates](https://github.com/JumpKickOSS/jk-templates)
-(overridable). Plugin jars may overlay the same `(language, framework, name)`.
+(overridable). Plugin jars may overlay the same `(language, framework, name)`, and a framework's
+own templates ship in its plugin (Helidon's `helidon/quickstart`, `helidon/declarative` and
+`helidon/database`): a ref under a first-party plugin this machine does not hold yet fetches the
+plugin first, as a project declaring its table would.
 
 JumpKick ships `app` and `library` (no framework, every language that has them) in its own
 distribution, so `jk new` works on a fresh home with no catalogue clone and no network. A

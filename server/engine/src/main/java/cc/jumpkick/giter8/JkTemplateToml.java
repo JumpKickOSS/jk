@@ -300,7 +300,7 @@ public final class JkTemplateToml {
         return Optional.empty();
     }
 
-    static boolean isLang(String s) {
+    public static boolean isLang(String s) {
         return NewProjectStep.LANGS.contains(s);
     }
 
