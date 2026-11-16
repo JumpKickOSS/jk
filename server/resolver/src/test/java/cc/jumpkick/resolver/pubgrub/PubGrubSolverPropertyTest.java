@@ -243,6 +243,58 @@ class PubGrubSolverPropertyTest {
         }
     }
 
+    /**
+     * A universe the generator found (integ gate 46) with no solution: the root admits only {@code
+     * p0 1.0}, which needs {@code p1 2.0}, which needs {@code p2 ≥ 1.0} (only {@code 3.0-rc1},
+     * needing {@code p3 < 1.1}), and {@code p3 1.0} needs {@code p2 < 2.0}. Every input order must
+     * prove that within the budget rather than give up at the decision limit.
+     */
+    @Example
+    void a_small_unsatisfiable_universe_is_proved_unsatisfiable_not_given_up_on() throws Exception {
+        Map<String, Map<String, Map<String, VersionSet>>> table = new LinkedHashMap<>();
+        table.put("p0", new LinkedHashMap<>());
+        table.get("p0").put("1.0", Map.of("p1", VersionSet.exact("2.0")));
+        table.get("p0").put("3.0-rc2", Map.of());
+        table.put("p1", new LinkedHashMap<>());
+        table.get("p1").put("2.0", ordered("p3", VersionSet.ALL, "p2", VersionSet.atLeast("1.0", true)));
+        table.get("p1").put("1.0", ordered("p3", VersionSet.lessThan("3.0-rc1", false), "p2", VersionSet.ALL));
+        table.put("p2", new LinkedHashMap<>());
+        table.get("p2").put("3.0-rc1", Map.of("p3", VersionSet.lessThan("1.1", false)));
+        table.put("p3", new LinkedHashMap<>());
+        table.get("p3").put("3.0-rc1", Map.of("p2", VersionSet.exact("3.0-rc1")));
+        table.get("p3").put("1.0", Map.of("p2", VersionSet.lessThan("2.0", false)));
+        Universe u = new Universe(table, List.of(Term.positive("p0", VersionSet.lessThan("1.1", false))));
+        assertThat(u.satisfiableByBruteForce()).isFalse();
+
+        for (int seed = 0; seed < 64; seed++) {
+            assertThat(solveOrNull(u, new Random(seed))).as("input order %d", seed).isNull();
+        }
+    }
+
+    /**
+     * Another unsatisfiable universe of the same family, found by a long run of the properties: no
+     * {@code p0} the root admits has its dependencies ({@code 1.0} needs a {@code p1 ≥ 3.0}, {@code
+     * 1.1} a {@code p2 3.0-rc1}, {@code 3.0-rc2} a {@code p2 3.0-rc2}, which needs a {@code p1 1.1}).
+     */
+    @Example
+    void an_unsatisfiable_universe_whose_conflict_repeats_a_dependency_is_proved_unsatisfiable() throws Exception {
+        Map<String, Map<String, Map<String, VersionSet>>> table = new LinkedHashMap<>();
+        table.put("p0", new LinkedHashMap<>());
+        table.get("p0")
+                .put("1.0", ordered("p2", VersionSet.lessThan("3.0-rc2", false), "p1", VersionSet.atLeast("3.0", true)));
+        table.get("p0").put("3.0-rc2", Map.of("p2", VersionSet.between("3.0-rc2", true, "3.0", false)));
+        table.get("p0").put("1.1", ordered("p2", VersionSet.exact("3.0-rc1"), "p1", VersionSet.ALL));
+        table.put("p1", new LinkedHashMap<>(Map.of("1.0", Map.of())));
+        table.put("p2", new LinkedHashMap<>());
+        table.get("p2").put("3.0-rc2", Map.of("p1", VersionSet.exact("1.1")));
+        Universe u = new Universe(table, List.of(Term.positive("p0", VersionSet.lessThan("3.0", false))));
+        assertThat(u.satisfiableByBruteForce()).isFalse();
+
+        for (int seed = 0; seed < 64; seed++) {
+            assertThat(solveOrNull(u, new Random(seed))).as("input order %d", seed).isNull();
+        }
+    }
+
     private static Map<String, VersionSet> ordered(String a, VersionSet aSet, String b, VersionSet bSet) {
         Map<String, VersionSet> m = new LinkedHashMap<>();
         m.put(a, aSet);

@@ -90,6 +90,12 @@ public class PubGrubSolver {
      */
     private final Set<Incompatibility> recorded = Collections.newSetFromMap(new IdentityHashMap<>());
 
+    /** The last backjump's clause, target level and how many clauses were recorded after it. */
+    private @Nullable Incompatibility lastBackjump;
+
+    private int lastBackjumpLevel;
+    private int lastBackjumpRecorded;
+
     /**
      * {@code pkg@version} pairs whose dependency clauses are already recorded. A package version
      * decided again after a backjump has the same dependencies, and its clauses are still in the
@@ -230,6 +236,7 @@ public class PubGrubSolver {
         this.rootPkg = rootPkg;
         this.decisionCount = 0;
         this.stepCount = 0;
+        this.lastBackjump = null;
         Term rootTerm = Term.positive(rootPkg, VersionSet.exact(rootVersion));
 
         floatingRoots.clear();
@@ -370,8 +377,27 @@ public class PubGrubSolver {
 
             if (step.mostRecent instanceof PartialSolution.Assignment.Decision
                     || step.previousLevel < step.mostRecent.decisionLevel()) {
+                // The same backjump as the last one, with nothing learned since: the last one
+                // left a state whose propagation brought this conflict straight back, so taking it
+                // again loops until the decision limit. That happens when the clause was not
+                // almost satisfied at the target level after all (a term judged by the universe on
+                // a shorter prefix and by the sets on the full one can satisfy the first and not
+                // the second), as integ gate 46's PubGrubSolverPropertyTest universe showed.
+                // Resolving against the most recent derivation's cause is always sound, and walks
+                // the clause back toward a decision.
+                if (step.mostRecent instanceof PartialSolution.Assignment.Derivation derivation
+                        && current == lastBackjump
+                        && step.previousLevel == lastBackjumpLevel
+                        && recorded.size() == lastBackjumpRecorded) {
+                    current = resolveIncompatibilities(
+                            current, derivation.cause(), step.mostRecentTerm, derivation.term());
+                    continue;
+                }
                 solution.backtrack(step.previousLevel);
                 addIncompatibility(current);
+                lastBackjump = current;
+                lastBackjumpLevel = step.previousLevel;
+                lastBackjumpRecorded = recorded.size();
                 return current;
             }
 
