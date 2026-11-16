@@ -16,7 +16,8 @@ fail() {
   exit 1
 }
 g() { git -C "$REPO" -c user.name=t -c user.email=t@localhost -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
-check() { bash "$REPO/scripts/release-session.sh" >"$WORK/out.log" 2>&1; }
+SCRIPT="$REPO/scripts/release-session.sh"
+check() { bash "$SCRIPT" >"$WORK/out.log" 2>&1; }
 refused() {
   if check; then fail "$1 passed"; fi
   grep -qF "$2" "$WORK/out.log" || fail "$1 did not say: $2"
@@ -42,4 +43,19 @@ printf 'x\n' >"$REPO/NOTES.md"
 refused "a tree with changes" "the tree differs from v9.8.7"
 g add NOTES.md && g commit -q -m after
 refused "the tag on another commit" "HEAD is not v9.8.7"
+
+# A workspace a group root lists tags <artifact>-v<version>; its directory name plays no part.
+GROUP="$WORK/group"
+mkdir -p "$GROUP/services/cache/scripts"
+cp "$ROOT/scripts/release-session.sh" "$ROOT/scripts/release-version.sh" "$GROUP/services/cache/scripts/"
+printf '[workspaces]\nmembers = [\n  "services/*", # every service\n]\n' >"$GROUP/jk.toml"
+printf 'name = "acme-cache"\nversion = "1.2.0"\n' >"$GROUP/services/cache/jk.toml"
+REPO="$GROUP"
+g init -q -b main && g add -A && g commit -q -m "release acme-cache 1.2.0"
+SCRIPT="$GROUP/services/cache/scripts/release-session.sh"
+g tag v1.2.0
+refused "a grouped workspace at v1.2.0" "HEAD carries no tag acme-cache-v1.2.0"
+g tag acme-cache-v1.2.0
+check || fail "a grouped workspace at acme-cache-v1.2.0 was refused"
+echo "ok   a grouped workspace releases at <artifact>-v<version>"
 echo "test-release-session: ok"
