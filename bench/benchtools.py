@@ -528,6 +528,26 @@ def _os_id() -> str:
 
 def host_info() -> dict:
     global _HOST
+    if _HOST is None and platform.system() == "Darwin":
+        # macOS has no /proc: sysctl names the chip and the memory in bytes.
+        try:
+            cpu = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
+                                 check=True).stdout.strip()
+            mem_bytes = int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True,
+                                           check=True).stdout.strip())
+        except (OSError, subprocess.CalledProcessError, ValueError) as e:
+            raise SystemExit(f"refusing to run: cannot read host cpu/memory ({e})") from e
+        cores = os.cpu_count()
+        if not cpu or not cores:
+            raise SystemExit("refusing to run: sysctl names no CPU model or os.cpu_count() is empty")
+        _HOST = {
+            "cpu": cpu,
+            "logical_cpus": cores,
+            "ram_gib": round(mem_bytes / 1024 ** 3),
+            "os": "macos-" + platform.mac_ver()[0],
+            "kernel": platform.release(),
+            "wsl": False,
+        }
     if _HOST is None:
         try:
             cpu = _cpu_model()
