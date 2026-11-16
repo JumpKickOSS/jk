@@ -61,8 +61,8 @@ public record MachineSetup(
         }
     }
 
-    /** This machine's setup, its memo and result under {@code state}. */
-    public static MachineSetup live(Forbidden rules, Path state) {
+    /** This machine's setup, its memo and result under {@code state}; {@code environments} run their rows. */
+    public static MachineSetup live(Forbidden rules, Path state, List<SetupEnvironment> environments) {
         return new MachineSetup(
                 Elevator.live(),
                 UserCommands.live(),
@@ -71,7 +71,7 @@ public record MachineSetup(
                 state.resolve("windows-host-result.txt"),
                 Clock.SYSTEM,
                 ScanCost.LIVE,
-                WindowsSetup.ENVIRONMENTS);
+                environments);
     }
 
     /** Applies {@code chosen} from {@code plan}; the rest of the plan's roots are recorded as left out. */

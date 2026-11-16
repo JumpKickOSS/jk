@@ -12,6 +12,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.winhost.SetupEnvironment;
 import cc.jumpkick.wire.protocol.DecisionsAck;
 import cc.jumpkick.wire.protocol.DecisionsRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -31,10 +32,17 @@ public final class DecideVerb implements HostedVerb {
 
     private final VerbHost host;
     private final DecisionQueue queue;
+    private final List<SetupEnvironment> setupRows;
 
     public DecideVerb(VerbHost host, DecisionQueue queue) {
+        this(host, queue, List.of());
+    }
+
+    /** {@code setupRows} are the machine-setup decision's environment rows an offer proposes and applies. */
+    public DecideVerb(VerbHost host, DecisionQueue queue, List<SetupEnvironment> setupRows) {
         this.host = host;
         this.queue = queue;
+        this.setupRows = List.copyOf(setupRows);
     }
 
     @Override
@@ -62,7 +70,7 @@ public final class DecideVerb implements HostedVerb {
         try {
             DecisionsAck ack;
             try {
-                ack = answer(queue, DecisionsRequest.decode(requestLine));
+                ack = answer(queue, DecisionsRequest.decode(requestLine), setupRows);
             } catch (RuntimeException e) {
                 ack = DecisionsAck.error(Errors.text(e));
             }
@@ -74,12 +82,16 @@ public final class DecideVerb implements HostedVerb {
     }
 
     static DecisionsAck answer(DecisionQueue queue, DecisionsRequest req) {
+        return answer(queue, req, List.of());
+    }
+
+    static DecisionsAck answer(DecisionQueue queue, DecisionsRequest req, List<SetupEnvironment> setupRows) {
         if (DecisionsRequest.RAISE.equals(req.action())) return raise(queue, req.ask());
         if (DecisionsRequest.OFFER.equals(req.action())) {
             String project = req.ask() != null && MiniJson.parse(req.ask()) instanceof Map<?, ?> ask
                     ? MiniJson.str(ask, "project")
                     : null;
-            MachineSetupDecisions.offer(queue, MachineSetupDecisions.project(project));
+            MachineSetupDecisions.offer(queue, MachineSetupDecisions.project(project), setupRows);
             return new DecisionsAck(null, "[]", null);
         }
         String list = MiniJson.write(queue.list().stream().map(Decision::toMap).toList());

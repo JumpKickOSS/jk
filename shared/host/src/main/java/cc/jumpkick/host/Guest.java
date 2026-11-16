@@ -4,9 +4,12 @@ package cc.jumpkick.host;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -56,7 +59,7 @@ public record Guest(Kind kind, String name, boolean interop, String instance) {
     /** This process's answer; {@link #NONE} off Linux. */
     public static Guest detect() {
         if (!Os.isLinux()) return NONE;
-        return detect(Files::exists, Guest::read, ProcessEnv::get);
+        return detect(Files::exists, Guest::read, ProcessEnv::get, Registered::name);
     }
 
     /** As {@link #detect()}, over the given file checks, file reads and process environment. */
@@ -64,10 +67,19 @@ public record Guest(Kind kind, String name, boolean interop, String instance) {
             Predicate<Path> exists,
             Function<Path, @Nullable String> read,
             Function<String, @Nullable String> processEnv) {
+        return detect(exists, read, processEnv, () -> null);
+    }
+
+    /** As {@link #detect()}; {@code registered} answers the WSL distro's registered name, or null. */
+    static Guest detect(
+            Predicate<Path> exists,
+            Function<Path, @Nullable String> read,
+            Function<String, @Nullable String> processEnv,
+            Supplier<@Nullable String> registered) {
         String osrelease = read.apply(OSRELEASE);
         if (osrelease != null && osrelease.toLowerCase(Locale.ROOT).contains("microsoft")) {
             boolean interop = exists.test(INTEROP) || exists.test(INTEROP_LATE);
-            return new Guest(Kind.WSL, distro(read, processEnv), interop, wslInstance(read, processEnv));
+            return new Guest(Kind.WSL, distro(read, processEnv, registered), interop, wslInstance(read, processEnv));
         }
         String runtime = exists.test(Path.of("/.dockerenv"))
                 ? "docker"
@@ -132,10 +144,20 @@ public record Guest(Kind kind, String name, boolean interop, String instance) {
         return nl < 0 ? s : s.substring(0, nl).strip();
     }
 
-    /** The distro's name: {@code WSL_DISTRO_NAME} when set, else {@code /etc/os-release}'s {@code NAME}. */
-    private static String distro(Function<Path, @Nullable String> read, Function<String, @Nullable String> processEnv) {
+    /**
+     * The distro's name: {@code WSL_DISTRO_NAME} when set, else the name WSL registered it under
+     * ({@code wslpath -w /}), else {@code /etc/os-release}'s {@code NAME}. A daemon, the engine
+     * among them, has no {@code WSL_*} variables, and two distros of one image share their {@code
+     * NAME}: only the registered name tells them apart where a person reads it.
+     */
+    private static String distro(
+            Function<Path, @Nullable String> read,
+            Function<String, @Nullable String> processEnv,
+            Supplier<@Nullable String> registered) {
         String named = processEnv.apply("WSL_DISTRO_NAME");
         if (named != null && !named.isBlank()) return named.strip();
+        String wsl = registered.get();
+        if (wsl != null && !wsl.isBlank()) return wsl;
         String osRelease = read.apply(OS_RELEASE);
         if (osRelease == null) return "";
         for (String line : osRelease.split("\n")) {
@@ -143,6 +165,26 @@ public record Guest(Kind kind, String name, boolean interop, String instance) {
                 return line.substring(5).replace("\"", "").strip();
         }
         return "";
+    }
+
+    /** The registered name in the UNC path {@code wslpath -w /} answers (wsl.localhost or wsl$); null for any other. */
+    static @Nullable String registeredName(@Nullable String wslpathOfRoot) {
+        if (wslpathOfRoot == null) return null;
+        Matcher m = UNC_ROOT.matcher(wslpathOfRoot.strip());
+        return m.matches() ? m.group(1) : null;
+    }
+
+    private static final Pattern UNC_ROOT =
+            Pattern.compile("\\\\\\\\wsl(?:\\.localhost|\\$)\\\\([A-Za-z0-9._-]{1,64})\\\\?");
+
+    /** Asked once per process: {@code wslpath} is a WSL tool inside the distro and starts no Windows program. */
+    private static final class Registered {
+        private static final @Nullable String NAME =
+                registeredName(Processes.outputIfOk(List.of("wslpath", "-w", "/"), Duration.ofSeconds(3)));
+
+        static @Nullable String name() {
+            return NAME;
+        }
     }
 
     private static @Nullable String read(Path file) {

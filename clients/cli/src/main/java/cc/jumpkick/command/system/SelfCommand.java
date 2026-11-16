@@ -99,6 +99,7 @@ public final class SelfCommand extends GroupCommand {
                 new RollbackSub(),
                 new SetupTerminalSub(),
                 new SelfDesktopCommand(),
+                new SelfSetupWslCommand(),
                 new SelfNukeCommand());
     }
 

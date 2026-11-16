@@ -8,6 +8,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupConsent;
+import cc.jumpkick.winhost.SetupEnvironment;
 import cc.jumpkick.winhost.SetupOffer;
 import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
@@ -40,15 +41,15 @@ public final class MachineSetupDecisions {
      * Records each declined or expired setup decision in the memo, whichever surface settled it, and
      * applies an offered one the person accepted. Windows only.
      */
-    public static void watch(DecisionQueue queue) {
+    public static void watch(DecisionQueue queue, List<SetupEnvironment> environments) {
         if (!Os.isWindows()) return;
         queue.onChange(d -> {
             if (!WindowsSetup.KIND.equals(d.kind())) return;
             switch (d.state()) {
-                case DECLINED -> decline(d.project(), "declined");
-                case EXPIRED -> decline(d.project(), "not answered");
+                case DECLINED -> decline(d.project(), "declined", environments);
+                case EXPIRED -> decline(d.project(), "not answered", environments);
                 case ACCEPTED -> {
-                    if (OFFERED_BY.equals(d.label())) spendAndApply(queue, d);
+                    if (OFFERED_BY.equals(d.label())) spendAndApply(queue, d, environments);
                 }
                 case OPEN -> {}
             }
@@ -60,32 +61,32 @@ public final class MachineSetupDecisions {
      * notification, applied, or declined as {@code [windows] fix} says. Off the request path, since
      * the plan reads the host. An accepted decision nobody applied is applied now.
      */
-    public static void offer(DecisionQueue queue, @Nullable Path project) {
+    public static void offer(DecisionQueue queue, @Nullable Path project, List<SetupEnvironment> environments) {
         if (!Os.isWindows()) return;
         SessionContext.startVirtual("machine-setup-offer", () -> {
             try {
-                offerNow(queue, project);
+                offerNow(queue, project, environments);
             } catch (RuntimeException e) {
                 Log.debug("machine setup offer failed", e);
             }
         });
     }
 
-    private static void offerNow(DecisionQueue queue, @Nullable Path project) {
+    private static void offerNow(DecisionQueue queue, @Nullable Path project, List<SetupEnvironment> environments) {
         for (Decision d : queue.list()) {
             if (WindowsSetup.KIND.equals(d.kind()) && d.accepted() && !queue.spent(d.id())) {
-                spendAndApply(queue, d);
+                spendAndApply(queue, d, environments);
                 return;
             }
         }
         boolean outstanding = queue.list().stream().anyMatch(d -> WindowsSetup.KIND.equals(d.kind()) && d.open());
         WindowsHostCheck check = WindowsSetup.check(project);
-        SetupPlan plan = WindowsSetup.unanswered(check, served());
+        SetupPlan plan = WindowsSetup.unanswered(check, served(), environments);
         SetupConsent consent = WindowsSetup.consent();
         switch (SetupOffer.of(consent, plan, outstanding)) {
             case NONE -> {}
-            case DECLINE -> declinePlan(check, plan, "declined by " + consent.settledBy());
-            case APPLY -> apply(check, plan, WindowsSetup.all(plan));
+            case DECLINE -> declinePlan(check, plan, "declined by " + consent.settledBy(), environments);
+            case APPLY -> apply(check, plan, WindowsSetup.all(plan), environments);
             case ASK -> {
                 Decision d = queue.open(new DecisionQueue.Ask(
                         WindowsSetup.KIND,
@@ -107,35 +108,38 @@ public final class MachineSetupDecisions {
         }
     }
 
-    private static void spendAndApply(DecisionQueue queue, Decision d) {
+    private static void spendAndApply(DecisionQueue queue, Decision d, List<SetupEnvironment> environments) {
         if (!queue.spend(d.id())) return;
         SessionContext.startVirtual("machine-setup-apply", () -> {
             WindowsHostCheck check = WindowsSetup.check(project(d.project()));
-            apply(check, WindowsSetup.plan(check, served()), new LinkedHashSet<>(DecisionForms.chosen(d.answers())));
+            apply(
+                    check,
+                    WindowsSetup.plan(check, served(), environments),
+                    new LinkedHashSet<>(DecisionForms.chosen(d.answers())),
+                    environments);
         });
     }
 
-    private static void apply(WindowsHostCheck check, SetupPlan plan, Set<String> chosen) {
+    private static void apply(
+            WindowsHostCheck check, SetupPlan plan, Set<String> chosen, List<SetupEnvironment> environments) {
         try {
-            MachineSetup.Applied applied = WindowsSetup.machine(check).apply(plan, chosen);
+            MachineSetup.Applied applied =
+                    WindowsSetup.machine(check, environments).apply(plan, chosen);
             for (MachineSetup.Result r : applied.results()) Log.info("machine setup: " + r.line());
         } catch (IOException | RuntimeException e) {
             Log.warn("could not apply the machine setup: " + Errors.text(e));
         }
     }
 
-    private static void decline(@Nullable String project, String line) {
-        decline(project(project), line);
+    private static void decline(@Nullable String project, String line, List<SetupEnvironment> environments) {
+        WindowsHostCheck check = WindowsSetup.check(project(project));
+        declinePlan(check, WindowsSetup.plan(check, served(), environments), line, environments);
     }
 
-    private static void decline(@Nullable Path project, String line) {
-        WindowsHostCheck check = WindowsSetup.check(project);
-        declinePlan(check, WindowsSetup.plan(check, served()), line);
-    }
-
-    private static void declinePlan(WindowsHostCheck check, SetupPlan plan, String line) {
+    private static void declinePlan(
+            WindowsHostCheck check, SetupPlan plan, String line, List<SetupEnvironment> environments) {
         try {
-            WindowsSetup.machine(check).decline(plan, line);
+            WindowsSetup.machine(check, environments).decline(plan, line);
         } catch (IOException | RuntimeException e) {
             Log.warn("could not record the declined machine setup: " + Errors.text(e));
         }

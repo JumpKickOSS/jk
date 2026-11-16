@@ -14,6 +14,7 @@ import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.Log;
@@ -182,6 +183,18 @@ public final class HttpEngineServer implements AutoCloseable {
     public void setFrontDoor(FrontDoor door) {
         this.frontDoor = door;
         api.register("GET", "/api/engines", door::handleList);
+    }
+
+    /**
+     * Engine hook, on the Windows engine: the machine's environments on {@link HttpMachineApi#PATH},
+     * and the install and remove operations beside it. Before {@link #start}.
+     */
+    public void setMachine(MachineEnvironments machine) {
+        HttpMachineApi machineApi = new HttpMachineApi(machine, this::port);
+        api.register("GET", HttpMachineApi.PATH, machineApi::handleList);
+        api.register("POST", HttpMachineApi.INSTALL, machineApi::handleInstall);
+        api.register("POST", HttpMachineApi.REMOVE, machineApi::handleRemove);
+        if (mcp != null) mcp.machine(machine);
     }
 
     /**

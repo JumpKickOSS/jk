@@ -2,8 +2,10 @@
 package cc.jumpkick.winhost;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -17,6 +19,12 @@ final class FakeHost implements HostFacts, Registry {
     final Map<String, Volume> volumes = new HashMap<>();
     final Map<String, String> files = new HashMap<>();
     final Set<String> existing = new HashSet<>();
+    final List<WslDistros.Distro> distros = new ArrayList<>();
+
+    @Override
+    public List<WslDistros.Distro> wslDistros() {
+        return distros;
+    }
 
     String arch = "amd64";
 

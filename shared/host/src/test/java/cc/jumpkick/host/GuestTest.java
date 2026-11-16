@@ -32,6 +32,20 @@ class GuestTest {
         assertThat(named).isEqualTo(new Guest(Guest.Kind.WSL, "Ubuntu-26.10", false, "distro=Ubuntu-26.10"));
     }
 
+    @Test
+    void aDaemonWithoutWslVariablesIsNamedAsWslRegisteredItNotByItsImage() {
+        Map<Path, String> files = Map.of(
+                Guest.OSRELEASE, "6.6.87.2-microsoft-standard-WSL2\n",
+                Guest.OS_RELEASE, "NAME=\"Ubuntu\"\n");
+        Guest daemon = Guest.detect(
+                Set.of(Guest.INTEROP)::contains, files::get, Map.<String, String>of()::get, () -> "fd3-ubuntu");
+        assertThat(daemon.name()).isEqualTo("fd3-ubuntu");
+        assertThat(Guest.registeredName("\\\\wsl.localhost\\fd3-ubuntu\\\n")).isEqualTo("fd3-ubuntu");
+        assertThat(Guest.registeredName("\\\\wsl$\\Ubuntu-26.10\\")).isEqualTo("Ubuntu-26.10");
+        assertThat(Guest.registeredName("C:\\Windows")).isNull();
+        assertThat(Guest.registeredName(null)).isNull();
+    }
+
     /** What a WSL distro shows any process: two Ubuntu installs on one Windows host, read live. */
     private static Map<Path, String> distro(String machineId, String device, String wwid) {
         return Map.of(

@@ -10,6 +10,7 @@ import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.MiniJson;
 import java.nio.file.Path;
@@ -132,6 +133,13 @@ public final class McpContext {
      */
     @Setter
     private volatile Decisions decisions = new Decisions(new DecisionQueue(), id -> null, new Dashboards());
+
+    /**
+     * The machine's environments and the install and remove operation, on the Windows engine;
+     * {@code null} elsewhere, where {@code machine} answers that there is nothing to set up.
+     */
+    @Setter
+    private volatile @Nullable MachineEnvironments machine;
 
     /** The tool registered under a name, for {@code run(decision=<id>)} to call again; null for none. */
     @Getter(AccessLevel.PACKAGE)

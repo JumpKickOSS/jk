@@ -27,9 +27,6 @@ public final class WindowsSetup {
 
     public static final String YES = "Apply the ticked changes (one Windows prompt)";
 
-    /** The sources of environment rows this build carries. */
-    static final List<SetupEnvironment> ENVIRONMENTS = List.of();
-
     private WindowsSetup() {}
 
     /** The check of this machine for {@code project}. */
@@ -38,14 +35,27 @@ public final class WindowsSetup {
                 HostFacts.live(), SetupMemo.read(SetupMemo.file(JkDirs.state())), JkDirs.home(), project);
     }
 
+    /**
+     * The sources of environment rows that run their installs through {@code wsl}, the one WSL install
+     * operation: the Windows engine's own, or that operation through the engine's API.
+     */
+    public static List<SetupEnvironment> environments(WslEnvironmentRows.Operation wsl) {
+        return List.of(new WslEnvironmentRows(wsl));
+    }
+
     /** The plan for {@code check}'s machine; {@code known} are projects already known to be projects. */
     public static SetupPlan plan(WindowsHostCheck check, List<Path> known) {
-        return SetupPlan.of(check, discovery(check, known).propose(), ScanCost.LIVE, ENVIRONMENTS);
+        return plan(check, known, List.of());
+    }
+
+    /** {@link #plan(WindowsHostCheck, List)} with the rows {@code environments} propose last. */
+    public static SetupPlan plan(WindowsHostCheck check, List<Path> known, List<SetupEnvironment> environments) {
+        return SetupPlan.of(check, discovery(check, known).propose(), ScanCost.LIVE, environments);
     }
 
     /** The rows of {@link #plan} that {@code check}'s memo has no answer for: what an offer shows. */
-    public static SetupPlan unanswered(WindowsHostCheck check, List<Path> known) {
-        return SetupPlan.unanswered(check, discovery(check, known).propose(), ScanCost.LIVE, ENVIRONMENTS);
+    public static SetupPlan unanswered(WindowsHostCheck check, List<Path> known, List<SetupEnvironment> environments) {
+        return SetupPlan.unanswered(check, discovery(check, known).propose(), ScanCost.LIVE, environments);
     }
 
     static RootDiscovery discovery(WindowsHostCheck check, List<Path> known) {
@@ -98,8 +108,13 @@ public final class WindowsSetup {
         return out;
     }
 
-    /** The setup that applies an answer on this machine. */
+    /** The setup that applies an answer on this machine, with no environment rows. */
     public static MachineSetup machine(WindowsHostCheck check) {
-        return MachineSetup.live(Forbidden.of(check.facts(), check.home().toString()), JkDirs.state());
+        return machine(check, List.of());
+    }
+
+    /** The setup that applies an answer on this machine, running {@code environments}' rows. */
+    public static MachineSetup machine(WindowsHostCheck check, List<SetupEnvironment> environments) {
+        return MachineSetup.live(Forbidden.of(check.facts(), check.home().toString()), JkDirs.state(), environments);
     }
 }

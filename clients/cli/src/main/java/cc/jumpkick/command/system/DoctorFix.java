@@ -16,6 +16,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupConsent;
+import cc.jumpkick.winhost.SetupEnvironment;
 import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
@@ -71,16 +72,18 @@ final class DoctorFix {
             CommandWedge.printOk("Doctor", "nothing to set up: the host fixes are for Windows");
             return Exit.SUCCESS;
         }
+        // A WSL row installs through the engine, the one operation the dashboard and setup-wsl use.
+        List<SetupEnvironment> rows = WindowsSetup.environments(SelfSetupWslCommand::install);
         WindowsHostCheck check = WindowsSection.check();
         List<Path> known = check.project() == null ? List.of() : List.of(check.project());
-        SetupPlan plan = WindowsSetup.plan(check, known);
+        SetupPlan plan = WindowsSetup.plan(check, known, rows);
         if (plan.isEmpty()) {
             CommandWedge.printOk("Doctor", "this machine is set up: nothing to change");
             return Exit.SUCCESS;
         }
         SetupConsent consent = WindowsSetup.consent();
         if (consent == SetupConsent.NEVER && !global.yes) {
-            WindowsSetup.machine(check).decline(plan, "declined by " + consent.settledBy());
+            WindowsSetup.machine(check, rows).decline(plan, "declined by " + consent.settledBy());
             CommandWedge.printOk("Doctor", "not asked: " + consent.settledBy() + "; -y applies anyway");
             return Exit.SUCCESS;
         }
@@ -102,7 +105,7 @@ final class DoctorFix {
                 return Exit.FAILURE;
             }
             case Answer.Accepted a -> {
-                MachineSetup.Applied applied = WindowsSetup.machine(check).apply(plan, a.chosen());
+                MachineSetup.Applied applied = WindowsSetup.machine(check, rows).apply(plan, a.chosen());
                 for (MachineSetup.Result r : applied.results())
                     CliOutput.out((r.ok() ? "  ok    " : "  warn  ") + r.line());
                 return Exit.SUCCESS;

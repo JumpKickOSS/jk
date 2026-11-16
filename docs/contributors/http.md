@@ -56,6 +56,13 @@ engine's builds.
 
 ### The front door
 
+Installing JumpKick into a WSL distro from a development build: a `-SNAPSHOT` Windows engine pins
+the newest published release at or below its version, which predates the branch you are trying.
+Start that engine with `JK_DEV_WSL_DIST` naming the absolute Windows folder of a Linux dist built
+from the same tree (`jk build` in WSL writes `target/dist`; copy it to `C:\...`), and it installs
+that dist instead. Only the engine's own environment is read, only a `-SNAPSHOT` engine honours it,
+and a folder without `jk` and `lib/jk-engine-<version>.jar` is ignored; a request never names a dist.
+
 A host engine is the machine's front door. `GET /api/engines` lists it and every engine that answers
 `GET /api/identity` on a band port (8911 to 8999, all asked at once: on Windows a loopback port with
 no listener takes about a second to refuse), each marked `paired` when this engine can proxy it.

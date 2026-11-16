@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.compat.ToolInstaller;
+import cc.jumpkick.config.FrontDoorScope;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JkHttpConfig;
@@ -20,6 +21,7 @@ import cc.jumpkick.engine.decisions.JournaledDecisions;
 import cc.jumpkick.engine.decisions.MachineSetupDecisions;
 import cc.jumpkick.engine.graph.GraphCompiles;
 import cc.jumpkick.engine.graph.GraphRunner;
+import cc.jumpkick.engine.http.FrontDoor;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.SelfUpdateControl;
@@ -31,6 +33,7 @@ import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.notices.UpdatedNotice;
 import cc.jumpkick.engine.plugin.MemoryHolds;
@@ -43,7 +46,9 @@ import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.engine.verbs.VerbShape;
+import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.host.time.Suspensions;
@@ -54,6 +59,8 @@ import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.runtime.base.HostBusy;
+import cc.jumpkick.winhost.SetupEnvironment;
+import cc.jumpkick.winhost.WindowsSetup;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -154,6 +161,13 @@ public final class EngineServer implements AutoCloseable {
 
     /** Questions operations put to a person: answered by MCP hosts, the dashboard and jk decide. */
     private final DecisionQueue decisions = new DecisionQueue();
+
+    /**
+     * The machine's environments and the WSL install operation, on the Windows host engine; null
+     * elsewhere. One for the engine's life: the dashboard, the CLI, MCP and the setup decision's rows
+     * all run the same one.
+     */
+    private final @Nullable MachineEnvironments machine;
 
     /** The bell's notices and the machine's one seen marker, kept in the state directory. */
     private final Notices notices;
@@ -408,7 +422,11 @@ public final class EngineServer implements AutoCloseable {
                 sessions, journal, historyConfig, () -> metrics.get(), clockMillis, this.version, this.log);
         this.sessionLog = newSessionLog();
         decisions.store(new JournaledDecisions(sessionLog));
-        MachineSetupDecisions.watch(decisions);
+        // Only the person's own Windows engine: a sandbox, private home or CI runs no wsl.exe either.
+        this.machine = Os.isWindows() && !Guest.detect().guest() && FrontDoorScope.active()
+                ? MachineEnvironments.windows(this::frontDoorEngines, this.version)
+                : null;
+        MachineSetupDecisions.watch(decisions, setupRows());
         this.notices = new Notices(JkDirs.state().resolve(Notices.FILE), Clock.SYSTEM);
         notices.follow(decisions);
         this.changeNotices = new ChangeNotices(ChangeJournal::current, notices);
@@ -602,7 +620,21 @@ public final class EngineServer implements AutoCloseable {
                         historyConfig,
                         () -> metrics.get(),
                         inFlightBuilds),
-                decisions);
+                decisions,
+                setupRows());
+    }
+
+    /** The setup decision's environment rows: the WSL rows on the Windows engine, none elsewhere. */
+    private List<SetupEnvironment> setupRows() {
+        MachineEnvironments m = machine;
+        return m == null ? List.of() : WindowsSetup.environments(m::installAndWait);
+    }
+
+    /** The engines the front door lists, for the machine view's pairing state; none before HTTP serves. */
+    private List<Map<String, Object>> frontDoorEngines() {
+        HttpEngineServer s = http == null ? null : http.server();
+        FrontDoor door = s == null ? null : s.frontDoor();
+        return door == null ? List.of() : door.engines();
     }
 
     /** Starts a job the way {@code POST /api/build} does: the verb's request line, stamped with its origin. */
@@ -634,7 +666,8 @@ public final class EngineServer implements AutoCloseable {
                 cacheGate,
                 sessionLog,
                 decisions,
-                notices);
+                notices,
+                machine);
     }
 
     private EngineVitals newVitals() {

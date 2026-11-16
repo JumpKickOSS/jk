@@ -17,6 +17,7 @@ import cc.jumpkick.engine.http.mcp.McpResources;
 import cc.jumpkick.engine.http.mcp.McpRpc;
 import cc.jumpkick.engine.http.mcp.McpTools;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
+import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.mcp.McpRevision;
 import java.nio.file.Path;
@@ -121,6 +122,11 @@ public final class McpHandler {
     /** Wire the engine's decision queue and the dashboard links into it. Optional. */
     public void decisions(Decisions decisions) {
         ctx.decisions(decisions);
+    }
+
+    /** Wire the Windows engine's environments for the {@code machine} tool. Optional. */
+    public void machine(MachineEnvironments machine) {
+        ctx.machine(machine);
     }
 
     /** Wire the shared cache/store snapshot supplier (memoized in the live engine). Optional. */

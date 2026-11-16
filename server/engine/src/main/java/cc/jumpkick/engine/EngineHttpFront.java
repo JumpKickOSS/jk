@@ -24,6 +24,7 @@ import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
+import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
@@ -80,6 +81,9 @@ public final class EngineHttpFront {
     private final SessionLog sessions;
     private final DecisionQueue decisions;
     private final Notices notices;
+
+    /** The Windows engine's environments, served on every listener it binds; null elsewhere. */
+    private final @Nullable MachineEnvironments machine;
 
     private volatile Supplier<SelfUpdateControl> selfUpdate = () -> SelfUpdateControl.NONE;
 
@@ -234,6 +238,7 @@ public final class EngineHttpFront {
         if (frontDoor && !id.guest().guest()) {
             candidate.setFrontDoor(
                     new FrontDoor(() -> id, candidate::port, paths.dir().resolve(GuestPairing.DIR), FrontDoor.band()));
+            if (machine != null) candidate.setMachine(machine);
         }
         return candidate;
     }

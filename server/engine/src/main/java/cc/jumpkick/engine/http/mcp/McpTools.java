@@ -22,6 +22,7 @@ import cc.jumpkick.engine.http.mcp.tools.HistoryTool;
 import cc.jumpkick.engine.http.mcp.tools.IdeTool;
 import cc.jumpkick.engine.http.mcp.tools.InstallTool;
 import cc.jumpkick.engine.http.mcp.tools.JdkTool;
+import cc.jumpkick.engine.http.mcp.tools.MachineTool;
 import cc.jumpkick.engine.http.mcp.tools.ManifestTool;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.http.mcp.tools.NodeTool;
@@ -183,6 +184,7 @@ public final class McpTools {
                 new IdeTool(),
                 new GraphTool(),
                 new DoctorTool(),
+                new MachineTool(),
                 CodeGraphTool.callers(),
                 CodeGraphTool.rename(),
                 CodeGraphTool.query(),

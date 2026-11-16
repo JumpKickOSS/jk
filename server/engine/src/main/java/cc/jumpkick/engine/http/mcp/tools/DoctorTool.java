@@ -9,6 +9,7 @@ import cc.jumpkick.engine.http.mcp.McpDecisions;
 import cc.jumpkick.engine.http.mcp.McpEnvelope;
 import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.http.mcp.McpTool;
+import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.verbs.DoctorReport;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Os;
@@ -16,6 +17,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupChange;
 import cc.jumpkick.winhost.SetupConsent;
+import cc.jumpkick.winhost.SetupEnvironment;
 import cc.jumpkick.winhost.SetupPlan;
 import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
@@ -59,11 +61,13 @@ public final class DoctorTool implements McpTool {
     private Map<String, Object> fix(McpCall in) {
         if (!Os.isWindows()) return in.text("nothing to set up: the host fixes are for Windows\n");
         WindowsHostCheck check = WindowsSetup.check(MachineSetupDecisions.project(in.dir()));
+        MachineEnvironments machine = in.ctx().machine();
+        List<SetupEnvironment> rows = machine == null ? List.of() : WindowsSetup.environments(machine::installAndWait);
         SetupConsent consent = WindowsSetup.consent();
         if (consent == SetupConsent.NEVER) {
             try {
-                WindowsSetup.machine(check)
-                        .decline(WindowsSetup.plan(check, MachineSetupDecisions.served()), "declined");
+                WindowsSetup.machine(check, rows)
+                        .decline(WindowsSetup.plan(check, MachineSetupDecisions.served(), rows), "declined");
             } catch (IOException | RuntimeException e) {
                 return in.error("machine setup failed: " + Errors.text(e) + "\n");
             }
@@ -72,8 +76,8 @@ public final class DoctorTool implements McpTool {
         List<Path> served = MachineSetupDecisions.served();
         // An agent asks only about rows the user never answered; jk doctor --fix shows them all.
         boolean asking = in.str(McpDecisions.DECISION) == null;
-        SetupPlan plan = asking ? WindowsSetup.unanswered(check, served) : WindowsSetup.plan(check, served);
-        if (plan.isEmpty() && (!asking || WindowsSetup.plan(check, served).isEmpty())) {
+        SetupPlan plan = asking ? WindowsSetup.unanswered(check, served, rows) : WindowsSetup.plan(check, served, rows);
+        if (plan.isEmpty() && (!asking || WindowsSetup.plan(check, served, rows).isEmpty())) {
             return in.text("this machine is set up: nothing to change\n");
         }
         if (consent == SetupConsent.ASK && plan.isEmpty()) {
@@ -103,7 +107,7 @@ public final class DoctorTool implements McpTool {
         if (accepted == null) plan.changes().forEach(c -> chosen.add(c.id()));
         else chosen.addAll(DecisionForms.chosen(accepted.answers()));
         try {
-            MachineSetup.Applied applied = WindowsSetup.machine(check).apply(plan, chosen);
+            MachineSetup.Applied applied = WindowsSetup.machine(check, rows).apply(plan, chosen);
             StringBuilder out =
                     new StringBuilder(applied.declined() ? "DECLINED machine setup\n" : "APPLIED machine setup\n");
             for (MachineSetup.Result r : applied.results())

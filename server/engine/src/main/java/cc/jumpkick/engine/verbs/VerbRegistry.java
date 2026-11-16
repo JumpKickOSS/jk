@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.winhost.SetupEnvironment;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,11 @@ public final class VerbRegistry {
 
     /** Every hosted verb; {@code decisions} is the queue {@code jk decide} reads and answers. */
     public static VerbRegistry standard(VerbHost host, DecisionQueue decisions) {
+        return standard(host, decisions, List.of());
+    }
+
+    /** {@link #standard(VerbHost, DecisionQueue)}; {@code setupRows} are the setup decision's environment rows. */
+    public static VerbRegistry standard(VerbHost host, DecisionQueue decisions, List<SetupEnvironment> setupRows) {
         return new VerbRegistry(List.of(
                 new WorkspaceBuildVerb(host),
                 new LockVerb(host),
@@ -58,7 +64,7 @@ public final class VerbRegistry {
                 new GenerateVerb(host),
                 new NewProjectVerb(host),
                 new NewProjectFormVerb(host),
-                new DecideVerb(host, decisions),
+                new DecideVerb(host, decisions, setupRows),
                 new TemplateLintVerb(host),
                 new IdeModelVerb(host),
                 new DenyCheckVerb(host),

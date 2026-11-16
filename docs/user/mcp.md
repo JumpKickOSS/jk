@@ -229,6 +229,7 @@ The whole registry:
 | **`jdk`** | List / install / uninstall (`confirm=true` for uninstall, and a host that can ask [asks](#decisions)) |
 | **`node`** | Node.js: `list` (installs, JumpKick's and other managers'), `list-remote` (`lts`, `major`), `install` (`spec`), `uninstall` (`spec` = exact version, `confirm=true`, and a host that can ask [asks](#decisions)), `which` (`dir`: the project's Node.js), `pin` (`dir`, optional `spec`: writes `jk.toml` and relocks) |
 | **`doctor`** | The health rows `jk doctor` checks, `{ok, rows: [{id, label, status, detail, fix?}]}`: `config`, `dirs`, `state`, `jdk`, and for `dir` (default: bound dir) `lock` and `m2`, then `engine`; the rows only the client can answer (`client`, `shell`, `mvn`, `logins`, `tools`) are `unavailable`, not left out; on Windows the host rows and their fixes ([Install](install.md#windows-host-checks)). The same object as `GET /api/doctor`. Disk usage is `disk`, settings `config` |
+| **`machine`** | Windows: `action=list` (default) the host and its WSL distros with the JumpKick each has, its engine and an operation's progress; `install` or `remove` JumpKick in the distros `distros` names, as `jk self setup-wsl` does ([Engine](engine.md#http-and-mcp)). Installing and removing always [ask](#decisions) |
 | **`new`** | Scaffold from a template, as `jk new` does (default `app`): `action=templates` lists templates, `action=form` one template's fields, `params` answers its questions, `preview=true` does not write ([below](#new)) |
 | **`publish`** | Validate the publish bundle (dry-run). `upload=true` uploads it to the repository `[publish] repository` names, with the credential `jk repo login` / `JK_REPO_<ID>_*` holds and signing from `[publish]` (`JK_GPG_PASSPHRASE`). An agent never names a URL; a project with no `[publish] repository`, or with `central`, is refused with the fix — Central uploads stay on `jk publish` |
 | **`install`** | The inner-loop install, used as a Maven `-SNAPSHOT` is: the project goes into the local Maven repo as `<version>-SNAPSHOT` and is replaced on each run; a sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT`. `action=list` shows jkx tools (tool installs stay CLI-side) |
@@ -312,6 +313,7 @@ accept or decline any decision; the first answer wins and every other surface cl
 | Operation | Asks when |
 |---|---|
 | `disk` `clean` / `nuke` / `m2-clean`, `jdk` uninstall, `node` uninstall | `confirm=true` and the host can ask |
+| `machine` `install` / `remove` | Always, through the queue when the host cannot ask |
 
 Dependency work never asks: `update` applies and `deps` either applies or fails. A host that can
 ask neither by form nor by link runs the operation on `confirm=true`. Decisions are a courtesy, not

@@ -151,6 +151,25 @@ pairing into your Windows profile, starts no Windows engine, runs no check from 
 Windows toast, so it starts no Windows program at all. `JK_FRONT_DOOR=true` in its environment opts
 such an engine in; `JK_FRONT_DOOR=false` opts any engine out.
 
+JumpKick for Windows installs JumpKick into the WSL distros you name: `jk self setup-wsl Ubuntu-26.10`
+(`--status` shows each distro, the JumpKick it has and whether its engine is paired; `--remove` takes
+JumpKick out of a distro again and leaves Windows' own alone). Each distro gets the published release
+that matches JumpKick for Windows: its own version, or, for a development build (`-SNAPSHOT`), the
+newest release at or below it. The distro downloads and verifies the release itself with JumpKick's
+installer; one without `curl` or `wget`, or without `openssl`, gets it from Windows, which downloads it
+and checks it against the release's signed checksums. A WSL 1 distro, one whose default user is
+root (a distro never opened, or imported without a user) and one without `bash` are refused, each with
+its reason. Distros install one after another, a failing one leaves the next to install, and each
+outcome is a change-log entry; once installed, the distro's engine starts and pairs with the front
+door. The machine-setup decision a build on Windows raises offers the same install as one row per
+running WSL 2 distro that has no JumpKick ("Install JumpKick in WSL Ubuntu-26.10"); each row is
+answered and remembered on its own, so declining one distro declines neither the others nor the
+Defender rows, and `jk doctor --fix` offers every row again. A stopped distro is not started just
+to look, so it gets no row; `jk self setup-wsl` installs there. The same operation is `GET /api/machine/environments` and `POST
+/api/machine/environments/install` or `/remove` with `{"distros": [...]}` on the Windows engine (the
+front door's token; a request from another page's origin is refused) and the MCP `machine` tool,
+which asks you first.
+
 `jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
 (`jk web -O jsonl` prints `url`, `token` and `engineId`). The id stays the same across restarts and
