@@ -3,6 +3,7 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import type { JumpKickApi } from "../../../src/extension";
+import { canonical } from "../../support/paths";
 import { scriptJob, StubEngine } from "../../support/stubEngine";
 
 const connectFile = process.env["JK_TEST_CONNECT_FILE"] ?? "";
@@ -45,7 +46,7 @@ const real = process.env["JK_TEST_REAL"] === "1";
     assert.equal(run?.success, true);
     const job = engine.jobs.at(-1);
     assert.equal(job?.kind, "build");
-    assert.equal(fs.realpathSync(job?.dir ?? ""), fs.realpathSync(workspace));
+    assert.equal(canonical(job?.dir ?? ""), canonical(workspace));
   });
 
   it("the Test command runs the test job and reports a failure", async () => {

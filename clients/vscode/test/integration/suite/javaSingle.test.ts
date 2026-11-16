@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import type { JumpKickApi } from "../../../src/extension";
+import { canonical } from "../../support/paths";
 
 const single = process.env["JK_TEST_JAVA"] === "single";
 const workspace = process.env["JK_TEST_WORKSPACE"] ?? "";
@@ -39,7 +40,7 @@ async function until<T>(what: string, probe: () => Promise<T | undefined> | T | 
 
   it("is one Java project at the folder, compiling clean against its Central library", async () => {
     const uris = await vscode.commands.executeCommand<string[]>("java.execute.workspaceCommand", "java.project.getAll");
-    assert.deepEqual((uris ?? []).map((u) => fs.realpathSync(vscode.Uri.parse(u).fsPath)), [fs.realpathSync(workspace)]);
+    assert.deepEqual((uris ?? []).map((u) => canonical(vscode.Uri.parse(u).fsPath)), [canonical(workspace)]);
     const doc = await vscode.workspace.openTextDocument(file);
     await vscode.window.showTextDocument(doc);
     await until(

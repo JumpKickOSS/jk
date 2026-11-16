@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import type { JumpKickApi } from "../../../src/extension";
 import type { SyncOutcome } from "../../../src/javaModel";
+import { canonical } from "../../support/paths";
 
 const java = process.env["JK_TEST_JAVA"] === "1";
 const workspace = process.env["JK_TEST_WORKSPACE"] ?? "";
@@ -72,12 +73,12 @@ async function definitionOf(doc: vscode.TextDocument, word: string): Promise<vsc
       "the language server's projects",
       async () => {
         const uris = await vscode.commands.executeCommand<string[]>("java.execute.workspaceCommand", "java.project.getAll");
-        const dirs = (uris ?? []).map((u) => fs.realpathSync(vscode.Uri.parse(u).fsPath)).sort();
+        const dirs = (uris ?? []).map((u) => canonical(vscode.Uri.parse(u).fsPath)).sort();
         return dirs.length >= 2 ? dirs : undefined;
       },
       120_000,
     );
-    assert.deepEqual(projects, [path.join(workspace, "app"), path.join(workspace, "lib")].map((d) => fs.realpathSync(d)).sort());
+    assert.deepEqual(projects, [path.join(workspace, "app"), path.join(workspace, "lib")].map((d) => canonical(d)).sort());
   }).timeout(180_000);
 
   it("resolves a sibling module's class and a Central library's, with its sources attached", async () => {
@@ -86,7 +87,7 @@ async function definitionOf(doc: vscode.TextDocument, word: string): Promise<vsc
     await until("App.java to compile clean", () => (javaErrors(app).length === 0 ? true : undefined), 180_000);
 
     const greeter = await until("Greeter's definition", () => definitionOf(doc, "Greeter;"), 120_000);
-    assert.equal(fs.realpathSync(greeter.fsPath), fs.realpathSync(path.join(workspace, "lib", "src", "main", "java", "dev", "example", "lib", "Greeter.java")));
+    assert.equal(canonical(greeter.fsPath), canonical(path.join(workspace, "lib", "src", "main", "java", "dev", "example", "lib", "Greeter.java")));
 
     const list = await until("ImmutableList's definition", () => definitionOf(doc, "ImmutableList;"), 120_000);
     assert.equal(list.scheme, "jdt", String(list));
