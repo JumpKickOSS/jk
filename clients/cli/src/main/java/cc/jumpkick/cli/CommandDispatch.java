@@ -540,7 +540,7 @@ public final class CommandDispatch {
             // A run that depends on the installed engine holds the host install lock shared, so
             // another session's install or engine stop cannot swap the engine under it.
             try (InstallLock.Hold hold = cmd.holdsInstall() ? InstallLock.shared(qualified) : InstallLock.none()) {
-                code = cmd.run(in);
+                code = runLeaf(cmd, qualified, in);
             } finally {
                 Confirm.clearAssumeYes();
             }
@@ -580,7 +580,7 @@ public final class CommandDispatch {
         }
         code = configExit(code);
         if (capture) {
-            String verdict = thisRunReport();
+            String verdict = runReport();
             try {
                 if (verdict != null) {
                     String errText = new String(errBuf.toByteArray(), StandardCharsets.UTF_8);
@@ -1003,6 +1003,24 @@ public final class CommandDispatch {
                     .append('\n');
         }
         return out.toString();
+    }
+
+    /** Run {@code cmd}: at a group root a build verb runs over the members ({@link GroupRun}). */
+    private static int runLeaf(CliCommand cmd, String qualified, Invocation in) throws Exception {
+        GroupRun.takeAgentReport(); // no earlier command's group report answers for this one
+        Path groupRoot = GroupRun.rootFor(qualified, in);
+        return groupRoot == null ? cmd.run(in) : GroupRun.run(cmd, groupRoot, in);
+    }
+
+    /** The agent report of this command: a group run's own, else the run it started. */
+    private static @Nullable String runReport() {
+        String group = GroupRun.takeAgentReport();
+        return group != null ? group : thisRunReport();
+    }
+
+    /** {@link #thisRunReport()} for {@link GroupRun}, which reads each member's as it finishes. */
+    static @Nullable String lastRunReport() {
+        return thisRunReport();
     }
 
     private static @Nullable String thisRunReport() {

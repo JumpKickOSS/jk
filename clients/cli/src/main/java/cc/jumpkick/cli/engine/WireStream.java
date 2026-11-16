@@ -94,6 +94,29 @@ public final class WireStream {
         }
     }
 
+    /** Whether the last {@code workspace-finish} this process decoded said the run did no work. */
+    private static volatile boolean lastUpToDate;
+
+    /** Note what the last {@code workspace-finish} said: whether the run succeeded doing no work. */
+    public static void noteWorkspaceFinish(boolean upToDate) {
+        lastUpToDate = upToDate;
+    }
+
+    /**
+     * Whether this invocation's last run was up to date, by its {@code workspace-finish} or its
+     * no-op verdict; {@link #forgetLastRun} starts the question over.
+     */
+    public static boolean lastRunUpToDate() {
+        return lastUpToDate || lastJobNoop != null;
+    }
+
+    /** Forget the last run, so the next one is the one {@link #lastRunUpToDate} and the report read. */
+    public static void forgetLastRun() {
+        lastUpToDate = false;
+        lastJobNoop = null;
+        lastRunDir = null;
+    }
+
     /** The verdict the last {@code job-finish} this process saw carried for a no-op, if it was one. */
     public static Optional<String> lastJobNoop() {
         return Optional.ofNullable(lastJobNoop);

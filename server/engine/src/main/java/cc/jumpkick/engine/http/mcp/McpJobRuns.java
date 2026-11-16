@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.host.time.Suspensions;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -73,6 +79,8 @@ public final class McpJobRuns {
      * {@code null} reads {@code arguments.kind}, defaulting to {@code test}: the agent loop's step.
      */
     public static Map<String, Object> run(McpCall in, @Nullable String pinnedKind) {
+        Path groupRoot = groupRoot(in);
+        if (groupRoot != null) return runGroup(in, pinnedKind, groupRoot);
         McpContext ctx = in.ctx();
         JobSpec spec = decode(in, pinnedKind);
         boolean wait = in.flagOr("wait", true);
@@ -182,6 +190,123 @@ public final class McpJobRuns {
     }
 
     /** Modules and test filters, emitted only when the caller narrowed the job. */
+    /** The kinds a group root refuses: each releases one workspace. */
+    private static final Set<String> RELEASE_KINDS = Set.of("publish", "upload", "release");
+
+    /** The call's directory when it is a group root ({@link WorkspaceGroup}), else {@code null}. */
+    private static @Nullable Path groupRoot(McpCall in) {
+        String dir = in.dir();
+        if (dir == null || dir.isBlank()) return null;
+        Path path = Path.of(dir);
+        return WorkspaceGroup.declares(path) ? path : null;
+    }
+
+    /**
+     * {@code run} at a group root: the job runs in each member the selection names ({@code modules}
+     * names members here; empty is every member the root runs by default), one after another in
+     * {@code path}-dependency order, each the job a call with that member's {@code dir} starts; the
+     * answer is each member's verdict and a total. A member that fails leaves what depends on it
+     * unrun.
+     */
+    private static Map<String, Object> runGroup(McpCall in, @Nullable String pinnedKind, Path root) {
+        String kind = pinnedKind != null ? pinnedKind : in.str("kind");
+        if (kind == null || kind.isBlank()) kind = "test";
+        if (RELEASE_KINDS.contains(kind)) {
+            return in.error(root + " groups workspaces and has no version of its own; run " + kind
+                    + " with dir set to the workspace it releases\n");
+        }
+        if (!in.flagOr("wait", true)) {
+            return in.error("a group root runs its members one after another; wait=false takes dir=<member>\n");
+        }
+        WorkspaceGroup group;
+        WorkspaceGroup.Selection selection;
+        try {
+            group = WorkspaceGroup.load(root);
+            if (!group.missing().isEmpty()) {
+                return in.error("[workspaces] members lists " + String.join(", ", group.missing())
+                        + ", which holds no project\n");
+            }
+            Object profile = in.args().get("profile");
+            String rootProfile = profile instanceof String p && group.profiles().containsKey(p) ? p : null;
+            selection = group.select(rootProfile, memberNames(in.args().get("modules")));
+        } catch (IOException | RuntimeException e) {
+            return in.error(e.getMessage() + "\n");
+        }
+        StringBuilder text = new StringBuilder();
+        for (WorkspaceGroup.Member m : selection.skipped()) {
+            text.append("SKIP ")
+                    .append(m.path())
+                    .append(": ")
+                    .append(m.excludedBecause())
+                    .append('\n');
+        }
+        Set<Path> broken = new HashSet<>();
+        int failed = 0;
+        for (WorkspaceGroup.Member m : selection.run()) {
+            Path blocker = selection.prerequisites(m).stream()
+                    .filter(broken::contains)
+                    .findFirst()
+                    .orElse(null);
+            if (blocker != null) {
+                broken.add(m.dir());
+                text.append("SKIP ").append(m.path()).append(": depends on a member that failed\n");
+                continue;
+            }
+            Map<String, Object> fields = new LinkedHashMap<>(in.args());
+            fields.remove("modules");
+            fields.put("kind", kind);
+            String dir = m.dir().toString();
+            JobSpec spec;
+            try {
+                spec = JobRequests.decode(fields, JobOrigin.mcp(in.sessionLabel()), kind, dir, RUN_FIELDS);
+            } catch (IllegalArgumentException e) {
+                return in.error(e.getMessage() + "\n");
+            }
+            long triggeredAt = Clock.SYSTEM.millis();
+            long jid = acceptedJid(in, spec);
+            McpContext ctx = in.ctx();
+            McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
+            boolean done = ctx.admissionYield()
+                    .yielding(() -> waitUntilGone(ctx, jid, timeoutS(in) * ctx.waitSecondMs(), holds));
+            if (!done) {
+                text.append(McpAgentText.timeout(spec.kind(), jid));
+                return in.text(text.toString());
+            }
+            Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, dir, triggeredAt));
+            String verdict = McpAgentText.of(ctx, last);
+            if (verdict == null) verdict = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
+            text.append("== ").append(m.path()).append('\n').append(verdict);
+            if (!verdict.endsWith("\n")) text.append('\n');
+            if (!verdict.startsWith("OK")) {
+                broken.add(m.dir());
+                failed++;
+            }
+        }
+        int n = selection.run().size();
+        text.append(failed == 0 && broken.isEmpty() ? "OK " : "FAIL ")
+                .append(kind)
+                .append(' ')
+                .append(root.getFileName())
+                .append(" · ")
+                .append(n)
+                .append(n == 1 ? " workspace" : " workspaces")
+                .append(failed == 0 ? "" : ", " + failed + " failed")
+                .append('\n');
+        return in.text(text.toString());
+    }
+
+    /** The {@code modules} argument as member names: a list, or one comma-joined string. */
+    private static List<String> memberNames(@Nullable Object modules) {
+        List<String> out = new ArrayList<>();
+        if (modules instanceof List<?> list) {
+            for (Object o : list)
+                if (o != null && !o.toString().isBlank()) out.add(o.toString().strip());
+        } else if (modules instanceof String s) {
+            for (String part : s.split(",")) if (!part.isBlank()) out.add(part.strip());
+        }
+        return out;
+    }
+
     private static void putSelection(Map<String, Object> fields, JobSpec spec) {
         if (!spec.modules().isEmpty()) fields.put("modules", spec.modules());
         if (spec.hasTestFilter()) {

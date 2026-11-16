@@ -265,6 +265,7 @@ final class EngineEventDecoder {
                         int exitCode = Jsonl.has(line, "exitCode") ? e.exitCode() : 1;
                         WorkspaceResult result = new WorkspaceResult(
                                 e.success(), exitCode, List.copyOf(outcomes), e.errors(), e.cancelled(), e.sync());
+                        WireStream.noteWorkspaceFinish(e.success() && result.upToDate());
                         listener.onWorkspaceFinish(result);
                         return result;
                     }

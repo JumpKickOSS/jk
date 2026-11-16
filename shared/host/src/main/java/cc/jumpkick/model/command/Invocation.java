@@ -68,6 +68,22 @@ public final class Invocation {
         return beforeEndOfOptions < 0 ? positionals.size() : beforeEndOfOptions;
     }
 
+    /** This invocation with {@code option} absent, as if it was never given. */
+    public Invocation without(String option) {
+        Map<String, List<String>> v = new LinkedHashMap<>(values);
+        Map<String, Boolean> f = new LinkedHashMap<>(flags);
+        v.remove(option);
+        f.remove(option);
+        return new Invocation(v, f, positionals, beforeEndOfOptions);
+    }
+
+    /** This invocation with the value option {@code option} set to {@code value} alone. */
+    public Invocation withValue(String option, String value) {
+        Map<String, List<String>> v = new LinkedHashMap<>(values);
+        v.put(option, List.of(value));
+        return new Invocation(v, new LinkedHashMap<>(flags), positionals, beforeEndOfOptions);
+    }
+
     public static Builder builder() {
         return new Builder();
     }
