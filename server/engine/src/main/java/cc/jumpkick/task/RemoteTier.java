@@ -150,6 +150,11 @@ public final class RemoteTier {
         return backend.name();
     }
 
+    /** The platform this build asks as ({@link CachePlatform}), which a record's target must name. */
+    public String platform() {
+        return platform;
+    }
+
     /** False once the backend has failed in this build. */
     public boolean reachable() {
         return !off.get();
@@ -292,7 +297,9 @@ public final class RemoteTier {
         String message = "remote cache " + backend.name() + " did not answer (" + what + ": " + e.getMessage()
                 + "); building locally for the rest of this build";
         Log.warn("jk: " + message);
+        // On the step that met it, or, met by the forecast before any step ran, on the run.
         TaskContext ctx = StepScope.current();
         if (ctx != null) ctx.warn(UNREACHABLE, message);
+        else RunNotices.warnOnce(UNREACHABLE, () -> "jk: " + message);
     }
 }

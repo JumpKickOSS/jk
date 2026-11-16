@@ -240,8 +240,23 @@ public final class ActionCache {
             remote.forget(actionKey);
             return Optional.empty();
         }
+        if (!forThisPlatform(record.meta().target(), remote.platform())) {
+            // Outputs made for another platform: a miss here, and the store keeps them for readers
+            // they are for. A record naming no target runs anywhere.
+            remote.forget(actionKey);
+            return Optional.empty();
+        }
         if (local.missing(record.outputs().values()).isEmpty()) adopt(actionKey, text);
         return Optional.of(record);
+    }
+
+    /**
+     * Whether outputs for {@code target} may be used on {@code platform}: always when the record
+     * names no target, else only when it names this platform exactly. A target this jk cannot
+     * compare (one naming a libc) is never taken, so the rule errs towards a rebuild.
+     */
+    static boolean forThisPlatform(@Nullable String target, String platform) {
+        return target == null || target.equals(platform);
     }
 
     /** Keep the remote tier's record text for {@code actionKey} on this disk, its blobs already here. */

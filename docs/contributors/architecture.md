@@ -745,7 +745,8 @@ may leave the machine (`renderShared`) keeps every header line and drops absolut
 | `class-ledger` | `storeMarkers` (per-class outcomes, empty when cleared) | merged and rewritten | an observation per writer; green classes only |
 
 A store shared across machines may serve a record made on any host to any reader when the
-record names no `TARGET`; a record that names one is for that platform only.
+record names no `TARGET`; a record that names one is for that platform only, and the reader
+enforces it: a remote record whose `TARGET` is not exactly its own platform is a miss.
 
 `ActionRecordText.shareable` is the one predicate for what may leave the machine: a result JumpKick
 would replay where it was produced. Outputs, aliases and verdicts are; a test marker only when
@@ -758,9 +759,19 @@ behind the build (`RemoteTier.drain` waits for them).
 `CacheBackend` (`shared/client-io`): a batched record lookup that also names the asking
 platform (a lookup dimension, never key material), which blobs are missing, a blob's bytes, and
 puts of blobs and records. The local disk (`LocalCacheBackend`: `keys/`, the cache CAS, the store
-CAS for promoted blobs) is the one implementation JumpKick ships. A build may bind a second one behind
-it (`RemoteCaches.where`, a `RemoteTier` per build); unbound, the action cache is the local disk
-alone. With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
+CAS for promoted blobs) is the one implementation JumpKick ships. A request may bind a second one
+behind it: `RemoteCacheBinding.around` wraps every job's body and every read verb (`jk explain`)
+in `RemoteCaches.where`, one `RemoteTier`, so one circuit breaker, per request, and a writing
+request waits for its uploads before its job ends. Today the only store it can bind is a
+directory laid out as a cache directory and kept with the shared write rules
+(`DirectoryCacheBackend`), named by the experimental `JK_EXPERIMENTAL_REMOTE_CACHE_DIR` of the
+shell that ran the command (`JK_EXPERIMENTAL_REMOTE_CACHE_WRITE=true` to upload too): a way to
+exercise the tier between two homes, not a feature, and free to change or go. With neither set
+nothing is bound and the action cache is the local disk alone. `RemoteCacheE2eTest` runs two
+checkouts with their own caches through one engine and a shared directory: the second forecasts
+and builds from the first's records, a red suite is never shared, a record naming another
+`TARGET` is not taken, an unreachable store warns once and the build goes on, and the same sources
+at two checkout paths store every step under the same key. With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
 holds whole is `restorable` without a download, so the forecast and `jk explain` price it as a
 hit, and the restore fetches the missing blobs (each verified by `Cas.putVerified`, a mismatch is
 a miss) and keeps the record locally. A record with no blob to fetch (a verdict, a test marker) is
@@ -773,7 +784,8 @@ per step. A remote record is parsed as untrusted as a
 local one, and a refusal is a miss for this build only: the interface has no delete, so no reader
 removes a record from a store others share (`LocalCacheBackend.discard` is the local disk's own).
 A tier that fails is off for the rest of the build after one `remote-cache-unreachable` warning on
-the step that met it; the build goes on locally. No ACLs or REAPI execution in 1.0.
+the step that met it, or on the run when the forecast met it before any step ran; the build goes on
+locally. No ACLs or REAPI execution in 1.0.
 
 **Non-goals for 1.0:** remote write-back, multi-tenant trust, full Bazel REAPI execution,
 cross-org sharing.

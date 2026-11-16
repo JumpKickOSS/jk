@@ -28,6 +28,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.secret.RequestKeychain;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.task.RemoteCacheBinding;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -600,7 +601,9 @@ public final class JobEnvelope {
                     eventRequestId);
             JobOutcome outcome;
             try {
-                outcome = a.runner().run(requestLine, a.cancelToken(), writer);
+                // One remote cache tier per request, when its settings name one: the forecast, the
+                // steps and explain ask the same tier, and its uploads land before the job ends.
+                outcome = RemoteCacheBinding.around(() -> a.runner().run(requestLine, a.cancelToken(), writer));
             } catch (Throwable t) {
                 // An escaped throw must not impersonate Declined: with clean rows already
                 // recorded and no failure row, the derived verdict would read green. Rule

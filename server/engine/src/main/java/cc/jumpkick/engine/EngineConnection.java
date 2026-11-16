@@ -17,6 +17,7 @@ import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.task.RemoteCacheBinding;
 import cc.jumpkick.task.WorkCounters;
 import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -293,8 +294,11 @@ final class EngineConnection {
             }
             case VerbShape.SyncRead() -> {
                 // A read is no job: its request carries the caller's shell and keychain, no job id.
+                // Its remote cache tier, when the shell names one, is bound as a job's is, so jk
+                // explain forecasts the hits the build would take.
                 JobEnvelope.requestOf(0, new IoLedger(), null, line)
-                        .run(() -> verb.run(line, Session.defaults().cancel(), writer));
+                        .run(() -> RemoteCacheBinding.around(
+                                () -> verb.run(line, Session.defaults().cancel(), writer)));
                 yield false;
             }
         };

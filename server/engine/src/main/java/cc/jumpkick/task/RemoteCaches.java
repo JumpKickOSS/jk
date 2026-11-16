@@ -29,4 +29,10 @@ public final class RemoteCaches {
     public static <T> T where(RemoteTier tier, Callable<T> body) throws Exception {
         return ScopedValue.where(CURRENT, tier).<T, Exception>call(body::call);
     }
+
+    /** As {@link #where}, for a body that throws only {@code X}. */
+    public static <T extends @Nullable Object, X extends Throwable> T call(
+            RemoteTier tier, ScopedValue.CallableOp<T, X> body) throws X {
+        return ScopedValue.where(CURRENT, tier).call(body);
+    }
 }
