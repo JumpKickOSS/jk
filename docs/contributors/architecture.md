@@ -722,7 +722,10 @@ keys** when adding a read-only remote later — only add an optional remote look
 keys. Local restore remains copy-not-link (see CAS invariant tests).
 
 **Record format.** A key record (`ActionRecordText`) is UTF-8 lines: `TASK <task id>`,
-`KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `KIND <kind>`,
+`KEY <action key>`, `FORMAT <n>` (a reader refuses a format newer than its own), `KIND
+<namespace>:<step>` (the step kind, an open string: `java:compile`, `kotlin:compile`,
+`java:run-tests`, `package:jar`, `node:build`, `guard:check`, `jk:<step>` for JumpKick's other steps;
+`StepKinds` names them from the task id), `WRITES <class>` (what the record holds, below),
 `CREATED <instant>`, `PRODUCER jk/<cache-key version>`, `HOST <os>-<arch>` (where the outputs
 were made), `TOOLCHAIN toolchain:<kind>:<identity>` and `TARGET <os>-<arch>[-<libc>]` (the platform
 the outputs are for; absent for outputs that run anywhere, so bytecode and jars name none; nothing
@@ -734,9 +737,11 @@ record's total size is the sum of its distinct blobs' recorded sizes, with no st
 may leave the machine (`renderShared`) keeps every header line and drops absolute-path inputs and
 `SAID` lines. `ActionRecordMetaTest` and `SharedRecordFormTest` round-trip it.
 
-**Record kinds** (`ActionRecordText.Kind`) state what a second write under one key means:
+**What a record holds** (`WRITES`, `ActionRecordText.Writes`, a closed, language-neutral set
+beside the open kind) states what a second write under one key means; a store applies the rule
+from this line without knowing the kind, and indexes the kind without knowing the set:
 
-| Kind | Written by | JumpKick's own cache | A store shared by several writers |
+| `WRITES` | Written by | JumpKick's own cache | A store shared by several writers |
 |------|------------|----------------|-----------------------------------|
 | `outputs` | `store`, `storeArtifacts`, `storeWithOutputs` of blobs | latest write | write-once: a different second record is a reproducibility finding |
 | `verdict` | `storeVerdict`, `storeWithOutputs` of nothing | latest write | write-once |
@@ -751,7 +756,9 @@ enforces it: a remote record whose `TARGET` is not exactly its own platform is a
 `ActionRecordText.shareable` is the one predicate for what may leave the machine: a result JumpKick
 would replay where it was produced. Outputs, aliases and verdicts are; a test marker only when
 green; a class ledger only when it holds a class and every class passed. A red marker, a failing
-or cleared ledger and a record of unknown kind are refused by `renderShared`, and the action
+or cleared ledger, a record that names no `WRITES`, and a record whose kind is in a namespace this
+JumpKick does not write (`StepKinds.known`; a newer JumpKick's `rust:compile`, say) are refused by
+`renderShared`: an unknown kind is read and carried like any other, never shared, and the action
 cache hands a writing tier (`RemoteTier.offer`) only shareable records, blobs before the record,
 behind the build (`RemoteTier.drain` waits for them).
 

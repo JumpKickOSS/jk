@@ -46,7 +46,14 @@ class PortablePathJkRootsTest {
                 "worker:" + PortablePath.key(JkDirs.store().resolve("sha256/ab/cd/" + "f".repeat(60))),
                 "file:2");
         String local = ActionRecordText.render(
-                "compile-main@x", key, inputs, Map.of("A.class", "a".repeat(64)), Set.of(), List.of());
+                "compile-main@x",
+                key,
+                inputs,
+                Map.of("A.class", "a".repeat(64)),
+                Set.of(),
+                List.of(),
+                ActionRecordText.Meta.now(
+                        "java:compile", ActionRecordText.Writes.OUTPUTS, "jk/test", "linux-x86_64", -1, Map.of()));
 
         Map<String, String> shared = ActionRecordText.parse(
                         ActionRecordText.renderShared(ActionRecordText.parse(local, key)), key)

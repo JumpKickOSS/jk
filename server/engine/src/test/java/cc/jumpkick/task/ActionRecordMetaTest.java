@@ -42,7 +42,7 @@ class ActionRecordMetaTest {
 
         ActionRecordText.Meta meta = record.meta();
         assertThat(meta.format()).isEqualTo(ActionRecordText.FORMAT);
-        assertThat(meta.kind()).isEqualTo(ActionRecordText.Kind.OUTPUTS);
+        assertThat(meta.writes()).isEqualTo(ActionRecordText.Writes.OUTPUTS);
         assertThat(meta.created()).isNotNull().isBetween(before, Instant.now());
         assertThat(meta.producer()).isEqualTo(ActionCache.producer()).startsWith("jk/");
         assertThat(meta.host()).isEqualTo(CachePlatform.current()).matches("[a-z]+-[a-z0-9_]+");
@@ -54,7 +54,7 @@ class ActionRecordMetaTest {
                 .as("A and C are one blob; no blob is left to stat")
                 .isEqualTo(22L);
         assertThat(record.outputs().get("p/A.class")).hasSize(64);
-        assertThat(text).contains("\nFORMAT 1\n").contains("\nHOST " + CachePlatform.current() + "\n");
+        assertThat(text).contains("\nFORMAT 2\n").contains("\nHOST " + CachePlatform.current() + "\n");
         assertThat(meta.target()).as("bytecode names no target").isNull();
         assertThat(text).doesNotContain("TARGET");
         assertThat(text).containsPattern("OUTPUT [0-9a-f]{64}/15 p/B\\.class");
@@ -64,8 +64,9 @@ class ActionRecordMetaTest {
     void the_shared_form_keeps_what_the_record_says_about_itself(@TempDir Path tmp) {
         String key = "k".repeat(64);
         ActionRecordText.Meta meta = new ActionRecordText.Meta(
-                1,
-                ActionRecordText.Kind.OUTPUTS,
+                2,
+                "java:compile",
+                ActionRecordText.Writes.OUTPUTS,
                 Instant.parse("2026-11-15T17:03:11Z"),
                 "jk/0.51.2#8",
                 "linux-x86_64",
@@ -94,7 +95,7 @@ class ActionRecordMetaTest {
     @Test
     void a_record_in_a_newer_format_is_refused(@TempDir Path tmp) {
         String key = "k".repeat(64);
-        String newer = "TASK t\nKEY " + key + "\nFORMAT 2\nEND 0\n";
+        String newer = "TASK t\nKEY " + key + "\nFORMAT 3\nEND 0\n";
 
         assertThatThrownBy(() -> ActionRecordText.parse(newer, key)).isInstanceOf(ActionRecordText.Refused.class);
     }

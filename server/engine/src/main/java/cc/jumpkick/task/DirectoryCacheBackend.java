@@ -23,7 +23,7 @@ import java.util.Set;
  * mount, can exercise the remote tier without a service. Experimental and for testing jk itself;
  * selected by {@link RemoteCacheBinding}.
  *
- * <p>It keeps the write rules a shared store keeps: a record whose kind is written once (outputs,
+ * <p>It keeps the write rules a shared store keeps: a record whose {@code WRITES} is once (outputs,
  * a verdict, an alias) is never replaced by a second write under its key, and a test marker or a
  * class ledger is replaced by the latest. A directory that is not there is a store that cannot be
  * reached: every call throws, and the tier turns itself off for the build.
@@ -78,11 +78,9 @@ public final class DirectoryCacheBackend implements CacheBackend {
     /** Whether {@code text}, held under {@code key}, is a record a second write must not replace. */
     private static boolean writtenOnce(String text, String key) {
         try {
-            ActionRecordText.Kind kind =
-                    ActionRecordText.parse(text, key).meta().kind();
-            return kind == ActionRecordText.Kind.OUTPUTS
-                    || kind == ActionRecordText.Kind.VERDICT
-                    || kind == ActionRecordText.Kind.ALIAS;
+            ActionRecordText.Writes writes =
+                    ActionRecordText.parse(text, key).meta().writes();
+            return writes != null && writes.once();
         } catch (RuntimeException unreadable) {
             return false; // a torn record is replaced by a whole one
         }

@@ -456,7 +456,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> files = Files.list(keys)) {
             for (Path f : files.toList()) {
-                if (Files.readString(f).contains("\nKIND " + kind + "\n")) out.add(f);
+                if (Files.readString(f).contains("\nWRITES " + kind + "\n")) out.add(f);
             }
         }
         return out;

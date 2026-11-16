@@ -3,7 +3,7 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cache.ActionRecordText.Kind;
+import cc.jumpkick.cache.ActionRecordText.Writes;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.StepCache;
@@ -82,14 +82,15 @@ class StepCacheNotesTest {
     void a_green_marker_read_is_a_hit_and_a_red_one_that_runs_again_is_a_miss(@TempDir Path tmp) throws Exception {
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));
         cache.storeMarkers(
-                Kind.TEST_MARKER, "run-tests@x", "green", Map.of(), TestStamp.outcome(1, 1, 0, 0), List.of());
-        cache.storeMarkers(Kind.TEST_MARKER, "run-tests@x", "red", Map.of(), TestStamp.outcome(1, 0, 0, 1), List.of());
+                Writes.TEST_MARKER, "run-tests@x", "green", Map.of(), TestStamp.outcome(1, 1, 0, 0), List.of());
+        cache.storeMarkers(
+                Writes.TEST_MARKER, "run-tests@x", "red", Map.of(), TestStamp.outcome(1, 0, 0, 1), List.of());
 
         StepCache green = step(() -> cache.lookup("green"));
         StepCache red = step(() -> {
             cache.lookup("red");
             return cache.storeMarkers(
-                    Kind.TEST_MARKER, "run-tests@x", "red", Map.of(), TestStamp.outcome(1, 1, 0, 0), List.of());
+                    Writes.TEST_MARKER, "run-tests@x", "red", Map.of(), TestStamp.outcome(1, 1, 0, 0), List.of());
         });
 
         assertThat(green.outcome()).isEqualTo(StepCache.Outcome.LOCAL_HIT);

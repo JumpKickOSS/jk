@@ -53,7 +53,9 @@ class SharedRecordFormTest {
                 inputs,
                 Map.of("Hello.class", "a".repeat(64)),
                 Set.of(),
-                List.of(src + ":1: warning: [serial] something"));
+                List.of(src + ":1: warning: [serial] something"),
+                ActionRecordText.Meta.now(
+                        "java:compile", ActionRecordText.Writes.OUTPUTS, "jk/test", "linux-x86_64", -1, Map.of()));
 
         String shared = ActionRecordText.renderShared(ActionRecordText.parse(local, "k".repeat(64)));
 

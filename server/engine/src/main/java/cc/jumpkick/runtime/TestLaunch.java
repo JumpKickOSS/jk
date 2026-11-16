@@ -99,7 +99,7 @@ final class TestLaunch {
         TestLauncherReport.report(ctx, in.lockFile(), project, e);
         if (stampKey != null) {
             actionCache.storeMarkers(
-                    ActionRecordText.Kind.TEST_MARKER,
+                    ActionRecordText.Writes.TEST_MARKER,
                     testTaskId,
                     stampKey,
                     Map.of(),
@@ -591,7 +591,7 @@ final class TestLaunch {
         switch (PlannerTest.stampFor(result, testSourcesExist, SessionCancel.cancelled())) {
             case GREEN ->
                 actionCache.storeMarkers(
-                        ActionRecordText.Kind.TEST_MARKER,
+                        ActionRecordText.Writes.TEST_MARKER,
                         testTaskId,
                         stampKey,
                         Map.of(),
@@ -599,7 +599,7 @@ final class TestLaunch {
                         said);
             case NO_TESTS ->
                 actionCache.storeMarkers(
-                        ActionRecordText.Kind.TEST_MARKER,
+                        ActionRecordText.Writes.TEST_MARKER,
                         testTaskId,
                         stampKey,
                         Map.of(),
@@ -614,7 +614,7 @@ final class TestLaunch {
             throws IOException {
         if (stampKey == null) return;
         actionCache.storeMarkers(
-                ActionRecordText.Kind.TEST_MARKER,
+                ActionRecordText.Writes.TEST_MARKER,
                 testTaskId,
                 stampKey,
                 Map.of(),

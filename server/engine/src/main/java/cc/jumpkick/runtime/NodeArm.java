@@ -653,7 +653,7 @@ final class NodeArm {
                     if (summary.allPassed() && r.ok()) {
                         if (settled(ctx, TaskNames.NODE_TEST, keyed, testKey(ctx, script))) {
                             actionCache.storeMarkers(
-                                    ActionRecordText.Kind.TEST_MARKER,
+                                    ActionRecordText.Writes.TEST_MARKER,
                                     keyed.taskId(),
                                     keyed.key(),
                                     keyed.inputs(),

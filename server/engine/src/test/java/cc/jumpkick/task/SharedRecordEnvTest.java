@@ -29,7 +29,14 @@ class SharedRecordEnvTest {
                         "classes:dir:abc;plugin-env:TOKEN=" + plugin + ";inherited-env:" + inherited
                                 + ";test-env:MODE=fast");
         String local = ActionRecordText.render(
-                "compile-main@x", key, inputs, Map.of("A.class", "a".repeat(64)), Set.of(), List.of());
+                "compile-main@x",
+                key,
+                inputs,
+                Map.of("A.class", "a".repeat(64)),
+                Set.of(),
+                List.of(),
+                ActionRecordText.Meta.now(
+                        "java:compile", ActionRecordText.Writes.OUTPUTS, "jk/test", "linux-x86_64", -1, Map.of()));
 
         String shared = ActionRecordText.renderShared(ActionRecordText.parse(local, key));
 

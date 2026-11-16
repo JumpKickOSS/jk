@@ -22,7 +22,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
- * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code KIND},
+ * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code KIND}, {@code WRITES},
  * {@code CREATED}, {@code PRODUCER}, {@code HOST}, {@code TOOLCHAIN}, {@code TARGET}, {@code WALL}), then {@code INPUT <value> <name>}, {@code OUTPUT
  * <sha256>/<bytes> <path>} and {@code EXEC <path>} lines in name order, then {@code SAID <line>}
  * lines in the order the action said them, then {@code END <outputCount>}. An output that is a
@@ -98,11 +98,12 @@ public final class ActionRecordText {
     }
 
     /** The record format {@link #render} writes; {@link #parse} refuses a newer one. */
-    public static final int FORMAT = 1;
+    public static final int FORMAT = 2;
 
     /**
      * What a record says about itself beside its inputs and outputs: the format it is written in,
-     * when and by which jk ({@code jk/<cache-key version>}) on which host ({@code <os>-<arch>}) it
+     * the step kind that made it ({@link StepKinds}: an open, namespaced string such as {@code
+     * java:compile}), what a second write under its key means ({@link Writes}), when and by which jk ({@code jk/<cache-key version>}) on which host ({@code <os>-<arch>}) it
      * was made, the toolchain that made it ({@code toolchain:<kind>:<identity>}) and the platform
      * its outputs are for ({@code <os>-<arch>[-<libc>]}), how long the step that made it worked
      * ({@code wallMillis}, {@code -1} when not known), and the byte size of each output that is a
@@ -113,7 +114,8 @@ public final class ActionRecordText {
      */
     public record Meta(
             int format,
-            @Nullable Kind kind,
+            @Nullable String kind,
+            @Nullable Writes writes,
             @Nullable Instant created,
             @Nullable String producer,
             @Nullable String host,
@@ -122,21 +124,27 @@ public final class ActionRecordText {
             long wallMillis,
             Map<String, Long> sizes) {
 
-        public static final Meta NONE = new Meta(0, null, null, null, null, null, null, -1, Map.of());
+        public static final Meta NONE = new Meta(0, null, null, null, null, null, null, null, -1, Map.of());
 
         public Meta {
             sizes = Map.copyOf(sizes);
         }
 
         /**
-         * A {@code kind} record made now, to the second, by {@code producer} on {@code host}, for no
-         * particular target, its blobs {@code sizes} bytes each.
+         * A record of step kind {@code kind} that {@code writes}, made now, to the second, by {@code
+         * producer} on {@code host}, for no particular target, its blobs {@code sizes} bytes each.
          */
         public static Meta now(
-                @Nullable Kind kind, String producer, String host, long wallMillis, Map<String, Long> sizes) {
+                @Nullable String kind,
+                @Nullable Writes writes,
+                String producer,
+                String host,
+                long wallMillis,
+                Map<String, Long> sizes) {
             return new Meta(
                     FORMAT,
                     kind,
+                    writes,
                     Instant.ofEpochSecond(Clock.SYSTEM.millis() / 1000),
                     producer,
                     host,
@@ -148,13 +156,14 @@ public final class ActionRecordText {
     }
 
     /**
-     * What a record is, which decides what a second write under its key means. jk's own cache
-     * keeps the latest write of every kind; a store shared by several writers keeps {@link
-     * #OUTPUTS}, {@link #VERDICT} and {@link #ALIAS} records write-once (a different second result
-     * under one key is a reproducibility finding, not an update) and keeps {@link #TEST_MARKER} and
-     * {@link #CLASS_LEDGER} records as observations, by writer.
+     * What a record holds, which decides what a second write under its key means: the record's
+     * {@code WRITES} line, a closed, language-neutral set beside the open step kind. jk's own cache
+     * keeps the latest write of every record; a store shared by several writers keeps {@link
+     * #OUTPUTS}, {@link #VERDICT} and {@link #ALIAS} records write-once ({@link #once}: a different
+     * second result under one key is a reproducibility finding, not an update) and keeps {@link
+     * #TEST_MARKER} and {@link #CLASS_LEDGER} records as observations, by writer.
      */
-    public enum Kind {
+    public enum Writes {
         /** A step's output files, by digest. */
         OUTPUTS("outputs"),
         /** A check that passed and produced nothing: the record is the result. */
@@ -168,18 +177,23 @@ public final class ActionRecordText {
 
         private final String word;
 
-        Kind(String word) {
+        Writes(String word) {
             this.word = word;
         }
 
-        /** The word a {@code KIND} line spells. */
+        /** The word a {@code WRITES} line spells. */
         public String word() {
             return word;
         }
 
-        /** The kind {@code word} spells, or null for a word this jk does not know. */
-        public static @Nullable Kind of(String word) {
-            for (Kind k : values()) {
+        /** True when a store shared by several writers keeps the first record under a key. */
+        public boolean once() {
+            return this == OUTPUTS || this == VERDICT || this == ALIAS;
+        }
+
+        /** The class {@code word} spells, or null for a word this jk does not know. */
+        public static @Nullable Writes of(String word) {
+            for (Writes k : values()) {
                 if (k.word.equals(word)) return k;
             }
             return null;
@@ -191,12 +205,14 @@ public final class ActionRecordText {
      * the machine that produced it. Outputs, aliases and verdicts are; a test marker only when it
      * is green; a class ledger only when it holds at least one class and every class passed. A red
      * marker, a ledger holding a failure or cleared to nothing, and a record whose kind is unknown
-     * stay on the machine that wrote them. The one place this is decided.
+     * stay on the machine that wrote them, and so does a record whose step kind this jk does not
+     * know ({@link StepKinds#known}): it is read and carried, never shared. The one place this is
+     * decided.
      */
     public static boolean shareable(Parsed record) {
-        Kind kind = record.meta().kind();
-        if (kind == null) return false;
-        return switch (kind) {
+        Writes writes = record.meta().writes();
+        if (writes == null || !StepKinds.known(record.meta().kind())) return false;
+        return switch (writes) {
             case OUTPUTS, ALIAS ->
                 !record.outputs().isEmpty()
                         && record.outputs().values().stream().allMatch(ActionRecordText::isSha256);
@@ -274,8 +290,9 @@ public final class ActionRecordText {
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');
         sb.append("FORMAT ").append(FORMAT).append('\n');
-        Kind kind = meta.kind() != null ? meta.kind() : inferredKind(outputs);
-        if (kind != null) sb.append("KIND ").append(kind.word()).append('\n');
+        if (meta.kind() != null) sb.append("KIND ").append(oneWord(meta.kind())).append('\n');
+        Writes writes = meta.writes() != null ? meta.writes() : inferredWrites(outputs);
+        if (writes != null) sb.append("WRITES ").append(writes.word()).append('\n');
         if (meta.created() != null) sb.append("CREATED ").append(meta.created()).append('\n');
         if (meta.producer() != null)
             sb.append("PRODUCER ").append(oneWord(meta.producer())).append('\n');
@@ -325,10 +342,11 @@ public final class ActionRecordText {
     public static String renderShared(Parsed record) {
         if (!shareable(record)) {
             throw new Refused("a "
-                    + (record.meta().kind() == null
-                            ? "record of no kind"
-                            : record.meta().kind().word())
-                    + " record that this jk would not replay does not leave the machine");
+                    + (record.meta().writes() == null
+                            ? "record that names no WRITES"
+                            : record.meta().writes().word() + " record of kind "
+                                    + record.meta().kind())
+                    + " that this jk would not replay does not leave the machine");
         }
         Map<String, String> portable = new TreeMap<>();
         for (Map.Entry<String, String> e : record.inputs().entrySet()) {
@@ -346,15 +364,15 @@ public final class ActionRecordText {
     }
 
     /**
-     * The kind of a record written without one: a verdict when it names no output, outputs when
-     * every output is a blob, else none, since markers are written with their kind.
+     * What a record written without a {@code WRITES} holds: a verdict when it names no output,
+     * outputs when every output is a blob, else nothing known, since markers say what they are.
      */
-    private static @Nullable Kind inferredKind(Map<String, String> outputs) {
-        if (outputs.isEmpty()) return Kind.VERDICT;
+    private static @Nullable Writes inferredWrites(Map<String, String> outputs) {
+        if (outputs.isEmpty()) return Writes.VERDICT;
         for (String value : outputs.values()) {
             if (!isSha256(value)) return null;
         }
-        return Kind.OUTPUTS;
+        return Writes.OUTPUTS;
     }
 
     /**
@@ -423,7 +441,8 @@ public final class ActionRecordText {
         List<String> said = new ArrayList<>();
         Map<String, Long> sizes = new LinkedHashMap<>();
         int format = 0;
-        @Nullable Kind kind = null;
+        @Nullable String kind = null;
+        @Nullable Writes writes = null;
         @Nullable Instant created = null;
         @Nullable String producer = null;
         @Nullable String host = null;
@@ -458,7 +477,9 @@ public final class ActionRecordText {
             } else if (line.startsWith("FORMAT ")) {
                 format = Integer.parseInt(line.substring("FORMAT ".length()).trim());
             } else if (line.startsWith("KIND ")) {
-                kind = Kind.of(line.substring("KIND ".length()).trim());
+                kind = line.substring("KIND ".length()).trim();
+            } else if (line.startsWith("WRITES ")) {
+                writes = Writes.of(line.substring("WRITES ".length()).trim());
             } else if (line.startsWith("CREATED ")) {
                 created = Instant.parse(line.substring("CREATED ".length()).trim());
             } else if (line.startsWith("PRODUCER ")) {
@@ -502,7 +523,7 @@ public final class ActionRecordText {
                 outputs,
                 executables,
                 List.copyOf(said),
-                new Meta(format, kind, created, producer, host, toolchain, target, wallMillis, sizes));
+                new Meta(format, kind, writes, created, producer, host, toolchain, target, wallMillis, sizes));
     }
 
     private static boolean isSize(String digits) {

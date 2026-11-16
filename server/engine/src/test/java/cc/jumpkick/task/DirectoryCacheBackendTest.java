@@ -63,8 +63,7 @@ class DirectoryCacheBackendTest {
         assertThat(unbound).isTrue();
 
         RemoteTier seen = RequestShell.where(
-                Map.of(RemoteCacheBinding.DIR, tmp.toString()),
-                () -> RemoteCacheBinding.around(RemoteCaches::current));
+                Map.of(RemoteCacheBinding.DIR, tmp.toString()), () -> RemoteCacheBinding.around(RemoteCaches::current));
         assertThat(seen).isNotNull();
         assertThat(seen.name()).isEqualTo("dir:" + tmp);
         assertThat(seen.writes()).as("reads only, unless asked to write").isFalse();
@@ -88,7 +87,8 @@ class DirectoryCacheBackendTest {
                 Map.of("A.class", sha),
                 Set.of(),
                 List.of(said),
-                ActionRecordText.Meta.now(ActionRecordText.Kind.OUTPUTS, "jk/test", "linux-x86_64", 5, Map.of()));
+                ActionRecordText.Meta.now(
+                        "java:compile", ActionRecordText.Writes.OUTPUTS, "jk/test", "linux-x86_64", 5, Map.of()));
     }
 
     private static String marker(String key, String total) {
@@ -99,6 +99,7 @@ class DirectoryCacheBackendTest {
                 Map.of("tests.total", total, "tests.failed", "0"),
                 Set.of(),
                 List.of(),
-                ActionRecordText.Meta.now(ActionRecordText.Kind.TEST_MARKER, "jk/test", "linux-x86_64", 5, Map.of()));
+                ActionRecordText.Meta.now(
+                        "java:run-tests", ActionRecordText.Writes.TEST_MARKER, "jk/test", "linux-x86_64", 5, Map.of()));
     }
 }

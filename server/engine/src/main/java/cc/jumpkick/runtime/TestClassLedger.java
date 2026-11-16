@@ -386,7 +386,7 @@ final class TestClassLedger {
         boolean interrupted = Thread.interrupted();
         try {
             cache.storeMarkers(
-                    ActionRecordText.Kind.CLASS_LEDGER,
+                    ActionRecordText.Writes.CLASS_LEDGER,
                     testTaskId + TASK_SUFFIX,
                     key(stampKey),
                     Map.of(),
@@ -412,7 +412,7 @@ final class TestClassLedger {
         boolean interrupted = Thread.interrupted();
         try {
             cache.storeMarkers(
-                    ActionRecordText.Kind.CLASS_LEDGER,
+                    ActionRecordText.Writes.CLASS_LEDGER,
                     testTaskId + TASK_SUFFIX,
                     key(stampKey),
                     Map.of(),
