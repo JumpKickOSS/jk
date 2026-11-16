@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -621,5 +622,207 @@ final class SymbolRename {
         }
         if (lastImport >= 0) return lastImport + 2;
         return pkg >= 0 ? pkg + 2 : 1;
+    }
+
+    // ---- type ----
+
+    /** Renames type {@code t} to simple name {@code to}: every use javac resolved, its file, and candidates. */
+    static RenamePlan type(Ctx c, Type t, String to, List<String> textFiles) throws IOException {
+        String newBinary =
+                t.binary().substring(0, t.binary().length() - t.simple().length()) + to;
+        if (typeExists(c.graph, newBinary)) {
+            throw new RenameRefusal("Not renamed: " + newBinary.replace('$', '.') + " already exists.");
+        }
+        Map<String, String> renames = typeSymbols(c, t.binary(), newBinary);
+        Map<String, String> newNames = Map.of("T " + t.binary(), to);
+        clashes(c, t, to);
+        RenamePlan plan = new RenamePlan(t.binary().replace('$', '.') + " (" + kind(t) + ")", to);
+        indexEdits(c, plan, renames, newNames, sp -> switch (sp.kind()) {
+            case 'd' -> "declaration";
+            case 'j' -> "doc link";
+            default -> "use";
+        });
+        if (plan.after.isEmpty()) {
+            throw new RenameRefusal("Not renamed: javac's index records no declaration of "
+                    + t.binary().replace('$', '.') + " as its sources stand; build, then rename.");
+        }
+        String file = t.rel().substring(t.rel().lastIndexOf('/') + 1);
+        if (!t.nested() && file.equals(t.simple() + ".java")) {
+            String moved = t.rel().substring(0, t.rel().length() - file.length()) + to + ".java";
+            if (RenameStore.inside(c.root, moved).toFile().exists()) {
+                throw new RenameRefusal("Not renamed: " + moved + " already exists.");
+            }
+            String text = c.text(t.rel());
+            if (text != null) plan.move(t.rel(), plan.current(t.rel(), text), moved);
+        }
+        plan.symbols.putAll(renames);
+        Map<String, String> words = Map.of(t.simple(), to);
+        unindexedSources(c, plan, c.reaching(t.rel()), words);
+        typeText(c, plan, t.binary(), newBinary, textFiles);
+        simpleNameText(c, plan, t, to, textFiles);
+        namedTests(c, plan, t, to);
+        prose(c, plan, textFiles, words);
+        return plan;
+    }
+
+    static String kind(Type t) {
+        String k = Decl.kind(t.node());
+        return k == null ? "type" : k;
+    }
+
+    /** The type and every type nested in it, old symbol → new: the proof's symbols. */
+    static Map<String, String> typeSymbols(Ctx c, String oldBinary, String newBinary) {
+        Map<String, String> out = new LinkedHashMap<>();
+        out.put("T " + oldBinary, "T " + newBinary);
+        for (GraphNode n : c.graph.nodes()) {
+            if (Decl.isType(n)
+                    && n.extra().get(Linker.QUALIFIED_NAME) instanceof String q
+                    && q.startsWith(oldBinary + "$")) {
+                out.put("T " + q, "T " + newBinary + q.substring(oldBinary.length()));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Refuses a type rename that would make a use mean another type: a file using the type that
+     * already names another type {@code to}, or sits in a package that declares one.
+     */
+    private static void clashes(Ctx c, Type t, String to) {
+        String symbol = "T " + t.binary();
+        List<String> clashing = new ArrayList<>();
+        for (String rel : c.javaFiles) {
+            List<ReferenceIndex.Span> spans = c.spans(rel);
+            if (spans == null || spans.stream().noneMatch(s -> s.symbol().equals(symbol))) continue;
+            for (ReferenceIndex.Span s : spans) {
+                if (s.symbol().startsWith("T ")
+                        && !s.symbol().equals(symbol)
+                        && ReferenceIndex.simpleName(s.symbol()).equals(to)) {
+                    clashing.add(rel + ":" + s.line() + " ("
+                            + s.symbol().substring(2).replace('$', '.') + ")");
+                    break;
+                }
+            }
+        }
+        if (!clashing.isEmpty()) {
+            throw new RenameRefusal("Not renamed: these files use " + t.simple() + " and already name another " + to
+                    + ", so the new name would be ambiguous there: "
+                    + String.join(", ", clashing.subList(0, Math.min(5, clashing.size()))));
+        }
+    }
+
+    /**
+     * A type's full name in non-code files and strings: a services file, Spring's imports and
+     * factories and {@code jk.toml} name it in a format that declares a class (declared); an XML or
+     * config file, and a Java string, by name (inferred). Every one must change.
+     */
+    static void typeText(Ctx c, RenamePlan plan, String oldBinary, String newBinary, List<String> textFiles) {
+        Map<String, String> names = new LinkedHashMap<>();
+        names.put(oldBinary, newBinary);
+        String dotted = oldBinary.replace('$', '.');
+        if (!dotted.equals(oldBinary)) names.put(dotted, newBinary.replace('$', '.'));
+        String slashed = oldBinary.replace('.', '/');
+        if (slashed.contains("/")) names.put(slashed, newBinary.replace('.', '/'));
+        Set<String> indexed = c.indexed();
+        Pattern p = Pattern.compile("(?<![\\w$.])(?:"
+                + String.join(
+                        "|",
+                        names.keySet().stream()
+                                .sorted(Comparator.comparingInt(String::length).reversed())
+                                .map(Pattern::quote)
+                                .toList())
+                + ")(?![\\w])");
+        RenameText.scan(
+                c.root,
+                plan,
+                textFiles,
+                p,
+                RenameText.mapped(names),
+                (rel, line, at, inString, inComment) -> {
+                    if (RenameText.classList(rel))
+                        return new RenameText.Verdict(true, RenamePlan.Grade.DECLARED, "class list");
+                    if (RenameText.jvmSource(rel)) {
+                        if (inComment) return null;
+                        if (indexed.contains(rel) && !inString) return null;
+                        return new RenameText.Verdict(
+                                true, RenamePlan.Grade.INFERRED, inString ? "class name in a string" : "full name");
+                    }
+                    if (RenameText.doc(rel)) return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "doc");
+                    return new RenameText.Verdict(
+                            true, RenamePlan.Grade.DECLARED, "full class name in " + RenameText.ext(rel));
+                },
+                Set.of());
+        // A services file named after an interface moves with it.
+        for (String rel : textFiles) {
+            int at = rel.indexOf("META-INF/services/");
+            if (at < 0) continue;
+            String name = rel.substring(at + "META-INF/services/".length());
+            if (!name.equals(oldBinary) && !name.equals(dotted)) continue;
+            String moved = rel.substring(0, rel.length() - name.length()) + newBinary;
+            plan.candidates.add(new RenamePlan.Candidate(
+                    true,
+                    RenamePlan.Grade.DECLARED,
+                    "services file named after it",
+                    rel,
+                    1,
+                    "",
+                    List.of(new RenamePlan.Move(rel, moved)),
+                    "moves to " + moved));
+        }
+    }
+
+    /** The simple name in templates (judgment) and in JPQL strings (must: an entity name). */
+    private static void simpleNameText(Ctx c, RenamePlan plan, Type t, String to, List<String> textFiles) {
+        Set<String> indexed = c.indexed();
+        List<String> files = textFiles.stream()
+                .filter(rel -> rel.endsWith(".java") && indexed.contains(rel) || RenameText.template(rel))
+                .toList();
+        RenameText.scan(
+                c.root,
+                plan,
+                files,
+                RenameText.word(t.simple()),
+                m -> to,
+                (rel, line, at, inString, inComment) -> {
+                    if (RenameText.template(rel))
+                        return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "template text");
+                    if (!inString || inComment) return null;
+                    if (Pattern.compile("@Query|createQuery|\\b(?i:from|join|update)\\s+$")
+                                    .matcher(line.substring(0, at))
+                                    .find()
+                            || Pattern.compile("(?i)\\b(?:from|join|update)\\s+" + Pattern.quote(t.simple()) + "\\b")
+                                    .matcher(line)
+                                    .find()) {
+                        return new RenameText.Verdict(true, RenamePlan.Grade.INFERRED, "JPQL entity name");
+                    }
+                    return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "string");
+                },
+                Set.of());
+    }
+
+    /** Test classes named after the type ({@code OwnerTests}): judgment, renamed in a call of their own. */
+    private static void namedTests(Ctx c, RenamePlan plan, Type t, String to) {
+        for (GraphNode n : c.graph.nodes()) {
+            if (!Decl.isType(n) || !(n.extra().get(Linker.QUALIFIED_NAME) instanceof String q)) continue;
+            if (c.modules.sourceSet(n.sourceFile()) != Modules.SourceSet.TEST) continue;
+            String simple = q.substring(Math.max(q.lastIndexOf('.'), q.lastIndexOf('$')) + 1);
+            for (String suffix : List.of("Tests", "Test", "IT", "IntegrationTests", "IntegrationTest")) {
+                if (!simple.equals(t.simple() + suffix)) continue;
+                plan.candidates.add(new RenamePlan.Candidate(
+                        false,
+                        RenamePlan.Grade.INFERRED,
+                        "test named after it",
+                        n.sourceFile(),
+                        Math.max(1, Decl.line(n)),
+                        "",
+                        List.of(),
+                        "rename " + simple + " " + to + suffix));
+            }
+        }
+    }
+
+    /** {@code map} ordered by key. */
+    static <V> Map<String, V> sorted(Map<String, V> map) {
+        return new TreeMap<>(map);
     }
 }

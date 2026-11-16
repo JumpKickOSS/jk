@@ -117,7 +117,13 @@ final class RenameOp {
                         EnvValues.parseBool(options.get("accessors")).orElse(true),
                         textFiles);
             }
-            default -> throw new IllegalArgumentException("kind is method or field, not '" + kind + "'");
+            case "type" -> {
+                SymbolRename.Type t = one(graph, address);
+                if (!RenameNames.identifier(to)) throw new IllegalArgumentException("'" + to + "' is not a type name");
+                if (t.simple().equals(to)) throw new RenameRefusal("'" + address + "' is already named " + to + ".");
+                return SymbolRename.type(c, t, to, textFiles);
+            }
+            default -> throw new IllegalArgumentException("kind is method, field or type, not '" + kind + "'");
         }
     }
 
@@ -130,6 +136,8 @@ final class RenameOp {
     static String kindOf(SymbolRename.Ctx c, CodeGraph graph, String address) throws IOException {
         if (address.contains("(")) return "method";
         List<SymbolRename.Type> types = SymbolRename.types(graph, address);
+        if (types.size() == 1) return "type";
+        if (types.size() > 1) return "type";
         int dot = address.lastIndexOf('.');
         if (dot > 0) {
             List<SymbolRename.Type> owners = SymbolRename.types(graph, address.substring(0, dot));
