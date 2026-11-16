@@ -27,8 +27,8 @@ public final class PersistedHome {
     public static @Nullable String windowsUserJkHome() {
         if (!Os.isWindows()) return null;
         try {
-            Processes.Captured c = Processes.capture(
-                    List.of("reg", "query", "HKCU\\Environment", "/v", "JK_HOME"), REG_WAIT);
+            Processes.Captured c =
+                    Processes.capture(List.of("reg", "query", "HKCU\\Environment", "/v", "JK_HOME"), REG_WAIT);
             if (c.timedOut() || c.exit() != 0) return null;
             return regValue(c.output(), "JK_HOME");
         } catch (IOException | RuntimeException unreadable) {

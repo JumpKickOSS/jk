@@ -249,7 +249,9 @@ class EngineFleetTest {
     }
 
     @Test
-    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "a Windows engine listens on loopback TCP, never on a Unix socket")
+    @DisabledOnOs(
+            value = OS.WINDOWS,
+            disabledReason = "a Windows engine listens on loopback TCP, never on a Unix socket")
     void stop_all_names_another_homes_engine_without_reading_its_state(@TempDir Path tmp) throws Exception {
         // The suite may run on loopback TCP; the stand-in listens on the Unix socket the endpoint names.
         // The override is set inside the try, so a failure before the stand-in listens cannot leave it

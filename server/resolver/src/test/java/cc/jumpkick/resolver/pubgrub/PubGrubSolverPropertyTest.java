@@ -267,7 +267,9 @@ class PubGrubSolverPropertyTest {
         assertThat(u.satisfiableByBruteForce()).isFalse();
 
         for (int seed = 0; seed < 64; seed++) {
-            assertThat(solveOrNull(u, new Random(seed))).as("input order %d", seed).isNull();
+            assertThat(solveOrNull(u, new Random(seed)))
+                    .as("input order %d", seed)
+                    .isNull();
         }
     }
 
@@ -281,7 +283,9 @@ class PubGrubSolverPropertyTest {
         Map<String, Map<String, Map<String, VersionSet>>> table = new LinkedHashMap<>();
         table.put("p0", new LinkedHashMap<>());
         table.get("p0")
-                .put("1.0", ordered("p2", VersionSet.lessThan("3.0-rc2", false), "p1", VersionSet.atLeast("3.0", true)));
+                .put(
+                        "1.0",
+                        ordered("p2", VersionSet.lessThan("3.0-rc2", false), "p1", VersionSet.atLeast("3.0", true)));
         table.get("p0").put("3.0-rc2", Map.of("p2", VersionSet.between("3.0-rc2", true, "3.0", false)));
         table.get("p0").put("1.1", ordered("p2", VersionSet.exact("3.0-rc1"), "p1", VersionSet.ALL));
         table.put("p1", new LinkedHashMap<>(Map.of("1.0", Map.of())));
@@ -291,7 +295,9 @@ class PubGrubSolverPropertyTest {
         assertThat(u.satisfiableByBruteForce()).isFalse();
 
         for (int seed = 0; seed < 64; seed++) {
-            assertThat(solveOrNull(u, new Random(seed))).as("input order %d", seed).isNull();
+            assertThat(solveOrNull(u, new Random(seed)))
+                    .as("input order %d", seed)
+                    .isNull();
         }
     }
 

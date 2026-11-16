@@ -351,7 +351,9 @@ class CommandModeGuardTest {
         if (mode == Mode.ASCII) {
             // A script-mode command's stdout is its payload, byte-exact (a playbook, a path).
             if (leaf.scriptMode(Invocation.builder().build())) {
-                assertThat(nonAscii(r.err())).as("%s: non-ASCII on stderr", what).isEmpty();
+                assertThat(nonAscii(r.err()))
+                        .as("%s: non-ASCII on stderr", what)
+                        .isEmpty();
             } else {
                 assertAscii(what, r);
             }

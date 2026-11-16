@@ -34,7 +34,9 @@ class PersistedHomeTest {
     @Test
     void the_persisted_home_compares_as_windows_compares_paths() {
         assertThat(PersistedHome.same("D:\\jk", "D:\\jk")).isTrue();
-        assertThat(PersistedHome.same("D:\\jk", "d:\\JK\\")).as("case and a trailing separator").isTrue();
+        assertThat(PersistedHome.same("D:\\jk", "d:\\JK\\"))
+                .as("case and a trailing separator")
+                .isTrue();
         assertThat(PersistedHome.same("D:\\jk", "D:/jk")).as("either separator").isTrue();
         assertThat(PersistedHome.same("\\\\server\\share\\jk", "\\\\SERVER\\share\\jk"))
                 .as("a UNC home")
@@ -46,7 +48,9 @@ class PersistedHomeTest {
         assertThat(PersistedHome.same("C:\\Users\\me\\scratch-jk", "D:\\jk")).isFalse();
         assertThat(PersistedHome.same("D:\\jk", null)).isFalse();
         assertThat(PersistedHome.same("D:\\jk", "  ")).isFalse();
-        assertThat(PersistedHome.same("jk", "jk")).as("a relative value names no home").isFalse();
+        assertThat(PersistedHome.same("jk", "jk"))
+                .as("a relative value names no home")
+                .isFalse();
         assertThat(PersistedHome.same("D:\\jk2", "D:\\jk")).isFalse();
     }
 }

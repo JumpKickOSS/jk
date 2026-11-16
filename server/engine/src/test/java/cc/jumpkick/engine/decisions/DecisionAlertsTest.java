@@ -407,7 +407,9 @@ class DecisionAlertsTest {
                 CompletableFuture.supplyAsync(() -> alerts.raise(UiAsk.NOTIFY, decision(), LINK));
         assertThat(showing.await(10, TimeUnit.SECONDS)).isTrue();
         alerts.withdraw("abc");
-        assertThat(events).as("the withdrawal returned without starting a removal").containsExactly("show starts");
+        assertThat(events)
+                .as("the withdrawal returned without starting a removal")
+                .containsExactly("show starts");
 
         shown.countDown();
         assertThat(raised.get(10, TimeUnit.SECONDS)).isEqualTo("sent a desktop notification");

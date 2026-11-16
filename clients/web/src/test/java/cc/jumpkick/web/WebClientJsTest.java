@@ -241,7 +241,8 @@ class WebClientJsTest {
      * keeps a failure's first line, and the exit status alone named no case.
      */
     static String failing(String output) {
-        List<String> names = NOT_OK.matcher(output).results().map(m -> m.group(1)).toList();
+        List<String> names =
+                NOT_OK.matcher(output).results().map(m -> m.group(1)).toList();
         return names.isEmpty() ? "none reported" : String.join("; ", names);
     }
 
