@@ -22,6 +22,7 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.doctor.DoctorChecks;
 import cc.jumpkick.host.JkDirs;
@@ -29,7 +30,12 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JdkFingerprint;
+import cc.jumpkick.jdk.JdkLts;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.ReleaseJdks;
 import cc.jumpkick.jsonl.JsonFields;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
@@ -111,7 +117,7 @@ public final class DoctorCommand implements CliCommand {
         Check cache = checkDirs();
         Check state = checkStateMode();
         Check jdk = checkJdk();
-        Check jdkPatch = check(DoctorChecks.jdkPatch(WorkingDirectory.current(), JkDirs.jdks()));
+        Check jdkPatch = checkJdkPatch();
         Check lock = checkLock();
         Check pins = check(DoctorChecks.pins(WorkingDirectory.current(), JkVersion.VERSION));
         Check shell = checkShell();
@@ -623,6 +629,33 @@ public final class DoctorCommand implements CliCommand {
     /** {@link DoctorChecks#stateMode}: the state and engine directories are owner-only. */
     static Check checkStateMode(Path state) {
         return check(DoctorChecks.stateMode(state));
+    }
+
+    /**
+     * The {@code jdk-patch} row: this release's JDK build for the project's Java level ({@link
+     * ReleaseJdks}), whether it is installed, and the shell's {@code JK_JDK}.
+     */
+    private static Check checkJdkPatch() {
+        Path project = WorkingDirectory.current();
+        int java = 0;
+        try {
+            Path manifest = ManifestPaths.manifestIn(LockPaths.lockOwnerDir(project));
+            if (Files.isRegularFile(manifest))
+                java = TomlScan.scan(manifest, "java").getInt("java", 0);
+        } catch (RuntimeException unreadable) {
+            java = 0;
+        }
+        String spec = ReleaseJdks.specFor(java, JdkLts.OFFLINE_LATEST_LTS).orElse(null);
+        boolean installed = false;
+        if (spec != null) {
+            try {
+                installed = new JdkRegistry()
+                        .hitsMatching(spec).stream().anyMatch(h -> ReleaseJdks.isBuild(spec, h.version()));
+            } catch (RuntimeException unprobed) {
+                installed = false;
+            }
+        }
+        return check(DoctorChecks.jdkPatch(project, spec, installed, ProcessEnv.get("JK_JDK")));
     }
 
     private static Check checkJdk() {

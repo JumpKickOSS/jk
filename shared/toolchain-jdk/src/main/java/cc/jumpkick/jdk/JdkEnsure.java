@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.discovery.MiseProbe;
@@ -151,6 +152,33 @@ public final class JdkEnsure {
         JdkInventory defaults = JdkInventory.of(registry.jdksRoot());
         JdkResolution.Resolved r = resolve(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
 
+        if (r.tier() == JdkResolution.Tier.RELEASE && r.wouldInstall()) {
+            // This release's build for an unpinned module is absent: install it like a pin. Where
+            // it cannot be installed, CI fails (a runner that shares no key with the cache it reads
+            // is a silent cost); a developer's build goes on with what is installed and says so.
+            String spec = Objects.requireNonNull(r.installSpec(), "an install decision names its spec");
+            String why;
+            if (allowInstall) {
+                try {
+                    InstalledJdk installed = install(spec, registry, warn, progress);
+                    return new Outcome(installed, Source.INSTALLED, spec);
+                } catch (IOException e) {
+                    why = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                }
+            } else {
+                why = "this engine does not install JDKs";
+            }
+            Function<String, @Nullable String> env =
+                    projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
+            if (EnvValues.isCi(env)) throw new IOException(releaseMissing(spec, why) + "; CI builds only on it");
+            r = resolveWithoutRelease(projectDir, registry, defaults, projectJdkSpec, javaRelease, lockJdk);
+            if (r.jdkOpt().isPresent()) {
+                warn.accept(releaseMissing(spec, why) + "; building on "
+                        + r.jdkOpt().get().identifier() + ", so this host shares no compile or test key with hosts on "
+                        + spec);
+            }
+        }
+
         if (r.jdkOpt().isPresent()) {
             return new Outcome(r.jdk(), mapSource(r.tier()), r.specUsed());
         }
@@ -235,12 +263,20 @@ public final class JdkEnsure {
             @Nullable String projectJdkSpec,
             int javaRelease,
             @Nullable JdkPin lockJdk) {
-        int latestLts = JdkLts.OFFLINE_LATEST_LTS;
+        return JdkResolution.resolve(
+                request(projectDir, projectJdkSpec, javaRelease, lockJdk),
+                registry,
+                defaults,
+                JdkLts.OFFLINE_LATEST_LTS);
+    }
+
+    private static JdkResolution.Request request(
+            Path projectDir, @Nullable String projectJdkSpec, int javaRelease, @Nullable JdkPin lockJdk) {
         // The environment is the request's, never this process's: the engine is a daemon, so
         // System.getenv here would answer from whichever shell started it.
         Function<String, @Nullable String> env =
                 projectDir != null ? BuildEnv.forModule(projectDir) : BuildEnv.ambient();
-        JdkResolution.Request req = new JdkResolution.Request(
+        return new JdkResolution.Request(
                 projectDir,
                 SessionContext.current().jdkSpec(),
                 // null: the client folded JK_JDK into the switch tier before sending, and a
@@ -254,7 +290,27 @@ public final class JdkEnsure {
                 // `env` would answer with the daemon's.
                 SessionContext.current().javaHome(),
                 env::apply);
-        return JdkResolution.resolve(req, registry, defaults, latestLts);
+    }
+
+    /** What a build says when this release's JDK is not there: the build, why, and the command. */
+    static String releaseMissing(String spec, String why) {
+        return "this jk builds unpinned modules on " + spec + ", which is not installed and could not be (" + why
+                + "); run jk jdk install " + spec;
+    }
+
+    /** As {@link #resolve} without the release tier: an unpinned module's fallback. */
+    private static JdkResolution.Resolved resolveWithoutRelease(
+            Path projectDir,
+            JdkRegistry registry,
+            JdkInventory defaults,
+            @Nullable String projectJdkSpec,
+            int javaRelease,
+            @Nullable JdkPin lockJdk) {
+        return JdkResolution.resolveWithoutRelease(
+                request(projectDir, projectJdkSpec, javaRelease, lockJdk),
+                registry,
+                defaults,
+                JdkLts.OFFLINE_LATEST_LTS);
     }
 
     /**

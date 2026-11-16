@@ -26,11 +26,40 @@ jk jdk list
 jk jdk install temurin-25
 jk jdk pin temurin-25          # writes .jdk-version
 jk jdk home
+jk build --jdk /opt/jdk-25     # a JDK named by its home: that JDK, nothing looked up or installed
 jk jdk uninstall …
 jk jdk update
 jk jdk verify                  # fingerprint managed trees (`jk jdks verify`)
 jk shell                       # subshell with the project JDK
 ```
+
+## Unpinned modules build on this release's JDK
+
+A module with no JDK pin (no `jdk` in `jk.toml`, no `.jdk-version`, no `required-*` in the lock,
+no `--jdk` or `JK_JDK`) compiles and tests on the exact build this JumpKick release names for its
+major: the latest LTS, or its `java` level when that is newer.
+
+| Major | Build |
+|---|---|
+| 17 | `temurin-17.0.20.1` |
+| 21 | `temurin-21.0.12.1` |
+| 25 | `temurin-25.0.4.1` |
+| 26 | `temurin-26.0.2.1` |
+| 27 | `temurin-27.0.1.0.2` |
+
+JumpKick looks for it wherever it finds JDKs, and takes the shell's `JAVA_HOME` when that is exactly
+this build; otherwise it installs it, as it installs a pin, and the engine runs on the build for
+its own major when `[toolchain] jdk` names no other. Every host on one release therefore compiles
+and tests an unpinned module on one JDK and shares its cache keys, which name the JDK build exactly
+([Cache](cache.md)). A pin still wins. A new JumpKick release may name newer builds, so upgrading
+JumpKick can download a JDK; the builds it no longer names are removed by `jk jdk update`.
+
+When the build cannot be installed (offline, or the JDK feed unreachable) a build on a developer's
+machine goes on with an installed JDK of the major and says so: `this jk builds unpinned modules
+on temurin-25.0.4.1, which is not installed and could not be (…); run jk jdk install
+temurin-25.0.4.1; building on temurin-25.0.2, so this host shares no compile or test key with hosts
+on temurin-25.0.4.1`. With `CI` set, the build fails with the same words instead. `jk doctor`'s
+`jdk-patch` row names the build and warns only where this host diverges from it.
 
 Discovery looks at existing installs before downloading from the JetBrains JDK feed (or a mirror of
 it and its vendor hosts: [Config § Tool mirrors](config.md#tool-mirrors)). Each JDK `jk jdk list`

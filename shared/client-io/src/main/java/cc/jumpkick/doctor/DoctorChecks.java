@@ -147,38 +147,64 @@ public final class DoctorChecks {
     }
 
     /**
-     * Whether the project that governs {@code project} names the JDK build it compiles and tests
-     * on. Unpinned ({@code java = 25}, or a {@code jdk} without {@code =} and a full version), a
-     * module compiles on this host's newest JDK of the major and its suites run on the JDK the
-     * resolution finds here, and every compile and run-tests key names that build: a host on another
-     * patch shares no key with this one. Not a fault, so never a warning; the row says so and names
-     * the exact pin, after the newest install of the major under {@code jdksDir}, that makes every
-     * host compile on one build.
+     * Whether the project that governs {@code project} builds on the JDK every host on this jk
+     * release builds it on. An unpinned module compiles and tests on {@code releaseSpec}, this
+     * release's build of its major, so hosts share its keys with no pin; the row warns only where a
+     * host diverges from that: the build is not installed here (the next build installs it, an
+     * offline one falls back to another and shares no key), {@code JK_JDK} ({@code jkJdk}) forces
+     * another for every build of this shell, or the project pins a build older than the release's.
+     *
+     * @param releaseSpec this release's build for the project's major, null when it names none
+     * @param releaseInstalled whether that build is installed on this host
+     * @param jkJdk the shell's {@code JK_JDK}, or null
      */
-    public static HostRow jdkPatch(Path project, Path jdksDir) {
+    public static HostRow jdkPatch(
+            Path project, @Nullable String releaseSpec, boolean releaseInstalled, @Nullable String jkJdk) {
         Path owner = LockPaths.lockOwnerDir(project);
         Path manifest = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(manifest)) return row("jdk-patch", Status.OK, "no jk.toml to check");
-        TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-version", "java");
+        if (jkJdk != null && !jkJdk.isBlank()) {
+            return new HostRow(
+                    "jdk-patch",
+                    "jdk-patch",
+                    Status.WARN,
+                    "JK_JDK=" + jkJdk + " picks every build's JDK in this shell, so it shares no compile or test key"
+                            + " with hosts on " + (releaseSpec != null ? releaseSpec : "this jk's build"),
+                    "unset JK_JDK");
+        }
+        TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-version");
         String jdk = scan.get("jdk");
         String version = scan.get("jdk-version");
         String pin = exactBuild(jdk) ? jdk : exactBuild(version) ? version : null;
         if (pin != null) {
-            return row(
-                    "jdk-patch",
-                    Status.OK,
-                    "pinned to " + pin.substring(1) + ": every host compiles and tests on that JDK build");
+            String build = pin.substring(1);
+            String pinVersion = build.substring(build.lastIndexOf('-') + 1);
+            if (releaseSpec != null && olderThan(pinVersion, releaseSpec.substring(releaseSpec.indexOf('-') + 1))) {
+                return new HostRow(
+                        "jdk-patch",
+                        "jdk-patch",
+                        Status.WARN,
+                        "pinned to " + build + ", older than " + releaseSpec + ", the build this jk gives unpinned"
+                                + " modules",
+                        "drop the jdk pin to build on " + releaseSpec + ", or move it there");
+            }
+            return row("jdk-patch", Status.OK, "pinned to " + build + ": every host compiles and tests on that build");
         }
-        int major = scan.getInt("java", 25);
-        String newest = newestInstall(jdksDir, "temurin-" + major + ".");
-        return new HostRow(
-                "jdk-patch",
+        if (releaseSpec == null) return row("jdk-patch", Status.OK, "no release build for this project's Java level");
+        if (!releaseInstalled) {
+            return new HostRow(
+                    "jdk-patch",
+                    "jdk-patch",
+                    Status.WARN,
+                    releaseSpec + ", the build every host on this jk compiles and tests this project on, is not"
+                            + " installed: the next build installs it, and an offline one builds on another and shares"
+                            + " no compile or test key",
+                    "run jk jdk install " + releaseSpec);
+        }
+        return row(
                 "jdk-patch",
                 Status.OK,
-                "not pinned to a JDK build: modules compile and test on this host's, and a host on another"
-                        + " patch shares no compile or test key with this one (jk explain names the JDK when it moves)",
-                "pin one in jk.toml for a shared cache: jdk = \"="
-                        + (newest != null ? newest : "temurin-" + major + ".0.N") + "\"");
+                "unpinned: compiles and tests on " + releaseSpec + ", as every host on this jk release does");
     }
 
     /** {@code =<vendor>-<a>.<b>.<c>} or {@code =<a>.<b>.<c>}: an exact pin down to the patch. */
@@ -188,29 +214,15 @@ public final class DoctorChecks {
         return v.chars().filter(c -> c == '.').count() >= 2;
     }
 
-    /** The newest install under {@code jdksDir} whose directory name starts with {@code prefix}, by version. */
-    private static @Nullable String newestInstall(Path jdksDir, String prefix) {
-        List<String> names = new ArrayList<>();
-        try {
-            PathUtil.forEachChild(jdksDir, (child, attrs) -> {
-                String name = child.getFileName().toString();
-                if (name.startsWith(prefix) && !Files.isSymbolicLink(child)) names.add(name);
-                return true;
-            });
-        } catch (IOException unreadable) {
-            return null;
-        }
-        return names.stream().max(DoctorChecks::compareVersions).orElse(null);
-    }
-
-    private static int compareVersions(String a, String b) {
-        String[] x = a.substring(a.indexOf('-') + 1).split("\\.");
-        String[] y = b.substring(b.indexOf('-') + 1).split("\\.");
+    /** Whether dotted version {@code a} is below {@code b}, number by number. */
+    static boolean olderThan(String a, String b) {
+        String[] x = a.split("\\.");
+        String[] y = b.split("\\.");
         for (int i = 0; i < Math.max(x.length, y.length); i++) {
             int c = Integer.compare(number(x, i), number(y, i));
-            if (c != 0) return c;
+            if (c != 0) return c < 0;
         }
-        return 0;
+        return false;
     }
 
     private static int number(String[] parts, int i) {

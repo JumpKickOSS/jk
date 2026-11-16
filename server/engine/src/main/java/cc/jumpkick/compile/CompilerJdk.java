@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.ReleaseJdks;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Path;
 import org.jspecify.annotations.Nullable;
@@ -14,7 +15,8 @@ import org.jspecify.annotations.Nullable;
  * that runtime, in a worker that is already warm, and only a level above it moves to the project's
  * JDK. A JDK pin ({@code jdk = 21}, {@code jdk-vendor} / {@code jdk-version}, or {@code --jdk}) is
  * the author naming the compiler: the module compiles on that JDK even when the runtime could have
- * emitted its level.
+ * emitted its level. An unpinned module whose JDK is this jk release's build of its major ({@link
+ * ReleaseJdks}) compiles on that build, so the compiler does not depend on the engine's runtime.
  */
 public final class CompilerJdk {
 
@@ -47,6 +49,11 @@ public final class CompilerJdk {
         int projectFeature = JvmOptions.hostFeature(project);
         boolean canEmit = release <= 0 || projectFeature >= release;
         if (pinned && canEmit && projectFeature >= WORKER_FLOOR) return project;
+        // An unpinned module resolved to this jk release's build of its major compiles on that
+        // build, whatever JDK the engine happens to run on, so every host on the release shares
+        // its compile key (the engine itself defaults to the same build, so this is its own
+        // runtime and its warm worker on a host where nothing overrode it).
+        if (!pinned && canEmit && projectFeature >= WORKER_FLOOR && ReleaseJdks.isReleaseHome(project)) return project;
         if (release <= 0 || release <= JvmOptions.hostFeature(host)) return host;
         return canEmit ? project : host;
     }

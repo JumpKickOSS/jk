@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
+import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.ReleaseJdks;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,9 +34,11 @@ import org.junit.jupiter.api.io.TempDir;
  * of its own, computes every action key alike. The two sides differ in the jk home (and so the
  * store, cache, state and engine), the checkout path and its depth, {@code $HOME}, the user name,
  * the temp root, the locale ({@code en_US.UTF-8} against {@code de_DE.UTF-8} with {@code LC_ALL})
- * and the time zone. They share the JDK (one build per major is installed on most hosts; two
- * patches of an unpinned major would differ by design, see {@code JdkToolchain}) and the Maven
- * local repository the tier points at, so nothing is fetched.
+ * and the time zone, and in the JDKs installed: each side's JDK root holds this jk release's build
+ * of Java 25 ({@code ReleaseJdks}) beside a newer patch of its own ({@code 25.0.98} on one,
+ * {@code 25.0.99} on the other, the real JDK under another {@code release} file), which the
+ * resolution before release builds took for an unpinned module. Both share the Maven local
+ * repository the tier points at, so nothing is fetched.
  *
  * <p>The comparison is over each home's task pointers ({@code cache/actions/tasks/<step>@<tag>},
  * the tag being the project id and the output's workspace-relative path, both portable). A key that
@@ -75,7 +80,6 @@ class CrossHostKeyEqualityTest {
 
             import java.util.Locale;
             import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
 
             class MainTest {
                 @Test
@@ -96,6 +100,8 @@ import org.junit.jupiter.api.Timeout;
         assumeFalse(Os.isWindows(), "the sides are POSIX shells' environments");
         Side a = side(tmp, "a", "work/app", "keyeqa", "en_US.UTF-8", "America/New_York");
         Side b = side(tmp, "b", "elsewhere/much/deeper/checkout-two", "keyeqb", "de_DE.UTF-8", "Asia/Tokyo");
+        jdkInventory(a, "25.0.98");
+        jdkInventory(b, "25.0.99");
         b.env().put("LC_ALL", "de_DE.UTF-8");
         b.env().put("LANGUAGE", "de");
         try {
@@ -104,6 +110,15 @@ import org.junit.jupiter.api.Timeout;
             copySources(a.checkout(), b.checkout());
             assertThat(jk(b, "build")).as("site b builds").isZero();
 
+            for (Side side : List.of(a, b)) {
+                if (!side.env().containsKey("JK_JDKS_DIR")) continue;
+                jk(side, "jdk", "list");
+                assertThat(side.root().resolve("jk-jdk-list.log"))
+                        .as("site " + side.name()
+                                + " sees its own newer patch, which an unpinned module no longer takes")
+                        .content()
+                        .contains(side.name().equals("a") ? "25.0.98" : "25.0.99");
+            }
             Map<String, String> keysA = tasks(a.home());
             Map<String, String> keysB = tasks(b.home());
             // Each home's engine also builds a warm-up project of its own under its own path; the
@@ -158,6 +173,35 @@ import org.junit.jupiter.api.Timeout;
         if (m2 != null) env.put("JK_M2_LOCAL", m2);
         env.put("JK_NO_ANSI", "1");
         return new Side(name, root, home, Files.createDirectories(root.resolve(checkout)), env);
+    }
+
+    /**
+     * A JDK root of the side's own ({@code JK_JDKS_DIR}): this release's build of Java 25, linked to
+     * where it is installed, and a newer patch that is the same JDK under a {@code release} file
+     * naming {@code patch}. Without the release build installed the side keeps the host's JDKs.
+     */
+    private static void jdkInventory(Side side, String patch) throws IOException {
+        String spec = ReleaseJdks.spec(25).orElseThrow();
+        Path real = new JdkRegistry()
+                .hitsMatching(spec).stream()
+                        .filter(h -> ReleaseJdks.isBuild(spec, h.version()))
+                        .map(h -> h.home())
+                        .findFirst()
+                        .orElse(null);
+        if (real == null) return;
+        Path root = Files.createDirectories(side.root().resolve("jdks"));
+        Symlinks.create(root.resolve(spec), real.toRealPath());
+        Path fake = Files.createDirectories(root.resolve("temurin-" + patch));
+        try (Stream<Path> children = Files.list(real.toRealPath())) {
+            for (Path child : children.toList()) {
+                String name = child.getFileName().toString();
+                if (!name.equals("release")) Symlinks.create(fake.resolve(name), child);
+            }
+        }
+        Files.writeString(
+                fake.resolve("release"),
+                Files.readString(real.resolve("release")).replace(ReleaseJdks.version(spec), patch));
+        side.env().put("JK_JDKS_DIR", root.toString());
     }
 
     /** The engine under test, materialized under {@code home} as the tier does under its own. */

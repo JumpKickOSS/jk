@@ -224,6 +224,12 @@ version to `jk.toml`, the lock, the workspace members and the `[release] files` 
 floors). Local development then continues on the next version; `jk install` is the inner loop
 for it. `jk release --dry-run` says what it would do.
 
+Before the release commit, bring `ReleaseJdks` (shared/toolchain-jdk) to the newest build of each
+major the JetBrains feed carries (`jk jdk list -A`) and set its `REVIEWED` date: it is the JDK every
+unpinned module of the release compiles and tests on, and every host installs it. Install the new
+builds on the machines that run JumpKick's own suites first, or their nested builds download them.
+`jk doctor`'s `jdk-patch` row on a release build names what it resolves to.
+
 Releases are cut **by hand**: each platform is built on a machine of that platform, the trees are
 merged and signed on the one machine that holds the release key, and the same machine uploads
 ([Cutting a release by hand](#cutting-a-release-by-hand)). The CI and CD workflows below describe

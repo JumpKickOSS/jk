@@ -380,8 +380,8 @@ public final class ProtoSession {
      *
      * <p>Rides as its own field rather than on {@code clientEnv} because that map is merged into
      * every forked test JVM, and a JDK chosen there would change test outcomes through a channel
-     * no action key can see. Typed, it reaches {@code JdkResolution}'s late {@code JAVA_HOME} tier
-     * and nothing else.
+     * no action key can see. Typed, it reaches {@code JdkResolution}'s late {@code JAVA_HOME} tier,
+     * and its release tier when it is exactly the JDK build the jk release names, and nothing else.
      */
     public static @Nullable Path javaHomeOf(String request) {
         String v = Jsonl.str(request, "javaHome");

@@ -25,6 +25,7 @@ import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.jdk.ReleaseJdks;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.version.Versions;
@@ -538,9 +539,33 @@ public final class EngineSpawn {
             Optional<EngineJdk> own = ownJdk(floor);
             if (own.isPresent()) return own.get();
         }
-        String pin = pinned.orElse("temurin-" + floor);
+        // Unconfigured, the engine runs on this jk release's build of its floor major (ReleaseJdks),
+        // the build unpinned modules compile on, so its warm compiler worker is theirs.
+        Optional<String> release = ReleaseJdks.spec(floor);
+        String pin = pinned.orElse(release.orElse("temurin-" + floor));
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
+        if (pinned.isEmpty() && release.isPresent()) {
+            try {
+                return installEngineJdk(pin);
+            } catch (IOException notInstallable) {
+                // Offline or the feed unreachable: any install of the line runs the engine, and
+                // the build says what an unpinned module then compiles on.
+                Optional<EngineJdk> line = findInstalledEngineJdk("temurin-" + floor);
+                if (line.isPresent()) {
+                    CliOutput.stderr()
+                            .println("warning: the build engine runs on "
+                                    + line.get().version() + ", not " + pin + " (" + notInstallable.getMessage()
+                                    + "); run jk jdk install " + pin);
+                    return line.get();
+                }
+                throw notInstallable;
+            }
+        }
+        return installEngineJdk(pin);
+    }
+
+    private static EngineJdk installEngineJdk(String pin) throws IOException {
         // The same bar, phases and done line `jk jdk install` renders — this is the client, and
         // the user is watching; the header says the download is the engine's runtime, not theirs.
         try (JdkInstallView view = new JdkInstallView(null).header("Installing the build engine's JDK (" + pin + ")")) {
@@ -565,9 +590,13 @@ public final class EngineSpawn {
         return probeEngineJdk(home).filter(jdk -> majorOf(jdk.version()) >= floor);
     }
 
-    /** First already-installed JDK matching the pin's vendor+major, checked without any network. */
+    /**
+     * First already-installed JDK matching the pin's vendor+major, and its full version when the pin
+     * names one ({@code temurin-25.0.4.1}), checked without any network.
+     */
     private static Optional<EngineJdk> findInstalledEngineJdk(String pin) {
         Optional<Pin> want = parsePin(pin);
+        String exact = pin.substring(pin.lastIndexOf('-') + 1).contains(".") ? pin : null;
         if (want.isEmpty()) return Optional.empty(); // unparseable pin → force the install path
         List<Path> homes = new ArrayList<>();
         JdkInventory defaults = JdkInventory.current();
@@ -586,7 +615,8 @@ public final class EngineSpawn {
             Optional<EngineJdk> ej = probeEngineJdk(home);
             if (ej.isPresent()
                     && ej.get().vendor() == want.get().vendor()
-                    && majorOf(ej.get().version()) == want.get().major()) {
+                    && majorOf(ej.get().version()) == want.get().major()
+                    && (exact == null || ReleaseJdks.isBuild(exact, ej.get().version()))) {
                 return ej;
             }
         }

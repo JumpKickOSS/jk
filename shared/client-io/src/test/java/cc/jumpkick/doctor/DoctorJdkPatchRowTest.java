@@ -10,40 +10,52 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk doctor} says when a project compiles and tests on whatever JDK build this host has,
- * which a host on another patch shares no key with, and names the exact pin that makes them share.
+ * {@code jk doctor}'s {@code jdk-patch} row is quiet for an unpinned project, which every host on
+ * one jk release builds on the release's JDK build, and warns only where this host diverges: the
+ * build is not installed, {@code JK_JDK} forces another, or the project pins an older build.
  */
 class DoctorJdkPatchRowTest {
 
+    private static final String RELEASE = "temurin-25.0.4.1";
+
     @Test
-    void an_unpinned_project_is_told_which_pin_makes_hosts_share_keys(@TempDir Path tmp) throws Exception {
-        Path project = Files.createDirectories(tmp.resolve("p"));
+    void an_unpinned_project_on_the_installed_release_build_is_ok(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njava = 25\n");
-        Path jdks = Files.createDirectories(tmp.resolve("jdks"));
-        Files.createDirectories(jdks.resolve("temurin-25.0.4.1"));
-        Files.createDirectories(jdks.resolve("temurin-25.0.10"));
-        Files.createDirectories(jdks.resolve("temurin-21.0.12.1"));
-
-        HostRow row = DoctorChecks.jdkPatch(project, jdks);
+        HostRow row = DoctorChecks.jdkPatch(project, RELEASE, true, null);
         assertThat(row.id()).isEqualTo("jdk-patch");
-        assertThat(row.status()).as("not a fault").isEqualTo(HostRow.Status.OK);
-        assertThat(row.detail()).contains("not pinned to a JDK build", "shares no compile or test key");
-        assertThat(row.fix()).isEqualTo("pin one in jk.toml for a shared cache: jdk = \"=temurin-25.0.10\"");
-    }
-
-    @Test
-    void a_pin_short_of_the_patch_is_still_unpinned(@TempDir Path project) throws Exception {
-        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njdk = \"=temurin-25\"\n");
-        assertThat(DoctorChecks.jdkPatch(project, project.resolve("none")).detail())
-                .contains("not pinned to a JDK build");
-    }
-
-    @Test
-    void an_exact_pin_is_named(@TempDir Path project) throws Exception {
-        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njdk = \"=temurin-25.0.4.1\"\n");
-        HostRow row = DoctorChecks.jdkPatch(project, project.resolve("none"));
+        assertThat(row.status()).isEqualTo(HostRow.Status.OK);
         assertThat(row.detail())
-                .isEqualTo("pinned to temurin-25.0.4.1: every host compiles and tests on that JDK build");
+                .isEqualTo("unpinned: compiles and tests on temurin-25.0.4.1, as every host on this jk release does");
         assertThat(row.fix()).isNull();
+    }
+
+    @Test
+    void a_release_build_not_installed_names_the_install(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
+        HostRow row = DoctorChecks.jdkPatch(project, RELEASE, false, null);
+        assertThat(row.status()).isEqualTo(HostRow.Status.WARN);
+        assertThat(row.detail()).contains("is not installed", "shares no compile or test key");
+        assertThat(row.fix()).isEqualTo("run jk jdk install temurin-25.0.4.1");
+    }
+
+    @Test
+    void a_pin_older_than_the_release_build_warns_and_one_at_it_does_not(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njdk = \"=temurin-25.0.3\"\n");
+        HostRow older = DoctorChecks.jdkPatch(project, RELEASE, true, null);
+        assertThat(older.status()).isEqualTo(HostRow.Status.WARN);
+        assertThat(older.detail()).startsWith("pinned to temurin-25.0.3, older than temurin-25.0.4.1");
+
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njdk = \"=temurin-25.0.4.1\"\n");
+        HostRow at = DoctorChecks.jdkPatch(project, RELEASE, true, null);
+        assertThat(at.status()).isEqualTo(HostRow.Status.OK);
+        assertThat(at.detail()).isEqualTo("pinned to temurin-25.0.4.1: every host compiles and tests on that build");
+    }
+
+    @Test
+    void jk_jdk_in_the_shell_warns(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
+        HostRow row = DoctorChecks.jdkPatch(project, RELEASE, true, "corretto-25");
+        assertThat(row.status()).isEqualTo(HostRow.Status.WARN);
+        assertThat(row.fix()).isEqualTo("unset JK_JDK");
     }
 }
