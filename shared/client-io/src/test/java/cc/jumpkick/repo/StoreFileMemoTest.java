@@ -4,9 +4,11 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.AtomicWrites;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,12 +37,26 @@ class StoreFileMemoTest {
         assertThat(memo.get(file, READ)).hasValue("one");
 
         // The store writes a sibling and renames it over the old name, as here: same size, a new file.
+        // On Windows the new file differs from the old one by its creation time alone, which the clock
+        // stamps by the tick: written within the old file's tick it would be the old file to every
+        // attribute, so the sibling is written again until its tick is another.
         Path next = Files.writeString(tmp.resolve("a.pom.part"), "two");
+        for (int i = 0; i < 100 && sameCreationTime(next, file); i++) {
+            Thread.sleep(5);
+            Files.delete(next);
+            Files.writeString(next, "two");
+        }
         Files.setLastModifiedTime(next, Files.getLastModifiedTime(file));
         AtomicWrites.moveInto(next, file);
 
         assertThat(memo.get(file, READ)).hasValue("two");
         assertThat(memo.reads()).isEqualTo(2);
+    }
+
+    private static boolean sameCreationTime(Path a, Path b) throws IOException {
+        return Files.readAttributes(a, BasicFileAttributes.class)
+                .creationTime()
+                .equals(Files.readAttributes(b, BasicFileAttributes.class).creationTime());
     }
 
     @Test
