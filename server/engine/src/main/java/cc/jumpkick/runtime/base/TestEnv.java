@@ -173,6 +173,10 @@ public final class TestEnv {
         out.putAll(BuildEnv.machine());
         // The locale: a fixed one unless the module inherits the caller's, which then keys the suite.
         out.putAll(localeEnv(project.build().testJvm(), Os.isWindows(), Os.isDarwin()));
+        // The time zone likewise: the module's fixed zone (UTC by default), or the caller's under
+        // "inherit" — never the engine's, whichever shell started the daemon.
+        String zone = timeZoneEnv(project.build().testJvm());
+        if (zone != null) out.put("TZ", zone);
         // A fixed terminal, keyed by nothing: a suite started from a tmux pane, an IDE or an agent
         // shell runs the same. A module that needs the caller's declares TERM in [env].
         out.put("TERM", TERM);
@@ -232,6 +236,16 @@ public final class TestEnv {
         if (windows) return Map.of();
         String fixed = mac ? "en_US.UTF-8" : "C.UTF-8";
         return Map.of("LC_ALL", fixed, "LANG", fixed, "LANGUAGE", "");
+    }
+
+    /**
+     * The {@code TZ} a test JVM gets: the module's {@code [test] timezone} (its JVM also gets {@code
+     * -Duser.timezone}, {@link TestJvm#flags}), so a tool a test starts sees the same zone; under
+     * {@code inherit} the caller's {@code TZ} ({@link BuildEnv#timeZone}), and none when the caller
+     * set none, so the JVM reads the machine's zone.
+     */
+    static @Nullable String timeZoneEnv(TestJvm jvm) {
+        return jvm.inheritsTimezone() ? BuildEnv.timeZone() : jvm.timezone();
     }
 
     /**

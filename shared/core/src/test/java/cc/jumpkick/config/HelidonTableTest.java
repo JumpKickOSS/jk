@@ -115,7 +115,11 @@ class HelidonTableTest {
                 """);
         assertThat(flag.build().testJvm().systemProperties()).isEmpty();
         assertThat(flag.build().testJvm().flags())
-                .containsExactly("-Duser.language=en", "-Duser.country=US", "-Dhelidon.config.profile=ci");
+                .containsExactly(
+                        "-Duser.language=en",
+                        "-Duser.country=US",
+                        "-Duser.timezone=UTC",
+                        "-Dhelidon.config.profile=ci");
     }
 
     @Test

@@ -352,6 +352,10 @@
           "type": "string",
           "description": "The test JVM's default locale, a BCP 47 tag (\"de-DE\"), forked as -Duser.language/-Duser.country, with LC_ALL and LANG a fixed UTF-8 locale (C.UTF-8; en_US.UTF-8 on macOS). Default \"en-US\", so the shell's LANG and LC_* neither reach a suite nor key it. \"inherit\" hands the test JVM the locale of the shell that ran jk and keys the suite on it."
         },
+        "timezone": {
+          "type": "string",
+          "description": "The test JVM's default time zone, a zone id (\"Europe/Berlin\"), forked as -Duser.timezone with TZ set to it. Default \"UTC\", so neither the shell's TZ nor the engine's zone reaches a suite or keys it. \"inherit\" hands the test JVM the TZ of the shell that ran jk (else the machine's zone) and keys the suite on it."
+        },
         "network": {
           "type": "string",
           "enum": ["allowed"],

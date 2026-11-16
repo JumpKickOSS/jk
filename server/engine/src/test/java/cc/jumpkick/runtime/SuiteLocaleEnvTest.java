@@ -81,7 +81,8 @@ class SuiteLocaleEnvTest {
                 .contains("machine-env:LC_TIME=" + LC_TIME)
                 .noneMatch(t -> t.startsWith("test-locale:"));
         assertThat(jvmEnv(project, Map.of("PATH", "/bin", "LC_TIME", LC_TIME))).containsEntry("LC_TIME", LC_TIME);
-        assertThat(TestStampInputs.testJvmArgs(project, null)).noneMatch(a -> a.startsWith("-Duser."));
+        assertThat(TestStampInputs.testJvmArgs(project, null))
+                .noneMatch(a -> a.startsWith("-Duser.language") || a.startsWith("-Duser.country"));
     }
 
     @Test

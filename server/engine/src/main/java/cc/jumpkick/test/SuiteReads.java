@@ -249,7 +249,7 @@ public final class SuiteReads {
         Map<Path, Boolean> made = new HashMap<>();
         Set<Path> out = new TreeSet<>();
         for (Path f : observed.files()) {
-            if (live(f) || under(f, roots)) continue;
+            if (live(f) || under(f, roots) || EnvProbeJar.isProbeJar(f)) continue;
             // A file is the same input under either spelling (macOS's /var is /private/var).
             if (real(f).filter(r -> under(r, roots)).isPresent()) continue;
             if (workspace != null && madeDuringRun(f, workspace, startedMillis, made)) continue;

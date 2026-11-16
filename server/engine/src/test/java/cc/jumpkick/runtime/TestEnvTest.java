@@ -486,7 +486,7 @@ class TestEnvTest {
                         .extras());
         assertThat(one)
                 .anyMatch(s -> s.startsWith("test-env:JK_DECLARED_PROBE="))
-                .noneMatch(s -> s.contains("one"));
+                .noneMatch(s -> s.contains("=one"));
         assertThat(one).isNotEqualTo(two);
     }
 

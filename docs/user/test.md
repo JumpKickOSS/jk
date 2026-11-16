@@ -836,25 +836,31 @@ assertions = false      # default true
 
 The setting is a run-tests input, so flipping it re-runs the suite.
 
-## The test JVM's locale (`[test] locale`)
+## The test JVM's locale and time zone (`[test] locale`, `[test] timezone`)
 
-Every test JVM runs in one locale, whatever the shell that ran `jk` says: its default locale is
-`en-US` (forked as `-Duser.language=en -Duser.country=US`, ahead of the module's own flags, so a
-`-Duser.language` in `jvm-args` still wins), and `LC_ALL` and `LANG` are a UTF-8 locale every host has
-(`C.UTF-8`; `en_US.UTF-8` on macOS) with `LANGUAGE` empty, so a tool a test starts prints untranslated
-messages and file names are UTF-8. The shell's `LANG` and `LC_*` reach no suite and key none: a
-laptop on `de_DE.UTF-8`, a runner on `C.UTF-8` and a developer on `en_US.UTF-8` run a suite alike and
-share its result. The stamp names the locale it ran in (`test-locale:en-US`).
+Every test JVM runs in **locale `en-US` and time zone `UTC`** unless the module says otherwise,
+whatever the shell that ran `jk` or the long-lived engine says: a suite's result should depend on
+the code under test, not on the developer's machine. A test that formats `1234.5` or a local time
+then passes or fails the same on a laptop in Berlin, a runner on `C.UTF-8` in UTC and a developer in
+New York, and those hosts share its cached result.
+
+The JVM gets `-Duser.language=en -Duser.country=US -Duser.timezone=UTC` ahead of the module's own
+flags, so a `-Duser.language` or `-Duser.timezone` in `jvm-args` still wins. Its environment gets
+`TZ` set to the zone, and `LC_ALL` and `LANG` set to a UTF-8 locale every host has (`C.UTF-8`;
+`en_US.UTF-8` on macOS) with `LANGUAGE` empty, so a tool a test starts prints untranslated output in
+the same zone and file names are UTF-8. The shell's `LANG`, `LC_*` and `TZ` reach no suite and key
+none. The stamp names what the suite ran in (`test-locale:en-US`, `test-timezone:UTC`).
 
 ```toml
 [test]
-locale = "de-DE"       # another fixed locale, a BCP 47 tag
-locale = "inherit"     # the shell's LANG, LANGUAGE and LC_*: they reach the test JVM and key the suite
+locale   = "de-DE"           # another fixed locale, a BCP 47 tag
+timezone = "Europe/Berlin"   # another fixed zone, a zone id
+locale   = "inherit"         # the shell's LANG, LANGUAGE and LC_*: they reach the test JVM and key the suite
+timezone = "inherit"         # the shell's TZ (else the machine's zone): it reaches the test JVM and keys the suite
 ```
 
-`inherit` is for a suite that tests how the code behaves under whatever locale it is run in; its
-result is shared only between hosts on the same locale variables. Changing `locale` re-runs the
-suite.
+`inherit` is for a suite that tests how the code behaves wherever it is run; its result is shared
+only between hosts on the same locale or zone. Changing either re-runs the suite.
 
 ## The test JVM's flags (`[test] jvm-args`, `[test] system-properties`)
 
@@ -1044,9 +1050,9 @@ A suite is replayed from its green marker only while everything it can see is un
 that is keyed up front: its sources, classes, resources, runtime classpath, the JDK the tests run
 on (another install, or the same one updated in place), JVM flags, whether `[test] network` is
 `"allowed"`, the
-values of its `[test] env` and `[env]` table (the declared names and `vars`), its `[test] locale`
-(under `locale = "inherit"`, the locale variables of the shell running `jk`: `LANG`, `LANGUAGE`,
-`LC_*`; never the terminal: a test JVM's `TERM` is a fixed `dumb`), with `[env] inherit` the whole environment less the terminal and session variables, and JumpKick's test runner.
+values of its `[test] env` and `[env]` table (the declared names and `vars`), its `[test] locale` and `[test] timezone`
+(under `inherit`, the shell's `LANG`, `LANGUAGE`, `LC_*` or `TZ`; never the terminal: a test JVM's
+`TERM` is a fixed `dumb`), with `[env] inherit` the whole environment less the terminal and session variables, and JumpKick's test runner.
 
 The rest is found by watching the suite run. Every JVM that runs tests records, through Java
 Flight Recorder, each file it reads, each process it starts and its socket traffic. A file outside

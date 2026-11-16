@@ -74,6 +74,7 @@ final class ManifestBuildTable {
         final List<String> testJvmArgs = new ArrayList<>();
         final Map<String, String> testSystemProperties = new LinkedHashMap<>();
         String testLocale = TestJvm.DEFAULT_LOCALE;
+        String testTimezone = TestJvm.DEFAULT_TIMEZONE;
     }
 
     /** The keys {@code [build]} may carry; {@code logic} is read by {@link BuildLogicToml}. */
@@ -266,15 +267,7 @@ final class ManifestBuildTable {
             }
             s.testNetworkAllowed = true;
         }
-        // [test] locale — the test JVM's default locale, en-US unless the module names another or
-        // "inherit"s the caller's.
-        if (test.contains("locale")) {
-            if (!(test.get("locale") instanceof String tag) || !TestJvm.validLocale(tag)) {
-                throw new JkBuildParseException(
-                        "[test].locale must be a BCP 47 tag such as \"de-DE\", or \"inherit\" for the caller's locale");
-            }
-            s.testLocale = tag;
-        }
+        readLocaleAndZone(test, s);
         // [test] coverage — every test JVM of this module runs under the JaCoCo agent and the
         // module leaves its coverage report, as `jk test -T` does for the whole run.
         if (test.contains("coverage")) {
@@ -336,6 +329,32 @@ final class ManifestBuildTable {
      * exclude-classes} / {@code exclude-tags} among them that run in no suite. The default suite,
      * the guard suite and the fixtures source set cannot be one.
      */
+    /**
+     * {@code [test] locale} and {@code [test] timezone}: the default locale and zone of every test
+     * JVM of the module, {@code en-US} and {@code UTC} unless it names others or {@code inherit}s the
+     * caller's.
+     */
+    private static void readLocaleAndZone(TomlTable test, Settings s) {
+        // [test] locale — the test JVM's default locale, en-US unless the module names another or
+        // "inherit"s the caller's.
+        if (test.contains("locale")) {
+            if (!(test.get("locale") instanceof String tag) || !TestJvm.validLocale(tag)) {
+                throw new JkBuildParseException(
+                        "[test].locale must be a BCP 47 tag such as \"de-DE\", or \"inherit\" for the caller's locale");
+            }
+            s.testLocale = tag;
+        }
+        // [test] timezone — the test JVM's default zone, UTC unless the module names another or
+        // "inherit"s the caller's.
+        if (test.contains("timezone")) {
+            if (!(test.get("timezone") instanceof String zone) || !TestJvm.validTimezone(zone)) {
+                throw new JkBuildParseException(
+                        "[test].timezone must be a zone id such as \"Europe/Berlin\", or \"inherit\" for the caller's zone");
+            }
+            s.testTimezone = zone;
+        }
+    }
+
     private static void readSuites(TomlTable test, Settings s) {
         if (!test.contains("suites")) return;
         if (!(test.get("suites") instanceof TomlTable suites)) {

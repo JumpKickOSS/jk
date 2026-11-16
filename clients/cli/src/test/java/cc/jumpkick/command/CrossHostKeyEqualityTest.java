@@ -79,6 +79,7 @@ class CrossHostKeyEqualityTest {
             import static org.junit.jupiter.api.Assertions.assertEquals;
 
             import java.util.Locale;
+            import java.util.TimeZone;
             import org.junit.jupiter.api.Test;
 
             class MainTest {
@@ -87,6 +88,7 @@ class CrossHostKeyEqualityTest {
                     assertEquals("with", Main.greeting());
                     assertEquals("1,234.50", String.format("%,.2f", 1234.5));
                     assertEquals("en", Locale.getDefault().getLanguage());
+                    assertEquals("UTC", TimeZone.getDefault().getID());
                 }
             }
             """;

@@ -13,8 +13,10 @@ import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -36,6 +38,14 @@ final class SuiteEnvKeys {
         if (build.testJvm().inheritsLocale())
             BuildEnv.locale().forEach((name, value) -> out.add("machine-env:" + name + "=" + value));
         else out.add("test-locale:" + build.testJvm().locale());
+        // The zone it runs in: the module's fixed one, or under "inherit" the caller's TZ, else the
+        // machine's zone the JVM then reads.
+        out.add("test-timezone:"
+                + (build.testJvm().inheritsTimezone()
+                        ? "inherit="
+                                + Objects.requireNonNullElseGet(BuildEnv.timeZone(), () -> ZoneId.systemDefault()
+                                        .getId())
+                        : build.testJvm().timezone()));
         // The runner that launches the suite and reads its outcome is part of every run.
         try {
             for (String token : WorkerClosure.tokens(PluginJar.TEST_RUNNER)) out.add("runner:" + token);

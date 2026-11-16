@@ -223,6 +223,18 @@ public final class BuildEnv {
         return Collections.unmodifiableMap(out);
     }
 
+    /**
+     * The caller's {@code TZ}: the session's forwarded value, then the shell running {@code jk};
+     * null when neither carries one (never the engine's own, a daemon started from some other
+     * shell). What a test JVM under {@code [test] timezone = "inherit"} gets and its suite keys.
+     */
+    public static @Nullable String timeZone() {
+        String value = clientEnv().get("TZ");
+        RequestShell shell = RequestShell.current();
+        if (value == null && shell != null) value = shell.get("TZ");
+        return value == null || value.isBlank() ? null : value;
+    }
+
     /** Whether {@code name} is one of {@link #locale()}'s. */
     static boolean localeName(String name) {
         return name.equals("LANG") || name.equals("LANGUAGE") || name.startsWith("LC_");

@@ -19,6 +19,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
@@ -43,6 +44,23 @@ class SuiteReadsTest {
         assertThat(seen.complete()).as("a torn recording vouches for nothing").isFalse();
         Files.delete(torn);
         assertThat(torn).doesNotExist();
+    }
+
+    /**
+     * jk's own environment probe, which every probed test JVM reads as it loads a probe class, is
+     * never an input of the suite: with {@code -Duser.timezone} on the fork it is read mid-run, and
+     * keying it called it changed under every suite that ran beside another (each launch touches it).
+     * A file of the same name anywhere else is read like any other.
+     */
+    @Test
+    void the_environment_probe_jar_is_never_an_input(@TempDir Path tmp) throws Exception {
+        Path probeJar =
+                Files.createDirectories(tmp.resolve("cache/env-reads")).resolve("env-probe-0123456789abcdef.jar");
+        Files.writeString(probeJar, "probe");
+        Path lookalike = Files.writeString(tmp.resolve("env-probe-0123456789abcdef.jar"), "user's");
+        SuiteReads.Observed seen =
+                new SuiteReads.Observed(new TreeSet<>(List.of(probeJar, lookalike)), Set.of(), Set.of(), true);
+        assertThat(SuiteReads.undeclared(seen, List.of())).containsExactly(lookalike);
     }
 
     @Test

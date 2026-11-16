@@ -72,9 +72,10 @@ build this JumpKick release names for its Java major (`temurin-25.0.4.1` for Jav
 which JumpKick installs when it is absent, so every host on one release shares its compile and test
 keys with no pin. `jk doctor`'s `jdk-patch` row warns only where this host diverges (the build is
 not installed, `JK_JDK` forces another, or the project pins an older build), and `jk explain`
-names both builds when a compile reruns for the JDK. A test JVM runs in a fixed locale (`en-US` unless the module's
-`[test] locale` says otherwise, [Test](test.md#the-test-jvms-locale-test-locale)), so the shell's
-`LANG` and `LC_*` key no suite; only `locale = "inherit"` keys them. A hit on a machine with no history of the step (a fresh checkout, a record
+names both builds when a compile reruns for the JDK. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
+unless the module's `[test] locale` or `[test] timezone` says otherwise,
+[Test](test.md#the-test-jvms-locale-and-time-zone-test-locale-test-timezone)), so the shell's
+`LANG`, `LC_*` and `TZ` key no suite; only `inherit` keys them. A hit on a machine with no history of the step (a fresh checkout, a record
 another machine made) counts what it saved from that time, so `jk history show`'s saved figure and
 its coverage include it.
 
