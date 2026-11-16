@@ -19,15 +19,27 @@ class JkEngineConfigTest {
     }
 
     /**
-     * Non-CI engine coordinator heap stays 256 MiB (measured ~36 MiB peak on a 200-module build —
-     * see docs/perf/engine-heap-monorepo.md). CI defaults to 512 MiB when unset.
+     * The unset engine heap is a 64th of the host's RAM between 256 and 512 MiB: unused RAM earns
+     * nothing, and a larger cap lets memory admission run more jobs at once. CI keeps at least 512.
      */
     @Test
-    void default_max_heap_stays_256_mib_good_neighbor() {
+    void the_default_heap_scales_with_the_host_between_256_and_512_mib() {
+        long gib = 1L << 30;
         assertThat(JkEngineConfig.DEFAULT_MAX_HEAP_MB).isEqualTo(256);
         assertThat(JkEngineConfig.DEFAULTS.heapCapped()).isTrue();
         assertThat(JkEngineConfig.DEFAULTS.minHeapMb()).isLessThanOrEqualTo(256);
-        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null)).isEqualTo(256);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null, 8 * gib)).isEqualTo(256);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null, 16 * gib)).isEqualTo(256);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null, 30 * gib)).isEqualTo(480);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null, 32 * gib)).isEqualTo(512);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null, 128 * gib)).isEqualTo(512);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null, -1))
+                .as("RAM unknown")
+                .isEqualTo(256);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(Map.of("CI", "1")::get, 16 * gib))
+                .isEqualTo(512);
+        assertThat(JkEngineConfig.defaultMaxHeapMb(k -> null))
+                .isBetween(JkEngineConfig.DEFAULT_MAX_HEAP_MB, JkEngineConfig.MAX_DEFAULT_HEAP_MB);
     }
 
     @Test

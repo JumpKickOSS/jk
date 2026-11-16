@@ -15,8 +15,10 @@ import org.jspecify.annotations.Nullable;
  * <p>{@code jobs} is Mill-shaped concurrent-work budget: {@code null} = default (cores),
  * {@code 0} = all cores, {@code 1} = serial, {@code N} = cap. Resolved via {@link Jobs}.
  *
- * <p>Default engine heap is {@link #DEFAULT_MAX_HEAP_MB} (256 MiB) on developer machines; when
- * {@code CI=1} or {@code CI=true}, the unset default is {@link #CI_DEFAULT_MAX_HEAP_MB} (512 MiB).
+ * <p>The unset engine heap scales with the host: a {@value #HEAP_RAM_DIVISOR}th of its RAM, at least
+ * {@link #DEFAULT_MAX_HEAP_MB} (256 MiB) and at most {@link #MAX_DEFAULT_HEAP_MB} (512 MiB): 256 MiB
+ * on a 16 GB machine, 480 MiB on a 30 GB one, 512 MiB from 32 GB up ({@link #defaultMaxHeapMb}).
+ * When {@code CI=1} or {@code CI=true} it is at least {@link #CI_DEFAULT_MAX_HEAP_MB} (512 MiB).
  * Explicit file/env values always win — the precedence is {@link MachineConfig}'s.
  *
  * <p>{@code continue} is the same shape: unset means fail-fast interactively and keep-going on CI.
@@ -36,8 +38,14 @@ public record JkEngineConfig(
         String logLevel,
         KeepAwake keepAwake) {
 
-    /** Default engine-process heap ceiling ({@code -Xmx}) when not on CI. */
+    /** The least default engine heap ({@code -Xmx}), on a host of 16 GB or less, and when RAM is unknown. */
     public static final int DEFAULT_MAX_HEAP_MB = 256;
+
+    /** The most the default engine heap grows to with the host's RAM. */
+    public static final int MAX_DEFAULT_HEAP_MB = 512;
+
+    /** The default engine heap is this fraction of the host's RAM, between the two bounds. */
+    public static final int HEAP_RAM_DIVISOR = 64;
 
     /** Default engine heap when {@code CI=1} or {@code CI=true} and heap is unset. */
     public static final int CI_DEFAULT_MAX_HEAP_MB = 512;
@@ -202,9 +210,21 @@ public record JkEngineConfig(
                 KeepAwake.AC);
     }
 
-    /** Unset heap default: 512 MiB on CI, else 256 MiB. */
+    /**
+     * Unset heap default: a {@value #HEAP_RAM_DIVISOR}th of the host's RAM between {@link
+     * #DEFAULT_MAX_HEAP_MB} and {@link #MAX_DEFAULT_HEAP_MB}, at least {@link #CI_DEFAULT_MAX_HEAP_MB}
+     * on CI. Unused RAM earns nothing; a larger cap lets memory admission run more jobs at once, and
+     * the engine hands back what it does not use ({@code MaxHeapFreeRatio}, the idle trim).
+     */
     public static int defaultMaxHeapMb(Function<String, @Nullable String> env) {
-        return EnvValues.isCi(env) ? CI_DEFAULT_MAX_HEAP_MB : DEFAULT_MAX_HEAP_MB;
+        return defaultMaxHeapMb(env, HostRam.totalBytes());
+    }
+
+    /** As {@link #defaultMaxHeapMb(Function)} on a host of {@code ramBytes} ({@code <= 0}: unknown). */
+    static int defaultMaxHeapMb(Function<String, @Nullable String> env, long ramBytes) {
+        long byRam = ramBytes > 0 ? (ramBytes / HEAP_RAM_DIVISOR) >> 20 : DEFAULT_MAX_HEAP_MB;
+        int heap = (int) Math.max(DEFAULT_MAX_HEAP_MB, Math.min(MAX_DEFAULT_HEAP_MB, byRam));
+        return EnvValues.isCi(env) ? Math.max(heap, CI_DEFAULT_MAX_HEAP_MB) : heap;
     }
 
     /** Unset {@code continue} default: keep going on CI, fail fast at a prompt. */

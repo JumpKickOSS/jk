@@ -102,7 +102,8 @@ class MachineConfigTest {
         return List.of(
                 new Reader(
                         "JkEngineConfig.max-heap-mb",
-                        256,
+                        // the unset heap scales with the host's RAM (JkEngineConfig.defaultMaxHeapMb)
+                        JkEngineConfig.defaultMaxHeapMb(k -> null),
                         "[engine]\nmax-heap-mb = 111\n",
                         111,
                         "JK_ENGINE_MAX_HEAP_MB",
