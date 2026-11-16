@@ -10,6 +10,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkVersion;
@@ -243,6 +244,41 @@ class RemoteCacheE2eTest extends EngineServerHarness {
         Map<String, String> keysB = taskKeys(cacheB);
         assertThat(keysA).as("A stored records").isNotEmpty();
         assertThat(keysB).as("each task's key at B, against A's").isEqualTo(keysA);
+    }
+
+    /**
+     * A build of a project with dependencies writes no record that names a path under the jk home
+     * by its absolute path: dependency jars, worker jars and JDKs are named against their root
+     * ({@code store:}, {@code cache:}, {@code jk-home:}), so the shared form keeps them.
+     */
+    @Test
+    void no_record_names_a_path_under_the_jk_home_absolutely() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        Path cache = root.resolve("cache-a");
+        assertThat(succeeded(build(a, cache, Map.of()))).isTrue();
+        settled(a);
+
+        String home = JkDirs.home().toAbsolutePath().normalize().toString();
+        String store = JkDirs.store().toAbsolutePath().normalize().toString();
+        List<String> absolute = new ArrayList<>();
+        int inputs = 0;
+        try (Stream<Path> files = Files.list(ActionTree.KEYS.under(CacheTree.ACTIONS.under(cache)))) {
+            for (Path f : files.toList()) {
+                for (String line : Files.readAllLines(f)) {
+                    if (!line.startsWith("INPUT ")) continue;
+                    inputs++;
+                    if (line.contains(home)
+                            || line.contains(store)
+                            || line.contains(cache.toString())
+                            || line.contains(a.toString())) absolute.add(f.getFileName() + ": " + line);
+                }
+            }
+        }
+        assertThat(inputs).as("the build wrote records with inputs").isPositive();
+        assertThat(absolute)
+                .as("inputs naming the jk home, the store, the cache or the checkout absolutely")
+                .isEmpty();
     }
 
     // ---- fixture -------------------------------------------------------------------------

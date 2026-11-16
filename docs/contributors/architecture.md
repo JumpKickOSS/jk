@@ -557,7 +557,9 @@ and exclusions stay GA-scoped.
    the same way (`PortablePath.key`: module-relative under a project — a `jk.toml` or a `pom.xml`
    dir — relative to the root under JumpKick's own store, cache or home (`store:repos/central/…`), and
    the whole path only elsewhere, so two inputs never share an entry), so `jk explain`
-   reads a neighbour checkout's record correctly.
+   reads a neighbour checkout's record correctly. `RemoteCacheE2eTest` builds a workspace with
+   dependencies and a suite and finds no record input naming the home, the store, the cache or the
+   checkout by its absolute path.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A key
    record is read as untrusted (`ActionRecordText.parse`): one whose `KEY` is not the key it was
    looked up under, whose output or executable path is not a plain relative path, or whose output
