@@ -54,6 +54,40 @@ class WorkerEnvTest {
         assertThat(out).doesNotContainKey("JAVA_HOME");
     }
 
+    /**
+     * What a request forwards for the engine's own resolvers, and a secret nothing declares that an
+     * over-forwarding client sent anyway, stay in the engine: a compiler, plugin or test worker that
+     * has not declared them starts without them (JK-7A19A).
+     */
+    @Test
+    void a_requests_credentials_and_undeclared_secrets_reach_no_worker() throws Exception {
+        Map<String, String> shell = Map.of(
+                "PATH", "/req/bin",
+                "GITHUB_TOKEN", "canary-forge",
+                "AWS_SECRET_ACCESS_KEY", "canary-cloud",
+                "BUILDKITE_AGENT_ACCESS_TOKEN", "canary-ci",
+                "HOMEBREW_GITHUB_API_TOKEN", "canary-tool",
+                "GIT_ASKPASS", "/req/askpass");
+        AtomicReference<Map<String, String>> env = new AtomicReference<>();
+        AtomicReference<Map<String, String>> compiler = new AtomicReference<>();
+        RequestShell.where(shell, () -> {
+            SessionContext.runWhere(Session.defaults().withVariant(null, shell), () -> {
+                try {
+                    env.set(WorkerEnv.withEngineEnvironment(ENGINE, WorkerEnv.strict()::environment));
+                    compiler.set(WorkerEnv.withEngineEnvironment(ENGINE, WorkerEnv.strict()::compilerEnvironment));
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+            });
+            return null;
+        });
+        for (Map<String, String> worker : List.of(env.get(), compiler.get())) {
+            assertThat(worker).containsEntry("PATH", "/req/bin");
+            assertThat(worker.values()).noneMatch(v -> v.startsWith("canary-"));
+            assertThat(worker).doesNotContainKey("GIT_ASKPASS");
+        }
+    }
+
     @Test
     void a_worker_is_told_the_jdk_it_runs_under_and_it_beats_the_daemons() {
         Path home = Path.of("/jdks/temurin-25.0.4");

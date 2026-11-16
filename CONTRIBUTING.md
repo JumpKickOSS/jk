@@ -38,9 +38,10 @@ installs no JumpKick.
 ### Container runtime (Testcontainers)
 
 The jk-examples scenarios that start databases, and `bench/wall/spring-petclinic`, run
-Testcontainers against your container runtime. JumpKick configures none of it: it passes `DOCKER_HOST`
-and the `TESTCONTAINERS_*` variables from your shell to the test JVMs
-([Build](docs/user/build.md)), and it never writes `~/.testcontainers.properties`.
+Testcontainers against your container runtime. JumpKick configures none of it: it passes `DOCKER_HOST`,
+the other Docker client settings and the Testcontainers overrides (`TESTCONTAINERS_HOST_OVERRIDE`,
+`TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE`, `TESTCONTAINERS_RYUK_DISABLED`, …) from your shell to the
+test JVMs, by name ([Build](docs/user/build.md)), and it never writes `~/.testcontainers.properties`.
 
 - **Docker:** nothing to set up.
 - **Podman:** expose a Docker-compatible socket — Docker Compatibility in Podman Desktop, or

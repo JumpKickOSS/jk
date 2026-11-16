@@ -133,6 +133,23 @@ class ToolIdentityTest {
         assertThat(german).isEqualTo(english).isEqualTo("GNU bash, version 5.3");
     }
 
+    /** A credential the request forwarded for the engine's resolvers never reaches a tool asked its version (JK-7A19A). */
+    @Test
+    void a_forwarded_credential_never_reaches_the_version_probe(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        tool(bin, "sh", "echo \"tool 1.0 ${GITHUB_TOKEN:-none} ${AWS_SECRET_ACCESS_KEY:-none} ${GIT_TRACE:-none}\"");
+        String path = bin.toString();
+        String line = RequestShell.where(
+                Map.of(
+                        "PATH", path,
+                        "GITHUB_TOKEN", "canary-forge",
+                        "AWS_SECRET_ACCESS_KEY", "canary-cloud",
+                        "GIT_TRACE", "0"),
+                () -> ToolIdentity.of("sh", path, tmp));
+        assertThat(line).isEqualTo("tool 1.0 none none 0");
+    }
+
     @Test
     void a_version_line_that_names_its_own_path_or_home_is_normalized() {
         Path exe = Path.of(System.getProperty("user.home"), "tools/bin/tool");

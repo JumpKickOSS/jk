@@ -140,7 +140,7 @@ public final class ToolIdentity {
 
     /**
      * As {@link #probe(Path, Path, String)}, giving up after {@code timeoutMillis}. Run in {@code
-     * dir} with the caller's environment and {@code path} as its {@code PATH}, in the C locale. The output is read on
+     * dir} with the caller's environment less anything named like a credential and {@code path} as its {@code PATH}, in the C locale. The output is read on
      * its own thread, so a tool that prints nothing and never exits cannot hold the caller past the
      * bound.
      */
@@ -148,6 +148,9 @@ public final class ToolIdentity {
         ProcessBuilder pb = new ProcessBuilder(exe.toString(), "--version").redirectErrorStream(true);
         if (Files.isDirectory(dir)) pb.directory(dir.toFile());
         Map<String, String> env = ChildEnv.copyOf(BuildEnv.callerEnv());
+        // A version line needs no credential: a forge token or a cloud key the request forwarded
+        // for the engine's own resolvers stays out of a tool that is only asked its version.
+        env.keySet().removeIf(BuildEnv::looksSecret);
         if (path != null) env.put("PATH", path);
         // Asked in the C locale, whatever the caller's: a translated line (bash's "Version" under
         // de_DE) is the same tool, and the key must not move with the shell's language.

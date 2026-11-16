@@ -813,17 +813,35 @@ inherited once would be every later terminal's truth. Workers are narrowed again
 
 Every request carries the part of the shell running `jk` the engine reads, and the engine decides
 the request from that rather than from its own: `CI`, repository and cloud credentials, the CI
-profile, colour. That part is the machine and the terminal (`PATH`, `HOME`, `TERM*`, `LC_*`, the
+run, colour. That part is the machine and the terminal (`PATH`, `HOME`, `TERM*`, `LC_*`, the
 proxy and display variables), every `JK_*` setting, the toolchains and version managers
-(`JAVA_*`, `GRAALVM_*`, `MAVEN_*`, `GRADLE_*`, `ANDROID_*`, `SDKMAN_*`, …), git, ssh and gpg
-(`GIT_*`, `SSH_*`, `GPG_*`), the cloud SDKs (`AWS_*`, `CLOUDSDK_*`, `GOOGLE_*`, `AZURE_*`), the
-container runtime and the CI servers (`GITHUB_*`, `GITLAB_*`, `JENKINS_*`, …), plus every name a
+(`JAVA_*`, `GRAALVM_*`, `MAVEN_*`, `GRADLE_*`, `ANDROID_*`, `NVM_DIR`, …), git (`GIT_*`, `GCM_*`)
+and your ssh agent (`SSH_AUTH_SOCK`), the container runtime (`DOCKER_HOST` and the other names
+under [Build § Worker environment](build.md#worker-environment-env)), the CI run's own names
+(`GITHUB_ACTIONS`, `GITHUB_RUN_ID`, `CI_PIPELINE_ID`, `BUILDKITE_BUILD_URL`, … — what the run's
+record names, [Web](web.md)), and the credentials the engine itself authenticates with: the forge
+tokens `GH_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN`, `BITBUCKET_TOKEN`, `GITEA_TOKEN`,
+`FORGEJO_TOKEN` and the AWS chain `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION`, `AWS_DEFAULT_REGION`, `AWS_ENDPOINT_URL` (an
+`s3://` repository). Each is something the engine reads; a prefix rides whole only where the
+engine reads under it. A CI server's, a cloud SDK's, a coding agent's or a tool's other variables
+do not ride: `GITHUB_*` beyond those names holds an app's private key, `BUILDKITE_*` the agent's
+token, `HOMEBREW_*` a GitHub token, `GOOGLE_*`, `AZURE_*` and `CLOUDSDK_*` keys JumpKick never
+reads. Then every name a
 project declares (its `[env]`, `[test] env` and `env:` references) and every `${NAME}` in your
 `~/.jk/config.toml` and `${env.NAME}` in your `settings.xml`. Anything else in your shell —
 `DATABASE_URL`, `MY_TOKEN_VALUE` — stays there until something declares it. The whole shell rides
 only when something needs all of it: a module that says `[env] inherit = true`, a `${cmd:…}`
 credential helper in `~/.jk/config.toml` (it runs under your environment), and `jk import`, whose
-Gradle or Maven build reads what it likes. A variable you leave unset reads as unset. git, which JumpKick runs for git
+Gradle or Maven build reads what it likes. A variable you leave unset reads as unset.
+
+What rides stays in the engine. The credentials are read by its resolvers; none is written to a
+build record, the journal or an HTTP answer, and none
+reaches a compiler, a plugin step or a test JVM unless the module declares the name or says
+`[env] inherit = true` ([Build § Worker environment](build.md#worker-environment-env)). A tool
+JumpKick asks its version gets the forwarded shell without anything named like a credential; the
+git a template clone runs gets all of it, so a credential helper such as `gh auth git-credential`
+can answer. git, which JumpKick runs for git
 dependencies, gets your `GIT_*` settings (`GIT_SSH_COMMAND`, `GIT_ASKPASS`, `GIT_SSL_CAINFO`,
 tracing) and your SSH agent, but never the variables that name a repository (`GIT_DIR`,
 `GIT_INDEX_FILE`, …), so `jk` run from a git hook cannot point JumpKick's checkouts at yours. MCP and HTTP
