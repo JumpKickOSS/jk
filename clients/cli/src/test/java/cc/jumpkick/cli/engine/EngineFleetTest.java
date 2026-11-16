@@ -203,7 +203,7 @@ class EngineFleetTest {
             Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen2.sock\n");
             Files.writeString(engineDir.resolve("abcd1234.gen1.pid"), dummy.pid() + "\n");
 
-            var members = EngineFleet.list(state, "abcd1234");
+            var members = EngineFleet.list(state, "abcd1234", h -> h.pid() == dummy.pid());
             assertThat(members.stream().map(EngineFleet.Member::pid))
                     .as("draining predecessor pid is listed even though the endpoint names gen2")
                     .contains(dummy.pid());
@@ -224,7 +224,7 @@ class EngineFleetTest {
         Process foreign = SleepMain.spawn(30_000, "cc.jumpkick.engine.EngineMain", "-XX:HeapDumpPath=" + heapDumps);
         try {
 
-            var listed = EngineFleet.list(tmp.resolve("state"), "abcd1234").stream()
+            var listed = EngineFleet.list(tmp.resolve("state"), "abcd1234", h -> h.pid() == foreign.pid()).stream()
                     .filter(m -> m.pid() == foreign.pid())
                     .toList();
             assertThat(listed).singleElement().satisfies(m -> {

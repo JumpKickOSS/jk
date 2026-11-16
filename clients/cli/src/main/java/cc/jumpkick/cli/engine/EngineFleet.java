@@ -5,6 +5,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.util.TestHomes;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -130,9 +132,14 @@ public final class EngineFleet {
      * see. Liveness is the process, not the socket: a wedged or rebound engine answers nowhere and
      * is the one {@code status} must not hide. A draining engine answers on its own generation
      * socket and is listed with its status.
+     *
+     * <p>A jk running in a test sandbox ({@link TestHomes}) lists its own home's engines only: the
+     * developer's engines and every other sandbox's are none of a suite's business, and reading their
+     * endpoints made a suite's inputs move whenever any engine on the machine started or stopped.
      */
     public static List<Member> list() {
-        return list(JkDirs.state(), EnginePaths.current().key(), OtherHomes.PROBED);
+        OtherHomes others = TestHomes.contains(JkDirs.home()) ? OtherHomes.LEFT_OUT : OtherHomes.PROBED;
+        return list(JkDirs.state(), EnginePaths.current().key(), others);
     }
 
     /**
@@ -153,12 +160,20 @@ public final class EngineFleet {
         PROBED
     }
 
-    /** Test seam: enumerate against an explicit state dir (all homes, probed). */
-    static List<Member> list(Path stateDir, String currentKey) {
-        return list(stateDir, currentKey, OtherHomes.PROBED);
+    /**
+     * Test seam: enumerate against an explicit state dir, every other home probed, scanning only the
+     * processes {@code scanned} accepts — a test's own, never the machine's.
+     */
+    static List<Member> list(Path stateDir, String currentKey, Predicate<ProcessHandle> scanned) {
+        return list(stateDir, currentKey, OtherHomes.PROBED, scanned);
     }
 
     static List<Member> list(Path stateDir, String currentKey, OtherHomes otherHomes) {
+        return list(stateDir, currentKey, otherHomes, h -> true);
+    }
+
+    static List<Member> list(
+            Path stateDir, String currentKey, OtherHomes otherHomes, Predicate<ProcessHandle> scanned) {
         List<Member> out = new ArrayList<>();
         Set<Long> known = new HashSet<>();
         for (EnginePaths.Paths paths : EnginePaths.identitiesIn(stateDir)) {
@@ -178,7 +193,7 @@ public final class EngineFleet {
             }
         }
         addGenerationPids(stateDir, known, out);
-        out.addAll(untracked(known, otherHomes));
+        out.addAll(untracked(known, otherHomes, scanned));
         return List.copyOf(out);
     }
 
@@ -227,7 +242,7 @@ public final class EngineFleet {
      * jk-owned state corroborating it, so the executable alone ({@code java.exe} — every Gradle
      * daemon on the machine) would be a licence to kill unrelated JVMs.
      */
-    private static List<Member> untracked(Set<Long> known, OtherHomes otherHomes) {
+    private static List<Member> untracked(Set<Long> known, OtherHomes otherHomes, Predicate<ProcessHandle> scanned) {
         long self = ProcessHandle.current().pid();
         String me = ProcessHandle.current().info().user().orElse("");
         Path home = JkDirs.home();
@@ -237,7 +252,7 @@ public final class EngineFleet {
         try {
             ProcessHandle.allProcesses().forEach(h -> {
                 long pid = h.pid();
-                if (pid == self || known.contains(pid) || !h.isAlive()) return;
+                if (pid == self || known.contains(pid) || !scanned.test(h) || !h.isAlive()) return;
                 if (!sameUser(me, h)) return;
                 String cmd = commandLineOf(h, scan);
                 if (!isResidentEngineProcess(h, cmd)) return;
@@ -581,9 +596,11 @@ public final class EngineFleet {
     }
 
     /**
-     * Retire engines positively identified in the superseded platform-default product location.
+     * Retire engines positively identified in the superseded platform-default product location. Not
+     * from a test sandbox ({@link TestHomes}): that location is the developer's, never the suite's.
      */
     public static List<StopResult> retireOldDefaultLayoutEngines() {
+        if (TestHomes.contains(JkDirs.home())) return List.of();
         RetiredEngineLayouts.Layout layout = RetiredEngineLayouts.currentPlatformDefault();
         List<Member> candidates = list(layout.stateDir(), "", OtherHomes.PROBED);
         return retireOldDefaultLayoutEngines(candidates, JkDirs.home(), layout);

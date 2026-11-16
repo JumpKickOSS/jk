@@ -12,6 +12,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.secret.SecretVault;
+import cc.jumpkick.util.TestHomes;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -105,9 +106,14 @@ class CommandModeGuardTest {
         userHome = System.getProperty("user.home");
         System.setProperty(
                 "user.home", Files.createDirectories(tmp.resolve("user-home")).toString());
+        // The temporary home is a test sandbox by its path (TestHomes.DIR), as every test JVM's is: a
+        // jk running in one lists only its own engines and never reads the endpoints of the
+        // developer's, which `jk engine status` would otherwise probe.
         for (String dir : ISOLATED) {
             System.setProperty(
-                    "jk.env." + dir, Files.createDirectories(tmp.resolve(dir)).toString());
+                    "jk.env." + dir,
+                    Files.createDirectories(tmp.resolve(TestHomes.DIR).resolve(dir))
+                            .toString());
         }
         // Secrets stay in the temporary home's files: no run reads or writes an OS keychain.
         System.setProperty("jk.env." + SecretVault.ENV, "file");
