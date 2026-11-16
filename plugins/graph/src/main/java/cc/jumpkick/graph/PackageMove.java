@@ -508,9 +508,11 @@ final class PackageMove {
         List<String> breaks = breaks(c, t, oldPkg, newPkg, fromPrefix, toPrefix, ownSpans);
         String symbol = "T " + t.binary();
         if (!breaks.isEmpty()) {
-            List<String> shown = breaks.stream().distinct().limit(8).toList();
-            throw new RenameRefusal("Not moved, nothing written: the move would break " + breaks.size() + " use"
-                    + (breaks.size() == 1 ? "" : "s") + ":\n  " + String.join("\n  ", shown));
+            List<String> distinct = breaks.stream().distinct().toList();
+            List<String> shown = distinct.subList(0, Math.min(8, distinct.size()));
+            throw new RenameRefusal("Not moved, nothing written: the move would break " + distinct.size() + " use"
+                    + (distinct.size() == 1 ? "" : "s") + ":\n  " + String.join("\n  ", shown)
+                    + (distinct.size() > shown.size() ? "\n  +" + (distinct.size() - shown.size()) + " more" : ""));
         }
         Map<String, Moved> types = new LinkedHashMap<>();
         types.put(symbol, new Moved(t.binary(), newBinary));
