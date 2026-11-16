@@ -433,7 +433,10 @@ final class EngineElection {
     /** The identity a live engine at {@code socket} answers with, or {@code null}. */
     static @Nullable Incumbent helloProbe(@Nullable Path socket, String probeVersion) {
         if (socket == null || !Files.exists(socket)) return null;
-        try (SocketChannel ch = openClient(socket)) {
+        // The TCP handshake waits as long as the hello's own read may: a listener that does not
+        // accept yet (a successor still starting) costs the probe what it costs on a Unix socket,
+        // not the handshake's ten seconds.
+        try (SocketChannel ch = openClient(socket, handoverByeMs)) {
             BufferedWriter w =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader r = new BoundedLineReader(
@@ -458,12 +461,17 @@ final class EngineElection {
      * Shared with {@link DrainReporter}, which talks to the successor over the same channel.
      */
     static SocketChannel openClient(Path socket) throws IOException {
+        return openClient(socket, EngineHandshake.ACK_TIMEOUT_MILLIS);
+    }
+
+    /** As {@link #openClient(Path)}, waiting at most {@code ackTimeoutMs} for the TCP handshake's answer. */
+    static SocketChannel openClient(Path socket, long ackTimeoutMs) throws IOException {
         if (EngineTransport.useLoopbackTcp()) {
             int port = Integer.parseInt(Files.readString(socket).trim());
             SocketChannel ch = SocketChannel.open(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             try {
                 EngineHandshake.client(
-                        ch, Files.readString(EnginePaths.tokenFor(socket)).trim(), EngineHandshake.ACK_TIMEOUT_MILLIS);
+                        ch, Files.readString(EnginePaths.tokenFor(socket)).trim(), ackTimeoutMs);
                 return ch;
             } catch (IOException | RuntimeException e) {
                 ch.close();
