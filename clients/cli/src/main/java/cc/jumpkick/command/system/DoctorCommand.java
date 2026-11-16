@@ -116,6 +116,9 @@ public final class DoctorCommand implements CliCommand {
         Check shell = checkShell();
         Check mvn = checkMavenSpy(MavenSpyJar.current());
         Check m2 = checkM2();
+        // At a group root: members listed with no project, and projects no entry lists.
+        GroupDoctor.Report groupReport = GroupDoctor.of(global.workingDir());
+        Check group = groupReport == null ? null : GroupDoctor.check(groupReport);
         StoredLogins.Rows logins = StoredLogins.collect();
         List<HostRow> windows = WindowsSection.collect();
         List<ToolRow> toolRows;
@@ -148,9 +151,11 @@ public final class DoctorCommand implements CliCommand {
                 || cache.status == Status.FAIL
                 || state.status == Status.FAIL
                 || jdk.status == Status.FAIL
-                || lock.status == Status.FAIL; // tools alone (including a scan error) never fails
+                || lock.status == Status.FAIL
+                || (group != null && group.status == Status.FAIL); // tools alone (including a scan error) never fails
 
         if (global.outputIsJson()) {
+            if (groupReport != null && group != null) groupRow(groupReport, group);
             JsonlShape.rowOf(
                     "doctor",
                     reportJson(
@@ -195,6 +200,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(shell, t);
         printCheck(mvn, t);
         printCheck(m2, t);
+        if (group != null) printCheck(group, t);
         for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
         for (String line : WindowsSection.render(windows, t)) CliOutput.out(line);
 
@@ -820,6 +826,15 @@ public final class DoctorCommand implements CliCommand {
                 }
             }
         }
+    }
+
+    /** The {@code doctor-group} JSONL row: a group root's missing and unlisted members. */
+    private static void groupRow(GroupDoctor.Report report, Check group) {
+        JsonlShape.row(
+                "doctor-group", f -> f.string("status", group.status.name().toLowerCase(Locale.ROOT))
+                        .array("missing", report.missing())
+                        .array("unlisted", report.unlisted())
+                        .optionalString("error", report.error()));
     }
 
     private static void printCheck(Check c, Theme t) {

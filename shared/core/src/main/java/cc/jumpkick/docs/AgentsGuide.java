@@ -3,6 +3,7 @@ package cc.jumpkick.docs;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -57,6 +58,27 @@ public final class AgentsGuide {
      */
     public static final String ENFORCED_SECTION =
             SECTION.replace("| finish: tests + guards |", "| finish: format, tests + guards |");
+
+    /**
+     * The guide at a group root ({@link WorkspaceGroup}): the members are self-contained
+     * workspaces, each with its own guide, and the root's verbs run over them. CLI only: an agent
+     * does its work in a member, whose own section names the MCP tools.
+     */
+    public static final String GROUP_SECTION = """
+            ## JumpKick
+
+            This repository groups self-contained **JumpKick** (`jk`) workspaces: `[workspaces] members` in
+            `jk.toml` lists them. jk rewrites this section; put repository rules outside the markers.
+
+            - Work inside one member (`cd <member>`): its own `AGENTS.md` and `jk.toml` apply, and it builds
+              the same with or without this root.
+            - From here `jk build`, `jk test`, `jk install`, `jk guard`, `jk format`, `jk explain` and
+              `jk clean` run over every member in dependency order; `-m <member>` runs one and what it
+              depends on. A member left out by default prints why; `-p <profile>` adds it back.
+            - `jk release` and `jk publish` run in the member being released; its tag is
+              `<artifact>-v<version>`.
+            - Never add `pom.xml` or Gradle files, or run `mvn` or `./gradlew`.
+            """;
 
     /** What a sync did to the file. */
     public enum Change {
@@ -115,13 +137,13 @@ public final class AgentsGuide {
      */
     public static Change sync(Path dir) throws IOException {
         Path file = dir.resolve(FILE);
-        boolean enforce = enforces(dir);
+        String block = blockFor(dir);
         if (!Files.exists(file)) {
-            Files.writeString(file, newFile(enforce), StandardCharsets.UTF_8);
+            Files.writeString(file, "# AGENTS.md\n\n" + block, StandardCharsets.UTF_8);
             return Change.CREATED;
         }
         String text = Files.readString(file, StandardCharsets.UTF_8);
-        String updated = apply(text, file, enforce);
+        String updated = apply(text, file, block);
         if (updated.equals(text)) return Change.UNCHANGED;
         Files.writeString(file, updated, StandardCharsets.UTF_8);
         return text.contains(BEGIN) ? Change.UPDATED : Change.INSERTED;
@@ -139,7 +161,7 @@ public final class AgentsGuide {
         if (!text.contains(BEGIN)) return Change.ABSENT;
         String updated;
         try {
-            updated = apply(text, file, enforces(dir));
+            updated = apply(text, file, blockFor(dir));
         } catch (IOException malformed) {
             return Change.UNCHANGED;
         }
@@ -169,10 +191,21 @@ public final class AgentsGuide {
         return Change.UPDATED;
     }
 
+    /** jk's section with its markers for the project or group root at {@code dir}. */
+    static String blockFor(Path dir) {
+        if (WorkspaceGroup.declares(dir)) return BEGIN + "\n" + GROUP_SECTION + END + "\n";
+        return block(enforces(dir));
+    }
+
     /** {@code text} with jk's section current: replaced between the markers, or inserted. */
     static String apply(String text, Path file, boolean enforce) throws IOException {
+        return apply(text, file, block(enforce));
+    }
+
+    /** {@code text} with {@code lfBlock} (jk's section, markers and all) current. */
+    static String apply(String text, Path file, String lfBlock) throws IOException {
         String eol = text.contains("\r\n") ? "\r\n" : "\n";
-        String block = block(enforce).replace("\n", eol);
+        String block = lfBlock.replace("\n", eol);
         int begin = text.indexOf(BEGIN);
         if (begin < 0) {
             if (text.contains(END)) throw malformed(file, "has " + END + " with no " + BEGIN);

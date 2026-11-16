@@ -94,13 +94,16 @@ final class NewTemplate {
                 if (swapped != Exit.SUCCESS) return swapped;
             }
             NewCommand.ParentInfo parent = args.parent();
+            String joined = null;
             if (parent == null) {
                 AgentWiring.reportWired(target, Objects.requireNonNull(request.agents(), "agents"), wired(ack));
+                joined = GroupJoin.offer(target);
             } else {
                 NewCommand.registerModule(parent.root(), target);
             }
             CommandWedge.envelopeStart();
-            String applied = "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName();
+            String applied = "Applied template (" + ack.filesWritten() + " files) → " + target.getFileName()
+                    + (joined == null ? "" : ", " + joined);
             CliOutput.out(
                     parent == null
                             ? JkWedge.chipLine(Glyphs.CHECK, "New Project", GlobalConfig.nerdFont(), applied)

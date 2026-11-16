@@ -90,14 +90,20 @@ final class NewNode {
                     NodeGenerators.manifest(name, Integer.toString(lts), group, null),
                     StandardCharsets.UTF_8);
             ignore(target);
-            if (root != null) NewCommand.registerModule(root, target);
-            else AgentWiring.report(target);
+            String joined = null;
+            if (root != null) {
+                NewCommand.registerModule(root, target);
+            } else {
+                AgentWiring.report(target);
+                joined = GroupJoin.offer(target);
+            }
             CommandWedge.envelopeStart();
             CliOutput.out(JkWedge.chipLine(
                     Glyphs.CHECK,
                     "New Project",
                     GlobalConfig.nerdFont(),
-                    "Created " + name + " (" + framework.get().id() + ", node = " + lts + ") → " + target));
+                    "Created " + name + " (" + framework.get().id() + ", node = " + lts + ") → " + target
+                            + (joined == null ? "" : ", " + joined)));
             return Exit.SUCCESS;
         } catch (IOException e) {
             CommandWedge.printFail(WEDGE, e.getMessage());

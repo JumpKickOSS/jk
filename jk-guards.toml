@@ -1865,6 +1865,14 @@ in     = "clients/cli/src/main/java/cc/jumpkick/command/interop/ImportCommand.ja
 reason = "names the jk.toml the import writes"
 
 [[guards.manifest-reader-owner.allow]]
+in     = "shared/core/src/main/java/cc/jumpkick/config/WorkspaceGroup.java"
+reason = "a group root is only ever a written jk.toml: it lists members and has no pom.xml to shadow"
+
+[[guards.manifest-reader-owner.allow]]
+in     = "clients/cli/src/main/java/cc/jumpkick/command/project/GroupJoin.java"
+reason = "probes written jk.toml files as tree boundaries while climbing to the group root"
+
+[[guards.manifest-reader-owner.allow]]
 in     = "clients/cli/src/main/java/cc/jumpkick/command/JkEnv.java"
 reason = "the toolchain env walks up to the nearest written jk.toml and scans its jdk keys; a shadow carries none"
 

@@ -10,6 +10,7 @@ import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.form.Asker;
 import cc.jumpkick.command.EngineEdits;
 import cc.jumpkick.config.SearchCeiling;
+import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.form.DerivedDefaults;
 import cc.jumpkick.form.Form;
 import cc.jumpkick.form.FormCommand;
@@ -257,6 +258,8 @@ public final class NewCommand implements CliCommand {
                 .orElse(null);
         Optional<Path> root = detectParentDir(startDir, home, noModule);
         if (root.isEmpty()) return null;
+        // A group root is no project to join as a module: the new project is a member of its own.
+        if (WorkspaceGroup.declares(root.get())) return null;
         var info = ProjectInfos.orNull(root.get());
         if (info == null) return null; // unreadable/unparseable parent — treat as standalone
         return new ParentInfo(root.get(), info);
@@ -282,7 +285,8 @@ public final class NewCommand implements CliCommand {
         this.directory =
                 in.positionals().isEmpty() ? null : Path.of(in.positionals().get(0));
         this.global = GlobalOptions.from(in);
-        return callBody();
+        // --no-module keeps a new project out of an enclosing group root's members too.
+        return GroupJoin.unless(noModule, this::callBody);
     }
 
     /** {@code jk new} or {@code jk init}, as this invocation was spelled. */

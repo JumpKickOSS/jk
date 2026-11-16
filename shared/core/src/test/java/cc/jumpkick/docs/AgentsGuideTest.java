@@ -23,6 +23,19 @@ class AgentsGuideTest {
     }
 
     @Test
+    void a_group_root_gets_the_section_that_describes_the_group(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), "[workspaces]\nmembers = [\"cache\"]\n");
+
+        assertThat(AgentsGuide.sync(dir)).isEqualTo(Change.CREATED);
+
+        assertThat(read(dir))
+                .contains(AgentsGuide.GROUP_SECTION)
+                .doesNotContain(AgentsGuide.SECTION)
+                .contains("<artifact>-v<version>");
+        assertThat(AgentsGuide.refresh(dir)).isEqualTo(Change.UNCHANGED);
+    }
+
+    @Test
     void the_section_goes_below_an_existing_title_and_keeps_the_projects_text(@TempDir Path dir) throws IOException {
         String next = "# AGENTS.md\n\n<!-- BEGIN:nextjs-agent-rules -->\nread the bundled docs\n"
                 + "<!-- END:nextjs-agent-rules -->\n";
