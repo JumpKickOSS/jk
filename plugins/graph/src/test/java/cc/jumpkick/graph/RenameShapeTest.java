@@ -4,9 +4,11 @@ package cc.jumpkick.graph;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.codegraph.Modules;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -47,6 +49,8 @@ class RenameShapeTest {
         assertThat(applied).startsWith("Applied c1: 1 change in 1 file.").contains("src/main/groovy/a/Report.groovy:5");
         assertThat(ws.read("src/main/groovy/a/Report.groovy")).contains("ledger.record(1)");
 
+        assertThat(ws.check()).as("the chosen candidates' own check: a compile").isEqualTo("Proven: it compiles.");
+
         assertThat(ws.rename("Ledger.post", "record", "also=c1"))
                 .as("a line already changed is skipped and named, never edited twice")
                 .contains("Skipped, edited since the rename");
@@ -82,5 +86,26 @@ class RenameShapeTest {
                         "Rolled back, nothing is changed (2 files restored): after the edit the code does not compile");
         assertThat(ws.read(DIR + "Ledger.java")).contains("public void post(int amount)");
         assertThat(ws.read(DIR + "Billing.java")).contains("l.post(3);");
+    }
+
+    @Test
+    void judgmentCallsOfOneReasonInOneFileShareALineAfterTheHazards() {
+        RenamePlan plan = new RenamePlan("Owner.telephone (field)", "phone");
+        for (int line = 25; line <= 28; line++) {
+            plan.candidates.add(new RenamePlan.Candidate(
+                    false,
+                    RenamePlan.Grade.INFERRED,
+                    "SQL column",
+                    "db/data.sql",
+                    line,
+                    "INSERT … telephone",
+                    List.of(),
+                    null));
+        }
+        plan.hazards.add(new RenamePlan.Hazard("a JPA column follows the field.", List.of()));
+        assertThat(String.join("\n", plan.render(Modules.NONE)))
+                .contains(
+                        "h1 hazard: a JPA column follows the field.\nJudgment, left as they are unless chosen (also=c1,…):\n"
+                                + "  c1-c4 inferred, SQL column: db/data.sql:25,26,27,28 (4) | INSERT … telephone");
     }
 }

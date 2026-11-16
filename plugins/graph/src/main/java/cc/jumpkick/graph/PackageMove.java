@@ -368,7 +368,20 @@ final class PackageMove {
                                 && !mv.oldBinary().contains("$")) {
                             imports.add(mv.newBinary());
                         }
-                        if (renames && (sp.kind() != 'j' || text.startsWith(simpleOf(mv.oldBinary()), sp.start()))) {
+                        boolean docQualified = q == null
+                                && sp.kind() == 'j'
+                                && !mv.newPkg().equals(ownAfter)
+                                && !imported.contains(mv.oldBinary().replace('$', '.'))
+                                && !(oldPkg != null && onDemand.contains(mv.oldPkg()))
+                                && !mv.oldBinary().contains("$");
+                        if (docQualified) {
+                            // A {@link} that resolved by sharing the old package: written in full, it
+                            // still resolves without an import that only a doc comment would use.
+                            splices.add(new SymbolRename.Splice(
+                                    sp.start(), sp.end(), mv.newBinary().replace('$', '.')));
+                            plan.count("doc link", 1);
+                        } else if (renames
+                                && (sp.kind() != 'j' || text.startsWith(simpleOf(mv.oldBinary()), sp.start()))) {
                             splices.add(new SymbolRename.Splice(sp.start(), sp.end(), simpleOf(mv.newBinary())));
                             plan.count(sp.kind() == 'd' ? "declaration" : "use", 1);
                         }
@@ -424,7 +437,7 @@ final class PackageMove {
                 for (int k = 0; k < block.size(); k++) if (!block.get(k).isEmpty()) shifted.add(at + k);
                 lines = shifted;
                 edited = String.join("\n", ls);
-                plan.count("import added", added.size());
+                plan.count("added import", added.size());
             }
             plan.edit(rel, text, edited, lines);
         }

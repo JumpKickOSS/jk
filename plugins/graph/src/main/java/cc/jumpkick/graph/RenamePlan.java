@@ -175,8 +175,10 @@ final class RenamePlan {
     List<Candidate> ordered() {
         // One candidate per line: two searches matching one line would make edits of the same line.
         Map<String, Candidate> first = new LinkedHashMap<>();
-        for (Candidate c : candidates)
-            first.putIfAbsent(c.rel() + ":" + c.line() + (c.changes().isEmpty() ? c.reason() : ""), c);
+        for (Candidate c : candidates) {
+            boolean moves = c.changes().stream().anyMatch(ch -> ch instanceof Move);
+            first.putIfAbsent(c.rel() + ":" + c.line() + (c.changes().isEmpty() || moves ? c.reason() : ""), c);
+        }
         List<Candidate> out = new ArrayList<>(first.values());
         out.sort(Comparator.comparing((Candidate c) -> !c.must())
                 .thenComparing(Candidate::rel)
@@ -225,17 +227,55 @@ final class RenamePlan {
                     + ":");
             id = list(out, must, id);
         }
-        if (!may.isEmpty()) {
-            out.add("Judgment, left as they are unless chosen (also=c" + (id + 1) + ",…):");
-            list(out, may, id);
-        }
+        // Hazards and the next step before the judgment calls: a long list must not crowd them out.
         for (int i = 0; i < hazards.size(); i++) {
             Hazard h = hazards.get(i);
             out.add("h" + (i + 1) + " hazard: " + h.text()
                     + (h.pin().isEmpty() ? "" : " also=h" + (i + 1) + " pins it."));
         }
         if (next != null) out.add(next);
+        if (!may.isEmpty()) {
+            out.add("Judgment, left as they are unless chosen (also=c" + (id + 1) + ",…):");
+            grouped(out, may, id);
+        }
         return out;
+    }
+
+    /** Judgment candidates; three or more of one reason in one file share a line: {@code c9-c18 … :25,26,… (10)}. */
+    private static void grouped(List<String> out, List<Candidate> set, int from) {
+        int id = from;
+        int shown = 0;
+        for (int i = 0; i < set.size(); ) {
+            Candidate c = set.get(i);
+            int j = i;
+            while (j + 1 < set.size()
+                    && set.get(j + 1).rel().equals(c.rel())
+                    && set.get(j + 1).reason().equals(c.reason())) {
+                j++;
+            }
+            int n = j - i + 1;
+            if (shown == SHOWN) {
+                out.add("  +" + (set.size() - i) + " more (also=c" + (id + 1) + "-c" + (from + set.size())
+                        + " still applies them by number)");
+                return;
+            }
+            if (n >= 3) {
+                Set<Integer> at = new TreeSet<>();
+                for (int k = i; k <= j; k++) at.add(set.get(k).line());
+                out.add("  c" + (id + 1) + "-c" + (id + n) + " " + c.grade().word() + ", " + c.reason() + ": " + c.rel()
+                        + ":" + numbers(at) + " (" + n + ") | " + clip(c.quote()));
+            } else {
+                for (int k = i; k <= j; k++) {
+                    Candidate d = set.get(k);
+                    out.add("  c" + (id + 1 + k - i) + " " + d.grade().word() + ", " + d.reason() + ": " + d.rel()
+                            + ":" + d.line() + (d.quote().isEmpty() ? "" : " | " + clip(d.quote()))
+                            + (d.hint() == null ? "" : "  (" + d.hint() + ")"));
+                }
+            }
+            id += n;
+            shown++;
+            i = j + 1;
+        }
     }
 
     private static int list(List<String> out, List<Candidate> set, int from) {

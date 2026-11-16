@@ -147,7 +147,7 @@ final class RenameProof {
         if (!wrong.isEmpty()) {
             List<String> restored = RenameStore.undo(root, out);
             List<String> lines = new ArrayList<>();
-            lines.add("Rolled back, nothing is changed (" + restored.size() + " files restored): after the edit javac"
+            lines.add("Rolled back, nothing is changed (" + files(restored.size()) + " restored): after the edit javac"
                     + " resolves the new name differently than it resolved the old one:");
             wrong.stream().limit(SHOWN).forEach(w -> lines.add("  " + w));
             if (wrong.size() > SHOWN) lines.add("  +" + (wrong.size() - SHOWN) + " more");
@@ -157,6 +157,10 @@ final class RenameProof {
         Set<String> notProven = new TreeSet<>();
         for (String[] r : p.refs()) {
             if (!r[0].equals("*") && unindexed.contains(r[1])) notProven.add(r[1]);
+        }
+        if (p.symbols().isEmpty()) {
+            return "Proven: it compiles."
+                    + (notProven.isEmpty() ? "" : " Not proven for " + String.join(", ", notProven) + ".");
         }
         String names = p.symbols().size() == 1
                 ? show(p.symbols().values().iterator().next()) + " has the " + total + " reference"
@@ -174,8 +178,31 @@ final class RenameProof {
     static String undo(Path root, Path out, String why) throws IOException {
         List<String> restored = RenameStore.undo(root, out);
         if (restored.isEmpty()) return "";
-        return "Rolled back, nothing is changed (" + restored.size() + " files restored): after the edit " + why
+        return "Rolled back, nothing is changed (" + files(restored.size()) + " restored): after the edit "
+                + relative(root, why)
                 + ". If that line is a candidate above, rename again with also=<its id>; otherwise fix it first.";
+    }
+
+    private static String files(int n) {
+        return n + (n == 1 ? " file" : " files");
+    }
+
+    /** {@code why} with the workspace's absolute paths and file URIs cut to root-relative ones. */
+    static String relative(Path root, String why) {
+        String out = why;
+        List<String> roots = new ArrayList<>();
+        roots.add(root.toAbsolutePath().normalize().toString());
+        try {
+            roots.add(root.toRealPath().toString());
+        } catch (IOException | RuntimeException unresolved) {
+            // The plain path is all there is.
+        }
+        for (String r : List.copyOf(roots)) {
+            if (r.startsWith("/private/")) roots.add(r.substring("/private".length()));
+        }
+        for (String r : roots) out = out.replace("file://" + r + "/", "").replace(r + "/", "");
+        // javac's line repeats the file it names: "A.java:3: A.java:3:47: error" becomes "A.java:3:47: error".
+        return out.replaceAll("([\\w./-]+):(\\d+): \\1:\\2:", "$1:$2:");
     }
 
     /** {@code T a.b.Owner} → {@code a.b.Owner}; {@code F a.B#x} → {@code B.x}; {@code M a.B#m(I)V} → {@code B.m}. */

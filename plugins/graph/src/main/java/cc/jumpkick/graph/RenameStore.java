@@ -116,6 +116,8 @@ final class RenameStore {
         pruneEmptyDirs(root, deleted);
         clear(undo);
         Files.deleteIfExists(dir(out).resolve(PROOF));
+        // The candidates were for the edit just undone: also=<id> now plans the rename again with them.
+        Files.deleteIfExists(dir(out).resolve(PENDING));
         return done;
     }
 

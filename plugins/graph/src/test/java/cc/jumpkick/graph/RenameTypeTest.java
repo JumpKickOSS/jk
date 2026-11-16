@@ -146,7 +146,9 @@ class RenameTypeTest {
                 .startsWith("package org.acme.petclinic.model;");
         assertThat(ws2.read(OWNER_DIR + "OwnerController.java"))
                 .as("a user in the package it left gets an import")
-                .contains("import org.acme.petclinic.model.Owner;");
+                .contains("import org.acme.petclinic.model.Owner;")
+                .as("a doc link that resolved by sharing the package is written in full")
+                .contains("{@link org.acme.petclinic.model.Owner}");
         assertThat(ws2.read("src/main/java/org/acme/petclinic/vet/Clinic.java"))
                 .as("a user that reached it through an on-demand import gets one too")
                 .contains("import org.acme.petclinic.model.Owner;");

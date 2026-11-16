@@ -70,7 +70,7 @@ class RenameFieldTest {
                 """
                 package org.acme.petclinic.owner;
 
-                class OwnerController {
+                /** Shows an {@link Owner}. */ class OwnerController {
 
                     static final String FIND = "select o from Owner o where o.telephone = ?1";
 
@@ -264,7 +264,7 @@ class RenameFieldTest {
 
         assertThat(ws.check())
                 .startsWith(
-                        "Rolled back, nothing is changed (1 files restored): after the edit javac resolves the new name"
+                        "Rolled back, nothing is changed (1 file restored): after the edit javac resolves the new name"
                                 + " differently")
                 .contains("Counter.total at src/main/java/a/Counter.java:8: 0 references, 1 expected");
         assertThat(ws.read("src/main/java/a/Counter.java")).contains("int count;", "return count + total;");

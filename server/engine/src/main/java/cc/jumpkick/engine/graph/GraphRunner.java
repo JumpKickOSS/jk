@@ -151,7 +151,12 @@ public final class GraphRunner {
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
             boolean renames =
                     "rename".equals(req.op()) && req.options().stream().noneMatch(o -> o.startsWith("phase="));
-            if (renames) Files.deleteIfExists(RenameCheck.proof(root));
+            if (renames) {
+                Files.deleteIfExists(RenameCheck.proof(root));
+                // A rename reads every test source's index: an edited test is compiled first, else its
+                // uses would be matched by name and the rename's own compile would fail on them.
+                RenameCheck.compileTests(root, compiler);
+            }
             GraphAck ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
             if (renames && ack.ok() && Files.isRegularFile(RenameCheck.proof(root))) {
                 String line = RenameCheck.prove(root, compiler, phase -> {

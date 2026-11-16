@@ -56,6 +56,14 @@ final class RenameCheck {
         return "Not proven: " + why + ". The edit stays; build and test to check it.";
     }
 
+    /**
+     * Compiles every module's tests before a rename plans, so each test source's reference index
+     * describes it as it stands (a question compiles main sources only). Nothing when no compiler.
+     */
+    static void compileTests(Path root, GraphRunner.@Nullable Compiler compiler) throws InterruptedException {
+        if (compiler != null) compiler.compile(root, List.of(), true);
+    }
+
     /** The module directories the proof's first line names ({@code .} is the root's: {@code ""}). */
     static List<String> modules(Path proof) throws IOException {
         List<String> out = new ArrayList<>();
