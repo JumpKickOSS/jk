@@ -45,19 +45,22 @@ class InstallLockStarvationTest {
             long start = System.nanoTime();
             InstallLock.Hold held = InstallLock.exclusive(lock, "jk install (installing jk)");
             Duration waited = Duration.ofNanos(System.nanoTime() - start);
-            boolean loopsStillRunning = a.isAlive() || b.isAlive();
+            boolean loopsStillRunning = a.isAlive() && b.isAlive();
             held.close();
             System.out.println("exclusive waited " + waited.toMillis() + " ms; loopers still running when it got"
                     + " the lock: " + loopsStillRunning);
-            a.waitFor(LOOP_MS + 30_000, TimeUnit.MILLISECONDS);
-            b.waitFor(LOOP_MS + 30_000, TimeUnit.MILLISECONDS);
-            System.out.println("looper A " + aOut.readLine() + ", looper B " + bOut.readLine());
+            assertThat(loopsStillRunning)
+                    .as("both sessions were still looping when the install got the lock")
+                    .isTrue();
             assertThat(waited)
                     .as("exclusive acquire under continuous overlapping shared holds")
                     .isLessThan(Duration.ofMillis(10 * HOLD_MS));
+            // The loopers are stopped below rather than awaited: their remaining loop proves nothing more.
         } finally {
             a.destroyForcibly();
             if (b != null) b.destroyForcibly();
+            a.waitFor(10, TimeUnit.SECONDS);
+            if (b != null) b.waitFor(10, TimeUnit.SECONDS);
             InstallLock.notices(line -> {});
         }
     }
