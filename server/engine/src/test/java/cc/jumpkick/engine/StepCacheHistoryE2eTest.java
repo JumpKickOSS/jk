@@ -77,7 +77,12 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
             assertThat(Jsonl.bool(first.getLast(), "success", false))
                     .as("first build")
                     .isTrue();
-            StepCache cold = compile(settled(project, 1));
+            BuildRecord firstRecord = settled(project, 1);
+            assertThat(firstRecord.modules().stream().flatMap(m -> m.steps().stream()))
+                    .as("a workspace build's steps keep the labels they set: " + firstRecord.modules())
+                    .anyMatch(
+                            t -> t.name().equals("compile-java") && !t.detail().isEmpty());
+            StepCache cold = compile(firstRecord);
             assertThat(cold.outcome()).isEqualTo(StepCache.Outcome.MISS);
             assertThat(cold.reason()).isEqualTo(StepCache.Reason.NO_RECORD);
             assertThat(cold.bytesOut()).as("the classes it stored").isPositive();

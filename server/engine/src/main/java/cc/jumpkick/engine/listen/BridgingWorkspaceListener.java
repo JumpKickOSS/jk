@@ -201,6 +201,16 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
             }
 
             @Override
+            public void stepLabel(String d, String step, String label) {
+                nested.stepLabel(d, step, label);
+            }
+
+            @Override
+            public void forkOutput(String d, String step, String line) {
+                nested.forkOutput(d, step, line);
+            }
+
+            @Override
             public @Nullable StepCost priced(String d, String step) {
                 return nested.priced(d, step);
             }
