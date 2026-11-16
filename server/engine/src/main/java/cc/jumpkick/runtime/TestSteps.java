@@ -49,7 +49,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -145,7 +144,7 @@ final class TestSteps {
         // A coverage run is a request for a report; a replayed green marker has none.
         boolean coverage = in.session().coverage() || projectUnderTest.build().testCoverage();
         boolean rerun = SuiteRunRules.forcedRunReason(in.session(), projectUnderTest) != null;
-        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv, tier)
+        if (replayedGreenRun(ctx, rerun, stampKey, projectUnderTest, testEnv)
                 || replayedGuardRun(ctx, rerun, affected, stamp, testSrcs, projectUnderTest, testEnv, suites)) return;
         // Under the same stamp the classes that passed before still stand: a red or cut-short
         // suite runs only what has not passed yet. A forced, debug, coverage or affected run, and a
@@ -224,11 +223,11 @@ final class TestSteps {
         // Green once every launch has run: the sandbox has nothing left to show. Red keeps it for a look.
         if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
-        recordClasses(ctx, reads, ledger, moduleLabel, testClasses, runtimeCp, stamp, stampKey);
-        String settledKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
+        String startedKey = stampKey;
+        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         // The marker is stored under the key that folds in what the suite was found to read.
-        KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, settledKey, rekey::key);
-        result = ledger.finish(ctx, actionCache, testTaskId, stampKey, settledKey, result);
+        KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
+        result = ledger.finish(ctx, actionCache, testTaskId, startedKey, stampKey, result);
         List<String> said = EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(
                 ctx,
@@ -240,11 +239,11 @@ final class TestSteps {
                 result.withSuites(suites::suiteOf),
                 actionCache,
                 testTaskId,
-                settledKey,
+                stampKey,
                 !testSrcs.isEmpty(),
                 snippets,
                 said);
-        keepTokens(effectiveSel, settledKey, result, affected, rekey);
+        keepTokens(effectiveSel, stampKey, result, affected, rekey);
     }
 
     /**
@@ -278,49 +277,13 @@ final class TestSteps {
         return true;
     }
 
-    /**
-     * Whether the last green run under {@code stampKey} stands for this one: nothing changed and no
-     * {@code rerun}. Each class it recorded is said replayed in build history.
-     */
+    /** Whether the last green run under {@code stampKey} stands for this one: nothing changed and no {@code rerun}. */
     private boolean replayedGreenRun(
-            TaskContext ctx,
-            boolean rerun,
-            @Nullable String stampKey,
-            JkBuild project,
-            WorkerEnv testEnv,
-            TestTier tier)
+            TaskContext ctx, boolean rerun, @Nullable String stampKey, JkBuild project, WorkerEnv testEnv)
             throws IOException {
-        if (rerun || stampKey == null || !TestLaunch.replayGreenRun(ctx, in, actionCache, stampKey, project, testEnv))
-            return false;
-        TestClassLedger.load(actionCache, stampKey, coordinate(project), tier.name())
-                .replayCovered(ctx, cls -> true, suite -> true);
-        return true;
-    }
-
-    /**
-     * Keep each class's record of the run {@code reads} recorded, with its key in shadow, before the
-     * environment report empties the lookups.
-     */
-    private static void recordClasses(
-            TaskContext ctx,
-            SuiteDiscovery.Run reads,
-            TestClassLedger ledger,
-            String moduleLabel,
-            Path testClasses,
-            List<Path> runtimeCp,
-            TestStampInputs stamp,
-            @Nullable String stampKey)
-            throws IOException {
-        reads.recordClasses(
-                ledger,
-                moduleLabel,
-                testClasses,
-                mainClasses(ctx),
-                runtimeCp,
-                ctx.get(JAVA_HOME).orElse(null),
-                stamp.extras(),
-                ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()),
-                stampKey);
+        return !rerun
+                && stampKey != null
+                && TestLaunch.replayGreenRun(ctx, in, actionCache, stampKey, project, testEnv);
     }
 
     /** {@code group:name}, the label a module's suite reports under. */
@@ -613,22 +576,15 @@ final class TestSteps {
         String guardKey = guardStampKey(ctx, in, stamp, testSrcs);
         if (guardKey == null) return false;
         TestSelection selection = stamp.selection();
-        TestClassLedger guardLedger = TestClassLedger.load(
-                actionCache,
-                guardKey,
-                coordinate(projectUnderTest),
-                stamp.tier().name());
-        Predicate<String> suiteRuns = suite -> selection.wantedSuites().contains(suite);
-        if (!TestLaunch.replayGreenRun(
-                ctx,
-                in,
-                actionCache,
-                guardKey,
-                projectUnderTest,
-                testEnv,
-                marker -> guardLedger.covered(suites.acceptor(), suiteRuns))) return false;
-        guardLedger.replayCovered(ctx, suites.acceptor(), suiteRuns);
-        return true;
+        return TestLaunch.replayGreenRun(
+                ctx, in, actionCache, guardKey, projectUnderTest, testEnv, marker -> TestClassLedger.load(
+                                actionCache,
+                                guardKey,
+                                coordinate(projectUnderTest),
+                                stamp.tier().name())
+                        .covered(
+                                suites.acceptor(),
+                                suite -> selection.wantedSuites().contains(suite)));
     }
 
     /**

@@ -49,8 +49,6 @@ public final class SlowestTests {
 
     /** Fold one finished class in. */
     public synchronized void add(TestClassResult r) {
-        // A replayed class's walls were spent by another run.
-        if (r.replayed()) return;
         if (r.durationMs() >= SLOW_MS) {
             classes.add(new Row(r.module(), r.className(), "", r.tier(), r.durationMs()));
             trim(classes);

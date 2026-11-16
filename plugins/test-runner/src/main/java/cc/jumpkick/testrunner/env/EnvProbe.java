@@ -10,84 +10,40 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The agent a test JVM starts with when jk records the environment variables and system
- * properties its suite looks up.
+ * The agent a test JVM starts with when jk records the environment variables its suite looks up.
  *
  * <p>Every class a class loader other than the JDK's defines has its {@code System.getenv}
- * references repointed at {@link EnvLookups}, and its {@code System.getProperty}, {@code
- * System.getProperties}, {@code Integer.getInteger}, {@code Long.getLong} and {@code
- * Boolean.getBoolean} references at {@link PropLookups}. The rewrite touches the constant pool
- * alone: two entries are appended per recorder used (its name and a class entry for it) and each
- * such method reference names that class instead. No instruction, stack map or index moves, so it
- * holds for any class file version, needs no bytecode library on the suite's class path and leaves
- * a class without such a call untouched.
+ * references repointed at {@link EnvLookups}. The rewrite touches the constant pool alone: two
+ * entries are appended (the recorder's name and a class entry for it) and each method reference to
+ * {@code java/lang/System.getenv} names that class instead. No instruction, stack map or index
+ * moves, so it holds for any class file version, needs no bytecode library on the suite's class
+ * path and leaves a class without such a call untouched.
  *
- * <p>The agent argument is the directory the recorders write to when the JVM exits, one file per
- * JVM and recorder: {@code <pid>.lookups} for variables, {@code <pid>.props} for properties.
+ * <p>The agent argument is the directory the recorder writes to when the JVM exits, one file per
+ * JVM.
  */
 public final class EnvProbe {
 
-    private static final String ENV_RECORDER = "cc/jumpkick/testrunner/env/EnvLookups";
-    private static final String PROP_RECORDER = "cc/jumpkick/testrunner/env/PropLookups";
-
-    /** Each call repointed, {@code owner.name descriptor}, and the recorder it is repointed at. */
-    private static final Map<String, String> REPOINTED = Map.ofEntries(
-            Map.entry("java/lang/System.getenv(Ljava/lang/String;)Ljava/lang/String;", ENV_RECORDER),
-            Map.entry("java/lang/System.getenv()Ljava/util/Map;", ENV_RECORDER),
-            Map.entry("java/lang/System.getProperty(Ljava/lang/String;)Ljava/lang/String;", PROP_RECORDER),
-            Map.entry(
-                    "java/lang/System.getProperty(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
-                    PROP_RECORDER),
-            Map.entry("java/lang/System.getProperties()Ljava/util/Properties;", PROP_RECORDER),
-            Map.entry("java/lang/Integer.getInteger(Ljava/lang/String;)Ljava/lang/Integer;", PROP_RECORDER),
-            Map.entry("java/lang/Integer.getInteger(Ljava/lang/String;I)Ljava/lang/Integer;", PROP_RECORDER),
-            Map.entry(
-                    "java/lang/Integer.getInteger(Ljava/lang/String;Ljava/lang/Integer;)Ljava/lang/Integer;",
-                    PROP_RECORDER),
-            Map.entry("java/lang/Long.getLong(Ljava/lang/String;)Ljava/lang/Long;", PROP_RECORDER),
-            Map.entry("java/lang/Long.getLong(Ljava/lang/String;J)Ljava/lang/Long;", PROP_RECORDER),
-            Map.entry("java/lang/Long.getLong(Ljava/lang/String;Ljava/lang/Long;)Ljava/lang/Long;", PROP_RECORDER),
-            Map.entry("java/lang/Boolean.getBoolean(Ljava/lang/String;)Z", PROP_RECORDER));
-
+    private static final String SYSTEM = "java/lang/System";
+    private static final String RECORDER = "cc/jumpkick/testrunner/env/EnvLookups";
     private static final String OWN_PACKAGE = "cc/jumpkick/testrunner/";
 
     private EnvProbe() {}
 
-    /**
-     * The agent argument's prefix that leaves system-property reads unprobed, as the engine writes
-     * it when its class telemetry is off; no absolute path starts so.
-     */
-    static final String NO_PROPS = "!props ";
-
     /** The agent entry point. */
     public static void premain(@Nullable String args, Instrumentation inst) {
         if (args == null || args.isBlank()) return;
-        boolean props = !args.startsWith(NO_PROPS);
-        Path dir = Path.of(props ? args : args.substring(NO_PROPS.length()));
-        long pid = ProcessHandle.current().pid();
-        inst.addTransformer(new Transformer(props));
-        Runtime.getRuntime()
-                .addShutdownHook(new Thread(
-                        () -> {
-                            EnvLookups.writeTo(dir.resolve(pid + ".lookups"));
-                            PropLookups.writeTo(dir.resolve(pid + ".props"));
-                        },
-                        "jk-env-probe"));
+        Path out = Path.of(args).resolve(ProcessHandle.current().pid() + ".lookups");
+        inst.addTransformer(new Transformer());
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> EnvLookups.writeTo(out), "jk-env-probe"));
     }
 
     private static final class Transformer implements ClassFileTransformer {
-        private final boolean props;
-
-        Transformer(boolean props) {
-            this.props = props;
-        }
-
         @Override
         public byte @Nullable [] transform(
                 @Nullable ClassLoader loader,
@@ -99,7 +55,7 @@ public final class EnvProbe {
             if (className != null && className.startsWith(OWN_PACKAGE)) return null;
             if (fromJdk(domain)) return null;
             try {
-                return repoint(bytes, props);
+                return repoint(bytes);
             } catch (RuntimeException malformed) {
                 return null; // the class loads as compiled
             }
@@ -114,15 +70,10 @@ public final class EnvProbe {
     }
 
     /**
-     * {@code bytes} with each method reference {@link #REPOINTED} names repointed at its recorder,
-     * or {@code null} when the class makes no such reference.
+     * {@code bytes} with each {@code System.getenv} method reference naming {@link EnvLookups}, or
+     * {@code null} when the class makes no such reference.
      */
     static byte @Nullable [] repoint(byte[] bytes) {
-        return repoint(bytes, true);
-    }
-
-    /** As {@link #repoint(byte[])}, leaving system-property reads as compiled unless {@code props}. */
-    static byte @Nullable [] repoint(byte[] bytes, boolean props) {
         int count = u2(bytes, 8);
         Map<Integer, String> utf8 = new HashMap<>();
         Map<Integer, Integer> classNames = new HashMap<>();
@@ -159,39 +110,35 @@ public final class EnvProbe {
                 default -> throw new IllegalArgumentException("constant pool tag " + tag);
             }
         }
-        // Offset of each class index to patch, by the recorder it is to name.
-        Map<String, List<Integer>> patch = new LinkedHashMap<>();
+        List<Integer> patch = new ArrayList<>();
         for (int[] ref : methodRefs) {
             Integer nameIndex = classNames.get(ref[1]);
             int[] nat = nameAndTypes.get(ref[2]);
-            if (nameIndex == null || nat == null) continue;
-            String recorder = REPOINTED.get(utf8.get(nameIndex) + "." + utf8.get(nat[0]) + utf8.get(nat[1]));
-            if (recorder != null && (props || recorder.equals(ENV_RECORDER)))
-                patch.computeIfAbsent(recorder, r -> new ArrayList<>()).add(ref[0]);
-        }
-        if (patch.isEmpty() || count + 2 * patch.size() > 0xffff) return null;
-        ByteArrayOutputStream appended = new ByteArrayOutputStream();
-        byte[] pool = Arrays.copyOfRange(bytes, 10, at);
-        int next = count;
-        for (Map.Entry<String, List<Integer>> e : patch.entrySet()) {
-            int recorderName = next++;
-            int recorderClass = next++;
-            for (int offset : e.getValue()) {
-                pool[offset - 10] = (byte) (recorderClass >>> 8);
-                pool[offset - 9] = (byte) recorderClass;
+            if (nameIndex == null || nat == null || !SYSTEM.equals(utf8.get(nameIndex))) continue;
+            String desc = utf8.get(nat[1]);
+            if ("getenv".equals(utf8.get(nat[0]))
+                    && ("(Ljava/lang/String;)Ljava/lang/String;".equals(desc) || "()Ljava/util/Map;".equals(desc))) {
+                patch.add(ref[0]);
             }
-            byte[] name = e.getKey().getBytes(StandardCharsets.UTF_8);
-            appended.write(1);
-            writeU2(appended, name.length);
-            appended.write(name, 0, name.length);
-            appended.write(7);
-            writeU2(appended, recorderName);
         }
-        ByteArrayOutputStream out = new ByteArrayOutputStream(bytes.length + appended.size());
+        if (patch.isEmpty() || count + 2 > 0xffff) return null;
+        int recorderName = count;
+        int recorderClass = count + 1;
+        byte[] name = RECORDER.getBytes(StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(bytes.length + name.length + 8);
         out.write(bytes, 0, 8);
-        writeU2(out, next);
+        writeU2(out, count + 2);
+        byte[] pool = Arrays.copyOfRange(bytes, 10, at);
+        for (int offset : patch) {
+            pool[offset - 10] = (byte) (recorderClass >>> 8);
+            pool[offset - 9] = (byte) recorderClass;
+        }
         out.write(pool, 0, pool.length);
-        out.writeBytes(appended.toByteArray());
+        out.write(1);
+        writeU2(out, name.length);
+        out.write(name, 0, name.length);
+        out.write(7);
+        writeU2(out, recorderName);
         out.write(bytes, at, bytes.length - at);
         return out.toByteArray();
     }

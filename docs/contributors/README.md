@@ -27,7 +27,6 @@ Agent protocol for work in this repo: [../../AGENTS.md](../../AGENTS.md).
 | [Engine warmup](install-optimize.md) | Host calibration on the idle engine |
 | [Self-host](self-host.md) | Dogfooding this monorepo with `jk`; trying the tree on another project from a private home |
 | [Test suite tiers](test-suite-tiers.md) | `jk test` vs `jk test -g` vs the nightly suites |
-| [Per-class test selection](per-class-tests.md) | Re-running only the test classes a change can reach: the class key, static and observed cones, the holes and what closes them |
 | [Agent integration](agent-integration.md) | What coding agents read from JumpKick, the rules for changing it, per-agent facts |
 | [Measuring an agent change](agent-bench.md) | Breadth-first, one-run screens; fail fast; the bench's traps |
 | [Progress contract](progress-contract.md) | ETA / bar semantics |
