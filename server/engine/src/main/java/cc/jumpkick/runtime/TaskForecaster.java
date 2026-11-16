@@ -334,7 +334,8 @@ public final class TaskForecaster {
     /**
      * Which dirty prereqs affect this module's main compile vs tests only. A dirty prereq
      * reachable only via {@code order-after} (incl. {@code test-plugin-jars}) forces no
-     * compile/test pricing, but still marks {@link #orderDepDirty} — the dependent must
+     * compile pricing, and run-tests only when its jar is a worker the stamp hashes ({@link
+     * #orderDeps}), but still marks {@link #orderDepDirty} — the dependent must
      * <em>schedule</em> so its real action keys re-check the prereq's out-of-band outputs
      * (test-plugin jars ride the run-tests stamp; users add order-after precisely for
      * consumption the classpath cannot express). Pricing nothing keeps ETA honest; skipping
@@ -347,16 +348,22 @@ public final class TaskForecaster {
             List<Path> compileDeps,
             boolean runtimeDepDirty,
             /** The dirty siblings reached only through a test scope: what the test compile keys on beyond main. */
-            List<Path> testDeps) {
-        static final DepDirtiness NONE = new DepDirtiness(false, false, false, List.of(), false, List.of());
+            List<Path> testDeps,
+            /**
+             * The dirty siblings reached only through {@code order-after} or {@code test-plugin-jars}:
+             * a worker jar among them is one the run-tests stamp hashes, rebuilt before the suite runs.
+             */
+            List<Path> orderDeps) {
+        static final DepDirtiness NONE = new DepDirtiness(false, false, false, List.of(), false, List.of(), List.of());
 
         DepDirtiness(boolean compileDepDirty, boolean testDepDirty, boolean orderDepDirty, List<Path> compileDeps) {
-            this(compileDepDirty, testDepDirty, orderDepDirty, compileDeps, compileDepDirty, List.of());
+            this(compileDepDirty, testDepDirty, orderDepDirty, compileDeps, compileDepDirty, List.of(), List.of());
         }
 
         DepDirtiness {
             compileDeps = List.copyOf(compileDeps);
             testDeps = List.copyOf(testDeps);
+            orderDeps = List.copyOf(orderDeps);
         }
     }
 
@@ -423,6 +430,7 @@ public final class TaskForecaster {
         boolean runtime = false;
         List<Path> compileDeps = new ArrayList<>();
         List<Path> testDeps = new ArrayList<>();
+        List<Path> orderDeps = new ArrayList<>();
         JkBuild m = u.manifest();
         for (Path dep : prereqs) {
             if (!dirty.contains(dep)) continue;
@@ -445,10 +453,11 @@ public final class TaskForecaster {
                 test = true;
                 testDeps.add(dep);
             } else {
-                order = true; // order-after-only prereq: schedule, price nothing
+                order = true; // order-after-only prereq: schedule; run-tests prices a worker jar of it
+                orderDeps.add(dep);
             }
         }
-        return new DepDirtiness(compile, test, order, compileDeps, runtime, testDeps);
+        return new DepDirtiness(compile, test, order, compileDeps, runtime, testDeps, orderDeps);
     }
 
     /**

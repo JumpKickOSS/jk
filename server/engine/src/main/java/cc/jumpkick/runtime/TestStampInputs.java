@@ -367,6 +367,26 @@ public record TestStampInputs(
     }
 
     /**
+     * The worker jar of {@code dir}'s run-tests stamp ({@link #testStampWorkerJars})
+     * that one of {@code rebuilding}, dirty siblings it reaches only by build order, makes; null when
+     * none does. Such a sibling prices no compile here, but the stamp hashes its jar's bytes, so the
+     * suite runs once the jar is rebuilt (JK-W25W0).
+     */
+    static @Nullable String rebuildingWorker(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
+        if (rebuilding.isEmpty()) return null;
+        List<Path> roots = new ArrayList<>();
+        for (Path sibling : rebuilding) roots.add(sibling.toAbsolutePath().normalize());
+        for (Map.Entry<String, String> worker :
+                testStampWorkerJars(dir, project).entrySet()) {
+            Path jar = Path.of(worker.getValue()).toAbsolutePath().normalize();
+            for (Path root : roots) {
+                if (jar.startsWith(root)) return worker.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
      * Every flag the module's forked test JVMs get beyond jk's own tuning: {@code [test] jvm-args},
      * one {@code -D} per {@code [test] system-properties} entry, then the active profile's {@code
      * jvm-args}, so the profile wins where they disagree. Empty when the module declares none and no

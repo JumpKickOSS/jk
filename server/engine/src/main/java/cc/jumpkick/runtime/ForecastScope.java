@@ -99,6 +99,13 @@ public final class ForecastScope implements StepForecast.Scope {
      */
     final boolean runtimeDepDirty;
 
+    /**
+     * The dirty siblings this module reaches only by build order ({@code order-after}, {@code
+     * test-plugin-jars}): they price nothing here but a worker jar of theirs the suite's stamp
+     * hashes ({@link TestStampInputs#rebuildingWorker}), and schedule the module.
+     */
+    final List<Path> orderDeps;
+
     /** What this module's dirty compile-scope dependencies' edits look like, for its compile texts. */
     final TaskForecaster.DepHint depHint;
 
@@ -222,6 +229,7 @@ public final class ForecastScope implements StepForecast.Scope {
         this.compileDepDirty = dep.compileDepDirty();
         this.testDepDirty = dep.testDepDirty();
         this.runtimeDepDirty = dep.runtimeDepDirty();
+        this.orderDeps = dep.orderDeps();
         this.depHint = TaskForecaster.depHint(dep.compileDeps(), hints);
         this.testDepHint = TaskForecaster.depHint(dep.testDeps(), hints);
         // Whether this module's classes change is the compile forecasts' verdict, set as each
@@ -748,7 +756,7 @@ public final class ForecastScope implements StepForecast.Scope {
      * hashed by the run-tests stamp). Unchanged inputs resolve as cheap cache hits at execute.
      */
     private void orderAfter() {
-        if (dep.orderDepDirty() && allCached() && moduleVerdicts.isEmpty()) {
+        if (!orderDeps.isEmpty() && allCached() && moduleVerdicts.isEmpty()) {
             moduleVerdicts.add(new TaskForecast.Task(
                     TaskNames.ORDER_CHECK, TaskForecast.Status.RUN, "ordered-after sibling rebuilding", null));
         }

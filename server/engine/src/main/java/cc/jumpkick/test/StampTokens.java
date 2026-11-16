@@ -131,12 +131,17 @@ public final class StampTokens {
         if (name.startsWith("x:read:")) return tail(name.substring(7)) + " changed";
         if (name.startsWith("x:list:")) return "the listing of " + tail(name.substring(7)) + " changed";
         if (name.startsWith("x:proc:")) return "program " + tail(name.substring(7)) + " changed";
-        if (name.startsWith("x:worker:")) return "worker " + upTo(name.substring(9), '=') + " changed";
+        if (name.startsWith("x:worker:")) return workerChanged(upTo(name.substring(9), '='));
         if (name.startsWith("x:test-jdk")) return "test JDK changed";
         if (name.startsWith("x:compile-test")) return "test compile changed";
         String bare = name.startsWith("x:") ? name.substring(2) : name;
         int colon = bare.indexOf(':');
         return (colon > 0 ? bare.substring(0, colon) : bare) + " changed";
+    }
+
+    /** The reason a suite runs for the worker jar {@code jarProperty} names: {@code worker <jar> changed}. */
+    public static String workerChanged(String jarProperty) {
+        return "worker " + jarProperty + " changed";
     }
 
     private static String upTo(String s, char c) {

@@ -686,6 +686,16 @@ final class TestSteps {
                             : "run tests · " + tests;
             return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.RUN, why, null);
         }
+        // A worker jar the stamp hashes (`test-plugin-jars`, the nested engine's plugins) whose
+        // sibling is rebuilding: the run hashes the rebuilt jar, the jar on disk is the old one.
+        String worker = TestStampInputs.rebuildingWorker(s.dir, s.project, s.orderDeps);
+        if (worker != null) {
+            return new TaskForecast.Task(
+                    TaskNames.RUN_TESTS,
+                    TaskForecast.Status.RUN,
+                    "run tests · " + StampTokens.workerChanged(worker) + " · " + tests,
+                    null);
+        }
         TestStampInputs stamp = TestStampInputs.of(
                 TestStampInputs.Facts.forecast(
                         s.dir,
