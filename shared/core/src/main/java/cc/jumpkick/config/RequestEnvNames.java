@@ -127,6 +127,8 @@ public final class RequestEnvNames {
             "WOODPECKER_",
             "BUILDKITE",
             "CIRCLECI",
+            "CIRCLE_",
+            "CI_",
             "TRAVIS",
             "DRONE",
             "CLAUDE",

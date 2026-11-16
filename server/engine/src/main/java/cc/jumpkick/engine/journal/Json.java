@@ -116,6 +116,7 @@ final class Json {
 
         if (r.publish() != null) o.put("publish", publishMap(r.publish()));
         if (r.delta() != null) o.put("delta", deltaMap(r.delta()));
+        if (r.source() != null) o.put("source", r.source().toMap());
         if (!r.suspensions().isEmpty()) {
             List<Object> gaps = new ArrayList<>();
             for (BuildRecord.Suspension g : r.suspensions()) {
@@ -490,7 +491,8 @@ final class Json {
                 coverage,
                 readDelta(o),
                 str(o, "episode"),
-                readSuspensions(o));
+                readSuspensions(o),
+                o.get("source") instanceof Map<?, ?> m ? RunSource.fromMap(m) : null);
     }
 
     @SuppressWarnings("unchecked")

@@ -81,6 +81,15 @@ public final class HistoryCommand extends GroupCommand {
     }
 
     /** {@code trigger}, then {@code · session} when the run record names one. */
+    /** The CI run a history record names: provider, event and the run's page; null for a local run. */
+    static @Nullable String ciRun(String record) {
+        String provider = Jsonl.str(record, "ciProvider");
+        if (provider == null) return null;
+        String event = Jsonl.str(record, "ciEvent");
+        String url = Jsonl.str(record, "ciRunUrl");
+        return provider + (event != null ? " (" + event + ")" : "") + (url != null ? " " + url : "");
+    }
+
     static String origin(@Nullable String trigger, @Nullable String session) {
         if (trigger == null || trigger.isBlank()) return "";
         return session == null || session.isBlank() ? trigger : trigger + " · " + session;
@@ -300,6 +309,10 @@ public final class HistoryCommand extends GroupCommand {
             if (!origin.isEmpty()) CliOutput.out("  trigger:  " + origin);
             CliOutput.out("  project:  " + label(Jsonl.str(record, "coord"), Jsonl.str(record, "dir")));
             CliOutput.out("  dir:      " + Jsonl.str(record, "dir"));
+            String branch = Jsonl.str(record, "branch");
+            if (branch != null) CliOutput.out("  branch:   " + branch);
+            String ciRun = ciRun(record);
+            if (ciRun != null) CliOutput.out("  ci:       " + ciRun);
             long suspended = Jsonl.longValue(record, "suspendedMillis", 0);
             CliOutput.out("  duration: " + duration(worked(Jsonl.longValue(record, "millis", -1), suspended))
                     + (suspended > 0 ? ", suspended " + duration(suspended) : "") + "   "

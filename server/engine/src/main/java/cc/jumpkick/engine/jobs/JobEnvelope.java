@@ -12,6 +12,7 @@ import cc.jumpkick.engine.api.BuildJobFingerprint;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.engine.journal.RunSource;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.engine.listen.SseFrame;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -599,6 +600,9 @@ public final class JobEnvelope {
                         publishDownloads(line, eventRequestId);
                     },
                     eventRequestId);
+            BuildAccumulator journaled = host.accumulatorOf(eventRequestId);
+            if (journaled != null && eventDir != null && !eventDir.isBlank())
+                journaled.noteSource(RunSource.ofRequest(Path.of(eventDir)));
             JobOutcome outcome;
             try {
                 // One remote cache tier per request, when its settings name one: the forecast, the

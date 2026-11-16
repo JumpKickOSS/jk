@@ -3,7 +3,6 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.BuildEnv;
-import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.command.Exit;
@@ -102,6 +101,8 @@ public final class BuildAccumulator {
 
     /** The times the engine was not running while this run ran, in the order they were detected. */
     private final List<BuildRecord.Suspension> suspensions = new CopyOnWriteArrayList<>();
+
+    private volatile @Nullable RunSource source;
     // Step dependency edges (dir → step name → requires), captured from the genuine in-process
     // BuildPlanResult in addBuildPlan. Reconstructs each module's step DAG for the critical-path
     // cache-benefit metric; the wire's stepFinish carries no edges, so this is the only source.
@@ -736,6 +737,11 @@ public final class BuildAccumulator {
         for (String key : stepStartedAt.keySet()) stepSuspended.merge(key, millis, Long::sum);
     }
 
+    /** Where this run came from: its checkout's repository and branch, its CI run, its host. */
+    public void noteSource(@Nullable RunSource source) {
+        this.source = source;
+    }
+
     /** One finished step, stored under its module dir ("" for a single-plan build). */
     public void addTask(String dir, String step, String phase, String status, long millis, long waitMillis) {
         anyFact = true;
@@ -877,47 +883,9 @@ public final class BuildAccumulator {
         if (result.userCancelled()) markUserCancelled(false);
     }
 
-    /**
-     * Copy a plan diagnostic into the journal, filling {@code file}/{@code line}/{@code col} from
-     * a javac/kotlinc/groovyc header (and caret) when the plan row left them empty.
-     */
+    /** A plan diagnostic as the journal keeps it ({@link PlanDiags#of}). */
     static BuildRecord.Diag diagFromPlan(String severity, String dir, String redactDir, BuildPlanResult.Diagnostic d) {
-        String redacted = redactEnv(redactDir, d.message());
-        String message = redacted == null ? "" : redacted;
-        String file = d.file() == null ? "" : d.file();
-        int line = d.line();
-        int col = 0;
-        CompilerLocus loc = CompilerLocus.parse(message);
-        if (loc != null) {
-            // The parsed column belongs with the parsed file/line: a diag whose file/line came
-            // from elsewhere (test identity) must not adopt a column from a locus its message
-            // merely quotes.
-            boolean fromMessage = file.isEmpty() && line <= 0;
-            if (file.isEmpty()) file = loc.file();
-            if (line <= 0) line = loc.line();
-            if (fromMessage) col = loc.col();
-        }
-        return new BuildRecord.Diag(
-                severity,
-                dir,
-                d.step(),
-                d.code(),
-                message,
-                d.test(),
-                d.exceptionClass(),
-                d.module(),
-                d.engine(),
-                d.className(),
-                d.method(),
-                redactEnv(redactDir, d.stack()),
-                file,
-                line,
-                col,
-                d.snippetStart(),
-                d.snippet(),
-                d.worker(),
-                d.key(),
-                d.suite());
+        return PlanDiags.of(severity, dir, redactDir, d);
     }
 
     public void setModuleEdges(Map<Path, Set<Path>> edges) {
@@ -1131,7 +1099,8 @@ public final class BuildAccumulator {
                         requestId,
                         publish,
                         List.of())
-                .withSuspensions(suspensions);
+                .withSuspensions(suspensions)
+                .withSource(source);
     }
 
     private static boolean notBlank(String s) {

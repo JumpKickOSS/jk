@@ -8,10 +8,12 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
+import cc.jumpkick.engine.journal.RunSource;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.StepCache;
+import cc.jumpkick.task.CachePlatform;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
 import java.net.URI;
@@ -60,6 +62,10 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 """);
+        // A checkout on a branch with a remote: the run's record names both, and its host.
+        Path git = Files.createDirectories(project.resolve(".git"));
+        Files.writeString(git.resolve("HEAD"), "ref: refs/heads/feature/history\n");
+        Files.writeString(git.resolve("config"), "[remote \"origin\"]\n\turl = git@github.com:Acme/App.git\n");
         Path cache = shortTempDir();
         EnginePaths.Paths p = paths(shortTempDir());
         EngineServer server = new EngineServer(
@@ -88,6 +94,13 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
                     .as("the rebuild says an input moved: " + edited)
                     .isEqualTo(StepCache.Reason.INPUTS_CHANGED);
             assertThat(edited.changed()).as("and names it").contains("Hello.java");
+            RunSource source = requireNonNull(record.source(), "the run's source");
+            assertThat(source.branch()).isEqualTo("feature/history");
+            assertThat(source.repository()).isEqualTo("https://github.com/acme/app");
+            assertThat(source.host()).isEqualTo(CachePlatform.current());
+            assertThat(source.ciProvider())
+                    .as("the request's shell names no CI")
+                    .isNull();
 
             String token = Files.readString(p.httpToken()).trim();
             String url = Files.readString(p.http()).trim();
@@ -110,7 +123,8 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
             assertThat(api.body())
                     .as("the API serves the step's cache outcome")
                     .contains("\"reason\":\"inputs-changed\"")
-                    .contains("Hello.java");
+                    .contains("Hello.java")
+                    .contains("\"branch\":\"feature/history\"");
         } finally {
             server.close();
             serverThread.join(10_000);

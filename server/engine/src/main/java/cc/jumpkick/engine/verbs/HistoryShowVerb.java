@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
+import cc.jumpkick.engine.journal.RunSource;
 import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TestSummary;
@@ -65,6 +66,7 @@ public final class HistoryShowVerb implements HostedVerb {
             BuildRecord r = found.get();
             BuildRecord.Tests t = r.tests();
             BuildRecord.CacheBenefit b = r.benefit();
+            RunSource src = r.source();
             host.send(
                     writer,
                     JsonOut.object()
@@ -81,6 +83,11 @@ public final class HistoryShowVerb implements HostedVerb {
                             .put("cancelled", r.cancelled())
                             .put("exitCode", r.exitCode())
                             .put("jkVersion", r.jkVersion())
+                            .put("branch", src == null ? null : src.branch())
+                            .put("repository", src == null ? null : src.repository())
+                            .put("ciProvider", src == null ? null : src.ciProvider())
+                            .put("ciRunUrl", src == null ? null : src.ciRunUrl())
+                            .put("ciEvent", src == null ? null : src.ciEvent())
                             .putObject(
                                     TestSummary.WIRE_KEY,
                                     t == null

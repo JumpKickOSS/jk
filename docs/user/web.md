@@ -86,6 +86,14 @@ commands an agent runs through its shell tool, or whatever `JK_BUILD_SESSION` sa
 prints the same as `trigger: mcp · session: claude-code 3f9a`, and `jk history` has a
 Trigger column.
 
+Every run also records where it came from (`source` in `GET /api/history?id=<run>`): the
+checkout's repository (its `origin` remote as `https://host/path`, credentials and `.git` left
+out) and branch, read from the checkout's git files; the CI system, run id, run page and event when
+the shell that ran `jk` is a GitHub Actions, GitLab CI, Buildkite or CircleCI job (`ci` for any
+other server that sets `CI`), the branch a pull request builds in place of the merge ref; and the
+host's `<os>-<arch>`, processors and memory. `jk history show` prints the branch and the CI run.
+These are what the run's own shell says, shown as such; nothing is decided by them.
+
 The one chip beside a run in a timeline is the strongest signal of its
 [iteration strip](#since-the-previous-run): a test that broke, else a diagnostic that appeared,
 else a test fixed, else a diagnostic gone, else the files changed, else the wall against the

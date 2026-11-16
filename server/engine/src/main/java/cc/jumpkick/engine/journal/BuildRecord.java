@@ -55,7 +55,8 @@ public record BuildRecord(
         List<Coverage> coverage,
         @Nullable JobDelta delta,
         @Nullable String episode,
-        List<Suspension> suspensions) {
+        List<Suspension> suspensions,
+        @Nullable RunSource source) {
 
     /**
      * The on-disk schema version stamped into every {@code record.json}: 1 until 1.0, like every
@@ -70,6 +71,72 @@ public record BuildRecord(
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
         coverage = coverage == null ? List.of() : List.copyOf(coverage);
         suspensions = suspensions == null ? List.of() : List.copyOf(suspensions);
+    }
+
+    /** A run whose source was not read: every producer but the journal writer's finish. */
+    public BuildRecord(
+            @Nullable String id,
+            long buildNumber,
+            int schema,
+            String kind,
+            String dir,
+            @Nullable String coord,
+            @Nullable String projectId,
+            long startedAt,
+            long finishedAt,
+            long millis,
+            boolean success,
+            boolean cancelled,
+            int exitCode,
+            String jkVersion,
+            @Nullable Tests tests,
+            List<Module> modules,
+            List<Task> steps,
+            List<Diag> diagnostics,
+            @Nullable String trigger,
+            @Nullable String session,
+            @Nullable String commit,
+            @Nullable CacheBenefit benefit,
+            boolean running,
+            @Nullable Io io,
+            long requestId,
+            @Nullable Publish publish,
+            List<Coverage> coverage,
+            @Nullable JobDelta delta,
+            @Nullable String episode,
+            List<Suspension> suspensions) {
+        this(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                projectId,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                session,
+                commit,
+                benefit,
+                running,
+                io,
+                requestId,
+                publish,
+                coverage,
+                delta,
+                episode,
+                suspensions,
+                null);
     }
 
     /** A run that was never suspended: every producer but the journal writer's finish. */
@@ -317,177 +384,27 @@ public record BuildRecord(
 
     /** This record with the coverage its modules measured. */
     public BuildRecord withCoverage(List<Coverage> coverage) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                millis,
-                success,
-                cancelled,
-                exitCode,
-                jkVersion,
-                tests,
-                modules,
-                steps,
-                diagnostics,
-                trigger,
-                session,
-                commit,
-                benefit,
-                running,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> e.coverage = coverage);
     }
 
     /** This record with its per-project build number set. */
     public BuildRecord withBuildNumber(long buildNumber) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                millis,
-                success,
-                cancelled,
-                exitCode,
-                jkVersion,
-                tests,
-                modules,
-                steps,
-                diagnostics,
-                trigger,
-                session,
-                commit,
-                benefit,
-                running,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> e.buildNumber = buildNumber);
     }
 
     /** This record with its journal id set (begin path). */
     public BuildRecord withId(String id) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                millis,
-                success,
-                cancelled,
-                exitCode,
-                jkVersion,
-                tests,
-                modules,
-                steps,
-                diagnostics,
-                trigger,
-                session,
-                commit,
-                benefit,
-                running,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> e.id = id);
     }
 
     /** This record with what changed since the run before it from the same origin. */
     public BuildRecord withDelta(@Nullable JobDelta delta) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                millis,
-                success,
-                cancelled,
-                exitCode,
-                jkVersion,
-                tests,
-                modules,
-                steps,
-                diagnostics,
-                trigger,
-                session,
-                commit,
-                benefit,
-                running,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> e.delta = delta);
     }
 
     /** This record placed in the session episode {@code episode}. */
     public BuildRecord withEpisode(@Nullable String episode) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                millis,
-                success,
-                cancelled,
-                exitCode,
-                jkVersion,
-                tests,
-                modules,
-                steps,
-                diagnostics,
-                trigger,
-                session,
-                commit,
-                benefit,
-                running,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> e.episode = episode);
     }
 
     /**
@@ -503,72 +420,30 @@ public record BuildRecord(
      * result, and the row is kept only so the history does not show a run that never ends.
      */
     public BuildRecord abandoned(long finishedAt, String jkVersion) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                Math.max(0, finishedAt - startedAt),
-                /* success */ false,
-                /* cancelled */ false,
-                Exit.SOFTWARE,
-                jkVersion != null ? jkVersion : this.jkVersion,
-                /* tests */ null,
-                List.of(),
-                List.of(),
-                List.of(),
-                trigger,
-                session,
-                commit,
-                /* benefit */ null,
-                /* running */ false,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> {
+            e.finishedAt = finishedAt;
+            e.millis = Math.max(0, finishedAt - startedAt);
+            e.success = false;
+            e.cancelled = false;
+            e.exitCode = Exit.SOFTWARE;
+            e.jkVersion = jkVersion != null ? jkVersion : this.jkVersion;
+            e.tests = null;
+            e.modules = List.of();
+            e.steps = List.of();
+            e.diagnostics = List.of();
+            e.benefit = null;
+            e.running = false;
+        });
     }
 
     /** This record with the times its engine was not running while it ran. */
     public BuildRecord withSuspensions(List<Suspension> suspensions) {
-        return new BuildRecord(
-                id,
-                buildNumber,
-                schema,
-                kind,
-                dir,
-                coord,
-                projectId,
-                startedAt,
-                finishedAt,
-                millis,
-                success,
-                cancelled,
-                exitCode,
-                jkVersion,
-                tests,
-                modules,
-                steps,
-                diagnostics,
-                trigger,
-                session,
-                commit,
-                benefit,
-                running,
-                io,
-                requestId,
-                publish,
-                coverage,
-                delta,
-                episode,
-                suspensions);
+        return BuildRecordCopies.edit(this, e -> e.suspensions = suspensions);
+    }
+
+    /** This record with where its run came from. */
+    public BuildRecord withSource(@Nullable RunSource source) {
+        return BuildRecordCopies.edit(this, e -> e.source = source);
     }
 
     /** Milliseconds its engine was not running while it ran (the machine slept, the process was stopped). */
