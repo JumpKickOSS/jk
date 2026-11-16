@@ -10,7 +10,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,17 +19,18 @@ import org.jspecify.annotations.Nullable;
  * Brings the rule packs the lock pins into the store before the rules load. A pinned pack is a
  * locked artifact: a fresh clone, a CI runner, {@code jk clean} or a store prune leaves neither
  * its unpacked copy nor its jar, and it is fetched through the root project's repositories the
- * way a locked library is. The loader then verifies it against the lock and unpacks it; a pack
- * that cannot be fetched is still the loader's error.
+ * way a locked library is, pinned to the lock's digest so a repository that serves other bytes at
+ * that version is refused before they reach the store. The loader then verifies the jar against the
+ * lock and unpacks it; a pack that cannot be fetched, or a row with no digest, is the loader's error.
  */
 final class GuardPackFetch {
 
     private GuardPackFetch() {}
 
-    /** Downloads one pack into the store; false when no repository has it. */
+    /** Downloads one pack with the digest {@code sha256} into the store; false when no repository has it. */
     @FunctionalInterface
     interface Fetcher {
-        boolean fetch(GuardPacks.Coordinate pack) throws IOException, InterruptedException;
+        boolean fetch(GuardPacks.Coordinate pack, String sha256) throws IOException, InterruptedException;
     }
 
     /** Fetch every pack {@code root} pins that is neither unpacked nor in {@code store}. */
@@ -52,8 +52,9 @@ final class GuardPackFetch {
             if (c == null) continue;
             try {
                 Lockfile.PluginEntry pin = GuardPacks.pin(root, c);
-                if (pin == null || present(root, c, pin, store)) continue;
-                if (fetcher.fetch(c)) fetched.add(c.gav());
+                String hex = pin == null ? null : pin.sha256Hex();
+                if (pin == null || hex == null || present(root, c, pin, store)) continue;
+                if (fetcher.fetch(c, hex)) fetched.add(c.gav());
             } catch (IOException e) {
                 Log.debug("rule pack " + c.gav() + ": fetch failed", e);
             } catch (InterruptedException e) {
@@ -66,11 +67,9 @@ final class GuardPackFetch {
 
     private static boolean present(Path root, GuardPacks.Coordinate c, Lockfile.PluginEntry pin, Path store)
             throws IOException {
-        Path dir = GuardPacks.unpackedDir(root, c);
         String hex = pin.sha256Hex();
-        boolean unpacked =
-                hex != null ? GuardPacks.unpackedAs(dir, hex) : Files.isRegularFile(GuardPacks.fragment(dir));
-        return unpacked || GuardPacks.locateJar(c, pin, store) != null;
+        return (hex != null && GuardPacks.unpackedAs(GuardPacks.unpackedDir(root, c), hex))
+                || GuardPacks.locateJar(c, pin, store) != null;
     }
 
     /** The root project's repositories, built on the first pack that needs them. */
@@ -83,13 +82,13 @@ final class GuardPackFetch {
         }
 
         @Override
-        public boolean fetch(GuardPacks.Coordinate pack) throws IOException, InterruptedException {
+        public boolean fetch(GuardPacks.Coordinate pack, String sha256) throws IOException, InterruptedException {
             RepoGroup group = repos;
             if (group == null) {
                 group = RepoGroupBuilder.buildFor(JkBuildParser.parse(ManifestPaths.manifestIn(root)));
                 repos = group;
             }
-            return group.tryFetchArtifact(Coordinate.of(pack.group(), pack.artifact(), pack.version()))
+            return group.tryFetchArtifact(Coordinate.of(pack.group(), pack.artifact(), pack.version()), sha256)
                     .isPresent();
         }
     }

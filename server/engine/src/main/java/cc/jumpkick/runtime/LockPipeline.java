@@ -628,8 +628,8 @@ public final class LockPipeline {
                 progress.note("note: " + GuardSuiteLibrary.COORDINATE + " could not be hashed; not pinned");
             }
         }
-        // Rule packs pin like plugins: the root jk-guards.toml names them, the lock fixes the bytes
-        // (or, for a first-party pack at a pre-release version, the version).
+        // Rule packs pin like any fetched artifact: the root jk-guards.toml names them, the lock
+        // records the bytes and where they came from, and the loader verifies the bytes on use.
         List<String> packs;
         try {
             packs = GuardPacks.declared(lockDir);
@@ -646,40 +646,11 @@ public final class LockPipeline {
             if (!seen.add(c.ga() + ":" + c.version())) continue;
             progress.label("lock pack " + c.gav());
             try {
-                // A first-party pack is staged in the store like the worker jars; a third-party one
-                // resolves through the project's repositories.
-                String rel = c.group().replace('.', '/') + "/" + c.artifact() + "/" + c.version() + "/" + c.artifact()
-                        + "-" + c.version() + ".jar";
-                Path staged = null;
-                for (RepoArtifactStore store : RepoArtifactStore.firstParty(cas.root())) {
-                    Optional<Path> hit = store.locate(rel);
-                    if (hit.isPresent()) {
-                        staged = hit.get();
-                        break;
-                    }
-                }
-                Path jarPath;
-                String sha;
-                if (staged != null) {
-                    jarPath = staged;
-                    sha = Hashing.sha256Hex(staged);
-                } else {
-                    var fetched = repos.tryFetchArtifact(Coordinate.of(c.group(), c.artifact(), c.version()))
-                            .orElseThrow(
-                                    () -> new IllegalStateException("rule pack " + c.gav() + " not found in any repo"));
-                    jarPath = fetched.fetched().cachePath();
-                    sha = fetched.fetched().sha256();
-                }
-                // A first-party pack at a pre-release version pins by version alone, for the reason
-                // a first-party plugin does: its bytes move with every rebuild, and a digest would
-                // leave every committed consumer lock red after the next side-load.
-                entries.add(
-                        c.pinsByVersionOnly()
-                                ? Lockfile.PluginEntry.versionOnly(c.ga(), c.version())
-                                : new Lockfile.PluginEntry(c.ga(), c.version(), "sha256:" + sha));
+                PackJar jar = locatePack(c, cas, repos);
+                entries.add(Lockfile.PluginEntry.fetched(c.ga(), c.version(), "sha256:" + jar.sha256(), jar.source()));
                 // The lock materializes the pack where the loader reads it, so a build after the lock
                 // needs neither the repository nor the store to find its rules.
-                GuardPacks.unpack(jarPath, GuardPacks.unpackedDir(lockDir, c), sha);
+                GuardPacks.unpack(jar.path(), GuardPacks.unpackedDir(lockDir, c), jar.sha256());
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
                 throw new IllegalStateException("rule pack " + c.gav() + ": " + e.getMessage(), e);
@@ -687,6 +658,38 @@ public final class LockPipeline {
         }
         pinKotlinPlugins(lock, repos, seen, entries, progress);
         return lock.withPlugins(entries).withJkMin(floor);
+    }
+
+    /** A rule pack's jar, its digest and the lock {@code source} of the repository it came from. */
+    private record PackJar(Path path, String sha256, String source) {}
+
+    /**
+     * A rule pack's jar: a first-party pack staged on a first-party shelf (a checkout's {@code
+     * jk-local} install, or the official repository's or Central's store) is taken from there;
+     * anything else resolves through the project's repositories. A pack no repository serves is
+     * refused with what was asked and, for a first-party pack, which version this jk ships with.
+     */
+    private PackJar locatePack(GuardPacks.Coordinate c, Cas cas, RepoGroup repos)
+            throws IOException, InterruptedException {
+        String rel = c.group().replace('.', '/') + "/" + c.artifact() + "/" + c.version() + "/" + c.artifact() + "-"
+                + c.version() + ".jar";
+        if (c.isFirstParty()) {
+            for (RepoArtifactStore shelf : RepoArtifactStore.firstParty(cas.root())) {
+                Optional<Path> hit = shelf.locate(rel);
+                String source = shelf.lockSource();
+                if (hit.isPresent() && source != null) {
+                    return new PackJar(hit.get(), Hashing.sha256Hex(hit.get()), source);
+                }
+            }
+        }
+        RepoGroup.RepoFetched fetched = repos.tryFetchArtifact(Coordinate.of(c.group(), c.artifact(), c.version()))
+                .orElseThrow(() -> new IllegalStateException(GuardPacks.unresolvable(c, JkVersion.VERSION)));
+        return new PackJar(fetched.fetched().cachePath(), fetched.fetched().sha256(), sourceOf(fetched));
+    }
+
+    /** The lock {@code source} of the repository that served {@code hit}: {@code <name>+<url>}. */
+    static String sourceOf(RepoGroup.RepoFetched hit) {
+        return hit.repo().name() + "+" + hit.repo().baseUrl();
     }
 
     /**
@@ -712,10 +715,11 @@ public final class LockPipeline {
                 try {
                     var fetched = repos.tryFetchArtifact(coord)
                             .orElseThrow(() -> new IllegalStateException("not found in any repo"));
-                    entries.add(new Lockfile.PluginEntry(
+                    entries.add(Lockfile.PluginEntry.fetched(
                             coord.module(),
                             coord.version(),
-                            "sha256:" + fetched.fetched().sha256()));
+                            "sha256:" + fetched.fetched().sha256(),
+                            sourceOf(fetched)));
                 } catch (IOException | InterruptedException | RuntimeException e) {
                     if (e instanceof InterruptedException)
                         Thread.currentThread().interrupt();
@@ -743,6 +747,7 @@ public final class LockPipeline {
     private Pinned pinDeclared(PluginDeclaration pd, RepoGroup repos, Progress progress) {
         String hex;
         Path jarPath;
+        String source = null;
         try {
             if (pd.isPathPin()) {
                 jarPath = resolvePluginPath(pd.path());
@@ -764,6 +769,7 @@ public final class LockPipeline {
                 hex = fetched.fetched().sha256();
                 requireSha(pd, hex, "resolved jar is", pd.coordinateWithVersion());
                 jarPath = fetched.fetched().cachePath();
+                source = sourceOf(fetched);
                 // Sibling POM for worker classpath reconstruction.
                 repos.tryFetchArtifact(new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "pom"));
             }
@@ -776,7 +782,8 @@ public final class LockPipeline {
         } catch (IOException noDescriptor) {
             progress.note("note: " + pd.coordinate() + " has no jk-plugin.toml, so it owns no jk.toml table");
         }
-        return new Pinned(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex), descriptor);
+        return new Pinned(
+                new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex, null, source), descriptor);
     }
 
     private static void requireSha(PluginDeclaration pd, String hex, String subject, String where) {

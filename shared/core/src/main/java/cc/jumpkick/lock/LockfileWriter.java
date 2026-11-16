@@ -319,6 +319,9 @@ public final class LockfileWriter {
             out.append("[[plugin]]\n");
             out.append("coordinate = ").append(quote(p.coordinate())).append('\n');
             out.append("version    = ").append(quote(p.version())).append('\n');
+            String source = p.source();
+            if (source != null)
+                out.append("source     = ").append(quote(source)).append('\n');
             String checksum = p.checksum();
             String path = p.path();
             if (checksum != null)

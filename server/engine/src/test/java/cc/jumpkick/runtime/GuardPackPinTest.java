@@ -11,6 +11,7 @@ import cc.jumpkick.guard.rules.GuardRules;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.RuleSource;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -81,6 +82,13 @@ class GuardPackPinTest {
                 .as("the pack pins like a plugin")
                 .extracting(Lockfile.PluginEntry::coordinate, Lockfile.PluginEntry::version)
                 .contains(tuple("com.acme:house-rules", "2.0.0"));
+        assertThat(written.plugins())
+                .filteredOn(e -> e.coordinate().equals("com.acme:house-rules"))
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.checksum()).startsWith("sha256:");
+                    assertThat(e.source()).isNotNull();
+                });
 
         // The lock unpacked the pack where the loader reads it: the repository is not consulted again.
         GuardPacks.Coordinate c = Objects.requireNonNull(GuardPacks.Coordinate.parse("com.acme:house-rules:2.0.0"));
@@ -97,11 +105,12 @@ class GuardPackPinTest {
     }
 
     /**
-     * A first-party pack at a pre-release version pins by version alone — the same rule a
-     * first-party plugin follows — and is still unpacked by the lock and read by the loader.
+     * A first-party pack pins like any fetched artifact, whatever its version: the row names the
+     * repository it came from and the jar's digest (0.51.1 pinned version alone, so nothing said
+     * which bytes the rules were read from).
      */
     @Test
-    void a_first_party_pack_at_a_pre_release_version_is_pinned_by_version_alone(@TempDir Path tmp) throws Exception {
+    void a_first_party_pack_pins_its_source_and_digest_at_a_pre_release_version(@TempDir Path tmp) throws Exception {
         Path repo = tmp.resolve("repo");
         packArtifact(repo, GuardPacks.FIRST_PARTY_GROUP, "house-rules", "0.9.0");
         stubArtifact(repo, "org.junit.platform", "junit-platform-launcher", "1.10.0");
@@ -128,9 +137,12 @@ class GuardPackPinTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(pin.version()).isEqualTo("0.9.0");
-        assertThat(pin.isVersionOnly())
-                .as("no checksum line for a first-party pre-release pack")
-                .isTrue();
+        Path jar = repo.resolve("cc/jumpkick/guards/house-rules/0.9.0/house-rules-0.9.0.jar");
+        assertThat(pin.checksum()).isEqualTo("sha256:" + Hashing.sha256Hex(jar));
+        assertThat(pin.source())
+                .as("the repository the pack came from")
+                .isNotNull()
+                .endsWith(repo.toUri().toString());
 
         GuardPacks.Coordinate c =
                 Objects.requireNonNull(GuardPacks.Coordinate.parse("cc.jumpkick.guards:house-rules:0.9.0"));

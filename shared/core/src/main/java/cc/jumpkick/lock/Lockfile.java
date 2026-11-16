@@ -425,16 +425,20 @@ public record Lockfile(
 
     /**
      * One {@code [[plugin]]} row: Maven {@code group:name}, version, and at most one of a jar
-     * {@link #checksum} ({@code sha256:<hex>}, the bytes a fetched plugin must have) or a workspace
-     * {@link #path} (the module directory, relative to the lock, that builds the plugin — its
-     * identity is its source, so no jar digest is recorded). A row with neither is a first-party
-     * plugin at a pre-release version, pinned by version alone ({@link #versionOnly}).
+     * {@link #checksum} ({@code sha256:<hex>}, the bytes a fetched plugin or rule pack must have) or
+     * a workspace {@link #path} (the module directory, relative to the lock, that builds the plugin
+     * — its identity is its source, so no jar digest is recorded). A row with neither is a
+     * first-party plugin at a pre-release version, pinned by version alone ({@link #versionOnly}).
+     * {@link #source} names where a fetched row's bytes came from, in the {@code <name>+<url>} form
+     * an {@code [[artifact]]} row's source takes (a bare {@code jk-local} for the first-party shelf);
+     * a row jk does not fetch (a built-in plugin, a workspace module, a path pin) has none.
      */
     public record PluginEntry(
             String coordinate,
             String version,
             @Nullable String checksum,
-            @Nullable String path) {
+            @Nullable String path,
+            @Nullable String source) {
         public PluginEntry {
             Objects.requireNonNull(coordinate, "coordinate");
             Objects.requireNonNull(version, "version");
@@ -444,9 +448,19 @@ public record Lockfile(
             }
         }
 
-        /** A plugin fetched as a jar, pinned to its bytes. */
+        /** A row with no recorded source: a built-in plugin's, a workspace module's, a path pin's. */
+        public PluginEntry(String coordinate, String version, @Nullable String checksum, @Nullable String path) {
+            this(coordinate, version, checksum, path, null);
+        }
+
+        /** A plugin pinned to its bytes, with no recorded source. */
         public PluginEntry(String coordinate, String version, String checksum) {
-            this(coordinate, version, checksum, null);
+            this(coordinate, version, checksum, null, null);
+        }
+
+        /** A jar fetched from the repository {@code source} names, pinned to its bytes. */
+        public static PluginEntry fetched(String coordinate, String version, String checksum, String source) {
+            return new PluginEntry(coordinate, version, checksum, null, source);
         }
 
         /** A plugin built from the workspace module at {@code path}. */

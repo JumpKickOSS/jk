@@ -552,7 +552,19 @@ the store and verifies each against its row, so the next build, or an `--offline
 nothing; bytes that disagree with a row fail the sync naming it.
 
 A `[[plugin]]` row normally pins the plugin jar by `checksum`: a jar that is fetched later and
-disagrees with it is refused. A plugin the workspace builds itself — a module whose
+disagrees with it is refused. A row whose jar JumpKick fetched — a `[plugins]` declaration, a
+Kotlin compiler plugin, a rule pack — also names its `source`, the repository it came from, in the
+`<name>+<url>` form an `[[artifact]]` row's source takes (`jk-local` for a jar a checkout's
+`jk install` staged):
+
+```toml
+[[plugin]]
+coordinate = "cc.jumpkick.guards:library"
+version    = "0.51.2"
+source     = "jumpkick+https://jumpkick.build/repo/"
+checksum   = "sha256:c1347a67…"
+```
+ A plugin the workspace builds itself — a module whose
 coordinate is the plugin's, such as JumpKick's own tree building `cc.jumpkick:jk-guards-junit` for
 its guard suites — is pinned by `path` to that module instead, with no digest. Its identity is
 its source (the module's manifest is already inside `manifests-sha256`), and it is verified by
@@ -577,10 +589,16 @@ in place and says so once (`jk-lock.toml: jk-micronaut 0.13.2 → 0.13.7 (first-
 the running jk)`); no library row moves, so a JumpKick upgrade is never a relock. A first-party plugin a
 `[plugins]` table declares explicitly is pinned by that declaration like any vendored jar.
 
-A first-party rule pack (`cc.jumpkick.guards:spring`, `:quarkus`, `:library`, … named by
-`[guards] extends`) is pinned by `coordinate` and `version` alone while that version is a
-pre-release, and carries its digest at a stable release. Third-party plugins and packs carry their
-digest at every version.
+A rule pack named by `[guards] extends` — first-party (`cc.jumpkick.guards:spring`, `:quarkus`,
+`:library`, …) or not — is not inside JumpKick: it is fetched from a repository at the version the
+rules file names, and its row carries `source` and `checksum` at every version. The loader reads
+only those bytes: a store jar with other bytes is refused, and a version the lock does not pin is
+never read from what an earlier build unpacked. Editing the version in `jk-guards.toml` makes the
+lock stale, so the next build relocks; a version no repository serves fails the lock naming it,
+and for a first-party pack the version this JumpKick publishes (older releases are removed from
+the official repository). A lock that pinned a pack by version alone, as 0.51.1 wrote first-party
+packs, is stale and relocks on the next build. Third-party plugins carry their digest at every
+version.
 
 ## What an edge records
 

@@ -3,6 +3,7 @@ package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.RulePackDeclarations;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.Languages;
@@ -78,6 +79,8 @@ public final class LockFreshness {
      *       contributed — the lock pins no digest for: stale.
      *   <li>Digest clean but an active plugin fetches a tool artifact, URL or closure the lock has
      *       no {@code [[tool]]} row for: stale.
+     *   <li>Digest clean but the root {@code jk-guards.toml} extends a rule pack the lock has no
+     *       digest-pinned {@code [[plugin]]} row for at that version: stale.
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -123,6 +126,7 @@ public final class LockFreshness {
             String live = LockManifestDigest.compute(owner);
             if (!stored.equalsIgnoreCase(live)) return true;
             if (missingNativePin(owner, lock)) return true;
+            if (missingRulePackPin(owner, lock)) return true;
             Map<Path, JkBuild> modules = modules(owner);
             return missingNodePin(modules.values(), lock)
                     || missingKotlinPluginPin(owner, modules, lock)
@@ -147,6 +151,25 @@ public final class LockFreshness {
         } catch (IllegalStateException conflictingSelectors) {
             return true;
         }
+    }
+
+    /**
+     * True when the root rules file extends a pack {@code lock} pins no bytes for at the version it
+     * names. The rules file is not a manifest the digest covers, so without this an edited pin left
+     * the lock on the old version and the loader on whatever an earlier build unpacked; a coordinate
+     * that is not {@code group:artifact:version} is stale too, so the relock reports it.
+     */
+    private static boolean missingRulePackPin(Path owner, Lockfile lock) throws IOException {
+        for (String declared : RulePackDeclarations.of(owner)) {
+            String[] parts = declared.strip().split(":");
+            if (parts.length != 3) return true;
+            String ga = parts[0] + ":" + parts[1];
+            boolean pinned = lock.plugins().stream()
+                    .anyMatch(row ->
+                            row.coordinate().equals(ga) && row.version().equals(parts[2]) && row.sha256Hex() != null);
+            if (!pinned) return true;
+        }
+        return false;
     }
 
     /** The manifest under {@code owner} and, for a workspace root, every member's, by directory. */

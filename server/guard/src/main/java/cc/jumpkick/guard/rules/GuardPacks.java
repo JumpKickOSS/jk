@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.rules;
 
-import cc.jumpkick.config.FileContentStamp;
-import cc.jumpkick.config.ManifestOverlay;
-import cc.jumpkick.config.StampedMemo;
+import cc.jumpkick.config.RulePackDeclarations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -11,10 +9,8 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.RepoStoreDirs;
-import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,16 +21,14 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
-import org.tomlj.Toml;
-import org.tomlj.TomlArray;
-import org.tomlj.TomlParseResult;
 
 /**
  * Rule packs: {@code [guards] extends = ["g:a:v", …]} in the root rules file names jars whose entries
- * are a {@code jk-guards.toml} fragment and {@code guard-fixtures/**}. A pack is pinned in {@code
- * jk-lock.toml} like a plugin ({@code [[plugin]]} row: coordinate, version, and a sha256 unless
- * {@link Coordinate#pinsByVersionOnly} holds), located offline through that pin in the store, and
- * unpacked once per sha under {@code
+ * are a {@code jk-guards.toml} fragment and {@code guard-fixtures/**}. A pack is fetched and pinned
+ * like any artifact: its {@code [[plugin]]} row in {@code jk-lock.toml} carries the coordinate, the
+ * version, the {@code source} it came from and its sha256, whoever publishes it. The loader locates
+ * the jar offline through that pin, refuses bytes that are not the pinned ones, and unpacks it once
+ * per sha under {@code
  * target/jk-guards/guard-packs/<artifact>/}, where the loader reads it as the {@code PACK} layer and
  * {@code jk guard test} finds its fixtures.
  */
@@ -45,16 +39,6 @@ public final class GuardPacks {
 
     /** The Maven group every rule pack that ships inside jk publishes under. */
     public static final String FIRST_PARTY_GROUP = "cc.jumpkick.guards";
-
-    /**
-     * Parsed {@code [guards] extends} per rules file, stamped on its (size, mtime).
-     *
-     * <p>{@link GuardRules#stamp} calls this for every module of a workspace, and a stamp is meant
-     * to cost a stat: without the memo each call re-read and re-parsed the whole rules file, which
-     * on a large workspace is the single most expensive thing in the cache check and the engine's
-     * biggest allocator during it.
-     */
-    private static final StampedMemo<Path, String, List<String>> DECLARED = StampedMemo.bounded(64);
 
     private GuardPacks() {}
 
@@ -68,19 +52,9 @@ public final class GuardPacks {
             return group + ":" + artifact;
         }
 
-        /** True for a pack that ships inside jk ({@link #FIRST_PARTY_GROUP}). */
+        /** True for a pack JumpKick publishes with each release ({@link #FIRST_PARTY_GROUP}). */
         public boolean isFirstParty() {
             return FIRST_PARTY_GROUP.equals(group);
-        }
-
-        /**
-         * True when the lock pins this pack by version alone. A first-party pack at a pre-release
-         * version is republished with every jk rebuild, so a digest would fix one moment of it and
-         * fail every committed consumer lock on the next side-load; the version already names the
-         * jk it ships with. A stable release, and every third-party pack, carries its digest.
-         */
-        public boolean pinsByVersionOnly() {
-            return isFirstParty() && Versions.isPreRelease(version);
         }
 
         /** {@code g:a:v} exactly; anything else is {@code null} — a floating version has no pin to read. */
@@ -94,35 +68,42 @@ public final class GuardPacks {
 
     /** The {@code [guards] extends} coordinates of the root rules file, as written (unparsed). */
     public static List<String> declared(Path root) throws IOException {
-        Path file = GuardsPresence.rulesFile(root);
-        String overlaid = ManifestOverlay.text(file);
-        if (overlaid != null) return declared(overlaid);
-        if (!Files.isRegularFile(file)) return List.of();
-        // Keyed on the file's content stamp, which is one stat once the file has settled — this
-        // runs once per module of a forecast, and the rules file is tens of kilobytes.
-        String hash = FileContentStamp.of(file);
-        if (hash == null) return List.of();
-        try {
-            return DECLARED.get(file, hash, () -> {
-                try {
-                    return declared(Files.readString(file, StandardCharsets.UTF_8));
-                } catch (IOException unreadable) {
-                    throw new UncheckedIOException(unreadable);
-                }
-            });
-        } catch (UncheckedIOException unreadable) {
-            throw unreadable.getCause();
-        }
+        return RulePackDeclarations.of(root);
     }
 
     static List<String> declared(String rootText) {
-        TomlParseResult toml = Toml.parse(rootText);
-        List<String> out = new ArrayList<>();
-        if (toml.hasErrors()) return out;
-        Object v = toml.get(List.of("guards", "extends"));
-        if (v instanceof TomlArray a) for (int i = 0; i < a.size(); i++) out.add(String.valueOf(a.get(i)));
-        else if (v instanceof String s) out.add(s);
-        return out;
+        return RulePackDeclarations.of(rootText);
+    }
+
+    /**
+     * The refusal for a pack no repository serves. A first-party pack is published with each jk
+     * release and older releases are removed from the official repository, so the message names
+     * the version this jk ships with and the command that moves the pin.
+     */
+    public static String unresolvable(Coordinate c, String clientVersion) {
+        String base = "rule pack " + c.gav() + " is not in any repository the project reads";
+        if (!c.isFirstParty()) return base + "; check the version, or add the repository that publishes it";
+        if (c.version().equals(clientVersion)) return base + "; this jk (" + clientVersion + ") publishes it";
+        return base + "; JumpKick's packs are published with each release and older ones are removed. This jk is "
+                + clientVersion + ": pin " + c.ga() + ":" + clientVersion + " (jk update moves it)";
+    }
+
+    /**
+     * For a load that does not consult the store: the problem when the lock exists and what is
+     * unpacked for {@code c} is not the bytes it pins at that version (the unpacked directory is the
+     * artifact's, whichever version a build last unpacked into it), else {@code null}. A project
+     * with no lock yet is left to the build that writes one.
+     */
+    public static @Nullable String unpackedOtherThanPinned(Path root, Coordinate c) {
+        try {
+            if (!Files.isRegularFile(LockPaths.lockFile(root))) return null;
+            Lockfile.PluginEntry pin = pin(root, c);
+            String hex = pin == null ? null : pin.sha256Hex();
+            if (hex != null && unpackedAs(unpackedDir(root, c), hex)) return null;
+        } catch (IOException | RuntimeException unreadable) {
+            return "pack " + c.gav() + ": jk-lock.toml is unreadable (" + unreadable.getMessage() + ")";
+        }
+        return "pack " + c.gav() + " is not unpacked at the bytes jk-lock.toml pins for it; run jk build";
     }
 
     /** Where a pack's fragment and fixtures live once unpacked. */
@@ -212,9 +193,10 @@ public final class GuardPacks {
 
     /**
      * Make every declared pack readable: for each coordinate, the lock's pin locates the jar in the
-     * store and it is unpacked once per sha. Returns one problem per pack that could not be made
-     * readable; the loader turns each into a load error, so a missing pack is red, never a silent
-     * subset of the rules.
+     * store, its bytes are checked against the pin's digest, and it is unpacked once per sha.
+     * Returns one problem per pack that could not be made readable; the loader turns each into a
+     * load error, so a missing or unpinned pack is red, never a silent subset of the rules and
+     * never the rules of another version an earlier build left unpacked.
      */
     public static List<String> ensure(Path root, Path store) throws IOException {
         List<String> problems = new ArrayList<>();
@@ -227,22 +209,14 @@ public final class GuardPacks {
             Lockfile.PluginEntry pin = pin(root, c);
             Path dir = unpackedDir(root, c);
             if (pin == null) {
-                if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
+                // The unpacked directory is the artifact's, whatever version unpacked it: reading it
+                // here would serve another pin's rules under this one.
                 problems.add("pack " + c.gav() + " is not in jk-lock.toml; run jk lock");
                 continue;
             }
             String hex = pin.sha256Hex();
             if (hex == null) {
-                // Pinned by version alone: the jar the store holds at that version is the pack, and
-                // its digest is read from the bytes rather than from the lock.
-                Path jar = locateJar(c, pin, store);
-                if (jar == null) {
-                    if (Files.isRegularFile(fragment(dir))) continue; // an earlier unpack still stands
-                    problems.add("pack " + c.gav() + " is pinned by version but its jar is missing; run jk lock");
-                    continue;
-                }
-                hex = Hashing.sha256Hex(jar);
-                if (!unpackedAs(dir, hex)) unpack(jar, dir, hex);
+                problems.add("pack " + c.gav() + " is pinned without a checksum; run jk lock to pin its bytes");
                 continue;
             }
             if (unpackedAs(dir, hex)) continue; // `jk lock` already unpacked these bytes

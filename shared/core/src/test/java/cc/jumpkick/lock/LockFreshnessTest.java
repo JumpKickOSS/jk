@@ -274,6 +274,44 @@ class LockFreshnessTest {
         assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
     }
 
+    /**
+     * A rule pack the root jk-guards.toml extends is pinned by a digest row at the version it names;
+     * an edited version, or a row without a digest (0.51.1 wrote first-party packs that way), is a
+     * stale lock, so the next build relocks instead of reading the old version's unpacked rules.
+     */
+    @Test
+    void a_rule_pack_without_a_digest_row_at_its_declared_version_is_stale(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group  = "g"
+                name   = "n"
+                version = "1"
+                """);
+        Path rules = dir.resolve("jk-guards.toml");
+        Files.writeString(rules, "[guards]\nextends = [\"cc.jumpkick.guards:library:0.51.1\"]\n");
+        String ga = "cc.jumpkick.guards:library";
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).as("no row").isTrue();
+
+        LockfileWriter.write(
+                Lockfile.empty("test").withPlugins(List.of(Lockfile.PluginEntry.versionOnly(ga, "0.51.1"))), lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile))
+                .as("a row without a digest pins no bytes")
+                .isTrue();
+
+        LockfileWriter.write(
+                Lockfile.empty("test")
+                        .withPlugins(List.of(Lockfile.PluginEntry.fetched(
+                                ga, "0.51.1", "sha256:" + "a".repeat(64), "jumpkick+https://jumpkick.build/repo/"))),
+                lockFile);
+        assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
+
+        Files.writeString(rules, "[guards]\nextends = [\"cc.jumpkick.guards:library:0.50.2\"]\n");
+        assertThat(LockFreshness.isStale(dir, lockFile))
+                .as("the rules file names a version the lock does not pin")
+                .isTrue();
+    }
+
     @Test
     void conflicting_native_selectors_are_stale(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """

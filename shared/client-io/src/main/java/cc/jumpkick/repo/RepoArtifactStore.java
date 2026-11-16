@@ -557,6 +557,20 @@ public final class RepoArtifactStore {
     }
 
     /** This store's on-disk identity; {@code null} for {@link #NONE}. */
+    /**
+     * What a lock row records as the {@code source} of a file this store holds: {@code
+     * <name>+<url>/} for a repository's store, as an {@code [[artifact]]} row names the repository
+     * that fetched it, and the bare {@code jk-local} for the first-party shelf; {@code null} for a
+     * tree with no known origin.
+     */
+    public @Nullable String lockSource() {
+        if (label != null && origin != null) return label + "+" + origin + (origin.endsWith("/") ? "" : "/");
+        if (root != null && RepoArtifactResolver.JK_LOCAL.equals(String.valueOf(root.getFileName()))) {
+            return RepoArtifactResolver.JK_LOCAL;
+        }
+        return null;
+    }
+
     public @Nullable Origin origin() {
         return root == null ? null : describe(root);
     }

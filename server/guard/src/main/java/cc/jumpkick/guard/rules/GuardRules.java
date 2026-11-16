@@ -137,6 +137,13 @@ public final class GuardRules {
                 }
                 continue;
             }
+            if (store == null) {
+                String stale = GuardPacks.unpackedOtherThanPinned(root, c);
+                if (stale != null) {
+                    problems.add(new LoadError(Severity.ERROR, file, extendsLine, null, stale));
+                    continue;
+                }
+            }
             String ptext;
             try {
                 ptext = Files.readString(fragment, StandardCharsets.UTF_8);

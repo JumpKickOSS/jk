@@ -583,10 +583,15 @@ class LockfileRoundTripTest {
     void plugin_rows_pin_a_jar_by_checksum_or_a_workspace_module_by_path() {
         Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
                 .withPlugins(List.of(
-                        new Lockfile.PluginEntry("com.acme:rules", "2.0.0", "sha256:" + "ab".repeat(32)),
+                        Lockfile.PluginEntry.fetched(
+                                "com.acme:rules",
+                                "2.0.0",
+                                "sha256:" + "ab".repeat(32),
+                                "jumpkick+https://jumpkick.build/repo/"),
                         Lockfile.PluginEntry.workspace("cc.jumpkick:jk-guards-junit", "0.1.0", "shared/guard-api")));
         String rendered = LockfileWriter.render(original);
         assertThat(rendered)
+                .contains("source     = \"jumpkick+https://jumpkick.build/repo/\"")
                 .contains("checksum   = \"sha256:" + "ab".repeat(32) + "\"")
                 .contains("path       = \"shared/guard-api\"");
 

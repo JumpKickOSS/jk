@@ -495,7 +495,8 @@ public final class LockfileReader {
 
     /**
      * The {@code [[plugin]]} rows: each pinned by a jar {@code checksum}, by a workspace module
-     * {@code path}, or by version alone (a first-party plugin at a pre-release version).
+     * {@code path}, or by version alone (a first-party plugin at a pre-release version); a fetched
+     * row also names its {@code source}.
      */
     private static List<Lockfile.PluginEntry> readPlugins(LockToml result) {
         List<Lockfile.PluginEntry> plugins = new ArrayList<>();
@@ -511,7 +512,7 @@ public final class LockfileReader {
                 throw new IllegalArgumentException(
                         "[[plugin]] " + coord + " sets both `checksum` and `path`; keep one");
             }
-            plugins.add(new Lockfile.PluginEntry(coord, ver, chk, path));
+            plugins.add(new Lockfile.PluginEntry(coord, ver, chk, path, t.getString("source")));
         }
         return plugins;
     }

@@ -373,12 +373,15 @@ fragment and its fixtures:
 extends = ["cc.jumpkick.guards:spring:0.13.0"]
 ```
 
-`jk lock` pins the exact coordinate as a `[[plugin]]` row — by digest, or by version alone for a
-first-party pack at a pre-release JumpKick version ([Lockfile](lockfile.md#what-else-the-lock-pins)) — and
-unpacks the fragment under `target/jk-guards/guard-packs/`. A digest-pinned pack is unpacked only
-from a jar whose bytes are the lock's: a store jar of the same version with other bytes is refused
-with the fix named (`jk lock` to pin the jar you have, or put the pinned jar back), never read as
-the rules the lock says it is. The root file may `allow` against a pack rule or turn a ban into a
+A pack is fetched from a repository like any artifact, JumpKick's own included: `jk lock` pins
+the exact coordinate as a `[[plugin]]` row with the repository it came from and its digest
+([Lockfile](lockfile.md#what-else-the-lock-pins)), and unpacks the fragment under
+`target/jk-guards/guard-packs/`. A pack is unpacked only from a jar whose bytes are the lock's: a
+store jar of the same version with other bytes is refused with the fix named (`jk lock` to pin the
+jar you have, or put the pinned jar back), never read as the rules the lock says it is. Changing
+the version in `extends` makes the lock stale and the next build relocks; the rules of the version
+an earlier build unpacked are never read under another pin, and a version no repository serves
+fails naming the version this JumpKick publishes. The root file may `allow` against a pack rule or turn a ban into a
 baseline, unless the pack marked the rule `locked = true`. A workspace member's own
 `<module>/jk-guards.toml` may only tighten, and its rules default to that module's scope.
 A rule's `scope` is judged by module for every kind. A file belongs to the module whose directory
