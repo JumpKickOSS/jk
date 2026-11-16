@@ -68,8 +68,8 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 new Spec(
                         "rename",
-                        "Rename Type.method, Type.field, Type or a.pkg to `to` (qualified: moves it); edits, compiles, proves,"
-                                + " runs tests+guard: done unless it says otherwise.",
+                        "Rename Type.method, a property (Type.field + get/set), Type or a.pkg to `to` (qualified: moves it);"
+                                + " edits, proves, tests: done unless it says otherwise.",
                         McpSchemas.withGoal(
                                 props(Map.of(
                                         "address",
