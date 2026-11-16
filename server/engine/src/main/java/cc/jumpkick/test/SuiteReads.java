@@ -667,10 +667,19 @@ public final class SuiteReads {
         for (String t : tokens) {
             int eq = t.lastIndexOf('=');
             boolean pathToken = (t.startsWith("read:") || t.startsWith("list:")) && eq > 5;
-            if (pathToken && inBuildOutput(root.resolve(t.substring(5, eq)).normalize(), root, outputs)) continue;
+            if (pathToken && inBuildOutput(tokenPath(root, t.substring(5, eq)), root, outputs)) continue;
             kept.add(t);
         }
         return kept.isEmpty() ? "none" : Hashing.sha256Hex(String.join("\n", kept));
+    }
+
+    /**
+     * The file or directory a {@code read:} or {@code list:} token names, as {@link #spell} wrote it:
+     * workspace-relative, under a jk root ({@code store:}, {@code cache:}, {@code jk-home:}), or
+     * absolute. A jk root's spelling is no path of its own: on Windows its colon is refused.
+     */
+    private static Path tokenPath(Path root, String spelled) {
+        return root.resolve(PortablePath.fromJkRoot(spelled)).normalize();
     }
 
     private static String spell(Path root, Path p) {

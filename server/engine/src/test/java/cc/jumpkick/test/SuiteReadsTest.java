@@ -7,6 +7,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.PortablePath;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
@@ -327,6 +328,41 @@ class SuiteReadsTest {
                 return born;
             }
         };
+    }
+
+    /**
+     * A file outside the workspace is spelled under its jk root ({@code store:repos/…}), and the memo
+     * reads that spelling back as the file it names: on Windows the bare spelling is no path at all
+     * (its colon threw and failed the module's test step), and anywhere it named a file inside the
+     * workspace that does not exist. Here the store lies in a module's build output, which the memo
+     * leaves out, so only the store's own file, found through the spelling, is left out.
+     */
+    @Test
+    void a_token_spelled_under_the_store_names_the_stores_file(@TempDir Path tmp) throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path module = Files.createDirectories(ws.resolve("mod"));
+        Files.writeString(module.resolve("jk.toml"), "");
+        Path store = Files.createDirectories(module.resolve("target/store"));
+        String home = System.getProperty("jk.env.JK_HOME");
+        String storeDir = System.getProperty("jk.env.JK_STORE_DIR");
+        System.setProperty("jk.env.JK_HOME", tmp.resolve("home").toString());
+        System.setProperty("jk.env.JK_STORE_DIR", store.toString());
+        try {
+            String token = "read:" + PortablePath.underJkRoot(store.resolve("repos/a.jar")) + "=abc";
+            assertThat(token).startsWith("read:store:");
+
+            assertThat(SuiteReads.memoDigest(List.of(token), ws))
+                    .as("the store's file lies in mod's build output")
+                    .isEqualTo("none");
+        } finally {
+            restore("jk.env.JK_HOME", home);
+            restore("jk.env.JK_STORE_DIR", storeDir);
+        }
+    }
+
+    private static void restore(String key, @Nullable String value) {
+        if (value == null) System.clearProperty(key);
+        else System.setProperty(key, value);
     }
 
     @Test
