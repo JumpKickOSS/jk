@@ -55,6 +55,18 @@ beforeEach(() => {
   currentGuard = null;
 });
 
+/**
+ * Waits for `done()` to hold, a macrotask at a time, failing after `ms`: the drain runs on its own
+ * timer, and under load a fixed sleep can end before it does.
+ */
+async function until(done, ms = 10_000) {
+  const deadline = Date.now() + ms;
+  while (!done()) {
+    if (Date.now() > deadline) assert.fail(`not true within ${ms} ms`);
+    await new Promise((r) => setTimeout(r, 1));
+  }
+}
+
 let currentGuard = null;
 function guard(fn) {
   currentGuard = fn;
@@ -161,7 +173,7 @@ test('a named error frame is an event, not a disconnect', async () => {
   const frame = { type: 'error', data: JSON.stringify({ type: 'error', message: 'type not found: Bird' }) };
   source.listeners.get('error')(frame);
   source.onerror(frame);
-  await new Promise((r) => setTimeout(r, 5));
+  await until(() => got.length > 0);
   assert.deepEqual(states, ['live'], 'the stream stays live through a failed build');
   assert.equal(got.length, 1);
   assert.equal(got[0].type, 'error');
@@ -170,6 +182,40 @@ test('a named error frame is an event, not a disconnect', async () => {
   // The connection really dropping: a data-less error.
   source.onerror({ type: 'error' });
   assert.deepEqual(states, ['live', 'offline']);
+});
+
+// A loaded host can deschedule the page between the drain reading its start time and its first
+// budget check; that turn still delivers a frame, or a drain that always loses the race re-arms for
+// ever and the page shows nothing.
+test('a drain whose budget is spent before its first frame still delivers it', async () => {
+  const sources = [];
+  globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+  globalThis.EventSource = class {
+    static CLOSED = 2;
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      sources.push(this);
+    }
+    addEventListener(type, fn) {
+      this.listeners.set(type, fn);
+    }
+  };
+  const real = Object.getOwnPropertyDescriptor(globalThis, 'performance');
+  let clock = 0;
+  // Every reading is 10 ms after the last: each turn's budget is gone by its first check.
+  Object.defineProperty(globalThis, 'performance', { value: { now: () => (clock += 10) }, configurable: true });
+  try {
+    const got = [];
+    events((ev) => got.push(ev), () => {});
+    for (const message of ['a', 'b', 'c']) {
+      sources[0].listeners.get('error')({ data: JSON.stringify({ type: 'error', message }) });
+    }
+    await until(() => got.length === 3, 2_000);
+    assert.deepEqual(got.map((e) => e.data.message), ['a', 'b', 'c']);
+  } finally {
+    Object.defineProperty(globalThis, 'performance', real);
+  }
 });
 
 // A hidden tab's timers run as late as once a minute: the presence ping and a notification to show

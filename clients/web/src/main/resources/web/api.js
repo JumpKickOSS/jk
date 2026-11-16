@@ -527,10 +527,13 @@ export function events(onEvent, onState) {
   function drain() {
     drainScheduled = false;
     // Bound work per turn so paint/ETA timers stay responsive under a backlog.
+    // The first frame is delivered whatever the clock says: a turn preempted (or paused for GC)
+    // between reading `start` and the first check would otherwise deliver nothing and only
+    // re-arm, and a page that loses every such race never shows a frame.
     const budgetMs = 6;
     const start = performance.now();
     let n = 0;
-    while (queue.length && performance.now() - start < budgetMs) {
+    while (queue.length && (n === 0 || performance.now() - start < budgetMs)) {
       const ev = queue.shift();
       n++;
       // Rebuild coalesce index cheaply when we drain — clear and re-index remaining.

@@ -59,6 +59,9 @@ class WebClientJsTest {
     /** Node's TAP epilogue: {@code # tests 94}, {@code # fail 0}. */
     private static final Pattern TAP_COUNT = Pattern.compile("(?m)^# (tests|fail) (\\d+)$");
 
+    /** A failed case in node's TAP output: {@code not ok 3 - a named error frame is an event}. */
+    private static final Pattern NOT_OK = Pattern.compile("(?m)^\\s*not ok \\d+ - (.+)$");
+
     /** A suite's own {@code test('…', …)} declarations, at any nesting. */
     private static final Pattern TEST_DECL = Pattern.compile("^\\s*test\\(");
 
@@ -191,7 +194,7 @@ class WebClientJsTest {
                 .as("node --test %s finished%n%s", suite.getFileName(), output)
                 .isFalse();
         assertThat(node.exit())
-                .as("node --test %s exit status%n%s", suite.getFileName(), output)
+                .as("node --test %s exit status, failing: %s%n%s", suite.getFileName(), failing(output), output)
                 .isZero();
         return output;
     }
@@ -211,6 +214,14 @@ class WebClientJsTest {
     }
 
     @Test
+    void a_failed_suite_names_its_failing_cases_on_the_first_line() {
+        String tap = "TAP version 13\nok 1 - fine\nnot ok 2 - a drain delivers\n  ---\n"
+                + "    not ok 1 - nested case\n# fail 2\n";
+        assertThat(failing(tap)).isEqualTo("a drain delivers; nested case");
+        assertThat(failing("ok 1 - fine\n")).isEqualTo("none reported");
+    }
+
+    @Test
     void the_suites_run_on_the_node_jk_provisions() {
         String home = System.getenv("NODE_HOME");
         Assumptions.assumeTrue(home != null && !home.isBlank(), "run outside jk: no NODE_HOME");
@@ -223,6 +234,15 @@ class WebClientJsTest {
         try (Stream<String> lines = Files.lines(suite)) {
             return lines.filter(l -> TEST_DECL.matcher(l).find()).count();
         }
+    }
+
+    /**
+     * The names of the cases node's TAP output reports {@code not ok}, on one line: a gate's summary
+     * keeps a failure's first line, and the exit status alone named no case.
+     */
+    static String failing(String output) {
+        List<String> names = NOT_OK.matcher(output).results().map(m -> m.group(1)).toList();
+        return names.isEmpty() ? "none reported" : String.join("; ", names);
     }
 
     private static Map<String, Integer> tapCounts(String output) {
