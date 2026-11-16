@@ -41,20 +41,29 @@ final class HttpAdmission {
 
     Lane laneFor(HttpExchange exchange) {
         if (!isEventStreamRequest(exchange)) return new Lane(rpc, false, "engine busy\n");
-        return isMcpPath(exchange.getRequestURI().getPath())
+        return isMcpPath(routed(exchange))
                 ? new Lane(mcpSse, true, "too many MCP event streams\n")
                 : new Lane(webSse, true, "too many event streams\n");
     }
 
     /**
      * Matches exactly the requests that enter a long-lived stream loop ({@code GET /api/events} and
-     * the MCP SSE GET) — these draw from the SSE budget, not RPC admission.
+     * the MCP SSE GET), here or another engine's through the front door ({@link FrontDoor}) — these
+     * draw from the SSE budget, not RPC admission, which a proxied stream would hold for its life.
      */
     static boolean isEventStreamRequest(HttpExchange exchange) {
         if (!exchange.getRequestMethod().equals("GET")) return false;
-        String path = exchange.getRequestURI().getPath();
+        String path = routed(exchange);
         if (path.equals("/api/events")) return true;
         return isMcpPath(path) && acceptsEventStream(exchange);
+    }
+
+    /** The path the request is routed on: within the engine it names, under the front door's prefix. */
+    private static String routed(HttpExchange exchange) {
+        String path = exchange.getRequestURI().getPath();
+        if (!path.startsWith(FrontDoor.PREFIX)) return path;
+        FrontDoor.Target target = FrontDoor.target(exchange.getRequestURI().getRawPath());
+        return target == null ? path : target.path();
     }
 
     static boolean isMcpPath(String path) {

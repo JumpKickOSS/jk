@@ -134,6 +134,10 @@ different ports; a port already taken moves it along the band, and with all 89 t
 dashboard and its log says so. `[http] port` in `~/.jk/config.toml` or `JK_HTTP_PORT` binds exactly
 the port you name instead.
 
+The host's dashboard at 8910 is the front door to every engine on the machine: its header switches
+to a WSL engine's dashboard, served through the host with the host's token ([Web](web.md)). A WSL
+engine pairs with the Windows engine by itself when it starts.
+
 `jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
 (`jk web -O jsonl` prints `url`, `token` and `engineId`). The id stays the same across restarts and

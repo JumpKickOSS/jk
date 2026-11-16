@@ -179,11 +179,21 @@ public final class Http {
      * on HTTP/1.1, and take a 3xx as alive. Pair every request sent through it with
      * {@link #proxiedRequest}, which carries the proxy's credential. Everything else uses the
      * verbs, which add the retry ladder, the redirect policy, the offline guard and the Central
-     * failover; this is the only other place jk builds an {@link HttpClient}, and a guard holds
+     * failover; this and {@link #loopbackClientBuilder} are the only other places jk builds an
+     * {@link HttpClient}, and a guard holds
      * {@code HttpClient.newBuilder()} to this class.
      */
     public static HttpClient.Builder proxiedClientBuilder() {
         return HttpClient.newBuilder().proxy(ProxyEnvironment.ambient());
+    }
+
+    /**
+     * A client builder that never goes through a proxy, for one engine reaching another on loopback
+     * (the front door, {@code cc.jumpkick.engine.http.FrontDoor}): those requests carry an engine's
+     * bearer token, and no proxy setting, however written, may route them off the machine.
+     */
+    public static HttpClient.Builder loopbackClientBuilder() {
+        return HttpClient.newBuilder().proxy(HttpClient.Builder.NO_PROXY);
     }
 
     /**

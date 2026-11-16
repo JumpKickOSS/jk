@@ -294,6 +294,12 @@ for a `-SNAPSHOT` build and is ignored by a release; the rules, the gate and the
 
 `[http] enabled = false` still disables the whole server, MCP included.
 
+A host engine is the machine's front door (`FrontDoor`): it lists the engines answering on the
+guests' band ports and proxies a paired one under `/engines/<id>/`, swapping the browser's token for
+that engine's, so one dashboard and one token reach every engine while each keeps its own builds and
+state. A WSL guest pairs by writing its port and token into the Windows engine's state directory
+(`GuestPairing`). The token rules and threat cases are in [HTTP](http.md#the-front-door).
+
 Transport: Unix domain socket on macOS/Linux; loopback TCP on Windows, where each side proves it holds a shared-secret token.
 Protocol is internal (same-version client/server), JSONL (one JSON object per line).
 

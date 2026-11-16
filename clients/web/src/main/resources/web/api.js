@@ -4,10 +4,24 @@
 
 import { EVENT, LOG, SSE } from './wire.js';
 
+/**
+ * The front-door prefix this page is served under, {@code /engines/<id>} when the machine's front
+ * door proxies another engine's dashboard, '' on an engine's own pages. Every API path, the event
+ * stream and the per-engine session keys carry it; the token does not, since the browser holds only
+ * the front door's.
+ */
+export const BASE =
+  typeof location === 'undefined' ? '' : (location.pathname.match(/^\/engines\/[0-9a-f]{12}(?=\/)/) || [''])[0];
+
+/** {@code path} as this page reaches it: under {@link BASE} for an absolute path. */
+export function at(path) {
+  return path.startsWith('/') ? BASE + path : path;
+}
+
 const TOKEN_KEY = 'jk-http-token';
-const EPOCH_KEY = 'jk-engine-epoch';
+const EPOCH_KEY = 'jk-engine-epoch' + BASE;
 const EPOCH_HEADER = 'X-Jk-Engine-Epoch';
-const RELOAD_FLAG = 'jk-epoch-reload';
+const RELOAD_FLAG = 'jk-epoch-reload' + BASE;
 
 /**
  * Most rows a list the dashboard keeps open for hours holds — sessions, notices, a session's
@@ -114,7 +128,22 @@ export function loopback() {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(location.hostname);
 }
 
-const ENGINE_KEY = 'jk-engine-id';
+const ENGINE_KEY = 'jk-engine-id' + BASE;
+
+/**
+ * Every engine on this machine, as the front door lists them: {@code {id, label, role, port, self,
+ * paired}}. Asked of the front door itself, whatever engine this page shows; empty when it cannot say.
+ */
+export async function machineEngines() {
+  try {
+    const r = await fetch('/api/engines', { headers: headers(false), cache: 'no-store' });
+    if (!r.ok) return [];
+    const body = await r.json();
+    return Array.isArray(body.engines) ? body.engines : [];
+  } catch {
+    return [];
+  }
+}
 
 /** The engine this tab has been showing, {@code {id, label}}, or null before its first status. */
 export function shownEngine() {
@@ -146,7 +175,7 @@ export function forgetShownEngine() {
 /** Which engine answers on this address, read without a token; null when none answers. */
 export async function identityHere() {
   try {
-    const r = await fetch('/api/identity', { cache: 'no-store' });
+    const r = await fetch(at('/api/identity'), { cache: 'no-store' });
     return r.ok ? await r.json() : null;
   } catch {
     return null;
@@ -318,7 +347,7 @@ async function handleEpochConflict(resp) {
  */
 export async function get(path, opts = {}) {
   const bootstrap = !!opts.bootstrap || path === '/api/status' || path.startsWith('/api/status?');
-  const resp = await fetch(path, { headers: headers(!bootstrap), signal: opts.signal });
+  const resp = await fetch(at(path), { headers: headers(!bootstrap), signal: opts.signal });
   if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) {
     const json = await resp.json().catch(() => ({}));
@@ -329,7 +358,7 @@ export async function get(path, opts = {}) {
 
 /** POST a flat object to an /api path; returns parsed JSON, throws {status, error} on non-2xx. */
 export async function post(path, body) {
-  const resp = await fetch(path, {
+  const resp = await fetch(at(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers(true) },
     body: JSON.stringify(body),
@@ -342,7 +371,7 @@ export async function post(path, body) {
 
 /** PUT a flat object to an /api path; returns parsed JSON, throws {status, error} on non-2xx. */
 export async function put(path, body) {
-  const resp = await fetch(path, {
+  const resp = await fetch(at(path), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...headers(true) },
     body: JSON.stringify(body),
@@ -358,7 +387,7 @@ export async function put(path, body) {
  * non-2xx. Uses the same Authorization / epoch headers as other mutations.
  */
 export async function getBlob(path, opts = {}) {
-  const resp = await fetch(path, { headers: headers(true), signal: opts.signal });
+  const resp = await fetch(at(path), { headers: headers(true), signal: opts.signal });
   if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) {
     const json = await resp.json().catch(() => ({}));
@@ -369,7 +398,7 @@ export async function getBlob(path, opts = {}) {
 
 /** GET an /api path as plain text (the log tail). Throws {status} on any non-2xx. */
 export async function getText(path) {
-  const resp = await fetch(path, { headers: headers(true) });
+  const resp = await fetch(at(path), { headers: headers(true) });
   if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) throw { status: resp.status };
   return resp.text();
@@ -377,7 +406,7 @@ export async function getText(path) {
 
 /** DELETE an /api path (a mutation — always token-bearing). Throws {status} on non-2xx. */
 export async function del(path) {
-  const resp = await fetch(path, { method: 'DELETE', headers: headers(true) });
+  const resp = await fetch(at(path), { method: 'DELETE', headers: headers(true) });
   if (await handleEpochConflict(resp)) throw { status: 409, error: 'engine-epoch-mismatch' };
   if (!resp.ok) throw { status: resp.status };
   return resp.json().catch(() => ({}));
@@ -433,7 +462,7 @@ export function eventsUrl(accessToken, afterId) {
   const params = [];
   if (accessToken) params.push('access_token=' + encodeURIComponent(accessToken));
   if (afterId) params.push('lastEventId=' + encodeURIComponent(afterId));
-  return '/api/events' + (params.length ? '?' + params.join('&') : '');
+  return at('/api/events') + (params.length ? '?' + params.join('&') : '');
 }
 
 /**

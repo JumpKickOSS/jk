@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.decisions.DecisionQueue;
@@ -10,6 +11,8 @@ import cc.jumpkick.engine.http.BandPort;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.EngineIdentity;
+import cc.jumpkick.engine.http.FrontDoor;
+import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.SelfUpdateControl;
@@ -21,6 +24,7 @@ import cc.jumpkick.engine.notices.Notices;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.HostedVerb;
 import cc.jumpkick.engine.verbs.VerbRegistry;
+import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.ManifestPaths;
@@ -194,6 +198,10 @@ public final class EngineHttpFront {
         candidate.setSelfUpdate(selfUpdate);
         candidate.setActivity(new Activity(ChangeJournal::current, decisions, notices));
         candidate.setIdentity(id);
+        if (!id.guest().guest()) {
+            candidate.setFrontDoor(
+                    new FrontDoor(() -> id, candidate::port, paths.dir().resolve(GuestPairing.DIR), FrontDoor.band()));
+        }
         return candidate;
     }
 
@@ -204,6 +212,7 @@ public final class EngineHttpFront {
             return;
         }
         if (bandFile != null) BandPort.remember(bandFile, candidate.port());
+        pairWithWindows(candidate);
         Files.writeString(paths.http(), candidate.url());
         server = candidate;
         error = null;
@@ -220,15 +229,53 @@ public final class EngineHttpFront {
         log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
     }
 
+    /** This WSL guest's pairing with the Windows front door: its directory and id; null until written. */
+    private record Paired(Path dir, String id) {}
+
+    private volatile @Nullable Paired pairing;
+
+    /**
+     * A WSL guest with interop pairs with the Windows front door: its port and token go into the
+     * Windows user's JumpKick home ({@link GuestPairing}). Off the start path, since it asks interop.
+     */
+    private void pairWithWindows(HttpEngineServer candidate) {
+        EngineIdentity id = candidate.identity();
+        if (id == null || id.guest().kind() != Guest.Kind.WSL || !id.guest().interop()) return;
+        SessionContext.startVirtual("jk-engine-guest-pairing", () -> {
+            Path dir = GuestPairing.windowsDir();
+            if (dir == null) {
+                log.accept("jk engine: could not reach the Windows home to pair with its engine");
+                return;
+            }
+            try {
+                String token = Files.readString(paths.httpToken()).strip();
+                GuestPairing.write(dir, new GuestPairing.Pair(id.id(), candidate.port(), token));
+                pairing = new Paired(dir, id.id());
+                // Stopped while interop answered: close() found no pairing to remove.
+                if (stopped) unpair();
+            } catch (IOException | RuntimeException e) {
+                log.accept("jk engine: could not pair with the Windows engine (" + e.getMessage() + ")");
+            }
+        });
+    }
+
+    private void unpair() {
+        Paired p = pairing;
+        pairing = null;
+        if (p != null) GuestPairing.remove(p.dir(), p.id());
+    }
+
     /** Hand the Web UI port to a successor immediately (idempotent). */
     public void stopNow() {
         stopped = true;
+        unpair();
         HttpEngineServer h = server;
         if (h != null) h.stopNow();
     }
 
     public void close() {
         stopped = true;
+        unpair();
         HttpEngineServer h = server;
         if (h != null) h.close();
         server = null;

@@ -29,6 +29,13 @@ that URL in bookmarks and MCP configs. A tab that finds another engine on its ad
 was showing stops and names both, rather than showing the other engine's builds. `[http] port` in
 `~/.jk/config.toml` or `JK_HTTP_PORT` names a port yourself.
 
+The host engine's dashboard is the front door to the others. When more than one engine runs, the
+engine's name in the header is a menu: pick another engine to see its dashboard under
+`/engines/<id>/` on the host's own address, with the same token. Each engine keeps its own builds;
+the front door only shows them, and the other engine's token never reaches your browser. A WSL engine
+pairs with the Windows engine by itself: it writes its port and token into your Windows JumpKick
+home, and removes them when it stops. An engine that has not paired is listed but cannot be opened.
+
 ## The console
 
 `#console` is the landing page. From top to bottom and left to right:

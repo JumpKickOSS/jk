@@ -5,14 +5,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>JumpKick - JVM Buildtool</title>
-  <link rel="icon" href="/jk-logo.svg" type="image/svg+xml">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="jk-logo.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0a0d11">
-  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="style.css">
   <!-- Iconography is inline SVG via <jk-icon> (icons.js). Brand: jumpkick-logo.webp in the header;
        the jk-logo.svg mark as favicon and in the About dialog. -->
   <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
@@ -30,18 +30,22 @@
        window.define (docs/contributors/webclient.md). -->
   <!-- The SPA's one entry point. Everything else is reached from it by static `import`, so the
        browser orders the module graph and there is no load order to get wrong here. -->
-  <script src="/app.js" type="module"></script>
+  <script src="app.js" type="module"></script>
 </head>
 <body>
   <div id="app" v-cloak>
     <header>
-      <img class="logo" src="/jumpkick-logo.webp" alt="JumpKick" width="179" height="120">
+      <img class="logo" src="jumpkick-logo.webp" alt="JumpKick" width="179" height="120">
       <div class="brand">
         <div class="brand-top">
           <span class="brand-name">JumpKick</span>
           <span v-if="versionPill()" class="ver-pill">{{ versionPill() }}</span>
         </div>
-        <div class="brand-sub" :data-tip="status && status.identity ? 'JK_HOME ' + status.identity.jkHome : null">{{ status && status.identity && status.identity.label ? status.identity.label : 'Build Engine' }}</div>
+        <select v-if="engines.length > 1" class="brand-sub engine-switch" aria-label="Engine"
+                :value="shownEngineId()" @change="switchEngine($event.target.value)">
+          <option v-for="e in engines" :key="e.id" :value="e.id" :disabled="!e.paired">{{ e.label }}{{ e.paired ? '' : ' (not paired)' }}</option>
+        </select>
+        <div v-else class="brand-sub" :data-tip="status && status.identity ? 'JK_HOME ' + status.identity.jkHome : null">{{ status && status.identity && status.identity.label ? status.identity.label : 'Build Engine' }}</div>
       </div>
 
       <span class="spacer"></span>
@@ -945,7 +949,7 @@
     <div v-if="whatsNew && !authModal" class="modal-bg" @click.self="closeWhatsNew()">
       <div class="modal whats-new" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
         <div class="modal-head">
-          <img class="about-logo" src="/jk-logo.svg" alt="" width="40" height="40">
+          <img class="about-logo" src="jk-logo.svg" alt="" width="40" height="40">
           <div>
             <div id="whats-new-title" class="about-title">What's new in JumpKick</div>
             <div class="about-sub">{{ whatsNew.headline || whatsNew.version || '' }}</div>
@@ -976,7 +980,7 @@
     <div v-if="help" class="modal-bg" @click.self="help = false">
       <div class="modal about">
         <div class="modal-head">
-          <img class="about-logo" src="/jk-logo.svg" alt="" width="40" height="40">
+          <img class="about-logo" src="jk-logo.svg" alt="" width="40" height="40">
           <div>
             <div class="about-title">JumpKick Build Engine</div>
             <div class="about-sub">{{ versionPill() }}</div>

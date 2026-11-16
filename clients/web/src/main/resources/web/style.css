@@ -209,6 +209,18 @@ header {
   text-transform: uppercase;
   color: var(--dim);
 }
+/* The engine switcher keeps the subtitle's look: one line, no box until hovered. */
+select.engine-switch {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  padding: 0 2px;
+  margin-left: -3px;
+  cursor: pointer;
+}
+select.engine-switch:hover,
+select.engine-switch:focus-visible { border-color: rgba(var(--cn-rgb), 0.45); color: var(--tx); }
+select.engine-switch option { text-transform: none; color: var(--tx); background: var(--bg); }
 
 /* faint vertical divider between header groups */
 .hdiv { width: 1px; align-self: stretch; margin: 15px 2px; background: rgba(var(--cn-rgb), 0.14); flex: none; }

@@ -24,7 +24,7 @@ final class EngineEpochGate {
         String path = exchange.getRequestURI().getPath();
         String method = exchange.getRequestMethod();
         boolean bootstrap = ("GET".equals(method) || "HEAD".equals(method))
-                && (path.equals("/api/status") || path.equals("/api/events"));
+                && (path.equals("/api/status") || path.equals("/api/events") || path.equals("/api/engines"));
         if (bootstrap) return true;
         String presented = exchange.getRequestHeaders().getFirst("X-Jk-Engine-Epoch");
         if (presented == null || presented.isBlank()) return false;

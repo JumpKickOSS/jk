@@ -1490,7 +1490,7 @@ why      = "a hand-built JSON line spells its own separator and escaping, and ev
 kind       = "forbid"
 signatures = ["java.net.http.HttpClient#newBuilder(**)"]
 owner      = "cc.jumpkick.http.Http"
-instead    = "Http's verbs (get / getStream / post / postForm / put), or Http.proxiedClientBuilder() paired with Http.proxiedRequest(uri) for a request shape they do not fit"
+instead    = "Http's verbs (get / getStream / post / postForm / put), or Http.proxiedClientBuilder() paired with Http.proxiedRequest(uri) for a request shape they do not fit, or Http.loopbackClientBuilder() for one engine reaching another on loopback"
 why        = "a client built outside Http goes direct behind the proxy every other request honours"
 
 # Every git command line, in jk and in its tests, is spelled by GitCommand, which starts it with the

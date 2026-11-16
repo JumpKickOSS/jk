@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { token } from './api.js';
+import { at, token } from './api.js';
 
 // The Coverage block on a run: the record's `coverage[]` rows — one per module, the whole-report
 // LINE and BRANCH counters of its jacoco.xml — as the results file prints them under `## Coverage`:
@@ -100,9 +100,12 @@ export function coverageChip(coverage) {
   return { text: s.headline.split(' · ')[0], tip: s.headline };
 }
 
-/** The engine route for run `historyId`'s HTML report, the bearer `tok` in the path. */
+/**
+ * The engine route for run `historyId`'s HTML report, the bearer `tok` in the path; under the front
+ * door's prefix for another engine's run, where the front door puts that engine's token in its place.
+ */
 export function reportHref(historyId, tok) {
-  return '/report/' + encodeURIComponent(tok || '') + '/' + encodeURIComponent(historyId || '') + '/';
+  return at('/report/') + encodeURIComponent(tok || '') + '/' + encodeURIComponent(historyId || '') + '/';
 }
 
 export const RunCoverage = {

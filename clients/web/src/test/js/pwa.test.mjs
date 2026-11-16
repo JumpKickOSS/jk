@@ -57,7 +57,7 @@ test('the manifest installs the dashboard root as JumpKick in its own window', (
   const sizes = (purpose) => manifest.icons.filter((i) => i.purpose === purpose).map((i) => i.sizes);
   assert.deepEqual(sizes('any').filter((s) => s !== 'any'), ['192x192', '512x512']);
   assert.deepEqual(sizes('maskable'), ['512x512']);
-  assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/);
+  assert.match(html, /<link rel="manifest" href="manifest\.webmanifest">/);
   const theme = /<meta name="theme-color" content="([^"]+)">/.exec(html);
   assert.equal(theme && theme[1], manifest.theme_color, 'the page and the installed window agree on the colour');
 });

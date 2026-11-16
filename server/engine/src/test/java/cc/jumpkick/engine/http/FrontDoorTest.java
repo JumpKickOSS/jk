@@ -1,0 +1,256 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.engine.http;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import cc.jumpkick.host.Guest;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * The front door's parts that need no running engine: discovery over the band ports, the pairing
+ * file a WSL guest writes into the Windows home and how it finds that home, and what a path under
+ * {@code /engines/<id>/} may be. The proxy itself, behind the token gate, is {@link FrontDoorProxyTest}.
+ */
+class FrontDoorTest {
+
+    private static final String GUEST_ID = "caf4beecf11d";
+
+    @TempDir
+    Path guests;
+
+    private final List<HttpServer> started = new ArrayList<>();
+
+    @AfterEach
+    void stopAll() {
+        started.forEach(s -> s.stop(0));
+    }
+
+    /** An engine answering only {@code /api/identity}, as id {@code id}, on an ephemeral loopback port. */
+    private int engineAnswering(String id) throws IOException {
+        HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        int port = s.getAddress().getPort();
+        s.createContext(
+                "/api/identity",
+                ex -> send(
+                        ex,
+                        "{\"id\":\"" + id + "\",\"label\":\"WSL Ubuntu on box\",\"role\":\"guest\",\"port\":" + port
+                                + "}"));
+        s.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        s.start();
+        started.add(s);
+        return port;
+    }
+
+    /** A loopback port with nothing listening. */
+    private static int closedPort() throws IOException {
+        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            return s.getLocalPort();
+        }
+    }
+
+    private static void send(HttpExchange ex, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        ex.sendResponseHeaders(200, bytes.length);
+        try (OutputStream out = ex.getResponseBody()) {
+            out.write(bytes);
+        }
+    }
+
+    private FrontDoor door(List<Integer> ports) {
+        EngineIdentity self = new EngineIdentity("90cec5c68a24", "windows", Guest.NONE, "box", "C:/me/.jk", "1.0");
+        return new FrontDoor(() -> self, () -> 8910, guests, ports);
+    }
+
+    @Test
+    void discovery_lists_itself_then_each_engine_answering_on_the_band_and_says_which_are_paired() throws Exception {
+        int guest = engineAnswering(GUEST_ID);
+        int closed = closedPort();
+        List<Integer> band = List.of(closed, guest);
+
+        List<Map<String, Object>> unpaired = door(band).engines();
+        assertThat(unpaired).extracting(m -> m.get("id")).containsExactly("90cec5c68a24", GUEST_ID);
+        assertThat(unpaired.get(0)).containsEntry("self", true).containsEntry("paired", true);
+        assertThat(unpaired.get(1))
+                .containsEntry("self", false)
+                .containsEntry("paired", false)
+                .containsEntry("label", "WSL Ubuntu on box");
+
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, guest, "guest-token"));
+        assertThat(door(band).engines().get(1)).containsEntry("paired", true);
+
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, closed, "guest-token"));
+        assertThat(door(band).engines().get(1)).as("a pairing for another port").containsEntry("paired", false);
+
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, guest, "guest-token"));
+        assertThat(door(List.of(closed)).engines())
+                .as("an engine off the band is not looked for, paired or not")
+                .extracting(m -> m.get("id"))
+                .containsExactly("90cec5c68a24");
+    }
+
+    @Test
+    void discovery_skips_an_answer_that_is_not_an_engine_and_an_engine_that_is_this_one() throws Exception {
+        int self = engineAnswering("90cec5c68a24");
+        int notHex = engineAnswering("../../etc");
+        assertThat(door(List.of(self, notHex)).engines())
+                .extracting(m -> m.get("id"))
+                .containsExactly("90cec5c68a24");
+    }
+
+    @Test
+    void discovery_asks_every_band_port_at_once() throws Exception {
+        List<Integer> band = new ArrayList<>();
+        for (int i = 0; i < 40; i++) band.add(closedPort());
+        band.add(engineAnswering(GUEST_ID));
+        long t0 = System.nanoTime();
+        List<Map<String, Object>> engines = door(band).engines();
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        assertThat(engines).hasSize(2);
+        // Serially, a Windows host's ~1 s per refused loopback port made this 40 s.
+        assertThat(ms).isLessThan(5_000);
+    }
+
+    @Test
+    void a_pairing_round_trips_owner_only_and_goes_away_when_removed() throws Exception {
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, 8988, "guest-token"));
+        assertThat(GuestPairing.read(guests))
+                .containsEntry(GUEST_ID, new GuestPairing.Pair(GUEST_ID, 8988, "guest-token"));
+        Path file = GuestPairing.file(guests, GUEST_ID);
+        if (Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
+            assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(file)))
+                    .isEqualTo("rw-------");
+        }
+
+        GuestPairing.remove(guests, GUEST_ID);
+        assertThat(GuestPairing.read(guests)).isEmpty();
+        assertThat(GuestPairing.read(guests.resolve("missing"))).isEmpty();
+    }
+
+    @Test
+    void a_pairing_file_is_read_only_when_named_for_the_engine_it_names() throws Exception {
+        Files.writeString(guests.resolve("0123456789ab.toml"), "id = \"caf4beecf11d\"\nport = 8912\ntoken = \"t\"\n");
+        Files.writeString(guests.resolve("zz.toml"), "id = \"zz\"\nport = 8912\ntoken = \"t\"\n");
+        Files.writeString(guests.resolve("aaaaaaaaaaaa.toml"), "id = \"aaaaaaaaaaaa\"\nport = 8912\ntoken = \"\"\n");
+        Files.writeString(guests.resolve("bbbbbbbbbbbb.toml"), "not toml at all");
+        assertThat(GuestPairing.read(guests)).isEmpty();
+        assertThatThrownBy(() -> GuestPairing.write(guests, new GuestPairing.Pair("../x", 8912, "t")))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void a_wsl_guest_finds_the_windows_engines_guests_directory_through_interop() {
+        Map<String, String> windows = new HashMap<>();
+        windows.put("USERPROFILE", "C:\\Users\\me");
+        GuestPairing.Interop interop = argv -> {
+            if (argv.getFirst().equals("wslpath")) {
+                return "/mnt/c/" + argv.get(2).substring(3).replace('\\', '/') + "\n";
+            }
+            String name = argv.get(3).replace("echo ", "").replace("%", "");
+            return windows.getOrDefault(name, "%" + name + "%") + "\r\n";
+        };
+        assertThat(GuestPairing.windowsDir(interop)).isEqualTo(Path.of("/mnt/c/Users/me/.jk/state/engine/guests"));
+
+        windows.put("JK_HOME", "D:\\jk");
+        assertThat(GuestPairing.windowsDir(
+                        argv -> argv.getFirst().equals("wslpath") ? "/mnt/d/jk/state\n" : interop.output(argv)))
+                .isEqualTo(Path.of("/mnt/d/jk/state/engine/guests"));
+
+        windows.put("JK_STATE_DIR", "E:\\state");
+        assertThat(GuestPairing.windowsDir(
+                        argv -> argv.getFirst().equals("wslpath") ? "/mnt/e/state\n" : interop.output(argv)))
+                .isEqualTo(Path.of("/mnt/e/state/engine/guests"));
+
+        assertThat(GuestPairing.windowsDir(argv -> null)).as("no interop").isNull();
+    }
+
+    @Test
+    void a_path_under_the_prefix_names_the_engine_and_the_path_the_engine_will_route() {
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/api/status"))
+                .isEqualTo(new FrontDoor.Target(GUEST_ID, "/api/status", "/api/status"));
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/")).isEqualTo(new FrontDoor.Target(GUEST_ID, "/", "/"));
+        assertThat(FrontDoor.target("/engines/caf4beecf11d")).isEqualTo(new FrontDoor.Target(GUEST_ID, "", ""));
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/a%20b.css"))
+                .isEqualTo(new FrontDoor.Target(GUEST_ID, "/a%20b.css", "/a b.css"));
+
+        assertThat(FrontDoor.target("/api/status")).isNull();
+        assertThat(FrontDoor.target("/engines/../api/status")).isNull();
+        assertThat(FrontDoor.target("/engines/CAF4BEECF11D/api/status")).isNull();
+        // Each of these could reach the engine as a path other than the one the front door gated.
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/api%3F/x"))
+                .as("an escaped ?")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/x%23/api/build"))
+                .as("an escaped #")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/x%2F..%2Fapi/build"))
+                .as("an escaped /")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/x%5Capi"))
+                .as("an escaped \\")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/x%2561pi"))
+                .as("a double escape")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/x/../api/build"))
+                .as("a dot segment")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/./api/build")).isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d//api/build"))
+                .as("an empty segment")
+                .isNull();
+        assertThat(FrontDoor.target("/engines/caf4beecf11d/%00"))
+                .as("a control character")
+                .isNull();
+
+        assertThat(FrontDoor.Kind.of("/api/events")).isEqualTo(FrontDoor.Kind.EVENTS);
+        assertThat(FrontDoor.Kind.of("/api/status")).isEqualTo(FrontDoor.Kind.API);
+        assertThat(FrontDoor.Kind.of("/api")).isEqualTo(FrontDoor.Kind.API);
+        assertThat(FrontDoor.Kind.of("/mcp")).isEqualTo(FrontDoor.Kind.MCP);
+        assertThat(FrontDoor.Kind.of("/report/t/r1/index.html")).isEqualTo(FrontDoor.Kind.REPORT);
+        assertThat(FrontDoor.Kind.of("/apix")).isEqualTo(FrontDoor.Kind.OPEN);
+        assertThat(FrontDoor.Kind.of("/index.html")).isEqualTo(FrontDoor.Kind.OPEN);
+    }
+
+    @Test
+    void the_browsers_access_token_never_leaves_and_the_engines_takes_its_place_only_when_asked() {
+        assertThat(FrontDoor.forwardedQuery("access_token=front&lastEventId=7", "g t"))
+                .isEqualTo("access_token=g+t&lastEventId=7");
+        assertThat(FrontDoor.forwardedQuery("lastEventId=7&access_token=front", null))
+                .isEqualTo("lastEventId=7");
+        assertThat(FrontDoor.forwardedQuery("access_token=front", null)).isNull();
+        assertThat(FrontDoor.forwardedQuery("lastEventId=7", "g"))
+                .as("no token asked for")
+                .isEqualTo("lastEventId=7");
+        assertThat(FrontDoor.forwardedQuery(null, "g")).isNull();
+
+        assertThat(FrontDoor.reportPath("/report/front/r1/index.html", "g")).isEqualTo("/report/g/r1/index.html");
+        assertThat(FrontDoor.reportPath("/report/front/r1/index.html", null)).isNull();
+        assertThat(FrontDoor.reportToken("/report/front/r1/")).isEqualTo("front");
+        assertThat(FrontDoor.reportToken("/report/front")).isNull();
+    }
+
+    @Test
+    void a_closed_port_answers_no_identity() throws Exception {
+        assertThat(door(List.of()).identityAt(closedPort())).isNull();
+    }
+}

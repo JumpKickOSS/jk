@@ -77,11 +77,19 @@ final class HttpTokenGate {
      * live activity (fail-closed).
      */
     boolean authorizesApi(HttpExchange exchange) {
+        return authorizesApi(exchange, exchange.getRequestURI().getPath());
+    }
+
+    /**
+     * {@link #authorizesApi} for {@code path}, the request's path inside a front-door prefix: the
+     * browser presents this engine's token, whatever engine the request is for.
+     */
+    boolean authorizesApi(HttpExchange exchange, String path) {
         if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
         return read
-                && exchange.getRequestURI().getPath().equals("/api/events")
+                && path.equals("/api/events")
                 && tokenValid(
                         HttpQuery.queryParamLenient(exchange.getRequestURI().getRawQuery(), "access_token"));
     }

@@ -54,6 +54,46 @@ it as `Engine`. The dashboard latches the `id` per tab, as it latches `engineEpo
 answers a different `id`, the tab freezes and names both engines instead of rendering the other
 engine's builds.
 
+### The front door
+
+A host engine is the machine's front door. `GET /api/engines` lists it and every engine that answers
+`GET /api/identity` on a band port (8911 to 8999, all asked at once: on Windows a loopback port with
+no listener takes about a second to refuse), each marked `paired` when this engine can proxy it.
+`GET /api/engines` takes the token and no epoch header, like `/api/status`, since a proxied page
+holds another engine's epoch.
+
+A paired engine's dashboard, API, event stream, MCP endpoint and coverage reports are served under
+`/engines/<id>/` (`FrontDoor`). The front door checks the browser's token in the shape the path
+takes it here: `Authorization` for `/api` and `/mcp`, `?access_token=` for the event stream and the
+MCP event-stream GET, the path segment for `/report/<token>/`. A request that presented it reaches
+`127.0.0.1:<port>`, never through a proxy, with the paired engine's token in that same shape, and the
+browser's token in none: `Authorization`, `Cookie` and `Referer` are dropped, as is any
+`access_token` in the query. A page or an asset reaches the engine with no token. A 401 from the
+engine becomes a 502, so a stale pairing never makes the dashboard drop the front door's token. The
+path is forwarded as the browser sent it, and one that could route otherwise at the engine (a dot or
+empty segment, an escaped `/`, `\`, `?`, `#` or `%`, a control character) is a 404. The response
+streams back as it comes, so an event stream flows through; a proxied stream draws on the
+event-stream budget, not RPC admission. Before forwarding, the front door asks the pairing's port for
+its identity and refuses (502) unless it answers with the pairing's id; the answer is trusted for
+two seconds. `/engines/<id>` without the slash redirects to it, since the dashboard's asset links are
+relative. The dashboard reads its prefix from its own path (`BASE` in `api.js`) and puts it on every
+API path, the event stream and the coverage link.
+
+Pairing (`GuestPairing`): a WSL guest with interop writes `<id>.toml` (`id`, `port`, `token`) to
+`<state>/engine/guests/` of the Windows engine, after it binds, and removes it when it stops. It
+finds that directory through `cmd.exe` (`%JK_STATE_DIR%`, else `%JK_HOME%\state`, else
+`%USERPROFILE%\.jk\state`) and `wslpath`. The front door reads the directory; an engine on a band
+port with no matching pairing is listed and not proxied, and a pairing is honoured only for a file
+named for its id and a port on the band.
+
+Who can pair or read a pairing: the directory is in the Windows user's profile, which Windows opens
+to that user and administrators only. Every process of a WSL distro reaches `/mnt/c` as that same
+Windows user, and could already read the Windows engine's own token there, so the pairing widens
+nothing. A web page cannot write a file, and cannot reach `/api/engines` or a proxied path without
+the token; the Host check (DNS rebinding) runs before the proxy as before any route. A planted
+pairing leaks nothing, since its token goes only to a band port on `127.0.0.1` that answers with its
+id.
+
 ## The engine never idles out
 
 **A resident engine does not self-terminate for being idle.** There is no idle timeout, and adding

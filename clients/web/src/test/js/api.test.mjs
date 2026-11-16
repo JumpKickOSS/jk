@@ -245,3 +245,21 @@ test('a re-created event stream names the last frame it saw, beside the token', 
   assert.equal(eventsUrl('t', '41'), '/api/events?access_token=t&lastEventId=41');
   assert.equal(eventsUrl('', '41'), '/api/events?lastEventId=41');
 });
+
+test('a page the front door serves under /engines/<id>/ reaches that engine through the prefix', async () => {
+  const saved = globalThis.location.pathname;
+  globalThis.location.pathname = '/engines/caf4beecf11d/';
+  try {
+    // A fresh instance: BASE is read from the page's path when the module loads.
+    const url = pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')).href + '?prefixed';
+    const { at, eventsUrl, BASE } = await import(url);
+    assert.equal(BASE, '/engines/caf4beecf11d');
+    assert.equal(at('/api/status'), '/engines/caf4beecf11d/api/status');
+    assert.equal(at('style.css'), 'style.css', 'a relative link resolves under the prefix by itself');
+    assert.equal(eventsUrl('t', ''), '/engines/caf4beecf11d/api/events?access_token=t');
+  } finally {
+    globalThis.location.pathname = saved;
+  }
+  const { BASE } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'api.js')));
+  assert.equal(BASE, '', "an engine's own pages have no prefix");
+});

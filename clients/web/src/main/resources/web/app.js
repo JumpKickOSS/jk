@@ -15,6 +15,7 @@ import {
   events,
   forgetShownEngine,
   identityHere,
+  machineEngines,
   noteEngineEpoch,
   noteEngineIdentity,
   settleEpochReload,
@@ -130,6 +131,7 @@ export const appOptions = {
     // Blocking gate when a required token is missing/invalid — no partial dashboard (docs/webclient.md).
     authModal: false,
     otherEngine: null,
+    engines: [],
     authCopied: false, // brief "Copied" feedback on the Access Denied console copy button
     _authCopiedTimer: null,
     wizard: emptyWizard(), // the #new page's form, answers and preview
@@ -166,6 +168,8 @@ export const appOptions = {
       if (this.view === 'activity') this.loadActivity();
       if (routeFromHash().whatsNew) this.openWhatsNew();
       this.watchSelfUpdate(window, document); // the header's Update pill (selfupdate.js)
+      this.refreshEngines();
+      this._enginesTimer = setInterval(() => this.refreshEngines(), 30_000);
     }
     // The service worker: installability, and notifications whose clicks come back as messages.
     registerWorker(navigator.serviceWorker, (message) => this.workerMessage(message));
@@ -289,6 +293,21 @@ export const appOptions = {
       if (!now || now.id === was.id) return false;
       this.markOtherEngine(now);
       return true;
+    },
+    /** The machine's engines, as the front door lists them, for the header's switcher. */
+    async refreshEngines() {
+      if (document.hidden) return;
+      this.engines = await machineEngines();
+    },
+    /** The id of the engine this page shows; null before its first status. */
+    shownEngineId() {
+      return this.status && this.status.identity ? this.status.identity.id : null;
+    },
+    /** Open engine {@code id}'s dashboard: the front door's own at the root, another under its prefix. */
+    switchEngine(id) {
+      const target = this.engines.find((e) => e.id === id);
+      if (!target || id === this.shownEngineId()) return;
+      location.href = target.self ? '/' : '/engines/' + id + '/';
     },
     /** Show whichever engine answers here now: forget the one this tab showed and load again. */
     showThisEngine() {

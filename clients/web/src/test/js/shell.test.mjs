@@ -2,7 +2,7 @@
 // The shell contract between index.html and the SPA's modules.
 //
 // `clients/web` has no bundler, but it does have a module system: index.html loads exactly one
-// entry, `<script src="/app.js" type="module">`, and every other file is reached from it through a
+// entry, `<script src="app.js" type="module">`, and every other file is reached from it through a
 // static `import`. So the browser topologically orders the graph and a bad specifier or a missing
 // export is a link error before a line of the app runs — a split costs an `import`, not a
 // `<script>` tag and a load-order convention.
@@ -70,7 +70,7 @@ test('index.html loads exactly one file of ours, as a module', () => {
   const scripts = localScripts();
   assert.deepEqual(
     scripts,
-    [{ src: '/app.js', module: true }],
+    [{ src: 'app.js', module: true }],
     'the SPA is one ES-module entry point; a second <script> would reintroduce a load order nothing checks',
   );
 });

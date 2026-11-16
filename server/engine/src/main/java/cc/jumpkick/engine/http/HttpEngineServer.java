@@ -68,6 +68,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Optional<JkHttpConfig.WebDisk> webDisk;
     private final HttpTokenGate tokens;
     private volatile @Nullable EngineIdentity identity;
+    private volatile @Nullable FrontDoor frontDoor;
     private final EngineEpochGate epoch;
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
@@ -171,6 +172,20 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Which engine this is, answered token-free at {@link #IDENTITY}. Before {@link #start}. */
     public void setIdentity(EngineIdentity identity) {
         this.identity = identity;
+    }
+
+    /**
+     * Makes this engine the machine's front door: {@code GET /api/engines} lists every engine, and
+     * {@link FrontDoor#PREFIX} proxies a paired one. Before {@link #start}.
+     */
+    public void setFrontDoor(FrontDoor door) {
+        this.frontDoor = door;
+        api.register("GET", "/api/engines", door::handleList);
+    }
+
+    /** Which engine this is; null before {@link #setIdentity}. */
+    public @Nullable EngineIdentity identity() {
+        return identity;
     }
 
     /** The port this server is bound to, or -1 when it is not. */
@@ -558,6 +573,10 @@ public final class HttpEngineServer implements AutoCloseable {
                     exchange, 200, JsonOut.rawObject(id.toMap(port())).toString());
             return;
         }
+        if (path.startsWith(FrontDoor.PREFIX)) {
+            proxy(exchange);
+            return;
+        }
         if (path.equals("/api") || path.startsWith("/api/")) {
             if (!tokens.authorizesApi(exchange)) {
                 tokens.challenge(exchange);
@@ -575,6 +594,33 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
+    }
+
+    /**
+     * A request under {@link FrontDoor#PREFIX}: its API, event-stream, MCP and coverage-report paths
+     * take this engine's token in the shape they take it here, and only a request that presented it
+     * reaches the engine with that engine's token; its pages are open, as here.
+     */
+    private void proxy(HttpExchange exchange) throws IOException {
+        FrontDoor door = frontDoor;
+        FrontDoor.Target target = FrontDoor.target(exchange.getRequestURI().getRawPath());
+        if (door == null || target == null) {
+            HttpResponses.sendText(exchange, 404, "not found\n");
+            return;
+        }
+        FrontDoor.Kind kind = FrontDoor.Kind.of(target.path());
+        boolean authorized =
+                switch (kind) {
+                    case EVENTS, API -> tokens.authorizesApi(exchange, target.path());
+                    case MCP -> tokens.authorizesMcp(exchange);
+                    case REPORT -> tokens.tokenValid(FrontDoor.reportToken(target.path()));
+                    case OPEN -> false;
+                };
+        if (kind != FrontDoor.Kind.OPEN && !authorized) {
+            tokens.challenge(exchange);
+            return;
+        }
+        door.proxy(exchange, target, kind, authorized);
     }
 
     /** Test seam: rebind rules for in-flight history rows. */
