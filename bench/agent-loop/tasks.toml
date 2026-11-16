@@ -306,3 +306,14 @@ to `PETCLINIC_DB_URL`. Every place in the repository that sets or reads it must 
 PostgreSQL container's own variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) are a
 different thing and keep their names.
 """
+
+# Anchor traps a plain text search misses: the dependent place spells the name another way.
+[tasks.petclinic-anchor-relaxed-env]
+repo   = "spring-petclinic"
+kind   = "rename-property"
+tools  = ["jk"]
+prompt = """
+Rename the configuration property `petclinic.visits.max-per-day` to `petclinic.visits.daily-limit`,
+and its Java property `maxPerDay` on `VisitLimits` to `dailyLimit`. Everything in the repository that
+sets or reads it must use the new name.
+"""
