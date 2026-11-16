@@ -26,6 +26,8 @@ final class EngineEpochGate {
         boolean bootstrap = ("GET".equals(method) || "HEAD".equals(method))
                 && (path.equals("/api/status") || path.equals("/api/events") || path.equals("/api/engines"));
         if (bootstrap) return true;
+        // Engine to engine: the front door's control messages, which hold no tab's epoch.
+        if ("POST".equals(method) && path.startsWith(FrontDoor.CONTROL)) return true;
         String presented = exchange.getRequestHeaders().getFirst("X-Jk-Engine-Epoch");
         if (presented == null || presented.isBlank()) return false;
         StatusSnapshot s = status.get();

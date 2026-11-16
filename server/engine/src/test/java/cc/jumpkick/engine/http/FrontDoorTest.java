@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -292,5 +293,66 @@ class FrontDoorTest {
     @Test
     void a_closed_port_answers_no_identity() throws Exception {
         assertThat(door(List.of()).identityAt(closedPort())).isNull();
+    }
+
+    @Test
+    void the_front_door_tells_each_paired_engine_with_its_own_token_and_asks_the_8910_holder_to_step_aside()
+            throws Exception {
+        List<String> heard = new CopyOnWriteArrayList<>();
+        HttpServer band = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        band.createContext(FrontDoor.CONTROL, ex -> {
+            heard.add(ex.getRequestMethod() + " " + ex.getRequestURI().getPath() + " "
+                    + ex.getRequestHeaders().getFirst("Authorization"));
+            send(ex, "{\"stepped\":true}");
+        });
+        band.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        band.start();
+        started.add(band);
+        int bandPort = band.getAddress().getPort();
+        // The guest's 8910 listener: answers its identity as a guest.
+        HttpServer front = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        front.createContext(
+                "/api/identity", ex -> send(ex, "{\"id\":\"" + GUEST_ID + "\",\"role\":\"guest\",\"port\":8910}"));
+        front.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        front.start();
+        started.add(front);
+        int frontPort = front.getAddress().getPort();
+
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, bandPort, "guest-token"));
+        GuestPairing.write(guests, new GuestPairing.Pair("90cec5c68a24", bandPort, "self-token"));
+        FrontDoor door = door(List.of(bandPort));
+
+        assertThat(door.tell("present"))
+                .as("this engine's own pairing is skipped")
+                .isEqualTo(1);
+        assertThat(door.askToStepAside(frontPort)).isTrue();
+        assertThat(heard)
+                .containsExactly(
+                        "POST /api/front-door/present Bearer guest-token",
+                        "POST /api/front-door/step-aside Bearer guest-token");
+
+        heard.clear();
+        int notJk = engineAnswering("0123456789ab");
+        assertThat(door.askToStepAside(notJk))
+                .as("an unpaired holder is not asked")
+                .isFalse();
+        assertThat(door.askToStepAside(closedPort())).isFalse();
+        assertThat(heard).isEmpty();
+    }
+
+    @Test
+    void the_front_door_token_is_the_hosts_token_and_the_front_door_file_wins() throws Exception {
+        Path own = guests.resolve("abc.http-token");
+        Path front = FrontDoorToken.file(guests);
+        FrontDoorToken.align(guests, own);
+        assertThat(front).doesNotExist();
+
+        Files.writeString(own, "host-token");
+        FrontDoorToken.align(guests, own);
+        assertThat(Files.readString(front).strip()).as("seeded from the host's").isEqualTo("host-token");
+
+        Files.writeString(front, "shared-token");
+        FrontDoorToken.align(guests, own);
+        assertThat(Files.readString(own).strip()).as("adopted by the host").isEqualTo("shared-token");
     }
 }

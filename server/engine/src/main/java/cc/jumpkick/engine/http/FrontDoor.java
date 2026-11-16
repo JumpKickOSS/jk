@@ -51,6 +51,12 @@ public final class FrontDoor {
     /** The path prefix an engine's pages and API are proxied under. */
     public static final String PREFIX = "/engines/";
 
+    /** Where a guest takes the front door's control messages, each with the guest's own token. */
+    public static final String CONTROL = "/api/front-door/";
+
+    /** How long a control message waits for the engine it is for. */
+    private static final Duration CONTROL_WAIT = Duration.ofMillis(1_500);
+
     private static final Pattern ID = Pattern.compile("[0-9a-f]{12}");
 
     /** How long discovery waits for the band ports to answer, all of them at once. */
@@ -373,6 +379,62 @@ public final class FrontDoor {
         } catch (IOException closed) {
             // The browser left, or the engine closed its stream; either ends the exchange.
         }
+    }
+
+    /**
+     * Tells every other paired engine this front door is there ({@code present}) or stopping ({@code
+     * leaving}), each with its own token, all at once; answers how many took it.
+     */
+    public int tell(String message) {
+        EngineIdentity me = self.get();
+        List<CompletableFuture<Boolean>> sent = new ArrayList<>();
+        for (GuestPairing.Pair pair : paired().values()) {
+            if (me != null && me.id().equals(pair.id())) continue;
+            sent.add(control(pair, message));
+        }
+        int took = 0;
+        for (CompletableFuture<Boolean> f : sent) {
+            try {
+                if (f.get(CONTROL_WAIT.toMillis() + 500, TimeUnit.MILLISECONDS)) took++;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (ExecutionException | TimeoutException e) {
+                f.cancel(true);
+            }
+        }
+        return took;
+    }
+
+    /**
+     * Asks the paired guest holding {@code port} (8910) to give it up: reads who answers there, and
+     * sends that guest {@code step-aside} on its own port with its own token. False when no paired
+     * guest holds it, or it did not let go.
+     */
+    public boolean askToStepAside(int port) {
+        Map<String, Object> holder = identityAt(port);
+        if (holder == null || !"guest".equals(holder.get("role"))) return false;
+        GuestPairing.Pair pair = paired().get(String.valueOf(holder.get("id")));
+        if (pair == null) return false;
+        try {
+            return control(pair, "step-aside").get(CONTROL_WAIT.toMillis() + 500, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (ExecutionException | TimeoutException e) {
+            return false;
+        }
+    }
+
+    private CompletableFuture<Boolean> control(GuestPairing.Pair pair, String message) {
+        HttpRequest req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + pair.port() + CONTROL + message))
+                .timeout(CONTROL_WAIT)
+                .header("Authorization", "Bearer " + pair.token())
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        return client.sendAsync(req, HttpResponse.BodyHandlers.discarding())
+                .thenApply(r -> r.statusCode() == 200)
+                .exceptionally(failed -> false);
     }
 
     /** The pairings in the guests' directory whose port is one this front door looks on. */

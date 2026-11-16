@@ -45,6 +45,8 @@ public final class EngineRotateTokenCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         try {
             Files.deleteIfExists(paths.httpToken());
+            // The host engine's token is the front door's too (EnginePaths.FRONT_DOOR_TOKEN).
+            Files.deleteIfExists(paths.dir().resolve(EnginePaths.FRONT_DOOR_TOKEN));
         } catch (IOException e) {
             CommandWedge.printFail("Engine", "could not remove the token file (" + e.getMessage() + ")");
             return Exit.SOFTWARE;

@@ -27,6 +27,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -181,6 +182,51 @@ public final class HttpEngineServer implements AutoCloseable {
     public void setFrontDoor(FrontDoor door) {
         this.frontDoor = door;
         api.register("GET", "/api/engines", door::handleList);
+    }
+
+    /**
+     * Makes this guest answer the front door's control messages ({@link FrontDoor#CONTROL}): {@code
+     * present}, {@code leaving} and {@code step-aside}, each with this engine's own token. Before
+     * {@link #start}.
+     */
+    public void setFrontDoorRole(FrontDoorRole role) {
+        api.register("POST", FrontDoor.CONTROL + "present", ex -> {
+            role.present();
+            HttpResponses.sendJson(ex, 200, "{}");
+        });
+        api.register("POST", FrontDoor.CONTROL + "leaving", ex -> {
+            role.leaving();
+            HttpResponses.sendJson(ex, 200, "{}");
+        });
+        api.register(
+                "POST",
+                FrontDoor.CONTROL + "step-aside",
+                ex -> HttpResponses.sendJson(
+                        ex,
+                        200,
+                        JsonOut.object().put("stepped", role.stepAside()).toString()));
+    }
+
+    private volatile @Nullable String frontDoorHome;
+
+    /**
+     * Makes this a listener that serves only the front door, for a guest holding 8910: the root page
+     * goes to engine {@code id}'s dashboard under {@link FrontDoor#PREFIX}, where it has every route.
+     */
+    public void setFrontDoorHome(String id) {
+        this.frontDoorHome = id;
+    }
+
+    private volatile @Nullable String identityNonce;
+
+    /** A value {@code GET /api/identity} echoes as {@code nonce}, so a check from elsewhere can tell this listener answered. */
+    public void setIdentityNonce(@Nullable String nonce) {
+        this.identityNonce = nonce;
+    }
+
+    /** The front door this server is, or null. */
+    public @Nullable FrontDoor frontDoor() {
+        return frontDoor;
     }
 
     /** Which engine this is; null before {@link #setIdentity}. */
@@ -569,8 +615,10 @@ public final class HttpEngineServer implements AutoCloseable {
                 HttpResponses.sendText(exchange, 404, "not found\n");
                 return;
             }
-            HttpResponses.sendJson(
-                    exchange, 200, JsonOut.rawObject(id.toMap(port())).toString());
+            Map<String, Object> answer = new LinkedHashMap<>(id.toMap(port()));
+            String nonce = identityNonce;
+            if (nonce != null) answer.put("nonce", nonce);
+            HttpResponses.sendJson(exchange, 200, JsonOut.rawObject(answer).toString());
             return;
         }
         if (path.startsWith(FrontDoor.PREFIX)) {
@@ -587,6 +635,13 @@ public final class HttpEngineServer implements AutoCloseable {
                 return;
             }
             api.handle(exchange);
+            return;
+        }
+        String home = frontDoorHome;
+        if (home != null && (path.equals("/") || path.equals("/index.html"))) {
+            exchange.getResponseHeaders().set("Location", FrontDoor.PREFIX + home + "/");
+            exchange.getResponseHeaders().set("Cache-Control", "no-store");
+            HttpResponses.sendText(exchange, 302, "the front door is engine " + home + "\n");
             return;
         }
         if (path.startsWith(HttpCoverageReport.PREFIX)) {

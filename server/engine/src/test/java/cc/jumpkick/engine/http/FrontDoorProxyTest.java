@@ -4,6 +4,7 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Guest;
+import cc.jumpkick.host.time.Clock;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.BufferedReader;
@@ -242,5 +243,64 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                 .as("the port answers as " + GUEST_ID)
                 .isEqualTo(502);
         assertThat(reached).isEmpty();
+    }
+
+    @Test
+    void a_guest_takes_the_front_doors_control_messages_with_its_own_token_and_no_epoch() throws Exception {
+        FrontDoorRole role = new FrontDoorRole(
+                new FrontDoorRole.Seat() {
+                    @Override
+                    public boolean take() {
+                        return true;
+                    }
+
+                    @Override
+                    public void release() {}
+
+                    @Override
+                    public FrontDoorRole.Reach verify() {
+                        return FrontDoorRole.Reach.REACHABLE;
+                    }
+                },
+                Clock.SYSTEM,
+                () -> 0,
+                line -> {});
+        server.setFrontDoorRole(role);
+        HttpResponse<String> present = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/present"))
+                        .header("Authorization", "Bearer " + token())
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(present.statusCode()).isEqualTo(200);
+        HttpResponse<String> stepAside = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/step-aside"))
+                        .header("Authorization", "Bearer " + token())
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(stepAside.body()).isEqualTo("{\"stepped\":false}");
+        HttpResponse<String> anonymous = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/step-aside"))
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(anonymous.statusCode()).isEqualTo(401);
+        HttpResponse<String> queryToken = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/step-aside?access_token=" + token()))
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(queryToken.statusCode()).as("bearer only").isEqualTo(401);
+    }
+
+    @Test
+    void a_front_door_only_listener_sends_its_root_to_its_engines_dashboard_and_echoes_a_nonce() throws Exception {
+        server.setFrontDoorHome(GUEST_ID);
+        server.setIdentityNonce("n-42");
+        HttpResponse<String> root = send("/");
+        assertThat(root.statusCode()).isEqualTo(302);
+        assertThat(root.headers().firstValue("Location")).contains("/engines/" + GUEST_ID + "/");
+        assertThat(send("/api/identity").body()).contains("\"nonce\":\"n-42\"");
     }
 }

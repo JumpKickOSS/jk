@@ -6,12 +6,14 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.LockFloor;
+import cc.jumpkick.engine.decisions.DecisionAlerts;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.http.BandPort;
 import cc.jumpkick.engine.http.CacheSnapshot;
 import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.EngineIdentity;
 import cc.jumpkick.engine.http.FrontDoor;
+import cc.jumpkick.engine.http.FrontDoorToken;
 import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
@@ -35,6 +37,7 @@ import java.io.IOException;
 import java.net.BindException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
@@ -112,6 +115,7 @@ public final class EngineHttpFront {
         Path bandFile =
                 id.guest().guest() && !JkHttpConfig.portNamed() ? paths.dir().resolve(BandPort.FILE) : null;
         JkHttpConfig first = bandFile == null ? config : config.withPort(BandPort.preferred(bandFile, id.id()));
+        if (!id.guest().guest()) FrontDoorToken.align(paths.dir(), paths.httpToken());
         HttpEngineServer candidate = candidate(first, hub, id);
         try {
             candidate.start(1);
@@ -138,6 +142,11 @@ public final class EngineHttpFront {
             EngineIdentity id,
             @Nullable Path bandFile) {
         try {
+            // A WSL guest holding 8910 while no host ran gives it back; the bind retries for 5 s.
+            FrontDoor door = candidate.frontDoor();
+            if (door != null && door.askToStepAside(first.port())) {
+                log.accept("jk engine: asked the WSL engine holding port " + first.port() + " to give it back");
+            }
             candidate.start();
             serve(candidate, bandFile);
             return;
@@ -221,6 +230,41 @@ public final class EngineHttpFront {
             return;
         }
         log.accept("jk engine: http listening on " + candidate.url());
+        if (candidate.frontDoor() != null) {
+            FrontDoorToken.align(paths.dir(), paths.httpToken());
+            duty = FrontDoorDuty.host(() -> server, log);
+        }
+    }
+
+    /** What this engine does for the front door while it serves; null before it serves. */
+    private volatile @Nullable FrontDoorDuty duty;
+
+    /**
+     * The 8910 listener a WSL guest serves the front door on while it holds the role: the front
+     * door's token from the Windows engine's directory, the Windows pairings, and the root page sent
+     * to this guest's own dashboard under its prefix.
+     */
+    private HttpEngineServer frontListener(Path windowsEngineDir, EngineIdentity id) {
+        HttpEvents hub = Objects.requireNonNull(events);
+        JkHttpConfig cfg = Objects.requireNonNull(config).withPort(JkHttpConfig.DEFAULT_PORT);
+        HttpEngineServer front = new HttpEngineServer(
+                cfg,
+                JkDirs.home(),
+                FrontDoorToken.file(windowsEngineDir),
+                paths.log(),
+                version,
+                status,
+                hub,
+                httpJobs(),
+                journal,
+                () -> metrics.get().entries(),
+                CacheSnapshot.memoizing(JkDirs.cache(), () -> status.get().activeBuildPlans() == 0),
+                log);
+        front.setIdentity(id);
+        front.setFrontDoorHome(id.id());
+        front.setFrontDoor(
+                new FrontDoor(() -> id, front::port, windowsEngineDir.resolve(GuestPairing.DIR), FrontDoor.band()));
+        return front;
     }
 
     private void failed(HttpEngineServer candidate, Exception e) {
@@ -252,11 +296,31 @@ public final class EngineHttpFront {
                 GuestPairing.write(dir, new GuestPairing.Pair(id.id(), candidate.port(), token));
                 pairing = new Paired(dir, id.id());
                 // Stopped while interop answered: close() found no pairing to remove.
-                if (stopped) unpair();
+                if (stopped) {
+                    unpair();
+                    return;
+                }
+                Path engineDir = dir.getParent();
+                if (engineDir != null && duty == null) {
+                    duty = FrontDoorDuty.guest(
+                            candidate,
+                            id.id(),
+                            dir,
+                            () -> frontListener(engineDir, id),
+                            DecisionAlerts.wslDesktop(id.guest()),
+                            log);
+                }
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: could not pair with the Windows engine (" + e.getMessage() + ")");
             }
         });
+    }
+
+    /** Says the front door is leaving when this engine is it, and gives 8910 up. */
+    private void endDuty() {
+        FrontDoorDuty d = duty;
+        duty = null;
+        if (d != null) d.close();
     }
 
     private void unpair() {
@@ -268,6 +332,7 @@ public final class EngineHttpFront {
     /** Hand the Web UI port to a successor immediately (idempotent). */
     public void stopNow() {
         stopped = true;
+        endDuty();
         unpair();
         HttpEngineServer h = server;
         if (h != null) h.stopNow();
@@ -275,6 +340,7 @@ public final class EngineHttpFront {
 
     public void close() {
         stopped = true;
+        endDuty();
         unpair();
         HttpEngineServer h = server;
         if (h != null) h.close();

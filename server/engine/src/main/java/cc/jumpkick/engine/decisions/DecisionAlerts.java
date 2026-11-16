@@ -139,7 +139,7 @@ public final class DecisionAlerts implements AutoCloseable {
     }
 
     /** The Windows profile a WSL guest with interop registers in; null for any other host. */
-    static @Nullable WslWindowsDesktop wslDesktop(Guest guest) {
+    public static @Nullable WslWindowsDesktop wslDesktop(Guest guest) {
         if (guest.kind() != Guest.Kind.WSL || !guest.interop()) return null;
         return new WslWindowsDesktop(new WslWindowsDesktop.Shell() {
             @Override

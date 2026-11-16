@@ -94,6 +94,34 @@ the token; the Host check (DNS rebinding) runs before the proxy as before any ro
 pairing leaks nothing, since its token goes only to a band port on `127.0.0.1` that answers with its
 id.
 
+### The front-door role
+
+Holding 8910 is the role: the port is the lock, so two holders cannot share one loopback (WSL
+distros share one VM network). The host engine binds 8910; a WSL guest takes it only while no front
+door is heard from (`FrontDoorRole`, `FrontDoorDuty`).
+
+- **Token.** One front-door token in `<state>/engine/front-door.token` (`EnginePaths.FRONT_DOOR_TOKEN`).
+  The host engine's own HTTP token is that token: at start `FrontDoorToken.align` makes the two files
+  agree, the front-door file winning, and a host with only its own token seeds it. A guest holding
+  8910 serves it with the same token, read from the Windows engine's directory, so a tab and a
+  bookmark keep working through a handover. `jk engine rotate-token` removes both files. Proxied
+  requests still carry only the target engine's token.
+- **Heartbeat.** The front door POSTs `/api/front-door/present` to every other paired engine every
+  2 s, and `/api/front-door/leaving` when it stops; each with that engine's own token, read from its
+  pairing, bearer only and exempt from the epoch header. Nothing on 8910 is needed for control.
+- **Takeover.** A guest that hears nothing for its delay binds 8910 in the VM through a second,
+  front-door-only listener (its band port stays; `/` redirects to `/engines/<own id>/`). The delay is
+  5 s, then 15 s, 60 s and at most 5 min after each takeover, back to 5 s after 10 min without one,
+  plus 2 s for each paired guest with a lower id; `leaving` skips the 5 s.
+- **Check from Windows.** A guest's bind succeeds in the VM even when Windows' 8910 is taken, so it
+  checks with `powershell.exe -NoProfile -NonInteractive` (a `TcpClient` GET of `/api/identity` on
+  Windows' `127.0.0.1:8910`, never `curl.exe`) that the answer echoes a nonce it just set. Echoed: it
+  keeps the role. Refused, or another answer: it lets go and logs `front door unreachable from
+  Windows`. No interop, PowerShell missing or blocked, a timeout: it keeps the role and logs once.
+- **Reclaim.** A host that finds 8910 taken reads the identity there and, for a paired guest, POSTs
+  `/api/front-door/step-aside` to the guest's band port; the guest closes its 8910 listener and the
+  host's bind retries for 5 s (wslrelay lets go about a second later).
+
 ## The engine never idles out
 
 **A resident engine does not self-terminate for being idle.** There is no idle timeout, and adding

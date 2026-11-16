@@ -136,7 +136,9 @@ the port you name instead.
 
 The host's dashboard at 8910 is the front door to every engine on the machine: its header switches
 to a WSL engine's dashboard, served through the host with the host's token ([Web](web.md)). A WSL
-engine pairs with the Windows engine by itself when it starts.
+engine pairs with the Windows engine by itself when it starts. While the Windows engine is stopped,
+the WSL engine holds 8910 instead, with the same token, so a bookmark or an open tab keeps working;
+the Windows engine takes it back when it starts.
 
 `jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there

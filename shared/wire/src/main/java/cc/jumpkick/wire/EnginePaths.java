@@ -63,6 +63,13 @@ public final class EnginePaths {
      */
     public static final String NO_SPAWN_ENV = "JK_ENGINE_NO_SPAWN";
 
+    /**
+     * The front-door token beside the engine files ({@link Paths#dir()}): the one bearer token
+     * whichever engine holds 8910 takes, so a tab survives a handover. A host engine's own HTTP token
+     * is this one; {@code jk engine rotate-token} removes both.
+     */
+    public static final String FRONT_DOOR_TOKEN = "front-door.token";
+
     public static Paths current() {
         return resolve(JkDirs.state(), JkDirs.store());
     }
