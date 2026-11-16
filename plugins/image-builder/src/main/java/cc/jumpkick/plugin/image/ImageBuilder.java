@@ -263,22 +263,45 @@ public final class ImageBuilder {
         return layer.build();
     }
 
-    /** Only the files staged before training — the cache ships as its own layer. */
-    private static FileEntriesLayer stagedTreeLayer(AotCacheTrainer.Result aot) throws IOException {
+    /**
+     * The files staged before training, in the layers the image keeps without a cache, least
+     * volatile first: the release dependency jars, then the snapshot and sibling jars, then the
+     * application; the cache follows as a layer of its own. Each file keeps the path and the time it
+     * was trained at, which is all the JVM checks of a classpath entry, so which layer carries it
+     * does not touch the cache's validity, and an application change re-pushes the application's
+     * layer and the cache's only. Training-run droppings are not staged files and ship nowhere.
+     */
+    static List<FileEntriesLayer> stagedLayers(AotCacheTrainer.Result aot, Plan plan) throws IOException {
+        Set<String> release = new HashSet<>();
+        for (Path jar : plan.dependencyJars()) release.add("libs/" + plan.nameOf(jar));
+        Set<String> snapshot = new HashSet<>();
+        for (Path jar : plan.snapshotJars()) snapshot.add("libs/" + plan.nameOf(jar));
         Path root = aot.stagingRoot();
-        FileEntriesLayer.Builder layer = FileEntriesLayer.builder();
-        try (var walk = Files.walk(root)) {
-            for (Path file : walk.filter(Files::isRegularFile).sorted().toList()) {
-                String rel = root.relativize(file).toString().replace('\\', '/');
-                if (!aot.stagedFiles().contains(rel)) continue; // training-run droppings
-                layer.addEntry(
-                        file,
-                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/" + rel),
-                        FilePermissions.DEFAULT_FILE_PERMISSIONS,
-                        AotCacheTrainer.LAYER_TIME.toInstant());
-            }
+        List<FileEntriesLayer.Builder> layers = List.of(
+                FileEntriesLayer.builder().setName("dependencies"),
+                FileEntriesLayer.builder().setName("snapshot-dependencies"),
+                FileEntriesLayer.builder().setName("application"));
+        int[] counts = new int[layers.size()];
+        List<Path> files = new ArrayList<>();
+        PathUtil.forEachRegularFile(root, (file, attrs) -> files.add(file));
+        files.sort(null);
+        for (Path file : files) {
+            String rel = root.relativize(file).toString().replace('\\', '/');
+            if (!aot.stagedFiles().contains(rel)) continue;
+            int index = release.contains(rel) ? 0 : snapshot.contains(rel) ? 1 : 2;
+            counts[index]++;
+            layers.get(index)
+                    .addEntry(
+                            file,
+                            AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/" + rel),
+                            FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                            AotCacheTrainer.LAYER_TIME.toInstant());
         }
-        return layer.build();
+        List<FileEntriesLayer> out = new ArrayList<>();
+        for (int i = 0; i < layers.size(); i++) {
+            if (counts[i] > 0) out.add(layers.get(i).build());
+        }
+        return out;
     }
 
     /**
@@ -390,9 +413,9 @@ public final class ImageBuilder {
         }
 
         // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
-        // staged manifest + cache. The staged tree IS the application — shipping layers 1-3 as
-        // well would double every byte, and shipping the whole post-training staging root would
-        // embed whatever the app wrote during the record run.
+        // staged manifest + cache. The staged tree IS the application, shipped in the same three
+        // layers as without a cache and the cache last; shipping the whole post-training staging
+        // root would embed whatever the app wrote during the record run.
         AotCacheTrainer.Result aot = null;
         String appClasspath = null;
         if (cfg.aotCache()) {
@@ -402,7 +425,7 @@ public final class ImageBuilder {
             }
             aot = AotCacheTrainer.train(
                     plan, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
-            builder = builder.addFileEntriesLayer(stagedTreeLayer(aot));
+            for (FileEntriesLayer layer : stagedLayers(aot, plan)) builder = builder.addFileEntriesLayer(layer);
             builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
         } else {

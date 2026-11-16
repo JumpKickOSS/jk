@@ -176,10 +176,6 @@ at     = "cc.jumpkick.plugin.image.BootLayout#launcherJarIn(Ljava/nio/file/Path;
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/image-builder"
-at     = "cc.jumpkick.plugin.image.ImageBuilder#stagedTreeLayer(Lcc/jumpkick/plugin/image/AotCacheTrainer$Result;)Lcom/google/cloud/tools/jib/api/buildplan/FileEntriesLayer; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "plugins/image-builder"
 at     = "cc.jumpkick.plugin.image.ImageBuilder#treeLayer(Ljava/nio/file/Path;Ljava/lang/String;)Lcom/google/cloud/tools/jib/api/buildplan/FileEntriesLayer; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]

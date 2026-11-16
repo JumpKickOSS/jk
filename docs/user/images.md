@@ -133,6 +133,13 @@ aot-cache = true
 Trains a JEP 514 AOT cache and ships it as an image layer, with the entrypoint pointing at
 it. Opt-in: it costs a training run at build time and tens of MiB of image.
 
+The trained tree keeps the layers an image without a cache has, and the cache comes last: release
+dependency jars, then `-SNAPSHOT` and sibling jars, then the application, then `app.aot`. A code
+change re-pushes the application's layer and the cache's; the release layer stays. The layering
+cannot break the cache: what the JVM checks of each classpath entry is its path, its size and its
+modification time, and every file ships at the path and with the time it was trained at, whichever
+layer carries it.
+
 The cache is only valid for the **exact JVM build** that produced it, so JumpKick trains
 with the **image’s own JVM**, never the build JDK:
 
