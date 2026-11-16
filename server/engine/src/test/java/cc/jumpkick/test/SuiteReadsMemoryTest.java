@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
@@ -22,8 +23,9 @@ import org.junit.jupiter.api.io.TempDir;
  * a hundred chunks, the last carrying 32,768 distinct stack traces from an in-process recording,
  * are read inside a 48 MiB heap. The JDK's own parser resolves every constant pool of a chunk
  * first, and one such chunk took 160 MB of the engine's 256 MiB heap and ended it; on that parser
- * the same recording does not fit 48 MiB. A run that names more files than {@link
- * SuiteReads#MAX_PATHS} is incomplete rather than held whole.
+ * the same recording does not fit 48 MiB. No number of files costs a run its replay: a run that
+ * reads and writes 200,000 files in its own sandbox is read whole in a 48 MiB heap, holding only
+ * its few real inputs, and what it keeps is exactly what the whole set would have given.
  *
  * <p>The recordings are made in a child JVM: an event this JVM committed would also land in its
  * own suite recording, which the engine running this suite reads when it ends.
@@ -48,6 +50,13 @@ class SuiteReadsMemoryTest {
         String command;
     }
 
+    /** A file write as the JDK's own event names it. */
+    @Name("jdk.FileWrite")
+    static final class Write extends Event {
+        @Nullable
+        String path;
+    }
+
     static long sink;
 
     /** Commit along the bits of {@code n}, so each {@code n} below 2^depth has its own stack. */
@@ -67,6 +76,12 @@ class SuiteReadsMemoryTest {
 
     static void right(int n, int depth, String path) {
         deep(n, depth, path);
+    }
+
+    private static void write(String path) {
+        Write write = new Write();
+        write.path = path;
+        write.commit();
     }
 
     private static void read(String path) {
@@ -89,13 +104,38 @@ class SuiteReadsMemoryTest {
     }
 
     @Test
-    @Timeout(120)
-    void a_run_naming_more_files_than_the_cap_is_incomplete(@TempDir Path tmp) throws Exception {
+    @Timeout(300)
+    void a_run_naming_200000_files_in_its_sandbox_is_read_whole_in_a_small_heap(@TempDir Path tmp) throws Exception {
         Path recordings = Files.createDirectories(tmp.resolve("rec"));
-        assertThat(child(tmp, "-Xmx256m", "wide", recordings, tmp)).contains("exit=0", "made");
-        SuiteReads.Observed seen = SuiteReads.collect(recordings, tmp);
-        assertThat(seen.complete()).isFalse();
-        assertThat(seen.files()).isEmpty();
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        for (int i = 0; i < 3; i++)
+            Files.writeString(Files.createDirectories(ws.resolve("inputs")).resolve("in" + i), "x");
+        assertThat(child(tmp, "-Xmx256m", "wide", recordings, ws)).contains("exit=0", "made");
+        String out = child(tmp, "-Xmx48m", "sandboxed", recordings, ws);
+        assertThat(out).contains("exit=0", "complete=true files=3");
+    }
+
+    /**
+     * Holding only the candidates while reading changes nothing: the inputs kept are the ones the
+     * whole set gives, a file the run wrote included, a file that is gone excluded.
+     */
+    @Test
+    @Timeout(120)
+    void the_candidates_give_the_inputs_the_whole_set_gives(@TempDir Path tmp) throws Exception {
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path inputs = Files.createDirectories(ws.resolve("inputs"));
+        for (int i = 0; i < 50; i++) Files.writeString(inputs.resolve("in" + i), "x");
+        Files.writeString(inputs.resolve("own"), "written by the run");
+        assertThat(child(tmp, "-Xmx256m", "mixed", recordings, ws)).contains("exit=0", "made");
+        List<Path> roots = List.of(ws.resolve("sandbox"), ws.resolve("target"));
+        SuiteReads.Observed whole = SuiteReads.collect(recordings, ws);
+        SuiteReads.Observed held = SuiteReads.collect(recordings, ws, SuiteReads.candidates(roots));
+        assertThat(held.files().size()).isLessThan(whole.files().size());
+        Set<Path> fromWhole = SuiteReads.undeclared(whole, roots, ws, 0);
+        assertThat(SuiteReads.undeclared(held, roots, ws, 0))
+                .isEqualTo(fromWhole)
+                .hasSize(50);
     }
 
     /**
@@ -150,6 +190,16 @@ class SuiteReadsMemoryTest {
             switch (args[0]) {
                 case "deep" -> deep(recordings, ws);
                 case "wide" -> wide(recordings, ws);
+                case "mixed" -> mixed(recordings, ws);
+                case "sandboxed" -> {
+                    SuiteReads.Observed seen =
+                            SuiteReads.collect(recordings, ws, SuiteReads.candidates(List.of(ws.resolve("sandbox"))));
+                    // The recording JVM's own reads (its classpath) are outside the workspace.
+                    long inWs =
+                            seen.files().stream().filter(f -> f.startsWith(ws)).count();
+                    System.out.println("complete=" + seen.complete() + " files=" + inWs);
+                    return;
+                }
                 case "pool" -> pool(recordings);
                 default -> {
                     SuiteReads.Observed seen = SuiteReads.collect(recordings, ws);
@@ -201,14 +251,49 @@ class SuiteReadsMemoryTest {
             }
         }
 
-        private static void wide(Path recordings, Path tmp) throws IOException {
+        /**
+         * 200,000 files read and written in the sandbox, in chunks of 20,000 as a long suite's
+         * recording comes out, and three real inputs read.
+         */
+        private static void wide(Path recordings, Path ws) throws IOException {
             try (Recording r = new Recording()) {
                 r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+                r.enable("jdk.FileWrite").withThreshold(Duration.ZERO);
                 r.start();
-                for (int i = 0; i <= SuiteReads.MAX_PATHS; i++)
-                    read(tmp.resolve("f" + i).toString());
+                for (int i = 0; i < 200_000; i++) {
+                    if (i % 20_000 == 0) {
+                        try (Recording rotate = new Recording()) {
+                            rotate.start();
+                        }
+                    }
+                    String path = ws.resolve("sandbox/t" + (i % 1000) + "/f" + i + ".txt")
+                            .toString();
+                    write(path);
+                    read(path);
+                }
+                for (int i = 0; i < 3; i++) read(ws.resolve("inputs/in" + i).toString());
                 r.stop();
                 r.dump(recordings.resolve("wide.jfr"));
+            }
+        }
+
+        /** Inputs, a file the run wrote, a file now gone, and files under the two roots. */
+        private static void mixed(Path recordings, Path ws) throws IOException {
+            try (Recording r = new Recording()) {
+                r.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+                r.enable("jdk.FileWrite").withThreshold(Duration.ZERO);
+                r.start();
+                for (int i = 0; i < 50; i++) read(ws.resolve("inputs/in" + i).toString());
+                write(ws.resolve("inputs/own").toString());
+                read(ws.resolve("inputs/own").toString());
+                read(ws.resolve("inputs/gone").toString());
+                for (int i = 0; i < 500; i++) {
+                    read(ws.resolve("sandbox/s" + i).toString());
+                    write(ws.resolve("target/t" + i).toString());
+                    read(ws.resolve("target/t" + i).toString());
+                }
+                r.stop();
+                r.dump(recordings.resolve("mixed.jfr"));
             }
         }
     }

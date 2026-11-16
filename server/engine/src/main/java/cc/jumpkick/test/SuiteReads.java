@@ -27,12 +27,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -141,31 +143,29 @@ public final class SuiteReads {
             "jdk.SocketWrite", List.of("host", "address"));
 
     /**
-     * The most distinct files one run's recordings may name, read and written together. Past it the
-     * run's reads are not kept (the suite is not replayed): jk's largest suites name about 8,000.
+     * The heap counted for the inputs one run is found to read: files outside every root the suite's
+     * key already covers ({@link #candidates}), which the key must hash one by one anyway. jk-engine's
+     * suite, the largest of jk's own, names tens of thousands of files, almost all in its own sandbox
+     * and the module's build output; those are never held (8,264 paths held 4 MB). This is the budget
+     * memory admission counts, not a cap: no number of inputs keeps a suite from replaying.
      */
-    static final int MAX_PATHS = 32 * 1024;
+    static final long INPUTS_BYTES = 16L << 20;
 
-    /**
-     * The heap a kept path is counted at: the path, its bytes and its set entry (8,264 paths held
-     * 4 MB, measured on jk-engine's suite).
-     */
-    static final long BYTES_PER_PATH = 512;
+    public static final long READ_PEAK_BYTES = RecordingReader.PEAK_BYTES + INPUTS_BYTES;
 
-    /**
-     * The most heap reading one run's recordings can hold: the reader's own peak and the paths it
-     * keeps. Memory admission keeps this much of the engine's heap free of jobs ({@code
-     * MemoryAdmission}), and {@link RecordingReader.Permit} lets one read run at a time, so a job is never admitted
-     * into a read's peak.
-     */
-    public static final long READ_PEAK_BYTES = RecordingReader.PEAK_BYTES + MAX_PATHS * BYTES_PER_PATH;
-
-    /**
-     * Every recording under {@code dir}, relative paths resolved against {@code cwd}. The recordings
-     * are streamed by {@link RecordingReader}, one at a time across the engine; a recording past the
-     * reader's caps, or a run that names more than {@link #MAX_PATHS} files, is incomplete.
-     */
+    /** As {@link #collect(Path, Path, Predicate)}, keeping every file the recordings name. */
     public static Observed collect(Path dir, Path cwd) {
+        return collect(dir, cwd, f -> true);
+    }
+
+    /**
+     * Every recording under {@code dir}, relative paths resolved against {@code cwd}, keeping only the
+     * files {@code candidate} accepts, read or written: a file the suite's key already covers (its
+     * sandbox, the module's build output, the classpath, the JDK) is no discovered input, so it is
+     * never held, however many a run names. The recordings are streamed by {@link RecordingReader},
+     * one at a time across the engine; only a recording no reader can read is incomplete.
+     */
+    public static Observed collect(Path dir, Path cwd, Predicate<Path> candidate) {
         Set<Path> files = new TreeSet<>();
         Set<Path> written = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
@@ -183,10 +183,10 @@ public final class SuiteReads {
         RecordingReader.Sink sink = (name, at, end, v) -> {
             switch (name) {
                 case "jdk.FileRead" -> {
-                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], files);
+                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], candidate, files);
                 }
                 case "jdk.FileWrite" -> {
-                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], written);
+                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], candidate, written);
                 }
                 case "jdk.ProcessStart" -> {
                     // The program, not its arguments: a pid or a temp path in them would
@@ -198,15 +198,11 @@ public final class SuiteReads {
                 }
                 default -> {}
             }
-            if (files.size() + written.size() > MAX_PATHS) throw new TooManyPaths();
         };
         String unread = null;
         for (Path jfr : recordings) {
             try {
                 read(jfr, sink);
-            } catch (TooManyPaths wide) {
-                unread = wide.getMessage();
-                break;
             } catch (IOException | RuntimeException unreadable) {
                 // A recording a JVM did not finish (killed, out of memory), or one neither reader
                 // could read, vouches for nothing.
@@ -236,8 +232,6 @@ public final class SuiteReads {
         try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
             RecordingReader.read(jfr, WANTED, sink);
             return;
-        } catch (TooManyPaths wide) {
-            throw wide;
         } catch (IOException declined) {
             // A file that does not even begin as a recording is no recording at all: no parser reads it.
             if (!RecordingReader.framed(jfr)) throw new IOException("not a recording", declined);
@@ -252,22 +246,16 @@ public final class SuiteReads {
         }
     }
 
-    /** A run that names more files than {@link #MAX_PATHS}. */
-    private static final class TooManyPaths extends RuntimeException {
-        TooManyPaths() {
-            super("a run named more than " + MAX_PATHS + " files", null, false, false);
-        }
-    }
-
     /** The name a remote endpoint is shown by: the host name the socket was opened with, else its address. */
     static String hostName(@Nullable String host, @Nullable String address) {
         String name = host != null && !host.isBlank() ? host : String.valueOf(address);
         return name.strip().replace('\n', ' ');
     }
 
-    private static void resolve(Path cwd, String raw, Set<Path> into) {
+    private static void resolve(Path cwd, String raw, Predicate<Path> candidate, Set<Path> into) {
         try {
-            into.add(cwd.resolve(raw).toAbsolutePath().normalize());
+            Path p = cwd.resolve(raw).toAbsolutePath().normalize();
+            if (!into.contains(p) && candidate.test(p)) into.add(p);
         } catch (InvalidPathException odd) {
             // A pseudo path (a pipe, a descriptor) is not a file the suite depends on.
         }
@@ -288,6 +276,37 @@ public final class SuiteReads {
      * classes, classpath, resources, sources, JDK, outputs and sandbox of the run) and outside the
      * operating system's live pseudo trees, whose content changes with every read.
      */
+    /**
+     * The files that may be discovered inputs of a suite keyed over {@code keyed}: what {@link
+     * #undeclared} would not drop by where the file lies (a live system tree, a probe jar, a path
+     * under a keyed root under either spelling). Held to it while the recordings are read, a run
+     * keeps only its candidates, so the files a suite writes and reads in its own sandbox cost
+     * nothing; {@link #undeclared} applies the rest of its rules to what is kept, and the result is
+     * the one the whole set would have given. A real-path lookup, a system call, is made only for a
+     * path no root holds as spelled, and remembered for the last {@value #REAL_MEMO} such paths.
+     */
+    public static Predicate<Path> candidates(Collection<Path> keyed) {
+        List<Path> roots = new ArrayList<>();
+        for (Path k : keyed) {
+            roots.add(k.toAbsolutePath().normalize());
+            real(k).ifPresent(roots::add);
+        }
+        Map<Path, Boolean> outside = new LinkedHashMap<>(REAL_MEMO, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<Path, Boolean> eldest) {
+                return size() > REAL_MEMO;
+            }
+        };
+        return f -> {
+            if (live(f) || under(f, roots) || EnvProbeJar.isProbeJar(f)) return false;
+            return outside.computeIfAbsent(
+                    f, p -> real(p).filter(r -> under(r, roots)).isEmpty());
+        };
+    }
+
+    /** How many real-path answers {@link #candidates} remembers. */
+    static final int REAL_MEMO = 4096;
+
     public static Set<Path> undeclared(Observed observed, Collection<Path> keyed) {
         return undeclared(observed, keyed, null, 0);
     }

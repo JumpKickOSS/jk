@@ -91,7 +91,14 @@ final class SuiteDiscovery {
     static @Nullable String settle(TaskContext ctx, Run run, @Nullable String stampKey, Rekey rekey) throws Exception {
         Path moduleDir = run.moduleDir();
         Path target = run.layout().moduleTargetDir();
-        SuiteReads.Observed seen = SuiteReads.collect(SuiteReads.recordingDir(target), moduleDir);
+        List<Path> roots = new ArrayList<>(run.keyed());
+        roots.add(target);
+        // Every module's test sandbox, this one's and those of the projects its tests make.
+        roots.add(TestHomes.root());
+        // Only files outside every keyed root are held while the recordings are read: a run that
+        // writes and reads a hundred thousand files in its own sandbox costs nothing and still replays.
+        SuiteReads.Observed seen =
+                SuiteReads.collect(SuiteReads.recordingDir(target), moduleDir, SuiteReads.candidates(roots));
         if (!seen.complete()) {
             // Never silent: a suite that cannot replay runs on every build, so the result line, the
             // build's record, the forecast and doctor all say why.
@@ -101,10 +108,6 @@ final class SuiteDiscovery {
             return null;
         }
         SuiteReads.clearUnread(moduleDir);
-        List<Path> roots = new ArrayList<>(run.keyed());
-        roots.add(target);
-        // Every module's test sandbox, this one's and those of the projects its tests make.
-        roots.add(TestHomes.root());
         Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
         Set<Path> read = SuiteReads.undeclared(seen, roots, workspace, run.startedMillis());
         Set<Path> jkState = SuiteReads.under(read, JkDirs.state());

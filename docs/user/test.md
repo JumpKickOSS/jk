@@ -1101,6 +1101,11 @@ that ran the suite green: a release upgrade, or a snapshot of JumpKick's own tre
 differs (the commit and build time stamped into its jar do not count). A suite with no green run
 on record forecasts as `run tests` alone.
 
+**No size of run costs its replay.** While the recordings are read, only files outside
+everything the key already covers are kept; the files a suite writes and reads in its sandbox and
+the module's build output are never held, so a run that names hundreds of thousands of them is
+read in bounded memory and still replays.
+
 **A recording that cannot be read is never silent.** JumpKick reads a suite's recordings with a
 reader of its own that holds a bounded amount of memory, however large the recording. One it
 cannot follow (a recording format it does not know, a chunk past its limits) is read again by the
