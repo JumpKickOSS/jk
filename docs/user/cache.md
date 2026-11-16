@@ -52,8 +52,10 @@ lists which roots a runner may therefore share.
 Across machines the same keys hold wherever the outputs are the same ([CI](ci.md#sharing-a-cache-across-checkouts-and-agents)),
 with one limit: a checkout without a committed `jk-lock.toml` takes its project id from its git
 remote, or outside git from its absolute path, so two machines share its keys only when it has a
-lock. A record that leaves the machine keeps its outputs and its module-relative inputs; an input
-named by an absolute path (a store jar under your home, a JDK) and what the step said as it ran,
+lock. A record that leaves the machine keeps its outputs and its module-relative inputs, and the
+inputs under JumpKick's own store, cache or home, which a record names relative to that root
+(`store:repos/central/…`), so another machine can tell which dependency moved; an input named by
+an absolute path anywhere else (a jar declared by absolute path, a JDK outside `~/.jk`) and what the step said as it ran,
 which names sources by absolute path, stay local. Of the environment, only the names of the
 variables a key read leave the machine (`env:DB_PIN=-`): no value, and no digest of one, since a
 digest of a short secret can be guessed; the key itself, hashed here from the values, is unchanged. Every record also says when it was made, by

@@ -549,7 +549,8 @@ and exclusions stay GA-scoped.
    hit; the incremental compiler state, whose Zinc analysis holds absolute paths, is the one
    thing keyed by the checkout's real path (`ActionKey.stateDir`). A record spells its inputs
    the same way (`PortablePath.key`: module-relative under a project — a `jk.toml` or a `pom.xml`
-   dir — and the whole path only under none, so two inputs never share an entry), so `jk explain`
+   dir — relative to the root under JumpKick's own store, cache or home (`store:repos/central/…`), and
+   the whole path only elsewhere, so two inputs never share an entry), so `jk explain`
    reads a neighbour checkout's record correctly.
 3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store. A key
    record is read as untrusted (`ActionRecordText.parse`): one whose `KEY` is not the key it was

@@ -2,9 +2,12 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -20,8 +23,10 @@ import java.util.concurrent.TimeUnit;
  * <p>A path under no module (a JDK, a store blob, a jar declared by absolute path) has two
  * spellings. {@link #of} keeps its last two segments: key material that names nothing about the
  * machine, at the price that two distinct paths may spell the same. {@link #key} keeps the whole
- * absolute path, forward-slashed: the spelling for a record's map keys, where two distinct inputs
- * must never fold onto one entry. Under a module the two agree.
+ * path: the spelling for a record's map keys, where two distinct inputs must never fold onto one
+ * entry. Under jk's own roots it is relative to the root ({@code store:repos/central/…}, {@code
+ * cache:sha256/…}, {@code jk-home:jdks/…}), so a record names a dependency the same way on every
+ * machine; anywhere else it is the absolute path, forward-slashed. Under a module the two agree.
  */
 public final class PortablePath {
 
@@ -64,7 +69,23 @@ public final class PortablePath {
      */
     public static String key(Path path) {
         Path abs = path.toAbsolutePath().normalize();
-        return moduleRelative(abs).orElseGet(() -> slashed(abs));
+        return moduleRelative(abs).orElseGet(() -> underJkRoot(abs));
+    }
+
+    /**
+     * {@code abs} relative to the jk root that holds it, named: the artifact store, the cache, else
+     * the jk home; the absolute path when none does. The store and the cache are tried first, since
+     * either may be moved outside the home.
+     */
+    static String underJkRoot(Path abs) {
+        for (var root : List.of(
+                Map.entry("store:", JkDirs.store()),
+                Map.entry("cache:", JkDirs.cache()),
+                Map.entry("jk-home:", JkDirs.home()))) {
+            Path dir = root.getValue().toAbsolutePath().normalize();
+            if (abs.startsWith(dir) && !abs.equals(dir)) return root.getKey() + slashed(dir.relativize(abs));
+        }
+        return slashed(abs);
     }
 
     private static Optional<String> moduleRelative(Path abs) {

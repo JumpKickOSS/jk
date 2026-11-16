@@ -357,7 +357,13 @@ public final class ActionKey {
             result.put("cp:" + PortablePath.key(request.classpath().get(i)), tokens.get(i));
         }
         for (Path entry : request.workerClasspath()) {
-            result.put("worker:" + FreshnessStamp.identityKey(entry), "");
+            Path identity = FreshnessStamp.identityKey(entry);
+            result.put(
+                    "worker:"
+                            + (identity.isAbsolute()
+                                    ? PortablePath.key(identity)
+                                    : identity.toString().replace('\\', '/')),
+                    "");
         }
         result.put("jvmTarget", Integer.toString(request.jvmTarget()));
         result.put("jdk", compileJdkToken(request.javaHome()));
