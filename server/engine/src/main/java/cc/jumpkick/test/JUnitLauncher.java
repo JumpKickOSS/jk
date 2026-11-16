@@ -626,16 +626,21 @@ public final class JUnitLauncher {
             @Nullable Path testResultsDir)
             throws IOException, InterruptedException {
         NoTestsGuard guard = new NoTestsGuard(Objects.requireNonNull(listener, "listener"));
-        TestSummary summary = runUnguarded(
-                javaHome,
-                testClassesDir,
-                runtimeClasspath,
-                cacheRoot,
-                workers,
-                workerJarProps,
-                testEnv,
-                guard,
-                testResultsDir);
+        TestSummary summary;
+        try {
+            summary = runUnguarded(
+                    javaHome,
+                    testClassesDir,
+                    runtimeClasspath,
+                    cacheRoot,
+                    workers,
+                    workerJarProps,
+                    testEnv,
+                    guard,
+                    testResultsDir);
+        } finally {
+            heapRun.close();
+        }
         return guard.verdict(summary, moduleLabel);
     }
 
