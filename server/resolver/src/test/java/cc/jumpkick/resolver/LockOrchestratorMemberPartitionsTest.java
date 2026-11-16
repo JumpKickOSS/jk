@@ -854,6 +854,31 @@ class LockOrchestratorMemberPartitionsTest {
         }
     }
 
+    /**
+     * jk adds Jupiter to a module that declares no test dependencies. The merged manifest folds every
+     * member's, so once a sibling declares one the workspace's solve adds none; the member with none
+     * reads a Jupiter row of its own, and the sibling's test graph gains none.
+     */
+    @Test
+    void a_member_with_no_test_dependencies_keeps_its_jupiter_when_a_sibling_declares_some(@TempDir Path tempDir)
+            throws Exception {
+        upstream.leaf("com.foo", "assertions", "1.0");
+        JkBuild plain = manifest("plain", Map.of());
+        JkBuild tested = manifest(
+                "tested",
+                Map.of(Scope.TEST, List.of(new Dependency("com.foo:assertions", VersionSelector.parse("=1.0")))));
+
+        Lockfile lock = lockWorkspace(tempDir, Map.of(), List.of(plain, tested));
+
+        assertThat(rows(lock.forMember("plain"), "org.junit.jupiter:junit-jupiter:jar:"))
+                .as("the member with no test dependencies still gets jk's Jupiter")
+                .extracting(Lockfile.Artifact::version)
+                .containsExactly("6.1.0");
+        assertThat(rows(lock.forMember("tested"), "org.junit.jupiter:junit-jupiter:jar:"))
+                .as("a member that declares its own test dependencies is given none")
+                .isEmpty();
+    }
+
     /** The workspace locked as the pipeline locks it: the merged manifest, with every member behind it. */
     private Lockfile lockWorkspace(Path tempDir, Map<Scope, List<Dependency>> rootDeps, List<JkBuild> modules)
             throws Exception {

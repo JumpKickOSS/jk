@@ -662,7 +662,8 @@ lock's pin is part of the stamp: a Node upgrade re-runs the suites. See [Node.js
 puts `junit-platform-launcher` on every test classpath, and `junit-jupiter` on a module that
 declares no `[test-dependencies]` at all — on the line of a Jupiter its `[dependencies]` or
 `[provided-dependencies]` already reach, `latest` when they reach none. Once you own that table, the
-framework is yours.
+framework is yours. In a workspace this is decided per member: a member with no
+`[test-dependencies]` gets its Jupiter whatever its siblings declare.
 
 The lock reads the solved test classpath — what you declare in `[test-dependencies]`, and in
 `[dependencies]`, `[provided-dependencies]` and the other tables a test JVM sees, and what they

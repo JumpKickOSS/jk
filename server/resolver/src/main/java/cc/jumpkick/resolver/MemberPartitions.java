@@ -340,10 +340,24 @@ final class MemberPartitions {
             boolean prunes = prunes(reach, own);
             boolean graphOnly = flagged.isEmpty() && !prunes;
             flagged.addAll(ownGraphDisagrees(reach, own));
+            // jk adds Jupiter to a module with no test dependencies. The merged manifest folds every
+            // member's, so once a sibling declares any the workspace's solve adds none, and a member
+            // reading the merged rows lost its Jupiter: it reads its own.
+            if (TestEngines.addsJupiter(manifest) && !unionCarries(TestEngines.JUPITER.module())) {
+                flagged.add(TestEngines.JUPITER.module());
+            }
             if (flagged.isEmpty() && !prunes && !joinsUnmet(reach.declared())) continue;
             out.add(new Flagged(member, manifest, own, flagged, graphOnly));
         }
         return out;
+    }
+
+    /** Whether the merged solve resolved {@code ga} in any graph. */
+    private boolean unionCarries(String ga) {
+        for (String key : unionByKey.keySet()) {
+            if (key.equals(ga) || key.startsWith(ga + ":")) return true;
+        }
+        return false;
     }
 
     /**

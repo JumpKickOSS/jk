@@ -208,9 +208,14 @@ public final class TestEngines {
      * each declared framework that has none of its own: a Platform-line engine at {@code line},
      * another at its own selector. Refuses a declared exact framework pin below its engine's floor.
      */
+    /** Whether jk adds {@link #JUPITER} to {@code project}'s test graph: it declares no test dependencies. */
+    public static boolean addsJupiter(JkBuild project) {
+        return project.dependencies().of(Scope.TEST).isEmpty();
+    }
+
     private static List<Dependency> frameworkRoots(JkBuild project, VersionSelector jupiter, VersionSelector line) {
         List<Dependency> roots = new ArrayList<>();
-        if (project.dependencies().of(Scope.TEST).isEmpty()) roots.add(new Dependency(JUPITER.module(), jupiter));
+        if (addsJupiter(project)) roots.add(new Dependency(JUPITER.module(), jupiter));
         roots.addAll(injected(project, line));
         return roots;
     }
