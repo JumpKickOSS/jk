@@ -225,6 +225,29 @@ public final class MemoryAdmission {
     /** Admitted jobs and the estimate each holds. */
     private final Map<Long, Long> admitted = new HashMap<>();
 
+    /** The admitted jobs as the live-jobs file names them, in admission order. */
+    private final Map<Long, LiveJobsFile.Job> live = new LinkedHashMap<>();
+
+    /** Where admissions and releases are written for the next engine to read, or none. */
+    private @Nullable LiveJobsFile liveJobs;
+
+    /** Write every admission and release to {@code file} ({@link LiveJobsFile}). */
+    public MemoryAdmission withLiveJobs(@Nullable LiveJobsFile file) {
+        synchronized (lock) {
+            this.liveJobs = file;
+        }
+        return this;
+    }
+
+    /** Under the lock: rewrite the live-jobs file, when there is one. */
+    private void publish() {
+        LiveJobsFile file = liveJobs;
+        if (file == null) return;
+        List<LiveJobsFile.Job> waiting = new ArrayList<>();
+        queue.forEach((jid, w) -> waiting.add(new LiveJobsFile.Job(jid, w.kind, w.dir, 0)));
+        file.write(new ArrayList<>(live.values()), waiting, heap.committedBytes(), heap.maxBytes());
+    }
+
     private long admittedBytes;
 
     /** The smallest committed heap seen with no job admitted: the coordinator's idle footprint. */
@@ -249,11 +272,12 @@ public final class MemoryAdmission {
      */
     public static MemoryAdmission forRuntime(long queueWaitMs, LongSupplier nowMillis) {
         return new MemoryAdmission(
-                Heap.runtime(),
-                MemoryAdmission::estimate,
-                HostMemory.probe(),
-                Timing.DEFAULTS.withQueueWaitMs(queueWaitMs),
-                nowMillis);
+                        Heap.runtime(),
+                        MemoryAdmission::estimate,
+                        HostMemory.probe(),
+                        Timing.DEFAULTS.withQueueWaitMs(queueWaitMs),
+                        nowMillis)
+                .withLiveJobs(LiveJobsFile.forThisEngine());
     }
 
     public MemoryAdmission(Heap heap, Estimator estimator, HostMemory host, Timing timing, LongSupplier nowMillis) {
@@ -286,7 +310,7 @@ public final class MemoryAdmission {
         int ahead;
         synchronized (lock) {
             if ((queue.isEmpty() && fits(estimate)) || (brief && fitsBeside(estimate))) {
-                take(jid, estimate);
+                take(jid, estimate, kind, dir);
                 return Verdict.ADMITTED;
             }
             queue.put(jid, new Waiting(kind, dir, arrived));
@@ -339,7 +363,7 @@ public final class MemoryAdmission {
         if ((head && fits(estimate))
                 || (brief && fitsBeside(estimate))
                 || (head && waited >= timing.fairWaitMs() && fitsBeside(estimate))) {
-            take(jid, estimate);
+            take(jid, estimate, self.kind, self.dir);
             return Verdict.ADMITTED;
         }
         return null;
@@ -351,6 +375,8 @@ public final class MemoryAdmission {
             Long estimate = admitted.remove(jid);
             if (estimate == null) return;
             admittedBytes -= estimate;
+            live.remove(jid);
+            publish();
             if (!queue.isEmpty()) heap.collect();
             if (admitted.isEmpty()) idleCommittedBytes = Math.min(idleCommittedBytes, heap.committedBytes());
             lock.notifyAll();
@@ -459,9 +485,11 @@ public final class MemoryAdmission {
         return i;
     }
 
-    private void take(long jid, long estimate) {
+    private void take(long jid, long estimate, String kind, String dir) {
         admitted.put(jid, estimate);
         admittedBytes += estimate;
+        live.put(jid, new LiveJobsFile.Job(jid, kind, dir, estimate));
+        publish();
     }
 
     private boolean isHead(long jid) {

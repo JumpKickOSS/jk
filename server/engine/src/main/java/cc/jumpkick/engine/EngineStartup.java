@@ -3,12 +3,14 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;
+import cc.jumpkick.engine.jobs.LiveJobsFile;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.plugin.HeapPlan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.util.function.Consumer;
 
@@ -53,6 +55,7 @@ final class EngineStartup {
 
     /** The sequence. Each step is one method below, in this order. */
     Started run(EngineElection.Won won) throws IOException {
+        reportPreviousOutOfMemory();
         sizeSharedWorkerMemory();
         log.accept("jk engine: listening on " + won.active().socket() + " (pid " + pid + ")");
         yieldPredecessor(won);
@@ -63,6 +66,19 @@ final class EngineStartup {
         Started started = startChores();
         scheduleWarmups();
         return started;
+    }
+
+    /**
+     * An engine that ran out of heap could say nothing as it died ({@code -XX:+ExitOnOutOfMemoryError});
+     * the jobs file it kept says what it held ({@link LiveJobsFile}). Read before this engine admits
+     * anything.
+     */
+    private void reportPreviousOutOfMemory() {
+        try {
+            for (String line : LiveJobsFile.previous(EnginePaths.current(), pid)) log.accept(line);
+        } catch (RuntimeException e) {
+            Log.debug("previous engine's jobs: unread", e);
+        }
     }
 
     /**
