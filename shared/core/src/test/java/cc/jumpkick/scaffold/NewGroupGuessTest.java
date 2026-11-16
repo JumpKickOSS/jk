@@ -127,7 +127,7 @@ class NewGroupGuessTest {
                     [user]
                         email = carol@github.com
                     """);
-            assertThat(NewGroupGuess.guess(work, home)).isEqualTo("io.github.carol");
+            assertThat(NewGroupGuess.guess(work, home, null)).isEqualTo("io.github.carol");
         } finally {
             Files.deleteIfExists(work);
         }
@@ -138,7 +138,25 @@ class NewGroupGuessTest {
         var work = walkCleanDir();
         var home = tempDir.resolve("home");
         try {
-            assertThat(NewGroupGuess.guess(work, home)).isEqualTo("com.example");
+            assertThat(NewGroupGuess.guess(work, home, null)).isEqualTo("com.example");
+        } finally {
+            Files.deleteIfExists(work);
+        }
+    }
+
+    /** {@code GIT_CONFIG_GLOBAL} names git's user file, and the home's is not read, as git does. */
+    @Test
+    void the_file_git_config_global_names_stands_for_the_homes(@TempDir Path tempDir) throws IOException {
+        var work = walkCleanDir();
+        var home = tempDir.resolve("home");
+        Path named = tempDir.resolve("sandbox/gitconfig");
+        try {
+            Files.createDirectories(home);
+            Files.writeString(home.resolve(".gitconfig"), "[user]\n    email = carol@github.com\n");
+            assertThat(NewGroupGuess.guess(work, home, named)).isEqualTo("com.example");
+            Files.createDirectories(named.getParent());
+            Files.writeString(named, "[user]\n    email = dave@corp.io\n");
+            assertThat(NewGroupGuess.guess(work, home, named)).isEqualTo("io.corp");
         } finally {
             Files.deleteIfExists(work);
         }
@@ -154,9 +172,9 @@ class NewGroupGuessTest {
         // A repository config right under the home's parent: a walk from anywhere below would read it.
         Files.createDirectories(tempDir.resolve(".git"));
         Files.writeString(tempDir.resolve(".git/config"), "[user]\n    email = dave@corp.io\n");
-        assertThat(NewGroupGuess.forUser(home)).isEqualTo("com.example");
+        assertThat(NewGroupGuess.forUser(home, null)).isEqualTo("com.example");
         Files.writeString(home.resolve(".gitconfig"), "[user]\n    email = carol@github.com\n");
-        assertThat(NewGroupGuess.forUser(home)).isEqualTo("io.github.carol");
+        assertThat(NewGroupGuess.forUser(home, null)).isEqualTo("io.github.carol");
     }
 
     /** A temp dir whose ancestor chain carries no git config (unlike a @TempDir under the checkout). */

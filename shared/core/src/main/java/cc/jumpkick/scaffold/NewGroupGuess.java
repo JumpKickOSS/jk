@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
+import cc.jumpkick.host.GitConfigFiles;
 import cc.jumpkick.host.WorkingDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -69,12 +70,22 @@ public final class NewGroupGuess {
 
     /** As {@link #forUser()}, for the user whose home is {@code home}. */
     static String forUser(@Nullable Path home) {
-        return userEmail(home).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
+        return forUser(home, GitConfigFiles.named());
+    }
+
+    /** As {@link #forUser(Path)}, with git's user file named by {@code GIT_CONFIG_GLOBAL} given. */
+    static String forUser(@Nullable Path home, @Nullable Path named) {
+        return userEmail(home, named).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
     }
 
     /** Caller supplies cwd + home (tests and {@code jk new}). */
     public static String guess(Path cwd, @Nullable Path home) {
-        return readEmail(cwd, home).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
+        return guess(cwd, home, GitConfigFiles.named());
+    }
+
+    /** As {@link #guess(Path, Path)}, with git's user file named by {@code GIT_CONFIG_GLOBAL} given. */
+    static String guess(Path cwd, @Nullable Path home, @Nullable Path named) {
+        return readEmail(cwd, home, named).map(NewGroupGuess::groupForEmail).orElse(FALLBACK);
     }
 
     /** Maps an email to a groupId per the rules in the class javadoc. */
@@ -137,9 +148,10 @@ public final class NewGroupGuess {
     /**
      * Walk from {@code cwd} up to the filesystem root; at each level prefer the repo-local {@code
      * .git/config} (what {@code git config user.email} writes) over an in-tree {@code .gitconfig}.
-     * If nothing matched, try {@code ~/.gitconfig}. Return the first {@code user.email} found.
+     * If nothing matched, try git's user file ({@code GIT_CONFIG_GLOBAL}, else {@code ~/.gitconfig}).
+     * Return the first {@code user.email} found.
      */
-    static Optional<String> readEmail(Path cwd, @Nullable Path home) {
+    static Optional<String> readEmail(Path cwd, @Nullable Path home, @Nullable Path named) {
         // The user's global config is the fallback below, consulted after every repo-level and
         // in-tree config; as an ancestor it would answer first for any cwd under the home directory
         // — the same file, the wrong precedence — and a test tree under the home could never be
@@ -156,12 +168,13 @@ public final class NewGroupGuess {
             var found = parseEmail(p.resolve(".gitconfig"));
             if (found.isPresent()) return found;
         }
-        return userEmail(home);
+        return userEmail(home, named);
     }
 
-    /** The {@code user.email} of git's user file, {@code ~/.gitconfig}. */
-    static Optional<String> userEmail(@Nullable Path home) {
-        return home == null ? Optional.empty() : parseEmail(home.resolve(".gitconfig"));
+    /** The {@code user.email} of git's user file: the one {@code GIT_CONFIG_GLOBAL} names, as git reads it, else {@code ~/.gitconfig}. */
+    static Optional<String> userEmail(@Nullable Path home, @Nullable Path named) {
+        Path global = named != null ? named : home == null ? null : home.resolve(".gitconfig");
+        return global == null ? Optional.empty() : parseEmail(global);
     }
 
     private static Optional<String> parseEmail(Path file) {

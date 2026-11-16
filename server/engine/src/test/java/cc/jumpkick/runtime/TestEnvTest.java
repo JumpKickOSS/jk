@@ -189,6 +189,31 @@ class TestEnvTest {
                 .isEqualTo(tmp.resolve("target/scratch").toAbsolutePath());
     }
 
+    /**
+     * git's configuration is the sandbox's: no system file, and a global file under the sandbox home,
+     * so a commit in a fixture repository reads no developer identity, signing rule or URL rewrite.
+     * A module that needs the caller's names it in {@code [test] env}.
+     */
+    @Test
+    void git_reads_the_sandboxs_configuration_not_the_users(@TempDir Path tmp) throws Exception {
+        JkBuild project = project(tmp, "");
+        var env = TestEnv.forModuleUnseeded(project, tmp, BuildLayout.of(tmp, project))
+                .extras();
+
+        assertThat(env.get("GIT_CONFIG_NOSYSTEM")).isEqualTo("1");
+        assertThat(env.get("GIT_CONFIG_GLOBAL"))
+                .isEqualTo(TestHomes.pathFor(tmp).resolve("gitconfig").toString());
+
+        JkBuild declared = project(tmp, """
+                [test]
+                env = [{ GIT_CONFIG_GLOBAL = "${target}/gitconfig" }]
+                """);
+        var mine = TestEnv.forModuleUnseeded(declared, tmp, BuildLayout.of(tmp, declared))
+                .extras();
+        assertThat(Path.of(mine.get("GIT_CONFIG_GLOBAL")))
+                .isEqualTo(tmp.resolve("target/gitconfig").toAbsolutePath());
+    }
+
     @Test
     void a_declared_value_overrides_the_sandbox_default(@TempDir Path tmp) throws Exception {
         JkBuild project = project(tmp, """

@@ -62,6 +62,7 @@ public final class JGitExtension implements GitBackend {
         this.gitRoot = Objects.requireNonNull(gitRoot, "gitRoot");
         this.credentials = Objects.requireNonNull(credentials, "credentials");
         this.proxy = Objects.requireNonNull(proxy, "proxy");
+        JGitEnvironment.install();
     }
 
     /** Build a per-URL credentials provider from the resolved forge token, or null for anonymous. */

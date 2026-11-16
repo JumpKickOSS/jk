@@ -976,6 +976,13 @@ and `createTempFile` — is `~/.jk/test-homes/<key>/tmp`, one per module of each
 outside the project, as Surefire's is, spelled as its real path, emptied at the start of every
 run and removed by `jk clean`. Declare `TMPDIR` in `[test] env` to put it elsewhere.
 
+git's configuration is the sandbox's too: a test JVM gets `GIT_CONFIG_NOSYSTEM=1` and
+`GIT_CONFIG_GLOBAL` naming `gitconfig` in the module's test home, a file that does not exist
+until a test writes one. A `git` the test runs, and JumpKick's in-process JGit, read no system
+file and none of your `~/.gitconfig`: a commit in a fixture repository needs its own identity
+(`git -c user.name=… -c user.email=… commit`), and passes or fails the same for whoever runs it.
+Declare `GIT_CONFIG_GLOBAL` in `[test] env` for a suite that needs yours.
+
 A test JVM's stdin is closed. `System.in` reads end-of-input at once, and so does every child the
 test gives that stdin to (`inheritIO()`, a REPL, `jk run` driven in-process): a prompt sees no
 answer, it does not wait for one. Feed input through the child's own pipe.

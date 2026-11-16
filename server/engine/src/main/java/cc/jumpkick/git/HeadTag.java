@@ -19,6 +19,7 @@ public final class HeadTag {
 
     /** True when {@code tag} (annotated or lightweight) names the commit HEAD of {@code checkout} is at. */
     public static boolean carries(Path checkout, String tag) throws IOException {
+        JGitEnvironment.install();
         FileRepositoryBuilder builder = new FileRepositoryBuilder().findGitDir(checkout.toFile());
         if (builder.getGitDir() == null) return false;
         try (Repository repo = builder.setMustExist(true).build()) {

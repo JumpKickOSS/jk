@@ -91,6 +91,15 @@ public final class TestEnv {
 
     static final String TEMP = "TEMP";
 
+    /** git reads no system configuration file when this is set. */
+    static final String GIT_CONFIG_NOSYSTEM = "GIT_CONFIG_NOSYSTEM";
+
+    /** The file git reads as the user's configuration, in place of {@code ~/.gitconfig}. */
+    static final String GIT_CONFIG_GLOBAL = "GIT_CONFIG_GLOBAL";
+
+    /** The sandbox home's git configuration, absent until a test writes one. */
+    static final String GIT_CONFIG_FILE = "gitconfig";
+
     /** The directory under the user home that jk's own suites root their {@code @TempDir}s in. */
     static final String SHORT_TEMP_DIR = ".jk-test-tmp";
 
@@ -206,6 +215,12 @@ public final class TestEnv {
         out.put("JK_HTTP_PORT", "0");
         // A nested engine never fetches a release into the sandbox and installs it.
         out.put(SelfUpdatePolicy.ENV, SelfUpdatePolicy.Mode.NEVER.spelling());
+        // git's configuration is the sandbox's: no system file, and a global file under the sandbox
+        // home that starts absent. A commit, a URL rewrite or a signing rule in a fixture repository
+        // then depends on the suite, not on whoever runs it, and a `git config --global` a test
+        // makes lands in the sandbox. JGit reads the same two variables (JGitEnvironment).
+        out.put(GIT_CONFIG_NOSYSTEM, "1");
+        out.put(GIT_CONFIG_GLOBAL, sandboxHome.resolve(GIT_CONFIG_FILE).toString());
         EnvConfig policy = project.build().env();
         out.putAll(WorkerEnv.declared(policy, moduleDir, target));
         Function<String, @Nullable String> buildEnv = BuildEnv.forModule(moduleDir);
