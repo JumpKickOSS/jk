@@ -262,7 +262,12 @@ default home, `$HOME/.jk`. With `JK_HOME` pointing anywhere else they leave `~/.
 activates that install in the current shell — `eval "$("$JK_HOME/bin/jk" activate zsh)"` — so a
 scratch build or a hermetic test home never becomes the `jk` every new shell runs. `bash install.sh
 --rc`, `install.ps1 -Rc` (`JK_RC=1` for `irm | iex`) and `jk activate -R` ask for the block on a
-non-default home anyway. The root-specific variables win over `JK_HOME`, and they compose:
+non-default home anyway. On Windows a `JK_HOME` set as a User environment variable
+(`[Environment]::SetEnvironmentVariable('JK_HOME', 'D:\jk', 'User')`, before installing) is an
+install of its own, as the default home is: the installer puts it on the User PATH, and its engine
+registers JumpKick's name and icon for notifications. That is how a home on a Dev Drive is set up
+; a `JK_HOME` set in one shell alone stays private. The
+root-specific variables win over `JK_HOME`, and they compose:
 `JK_HOME=/tmp/cold JK_STORE_DIR=$HOME/.jk/store` gives you a scratch everything with a warm store.
 Such a home builds against that store but never installs into it: its `jk install`, and the
 installer's shelf step for a local dist, refuse to write the default home's `repos/jk-local`,

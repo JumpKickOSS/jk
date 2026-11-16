@@ -238,6 +238,16 @@ public final class JkDirs {
         return realOrNormal(homeDir()).equals(realOrNormal(Path.of(userHome).resolve(HOME_DIR)));
     }
 
+    /**
+     * True when this home is an install of its own, which may claim what names one home for the whole
+     * account (the User PATH, the shell activation, the desktop identity): the default home, or on
+     * Windows the {@code JK_HOME} set as a User environment variable ({@link PersistedHome}), as a
+     * home on a Dev Drive is. A {@code JK_HOME} set for one process alone is a private home.
+     */
+    public boolean isInstalledHome() {
+        return isDefaultHome() || (Os.isWindows(osName) && PersistedHome.isPersisted(homeDir()));
+    }
+
     private static Path realOrNormal(Path path) {
         try {
             return path.toRealPath();

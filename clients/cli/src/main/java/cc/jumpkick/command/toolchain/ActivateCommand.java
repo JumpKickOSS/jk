@@ -15,6 +15,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.PersistedHome;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -182,11 +183,14 @@ public final class ActivateCommand implements CliCommand {
         return true;
     }
 
-    /** True when the home jk runs from is {@code $HOME/.jk}, the one home an rc block may name unasked. */
+    /**
+     * True when the home jk runs from is one an rc block may name unasked: {@code $HOME/.jk}, or on
+     * Windows the {@code JK_HOME} persisted as a User environment variable (a Dev Drive home).
+     */
     private static boolean isDefaultHome() {
         Path live = WorkingDirectory.resolve(JkDirs.home());
         Path dflt = WorkingDirectory.resolve(home().resolve(JkDirs.HOME_DIR));
-        return live.equals(dflt);
+        return live.equals(dflt) || PersistedHome.isPersisted(live);
     }
 
     /**

@@ -336,6 +336,12 @@ try {
     if (-not (Resolve-WriteRc ($defaultHome + [IO.Path]::DirectorySeparatorChar) $defaultHome $false)) { throw "a trailing separator made the default home private" }
     if (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $false) { throw "a private JK_HOME claimed the profile block unasked" }
     if (-not (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $true)) { throw "-Rc did not ask for the profile block on a private home" }
+    # A JK_HOME persisted as a User environment variable (a Dev Drive home) is an install of its own.
+    $devHome = Join-Path $work "dev-drive-jk"
+    if (-not (Resolve-WriteRc $devHome $defaultHome $false $devHome)) { throw "the persisted JK_HOME did not claim the profile block" }
+    if (-not (Resolve-WriteRc $devHome $defaultHome $false ($devHome.ToUpperInvariant() + "\"))) { throw "case or a trailing separator made the persisted home private" }
+    if (Resolve-WriteRc (Join-Path $work "scratch-jk") $defaultHome $false $devHome) { throw "a process-only JK_HOME claimed the profile block because another home is persisted" }
+    if (Resolve-WriteRc $devHome $defaultHome $false "relative-jk") { throw "a relative persisted JK_HOME named a home" }
 
     # ---- a release dist over the home's snapshot line is refused before anything is written ----
     # The shelved release would hide the snapshot, and every later `jk install` in that home would

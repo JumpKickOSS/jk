@@ -136,13 +136,14 @@ public final class DesktopIdentity {
     }
 
     /**
-     * What {@link #unregister} would delete that exists: the registration when this is the default
-     * home, the only one that registers itself, and this home's icon directory.
+     * What {@link #unregister} would delete that exists: the registration when this is an installed
+     * home (the default one, or a persisted Windows {@code JK_HOME}), the only kind that registers
+     * itself, and this home's icon directory.
      */
     public List<Path> installed() {
         List<Path> out = new ArrayList<>();
         Path entry = entry();
-        if (entry != null && dirs.isDefaultHome() && Files.exists(entry)) out.add(entry);
+        if (entry != null && dirs.isInstalledHome() && Files.exists(entry)) out.add(entry);
         if (Files.exists(iconDir())) out.add(iconDir());
         return out;
     }
@@ -158,13 +159,14 @@ public final class DesktopIdentity {
     }
 
     /**
-     * Registers the default home when its registration is missing, once per process. Best effort:
+     * Registers an installed home ({@link JkDirs#isInstalledHome}) when its registration is missing,
+     * once per process. Best effort:
      * a notification goes out either way.
      */
     public synchronized void ensure() {
         if (ensured) return;
         ensured = true;
-        if (registered() || !dirs.isDefaultHome()) return;
+        if (registered() || !dirs.isInstalledHome()) return;
         try {
             register();
         } catch (IOException | RuntimeException ignored) {

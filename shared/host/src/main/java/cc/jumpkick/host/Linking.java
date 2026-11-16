@@ -72,7 +72,7 @@ public final class Linking {
                 createLinkRetryingOnce(source, target);
                 return;
             } catch (UnsupportedOperationException notLinkable) {
-                markUnlinkable(pair);
+                markUnlinkable(pair, source, target);
             } catch (NoSuchFileException gone) {
                 // The blob is missing (pruned concurrently) — a copy cannot succeed either, and the
                 // volume pair has said nothing about links.
@@ -82,7 +82,7 @@ public final class Linking {
                 // target, a permissions problem or a full volume is about this file, not about
                 // whether the pair can link; caching those would demote every later materialisation
                 // on the pair to a copy for the rest of the process.
-                if (isVolumeVerdict(failed)) markUnlinkable(pair);
+                if (isVolumeVerdict(failed)) markUnlinkable(pair, source, target);
             }
         }
         Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
@@ -125,11 +125,23 @@ public final class Linking {
         return pair == null || LINKABLE.getOrDefault(pair, Boolean.TRUE);
     }
 
-    private static void markUnlinkable(@Nullable VolumePair pair) {
+    private static void markUnlinkable(@Nullable VolumePair pair, Path source, Path target) {
         // Remember it for this volume pair rather than rediscovering it per file. On a mount that
         // refuses links, a failed createLink is 79.6 us on Windows (17x Linux) before the 305 us
         // copy — answer the capability question once per pair, not once per file.
-        if (pair != null) LINKABLE.put(pair, Boolean.FALSE);
+        if (pair == null) return;
+        if (LINKABLE.put(pair, Boolean.FALSE) == null) {
+            // Said once per pair and process: every later file between these volumes is a copy, the
+            // cost of a project on another volume than jk's home (a Dev Drive home with the code on C:).
+            Log.info(
+                    "hard links do not reach from one volume to the other here; files are copied instead",
+                    "from",
+                    source.toAbsolutePath().getParent(),
+                    "to",
+                    target.toAbsolutePath().getParent(),
+                    "volumes",
+                    pair.source() + "->" + pair.target());
+        }
     }
 
     /** Test seam: forget every cached verdict. */
