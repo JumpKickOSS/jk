@@ -6,6 +6,7 @@ import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.engine.http.FrontDoor;
 import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.host.Guest;
+import cc.jumpkick.host.WslInterop;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.File;
@@ -216,7 +217,7 @@ final class WindowsHostEngine {
     }
 
     private static ProcessBuilder fromWindowsFolder(List<String> argv) {
-        ProcessBuilder pb = new ProcessBuilder(argv);
+        ProcessBuilder pb = WslInterop.builder(argv);
         Path windowsRoot = Path.of("/mnt/c");
         if (Files.isDirectory(windowsRoot)) pb.directory(windowsRoot.toFile());
         return pb;

@@ -11,6 +11,7 @@ import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.WslInterop;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -165,7 +166,8 @@ public final class DecisionAlerts implements AutoCloseable {
     /** {@code argv}'s output when it exits 0 within a minute; null otherwise. */
     private static @Nullable String captured(List<String> argv, boolean output) {
         try {
-            Processes.Captured c = Processes.capture(argv, Duration.ofMinutes(1));
+            Processes.Captured c =
+                    Processes.capture(WslInterop.builder(argv).redirectErrorStream(true), Duration.ofMinutes(1));
             if (c.timedOut() || c.exit() != 0) return null;
             return output ? c.output() : "";
         } catch (IOException | RuntimeException e) {
@@ -457,7 +459,7 @@ public final class DecisionAlerts implements AutoCloseable {
         @Override
         public boolean launch(List<String> argv) {
             try {
-                new ProcessBuilder(argv)
+                WslInterop.builder(argv)
                         .redirectOutput(Redirect.DISCARD)
                         .redirectError(Redirect.DISCARD)
                         .start();
@@ -473,7 +475,8 @@ public final class DecisionAlerts implements AutoCloseable {
         @Override
         public boolean runToEnd(List<String> argv) {
             try {
-                Processes.Captured c = Processes.capture(argv, TOAST_WAIT);
+                Processes.Captured c =
+                        Processes.capture(WslInterop.builder(argv).redirectErrorStream(true), TOAST_WAIT);
                 return !c.timedOut() && c.exit() == 0;
             } catch (IOException | RuntimeException e) {
                 return false;
@@ -483,7 +486,8 @@ public final class DecisionAlerts implements AutoCloseable {
         @Override
         public @Nullable String output(List<String> argv) {
             try {
-                Processes.Captured c = Processes.capture(argv, OUTPUT_WAIT);
+                Processes.Captured c =
+                        Processes.capture(WslInterop.builder(argv).redirectErrorStream(true), OUTPUT_WAIT);
                 return c.timedOut() ? null : c.output();
             } catch (IOException | RuntimeException e) {
                 return null;

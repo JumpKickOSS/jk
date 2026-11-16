@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.WslInterop;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -157,7 +158,7 @@ public final class GuestPairing {
      */
     private static @Nullable String run(List<String> argv) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(argv);
+            ProcessBuilder pb = WslInterop.builder(argv);
             Path windowsRoot = Path.of("/mnt/c");
             if (Files.isDirectory(windowsRoot)) pb.directory(windowsRoot.toFile());
             Processes.Captured c = Processes.capture(pb, INTEROP_WAIT);

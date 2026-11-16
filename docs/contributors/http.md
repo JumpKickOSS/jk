@@ -135,6 +135,12 @@ reads Windows' 8910 identity through the PowerShell probe, and a host speaking a
 (or none) is not paired with: the guest unpairs, keeps its band-port dashboard and logs which side
 to update. `JK_FRONT_DOOR_PROTOCOL` in the environment an engine starts in stands in another protocol, to try a mismatch.
 
+Every Windows program the engine starts from WSL (`cmd.exe`, `jk.exe`, PowerShell
+for the check from Windows and for toasts) goes through `/run/WSL/1_interop`, the
+distro's own interop server (`WslInterop`). The socket of the `wsl.exe` session that started the
+engine stops starting Windows programs when that session ends, and a start through it never
+returns.
+
 ## The engine never idles out
 
 **A resident engine does not self-terminate for being idle.** There is no idle timeout, and adding

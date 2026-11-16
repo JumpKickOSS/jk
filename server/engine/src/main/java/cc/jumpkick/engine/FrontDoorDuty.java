@@ -10,6 +10,7 @@ import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.WslInterop;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
@@ -215,7 +216,7 @@ final class FrontDoorDuty implements AutoCloseable {
         try {
             // Standard output alone: PowerShell writes progress and errors as CLIXML on stderr.
             Processes.Captured c = Processes.capture(
-                    new ProcessBuilder(windows.command(PowerShell.command(probeScript(port)))), Seat.VERIFY_WAIT);
+                    WslInterop.builder(windows.command(PowerShell.command(probeScript(port)))), Seat.VERIFY_WAIT);
             return c.timedOut() || c.exit() != 0 ? null : c.output();
         } catch (IOException | RuntimeException e) {
             return null;
