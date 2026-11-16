@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -37,7 +38,11 @@ import org.junit.jupiter.api.Test;
  * engine: the request carries what the client forwards ({@link RequestEnvNames}), the run's record
  * names the CI run, and no secret's value appears in the record, the journal on disk or the HTTP
  * history answer.
+ *
+ * <p>A whole build through a real engine is the integration tier's (about 16 s here; the fast tier
+ * stops a method at 20 s).
  */
+@Tag("integration")
 class RunSourceSecretsE2eTest extends EngineServerHarness {
 
     private static final String CANARY = "canary-3f9a7c1e-do-not-leak";
@@ -150,11 +155,29 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
                 assertThat(api.body()).as(path).contains("gitlab-ci").doesNotContain(CANARY);
             }
         } finally {
-            server.close();
-            serverThread.join(10_000);
+            stop(server, serverThread);
             LockfileReader.clearCache();
         }
     }
+
+    /**
+     * Close the engine's listening socket, then give its thread a bounded join, and never let the
+     * wait stand in for what the test found: an interrupt (the method's timeout) or a slow drain is
+     * teardown, not a verdict, so it neither replaces a failed canary check nor fails a passing one.
+     * The thread is a daemon; one still draining is interrupted and left to end.
+     */
+    private static void stop(EngineServer server, Thread serverThread) {
+        server.close();
+        try {
+            serverThread.join(TEARDOWN.toMillis());
+        } catch (InterruptedException timedOut) {
+            Thread.currentThread().interrupt();
+        }
+        if (serverThread.isAlive()) serverThread.interrupt();
+    }
+
+    /** How long teardown waits for the engine thread once its socket is closed. */
+    private static final Duration TEARDOWN = Duration.ofSeconds(3);
 
     private static String build(Path project, Path cache) {
         return new BuildRequest(
