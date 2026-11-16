@@ -16,6 +16,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.DeclaredDependencies;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.test.ClassReads;
 import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -171,9 +172,11 @@ public final class MemoryAdmission {
      * run's recordings ({@link SuiteReads#READ_PEAK_BYTES}). That read happens inside a running test
      * job, after its suite's JVMs exit, one at a time across the engine; it is held back here once so
      * that no job is admitted into it. Before it was, a 256 MiB engine admitted a second job beside a
-     * test job whose recordings then took 160 MB to read, and died of OutOfMemoryError.
+     * test job whose recordings then took 160 MB to read, and died of OutOfMemoryError. After the
+     * read, one suite at a time keeps what its test classes did ({@link ClassReads#PEAK_BYTES}),
+     * walking its classes' cones only under the same read permit, so that is held back too.
      */
-    public static final long RESERVE_BYTES = CHURN_BYTES + SuiteReads.READ_PEAK_BYTES;
+    public static final long RESERVE_BYTES = CHURN_BYTES + SuiteReads.READ_PEAK_BYTES + ClassReads.PEAK_BYTES;
 
     /**
      * What every plan job holds regardless of inputs: graph, memos (the request scope's weighed facts

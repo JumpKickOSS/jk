@@ -45,10 +45,19 @@ final class ClassKeys {
 
     private ClassKeys() {}
 
-    /** What one class was seen to read, from its record or this run. */
+    /**
+     * What one class was seen to read, from its record or this run, bounded as a record holds it: a
+     * class that read more data files than its record names ({@code readsMore}) is keyed on every
+     * file its suite was found to read instead.
+     */
     record Observed(
-            boolean attributed, List<String> reads, List<String> code, List<String> processes, Set<String> loaded) {
-        static final Observed NONE = new Observed(false, List.of(), List.of(), List.of(), Set.of());
+            boolean attributed,
+            List<String> reads,
+            boolean readsMore,
+            List<String> code,
+            boolean codeMore,
+            List<String> processes) {
+        static final Observed NONE = new Observed(false, List.of(), false, List.of(), false, List.of());
     }
 
     /**
@@ -59,14 +68,13 @@ final class ClassKeys {
      */
     record Key(String key, @Nullable String fallback) {}
 
-    /** The stamp tokens a finer part replaces: the selection, the test compiles, discovered reads, worker jars. */
+    /** The stamp tokens a finer part replaces: the selection, the test compiles, discovered reads. */
     static boolean replacedToken(String token) {
         return token.startsWith("sel:")
                 || token.startsWith("suites-run:")
                 || token.startsWith(TestStamp.COMPILE_TEST)
                 || token.startsWith(TestStamp.COMPILE_TEST_KOTLIN)
                 || token.startsWith(TestStamp.COMPILE_TEST_GROOVY)
-                || token.startsWith("worker:")
                 || SuiteReads.isReadsToken(token);
     }
 
@@ -87,36 +95,11 @@ final class ClassKeys {
     }
 
     /**
-     * The key of {@code testClass} in {@code launch}, over {@code cone}, what it was seen to do and
-     * what no class's window held ({@code pooled}); over every workspace class ({@code module}, the
-     * digest of them all) with the reason when the cone cannot be trusted.
-     */
-    static Key key(
-            String testClass,
-            String launch,
-            ClassCones.Cone cone,
-            String suitePart,
-            Observed seen,
-            Observed pooled,
-            String module,
-            Predicate<String> indexed,
-            Path workspace) {
-        return key(
-                launch,
-                cone,
-                suitePart,
-                seen,
-                pooled,
-                module,
-                indexed,
-                workspace,
-                fallback(cone, seen, testClass, indexed));
-    }
-
-    /**
-     * As above with {@code fallback} decided: the key a class's record was stored under is taken again
-     * with the fallback that record says, since whether a class it loaded lay in its cone is a fact of
-     * the run that loaded it, and a cone that has moved since moves the key anyway.
+     * The key of a class in {@code launch}: the suite part, {@code cone}'s digest, or with a {@code
+     * fallback} every workspace class ({@code module}, the digest of them all), and what it and the
+     * pool ({@code pooled}) were seen to read. A read set past its record's bound is keyed as every
+     * file the suite was found to read ({@code suiteReads}, the suite's discovered inputs as one
+     * digest), which holds the class's own.
      */
     static Key key(
             String launch,
@@ -125,36 +108,44 @@ final class ClassKeys {
             Observed seen,
             Observed pooled,
             String module,
-            Predicate<String> indexed,
+            String suiteReads,
             Path workspace,
             @Nullable String fallback) {
         MessageDigest md = Hashing.newSha256();
         feed(md, "suite:" + suitePart);
         feed(md, "launch:" + launch);
         feed(md, fallback == null ? "cone:" + cone.digest() : "module:" + module);
-        // A class it loaded that is gone (renamed, deleted) moved under it, whatever the cone says.
-        for (String loaded : seen.loaded()) if (!indexed.test(loaded)) feed(md, "gone:" + loaded);
-        feedFiles(md, "read", seen.reads(), workspace, true);
+        if (seen.readsMore() || pooled.readsMore()) feed(md, "suite-reads:" + suiteReads);
+        if (!seen.readsMore()) feedFiles(md, "read", seen.reads(), workspace, true);
         feedFiles(md, "code", seen.code(), workspace, false);
-        feedFiles(md, "pooled-read", pooled.reads(), workspace, true);
+        if (!pooled.readsMore()) feedFiles(md, "pooled-read", pooled.reads(), workspace, true);
         feedFiles(md, "pooled-code", pooled.code(), workspace, false);
         return new Key((fallback == null ? "" : "module:") + Hashing.hex(md.digest()), fallback);
     }
 
     /**
-     * Why a class's cone cannot be trusted, or null when it can. A class it loaded outside its cone
-     * says the cone missed something, unless the class is gone from the workspace ({@code indexed}),
-     * which moves the key by itself.
+     * Why a class's cone cannot be trusted, or null when it can: no attributed record, a program
+     * started, more code files or loaded classes than are kept, a scanning entry point in the cone,
+     * or a workspace class it loaded ({@code loaded}) that the cone does not name. Decided when the
+     * class ran, from what it loaded then; its record keeps the answer.
      */
-    static @Nullable String fallback(ClassCones.Cone cone, Observed seen, String testClass, Predicate<String> indexed) {
+    static @Nullable String fallback(
+            ClassCones.Cone cone,
+            Observed seen,
+            Collection<String> loaded,
+            boolean loadedMore,
+            String testClass,
+            Predicate<String> indexed) {
         if (!seen.attributed()) return "unattributed";
         if (!seen.processes().isEmpty()) return "process " + seen.processes().getFirst();
+        if (seen.codeMore()) return "code past the record's bound";
+        if (loadedMore) return "loads past the record's bound";
         if (cone.scanner() != null) return "scanner " + cone.scanner();
-        for (String loaded : seen.loaded()) {
-            if (!cone.classes().contains(loaded)
-                    && indexed.test(loaded)
-                    && !TestClassLedger.topLevel(loaded).equals(testClass)) {
-                return "reflective " + loaded;
+        for (String l : loaded) {
+            if (!cone.contains(l)
+                    && indexed.test(l)
+                    && !TestClassLedger.topLevel(l).equals(testClass)) {
+                return "reflective " + l;
             }
         }
         return null;

@@ -103,11 +103,14 @@ class TestClassRecordsE2eTest {
                 .as("outside the module, the file by its path")
                 .singleElement()
                 .satisfies(p -> assertThat(p.replace('\\', '/')).endsWith("/data/fixture.txt"));
-        assertThat(reads).contains("demo.flag").contains("\"demo.M\"");
+        assertThat(reads).contains("demo.flag");
+        assertThat(Jsonl.intValue(Jsonl.nested(reads, "jvm"), "loaded", 0))
+                .as("it loaded the main class too")
+                .isGreaterThan(Jsonl.intValue(Jsonl.nested(plain, "jvm"), "loaded", 0));
         assertThat(Jsonl.strArray(plain, "reads"))
                 .as("the other class read no fixture")
                 .isEmpty();
-        assertThat(plain).doesNotContain("demo.flag").doesNotContain("\"demo.M\"");
+        assertThat(plain).doesNotContain("demo.flag");
         assertThat(first.classes)
                 .as("both ran")
                 .noneMatch(TestClassResult::replayed)

@@ -12,52 +12,58 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A class's key moves with what it read, falls back to its module when it loaded a workspace class
- * its cone does not name, started a program or has no record, and moves, without falling back, when
- * a class it loaded is gone.
+ * A class's key moves with what it read; past its record's bound it moves with everything its suite
+ * read; it falls back to its module when it loaded a workspace class its cone does not name, started
+ * a program, loaded past its bound or has no record.
  */
 class ClassKeysTest {
 
-    private static final ClassCones.Cone CONE = new ClassCones.Cone("cone", Set.of("demo.T", "demo.A"), null);
-
     @Test
     void a_class_is_keyed_by_its_cone_and_reads_until_it_cannot_be_trusted(@TempDir Path ws) throws Exception {
+        Path classes = Files.createDirectories(ws.resolve("classes"));
+        ClassCones.Cone cone = ClassCones.index(List.of(classes)).cone("demo.T");
         Path data = Files.writeString(ws.resolve("data.txt"), "one");
-        ClassKeys.Observed seen = observed(true, List.of("data.txt"), List.of(), Set.of("demo.A"));
-        ClassKeys.Key key = key(seen, Set.of("demo.T", "demo.A", "demo.B"), ws);
-        assertThat(key.fallback()).isNull();
+        ClassKeys.Observed seen = observed(List.of("data.txt"), false, List.of());
+        ClassKeys.Key key = key(cone, seen, "suite-reads", ws);
         Files.writeString(data, "two");
-        assertThat(key(seen, Set.of("demo.T", "demo.A", "demo.B"), ws).key())
+        assertThat(key(cone, seen, "suite-reads", ws).key())
                 .as("a file it read changed")
                 .isNotEqualTo(key.key());
 
-        assertThat(key(observed(true, List.of(), List.of(), Set.of("demo.B")), Set.of("demo.B"), ws)
-                        .fallback())
+        ClassKeys.Observed many = observed(List.of("data.txt"), true, List.of());
+        String before = key(cone, many, "reads-1", ws).key();
+        assertThat(key(cone, many, "reads-2", ws).key())
+                .as("past its bound, any file its suite read")
+                .isNotEqualTo(before);
+        assertThat(key(cone, seen, "reads-2", ws).key())
+                .as("within its bound, only its own")
+                .isEqualTo(key(cone, seen, "reads-1", ws).key());
+
+        assertThat(ClassKeys.fallback(cone, seen, List.of("demo.B"), false, "demo.T", Set.of("demo.B")::contains))
                 .as("a workspace class loaded outside its cone")
                 .isEqualTo("reflective demo.B");
-        assertThat(key(observed(true, List.of(), List.of("/usr/bin/git"), Set.of()), Set.of(), ws)
-                        .fallback())
-                .startsWith("process");
-        assertThat(key(ClassKeys.Observed.NONE, Set.of(), ws).fallback()).isEqualTo("unattributed");
-
-        ClassKeys.Observed loadedGone = observed(true, List.of(), List.of(), Set.of("demo.Gone"));
-        ClassKeys.Key gone = key(loadedGone, Set.of("demo.T", "demo.A"), ws);
-        assertThat(gone.fallback())
-                .as("a class gone from the workspace is no reflection")
+        assertThat(ClassKeys.fallback(cone, seen, List.of("demo.Gone"), false, "demo.T", Set.of()::contains))
+                .as("a class gone from the workspace moved the cone itself")
                 .isNull();
-        assertThat(gone.key())
-                .as("but it moved under the class")
-                .isNotEqualTo(key(observed(true, List.of(), List.of(), Set.of()), Set.of("demo.T"), ws)
-                        .key());
+        assertThat(ClassKeys.fallback(
+                        cone,
+                        observed(List.of(), false, List.of("/usr/bin/git")),
+                        List.of(),
+                        false,
+                        "demo.T",
+                        c -> true))
+                .startsWith("process");
+        assertThat(ClassKeys.fallback(cone, seen, List.of(), true, "demo.T", c -> true))
+                .startsWith("loads past");
+        assertThat(ClassKeys.fallback(cone, ClassKeys.Observed.NONE, List.of(), false, "demo.T", c -> true))
+                .isEqualTo("unattributed");
     }
 
-    private static ClassKeys.Observed observed(
-            boolean attributed, List<String> reads, List<String> processes, Set<String> loaded) {
-        return new ClassKeys.Observed(attributed, reads, List.of(), processes, loaded);
+    private static ClassKeys.Observed observed(List<String> reads, boolean more, List<String> processes) {
+        return new ClassKeys.Observed(true, reads, more, List.of(), false, processes);
     }
 
-    private static ClassKeys.Key key(ClassKeys.Observed seen, Set<String> indexed, Path ws) {
-        return ClassKeys.key(
-                "demo.T", "", CONE, "suite", seen, ClassKeys.Observed.NONE, "module", indexed::contains, ws);
+    private static ClassKeys.Key key(ClassCones.Cone cone, ClassKeys.Observed seen, String suiteReads, Path ws) {
+        return ClassKeys.key("", cone, "suite", seen, ClassKeys.Observed.NONE, "module", suiteReads, ws, null);
     }
 }

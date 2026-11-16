@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -82,7 +83,7 @@ class ClassShadowE2eTest {
         Files.writeString(calc, Files.readString(calc).replace("a + b", "a - b"));
         assertThat(build(m, cache)).isEqualTo(TaskStatus.FAIL);
         String body = last(m);
-        Map<String, String> why = Jsonl.strMap(body, "why");
+        Map<String, String> why = why(m);
         assertThat(Jsonl.strArray(body, "changed")).containsExactly("demo.CalcTest");
         assertThat(why).as("the class whose cone holds Calc").containsKey("demo.CalcTest");
         assertThat(why).as("no cone holds Calc").doesNotContainKeys("demo.OtherTest", "demo.DataTest");
@@ -94,9 +95,7 @@ class ClassShadowE2eTest {
         assertThat(build(m, cache)).isEqualTo(TaskStatus.FAIL);
         String read = last(m);
         assertThat(Jsonl.strArray(read, "changed")).containsExactlyInAnyOrder("demo.CalcTest", "demo.DataTest");
-        assertThat(Jsonl.strMap(read, "why"))
-                .containsKeys("demo.CalcTest", "demo.DataTest")
-                .doesNotContainKey("demo.OtherTest");
+        assertThat(why(m)).containsKeys("demo.CalcTest", "demo.DataTest").doesNotContainKey("demo.OtherTest");
         assertThat(Jsonl.strArray(read, "unsound")).isEmpty();
 
         Files.writeString(data, "one");
@@ -104,7 +103,7 @@ class ClassShadowE2eTest {
         assertThat(build(m, cache)).isEqualTo(TaskStatus.FAIL);
         String reflect = last(m);
         assertThat(Jsonl.strArray(reflect, "changed")).contains("demo.ReflectTest");
-        assertThat(Jsonl.strMap(reflect, "why")).containsKey("demo.ReflectTest").doesNotContainKey("demo.OtherTest");
+        assertThat(why(m)).containsKey("demo.ReflectTest").doesNotContainKey("demo.OtherTest");
         assertThat(Jsonl.strArray(reflect, "unsound")).isEmpty();
     }
 
@@ -123,6 +122,16 @@ class ClassShadowE2eTest {
                     }
                 }
                 """.formatted(name, body));
+    }
+
+    /** Why per-class selection would have run each class, by its record of the last run; a class it would replay is absent. */
+    private static Map<String, String> why(Path module) {
+        Map<String, String> out = new TreeMap<>();
+        TestClassRecords.rows(TestClassRecords.file(module)).forEach((key, row) -> {
+            String why = Jsonl.str(row, "wouldRun");
+            if (why != null) out.put(key.substring(key.indexOf('|') + 1), why);
+        });
+        return out;
     }
 
     private static String last(Path module) throws Exception {

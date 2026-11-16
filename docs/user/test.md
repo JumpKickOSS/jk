@@ -1134,7 +1134,10 @@ read, the jars it loaded by path, the workspace classes it loaded, the programs 
 test JDK's own launcher aside), the native libraries it loaded from outside the JDK (under a suite
 JDK of 22 or later), the operating system's own files it read (`/proc`,
 `/sys`, `/dev`, `/etc`, macOS's `/System` and `/Library`, the Windows directory), the hosts it
-reached and the variables and properties it looked up. A test is named as a container path and a
+reached and the variables and properties it looked up. Each record is bounded whatever the class did: a few files of each kind, a few
+names, and the number of workspace classes it loaded; a class that read more files than its record
+names says so and stands for every file its suite was found to read. The records are written and
+read a line at a time. A test is named as a container path and a
 case (`["com.example", "OrdersTest"]`), not by Java alone. The native libraries, programs and
 system files are evidence that a result is bound to the platform it ran on; none of it keys
 anything yet, and a class that did not run keeps the record of the run it last ran in. Set

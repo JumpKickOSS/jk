@@ -43,14 +43,14 @@ class ledger already keys it), is a hash of three parts.
 **The suite part**, what every class of the launch sees, taken from the suite stamp's tokens:
 - JumpKick's cache-key version, the test JDK (`test-jdk:`), the test runner, JVM flags (the module's and
   the request's), `-ea`, the suite settings of this launch, the suite definitions, the excluded
-  classes, network allowed or not, `[test] tools` identities;
+  classes, network allowed or not, `[test] tools` identities, the plugin worker jars the stamp keys;
 - the declared environment values (`[env]`, `[test] env`, profile env) and the shell's locale;
 - every **external** runtime classpath entry by content: every entry that is not a workspace
   module's output (dependency jars, the JUnit platform and engines, language runtimes);
 - the suite resource roots by tree content.
 
 Left out of the suite part, because a finer part replaces them: the test sources and the module's
-main classes (the class part), sibling jars and worker jars (the class part and the observed part),
+main classes (the class part), sibling jars (the class part),
 the discovered reads (the observed part), the test compiles' action keys (their output is the
 class bytes), the lock file (the external classpath is what it decides), and the selection
 (`sel:`, `suites-run:`): which other suites run does not change what this class computes.
@@ -78,8 +78,8 @@ asserts a stack trace. Whether to strip is measured in shadow mode before it is 
 - each file it read in its window (see attribution) that no other part keys, by content, with the
   listing of the directory it sits in when that directory is in the workspace tree, as the suite's
   discovered inputs are keyed today;
-- each code file it loaded by path (a worker jar, a plugin jar, a jar a test opens through its own
-  class loader), by content;
+- each code file it loaded by path outside everything the suite's key holds (a jar a test opens
+  through its own class loader), by content;
 - the programs it started, by identity.
 
 A class's first run has no record: it runs. The run records what it read, and the record is stored
@@ -122,7 +122,7 @@ result would differ, must run. Each known hole:
 | **Test fixtures** (`src/fixtures`, a sibling's fixtures) | They are workspace classes on the runtime classpath; the cone walks them |
 | **Tests that scan the repository** | Their reads land in their own window and key only them. A new file in a directory one of them read changes that directory's listing, keyed. A directory listed where nothing was read is unseen, as today |
 | **Programs started** (a test that execs a built jar, `git`, a nested `jk`) | What a child process reads is not recorded. A class that started a program is unattributable and falls back to the module key |
-| **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | A worker jar is a code file read by path: observed, cumulative within its JVM (above). A class that ran in a JVM before any worker loaded is not keyed on the workers |
+| **Nested engines and worker jars** (jk-cli and jk-engine tests drive a real engine that loads plugin jars by path) | The worker jars the suite stamp keys stay in the suite part, so every class keys them. Observing which class loaded a worker was tried and dropped: a class loader cached across classes hides the load from every class but the first, and the classes of jk-cli and jk-engine that drive an engine are most of their suites' time anyway |
 | **Line numbers and source file names** (a test asserting a stack trace) | Bytes are hashed whole, debug attributes included |
 | **The network** | A suite that reached past the host stores no marker, as today, and none of its classes replay |
 | **A recording that did not finish** (a JVM killed, out of memory) | Every class of that JVM is unattributable for that run; no class record is stored for them |
@@ -177,11 +177,33 @@ One **class record** per class per launch, kept beside the suite's discovered in
 for the project, newest run winning:
 
 ```json
-{"container":["cc.acme","OrderTest"],"key":"…","outcome":"passed","tests":12,"failed":0,"skipped":1,
- "ranAt":1763250000000,"millis":840,"reads":["src/test/data/orders.json"],"code":[],"processes":[],
- "nativeCode":[],"osPaths":["/proc/self/status"],"env":["LANG"],
- "jvm":{"cone":"<digest>","coneSize":41,"props":["user.home"],"classesLoaded":38,"unattributed":null}}
+{"launch":"","container":["cc.acme","OrderTest"],"outcome":"passed","tests":12,"failed":0,"skipped":1,
+ "ranAt":1763250000000,"millis":840,"attributed":true,"classKey":"…","wouldRun":"key",
+ "reads":["src/test/data/orders.json"],"code":[],"processes":[],"nativeCode":[],
+ "osPaths":["/proc/self/status"],"network":[],"env":["LANG"],
+ "jvm":{"props":["user.home"],"loaded":38,"cone":"<digest> 41"}}
 ```
+
+**Every row is bounded, and nothing is held whole.** A class keeps at most 8 data files read, 4 code
+files, 2 of each kind of evidence, 8 variable and 8 property names, and the count of workspace classes
+it loaded, never their names. A class that read more data files says `readsMore` and is keyed on
+every file its suite was found to read: the suite's discovered inputs, which hold that set exactly
+and bounded, so per-class reads use the suite's own representation rather than a second one. A
+repository-scanning class that reads 50,000 files therefore costs a row like any other and re-runs
+whenever any input of its suite moves, which is what it reads anyway. Whether a class's loads lay in
+its cone is decided when it runs and kept as its `fallback`. The suite's line holds counts and the
+bounded pool, never a class's content. The record file and the shadow log are written and read a row
+at a time; a row past 256 KiB (none this writes) is skipped as unreadable.
+
+**The memory bound.** One suite records at a time across the engine. What it holds outside the
+recording reader's permit is at most `ClassReads.PEAK_BYTES`, about 16 MiB: some 4.5 KiB per class for
+up to 2,048 classes (a class past that keeps nothing and is keyed by its module), 65,536 class loads
+across the suite, and one JVM's join (8,192 written files, 2,048 code files, 2,048 existence answers).
+That is `C × 4.5 KiB + 7.5 MiB` for `C` classes: under 12 MiB for jk-engine's thousand. Memory
+admission keeps it free beside the reader's own peak. The index of workspace classes the cones walk
+(at most 40,000 classes at 512 bytes, 20 MiB) stands only while the suite holds the reader's permit,
+so it never stands beside a recording being read; past 40,000 every class is keyed by the suite's
+stamp.
 
 Paths in the workspace are relative to it. `osPaths` and `nativeCode` are **platform evidence**:
 the sharing policy reads them to decide that a result is platform-bound. They are never key

@@ -9,7 +9,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.TreeSet;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
@@ -126,18 +125,11 @@ class ClassReadsTest {
 
     @Test
     void the_files_every_jvm_reads_of_the_system_tie_no_result_to_it() {
-        ClassReads.Observation seen = new ClassReads.Observation(
-                new TreeSet<>(),
-                new TreeSet<>(),
-                new TreeSet<>(),
-                new TreeSet<>(),
-                new TreeSet<>(),
-                new TreeSet<>(),
-                new TreeSet<>());
-        seen.osPaths().add(Path.of("/dev/urandom"));
-        seen.osPaths().add(Path.of("/proc/self/status"));
+        ClassReads.Observation seen = ClassReads.Observation.empty();
+        seen.addOsPath(Path.of("/dev/urandom"));
+        seen.addOsPath(Path.of("/proc/self/status"));
         assertThat(seen.platformBound()).isFalse();
-        seen.osPaths().add(Path.of("/etc/localtime"));
+        seen.addOsPath(Path.of("/etc/localtime"));
         assertThat(seen.platformBound()).isTrue();
     }
 

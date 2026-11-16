@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -56,9 +57,13 @@ final class SuiteDiscovery {
             TestSelection selection,
             Collection<Path> keyed,
             boolean networkAllowed,
-            boolean whole) {
+            boolean whole,
+            AtomicReference<ClassRecording.@Nullable Pending> classes) {
 
-        /** Keep each class's record of this run ({@link ClassRecording}). */
+        /**
+         * Keep each class's record of this run ({@link ClassRecording}) once it settles: what the
+         * classes are keyed on folds in the inputs settling decides.
+         */
         void recordClasses(
                 TestClassLedger ledger,
                 String moduleLabel,
@@ -69,7 +74,7 @@ final class SuiteDiscovery {
                 List<String> stampExtras,
                 List<Path> resourceDirs,
                 @Nullable String stampKey) {
-            ClassRecording.record(
+            classes.set(new ClassRecording.Pending(
                     moduleDir,
                     layout,
                     keyed,
@@ -81,13 +86,17 @@ final class SuiteDiscovery {
                     javaHome,
                     stampExtras,
                     resourceDirs,
-                    stampKey);
+                    stampKey));
         }
 
         /** As {@link SuiteDiscovery#settle}, for this run. */
         @Nullable
         String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey) throws Exception {
-            return SuiteDiscovery.settle(ctx, this, stampKey, rekey);
+            ClassRecording.Pending pending = classes.getAndSet(null);
+            String before = pending == null ? "" : pending.suiteReads(selection);
+            String key = SuiteDiscovery.settle(ctx, this, stampKey, rekey);
+            if (pending != null) pending.record(before, pending.suiteReads(selection));
+            return key;
         }
     }
 
@@ -102,7 +111,16 @@ final class SuiteDiscovery {
             throws IOException {
         long now = Clock.SYSTEM.millis();
         String flag = SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir()));
-        return new Run(flag, now, moduleDir, layout, selection, List.copyOf(keyed), networkAllowed, whole);
+        return new Run(
+                flag,
+                now,
+                moduleDir,
+                layout,
+                selection,
+                List.copyOf(keyed),
+                networkAllowed,
+                whole,
+                new AtomicReference<>());
     }
 
     /**

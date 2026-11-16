@@ -91,7 +91,7 @@ class ClassReadsMemoryTest {
         assertThat(child(tmp, "-Xmx256m", "make", recordings, ws)).contains("exit=0", "made");
 
         String out = child(tmp, "-Xmx48m", "attribute", recordings, ws);
-        assertThat(out).contains("exit=0", "complete=true", "classes=1", "reads=" + files);
+        assertThat(out).contains("exit=0", "complete=true", "classes=1", "reads=" + ClassReads.READS_KEPT, "more=true");
         long events = Long.parseLong(out.replaceAll("(?s).*events=(\\d+).*", "$1"));
         assertThat(events).as("every read joined").isGreaterThanOrEqualTo(READS);
     }
@@ -138,7 +138,8 @@ class ClassReadsMemoryTest {
                     recordings, ws, new ClassReads.Layout(List.of(), List.of(), Set.of(), ws, null));
             ClassReads.Observation big = Objects.requireNonNull(seen.classes().get("demo.BigTest"));
             System.out.println("complete=" + seen.complete() + " classes="
-                    + seen.classes().size() + " reads=" + big.reads().size() + " events=" + seen.events());
+                    + seen.classes().size() + " reads=" + big.reads().size() + " more=" + big.readsMore() + " events="
+                    + seen.events());
         }
 
         private static void make(Path recordings, Path ws) throws IOException {
