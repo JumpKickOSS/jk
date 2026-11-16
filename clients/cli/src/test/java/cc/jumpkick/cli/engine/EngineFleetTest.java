@@ -17,6 +17,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -247,14 +249,34 @@ class EngineFleetTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "a Windows engine listens on loopback TCP, never on a Unix socket")
     void stop_all_names_another_homes_engine_without_reading_its_state(@TempDir Path tmp) throws Exception {
         // The suite may run on loopback TCP; the stand-in listens on the Unix socket the endpoint names.
+        // The override is set inside the try, so a failure before the stand-in listens cannot leave it
+        // set for every later test in this JVM (each engine they start would bind a Unix socket).
         String transport = System.getProperty(EngineTransport.TRANSPORT_PROPERTY);
-        System.setProperty(EngineTransport.TRANSPORT_PROPERTY, "unix");
-        Path engineDir = Files.createDirectories(tmp.resolve("other-home/state/engine"));
-        Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen1.sock\n");
-        Path socket = EnginePaths.reachableSocketDir(engineDir).resolve("abcd1234.gen1.sock");
-        Process foreign = SleepMain.spawn(30_000, SleepMain.ENGINE_MAIN, "-XX:HeapDumpPath=" + engineDir);
+        Process foreign = null;
+        Path socket = null;
+        try {
+            System.setProperty(EngineTransport.TRANSPORT_PROPERTY, "unix");
+            Path engineDir = Files.createDirectories(tmp.resolve("other-home/state/engine"));
+            Files.writeString(engineDir.resolve("abcd1234.endpoint"), "abcd1234.gen1.sock\n");
+            socket = EnginePaths.reachableSocketDir(engineDir).resolve("abcd1234.gen1.sock");
+            foreign = SleepMain.spawn(30_000, SleepMain.ENGINE_MAIN, "-XX:HeapDumpPath=" + engineDir);
+            standInAnswersNoStop(tmp, socket, foreign);
+        } finally {
+            if (transport == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
+            else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, transport);
+            if (foreign != null) {
+                foreign.destroyForcibly();
+                foreign.waitFor();
+            }
+            if (socket != null) Files.deleteIfExists(socket);
+        }
+    }
+
+    /** Listens on {@code socket} for {@code foreign}'s home and runs stop -A, which must not dial it. */
+    private static void standInAnswersNoStop(Path tmp, Path socket, Process foreign) throws Exception {
         AtomicInteger dialled = new AtomicInteger();
         try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
             server.bind(UnixDomainSocketAddress.of(socket));
@@ -276,12 +298,6 @@ class EngineFleetTest {
                     .as("a stop never reads or dials another home's engine")
                     .isZero();
             assertThat(foreign.isAlive()).isTrue();
-        } finally {
-            if (transport == null) System.clearProperty(EngineTransport.TRANSPORT_PROPERTY);
-            else System.setProperty(EngineTransport.TRANSPORT_PROPERTY, transport);
-            foreign.destroyForcibly();
-            foreign.waitFor();
-            Files.deleteIfExists(socket);
         }
     }
 
