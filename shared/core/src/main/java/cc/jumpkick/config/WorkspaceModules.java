@@ -47,6 +47,14 @@ public final class WorkspaceModules {
      * selects nothing is a typo, not an empty set.
      */
     public static List<String> expand(Path root, List<String> entries) {
+        return expand(root, entries, "[workspace] modules");
+    }
+
+    /**
+     * {@link #expand(Path, List)} for a list other than {@code [workspace] modules}, named {@code
+     * list} in its errors: a group root's {@code [workspaces] members} reads by the same rules.
+     */
+    public static List<String> expand(Path root, List<String> entries, String list) {
         LinkedHashSet<String> out = new LinkedHashSet<>();
         for (String entry : entries) {
             if (entry == null || entry.isBlank()) continue;
@@ -56,14 +64,13 @@ public final class WorkspaceModules {
                 continue;
             }
             if (normalized.contains("**")) {
-                throw new JkBuildParseException("[workspace] modules entry `" + entry
-                        + "`: `**` is not supported; use `*` once per directory level");
+                throw new JkBuildParseException(
+                        list + " entry `" + entry + "`: `**` is not supported; use `*` once per directory level");
             }
             Set<String> matches = new TreeSet<>();
             collect(root, root, normalized.split("/"), 0, matches);
             if (matches.isEmpty()) {
-                throw new JkBuildParseException(
-                        "[workspace] modules entry `" + entry + "` matches no directory with a jk.toml");
+                throw new JkBuildParseException(list + " entry `" + entry + "` matches no directory with a jk.toml");
             }
             out.addAll(matches);
         }

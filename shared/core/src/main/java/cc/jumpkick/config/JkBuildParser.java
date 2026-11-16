@@ -35,6 +35,7 @@ import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
 import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.release.ReleaseTable;
+import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.run.SourceLocation;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -466,6 +467,9 @@ public final class JkBuildParser {
 
     private static JkBuild build(TomlParseResult result, LibraryCatalog catalog, @Nullable Path moduleDir) {
         Objects.requireNonNull(catalog, "catalog");
+        // A group root has no project in it: every reader of a project is told where one is.
+        JkBuildParseException groupRoot = WorkspaceGroup.asProject(result);
+        if (groupRoot != null) throw groupRoot;
         RetiredKeys.refuse(result);
         // Workspace roots keep concrete project defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
@@ -700,10 +704,19 @@ public final class JkBuildParser {
         return ManifestDeps.splitEmbeddedUrl(urlRaw);
     }
 
-    /** {@code [release]} — the tag template and the version-carrying files; defaults when the file or table is absent. */
+    /**
+     * {@code [release]} — the tag template and the version-carrying files; defaults when the file or
+     * table is absent. A workspace a group root lists, with no {@code [release] tag} of its own,
+     * tags {@code <name>-v<version>} ({@link ReleaseTag#defaultTemplate}).
+     */
     public static ReleaseTable releaseTable(Path file) {
         TomlParseResult root = documentIfPresent(file);
-        return root == null ? ReleaseTable.DEFAULT : ManifestTables.parseRelease(root);
+        ReleaseTable table = root == null ? ReleaseTable.DEFAULT : ManifestTables.parseRelease(root);
+        if (root == null || root.isString(List.of("release", "tag"))) return table;
+        Path dir = file.toAbsolutePath().normalize().getParent();
+        if (dir == null || WorkspaceGroup.listing(dir) == null) return table;
+        String name = root.isString(List.of("name")) ? root.getString(List.of("name")) : null;
+        return new ReleaseTable(ReleaseTag.defaultTemplate(name), table.files());
     }
 
     /** {@code [deny]} — the dependency policy block. Permissive when the file/table is absent. */
