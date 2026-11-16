@@ -25,11 +25,13 @@ import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.BuildInfoKeys;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -228,8 +230,30 @@ public record TestStampInputs(
             List<Path> resources,
             Path lockFile,
             List<String> extras) {
+        String main = mainClassesFingerprint;
+        if (main == null) {
+            try {
+                main = stableMainClasses(sources, mainClasses);
+            } catch (IOException unreadable) {
+                return null; // fail open: retest
+            }
+        }
         return TestStamp.computeKey(
-                sources, mainClasses, mainClassesFingerprint, resources, lockFile, runtimeClasspath, extras, identity);
+                sources, mainClasses, main, resources, lockFile, runtimeClasspath, extras, identity);
+    }
+
+    /**
+     * The {@code main:} token of a module that writes {@code [build-info]} files into its classes
+     * tree: the tree with those files keyed by their stable entries ({@link BuildInfoKeys}), so the
+     * commit, the branch, the dirty state and the times they carry re-run no suite, while a version
+     * or name they carry still does. Null, to key the tree whole, for a module without the table and
+     * for a suite whose sources name a volatile value ({@link BuildInfoKeys#namedBy}): it reads them.
+     */
+    private @Nullable String stableMainClasses(List<Path> sources, Path mainClasses) throws IOException {
+        BuildBlock.BuildInfo info = facts.project().build().buildInfo();
+        if (info == null || mainClasses == null || !Files.isDirectory(mainClasses)) return null;
+        if (BuildInfoKeys.namedBy(sources)) return null;
+        return BuildInfoKeys.stableEntry(mainClasses, List.of(info.file(), BuildInfoKeys.BOOT_ENTRY));
     }
 
     /**

@@ -234,6 +234,18 @@ public final class ClasspathFingerprint {
     }
 
     /**
+     * The per-file digests a directory's {@link #entry} token is taken over: every {@link
+     * TreeContent} file under {@code dir} by forward-slash relative path. A caller that keys some of
+     * those files by less than their bytes ({@link BuildInfoKeys#stableEntry}) replaces their digests
+     * and hands the map to {@link #entryFromOutputDigests}.
+     */
+    public static Map<String, String> digests(Path dir) throws IOException {
+        Map<String, String> digests = new TreeMap<>();
+        hashInto(dir.toAbsolutePath().normalize(), digests);
+        return digests;
+    }
+
+    /**
      * Memoized content digest of every {@link TreeContent} file under {@code root}, keyed by
      * forward-slash relative path: the walk the packagers read the same tree with.
      */

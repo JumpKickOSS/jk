@@ -632,7 +632,10 @@ class still shard with their class. When `W = 1` the setting is a no-op.
 ## External tools the suite shells out to (`[test] tools`)
 
 A suite is replayed from its stamp when nothing it depends on has moved: its sources, the main
-classes, the runtime classpath, the lock, the selection, `[test] env`. A test that runs `git` or
+classes, the runtime classpath, the lock, the selection, `[test] env`. The files `[build-info]`
+writes into the main classes count by their stable entries only: a commit or the first edit after a
+clean checkout moves `git.commit.id`, `git.dirty` and the times without re-running the suite, unless
+its sources name one of those values ([Packaging](packaging.md#build-info-gitproperties-and-boots-build-infoproperties)). A test that runs `git` or
 `protoc` depends on one more thing the stamp cannot see on its own — the tool. Name it:
 
 ```toml

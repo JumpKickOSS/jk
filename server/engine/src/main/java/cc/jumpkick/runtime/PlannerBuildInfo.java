@@ -18,6 +18,7 @@ import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
+import cc.jumpkick.task.BuildInfoKeys;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -52,7 +53,7 @@ final class PlannerBuildInfo {
     static final String CODE = TaskNames.BUILD_INFO;
 
     /** Where Boot's {@code BuildProperties} reads its keys from. */
-    static final String BOOT_ENTRY = "META-INF/build-info.properties";
+    static final String BOOT_ENTRY = BuildInfoKeys.BOOT_ENTRY;
 
     static final String NOT_A_REPOSITORY = "[build-info]: no git commit here, so no git.properties was written";
 

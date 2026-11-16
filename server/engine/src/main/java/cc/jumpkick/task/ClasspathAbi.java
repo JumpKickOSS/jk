@@ -89,12 +89,16 @@ public final class ClasspathAbi {
         return token(abs, attrs, identity) + "+" + resources(abs, identity);
     }
 
-    /** Memo namespace of {@link #resources}: its own shape, apart from the ABI's. */
-    private static final String RESOURCES_NAMESPACE = "meta-inf.1:";
+    /**
+     * Memo namespace of {@link #resources}: its own shape, apart from the ABI's. 2: Boot's {@code
+     * META-INF/build-info.properties} by its stable entries ({@link BuildInfoKeys#stableDigest}).
+     */
+    private static final String RESOURCES_NAMESPACE = "meta-inf.2:";
 
     /**
      * The entry's {@code META-INF} resources by name and content: {@code res:<sha256>}, or {@code
-     * res:none} when it has none. An annotation processor reads them through its {@code Filer} or
+     * res:none} when it has none; Boot's build-info file by its stable entries alone, as its commit
+     * time and the like move with every commit and no processor reads them. An annotation processor reads them through its {@code Filer} or
      * the class loader, and groovyc reads its extension modules and global AST transforms from
      * them, so a compile that runs either keys them beside the ABI. Memoized on the entry's content.
      */
@@ -113,7 +117,9 @@ public final class ClasspathAbi {
             Path metaInf = abs.resolve("META-INF");
             PathUtil.forEachRegularFile(metaInf, (f, a) -> {
                 String rel = abs.relativize(f).toString().replace('\\', '/');
-                if (!rel.endsWith(".class")
+                if (rel.equals(BuildInfoKeys.BOOT_ENTRY)) {
+                    found.put(rel, "stable:" + BuildInfoKeys.stableDigest(Files.readAllBytes(f)));
+                } else if (!rel.endsWith(".class")
                         && !BuildStamps.isStampFile(f.getFileName().toString())) {
                     found.put(rel, FileHashMemo.contentHash(f.toAbsolutePath().normalize(), a));
                 }
@@ -123,7 +129,13 @@ public final class ClasspathAbi {
                 for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
                     String name = e.getName();
                     if (e.isDirectory() || !name.startsWith("META-INF/") || name.endsWith(".class")) continue;
-                    found.put(name, Hashing.sha256Hex(zip.readAllBytes()));
+                    byte[] bytes = zip.readAllBytes();
+                    // Its commit time moves with every commit; no compile reads it (JK-M9055).
+                    found.put(
+                            name,
+                            name.equals(BuildInfoKeys.BOOT_ENTRY)
+                                    ? "stable:" + BuildInfoKeys.stableDigest(bytes)
+                                    : Hashing.sha256Hex(bytes));
                 }
             } catch (ZipException notAZip) {
                 // Not an archive: nothing beside its classes.

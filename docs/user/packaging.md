@@ -129,6 +129,13 @@ commit rewrites the file and repackages the jar, and nothing recompiles. `git.bu
 spelled `yyyy-MM-dd'T'HH:mm:ssZ` in UTC, the plugin's default and the form Boot parses. A module
 outside a git checkout (an exported tree) builds with a warning and no `git.properties`.
 
+Tests see the files on the class path, but the commit, branch, dirty state and times in them do not
+re-run a suite: the run-tests stamp and the test compile key the files by their stable entries
+(name, group, version, tag), so the first edit after a clean checkout and every commit leave the
+module's tests replayed, while a version bump re-runs them. A suite whose sources name one of the
+volatile values (`git.commit.id`, `git.properties`, `build.time`, Boot's `GitProperties` or
+`BuildProperties`, …) reads them, and its stamp keys the files whole. See [Testing](test.md).
+
 `jk import` writes the table for `git-commit-id-maven-plugin`, `pl.project13.maven:git-commit-id-plugin`,
 Boot's `build-info` goal, `com.gorylenko.gradle-git-properties` and `springBoot { buildInfo() }`.
 
