@@ -1052,7 +1052,9 @@ changed (+1 more)`, `run tests · runtime classpath changed`, `run tests · read
 bench/agent-loop/README.md changed · keys suites test,integration`. A discovered input keys every
 class of the suites the run ran, not only the test that read it, so a test that scans the tree makes
 an edit anywhere re-run its whole module; the reason names the file by its whole path and the
-suites it keys, and moving such a test into a suite of its own confines what it keys. `run tests · jk changed` means the build runs on another build of JumpKick than the one
+suites it keys, and moving such a test into a suite of its own confines what it keys. A miss with nothing to compare says so: `no green run on record`, or `its key moved with no input
+named`, which is a JumpKick bug worth reporting with the module's `jk explain -v`. `run tests · jk
+changed` means the build runs on another build of JumpKick than the one
 that ran the suite green: a release upgrade, or a snapshot of JumpKick's own tree whose code
 differs (the commit and build time stamped into its jar do not count). A suite with no green run
 on record forecasts as `run tests` alone.

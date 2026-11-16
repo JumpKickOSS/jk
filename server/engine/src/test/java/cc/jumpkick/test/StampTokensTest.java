@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.task.KeyAudit;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -82,5 +83,27 @@ class StampTokensTest {
                 .isNull();
         assertThat(StampTokens.jkMoved(dir, sel, "0.52.0-SNAPSHOT#8+bbbbbbbbbbbb"))
                 .isEqualTo(StampTokens.JK_CHANGED);
+    }
+
+    /**
+     * A forecast that runs a suite says why, also when no input of its last green run moved: jk's
+     * own tree forecast jk-engine's 4,862 tests with no reason after a green gate. With no record
+     * it says there is none; with the same tokens under a key that misses it says the key moved
+     * with nothing named, which is what to report.
+     */
+    @Test
+    void a_miss_always_names_a_reason(@TempDir Path dir) {
+        TestSelection sel = TestSelection.DEFAULT;
+        KeyAudit.KeySource source = () -> {
+            KeyAudit.tap(SRC);
+            return "k";
+        };
+        assertThat(StampTokens.reason(dir, sel, source)).isEqualTo(StampTokens.NO_GREEN_RUN);
+        StampTokens.keep(dir, sel, "k", source);
+        assertThat(StampTokens.reason(dir, sel, source)).isEqualTo(StampTokens.KEY_MOVED_UNNAMED);
+        assertThat(StampTokens.reason(dir, sel, () -> {
+                    throw new IOException("unreadable");
+                }))
+                .isEqualTo(StampTokens.KEY_UNREAD);
     }
 }

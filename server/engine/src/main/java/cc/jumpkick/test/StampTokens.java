@@ -75,25 +75,37 @@ public final class StampTokens {
         }
     }
 
+    /** The reason when the module has no green run on record under the selection: never run, or a cache cleaned. */
+    public static final String NO_GREEN_RUN = "no green run on record";
+
+    /**
+     * The reason when the tokens of the last green run and the tokens now agree, yet the key misses:
+     * the key reads something its tokens do not name, which is a jk bug worth reporting.
+     */
+    public static final String KEY_MOVED_UNNAMED = "its key moved with no input named";
+
+    /** The reason when the suite's key cannot be taken now. */
+    public static final String KEY_UNREAD = "an input of its key does not read";
+
     /**
      * Why the suite's key, as {@code source} derives it now, is not the key of its last green run:
      * {@link #JK_CHANGED} when the jk that keys it moved, else the first input that moved and how
-     * many more did. Null when no green run is on record (nothing to compare: a suite never run, a
-     * cache cleaned), when the tokens kept and the tokens now agree, or when the key will not
-     * derive: the caller says nothing more.
+     * many more did; never nothing, so a forecast that runs a suite always says why: {@link
+     * #NO_GREEN_RUN}, {@link #KEY_MOVED_UNNAMED} or {@link #KEY_UNREAD}.
      */
-    public static @Nullable String reason(Path moduleDir, TestSelection selection, KeyAudit.KeySource source) {
+    public static String reason(Path moduleDir, TestSelection selection, KeyAudit.KeySource source) {
         Map<String, String> was = load(moduleDir, selection);
-        if (was == null) return null;
+        if (was == null) return NO_GREEN_RUN;
         KeyAudit.Keyed now;
         try {
             now = KeyAudit.tapped(source);
         } catch (Exception unkeyed) {
             Log.debug("stamp tokens: no key to compare for " + moduleDir, unkeyed);
-            return null;
+            return KEY_UNREAD;
         }
-        if (now == null) return null;
-        return reason(was, now.tokens());
+        if (now == null) return KEY_UNREAD;
+        String moved = reason(was, now.tokens());
+        return moved != null ? moved : KEY_MOVED_UNNAMED;
     }
 
     /**
