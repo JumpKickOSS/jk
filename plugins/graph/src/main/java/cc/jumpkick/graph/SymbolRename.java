@@ -821,6 +821,28 @@ final class SymbolRename {
         }
     }
 
+    // ---- members, for visibility checks ----
+
+    /** Whether the member {@code symbol} names ({@code F}/{@code M}) is package-private, from the compiled classes. */
+    static boolean packagePrivate(Map<String, GraphRename.Loaded> classes, String symbol) {
+        int hash = symbol.indexOf('#');
+        if (hash < 0) return false;
+        GraphRename.Loaded l = classes.get(symbol.substring(2, hash).replace('.', '/'));
+        if (l == null) return false;
+        String member = symbol.substring(hash + 1);
+        int flags = -1;
+        if (symbol.startsWith("F ")) {
+            for (FieldFacts f : l.facts().fields()) if (f.name().equals(member)) flags = f.access();
+        } else {
+            int paren = member.indexOf('(');
+            String name = member.substring(0, paren);
+            String desc = member.substring(paren);
+            for (MethodFacts m : l.facts().methods())
+                if (m.name().equals(name) && m.desc().equals(desc)) flags = m.access();
+        }
+        return flags >= 0 && (flags & (ACC_PUBLIC | ACC_PROTECTED | ACC_PRIVATE)) == 0;
+    }
+
     /** {@code map} ordered by key. */
     static <V> Map<String, V> sorted(Map<String, V> map) {
         return new TreeMap<>(map);

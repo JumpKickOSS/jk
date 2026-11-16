@@ -14,6 +14,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -443,6 +444,174 @@ final class PackageMove {
         Matcher m = Pattern.compile("(?m)^\\s*import\\s+([\\w.]+)\\s*;").matcher(stripComments(text));
         while (m.find()) out.add(m.group(1));
         return out;
+    }
+
+    // ---- type move ----
+
+    /**
+     * Moves type {@code t} to {@code newBinary}'s package (renaming it when the simple name differs),
+     * within its module or to {@code targetModule}: refused before anything is written when a use
+     * would stop resolving (a package-private type or member used across the new package line, a
+     * module that does not see the target).
+     */
+    static RenamePlan move(
+            SymbolRename.Ctx c,
+            SymbolRename.Type t,
+            String newBinary,
+            @Nullable String targetModule,
+            List<String> textFiles)
+            throws IOException {
+        if (t.nested())
+            throw new RenameRefusal(
+                    "Not moved: " + t.binary().replace('$', '.') + " is nested; move the type that holds it.");
+        if (SymbolRename.typeExists(c.graph, newBinary))
+            throw new RenameRefusal("Not moved: " + newBinary + " already exists.");
+        String text = c.text(t.rel());
+        if (text == null || c.spans(t.rel()) == null) {
+            throw new RenameRefusal("Not moved: " + t.rel() + " has no index as it stands; build, then move.");
+        }
+        String oldPkg = t.pkg();
+        String newPkg = pkgOf(newBinary);
+        String file = t.rel().substring(t.rel().lastIndexOf('/') + 1);
+        if (!file.equals(t.simple() + ".java")) {
+            throw new RenameRefusal("Not moved: " + t.rel() + " holds " + t.simple()
+                    + " beside another top-level type; move that file's public type.");
+        }
+        List<ReferenceIndex.Span> ownSpans = Objects.requireNonNull(c.spans(t.rel()));
+        String root = sourceRoot(t.rel(), oldPkg);
+        String targetRoot = root;
+        Modules.Module from = c.modules.of(t.rel());
+        String fromPrefix = from == null ? "" : from.prefix();
+        String toPrefix = targetModule == null
+                ? fromPrefix
+                : (targetModule.isEmpty() || targetModule.endsWith("/") ? targetModule : targetModule + "/");
+        if (!toPrefix.equals(fromPrefix)) {
+            String inside = root.substring(fromPrefix.length());
+            targetRoot = toPrefix + inside;
+        }
+        String target = targetRoot + newPkg.replace('.', '/') + "/" + simpleOf(newBinary) + ".java";
+        if (Files.exists(RenameStore.inside(c.root, target)))
+            throw new RenameRefusal("Not moved: " + target + " already exists.");
+        List<String> breaks = breaks(c, t, oldPkg, newPkg, fromPrefix, toPrefix, ownSpans);
+        String symbol = "T " + t.binary();
+        if (!breaks.isEmpty()) {
+            List<String> shown = breaks.stream().distinct().limit(8).toList();
+            throw new RenameRefusal("Not moved, nothing written: the move would break " + breaks.size() + " use"
+                    + (breaks.size() == 1 ? "" : "s") + ":\n  " + String.join("\n  ", shown));
+        }
+        Map<String, Moved> types = new LinkedHashMap<>();
+        types.put(symbol, new Moved(t.binary(), newBinary));
+        Map<String, String> symbols = new LinkedHashMap<>();
+        symbols.put(symbol, "T " + newBinary);
+        for (Map.Entry<String, String> e :
+                SymbolRename.typeSymbols(c, t.binary(), newBinary).entrySet())
+            symbols.putIfAbsent(e.getKey(), e.getValue());
+        RenamePlan plan = new RenamePlan(
+                t.binary() + " (" + SymbolRename.kind(t) + ")",
+                newBinary + (toPrefix.equals(fromPrefix) ? "" : " in " + toPrefix));
+        Map<String, String> moving = new TreeMap<>();
+        moving.put(t.rel(), newPkg);
+        edits(c, plan, types, moving, null, null);
+        plan.move(t.rel(), plan.current(t.rel(), text), target);
+        plan.symbols.putAll(symbols);
+        Map<String, String> words = new LinkedHashMap<>();
+        if (!t.simple().equals(simpleOf(newBinary))) words.put(t.simple(), simpleOf(newBinary));
+        SymbolRename.unindexedSources(
+                c, plan, c.reaching(t.rel()), words.isEmpty() ? Map.of(t.binary(), newBinary) : words);
+        SymbolRename.typeText(c, plan, t.binary(), newBinary, textFiles);
+        return plan;
+    }
+
+    /**
+     * What a move of {@code t} from {@code oldPkg} to {@code newPkg} (module {@code fromPrefix} to
+     * {@code toPrefix}) would break: a use of a type or member that stops being visible across the
+     * new package line, a module that does not see the target, a type the target does not see.
+     */
+    private static List<String> breaks(
+            SymbolRename.Ctx c,
+            SymbolRename.Type t,
+            String oldPkg,
+            String newPkg,
+            String fromPrefix,
+            String toPrefix,
+            List<ReferenceIndex.Span> ownSpans)
+            throws IOException {
+        List<String> breaks = new ArrayList<>();
+        Map<String, GraphRename.Loaded> classes = c.classes();
+        boolean leavesPackage = !oldPkg.equals(newPkg);
+        String symbol = "T " + t.binary();
+        boolean typePublic = "public".equals(Decl.vis(t.node()));
+        for (String rel : c.javaFiles) {
+            if (rel.equals(t.rel())) continue;
+            List<ReferenceIndex.Span> spans = c.spans(rel);
+            String other = c.text(rel);
+            if (spans == null || other == null) continue;
+            String pkg = packageOf(other);
+            boolean samePackageAfter = pkg.equals(newPkg);
+            for (ReferenceIndex.Span sp : spans) {
+                boolean ofType = sp.symbol().equals(symbol)
+                        || sp.symbol().startsWith("T " + t.binary() + "$")
+                        || sp.symbol().startsWith("F " + t.binary() + "#")
+                        || sp.symbol().startsWith("M " + t.binary() + "#");
+                if (!ofType) continue;
+                if (leavesPackage && !samePackageAfter) {
+                    if (sp.symbol().equals(symbol) && !typePublic) {
+                        breaks.add(rel + ":" + sp.line() + " uses " + t.simple() + ", which is not public");
+                        break;
+                    }
+                    if ((sp.symbol().startsWith("F ") || sp.symbol().startsWith("M "))
+                            && SymbolRename.packagePrivate(classes, sp.symbol())) {
+                        breaks.add(rel + ":" + sp.line() + " uses " + RenameProof.show(sp.symbol())
+                                + ", which is package-private");
+                    }
+                }
+            }
+            if (!toPrefix.equals(fromPrefix)
+                    && spans.stream().anyMatch(sp -> sp.symbol().equals(symbol))) {
+                Set<String> seeing = c.w.reach().reaching(List.of(toPrefix), c.modules);
+                String userModule = c.prefix(rel);
+                if (seeing != null && !seeing.contains(userModule)) {
+                    breaks.add(rel + " is in " + (userModule.isEmpty() ? "the root module" : userModule)
+                            + ", which does not see " + toPrefix);
+                }
+            }
+        }
+        for (ReferenceIndex.Span sp : ownSpans) {
+            String s = sp.symbol();
+            if (leavesPackage
+                    && (s.startsWith("F ") || s.startsWith("M "))
+                    && !s.startsWith("F " + t.binary())
+                    && !s.startsWith("M " + t.binary())
+                    && pkgOf(s.substring(2, s.indexOf('#'))).equals(oldPkg)
+                    && SymbolRename.packagePrivate(classes, s)) {
+                breaks.add(t.rel() + ":" + sp.line() + " uses " + RenameProof.show(s) + ", which is package-private in "
+                        + oldPkg);
+            }
+            if (!toPrefix.equals(fromPrefix) && s.startsWith("T ") && !s.startsWith("T " + t.binary())) {
+                List<SymbolRename.Type> used = SymbolRename.types(c.graph, s.substring(2));
+                for (SymbolRename.Type u : used) {
+                    if (!u.binary().equals(s.substring(2))) continue;
+                    String home = c.prefix(u.rel());
+                    Set<String> seeing = c.w.reach().reaching(List.of(home), c.modules);
+                    if (seeing != null && !seeing.contains(toPrefix)) {
+                        breaks.add(t.simple() + " uses " + u.binary() + " of "
+                                + (home.isEmpty() ? "the root module" : home) + ", which " + toPrefix
+                                + " does not see");
+                    }
+                }
+            }
+        }
+        if (!toPrefix.equals(fromPrefix) && c.w.reach().reaching(List.of(toPrefix), c.modules) == null) {
+            breaks.add("the module graph is unknown here, so a move across modules cannot be checked");
+        }
+        return breaks;
+    }
+
+    /** The source root above a source in package {@code pkg}: {@code src/main/java/} of {@code src/main/java/a/b/X.java}. */
+    static String sourceRoot(String rel, String pkg) {
+        String dir = rel.substring(0, rel.lastIndexOf('/') + 1);
+        String path = pkg.isEmpty() ? "" : pkg.replace('.', '/') + "/";
+        return dir.endsWith(path) ? dir.substring(0, dir.length() - path.length()) : dir;
     }
 
     static List<String> sortedKeys(Map<String, ?> m) {

@@ -68,7 +68,7 @@ public final class CodeGraphTool implements McpTool {
         return new CodeGraphTool(
                 new Spec(
                         "rename",
-                        "Rename Type.method (or Type.method(int,String)) to `to`; compiler-bound uses edited, also=c1"
+                        "Rename Type.method/.field, Type or a.pkg to `to` (qualified moves it); bound uses edited, also=c1"
                                 + " applies the rest.",
                         McpSchemas.withGoal(
                                 props(Map.of(

@@ -332,6 +332,7 @@ search. Reflection and names in strings are not uses.
 | `Type.method`, `Type.method(int,String)` | a method: every overload, or one; every override, implementation, call, method reference and `{@link}` |
 | `Type.field` | a field as a bean property: the field, its `getX`/`isX`/`setX` and their overrides, a record component's accessor; `--no-accessors` for the field alone |
 | `Type`, `Outer.Inner`, `a.b.Type` | a type: every use, its constructors, its file (`Owner.java` → `Customer.java`) |
+| `a.b.Type` → `c.d.Type` | a type moved: its file to the new package's directory (in another module with `--module`, or when only that module holds the package), its package line, every import and qualified name, and an import wherever a use relied on sharing the old package |
 | `a.b` → `a.c` | a package and its subpackages: every source and the resources under its path move, in main, test and every suite; package lines, imports, qualified names, `module-info` |
 
 `--kind method|field|type|package` settles an address that could be two.
@@ -379,7 +380,9 @@ uses are candidates. A rename compiles a never-compiled module first, as a quest
 It refuses, changing nothing, when a source was edited since the build (build first), when the new
 name collides (a related type declares the method with the same parameters, the type has a field of
 that name, a type of the new name exists or a file using the type already names another type so),
-when a method overrides one outside the workspace or `Object`'s.
+when a method overrides one outside the workspace or `Object`'s, and when a move would break a use
+(a package-private type or member used across the new package line, a module that does not see the
+target module), naming each.
 
 A shared-surface name such as a JPA column or an HTTP route is what the graph's anchors model
 (JK-Q6VJ6); until they answer for it, rename reports it as a candidate or hazard as above.

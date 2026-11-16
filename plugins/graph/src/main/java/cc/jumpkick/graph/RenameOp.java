@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code rename} operation, for every kind it renames: a method ({@code Type.method}), a field
@@ -122,6 +123,14 @@ final class RenameOp {
             }
             case "type" -> {
                 SymbolRename.Type t = one(graph, address);
+                if (to.contains(".")) {
+                    if (!qualified(to)) throw new IllegalArgumentException("'" + to + "' is not a qualified type name");
+                    String newBinary = to;
+                    if (newBinary.equals(t.binary()))
+                        throw new RenameRefusal("'" + address + "' is already " + to + ".");
+                    return PackageMove.move(
+                            c, t, newBinary, targetModule(c, options, PackageMove.pkgOf(to), t), textFiles);
+                }
                 if (!RenameNames.identifier(to)) throw new IllegalArgumentException("'" + to + "' is not a type name");
                 if (t.simple().equals(to)) throw new RenameRefusal("'" + address + "' is already named " + to + ".");
                 return SymbolRename.type(c, t, to, textFiles);
@@ -192,6 +201,31 @@ final class RenameOp {
                     "'" + name + "' names " + types.size() + " types; qualify it:\n  " + String.join("\n  ", shown));
         }
         return types.getFirst();
+    }
+
+    /**
+     * The module a move lands in: {@code module=…} when given, else the one module whose sources
+     * already hold the target package, else the type's own.
+     */
+    private static @Nullable String targetModule(
+            SymbolRename.Ctx c, Map<String, String> options, String pkg, SymbolRename.Type t) {
+        String given = options.get("module");
+        if (given != null && !given.isBlank()) {
+            String g = given.strip();
+            if (g.equals(".")) return "";
+            return g.endsWith("/") ? g : g + "/";
+        }
+        Set<String> homes = new TreeSet<>();
+        for (GraphNode n : c.graph.nodes()) {
+            if (!Decl.isType(n) || !(n.extra().get(Linker.QUALIFIED_NAME) instanceof String q)) continue;
+            if (PackageMove.pkgOf(q).equals(pkg)) homes.add(c.prefix(n.sourceFile()));
+        }
+        if (homes.size() == 1) return homes.iterator().next();
+        if (homes.size() > 1 && !homes.contains(c.prefix(t.rel()))) {
+            throw new RenameRefusal(
+                    "Not moved: package " + pkg + " is in " + String.join(", ", homes) + "; pass module=<directory>.");
+        }
+        return null;
     }
 
     static boolean qualified(String name) {

@@ -126,4 +126,47 @@ class RenameTypeTest {
                         "c\\d+ inferred, Kotlin source in the package: src/main/kotlin/org/acme/petclinic/owner/Report.kt:1");
         assertThat(ws.check()).startsWith("Proven: it compiles, and the ");
     }
+
+    @Test
+    void aMovedTypeTakesItsImportsAndGivesOneToEveryUserItLeaves(@TempDir Path dir) throws IOException {
+        RenameFixture ws = new RenameFixture(dir, RenameFieldTest.petclinic());
+        String answer = ws.rename("OwnerPlugin", "org.acme.petclinic.vet.OwnerPlugin");
+        assertThat(answer)
+                .startsWith(
+                        "Renamed org.acme.petclinic.owner.OwnerPlugin (class) to org.acme.petclinic.vet.OwnerPlugin:");
+        assertThat(ws.read("src/main/java/org/acme/petclinic/vet/OwnerPlugin.java"))
+                .startsWith("package org.acme.petclinic.vet;");
+        assertThat(ws.check()).startsWith("Proven");
+
+        RenameFixture ws2 = new RenameFixture(dir.resolve("two"), RenameFieldTest.petclinic());
+        String moved = ws2.rename("Owner", "org.acme.petclinic.model.Owner");
+        assertThat(moved)
+                .startsWith("Renamed org.acme.petclinic.owner.Owner (class) to org.acme.petclinic.model.Owner:");
+        assertThat(ws2.read("src/main/java/org/acme/petclinic/model/Owner.java"))
+                .startsWith("package org.acme.petclinic.model;");
+        assertThat(ws2.read(OWNER_DIR + "OwnerController.java"))
+                .as("a user in the package it left gets an import")
+                .contains("import org.acme.petclinic.model.Owner;");
+        assertThat(ws2.read("src/main/java/org/acme/petclinic/vet/Clinic.java"))
+                .as("a user that reached it through an on-demand import gets one too")
+                .contains("import org.acme.petclinic.model.Owner;");
+        assertThat(ws2.read("src/main/java/org/acme/petclinic/vet/Vets.java"))
+                .contains("org.acme.petclinic.model.Owner first;");
+        assertThat(ws2.check()).startsWith("Proven");
+    }
+
+    @Test
+    void aMoveThatWouldBreakPackagePrivateAccessIsRefusedBeforeAnythingIsWritten(@TempDir Path dir) throws IOException {
+        RenameFixture ws = new RenameFixture(
+                dir,
+                RenameFixture.files(
+                        "src/main/java/a/Box.java", "package a;\n\npublic class Box {\n    int size;\n}\n",
+                        "src/main/java/a/Use.java",
+                                "package a;\n\nclass Use {\n    int s(Box b) {\n        return b.size;\n    }\n}\n"));
+        String answer = ws.rename("Box", "b.Box");
+        assertThat(answer)
+                .startsWith("Not moved, nothing written: the move would break 1 use:")
+                .contains("src/main/java/a/Use.java:5 uses Box.size, which is package-private");
+        assertThat(ws.exists("src/main/java/a/Box.java")).isTrue();
+    }
 }

@@ -113,8 +113,9 @@ them by hand.
 Before changing a method, ask who calls it: MCP `callers` or `jk graph callers Type.method`
 (`-t` / `transitive=true` for everything that can end up running it). The answer comes from the
 compiled classes and is complete, so it replaces grepping for the name and reading each match
-([Code graph](graph.md#callers)). To rename a method, MCP `rename` or `jk graph rename Type.method
-newName` makes every edit in one call and quotes any use it could not tell apart
+([Code graph](graph.md#callers)). To rename a method, a field, a type or a package, or move a type,
+MCP `rename` or `jk graph rename <symbol> <new name>` makes every compiler-bound edit in one call,
+lists the rest as candidates `also` applies, and proves the edit by a compile
 ([Code graph](graph.md#rename)).
 
 Read the **verdict** first. `run` returns it; `jk -a` prints the same text. The human
@@ -181,7 +182,8 @@ call — that binds the connection — then omit it; `bind` switches.
 The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, `rename`, and `skill`: every
 card is paid on every turn, so the list holds what a fix-and-rerun loop calls plus `callers`, which
 answers who calls a method, complete, in one call instead of a grep and reads, and `rename`, which
-renames a method and every use in one call instead of an edit per use. `run(kind=gate)` is the bar
+renames a method, field, type or package, or moves a type, with every use in one call instead of an
+edit per use. `run(kind=gate)` is the bar
 before work is handed back; `run(kind=install)` installs for a sibling project.
 `deps` edits `jk.toml` and relocks in that same call. Everything else (history, explain,
 jdk, why, …) is a `tools/list` with `{"extended": true}`. `initialize` says the same:

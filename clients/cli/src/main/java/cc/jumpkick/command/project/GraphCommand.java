@@ -99,7 +99,7 @@ public final class GraphCommand extends GroupCommand {
                         List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
                 new GraphOpCommand(
                         "rename",
-                        "Rename a method, field, type or package; proven by a compile",
+                        "Rename a method, field, type or package, or move a type; proven by a compile",
                         List.of(
                                 Opt.value(
                                         "<ids>",
@@ -108,13 +108,14 @@ public final class GraphCommand extends GroupCommand {
                                 Opt.value(
                                         "<kind>", "method, field, type or package (default: what it names).", "--kind"),
                                 Opt.flag("A field alone, not its getX/setX.", "--no-accessors"),
+                                Opt.value("<dir>", "The module a moved type lands in.", "--module"),
                                 BUDGET),
                         List.of(
                                 Param.of(
                                         "symbol",
                                         Arity.ONE,
                                         "Type.method, Type.method(int,String), Type.field, Type or a.package"),
-                                Param.of("name", Arity.ONE, "the new name"))),
+                                Param.of("name", Arity.ONE, "the new name; a qualified name moves a type"))),
                 new GraphOpCommand(
                         "read",
                         "A symbol's source or a type's members, in the view that fits",
