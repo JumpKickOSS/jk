@@ -153,7 +153,13 @@ public final class Anchors {
         return method + " /" + String.join("/", segments);
     }
 
-    /** One SQL identifier path: unquoted parts lower-cased, quoted ones kept, quotes dropped. */
+    /** Schemas a table sits in when none is written: {@code public.orders} is {@code orders}. */
+    private static final Set<String> DEFAULT_SCHEMAS = Set.of("public", "dbo");
+
+    /**
+     * One SQL identifier path: unquoted parts lower-cased, quoted ones kept, quotes dropped, and a
+     * default schema ({@code public}, {@code dbo}) dropped, since a query rarely writes it.
+     */
     static String sqlName(String name) {
         List<String> parts = new ArrayList<>();
         for (String p : name.split("\\.")) {
@@ -164,6 +170,7 @@ public final class Anchors {
                             || s.startsWith("[") && s.endsWith("]"));
             parts.add(quoted ? s.substring(1, s.length() - 1) : s.toLowerCase(Locale.ROOT));
         }
+        if (parts.size() > 1 && DEFAULT_SCHEMAS.contains(parts.getFirst())) parts.removeFirst();
         return String.join(".", parts);
     }
 

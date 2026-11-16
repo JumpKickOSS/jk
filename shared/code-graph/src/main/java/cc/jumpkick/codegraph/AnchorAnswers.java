@@ -149,6 +149,11 @@ final class AnchorAnswers {
             lines.add(set.name().toLowerCase(Locale.ROOT) + ":");
             for (GraphEdge e : edges) line(e, "  ", lines);
         });
+        List<GraphEdge> drops = edges(id, Relations.DROPS);
+        if (!drops.isEmpty()) {
+            lines.add("dropped or renamed away:");
+            for (GraphEdge e : drops) line(e, "  ", lines);
+        }
         if (defs.isEmpty()) lines.add("No file defines it.");
         if (uses.isEmpty()) lines.add("Nothing uses it.");
         if (grades.containsKey("inferred")) {
@@ -196,7 +201,10 @@ final class AnchorAnswers {
         if (at.isEmpty()) at = tools.where(e.source()).strip();
         if (at.isEmpty()) at = GraphQuery.clean(e.sourceFile());
         String who = file ? "" : GraphQuery.clean(graph.display(e.source())) + "  ";
-        String written = e.context() == null ? "" : "  as " + GraphQuery.clean(e.context());
+        String context = e.context();
+        String written = context == null
+                ? ""
+                : context.startsWith("field ") ? "  " + GraphQuery.clean(context) : "  as " + GraphQuery.clean(context);
         lines.add(indent + who + at + written + GraphTools.confidence(e));
         lines.addAll(tools.quotes(e).stream().limit(1).toList());
     }

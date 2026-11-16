@@ -81,6 +81,7 @@ final class JvmFacts {
         Map<String, Set<String>> signatures = new LinkedHashMap<>();
         Map<String, Set<String>> delegates = new LinkedHashMap<>();
         Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
+        JvmSql.Jooq jooq = JvmSql.jooq(index);
         for (ClassFacts c : index.classList()) {
             if (c.isPackageInfo() || c.name().endsWith("module-info") || c.sourceFile() == null) continue;
             String pkg = c.name().contains("/") ? c.name().substring(0, c.name().lastIndexOf('/')) : "";
@@ -110,6 +111,7 @@ final class JvmFacts {
                 facts.merge(owner.id(), type, Decl::merge);
                 supertypes(c, owner.id(), rel, mentions);
                 annotations(c.annotations(), owner.id(), rel, nodes, edges, mentions);
+                JvmSql.entity(c, owner.id(), rel, nodes, edges, mentions);
                 for (FieldFacts f : c.fields()) {
                     if ((f.access() & ACC_SYNTHETIC) != 0) continue;
                     if ((f.access() & ACC_ENUM) != 0) {
@@ -125,7 +127,8 @@ final class JvmFacts {
             }
             for (MethodFacts m : c.methods()) {
                 if (generated.contains(m.name())) continue;
-                method(c, m, owner, rel, nodes, edges, mentions, signatures, delegates, facts);
+                String from = method(c, m, owner, rel, nodes, edges, mentions, signatures, delegates, facts);
+                JvmSql.method(m, from, rel, jooq, nodes, edges, mentions);
             }
         }
         facts.forEach((id, f) -> {
@@ -219,7 +222,8 @@ final class JvmFacts {
         return new Owner(id, true, false);
     }
 
-    private static void method(
+    /** Maps one method; returns the node its calls and reads count for. */
+    private static String method(
             ClassFacts c,
             MethodFacts m,
             Owner owner,
@@ -319,6 +323,7 @@ final class JvmFacts {
             for (String literal : site.literals()) configKeys(literal, from, site.line(), mentions);
             mentions.addAll(JvmRoutes.uses(from, site));
         }
+        return from;
     }
 
     /** A value class's constructor body, which kotlinc compiles to a static {@code constructor-impl}. */

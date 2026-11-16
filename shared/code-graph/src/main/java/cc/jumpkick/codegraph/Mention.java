@@ -36,7 +36,7 @@ public record Mention(
         return switch (kind) {
             case MODULE -> Relations.IMPORTS_FROM;
             case MEMBER -> Relations.CALLS;
-            case CONFIG_KEY, ROUTE, ROUTE_CALL -> Relations.USES;
+            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN -> Relations.USES;
             default -> Relations.REFERENCES;
         };
     }
@@ -68,6 +68,13 @@ public record Mention(
          * gives ({@code MockMvc get("/orders/{id}")}): declared when it is a route's own method and
          * template, inferred when it only fits one.
          */
-        ROUTE_CALL
+        ROUTE_CALL,
+        /** A SQL table a query names, {@code orders}: resolved only to a table some DDL names, inferred. */
+        TABLE,
+        /**
+         * A SQL column a query names: {@code orders.status} on its table, or {@code status@orders,items}
+         * on whichever of the query's tables has it, inferred for one and ambiguous for several.
+         */
+        COLUMN
     }
 }

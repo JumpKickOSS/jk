@@ -37,6 +37,8 @@ class AnchorsTest {
         assertThat(Anchors.id("route", "/health")).isEqualTo("route:* /health");
         assertThat(Anchors.id("route", "POST /")).isEqualTo("route:POST /");
         assertThat(Anchors.id("table", "Billing.ORDERS")).isEqualTo("table:billing.orders");
+        assertThat(Anchors.id("table", "public.orders")).isEqualTo("table:orders");
+        assertThat(Anchors.id("column", "dbo.orders.status")).isEqualTo("column:orders.status");
         assertThat(Anchors.id("table", "\"Orders\"")).isEqualTo("table:Orders");
         assertThat(Anchors.id("column", "`orders`.[Status]")).isEqualTo("column:orders.Status");
         assertThat(Anchors.id("column", "orders.STATUS")).isEqualTo("column:orders.status");

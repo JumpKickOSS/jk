@@ -51,6 +51,7 @@ final class ConfigExtractors {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         boolean spring = SPRING_CONFIG.matcher(relPath).find();
         boolean openApi = OPENAPI.matcher(text).find();
+        Liquibase.Yaml changelog = text.contains("databaseChangeLog") ? new Liquibase.Yaml(b) : null;
         List<int[]> indents = new ArrayList<>();
         List<String> path = new ArrayList<>();
         List<String> lines = Lines.split(text);
@@ -75,9 +76,11 @@ final class ConfigExtractors {
                 boolean leaf = !value.isEmpty() && !value.startsWith("#") && !value.equals("|") && !value.equals(">");
                 if (spring && leaf && keys++ < MAX_KEYS) configKey(b, String.join(".", path), i + 1);
                 if (openApi) openApiOperation(b, path, i + 1);
+                if (changelog != null) changelog.key(path, value, i + 1);
             }
             values(b, line, i + 1);
         }
+        if (changelog != null) changelog.flush();
         return b.build();
     }
 

@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph.extract;
 
-import cc.jumpkick.codegraph.Confidence;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.FragmentBuilder;
 import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -16,8 +14,9 @@ import java.util.regex.Pattern;
 
 /**
  * XML, HTML, stylesheets, diagrams and SQL. XML contributes the class names it wires (Spring
- * beans, web.xml, persistence units, logback) and a POM's modules and dependencies; HTML and
- * stylesheets the files they load; a diagram the types it draws; SQL the tables it creates.
+ * beans, web.xml, persistence units, logback), a POM's modules and dependencies, a Liquibase
+ * changelog's tables and columns and a MyBatis mapper's queries; HTML and stylesheets the files
+ * they load; a diagram the types it draws; SQL its tables and columns ({@link Sql}).
  */
 final class MarkupExtractors {
 
@@ -34,8 +33,6 @@ final class MarkupExtractors {
     private static final Pattern CSS_IMPORT =
             Pattern.compile("@(?:import|use|forward)\\s+(?:url\\()?[\"']([^\"']+)[\"']");
     private static final Pattern CAMEL = Pattern.compile("\\b[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+\\b");
-    private static final Pattern CREATE_TABLE = Pattern.compile(
-            "(?i)\\bcreate\\s+(?:or\\s+replace\\s+)?(table|view)\\s+(?:if\\s+not\\s+exists\\s+)?[`\"\\[]?([\\w.]+)[`\"\\]]?");
 
     static Fragment xml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
@@ -61,6 +58,8 @@ final class MarkupExtractors {
             }
         }
         Lines.eachClassName(body, lines, (cls, line) -> b.mention(b.fileId(), Mention.Kind.CLASS, cls, line));
+        if (Liquibase.isChangelog(body)) Liquibase.xml(b, body, lines);
+        if (Liquibase.isMapper(body)) Liquibase.mapper(b, body, lines);
         return b.build();
     }
 
@@ -107,15 +106,7 @@ final class MarkupExtractors {
 
     static Fragment sql(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", "sql");
-        Lines lines = new Lines(text);
-        Matcher m = CREATE_TABLE.matcher(text);
-        while (m.find()) {
-            String kind = m.group(1).toLowerCase(Locale.ROOT);
-            String name = m.group(2);
-            int line = lines.at(m.start());
-            String id = b.declared(kind + " " + name, name, "code", line, Map.of("node_kind", kind));
-            b.edge(b.fileId(), id, Relations.CONTAINS, Confidence.EXTRACTED, line);
-        }
+        Sql.file(b, text);
         return b.build();
     }
 

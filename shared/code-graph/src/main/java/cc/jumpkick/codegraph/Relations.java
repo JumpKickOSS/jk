@@ -22,6 +22,8 @@ public final class Relations {
     public static final String USES = "uses";
     /** A file or symbol to the anchor it defines: a migration's table, a mapping's route, a YAML key. */
     public static final String DEFINES = "defines";
+    /** A file to the anchor it removes or renames away: a migration's {@code DROP} or {@code RENAME}. */
+    public static final String DROPS = "drops";
 
     public static final String RATIONALE_FOR = "rationale_for";
     public static final String CONFIGURES = "configures";

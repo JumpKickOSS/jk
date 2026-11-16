@@ -1051,7 +1051,7 @@ the two namespaces apart.
 | `config` | `config:server.port` | lower-cased with `-` and `_` dropped, dots kept: Spring's relaxed binding, so `maxItems`, `max-items` and `max_items` are one key; the label is the kebab spelling |
 | `env` | `env:DATABASE_URL` | exact: variables are case-sensitive |
 | `route` | `route:GET /orders/{}` | method upper-cased (`*` for any); path with one leading `/`, no trailing `/`, no query, `//` collapsed, every variable (`{id}`, `{id:\d+}`, `:id`, `<id>`) as `{}` |
-| `table` | `table:orders` | lower-cased unless quoted, quotes, backticks and brackets dropped; a schema stays when written |
+| `table` | `table:orders` | lower-cased unless quoted, quotes, backticks and brackets dropped; a schema stays when written, but for the default `public` and `dbo` |
 | `column` | `column:orders.status` | table key, `.`, column key |
 | `cli` | `cli:jk build --skip-tests` | program, subcommand path, then one flag, whitespace collapsed, `=value` dropped |
 
@@ -1061,7 +1061,8 @@ language, a class file, a descriptor or a package coordinate; `AnchorsTest` hold
 
 **Edges.** `defines` (a migration creating a table, a YAML key, a controller method's mapping)
 and `uses` (code reading the key, a script calling the route), always from the file or symbol to
-the anchor. An edge's `context` holds the name as written when its key folds it (`{id}`,
+the anchor; `drops` from a migration that drops a table or column or renames it away, so the
+answer carries the schema's history. An edge's `context` holds the name as written when its key folds it (`{id}`,
 `maxItems`), so the answer shows what to search for and replace.
 
 **Grades.** Every anchor edge carries one of three grades, the edge's `Confidence`:

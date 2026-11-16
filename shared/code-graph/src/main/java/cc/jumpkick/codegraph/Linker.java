@@ -164,7 +164,9 @@ public final class Linker {
                     case MODULE -> one(module(m.text()));
                     case CONFIG_KEY -> configKeys(m.text());
                     case ROUTE, ROUTE_CALL -> routes(m.text());
+                    case TABLE, COLUMN -> sqlNames(m);
                 };
+        if (m.kind() == Mention.Kind.TABLE || m.kind() == Mention.Kind.COLUMN) return sqlEdges(m, from, targets);
         if (m.kind() == Mention.Kind.ROUTE || m.kind() == Mention.Kind.ROUTE_CALL) return routeEdges(m, from, targets);
         boolean inferred = m.kind() == Mention.Kind.SYMBOL || m.kind() == Mention.Kind.CONFIG_KEY;
         String context = m.context() != null
@@ -359,6 +361,45 @@ public final class Linker {
             int sp = written.indexOf(' ');
             String writtenPath = sp < 0 ? written : written.substring(sp + 1).strip();
             out.add(writtenPath.equals(target.substring(target.indexOf(' ') + 1)) ? e : e.withContext(writtenPath));
+        }
+        return out;
+    }
+
+    /**
+     * The table or column anchors a query's name resolves to, only ones some file names: {@code
+     * orders} or {@code orders.status} itself, or for {@code status@orders,items} each of those tables'
+     * {@code status} that exists.
+     */
+    private List<String> sqlNames(Mention m) {
+        String text = m.text();
+        if (m.kind() == Mention.Kind.TABLE) {
+            String id = Anchors.id(Anchors.TABLE, text);
+            return nodes.containsKey(id) ? List.of(id) : List.of();
+        }
+        int at = text.indexOf('@');
+        List<String> candidates = new ArrayList<>();
+        if (at < 0) {
+            candidates.add(Anchors.id(Anchors.COLUMN, text));
+        } else {
+            String column = text.substring(0, at);
+            for (String table : text.substring(at + 1).split(",")) {
+                if (!table.isEmpty()) candidates.add(Anchors.id(Anchors.COLUMN, table + "." + column));
+            }
+        }
+        return candidates.stream()
+                .filter(nodes::containsKey)
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    /** A query's uses edges: inferred, or ambiguous when a bare column fits more than one of its tables. */
+    private List<GraphEdge> sqlEdges(Mention m, GraphNode from, List<String> targets) {
+        Confidence grade = targets.size() > 1 ? Confidence.AMBIGUOUS : Confidence.INFERRED;
+        List<GraphEdge> out = new ArrayList<>();
+        for (String target : targets) {
+            GraphEdge e = GraphEdge.of(m.source(), target, Relations.USES, grade, from.sourceFile(), m.line());
+            out.add(m.context() == null ? e : e.withContext(m.context()));
         }
         return out;
     }

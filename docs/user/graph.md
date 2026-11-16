@@ -38,7 +38,9 @@ class.
 | Shell scripts (`.sh`, `.bash`) | | `uses` of routes their command lines request |
 | `jk.toml`, `pom.xml`, Gradle, version catalogs, `package.json` | dependencies | `depends_on`, workspace and Maven modules |
 | XML, `META-INF/services`, `*.imports`, JSON | | `references` to every class they name |
-| HTML, CSS/SCSS/Less, SQL, DOT/Mermaid/PlantUML, CSV | pages, tables, columns | loaded files, imported stylesheets, drawn types |
+| SQL migrations and schema files; Liquibase XML and YAML changelogs | one [table and column anchor](#tables-and-columns) each | `defines` from `CREATE TABLE`, `ALTER TABLE … ADD`/`RENAME`/`ALTER COLUMN` and Liquibase changes; `drops` from `DROP` and the old name of a rename; `uses` from indexes and foreign keys |
+| JPA entities, jOOQ generated classes, SQL in string literals, native `@Query`, MyBatis mappers and annotations, other SQL files | | `uses` of tables and columns |
+| HTML, CSS/SCSS/Less, DOT/Mermaid/PlantUML, CSV | pages, columns | loaded files, imported stylesheets, drawn types |
 
 Calls, inheritance and type references come from the compiled classes, resolved by the compiler, so
 they are exact. A tree that does not compile yet still gets its declarations from the source; build
@@ -48,7 +50,7 @@ and an answer marks them `(inferred)`.
 ## Anchors
 
 An anchor is a node for something code and other files both name without a compiler between
-them: configuration keys and HTTP routes today; environment variables, SQL tables and columns,
+them: configuration keys, HTTP routes, and SQL tables and columns today; environment variables
 and CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
@@ -101,6 +103,30 @@ inferred. A URL counts only when its host is this machine, a variable or a one-l
 a compose service, and a command line's method is its `-X`, POST for `curl` with a body, GET for
 `curl` or `wget`, any otherwise. Not read yet: a context path (`server.servlet.context-path`), Helidon
 SE and other routing written as calls, Kotlin and Groovy route DSLs, and JSON OpenAPI documents.
+
+### Tables and columns
+
+A table is `table:<name>` and a column `column:<table>.<column>`, lower-cased unless quoted, with
+the default schema (`public`, `dbo`) dropped. Every migration that defines, changes or drops a
+column is listed: `jk graph callers column:orders.status` names the migration that created it, the
+one that renamed it away (`dropped or renamed away:`), and every use, so a rename is found in the
+migration history as well as in the code. The reader works statement by statement without a SQL
+parser: what it cannot place (a dialect's own syntax, a name built at run time) contributes
+nothing.
+
+| Use | Grade |
+|---|---|
+| reading a jOOQ generated field or table constant (`HOTEL.SLUG`) | bound: the generator wrote the field from the column |
+| `@Table(name)`, `@Column(name)`, `@JoinColumn(name)`; an index or foreign key naming the column | declared |
+| a JPA field under the default naming (`totalMinor` → `total_minor`, a `@ManyToOne` → `parent_id`) | inferred: a naming strategy may differ |
+| a query in a string literal or text block, a native `@Query`, a MyBatis statement, another SQL file | inferred; ambiguous when a bare column fits two of the query's tables |
+
+A use links only to a table or column some DDL defines, except an explicit JPA name or a jOOQ
+field, which make the anchor themselves, so an entity mapped to a column no migration creates
+answers `No file defines it.`. A column with no use answers `Nothing uses it.`, which is not a
+promise: a name assembled at run time is not seen. Not read yet: JPQL and HQL (entity names, not
+tables), Spring Data's derived queries, a custom naming strategy, and SQL in Kotlin or Groovy
+string templates.
 
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the
