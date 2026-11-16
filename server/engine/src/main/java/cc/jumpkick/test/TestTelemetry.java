@@ -17,6 +17,14 @@ public final class TestTelemetry {
     /** The engine environment variable that turns the class telemetry off. */
     public static final String ENV = "JK_TEST_TELEMETRY";
 
+    /** The variable that turns off per-class selection's shadow alone ({@code ClassShadow}). */
+    public static final String SHADOW_ENV = "JK_TEST_SHADOW";
+
+    /** Whether each run also works out, in shadow, what per-class selection would have run. */
+    public static boolean shadow() {
+        return on() && EnvValues.bool(BuildEnv::get, SHADOW_ENV).orElse(true);
+    }
+
     /** Whether the class telemetry is on. */
     public static boolean on() {
         return EnvValues.bool(BuildEnv::get, ENV).orElse(true);

@@ -65,9 +65,23 @@ final class SuiteDiscovery {
                 Path testClasses,
                 Path mainClasses,
                 List<Path> runtimeCp,
-                @Nullable Path javaHome) {
+                @Nullable Path javaHome,
+                List<String> stampExtras,
+                List<Path> resourceDirs,
+                @Nullable String stampKey) {
             ClassRecording.record(
-                    moduleDir, layout, keyed, ledger, moduleLabel, testClasses, mainClasses, runtimeCp, javaHome);
+                    moduleDir,
+                    layout,
+                    keyed,
+                    ledger,
+                    moduleLabel,
+                    testClasses,
+                    mainClasses,
+                    runtimeCp,
+                    javaHome,
+                    stampExtras,
+                    resourceDirs,
+                    stampKey);
         }
 
         /** As {@link SuiteDiscovery#settle}, for this run. */

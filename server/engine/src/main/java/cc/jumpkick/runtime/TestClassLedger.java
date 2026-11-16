@@ -169,7 +169,7 @@ final class TestClassLedger {
      * out counted in. A red run settled under another key than {@code startedKey}, the one it
      * started with, is red under that key too, whatever settling decided: it leaves a red marker
      * there and clears the ledger, so neither a green marker nor a class an earlier run passed under
-     * it answers the next build for this one.
+     * it answers the next build for this one. Each class left out is said replayed in build history.
      */
     TestSummary finish(
             TaskContext ctx,
@@ -191,6 +191,7 @@ final class TestClassLedger {
                     "passed on a re-run with no input changed, so flaky or dependent on what ran before: "
                             + String.join(", ", flaky));
         }
+        replaySettled(ctx);
         return withSettled(ran);
     }
 

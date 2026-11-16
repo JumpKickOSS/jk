@@ -244,3 +244,27 @@ time, memoized per class tree content, and is measured the same way in shadow mo
    JumpKick's own root manifest only. `"class"` (the default: a red or cut-short run re-runs only what has
    not passed under an unchanged stamp) and `"module"` stay as they are, and so does the suite
    marker; `-r` runs every class.
+
+## What is built
+
+**Records.** The test runner's listener opens a `jk.TestClass` window per top-level class
+(`ClassWindows`); the suite's recording settings enable it with `jdk.NativeLibraryLoad` (`SuiteReads`; JDK 22
+and later: the periodic `jdk.NativeLibrary` lists every library the JVM itself maps, libc included,
+and is no evidence of anything); the environment probe also repoints system-property
+reads at `PropLookups`, which writes `<pid>.props` beside the variables' `<pid>.lookups`.
+`ClassReads` joins a recording's events to the windows; `ClassRecording`, called from the run's
+`SuiteDiscovery.Run` after the suite and before the environment report empties the lookups, writes
+`TestClassRecords` (`test-classes.ndjson` in the module's project cache directory). The class
+ledger's entries carry when a class ran and its wall, and a run says each left-out class replayed
+(`TestClassLedger.replaySettled`), as a suite served from its marker says each of its classes
+(`replayCovered`), on `class-finish` with `replayedFrom`. `JK_TEST_TELEMETRY=off` in the caller's
+shell turns all of it off, for measuring.
+
+**Shadow.** `ClassCones` reads the constant pools of the module's class trees and every workspace
+entry of its runtime classpath and walks a class's cone; `ClassKeys` takes the key's three parts;
+`ClassShadow`, after each run that ran classes, asks for every class that ran whether its key over
+its last record matches that record's (green) key, holds the outcome to it, appends a line to
+`per-class-shadow.ndjson` beside the records (`ran`, `wouldRun`, `why` per class, `changed`,
+`unsound`, timings) and leaves each class's new key in its record. `JK_TEST_SHADOW=off` turns the
+shadow alone off. Selection is unchanged.
+
