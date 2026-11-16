@@ -218,6 +218,7 @@ public final class GraphBuild {
             String k = GraphCacheKeys.declarations(s.rel(), sha, flavor);
             Fragment stored = rebuild ? null : fragmentCache.declarations(k, s.rel());
             Fragment read = oxc.get(s.rel());
+            if (read != null && stored == null) read = withRequests(read, s, changed.get(s.rel()));
             Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()));
             if (stored == null) {
                 if (read == null && !flavor.isEmpty()) {
@@ -328,6 +329,16 @@ public final class GraphBuild {
             GraphSnapshot.write(graph, key, o);
         }
         AtomicWrites.moveInto(tmp, out.resolve(GraphOutputs.SNAPSHOT));
+    }
+
+    /** {@code read} with the requests the script's text makes; as read when the text cannot be read. */
+    private static Fragment withRequests(Fragment read, GraphSources.Source s, byte @Nullable [] bytes) {
+        try {
+            byte[] content = bytes != null ? bytes : Files.readAllBytes(s.path());
+            return Extractors.withRequests(read, s.rel(), new String(content, StandardCharsets.UTF_8));
+        } catch (IOException unreadable) {
+            return read;
+        }
     }
 
     /** Extracts one file from {@code bytes}, or from disk when the caller did not read it. */

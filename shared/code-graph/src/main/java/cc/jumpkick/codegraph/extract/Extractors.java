@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph.extract;
 
+import cc.jumpkick.codegraph.Fragment;
+import cc.jumpkick.codegraph.FragmentBuilder;
+import cc.jumpkick.codegraph.Mention;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -77,6 +82,21 @@ public final class Extractors {
         int dot = name.lastIndexOf('.');
         if (dot < 0) return null;
         return BY_EXTENSION.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * {@code read}, a script's fragment from a reader other than {@link ScriptScanner} (oxc), with the
+     * HTTP requests its text makes ({@link Requests}): the route uses do not depend on which reader
+     * parsed the declarations.
+     */
+    public static Fragment withRequests(Fragment read, String relPath, String text) {
+        FragmentBuilder b = new FragmentBuilder(relPath, "code", null);
+        Requests.calls(b, b.fileId(), text, new Lines(text));
+        List<Mention> found = b.build().mentions();
+        if (found.isEmpty()) return read;
+        List<Mention> all = new ArrayList<>(read.mentions());
+        all.addAll(found);
+        return new Fragment(read.nodes(), read.edges(), all);
     }
 
     /** True for the JVM source kinds whose compiled classes also feed the graph. */

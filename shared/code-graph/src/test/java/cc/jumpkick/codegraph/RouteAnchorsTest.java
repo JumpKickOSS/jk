@@ -193,6 +193,24 @@ class RouteAnchorsTest {
     }
 
     @Test
+    void aScriptReadByAnotherReaderStillCarriesItsRequests() {
+        String ts = "frontend/src/app/api.ts";
+        String text = "export class Api {\n  hotels() {\n    return this.http.get<Hotel[]>('/api/hotels');\n  }\n}\n";
+        Fragment oxc = new FragmentBuilder(ts, "code", null).build();
+        String ctrl = GraphIds.declared(CTRL, "HotelController");
+        Fragment handler = new Fragment(
+                List.of(
+                        new GraphNode(ctrl, "HotelController", "code", CTRL, "L10"),
+                        Anchors.node("route", "GET /api/hotels")),
+                List.of(Anchors.edge(
+                        ctrl, "route", "GET /api/hotels", Relations.DEFINES, Confidence.DECLARED, CTRL, 0)));
+        CodeGraph g = Linker.link(List.of(handler, Extractors.withRequests(oxc, ts, text)));
+        assertThat(uses(g, "route:GET /api/hotels"))
+                .extracting(GraphEdge::sourceFile, GraphEdge::sourceLocation, GraphEdge::confidence)
+                .containsExactly(tuple(ts, "L3", Confidence.INFERRED));
+    }
+
+    @Test
     void callersOfAKindsStarOrGlobListsItsAnchors() {
         GraphTools tools = new GraphTools(hotel());
         assertThat(tools.callers("route:*", 1, 2000)).startsWith("5 matches\n").contains("route  route:GET /hotels/**");
