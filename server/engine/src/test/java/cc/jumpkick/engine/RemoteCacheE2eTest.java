@@ -281,6 +281,31 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                 .isEmpty();
     }
 
+    /** A suite's marker names its stamp's inputs, so the rerun after a test edit says which one moved. */
+    @Test
+    void a_suite_whose_test_source_changed_names_it_as_the_reason() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        Path cache = root.resolve("cache-a");
+        assertThat(succeeded(build(a, cache, Map.of()))).isTrue();
+        long first = settled(a).buildNumber();
+
+        Path test = a.resolve("lib/test/src/com/example/OneTest.java");
+        Files.writeString(test, GREEN.replace("class OneTest {", "class OneTest {\n    // edited"));
+        assertThat(succeeded(build(a, cache, Map.of()))).isTrue();
+        BuildRecord record = settled(a, first);
+        StepCache suite = null;
+        for (BuildRecord.Module m : record.modules()) {
+            for (BuildRecord.Task t : m.steps()) {
+                if (t.name().equals("run-tests") && t.cache() != null) suite = t.cache();
+            }
+        }
+        requireNonNull(suite, "run-tests consulted the cache: " + record.modules());
+        assertThat(suite.outcome()).isEqualTo(StepCache.Outcome.MISS);
+        assertThat(suite.reason()).as(String.valueOf(suite)).isEqualTo(StepCache.Reason.INPUTS_CHANGED);
+        assertThat(suite.changed()).as("names the edited test source").contains("OneTest.java");
+    }
+
     // ---- fixture -------------------------------------------------------------------------
 
     private static Path checkout(Path ws, String test) throws Exception {
@@ -463,12 +488,18 @@ class RemoteCacheE2eTest extends EngineServerHarness {
      * before its record is finished, so after this the remote holds what the build shared.
      */
     private static BuildRecord settled(Path ws) throws InterruptedException {
+        return settled(ws, 0);
+    }
+
+    /** As {@link #settled(Path)}, for a build numbered after {@code after}. */
+    private static BuildRecord settled(Path ws, long after) throws InterruptedException {
         BuildRecord[] found = new BuildRecord[1];
         waitUntil(Duration.ofMinutes(3), () -> {
             Optional<BuildRecord> latest = BuildJournal.current().list().stream()
                     .filter(r -> r.dir().equals(ws.toString())
                             && !r.running()
-                            && r.kind().equals("build"))
+                            && r.kind().equals("build")
+                            && r.buildNumber() > after)
                     .findFirst();
             latest.flatMap(r -> BuildJournal.current().get(requireNonNull(r.id(), "id")))
                     .ifPresent(r -> found[0] = r);

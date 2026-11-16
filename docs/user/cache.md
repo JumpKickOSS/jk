@@ -114,6 +114,10 @@ step as `cache`, for a workspace build's module steps as for a single module's.
 | `remote-unreachable` | The build's remote cache stopped answering |
 | `forced` | `--force`, `--redo` or `--rebuild`, or a whole record was run anyway |
 
+A suite's green or red marker names what its stamp hashed (the test sources, the main classes,
+the lock, the runtime classpath, the test JDK and the suite's other tokens, environment variables
+by name only), so a suite that runs again says which of those moved, like any other step.
+
 The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from
 repository downloads and uploads (`remoteUp`, `remoteDown`).
 

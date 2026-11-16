@@ -422,7 +422,7 @@ public final class ActionRecordText {
      * secret can be brute-forced from a record that leaves the machine. The names stay, so a miss
      * can still say which variable moved; the key, which hashed the values here, is unchanged.
      */
-    static String withoutEnvValues(String text) {
+    public static String withoutEnvValues(String text) {
         if (!text.contains("env:")) return text;
         String named = ENV_TOKEN.matcher(text).replaceAll("$1:$2=-");
         return INHERITED_ENV.matcher(named).replaceAll("inherited-env:-");

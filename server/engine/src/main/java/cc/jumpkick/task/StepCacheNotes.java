@@ -4,6 +4,8 @@ package cc.jumpkick.task;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
+import java.util.HashMap;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -57,6 +59,18 @@ final class StepCacheNotes {
         if (n != null) n.stored(key, bytes, reason, changed);
     }
 
+    /** The step derived {@code key} from {@code tokens}, named. */
+    static void derived(String key, Map<String, String> tokens) {
+        Note n = StepScope.local(NOTE);
+        if (n != null) n.derived(key, tokens);
+    }
+
+    /** What the running step said {@code key} was derived from; empty when it said nothing. */
+    static Map<String, String> derivedFrom(String key) {
+        Note n = StepScope.local(NOTE);
+        return n == null ? Map.of() : n.derivedFrom(key);
+    }
+
     private static void flush(TaskContext ctx) {
         Note n = StepScope.local(NOTE);
         StepCache c = n == null ? null : n.toStepCache();
@@ -73,6 +87,15 @@ final class StepCacheNotes {
         private long bytesOut;
         private boolean refused;
         private long producerMillis = -1;
+        private final Map<String, Map<String, String>> derived = new HashMap<>();
+
+        synchronized void derived(String key, Map<String, String> tokens) {
+            derived.put(key, Map.copyOf(tokens));
+        }
+
+        synchronized Map<String, String> derivedFrom(String key) {
+            return derived.getOrDefault(key, Map.of());
+        }
 
         synchronized void hit(String key, boolean remote, long bytes, long producerMillis) {
             bytesIn += bytes;

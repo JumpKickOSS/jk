@@ -513,7 +513,21 @@ public final class ActionCache {
         if (kind != ActionRecordText.Writes.TEST_MARKER && kind != ActionRecordText.Writes.CLASS_LEDGER) {
             throw new IllegalArgumentException("not a marker kind: " + kind);
         }
-        return storeWithOutputs(kind, taskId, actionKey, inputs, markers, Set.of(), null, said);
+        Map<String, String> named = inputs.isEmpty() ? StepCacheNotes.derivedFrom(actionKey) : inputs;
+        return storeWithOutputs(kind, taskId, actionKey, named, markers, Set.of(), null, said);
+    }
+
+    /**
+     * The named tokens the running step derived {@code key} from ({@link KeyAudit#tapped}), for a
+     * marker stored under it without inputs of its own: a suite's stamp is a hash of many lines, and
+     * its record names them so a miss can say which moved. Environment values are withheld, as in
+     * the shared form; outside a step nothing is kept.
+     */
+    public static void derivedFrom(String key, Map<String, String> tokens) {
+        Map<String, String> named = new TreeMap<>();
+        tokens.forEach((name, value) ->
+                named.put(ActionRecordText.withoutEnvValues(name), ActionRecordText.withoutEnvValues(value)));
+        StepCacheNotes.derived(key, named);
     }
 
     /** A verdict when {@code outputs} is empty, outputs when every value is a blob, else of no kind. */
@@ -589,11 +603,14 @@ public final class ActionCache {
         CacheStats.store(CacheStats.classify(task, outputs, sha -> bySha.getOrDefault(sha, 0L)), storedBytes);
         String key = Objects.requireNonNull(actionKey, "actionKey");
         if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
-        if (StepCacheNotes.inStep()) noteStored(task, key, inputs, storedBytes);
+        // A class ledger rides beside its suite's marker, stored first: the marker says why the suite ran.
+        if (StepCacheNotes.inStep() && kind != ActionRecordText.Writes.CLASS_LEDGER)
+            noteStored(task, key, inputs, storedBytes);
         ActionRecordText.Meta meta = ActionRecordText.Meta.now(
                 StepKinds.of(task), kind, producer(), CachePlatform.current(), workedMillis(), sizes);
         // Only a record that may leave the machine pays for its tokens: here the blobs are on disk.
-        if (remote != null && remote.writes()) meta = meta.withDerived(derivedTokens(meta.kind(), outputs));
+        if (remote != null && remote.writes())
+            meta = meta.withDerived(DerivedTokens.of(meta.kind(), outputs, cas, local::blobPath));
         ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables, said, meta);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
@@ -666,34 +683,6 @@ public final class ActionCache {
             reason = StepCache.Reason.KEY_CHANGED;
         }
         StepCacheNotes.stored(key, bytes, reason, changed);
-    }
-
-    /**
-     * The tokens consumers of {@code outputs} key on, by role, so a machine without the blobs can
-     * compute their keys: a classes tree's interface (the ABI token of its {@code .class} outputs,
-     * as {@link ClasspathAbi#tokenFromOutputs} reads them), and for a packaging step's one
-     * artifact its payload digest and, for a jar, its interface. Empty when there is nothing to
-     * derive or a blob cannot be read.
-     */
-    private Map<String, String> derivedTokens(@Nullable String kind, Map<String, String> outputs) {
-        Map<String, String> derived = new TreeMap<>();
-        try {
-            if (outputs.keySet().stream().anyMatch(path -> path.endsWith(".class"))) {
-                derived.put(ActionRecordText.Meta.INTERFACE, ClasspathAbi.tokenFromOutputs(outputs, List.of(), cas));
-            } else if (kind != null && kind.startsWith("package:") && outputs.size() == 1) {
-                Map.Entry<String, String> artifact =
-                        outputs.entrySet().iterator().next();
-                if (!isSha256Hex(artifact.getValue())) return derived;
-                derived.put(ActionRecordText.Meta.PAYLOAD, artifact.getValue());
-                if (artifact.getKey().endsWith(".jar"))
-                    derived.put(
-                            ActionRecordText.Meta.INTERFACE, ClasspathAbi.token(local.blobPath(artifact.getValue())));
-            }
-        } catch (IOException | RuntimeException e) {
-            Log.debug("derived tokens: the record carries none", e);
-            return Map.of();
-        }
-        return derived;
     }
 
     /** The running step's own time so far, which a record states as the cost of making it; {@code -1} outside a step. */

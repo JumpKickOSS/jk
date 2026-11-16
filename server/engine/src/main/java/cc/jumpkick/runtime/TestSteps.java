@@ -132,7 +132,7 @@ final class TestSteps {
         WorkerEnv testEnv = TestLaunch.suiteEnvironment(ctx, in, projectUnderTest);
         TestTier tier = stamp.tier();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
-        SuiteDiscovery.Rekey rekey = () -> testStampKey(ctx, in, stamp, affected, testSrcs);
+        SuiteDiscovery.Rekey rekey = () -> namedStampKey(ctx, in, stamp, affected, testSrcs);
         String stampKey = rekey.key();
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         // --force forces a real test run, matching the compile/package
@@ -521,6 +521,23 @@ final class TestSteps {
      * The action key a green run of this suite is stored under: its sources, resources, runtime
      * classpath, worker jars, JVM arguments, selection and the test compiles' keys.
      */
+    /**
+     * {@link #testStampKey}, with the lines it hashed told to the action cache by name, so the
+     * marker stored under the key records them and a later miss names the input that moved.
+     */
+    private static @Nullable String namedStampKey(
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestStampInputs stamp,
+            AffectedTestRun.@Nullable Outcome affected,
+            List<Path> testSrcs)
+            throws Exception {
+        KeyAudit.Keyed keyed = KeyAudit.tapped(() -> testStampKey(ctx, in, stamp, affected, testSrcs));
+        if (keyed == null) return null;
+        ActionCache.derivedFrom(keyed.key(), keyed.tokens());
+        return keyed.key();
+    }
+
     private static @Nullable String testStampKey(
             TaskContext ctx,
             BuildPlanner.Inputs in,
