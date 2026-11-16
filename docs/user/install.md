@@ -49,9 +49,9 @@ policy change is nothing an uninstall reverts. Group Policy that locks the polic
 with a note — ask an admin.
 
 Local dogfood from this repository needs an installed JumpKick to build it; the hosted `jk.exe` the installer
-puts in place is one. With it installed, `jk build -S` writes `target\dist\jk.exe` and
-`.\install.cmd target\dist\jk.exe` installs it (Smart App Control blocks an unsigned `jk.exe`;
-released natives are signed).
+puts in place is one (Authenticode-signed for every release after 0.51.1). With it installed, `jk build -S` writes `target\dist\jk.exe` and
+`.\install.cmd target\dist\jk.exe` installs it (Smart App Control blocks an unsigned local `jk.exe`;
+released natives after 0.51.1 are signed).
 
 (`.\install.ps1` alone often fails under the default **Restricted** execution policy;
 `install.cmd` and `irm | iex` do not.) Installing `jk.bat` parks a leftover `jk.exe` so

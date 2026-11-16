@@ -190,6 +190,14 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
 
 ## Signing
 
+Two signatures, different jobs:
+
+- **Release manifest** (RSA over `SHA256SUMS` / `LATEST`) — the installers' trust root, below.
+- **Authenticode** on `jk.exe` — Azure Artifact Signing on a GitHub-hosted Windows runner, so
+  Smart App Control accepts the shipped client ([below](#authenticode-jkexe)).
+
+### Release manifest (RSA)
+
 - Algorithm: **SHA256withRSA**, RSA-3072, PKCS#1 v1.5, over the exact `SHA256SUMS` bytes and,
   with the same key, over the exact first two lines of `latest/LATEST`.
 - Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI), with the same
@@ -278,11 +286,14 @@ dry run and never publishes):
 
 1. **gate** — the CI run was green and its tag names the commit it tested.
 2. **build** — one row per platform: linux-x86_64, linux-aarch64 (the arm runner of a public
-   repository), macos-aarch64 and windows-x86_64, each skipping tests. No secret reaches these jobs.
+   repository), macos-aarch64 and windows-x86_64, each skipping tests. The Windows row names the
+   `artifact-signing` environment ([below](#authenticode-jkexe)) and Authenticode-signs `jk.exe`
+   before assemble. Linux and macOS hold no secret.
 3. **merge** — the version tree, the SBOM and the notes, with no secret. The dry run ends here with
-   the unsigned tree as a workflow artifact.
+   the tree as a workflow artifact (`jk.exe` already Authenticode-signed when Windows built).
 4. **publish** — the one job that names the `release` environment ([below](#the-release-environment)),
-   so the one that holds the secrets, and it starts only once a required reviewer approves the run.
+   so the one that holds the publish secrets, and it starts only once a required reviewer approves
+   the run.
 
 The workflow's token is read-only except where a job names the scope it writes, and every action
 it uses is pinned to a commit SHA with the tag in a trailing comment — a floating tag in the job
@@ -301,13 +312,15 @@ under `jk guard`, `scripts/check-workflows.sh` refuses the same in CI's workflow
    (`scripts/ci-takeover.sh --release`: a snapshot install by the pinned release, then the tree's
    `jk install`, the release), so the first-party plugins the linux-x86_64 lane stages for `repo/`
    are the commit's own release jars.
-3. `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
+3. On Windows, Azure Artifact Signing Authenticode-signs `target/dist/jk.exe` (timestamped), then
+   `scripts/assemble-release-dir.sh` (with `DIST_DIR` naming the dist) produces per-platform dirs —
    the client archive(s), the engine jar, the JVM client jar, the Maven spy jar,
    `jk-whats-new-<version>.md` and `jk-repo-<version>.sha256` (the digests of the dist's shelf,
    which the engine holds every worker it fetches to, plus, on linux-x86_64, whatever else it
-   staged for `repo/`: `JK_REPO_STAGE_DIR`) — + `SHA256SUMS`. The linux-x86_64 lane then checks
-   that every jar and POM it staged for `repo/` is the one that file lists, and the flatten keeps
-   that lane's copy alone.
+   staged for `repo/`: `JK_REPO_STAGE_DIR`) — + `SHA256SUMS`. Signing before assemble means the
+   sums and the zip/xz hash the signed client. The linux-x86_64 lane then checks that every jar
+   and POM it staged for `repo/` is the one that file lists, and the flatten keeps that lane's
+   copy alone.
 4. The merge job first writes the release notes (`scripts/release-notes.sh <version>`: the
    version's entry in [What's new](../user/whats-new.md), then the commits since the previous tag)
    and refuses a version with no entry, or one that breaks the [writing rules](#writing-an-entry),
@@ -370,6 +383,66 @@ platforms' artifacts. Once
 `releases/<version>/SHA256SUMS` lists the platform, its row joins `release.yml` and
 `JK_RELEASE_PLATFORMS` (and, for macOS x86_64, the nightly `os-smoke` matrix) with the pin bump.
 
+### Authenticode (`jk.exe`)
+
+The Windows client is Authenticode-signed with [Azure Artifact Signing](https://learn.microsoft.com/azure/artifact-signing/)
+(account `jumpkick`, certificate profile `public-trust`, endpoint
+`https://wus2.codesigning.azure.net/`) by `.github/actions/release-build`, between the dist and
+the assembly, so `SHA256SUMS`, the `.zip` and the `.xz` hash the signed bytes. Every `.exe` and
+`.dll` under the dist is signed; today that is `jk.exe` alone. `jkx.exe` is not shipped: an install
+hardlinks or copies it from `jk.exe`, so it carries the same signature. The signatures are SHA-256
+and timestamped (`http://timestamp.acs.microsoft.com`), so they stay valid after the signing
+certificate, which Artifact Signing renews every three days, expires. A step after the signing
+reads each file back with `Get-AuthenticodeSignature` and fails the job unless the status is
+`Valid`, the signer's CN is the expected publisher and a timestamp is present, then runs the signed
+`jk.exe --version`.
+
+The identity is reachable only from GitHub Actions: auth is GitHub OIDC to the Entra app
+registration `jk-artifact-signing` (no client secret), whose federated credential subject is
+`repo:JumpKickOSS/jk:environment:artifact-signing` and whose service principal holds **Artifact
+Signing Certificate Profile Signer** on the `public-trust` profile. So a job signs only when it names
+the GitHub **environment** `artifact-signing` (tags `v*` only, no required reviewer), holds
+`id-token: write`, and passes the environment's three Azure IDs to the action. Two workflows do:
+
+- **`sign-windows.yml`**, the path a release cut by hand takes. Dispatched on the release tag, it
+  checks the tag on Linux (`scripts/sign-windows-ref.sh`: the tag must be `v<version>` of the
+  version `jk.toml` declares), builds the Windows row exactly as `release.yml` does, signs and
+  verifies, and uploads `release-<version>-windows-x86_64` (the tree `scripts/release-lane.sh`
+  writes on Windows, `SHA256SUMS` included, also printed in the run's summary) as a workflow
+  artifact. It does nothing else: no merge, no release-key signature, no upload anywhere. A tag
+  `v0.0.0-signtest.<n>` on a `-SNAPSHOT` commit is its dry run: the declared snapshot is built and
+  signed the same way, and that tree is never published; delete the tag afterwards.
+- **`release.yml`**'s `windows-x86_64` row, for the day CD publishes. Its `workflow_run` trigger runs
+  on the default branch, and the environment admits `v*` tags only, so that row is refused until
+  the environment also admits the branch the CD run is on (a dispatch on the tag is admitted).
+
+```bash
+gh workflow run sign-windows.yml -R JumpKickOSS/jk --ref v<version>
+gh run list -R JumpKickOSS/jk --workflow sign-windows.yml --limit 1      # its id
+gh run download <id> -R JumpKickOSS/jk -n release-<version>-windows-x86_64 -D <staging>/release-<version>-windows-x86_64
+```
+
+The environment and its IDs (identifiers, not secrets, kept as environment secrets so only those
+jobs read them):
+
+```bash
+scripts/artifact-signing-environment.sh create
+scripts/artifact-signing-environment.sh secret AZURE_CLIENT_ID       # stdin or file
+scripts/artifact-signing-environment.sh secret AZURE_TENANT_ID
+scripts/artifact-signing-environment.sh secret AZURE_SUBSCRIPTION_ID
+scripts/artifact-signing-environment.sh status
+```
+
+**What a user sees.** In PowerShell, `Get-AuthenticodeSignature (Get-Command jk).Source` shows
+`Status` `Valid` with the signer `CN=Bryan Sant, O=Bryan Sant, …` (the validated identity behind
+the `public-trust` profile) and a timestamp; the file's Properties > Digital Signatures tab names
+the same signer. Smart App Control, which blocks every unsigned executable, runs the signed client.
+SmartScreen also checks reputation: a new certificate, or a file few machines have run, can still
+show "Windows protected your PC" when it is run straight from a browser download until that
+reputation builds over time; the installers fetch with PowerShell, which does not mark the file as
+downloaded from the internet. A `jk.exe` built locally (`jk build` writes `target\dist\jk.exe`)
+is not signed.
+
 ### The release environment
 
 The secrets below are secrets of a GitHub **environment** named `release`, not of the repository.
@@ -415,7 +488,8 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 | 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
 | 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag: it ends `== lane <os>-<arch> done`, its engine jar is `jk-engine-<version>.jar`, its `jk --version` says `jk <version>`, and no file under `out/` names a `SNAPSHOT` (the lane checks the last two) |
-| 5 | the signing machine | copy every lane's `out/` over, `scripts/release-merge.sh <staging> <out>` |
+| 4w **outward** | GitHub Actions, `gh` | windows-x86_64 is not a lane on a machine of ours: `gh workflow run sign-windows.yml --ref v<version>` builds and Authenticode-signs it ([Authenticode](#authenticode-jkexe)); `gh run download` its `release-<version>-windows-x86_64` artifact into the staging directory, then, on a Windows host, `Get-AuthenticodeSignature` on the `jk.exe` inside its `.zip` reports `Valid` and the expected signer, and that `jk.exe --version` says `jk <version>` |
+| 5 | the signing machine | copy every lane's `out/` and the Windows artifact over, `scripts/release-merge.sh <staging> <out>` |
 | 6 | the signing machine | `scripts/release-publish.sh sign <out> <release-key.pem>` |
 | 7 **outward** | the signing machine, gcloud | `scripts/release-publish.sh upload <out>`, then `pointer <out> <release-key.pem>` (live here), then `verify <out> <public-key.pem>` |
 | 8 **outward** | the signing machine, firebase | `scripts/release-publish.sh hosting` |
@@ -448,8 +522,7 @@ dependency-table coordinate and plugin `sdk` in any example, skipped ones includ
 release of the JumpKick that generated it (`JK_RELEASE` overrides it), and one that does not fails the check whatever
 the README says. The report is `target/examples-regen-check/report.md`.
 
-**Lanes** (`scripts/release-lane.sh`). One per platform: linux-x86_64 and windows-x86_64 on
-machines of their own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
+**Lanes** (`scripts/release-lane.sh`). One per platform: linux-x86_64 on a machine of its own, macos-aarch64 on an Apple-silicon Mac and linux-aarch64 in a Linux VM on the
 same Mac (`container machine run`), one heavy lane per machine at a time. Each clones the tag into
 `<work-dir>/src`, bootstraps a home of its own (`<work-dir>/home`) from the pinned release with
 `scripts/ci-bootstrap.sh`, asserts the clone is the release (`scripts/release-session.sh`), lets the
@@ -460,9 +533,12 @@ builds the dist with `jk build` and assembles `out/release-<version>-<os>-<arch>
 the tag's commit — the bridge a bootstrap builds reports the release's version too, so the version
 alone does not prove which JumpKick packaged the dist. The linux-x86_64 lane is canonical: it also stages
 `out/repo/` and lists it in `jk-repo-<version>.sha256`. Every lane uses the same pinned bootstrap,
-which is what makes the platform-neutral jars byte-identical. On Windows the lane runs in Git Bash;
-the bootstrap installs through `install.ps1`, which runs under Windows PowerShell 5.1 when there is
-no PowerShell 7. Put `TMPDIR` on a disk, not a RAM-backed `/tmp`: the bridge checkout goes there.
+which is what makes the platform-neutral jars byte-identical. The windows-x86_64 tree comes from
+`sign-windows.yml` instead, the same steps on a GitHub-hosted runner, because the signing identity
+is reachable only from there; the merge refuses it if its platform-neutral jars differ from the
+lanes'. `scripts/release-lane.sh` still runs on Windows (in Git Bash; the bootstrap installs through
+`install.ps1`, under Windows PowerShell 5.1 when there is no PowerShell 7) and writes the same tree,
+unsigned: a release ships only the signed one. Put `TMPDIR` on a disk, not a RAM-backed `/tmp`: the bridge checkout goes there.
 
 The linux-aarch64 VM (a `container` machine on the Mac) needs `git`, `curl`, `xz-utils`, `zip`,
 `unzip`, `python3`, a C toolchain with `zlib1g-dev` for `native-image`, and a GraalVM 25 at

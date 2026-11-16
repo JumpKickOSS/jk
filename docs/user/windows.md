@@ -29,7 +29,9 @@ See its state:
 
 `jk doctor` reports it too, as its `smart app control` row.
 
-Until the released `jk.exe` is Authenticode-signed, choose one:
+The `jk.exe` of every release after 0.51.1 is Authenticode-signed, and SAC runs it:
+`Get-AuthenticodeSignature (Get-Command jk).Source` shows `Status` `Valid` and the signer. An older
+release's `jk.exe`, or a `target\dist\jk.exe` you built yourself, is not; for those, choose one:
 - install the [JVM client](install.md#the-jvm-client), which SAC lets run, with
   `$env:JK_CLIENT = "jvm"; irm https://jumpkick.build/install.ps1 | iex`;
 - or turn SAC off in Windows Security > App & browser control > Smart App Control settings. Since

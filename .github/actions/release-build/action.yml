@@ -1,6 +1,11 @@
 # One platform's release build, written once for every platform release.yml builds: the native
-# client and engine built by jk (tests skipped: CI ran them), the release tree assembled unsigned and
+# client and engine built by jk (tests skipped: CI ran them), the release tree assembled and
 # uploaded as a workflow artifact; on linux-x86_64 also the SBOM and the staged Maven repository.
+# On windows-x86_64 every executable in the dist (jk.exe, and any other .exe or .dll it comes to
+# hold) is Authenticode-signed with Azure Artifact Signing and verified before assemble, so
+# SHA256SUMS and the zip/xz hash the signed client. The Azure IDs come from the caller's
+# `artifact-signing` environment (OIDC; no client secret). Callers: release.yml's build rows and
+# sign-windows.yml (the Windows tree of a release cut by hand).
 # The job checks out RELEASE_SHA first. Each OS is a job of its own so the expensive runners build
 # only after the cheaper ones have (Linux, then Windows, then macOS).
 name: Release build
@@ -12,6 +17,29 @@ inputs:
   github-token:
     description: The token setup-graalvm reads releases with.
     required: true
+  azure-client-id:
+    description: Entra app (client) ID for Artifact Signing OIDC. Required on windows-x86_64.
+    required: false
+    default: ''
+  azure-tenant-id:
+    description: Entra tenant ID for Artifact Signing OIDC. Required on windows-x86_64.
+    required: false
+    default: ''
+  azure-subscription-id:
+    description: Azure subscription ID for Artifact Signing OIDC. Required on windows-x86_64.
+    required: false
+    default: ''
+  signer-cn:
+    description: The CN the Authenticode signer certificate must carry (the publisher Windows shows).
+    required: false
+    default: Bryan Sant
+  release:
+    description: >-
+      'true' (the default): the checkout must be the release its tag names, and the build is that
+      release. 'false': the checkout's declared version is built as the -SNAPSHOT it is, for
+      sign-windows.yml's signing dry run on a v0.0.0-signtest.<n> tag; such a tree is never published.
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -30,6 +58,7 @@ runs:
     # The tag too: jk builds the release only from a clean checkout whose HEAD carries
     # v<version>, and anything else is a -SNAPSHOT. A dry run is therefore dispatched on the tag.
     - name: Resolve version
+      if: inputs.release == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -39,6 +68,16 @@ runs:
         git fetch --no-tags --depth=1 origin "+refs/tags/v$VER:refs/tags/v$VER" \
           || { echo "::error::no tag v$VER: a release is built from its tag; dispatch the dry run on it"; exit 1; }
         bash scripts/release-session.sh
+
+    - name: Resolve version (snapshot dry run)
+      if: inputs.release != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        VER="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' jk.toml | head -1)"
+        [[ "$VER" == *-SNAPSHOT ]] || { echo "::error::a dry run builds a -SNAPSHOT; jk.toml declares $VER"; exit 1; }
+        echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+        echo "::notice::dry run: building $VER (${{ inputs.arch-label }}), not a release"
 
     # The shipped artifacts are what jk builds of itself. The jk that builds them is the one
     # scripts/ci-bootstrap.sh installs: the hosted release .jk/ci/ci-bootstrap-version pins, or the
@@ -72,7 +111,11 @@ runs:
         # checkout at its tag, which --release asserts), and that jk builds the dist. The engine
         # jar embeds an SBOM naming its packager, and the lanes' jars must be byte-identical for
         # the flatten.
-        bash scripts/ci-takeover.sh --install-only --release
+        if [[ "${{ inputs.release }}" == true ]]; then
+          bash scripts/ci-takeover.sh --install-only --release
+        else
+          bash scripts/ci-takeover.sh --install-only
+        fi
         packager="$(jk --version --no-ansi | head -1 | tr -d '\r')"
         if [[ "$packager" != "jk $JK_VERSION" ]]; then
           echo "::error::the dist must be built by jk $JK_VERSION, the tree's own release; jk on PATH is: $packager"
@@ -80,6 +123,90 @@ runs:
         fi
         jk build --skip-tests --no-ansi
         ls -la target/dist target/dist/lib
+
+    # Authenticode before assemble: SHA256SUMS and the client archives must hash the signed
+    # files. Every .exe and .dll under the dist is signed (today jk.exe alone; jkx.exe is not
+    # shipped: an install hardlinks or copies it from jk.exe, so it carries the same signature).
+    # OIDC via azure/login; the caller's job holds id-token: write and the artifact-signing
+    # environment. Timestamped, so the signature outlives the signing certificate (valid 3 days).
+    - name: Windows files to sign
+      id: authenticode-files
+      if: inputs.arch-label == 'windows-x86_64'
+      shell: bash
+      env:
+        AZURE_CLIENT_ID: ${{ inputs.azure-client-id }}
+        AZURE_TENANT_ID: ${{ inputs.azure-tenant-id }}
+        AZURE_SUBSCRIPTION_ID: ${{ inputs.azure-subscription-id }}
+      run: |
+        set -euo pipefail
+        for id in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+          [[ -n "${!id}" ]] || { echo "::error::$id is empty: the job must name the artifact-signing environment and pass its secrets"; exit 1; }
+        done
+        [[ -f target/dist/jk.exe ]] || { echo "::error::no target/dist/jk.exe to sign"; exit 1; }
+        mapfile -t files < <(find target/dist -type f \( -iname '*.exe' -o -iname '*.dll' \) | LC_ALL=C sort)
+        printf 'to sign: %s\n' "${files[@]}"
+        {
+          echo "files<<EOF_FILES"
+          for f in "${files[@]}"; do cygpath -w "$PWD/$f"; done
+          echo "EOF_FILES"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Azure login (Artifact Signing)
+      if: inputs.arch-label == 'windows-x86_64'
+      uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+      with:
+        client-id: ${{ inputs.azure-client-id }}
+        tenant-id: ${{ inputs.azure-tenant-id }}
+        subscription-id: ${{ inputs.azure-subscription-id }}
+
+    - name: Authenticode-sign the Windows executables
+      if: inputs.arch-label == 'windows-x86_64'
+      uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+      with:
+        endpoint: https://wus2.codesigning.azure.net/
+        signing-account-name: jumpkick
+        certificate-profile-name: public-trust
+        files: ${{ steps.authenticode-files.outputs.files }}
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+        exclude-environment-credential: true
+        exclude-workload-identity-credential: true
+        exclude-managed-identity-credential: true
+        exclude-shared-token-cache-credential: true
+        exclude-visual-studio-credential: true
+        exclude-visual-studio-code-credential: true
+        exclude-azure-cli-credential: false
+        exclude-azure-powershell-credential: true
+        exclude-azure-developer-cli-credential: true
+        exclude-interactive-browser-credential: true
+
+    # What Windows will say about each file: a Valid signature by the expected signer, with a
+    # timestamp. Anything else fails the job before a byte is assembled or uploaded. The scan is the
+    # dist again, not the list above, so a file the signing step skipped fails here.
+    - name: Verify the Authenticode signatures
+      if: inputs.arch-label == 'windows-x86_64'
+      shell: pwsh
+      env:
+        SIGNER_CN: ${{ inputs.signer-cn }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $files = @(Get-ChildItem -Recurse -File -Path target/dist -Include *.exe, *.dll)
+        if ($files.Count -eq 0) { throw "no executable under target/dist" }
+        $bad = 0
+        foreach ($f in $files) {
+          $sig = Get-AuthenticodeSignature -LiteralPath $f.FullName
+          $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+          $tsa = if ($sig.TimeStamperCertificate) { $sig.TimeStamperCertificate.Subject } else { '' }
+          $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $f.FullName).Hash.ToLowerInvariant()
+          Write-Host "$($f.Name): status=$($sig.Status) signer=[$subject] issuer=[$($sig.SignerCertificate.Issuer)] timestamp=[$tsa] sha256=$sha"
+          if ($sig.Status -ne 'Valid') { Write-Host "::error::$($f.Name) signature status is $($sig.Status): $($sig.StatusMessage)"; $bad++ }
+          elseif ($subject -notmatch ('(^|,\s*)CN=' + [regex]::Escape($env:SIGNER_CN) + '(,|$)')) { Write-Host "::error::$($f.Name) is signed by [$subject], not CN=$($env:SIGNER_CN)"; $bad++ }
+          elseif (-not $sig.TimeStamperCertificate) { Write-Host "::error::$($f.Name) carries no timestamp"; $bad++ }
+        }
+        $said = (& (Join-Path $PWD 'target/dist/jk.exe') --version --no-ansi | Select-Object -First 1)
+        if ($LASTEXITCODE -ne 0 -or "$said" -ne "jk $env:JK_VERSION") { Write-Host "::error::the signed jk.exe answered '$said' (exit $LASTEXITCODE), not 'jk $env:JK_VERSION'"; $bad++ }
+        if ($bad -gt 0) { exit 1 }
 
     # The bill of materials of the engine: the CycloneDX document the shipped engine jar embeds
     # under META-INF/sbom/ (one writer, derived from jk-lock.toml; docs/user/packaging.md).

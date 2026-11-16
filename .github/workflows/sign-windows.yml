@@ -1,0 +1,81 @@
+# The Windows client of a release cut by hand, built and Authenticode-signed where the signing
+# identity lives: a GitHub-hosted Windows runner in the `artifact-signing` environment (OIDC to Azure
+# Artifact Signing; the environment admits v* tags only). The build is release.yml's Windows row
+# (.github/actions/release-build), so the tree is the one scripts/release-lane.sh writes on a
+# Windows host, with jk.exe signed before the sums and archives are made. It ends with that tree,
+# release-<version>-windows-x86_64, as a workflow artifact, and does nothing else: no merge, no
+# release-key signature, no upload anywhere (docs/contributors/releases.md, "Cutting a release by hand").
+#
+# Dispatch it on the release tag: gh workflow run sign-windows.yml --ref v<version>. A tag
+# v0.0.0-signtest.<n> on a -SNAPSHOT commit is the signing dry run: the declared snapshot is built and
+# signed, and its tree is never published. Any other ref is refused on Linux before a Windows runner
+# starts (scripts/sign-windows-ref.sh).
+
+name: Sign Windows client
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sign-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TERM: xterm-256color
+  # The composite action's names for the tag and the commit it builds.
+  RELEASE_TAG: ${{ github.ref_name }}
+  RELEASE_SHA: ${{ github.sha }}
+
+jobs:
+  # The ref, checked on the cheap runner: the release tag of the declared version, or a dry-run tag.
+  ref:
+    name: Release or dry-run tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.ref.outputs.release }}
+      version: ${{ steps.ref.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - id: ref
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "+refs/tags/$REF_NAME:refs/tags/$REF_NAME" || true
+          bash scripts/sign-windows-ref.sh "$REF_TYPE" "$REF_NAME" | tee -a "$GITHUB_OUTPUT"
+
+  # Visual Studio 2022, as release.yml's Windows row. id-token: write is for the OIDC exchange alone.
+  windows:
+    name: windows-x86_64 (Authenticode)
+    needs: ref
+    runs-on: windows-2022
+    timeout-minutes: 90
+    environment: artifact-signing
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: ./.github/actions/release-build
+        with:
+          arch-label: windows-x86_64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          release: ${{ needs.ref.outputs.release }}
+      # The digests the manual release checks the downloaded tree against (the action uploaded it).
+      - name: SHA-256 of the signed tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          tee -a "$GITHUB_STEP_SUMMARY" < "target/release/${JK_VERSION}-windows-x86_64/SHA256SUMS"

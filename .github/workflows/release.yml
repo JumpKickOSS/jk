@@ -9,18 +9,19 @@
 #   gate    — the CI run was green and its ref is a tag on the commit it tested.
 #   build   — the native client and engine of every platform, built by jk (tests skipped: CI ran them):
 #             Linux first, then Windows, then macOS, each only once the one before has built.
+#             Windows Authenticode-signs jk.exe via Azure Artifact Signing (OIDC; the
+#             `artifact-signing` environment) before assemble.
 #   merge   — one version tree from the platforms, the SBOM and the notes. No secrets.
 #   publish — signs the tree, uploads it to GCS, redeploys the installers, releases the plugin SDK to
 #             Central, and creates the GitHub Release with the tree, the SBOM and the notes. The
-#             only job that names the `release` environment, so the only one that holds the secrets,
-#             and it waits there for a reviewer's approval.
+#             only job that names the `release` environment, so the only one that holds the publish
+#             secrets, and it waits there for a reviewer's approval.
 #
 # A workflow_dispatch is the dry run: it builds and merges the tree of the ref it is started on
 # (unsigned) and stops with it as a workflow artifact; it never publishes, so the only way to a
 # published release is a green CI run.
 #
-# Secrets, all environment secrets of the `release` environment (scripts/release-environment.sh
-# creates it and loads them):
+# Secrets of the `release` environment (scripts/release-environment.sh creates it and loads them):
 #   JK_RELEASE_RSA_SIGNING_KEY — base64 PKCS#8 DER RSA-3072 private key; signs the combined SHA256SUMS
 #   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jumpkick
 #   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket,
@@ -30,6 +31,12 @@
 #   JK_CENTRAL_GPG_PASSPHRASE  — its passphrase
 #   JK_REPO_CENTRAL_USERNAME   — Central Portal user token name
 #   JK_REPO_CENTRAL_PASSWORD   — Central Portal user token password
+# Secrets of the `artifact-signing` environment (scripts/artifact-signing-environment.sh; OIDC
+# IDs only — no client secret; federated credential subject
+# repo:JumpKickOSS/jk:environment:artifact-signing):
+#   AZURE_CLIENT_ID            — Entra app ID for Artifact Signing
+#   AZURE_TENANT_ID            — Entra tenant ID
+#   AZURE_SUBSCRIPTION_ID      — Azure subscription ID
 #   GITHUB_TOKEN (automatic)   — read-only everywhere but the publish job, which writes the
 #                                GitHub Release (contents) and its provenance attestations
 #                                (id-token, attestations)
@@ -142,12 +149,17 @@ jobs:
 
   # Visual Studio 2022: the one native-image locates on its own, which the hosted bootstrap's engine
   # leaves it to do (the Dist step). Once the pin's engine inherits INCLUDE and LIB, any Windows
-  # image serves.
+  # image serves. Authenticode uses the artifact-signing environment (OIDC to Azure Artifact
+  # Signing); id-token: write is only for that exchange.
   build-windows:
     name: windows-x86_64
     needs: [gate, build-linux]
     if: ${{ needs.gate.outputs.release == 'true' }}
     runs-on: windows-2022
+    environment: artifact-signing
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -156,6 +168,9 @@ jobs:
         with:
           arch-label: windows-x86_64
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
   build-macos:
     name: macos-aarch64
@@ -171,8 +186,9 @@ jobs:
           arch-label: macos-aarch64
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # One version tree from the platforms. Nothing here signs or publishes, so it holds no secret and
-  # a dry run ends here with the unsigned tree as a workflow artifact.
+  # One version tree from the platforms. Nothing here signs the manifest or publishes, so it holds
+  # no secret and a dry run ends here with the tree as a workflow artifact (jk.exe already
+  # Authenticode-signed by the Windows build).
   merge:
     name: Merge
     needs: [build-linux, build-windows, build-macos]
