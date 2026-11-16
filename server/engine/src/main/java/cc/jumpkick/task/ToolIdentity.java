@@ -140,7 +140,7 @@ public final class ToolIdentity {
 
     /**
      * As {@link #probe(Path, Path, String)}, giving up after {@code timeoutMillis}. Run in {@code
-     * dir} with the caller's environment and {@code path} as its {@code PATH}. The output is read on
+     * dir} with the caller's environment and {@code path} as its {@code PATH}, in the C locale. The output is read on
      * its own thread, so a tool that prints nothing and never exits cannot hold the caller past the
      * bound.
      */
@@ -149,6 +149,11 @@ public final class ToolIdentity {
         if (Files.isDirectory(dir)) pb.directory(dir.toFile());
         Map<String, String> env = ChildEnv.copyOf(BuildEnv.callerEnv());
         if (path != null) env.put("PATH", path);
+        // Asked in the C locale, whatever the caller's: a translated line (bash's "Version" under
+        // de_DE) is the same tool, and the key must not move with the shell's language.
+        env.keySet().removeIf(name -> name.equals("LANGUAGE") || name.startsWith("LC_"));
+        env.put("LC_ALL", "C");
+        env.put("LANG", "C");
         ChildEnv.replace(pb, env);
         try {
             Process p = JobWorkers.start(pb);

@@ -114,6 +114,25 @@ class ToolIdentityTest {
                 .isEqualTo("v3");
     }
 
+    /** A tool whose version line is translated reads alike under every caller locale (JK-7AA0Z). */
+    @Test
+    void the_version_is_asked_in_the_c_locale(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        // bash's own habit: "Version" when the locale is German, "version" otherwise.
+        tool(
+                bin,
+                "sh",
+                "case \"${LC_ALL:-${LC_MESSAGES:-$LANG}}\" in de*) echo 'GNU bash, Version 5.3';; *) echo 'GNU bash, version 5.3';; esac");
+        String path = bin.toString();
+        String german = RequestShell.where(
+                Map.of("PATH", path, "LANG", "de_DE.UTF-8", "LC_ALL", "de_DE.UTF-8", "LC_MESSAGES", "de_DE.UTF-8"),
+                () -> ToolIdentity.of("sh", path, tmp));
+        String english =
+                RequestShell.where(Map.of("PATH", path, "LANG", "en_US.UTF-8"), () -> ToolIdentity.of("sh", path, tmp));
+        assertThat(german).isEqualTo(english).isEqualTo("GNU bash, version 5.3");
+    }
+
     @Test
     void a_version_line_that_names_its_own_path_or_home_is_normalized() {
         Path exe = Path.of(System.getProperty("user.home"), "tools/bin/tool");
