@@ -18,7 +18,11 @@ public final class Relations {
     public static final String OVERRIDES = "overrides";
 
     public static final String REFERENCES = "references";
+    /** A use: of an anchor ({@link Anchors}), or of a component a template or JSX names. */
     public static final String USES = "uses";
+    /** A file or symbol to the anchor it defines: a migration's table, a mapping's route, a YAML key. */
+    public static final String DEFINES = "defines";
+
     public static final String RATIONALE_FOR = "rationale_for";
     public static final String CONFIGURES = "configures";
     public static final String DEPENDS_ON = "depends_on";

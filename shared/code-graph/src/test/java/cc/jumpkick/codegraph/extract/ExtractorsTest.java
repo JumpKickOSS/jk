@@ -5,11 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.Confidence;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Mention;
+import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.codegraph.ShopFixture;
 import java.io.IOException;
 import java.util.List;
@@ -110,8 +112,13 @@ class ExtractorsTest {
                 .contains("server.port", "shop.currency", "shop.pricing.calculator", "spring.application.name");
         assertThat(yml.nodes())
                 .filteredOn(n -> n.label().equals("shop.currency"))
-                .extracting(GraphNode::sourceLocation)
-                .containsExactly("L4");
+                .extracting(GraphNode::id, GraphNode::fileType, GraphNode::sourceFile)
+                .containsExactly(tuple("config:shop.currency", "anchor", ""));
+        assertThat(yml.edges())
+                .filteredOn(e -> e.target().equals("config:shop.currency"))
+                .extracting(GraphEdge::source, GraphEdge::relation, GraphEdge::confidence, GraphEdge::sourceLocation)
+                .containsExactly(
+                        tuple("src_main_resources_application_yml", Relations.DEFINES, Confidence.DECLARED, "L4"));
         assertThat(yml.mentions())
                 .contains(new Mention(
                         "src_main_resources_application_yml", Mention.Kind.CLASS, "com.acme.shop.PriceCalculator", 6));

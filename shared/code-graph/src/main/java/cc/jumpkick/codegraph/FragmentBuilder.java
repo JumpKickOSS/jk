@@ -98,6 +98,19 @@ public final class FragmentBuilder {
         return id;
     }
 
+    /**
+     * An edge {@code relation} ({@link Relations#DEFINES} or {@link Relations#USES}) from {@code source}
+     * to the anchor {@code name} of {@code kind} at {@code line}, graded {@code grade}, with the anchor's
+     * node; returns the anchor's id.
+     */
+    public String anchor(String source, String kind, String name, String relation, Confidence grade, int line) {
+        GraphNode n = Anchors.node(kind, name);
+        GraphNode had = nodes.get(n.id());
+        nodes.put(n.id(), had == null ? n : Anchors.preferred(had, n));
+        edges.add(Anchors.edge(source, kind, name, relation, grade, relPath, line));
+        return n.id();
+    }
+
     public void edge(String source, String target, String relation, Confidence confidence, int line) {
         edges.add(GraphEdge.of(source, target, relation, confidence, relPath, line));
     }

@@ -1032,6 +1032,81 @@ hit on the second run, one-file edit recompiles the delta. A `--partial` skip of
 modules and POM-declared `<sourceDirectory>` (which needs a root override the model does not
 have) are open.
 
+## Code graph anchors
+
+The code graph (`shared/code-graph`, built in `plugins/graph`) links symbols through the
+compiler. An **anchor** is a node for a surface that code and files no compiler checks both
+name: a configuration key, an environment variable, an HTTP route, a SQL table or column, a CLI
+command or flag. Every file or symbol that defines or uses the surface gets an edge to the
+anchor, in whatever language it is written, so N languages need N extractors, not N² pairwise
+ones.
+
+**Node.** `fileType` is `anchor`, `node_kind` is the anchor's kind, and it has no source file:
+it lives in no file, and its places are its edges. Its id is `<kind>:<key>` and its label the
+display name; `Anchors` holds the grammar. A symbol's id is `[a-z0-9_]` only, so the `:` keeps
+the two namespaces apart.
+
+| Kind | Id | Key (what makes two spellings one anchor) |
+|---|---|---|
+| `config` | `config:server.port` | lower-cased with `-` and `_` dropped, dots kept: Spring's relaxed binding, so `maxItems`, `max-items` and `max_items` are one key; the label is the kebab spelling |
+| `env` | `env:DATABASE_URL` | exact: variables are case-sensitive |
+| `route` | `route:GET /orders/{}` | method upper-cased (`*` for any); path with one leading `/`, no trailing `/`, no query, `//` collapsed, every variable (`{id}`, `{id:\d+}`, `:id`, `<id>`) as `{}` |
+| `table` | `table:orders` | lower-cased unless quoted, quotes, backticks and brackets dropped; a schema stays when written |
+| `column` | `column:orders.status` | table key, `.`, column key |
+| `cli` | `cli:jk build --skip-tests` | program, subcommand path, then one flag, whitespace collapsed, `=value` dropped |
+
+Kinds are open strings (`[a-z][a-z0-9.-]*`): a kind `Anchors` does not list keys its name
+trimmed, so a new extractor adds a kind without a schema change. Nothing in an id names a
+language, a class file, a descriptor or a package coordinate; `AnchorsTest` holds it.
+
+**Edges.** `defines` (a migration creating a table, a YAML key, a controller method's mapping)
+and `uses` (code reading the key, a script calling the route), always from the file or symbol to
+the anchor. An edge's `context` holds the name as written when its key folds it (`{id}`,
+`maxItems`), so the answer shows what to search for and replace.
+
+**Grades.** Every anchor edge carries one of three grades, the edge's `Confidence`:
+
+| Grade | `Confidence` | Meaning | Examples |
+|---|---|---|---|
+| bound | `EXTRACTED` | a compiler or code generator made the link | a call to a jOOQ field the generator wrote for the column; a generated client method |
+| declared | `DECLARED` | read from a framework annotation's literal or a definition file's syntax | `@GetMapping("/orders")`, `@Value("${k}")`, a YAML key, `CREATE TABLE`, `System.getenv("X")` |
+| inferred | `INFERRED`, `AMBIGUOUS` | a string matched, or a name the linker matched | a key-shaped literal, SQL inside a string, a `curl` URL in a script, a flag on a command line in a workflow |
+
+`DECLARED` is new; the existing scale had no step between a link read straight from code and a
+guess. An extractor that knows the anchor writes the edge itself, with its grade; a name only the
+whole graph can confirm is a `Mention` the linker resolves against an anchor some file already
+names, and is always inferred. An edge JumpKick cannot ground is inferred, never declared: precision
+before recall. Answers print `(inferred)` on inferred edges and nothing on the other two. "Unchecked" is not a
+grade: a use is unchecked when no step of a build verifies it, which is every declared or
+inferred use in a file the build neither compiles nor tests; the build verdict (JK-4K5FP) lists
+those.
+
+**Cache.** An anchor's id depends only on the text that names it, so each file's fragment
+carries its own anchor nodes and edges and is cached like any fragment, under its content hash
+and `GraphCacheKeys.VERSION`; compiled facts likewise under their compile's keys. Merging keeps
+one node per id (the longest label, then the first in order, whichever fragment came first). An
+anchor exists while some fragment names it: renaming the last definition and use removes it.
+Inferred edges are made by the linker on every link and never cached. A change to anchor output
+moves `VERSION` and `ExtractorVersionTest`'s digest; a change to `Confidence` moves
+`GraphSnapshot.FORMAT`. A rule that needs another file (a route's context path from
+`application.yml`) belongs in the linker, not an extractor, or a cached fragment goes stale when
+that other file changes.
+
+**Answers.** `callers` given an anchor (`config:server.port`, `route:GET /orders/{id}`, or a
+label only an anchor has) answers with its definitions, then its uses, main sources before tests
+before other files, each at `file:line` with the line quoted and `(inferred)` where it applies,
+and counts by grade in the first line. `find -t <kind>` lists a kind's anchors with their
+definition and use counts. Anchors join the MCP `callers` tool through its address; the default
+tool list does not grow.
+
+Rejected: a grade field beside `Confidence` (two scales an answer would have to reconcile);
+anchor nodes owned by their defining file, as config keys were (a key set in two profile files
+was two nodes, and code reading it linked to neither); resolving every anchor use in the linker
+(a declared use of a key set nowhere is the answer to "read but never set", and would be
+dropped); one `sql:` kind for tables and columns (`sql:a.b` cannot say schema-and-table from
+table-and-column); full SQL, YAML or shell parsers (the extractors read the lines a definition
+or use takes, and a line they cannot read contributes nothing).
+
 ## Status
 
 Pre-1.0 alpha. **Self-hosted:** the root workspace covers every library, client, worker and rule

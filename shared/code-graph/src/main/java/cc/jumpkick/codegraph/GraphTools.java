@@ -180,6 +180,8 @@ public final class GraphTools {
         // Type.m(Entry), the form rename takes, names the method: callers answers every overload.
         String wanted = name.strip().replaceFirst("^([^(]+)\\([^()]+\\)$", "$1");
         List<String> named = graph.has(wanted) ? List.of(wanted) : members(wanted);
+        String anchor = anchorAnswer(wanted, named.isEmpty(), budget);
+        if (anchor != null) return anchor;
         if (named.isEmpty()) return noMethod(wanted);
         List<String> targets = withJvmNames(named);
         List<String> inline = targets.stream().filter(this::inline).toList();
@@ -770,8 +772,8 @@ public final class GraphTools {
                 ", ",
                 new TreeSet<>(datas.stream()
                         .map(GraphEdge::confidence)
-                        .filter(c -> c != Confidence.EXTRACTED)
-                        .map(c -> c.name().toLowerCase(Locale.ROOT))
+                        .filter(Confidence::marked)
+                        .map(Confidence::mark)
                         .toList()));
         return (fwd.isEmpty() ? "<-" + rel + "- " : "-" + rel + "-> ")
                 + GraphQuery.clean(graph.display(v))
@@ -825,9 +827,141 @@ public final class GraphTools {
      */
     String where(String id) {
         GraphNode n = graph.node(id);
+        if (Anchors.is(n)) return anchorWhere(id);
         if (n == null || n.sourceFile().isEmpty()) return "";
         int line = Decl.line(n);
         return "  " + GraphQuery.clean(n.sourceFile()) + (line > 0 ? ":" + line : "");
+    }
+
+    /**
+     * The anchor answer {@code callers} gives for {@code wanted}: always when it is written {@code
+     * <kind>:<name>} or is an anchor's id, and for a bare label only when no method answers to it
+     * ({@code noMethod}); {@code null} otherwise.
+     */
+    private @Nullable String anchorAnswer(String wanted, boolean noMethod, int budget) {
+        if (Anchors.parse(wanted) != null || Anchors.is(graph.node(wanted))) {
+            return String.valueOf(anchorUses(wanted, budget));
+        }
+        return noMethod ? anchorUses(wanted, budget) : null;
+    }
+
+    /** The most definitions an anchor's place lists. */
+    private static final int ANCHOR_PLACES = 3;
+
+    /** An anchor's place: two spaces and its definitions' {@code file:line}, at most {@link #ANCHOR_PLACES}. */
+    private String anchorWhere(String id) {
+        List<String> places = new ArrayList<>();
+        for (GraphEdge e : anchorEdges(id, Relations.DEFINES)) {
+            String at = at(e).strip();
+            places.add(at.isEmpty() ? GraphQuery.clean(e.sourceFile()) : at);
+        }
+        if (places.isEmpty()) return "";
+        int more = places.size() - ANCHOR_PLACES;
+        return "  " + String.join(", ", places.subList(0, Math.min(places.size(), ANCHOR_PLACES)))
+                + (more > 0 ? " and " + more + " more" : "");
+    }
+
+    /**
+     * The anchor {@code name} names: written {@code <kind>:<name>} ({@code route:GET /orders/{id}}), or
+     * the label of exactly one anchor; {@code null} for anything else.
+     */
+    public @Nullable String anchor(String name) {
+        String parsed = Anchors.parse(name);
+        if (parsed != null) return graph.has(parsed) ? parsed : null;
+        String wanted = name.strip();
+        if (Anchors.is(graph.node(wanted))) return wanted;
+        List<String> hits = new ArrayList<>();
+        for (GraphNode n : graph.nodes()) {
+            if (Anchors.is(n) && n.label().equalsIgnoreCase(wanted)) hits.add(n.id());
+        }
+        return hits.size() == 1 ? hits.getFirst() : null;
+    }
+
+    /**
+     * Every definition and use of an anchor, answered so each can be edited from the answer: its
+     * definitions, then its uses (main sources, tests, then every other file), each at {@code
+     * file:line} with the line quoted, the name as written when it differs, and {@code (inferred)} on a
+     * use matched by text; counts by grade first. {@code null} when {@code name} is no anchor, and an
+     * answer saying so when it is written as one the graph does not hold.
+     */
+    public @Nullable String anchorUses(String name, int budget) {
+        String id = anchor(name);
+        if (id == null) {
+            String parsed = Anchors.parse(name);
+            if (parsed == null) return null;
+            return "Nothing in the graph defines or uses " + GraphQuery.clean(parsed) + ".";
+        }
+        List<GraphEdge> defs = anchorEdges(id, Relations.DEFINES);
+        List<GraphEdge> uses = anchorEdges(id, Relations.USES);
+        Map<String, Integer> grades = new TreeMap<>();
+        for (GraphEdge e : uses) grades.merge(e.confidence().grade(), 1, Integer::sum);
+        List<String> lines = new ArrayList<>();
+        String label = label(id);
+        String head = GraphQuery.clean(id)
+                + (Anchors.key(String.valueOf(Anchors.kindOf(id)), label).equals(label)
+                        ? ""
+                        : " (" + GraphQuery.clean(label) + ")");
+        lines.add(head + ": " + count(defs.size(), "definition") + ", " + count(uses.size(), "use")
+                + (grades.isEmpty()
+                        ? "."
+                        : " ("
+                                + String.join(
+                                        ", ",
+                                        grades.entrySet().stream()
+                                                .map(g -> g.getValue() + " " + g.getKey())
+                                                .toList())
+                                + ")."));
+        if (!defs.isEmpty()) {
+            lines.add("defined:");
+            for (GraphEdge e : defs) anchorLine(e, "  ", lines);
+        }
+        Map<Modules.SourceSet, List<GraphEdge>> bySet = new TreeMap<>();
+        for (GraphEdge e : uses) {
+            bySet.computeIfAbsent(graph.modules().sourceSet(e.sourceFile()), k -> new ArrayList<>())
+                    .add(e);
+        }
+        bySet.forEach((set, edges) -> {
+            lines.add(set.name().toLowerCase(Locale.ROOT) + ":");
+            for (GraphEdge e : edges) anchorLine(e, "  ", lines);
+        });
+        if (defs.isEmpty()) lines.add("No file defines it.");
+        if (uses.isEmpty()) lines.add("Nothing uses it.");
+        if (grades.containsKey("inferred")) {
+            lines.add("An inferred use was matched by text and nothing checked it; declared ones are read from"
+                    + " annotations and definition files.");
+        }
+        return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
+    }
+
+    /** The edges {@code relation} into anchor {@code id} inside the scope, by file and line. */
+    private List<GraphEdge> anchorEdges(String id, String relation) {
+        List<GraphEdge> out = new ArrayList<>();
+        for (GraphEdge e : graph.incident(id)) {
+            if (e.target().equals(id) && e.relation().equals(relation) && scope.containsPath(e.sourceFile())) {
+                out.add(e);
+            }
+        }
+        out.sort(Comparator.comparing(GraphEdge::sourceFile)
+                .thenComparingInt(e -> lineNumber(e.sourceLocation()))
+                .thenComparing(GraphEdge::source));
+        return out;
+    }
+
+    /** {@code Owner.member()  file:line  as written (inferred)} and its first quoted line; a file names itself. */
+    private void anchorLine(GraphEdge e, String indent, List<String> lines) {
+        GraphNode from = graph.node(e.source());
+        boolean file = from != null && e.source().equals(GraphIds.file(from.sourceFile()));
+        String at = at(e).strip();
+        if (at.isEmpty()) at = where(e.source()).strip();
+        if (at.isEmpty()) at = GraphQuery.clean(e.sourceFile());
+        String who = file ? "" : GraphQuery.clean(graph.display(e.source())) + "  ";
+        String written = e.context() == null ? "" : "  as " + GraphQuery.clean(e.context());
+        lines.add(indent + who + at + written + confidence(e));
+        lines.addAll(quotes(e).stream().limit(1).toList());
+    }
+
+    private static String count(int n, String noun) {
+        return n + " " + noun + (n == 1 ? "" : "s");
     }
 
     /** Two spaces and where the edge was found, {@code file:21,9}; empty for an edge with no site. */
@@ -837,11 +971,9 @@ public final class GraphTools {
                 + GraphQuery.clean(String.join(",", e.sites()).replace("L", ""));
     }
 
-    /** {@code " (inferred)"} or {@code " (ambiguous)"} for an edge not read straight from the code; else empty. */
+    /** {@code " (inferred)"} or {@code " (ambiguous)"} for an edge matched rather than read or bound; else empty. */
     static String confidence(GraphEdge e) {
-        return e.confidence() == Confidence.EXTRACTED
-                ? ""
-                : " (" + e.confidence().name().toLowerCase(Locale.ROOT) + ")";
+        return e.confidence().marked() ? " (" + e.confidence().mark() + ")" : "";
     }
 
     /** The edge's first {@link #QUOTED_SITES} source lines, {@code L<n>| text}; none when the file is unreadable. */

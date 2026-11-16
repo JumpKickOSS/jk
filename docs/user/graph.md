@@ -33,7 +33,7 @@ class.
 | Java, Kotlin, Groovy (compiled classes and source) | types, nested types, methods, record components (as their accessors), named constants (`static final UPPER_CASE`, Kotlin `const val`), Kotlin top-level functions, `NOTE:`/`WHY:` comments | `contains`, `method`, `inherits`, `implements`, `imports`, `calls`, `references` (field, parameter, return types, annotations) |
 | JavaScript, TypeScript, JSX/TSX, Vue | classes, functions, methods | `imports_from` (relative), `imports` (npm packages), `uses` (Angular templates and styles, JSX components) |
 | Markdown, AsciiDoc | pages, headings | `contains`, links to other files, `references` to the code a code span names |
-| Spring `application*`/`bootstrap*` YAML and properties | one node per key | code reading `${key}`, `@Value` or `@ConfigurationProperties` → the key |
+| Spring `application*`/`bootstrap*` YAML and properties | one [anchor](#anchors) per key, however many profile files set it | `defines` from each file that sets it; `uses` from code reading `${key}` in an annotation (`@Value`), `@ConfigurationProperties` and key-shaped string literals |
 | `jk.toml`, `pom.xml`, Gradle, version catalogs, `package.json` | dependencies | `depends_on`, workspace and Maven modules |
 | XML, `META-INF/services`, `*.imports`, JSON | | `references` to every class they name |
 | HTML, CSS/SCSS/Less, SQL, DOT/Mermaid/PlantUML, CSV | pages, tables, columns | loaded files, imported stylesheets, drawn types |
@@ -42,6 +42,42 @@ Calls, inheritance and type references come from the compiled classes, resolved 
 they are exact. A tree that does not compile yet still gets its declarations from the source; build
 to bring the call edges up to date. Links from prose and config keys matched by name are inferred,
 and an answer marks them `(inferred)`.
+
+## Anchors
+
+An anchor is a node for something code and other files both name without a compiler between
+them: a configuration key today; environment variables, HTTP routes, SQL tables and columns, and
+CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
+question finds the YAML line, the annotation and the string literal together.
+
+```bash
+jk graph callers config:server.port        # every definition and use, at file:line
+jk graph callers shop.max-items            # a label only an anchor has works too
+jk graph find -t config 'shop.*'           # a kind's anchors, with counts
+```
+
+```
+config:shop.maxitems (shop.max-items): 2 definitions, 2 uses (1 declared, 1 inferred).
+defined:
+  src/main/resources/application-prod.properties:1  as shop.maxItems
+  src/main/resources/application.yml:2
+main:
+  Shop  src/main/java/com/acme/shop/Shop.java:6  as shop.maxItems
+      L6| @Value("${shop.maxItems:10}")
+  Limits.read()  src/main/java/com/acme/shop/Limits.java:9 (inferred)
+      L9| return env.getProperty("shop.max-items");
+An inferred use was matched by text and nothing checked it; declared ones are read from annotations and definition files.
+```
+
+An anchor is named `<kind>:<name>`. Spellings the surface treats as one are one anchor: a
+configuration key compares as Spring's relaxed binding does (`maxItems`, `max-items` and
+`max_items`), and a line that spells it otherwise says `as …`, the text to search and replace.
+Each use has a grade: **declared** when read from an annotation or a definition file, **bound**
+when a compiler or generator made the link, **inferred** when a string matched, marked
+`(inferred)`. An inferred use is a lead, not a fact; an edge JumpKick cannot ground is never shown as
+declared. A key read in code and set in no file still has its anchor, and the answer says `No
+file defines it.`; one set and never read says `Nothing uses it.`. Where a symbol and an anchor
+share a name (`Shop.currency`), the bare name is the symbol's; write `config:shop.currency`.
 
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the

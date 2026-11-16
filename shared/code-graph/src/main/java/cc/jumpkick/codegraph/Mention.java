@@ -36,6 +36,7 @@ public record Mention(
         return switch (kind) {
             case MODULE -> Relations.IMPORTS_FROM;
             case MEMBER -> Relations.CALLS;
+            case CONFIG_KEY -> Relations.USES;
             default -> Relations.REFERENCES;
         };
     }
@@ -50,7 +51,10 @@ public record Mention(
         SYMBOL,
         /** A file path relative to the mentioning file's directory, or to the root with a leading {@code /}. */
         FILE,
-        /** A configuration key, {@code server.port}, or every key under a prefix, {@code shop.*}. */
+        /**
+         * A configuration key, {@code server.port}, or every key under a prefix, {@code shop.*}: resolved
+         * to a {@code config} anchor only when some file names it, and always inferred.
+         */
         CONFIG_KEY,
         /** A module specifier already resolved to a repo-relative path by the extractor. */
         MODULE

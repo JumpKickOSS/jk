@@ -10,7 +10,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -226,8 +225,7 @@ public final class GraphQuery {
                 && !e.relation().startsWith(context)
                 && !label(e.source()).contains(context)
                 && !label(e.target()).contains(context)) notes.add(clean(context));
-        if (e.confidence() != Confidence.EXTRACTED)
-            notes.add(e.confidence().name().toLowerCase(Locale.ROOT));
+        if (e.confidence().marked()) notes.add(e.confidence().mark());
         return clean(label(e.source())) + " -" + clean(e.relation()) + "-> " + clean(label(e.target()))
                 + (notes.isEmpty() ? "" : " (" + String.join(", ", notes) + ")") + GraphTools.at(e);
     }

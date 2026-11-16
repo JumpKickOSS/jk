@@ -6,15 +6,15 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Resolves every fragment's {@link Mention}s against the merged graph. A class name, file path or
- * module path that names exactly one node becomes an {@code EXTRACTED} edge; a prose symbol or a
- * configuration key matched by name becomes {@code INFERRED}. A mention that matches nothing, or a
+ * module path that names exactly one node becomes an {@code EXTRACTED} edge; a prose symbol, or a
+ * configuration key matched by name to a {@code config} anchor some file already names, becomes
+ * {@code INFERRED}. A mention that matches nothing, or a
  * symbol several nodes share, is dropped.
  */
 public final class Linker {
@@ -31,9 +31,6 @@ public final class Linker {
      */
     public static final String DELEGATES = "delegates";
 
-    /** The {@code node_kind} of a configuration key node. */
-    public static final String CONFIG_KEY = "config_key";
-
     private static final List<String> MODULE_SUFFIXES =
             List.of("", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".vue", "/index.ts", "/index.tsx", "/index.js");
 
@@ -42,14 +39,14 @@ public final class Linker {
     private final Map<String, String> classes = new HashMap<>();
     private final Map<String, List<String>> symbols = new HashMap<>();
     private final Map<String, String> files = new HashMap<>();
-    private final Map<String, List<String>> keys = new HashMap<>();
+    private final List<String> configKeys = new ArrayList<>();
 
     private Linker(Map<String, GraphNode> nodes) {
         this.nodes = nodes;
         for (GraphNode n : nodes.values()) {
             if (n.extra().get(QUALIFIED_NAME) instanceof String fqcn) classes.put(fqcn.replace('$', '.'), n.id());
-            if (CONFIG_KEY.equals(n.extra().get("node_kind"))) {
-                keys.computeIfAbsent(relaxed(n.label()), k -> new ArrayList<>()).add(n.id());
+            if (Anchors.is(n)) {
+                if (Anchors.CONFIG.equals(Anchors.kindOf(n.id()))) configKeys.add(n.id());
             } else if (!n.sourceFile().isEmpty() && n.id().equals(GraphIds.file(n.sourceFile()))) {
                 files.put(n.sourceFile(), n.id());
             } else if (n.fileType().equals("code") && !n.sourceFile().isEmpty()) {
@@ -161,7 +158,7 @@ public final class Linker {
                 ? m.context()
                 : switch (m.kind()) {
                     case SYMBOL -> m.text();
-                    case CONFIG_KEY -> "config_key";
+                    case CONFIG_KEY -> asWritten(m.text());
                     case MEMBER -> "call";
                     default -> null;
                 };
@@ -242,16 +239,25 @@ public final class Linker {
         return null;
     }
 
-    /** The key itself, or every key under {@code prefix.*} (at most 25). */
+    /**
+     * The {@code config} anchor of the key, or of every key under {@code prefix.*} (at most 25): only
+     * an anchor some file already names, so a key-shaped string that names none links to nothing.
+     */
     private List<String> configKeys(String text) {
-        if (!text.endsWith(".*")) return one(unique(keys.get(relaxed(text))));
-        String prefix = relaxed(text.substring(0, text.length() - 1));
-        List<String> out = new ArrayList<>();
-        keys.entrySet().stream()
-                .filter(e -> e.getKey().startsWith(prefix))
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> out.addAll(e.getValue()));
+        if (!text.endsWith(".*")) {
+            String id = Anchors.id(Anchors.CONFIG, text);
+            return nodes.containsKey(id) ? List.of(id) : List.of();
+        }
+        String prefix = Anchors.id(Anchors.CONFIG, text.substring(0, text.length() - 1));
+        List<String> out =
+                configKeys.stream().filter(id -> id.startsWith(prefix)).sorted().toList();
         return out.size() > 25 ? out.subList(0, 25) : out;
+    }
+
+    /** The key as the mention wrote it, when the anchor shows it otherwise; else {@code null}. */
+    private static @Nullable String asWritten(String text) {
+        if (text.endsWith(".*")) return text;
+        return text.equals(Anchors.display(Anchors.CONFIG, text)) ? null : text;
     }
 
     private static List<String> one(@Nullable String id) {
@@ -296,11 +302,6 @@ public final class Linker {
             }
         }
         return String.join("/", parts);
-    }
-
-    /** A config key as Spring's relaxed binding compares it: case, {@code -} and {@code _} ignored. */
-    static String relaxed(String key) {
-        return key.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "");
     }
 
     private static String bare(String label) {

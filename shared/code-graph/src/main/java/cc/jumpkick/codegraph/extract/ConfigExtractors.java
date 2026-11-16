@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.codegraph.extract;
 
+import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.codegraph.Confidence;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.FragmentBuilder;
 import cc.jumpkick.codegraph.GraphIds;
-import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.host.ManifestNames;
@@ -18,8 +18,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Configuration files. Spring's {@code application*} and {@code bootstrap*} files declare one
- * node per key, so code reading {@code ${server.port}} links to the line that sets it; build files
+ * Configuration files. Spring's {@code application*} and {@code bootstrap*} files define one
+ * {@code config} anchor per key, so code reading {@code ${server.port}} links to every line that sets it; build files
  * declare their dependencies; everything else contributes only the class names and {@code ${…}}
  * placeholders it mentions. Keys of other files are not nodes: a data file's keys would bury the
  * code they configure.
@@ -250,14 +250,9 @@ final class ConfigExtractors {
         if (group != null && name != null) Dependencies.declare(b, b.fileId(), group, name, line);
     }
 
+    /** The file defines the key: one anchor per key, however many profile files set it. */
     private static void configKey(FragmentBuilder b, String key, int line) {
-        String id = b.node(
-                GraphIds.make(GraphIds.base(b.relPath()), key),
-                key,
-                "document",
-                line,
-                Map.of("node_kind", Linker.CONFIG_KEY));
-        b.edge(b.fileId(), id, Relations.CONTAINS, Confidence.EXTRACTED, line);
+        b.anchor(b.fileId(), Anchors.CONFIG, key, Relations.DEFINES, Confidence.DECLARED, line);
     }
 
     /** Class names and {@code ${key}} placeholders in one value. */

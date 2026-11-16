@@ -35,7 +35,8 @@ public final class GraphSnapshot {
     private GraphSnapshot() {}
 
     private static final int MAGIC = 0x4A4B4753;
-    private static final int FORMAT = 1;
+    /** Moves with any change to the encoding, {@link Confidence}'s constants included: edges store their ordinal. */
+    private static final int FORMAT = 2;
 
     /**
      * What a graph was built from: extractor version, file count, class index digest, the digest of

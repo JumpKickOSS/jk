@@ -2,6 +2,7 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.cache.GraphCacheKeys;
+import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphNode;
@@ -54,19 +55,30 @@ final class ClassSources {
 
     /**
      * {@code f} cut into one fragment per source file: a node and an edge by the file they name, a
-     * mention by the file of the node it comes from.
+     * mention by the file of the node it comes from, an anchor with every file whose edges name it.
      */
     static Map<String, Fragment> split(Fragment f) {
         Map<String, String> fileOf = new HashMap<>();
         Map<String, List<GraphNode>> nodes = new LinkedHashMap<>();
         Map<String, List<GraphEdge>> edges = new HashMap<>();
         Map<String, List<Mention>> mentions = new HashMap<>();
+        Map<String, GraphNode> anchors = new HashMap<>();
         for (GraphNode n : f.nodes()) {
+            if (Anchors.is(n)) {
+                anchors.put(n.id(), n);
+                continue;
+            }
             fileOf.put(n.id(), n.sourceFile());
             nodes.computeIfAbsent(n.sourceFile(), k -> new ArrayList<>()).add(n);
         }
         for (GraphEdge e : f.edges()) {
             edges.computeIfAbsent(e.sourceFile(), k -> new ArrayList<>()).add(e);
+            // An anchor lives in no file: it goes with each file that names it, as an extracted file's does.
+            GraphNode anchor = anchors.get(e.target());
+            if (anchor != null) {
+                List<GraphNode> own = nodes.computeIfAbsent(e.sourceFile(), k -> new ArrayList<>());
+                if (!own.contains(anchor)) own.add(anchor);
+            }
         }
         for (Mention m : f.mentions()) {
             String file = fileOf.get(m.source());

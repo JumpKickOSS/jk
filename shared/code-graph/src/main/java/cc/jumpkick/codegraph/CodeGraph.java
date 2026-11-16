@@ -48,7 +48,7 @@ public final class CodeGraph {
     /**
      * One graph from {@code fragments}. A node declared twice keeps the copy that has a source file
      * and line, with the other's extra fields added: the source scan's span and the class file's
-     * signatures land on one node.
+     * signatures land on one node. Of two copies of an anchor, {@link Anchors#preferred} keeps one.
      */
     public static CodeGraph merge(Collection<Fragment> fragments) {
         Map<String, GraphNode> nodes = mergeNodes(fragments);
@@ -75,6 +75,7 @@ public final class CodeGraph {
     }
 
     private static GraphNode combine(GraphNode had, GraphNode n) {
+        if (Anchors.is(had) && Anchors.is(n)) return Anchors.preferred(had, n);
         boolean takeNew = had.sourceFile().isEmpty() && !n.sourceFile().isEmpty()
                 || had.sourceLocation().isEmpty()
                         && !n.sourceLocation().isEmpty()

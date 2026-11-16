@@ -20,7 +20,8 @@ import org.jspecify.annotations.Nullable;
  * simple or qualified name.
  *
  * @param kinds declaration kinds, plus {@code type} for every type kind and {@code member} for
- *     methods, functions and constructors
+ *     methods, functions and constructors; an anchor kind ({@code config}, {@code route}, …) or {@code
+ *     anchor} lists anchors with their definition and use counts
  * @param visibilities {@code public}, {@code protected}, {@code internal}, {@code package}, {@code private}
  * @param extendsType a superclass anywhere up the superclass chain
  * @param implementsType a supertype anywhere above, through superclasses and interfaces
@@ -79,7 +80,12 @@ public record SymbolFinder(
         }
         Pattern glob = name == null ? null : namePattern(name);
         List<GraphNode> hits = new ArrayList<>();
+        List<String> anchors = new ArrayList<>();
         for (GraphNode n : graph.nodes()) {
+            if (Anchors.is(n)) {
+                if (anchorMatches(n, glob)) anchors.add(anchorLine(graph, scope, n));
+                continue;
+            }
             String kind = Decl.kind(n);
             if (kind == null || n.sourceFile().isEmpty() || !scope.contains(n)) continue;
             if (!kinds.isEmpty() && !kindMatches(kind)) continue;
@@ -107,7 +113,10 @@ public record SymbolFinder(
                 .thenComparingInt(Decl::line)
                 .thenComparing(GraphNode::id));
         List<String> lines = new ArrayList<>();
-        lines.add(hits.size() == 1 ? "1 match" : hits.size() + " matches");
+        int total = hits.size() + anchors.size();
+        lines.add(total == 1 ? "1 match" : total + " matches");
+        anchors.sort(null);
+        lines.addAll(anchors);
         for (GraphNode n : hits) {
             String vis = Decl.vis(n);
             String head = Decl.kind(n) + (vis == null ? "" : " " + vis) + "  " + display(graph, n) + "  "
@@ -117,6 +126,47 @@ public record SymbolFinder(
             for (int[] more : Decl.more(n)) lines.add(head + more[0] + "-" + more[1]);
         }
         return Budget.lines(lines, budget, "Narrow with scope or another filter");
+    }
+
+    /**
+     * An anchor passes when a kind asked for is its own or {@code anchor}, no declaration filter is
+     * given, and the name glob, if any, matches its label or its id.
+     */
+    private boolean anchorMatches(GraphNode n, @Nullable Pattern glob) {
+        if (kinds.isEmpty()
+                || !visibilities.isEmpty()
+                || !extendsType.isEmpty()
+                || !implementsType.isEmpty()
+                || !annotated.isEmpty()) return false;
+        String kind = Anchors.kindOf(n.id());
+        if (!kinds.contains("anchor") && (kind == null || !kinds.contains(kind))) return false;
+        return glob == null
+                || glob.matcher(n.label()).matches()
+                || glob.matcher(n.id()).matches();
+    }
+
+    /** {@code <kind>  <id>  N definitions, M uses  <first definition>}, counting edges inside the scope. */
+    private static String anchorLine(CodeGraph graph, Scope scope, GraphNode n) {
+        int defs = 0;
+        int uses = 0;
+        String first = "";
+        for (GraphEdge e : graph.incident(n.id())) {
+            if (!e.target().equals(n.id()) || !scope.containsPath(e.sourceFile())) continue;
+            if (e.relation().equals(Relations.DEFINES)) {
+                defs++;
+                String at = e.sourceFile()
+                        + (e.sourceLocation().isEmpty()
+                                ? ""
+                                : ":" + e.sourceLocation().substring(1));
+                if (first.isEmpty() || at.compareTo(first) < 0) first = at;
+            } else if (e.relation().equals(Relations.USES)) {
+                uses++;
+            }
+        }
+        String kind = String.valueOf(Anchors.kindOf(n.id()));
+        String shown = n.id() + (Anchors.key(kind, n.label()).equals(n.label()) ? "" : " (" + n.label() + ")");
+        return kind + "  " + shown + "  " + defs + (defs == 1 ? " definition, " : " definitions, ") + uses
+                + (uses == 1 ? " use" : " uses") + (first.isEmpty() ? "" : "  " + first);
     }
 
     /** Whether the kinds asked for are members only ({@code method}, {@code member}, …). */

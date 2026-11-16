@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.codegraph.Confidence;
 import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.Fragment;
@@ -108,7 +109,7 @@ final class JvmFacts {
                 }
                 facts.merge(owner.id(), type, Decl::merge);
                 supertypes(c, owner.id(), rel, mentions);
-                annotations(c.annotations(), owner.id(), mentions);
+                annotations(c.annotations(), owner.id(), rel, nodes, edges, mentions);
                 for (FieldFacts f : c.fields()) {
                     if ((f.access() & ACC_SYNTHETIC) != 0) continue;
                     if ((f.access() & ACC_ENUM) != 0) {
@@ -119,7 +120,7 @@ final class JvmFacts {
                         continue;
                     }
                     typeMention(f.desc(), owner.id(), 0, "field", mentions);
-                    annotations(f.annotations(), owner.id(), mentions);
+                    annotations(f.annotations(), owner.id(), rel, nodes, edges, mentions);
                 }
             }
             for (MethodFacts m : c.methods()) {
@@ -268,7 +269,7 @@ final class JvmFacts {
                 if (!ann.isEmpty()) member.put(Decl.ANN, ann);
                 facts.merge(from, member, Decl::merge);
                 signature(m.desc(), from, mentions);
-                annotations(m.annotations(), from, mentions);
+                annotations(m.annotations(), from, rel, nodes, edges, mentions);
                 if (!owner.facade() && (m.access() & (ACC_STATIC | ACC_PRIVATE)) == 0) {
                     overrides(c, name, from, m.firstLine(), m.desc() + ">" + m.desc(), mentions);
                 }
@@ -403,7 +404,19 @@ final class JvmFacts {
         }
     }
 
-    private static void annotations(List<AnnotationFacts> annotations, String from, List<Mention> mentions) {
+    /**
+     * An annotation's type as a reference; a {@code ${key}} placeholder in any of its values as a
+     * declared use of that {@code config} anchor, which exists whether or not a file sets the key; a
+     * {@code @ConfigurationProperties} prefix as a mention of every key under it, which the linker
+     * resolves to the keys files set, inferred.
+     */
+    private static void annotations(
+            List<AnnotationFacts> annotations,
+            String from,
+            String rel,
+            Map<String, GraphNode> nodes,
+            List<GraphEdge> edges,
+            List<Mention> mentions) {
         for (AnnotationFacts a : annotations) {
             String type = a.typeName();
             if (!platform(Descriptors.internalName(type))) {
@@ -418,7 +431,12 @@ final class JvmFacts {
                         mentions.add(new Mention(from, Mention.Kind.CONFIG_KEY, value + ".*", 0));
                     }
                     Matcher p = PLACEHOLDER.matcher(value);
-                    while (p.find()) mentions.add(new Mention(from, Mention.Kind.CONFIG_KEY, p.group(1), 0));
+                    while (p.find()) {
+                        GraphNode anchor = Anchors.node(Anchors.CONFIG, p.group(1));
+                        nodes.merge(anchor.id(), anchor, Anchors::preferred);
+                        edges.add(Anchors.edge(
+                                from, Anchors.CONFIG, p.group(1), Relations.USES, Confidence.DECLARED, rel, 0));
+                    }
                 }
             }
         }
