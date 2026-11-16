@@ -9,7 +9,6 @@ import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -22,8 +21,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import jdk.jfr.consumer.RecordedEvent;
-import jdk.jfr.consumer.RecordingFile;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -148,6 +145,36 @@ public final class ClassReads {
         HOST
     }
 
+    /** The first pass's events and fields: the class windows and the files the JVM wrote. */
+    private static final Map<String, List<String>> FRAME =
+            Map.of(WINDOW_EVENT, List.of("testClass"), "jdk.FileWrite", List.of("path"));
+
+    /**
+     * The second pass's events and fields. Each event names its fields in the same order as in
+     * {@link #FRAME}, so one dump of the JDK's parser serves both passes.
+     */
+    private static final Map<String, List<String>> EVENTS = Map.of(
+            "jdk.FileRead", List.of("path"),
+            "jdk.FileWrite", List.of("path"),
+            "jdk.ProcessStart", List.of("command"),
+            "jdk.NativeLibraryLoad", List.of("name", "success"),
+            "jdk.SocketRead", List.of("host", "address"),
+            "jdk.SocketWrite", List.of("host", "address"));
+
+    private static final Map<String, List<String>> ALL;
+
+    static {
+        Map<String, List<String>> all = new LinkedHashMap<>(EVENTS);
+        all.putAll(FRAME);
+        ALL = Map.copyOf(all);
+    }
+
+    /** One pass over a recording: its events of {@code wanted}, in file order. */
+    @FunctionalInterface
+    private interface Pass {
+        void run(Map<String, List<String>> wanted, RecordingReader.Sink sink) throws IOException;
+    }
+
     /**
      * Every recording under {@code dir}, relative paths resolved against {@code cwd}, read and joined.
      *
@@ -156,7 +183,9 @@ public final class ClassReads {
      * the files the JVM wrote; the second gives each event to its classes as it is read. What this
      * keeps is bounded by the classes and the distinct files, never by the event count: a long suite
      * records millions of file reads (jk-cli's, 6.2 million), and holding them all is what ran the
-     * engine out of heap.
+     * engine out of heap. Both passes stream through {@link RecordingReader}, which builds no
+     * constant pool but the strings; a recording it declines is read by the JDK's own parser in a
+     * child JVM ({@link RecordingDump}), whose lines both passes then stream.
      */
     public static Attributed attribute(Path dir, Path cwd, Layout layout) {
         List<Path> recordings = new ArrayList<>();
@@ -173,57 +202,70 @@ public final class ClassReads {
         boolean complete = true;
         long events = 0;
         for (Path jfr : recordings) {
-            List<Window> windows = new ArrayList<>();
-            Set<Path> written = new HashSet<>();
-            try (RecordingFile in = new RecordingFile(jfr)) {
-                while (in.hasMoreEvents()) frame(in.readEvent(), cwd, windows, written);
+            Path lines = null;
+            try {
+                List<Window> windows = new ArrayList<>();
+                Set<Path> written = new HashSet<>();
+                RecordingReader.Sink frame = (name, start, end, v) -> {
+                    if (name.equals(WINDOW_EVENT)) {
+                        if (v[0] != null && !v[0].isBlank()) windows.add(new Window(v[0], start, end));
+                    } else if (v[0] != null && !v[0].isBlank()) {
+                        resolved(cwd, v[0]).ifPresent(written::add);
+                    }
+                };
+                Pass pass;
+                try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+                    RecordingReader.read(jfr, FRAME, frame);
+                    pass = (wanted, sink) -> RecordingReader.read(jfr, wanted, sink);
+                } catch (IOException declined) {
+                    // A file that does not even begin as a recording is no recording at all.
+                    if (!RecordingReader.framed(jfr)) throw new IOException("not a recording", declined);
+                    Log.info("class reads: " + jfr.getFileName() + " read through the JDK's parser in a child JVM: "
+                            + declined.getMessage());
+                    windows.clear();
+                    written.clear();
+                    Path dumped = RecordingDump.dump(jfr, ALL);
+                    lines = dumped;
+                    pass = (wanted, sink) -> RecordingDump.stream(dumped, wanted, sink);
+                    try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+                        pass.run(FRAME, frame);
+                    }
+                }
+                Join join = new Join(windows, written, cwd, layout, classes, pooled);
+                try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
+                    pass.run(EVENTS, (name, start, end, v) -> read(name, start, v, join));
+                }
+                join.finish();
+                events += join.events;
             } catch (IOException | RuntimeException unreadable) {
                 Log.debug("class reads: recording unreadable at " + jfr, unreadable);
                 complete = false;
-                continue;
+            } finally {
+                if (lines != null) {
+                    try {
+                        Files.deleteIfExists(lines);
+                    } catch (IOException kept) {
+                        Log.debug("class reads: " + lines + " not removed", kept);
+                    }
+                }
             }
-            Join join = new Join(windows, written, cwd, layout, classes, pooled);
-            try (RecordingFile in = new RecordingFile(jfr)) {
-                while (in.hasMoreEvents()) read(in.readEvent(), join);
-            } catch (IOException | RuntimeException unreadable) {
-                Log.debug("class reads: recording unreadable at " + jfr, unreadable);
-                complete = false;
-            }
-            join.finish();
-            events += join.events;
         }
         return new Attributed(classes, pooled, complete, recordings.size(), events);
     }
 
-    /** The first pass: the class windows and the files the JVM wrote. */
-    private static void frame(RecordedEvent e, Path cwd, List<Window> windows, Set<Path> written) {
-        switch (e.getEventType().getName()) {
-            case WINDOW_EVENT -> {
-                String cls = e.getString("testClass");
-                if (cls != null && !cls.isBlank())
-                    windows.add(new Window(cls, nanos(e.getStartTime()), nanos(e.getEndTime())));
-            }
-            case "jdk.FileWrite" -> {
-                String path = e.getString("path");
-                if (path != null && !path.isBlank()) resolved(cwd, path).ifPresent(written::add);
-            }
-            default -> {}
-        }
-    }
-
     /** The second pass: one event, given to its classes as it is read. */
-    private static void read(RecordedEvent e, Join join) {
-        switch (e.getEventType().getName()) {
-            case "jdk.FileRead" -> join.accept(e, Kind.READ, e.getString("path"));
-            case "jdk.FileWrite" -> join.accept(e, Kind.WRITE, e.getString("path"));
-            case "jdk.ProcessStart" -> join.accept(e, Kind.PROCESS, program(e.getString("command")));
+    private static void read(String name, long at, @Nullable String[] v, Join join) {
+        switch (name) {
+            case "jdk.FileRead" -> join.accept(at, Kind.READ, v[0]);
+            case "jdk.FileWrite" -> join.accept(at, Kind.WRITE, v[0]);
+            case "jdk.ProcessStart" -> join.accept(at, Kind.PROCESS, program(v[0]));
             case "jdk.NativeLibraryLoad" -> {
-                if (e.hasField("success") && !e.getBoolean("success")) return;
-                join.accept(e, Kind.NATIVE, e.getString("name"));
+                // A failed load (JDK 22 and later say so) loaded nothing.
+                if (v[1] != null && !Boolean.parseBoolean(v[1])) return;
+                join.accept(at, Kind.NATIVE, v[0]);
             }
             case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                String address = e.getString("address");
-                if (!local(address)) join.accept(e, Kind.HOST, SuiteReads.hostName(e.getString("host"), address));
+                if (!local(v[1])) join.accept(at, Kind.HOST, SuiteReads.hostName(v[0], v[1]));
             }
             default -> {}
         }
@@ -273,11 +315,8 @@ public final class ClassReads {
             }
         }
 
-        private void accept(RecordedEvent e, Kind kind, @Nullable String value) {
-            if (value != null && !value.isBlank()) accept(nanos(e.getStartTime()), kind, value);
-        }
-
-        void accept(long at, Kind kind, String value) {
+        void accept(long at, Kind kind, @Nullable String value) {
+            if (value == null || value.isBlank()) return;
             events++;
             if (kind == Kind.WRITE) return;
             List<Observation> into = new ArrayList<>(2);
@@ -475,10 +514,6 @@ public final class ClassReads {
         String c = command.strip();
         int space = c.indexOf(' ');
         return space < 0 ? c : c.substring(0, space);
-    }
-
-    private static long nanos(Instant t) {
-        return t.getEpochSecond() * 1_000_000_000L + t.getNano();
     }
 
     private static List<Path> normalized(Collection<Path> paths) {
