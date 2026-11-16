@@ -10,6 +10,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.FileHashMemo;
@@ -22,6 +23,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -113,9 +115,18 @@ public final class SuiteReads {
     /**
      * What one run observed: files read and not written by the run itself, commands started, the
      * hosts past this one it read from or wrote to, and whether every recording read back ({@code
-     * complete} false vouches for nothing this run).
+     * complete} false vouches for nothing this run; {@code unread} then says why).
      */
-    public record Observed(Set<Path> files, Set<String> commands, Set<String> hosts, boolean complete) {
+    public record Observed(
+            Set<Path> files,
+            Set<String> commands,
+            Set<String> hosts,
+            boolean complete,
+            @Nullable String unread) {
+        public Observed(Set<Path> files, Set<String> commands, Set<String> hosts, boolean complete) {
+            this(files, commands, hosts, complete, complete ? null : "a recording could not be read");
+        }
+
         /** Whether the run reached past this host. */
         public boolean network() {
             return !hosts.isEmpty();
@@ -170,59 +181,97 @@ public final class SuiteReads {
                 return true;
             });
         } catch (IOException none) {
-            return new Observed(files, commands, hosts, false);
+            return new Observed(files, commands, hosts, false, "the suite wrote no recording");
         }
-        if (recordings.isEmpty()) return new Observed(files, commands, hosts, true);
-        try {
-            READS.acquire();
-        } catch (InterruptedException stopped) {
-            Thread.currentThread().interrupt();
-            return new Observed(files, commands, hosts, false);
-        }
-        boolean complete = true;
-        try {
-            for (Path jfr : recordings) {
-                try {
-                    RecordingReader.read(jfr, WANTED, (name, at, v) -> {
-                        switch (name) {
-                            case "jdk.FileRead" -> {
-                                if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], files);
-                            }
-                            case "jdk.FileWrite" -> {
-                                if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], written);
-                            }
-                            case "jdk.ProcessStart" -> {
-                                // The program, not its arguments: a pid or a temp path in them would
-                                // make every run's command new.
-                                if (v[0] != null && !v[0].isBlank()) commands.add(executable(v[0]));
-                            }
-                            case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                                if (!local(v[1])) hosts.add(hostName(v[0], v[1]));
-                            }
-                            default -> {}
-                        }
-                        if (files.size() + written.size() > MAX_PATHS) throw new TooManyPaths();
-                    });
-                } catch (IOException | RuntimeException unreadable) {
-                    // A recording a JVM did not finish (killed, out of memory), or one past the
-                    // reader's caps, vouches for nothing.
-                    Log.debug("suite reads: recording unreadable at " + jfr, unreadable);
-                    complete = false;
-                    if (unreadable instanceof TooManyPaths) break;
+        if (recordings.isEmpty()) return new Observed(files, commands, hosts, true, null);
+        RecordingReader.Sink sink = (name, at, v) -> {
+            switch (name) {
+                case "jdk.FileRead" -> {
+                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], files);
                 }
+                case "jdk.FileWrite" -> {
+                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], written);
+                }
+                case "jdk.ProcessStart" -> {
+                    // The program, not its arguments: a pid or a temp path in them would
+                    // make every run's command new.
+                    if (v[0] != null && !v[0].isBlank()) commands.add(executable(v[0]));
+                }
+                case "jdk.SocketRead", "jdk.SocketWrite" -> {
+                    if (!local(v[1])) hosts.add(hostName(v[0], v[1]));
+                }
+                default -> {}
             }
-        } finally {
-            READS.release();
+            if (files.size() + written.size() > MAX_PATHS) throw new TooManyPaths();
+        };
+        String unread = null;
+        for (Path jfr : recordings) {
+            try {
+                read(jfr, sink);
+            } catch (TooManyPaths wide) {
+                unread = wide.getMessage();
+                break;
+            } catch (IOException | RuntimeException unreadable) {
+                // A recording a JVM did not finish (killed, out of memory), or one neither reader
+                // could read, vouches for nothing.
+                Log.debug("suite reads: recording unreadable at " + jfr, unreadable);
+                unread = jfr.getFileName() + ": " + unreadable.getMessage();
+                break;
+            }
         }
-        if (!complete) {
+        if (unread != null) {
             // Nothing of an incomplete run is used: let it go before the caller goes on.
             files.clear();
             written.clear();
-            return new Observed(files, commands, hosts, false);
+            return new Observed(files, commands, hosts, false, unread);
         }
         // A file the run wrote is its own output: reading it back depends on nothing outside.
         files.removeAll(written);
-        return new Observed(files, commands, hosts, complete);
+        return new Observed(files, commands, hosts, true, null);
+    }
+
+    /**
+     * One recording: through {@link RecordingReader} in the engine's heap, one read at a time; when
+     * that declines it, through the JDK's own parser in a child JVM ({@link RecordingDump}), whose
+     * lines are then streamed in. Events the first reader gave before it declined are given again by
+     * the second; every consumer of them keeps sets, so a repeat changes nothing.
+     */
+    private static void read(Path jfr, RecordingReader.Sink sink) throws IOException {
+        try (Held held = Held.acquire()) {
+            RecordingReader.read(jfr, WANTED, sink);
+            return;
+        } catch (TooManyPaths wide) {
+            throw wide;
+        } catch (IOException declined) {
+            // A file that does not even begin as a recording is no recording at all: no parser reads it.
+            if (!RecordingReader.framed(jfr)) throw new IOException("not a recording", declined);
+            Log.info("suite reads: " + jfr.getFileName() + " read through the JDK's parser in a child JVM: "
+                    + declined.getMessage());
+        }
+        Path lines = RecordingDump.dump(jfr, WANTED);
+        try (Held held = Held.acquire()) {
+            RecordingDump.stream(lines, WANTED, sink);
+        } finally {
+            Files.deleteIfExists(lines);
+        }
+    }
+
+    /** One permit of {@link #READS}, released on close. */
+    private static final class Held implements AutoCloseable {
+        static Held acquire() throws IOException {
+            try {
+                READS.acquire();
+            } catch (InterruptedException stopped) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted waiting to read a recording");
+            }
+            return new Held();
+        }
+
+        @Override
+        public void close() {
+            READS.release();
+        }
     }
 
     /** A run that names more files than {@link #MAX_PATHS}. */
@@ -473,6 +522,72 @@ public final class SuiteReads {
 
     /** The warning code of a run that stores no marker because its tests reached another host. */
     public static final String NETWORK_WARNING = "suite-network";
+
+    /** The warning code of a run whose recordings could not be read, so its suite will not replay. */
+    public static final String UNREAD_WARNING = "suite-unread";
+
+    /** What a run whose recordings could not be read says, on its result line and in its forecast. */
+    public static String unreadMessage(String why) {
+        return "suite recording could not be read: " + why.replace('\n', ' ').strip() + "; this suite will not replay";
+    }
+
+    /** The module's note of its last unread run, beside what its suites were found to read. */
+    static Path unreadFile(Path moduleDir) {
+        return discoveredFile(moduleDir, TestSelection.DEFAULT).resolveSibling("unread");
+    }
+
+    /** The host's note of the last unread run of any module, for {@code jk doctor}. */
+    public static Path lastUnreadFile() {
+        return JkDirs.state().resolve("suite-reads-unread");
+    }
+
+    /** Note that {@code moduleDir}'s last run could not be read, for the forecast and for doctor. */
+    public static void noteUnread(Path moduleDir, String why) {
+        try {
+            Path file = unreadFile(moduleDir);
+            Files.createDirectories(file.getParent());
+            AtomicWrites.replaceIfChanged(file, why.replace('\n', ' ').strip() + "\n");
+            Path host = lastUnreadFile();
+            Files.createDirectories(host.getParent());
+            AtomicWrites.replaceIfChanged(
+                    host,
+                    Instant.ofEpochMilli(Clock.SYSTEM.millis()) + "\t"
+                            + moduleDir.toAbsolutePath().normalize() + "\t"
+                            + why.replace('\n', ' ').replace('\t', ' ').strip() + "\n");
+        } catch (IOException | RuntimeException unwritable) {
+            Log.debug("suite reads: unread note not kept", unwritable);
+        }
+    }
+
+    /** Forget {@code moduleDir}'s unread note: its last run's recordings were read. */
+    public static void clearUnread(Path moduleDir) {
+        try {
+            Files.deleteIfExists(unreadFile(moduleDir));
+            Path host = lastUnreadFile();
+            if (Files.isRegularFile(host)) {
+                String[] cells = Files.readString(host, StandardCharsets.UTF_8).split("\t", 3);
+                if (cells.length == 3
+                        && cells[1].equals(
+                                moduleDir.toAbsolutePath().normalize().toString())) {
+                    Files.deleteIfExists(host);
+                }
+            }
+        } catch (IOException | RuntimeException kept) {
+            Log.debug("suite reads: unread note not cleared", kept);
+        }
+    }
+
+    /** Why {@code moduleDir}'s last run could not be read, or null when it was. */
+    public static @Nullable String unread(Path moduleDir) {
+        try {
+            Path file = unreadFile(moduleDir);
+            if (!Files.isRegularFile(file)) return null;
+            String why = Files.readString(file, StandardCharsets.UTF_8).strip();
+            return why.isEmpty() ? null : why;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
+    }
 
     /** The discovered file's line prefix for one host a suite reached. */
     private static final String NETWORK_LINE = "network ";

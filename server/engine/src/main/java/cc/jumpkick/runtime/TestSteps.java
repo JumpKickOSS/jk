@@ -767,7 +767,9 @@ final class TestSteps {
             return new TaskForecast.Task(TaskNames.RUN_TESTS, TaskForecast.Status.CACHED, "· " + tests, null);
         }
         // A miss for none of the reasons above says which input of the last green run's key moved.
-        String moved = red || network
+        // As the run decides it: a suite whose last recording could not be read stored no marker.
+        String unread = red || network ? null : SuiteReads.unread(s.dir);
+        String moved = red || network || unread != null
                 ? null
                 : StampTokens.reason(
                         s.dir,
@@ -777,6 +779,7 @@ final class TestSteps {
                 TaskNames.RUN_TESTS,
                 TaskForecast.Status.RUN,
                 "run tests · " + (network ? TaskForecast.TESTS_USE_NETWORK + " · " : "")
+                        + (unread != null ? SuiteReads.unreadMessage(unread) + " · " : "")
                         + (moved != null ? moved + " · " : "") + tests
                         + (red ? " · " + TaskForecast.LAST_RUN_FAILED : ""),
                 null);

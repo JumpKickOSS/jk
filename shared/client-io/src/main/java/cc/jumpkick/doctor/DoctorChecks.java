@@ -48,7 +48,31 @@ public final class DoctorChecks {
                 jdk(JkDirs.jdks(), ProcessEnv.get("JAVA_HOME")),
                 lock(project),
                 pins(project, version),
+                suiteReads(JkDirs.state()),
                 m2(project));
+    }
+
+    /**
+     * The last run of any module whose suite recordings could not be read, so that suite will not
+     * replay: the engine notes it in {@code <state>/suite-reads-unread} and forgets it when that
+     * module's next run is read. A suite that cannot replay runs on every build.
+     */
+    public static HostRow suiteReads(Path stateDir) {
+        Path file = stateDir.resolve("suite-reads-unread");
+        if (!Files.isRegularFile(file)) return row("suites", Status.OK, "every suite's last recording was read");
+        try {
+            String[] cells = Files.readString(file).strip().split("\t", 3);
+            if (cells.length < 3) return row("suites", Status.WARN, "unreadable note at " + file);
+            return new HostRow(
+                    "suites",
+                    "suites",
+                    Status.WARN,
+                    cells[1] + " (" + cells[0] + "): suite recording could not be read: " + cells[2]
+                            + "; this suite will not replay",
+                    "run its tests again; if it repeats, report it with the engine log");
+        } catch (IOException | RuntimeException e) {
+            return row("suites", Status.WARN, "could not read " + file + ": " + e.getMessage());
+        }
     }
 
     /** A client-local row answered by a process that is not the client. */

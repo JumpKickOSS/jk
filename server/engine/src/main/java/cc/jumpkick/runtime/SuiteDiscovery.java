@@ -93,9 +93,14 @@ final class SuiteDiscovery {
         Path target = run.layout().moduleTargetDir();
         SuiteReads.Observed seen = SuiteReads.collect(SuiteReads.recordingDir(target), moduleDir);
         if (!seen.complete()) {
-            Log.debug("suite reads: " + moduleDir + " not replayed, a recording is incomplete");
+            // Never silent: a suite that cannot replay runs on every build, so the result line, the
+            // build's record, the forecast and doctor all say why.
+            String why = seen.unread() == null ? "a recording could not be read" : seen.unread();
+            ctx.warn(SuiteReads.UNREAD_WARNING, SuiteReads.unreadMessage(why));
+            SuiteReads.noteUnread(moduleDir, why);
             return null;
         }
+        SuiteReads.clearUnread(moduleDir);
         List<Path> roots = new ArrayList<>(run.keyed());
         roots.add(target);
         // Every module's test sandbox, this one's and those of the projects its tests make.

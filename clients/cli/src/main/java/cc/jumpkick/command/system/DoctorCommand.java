@@ -120,6 +120,7 @@ public final class DoctorCommand implements CliCommand {
         Check jdkPatch = checkJdkPatch();
         Check lock = checkLock();
         Check pins = check(DoctorChecks.pins(WorkingDirectory.current(), JkVersion.VERSION));
+        Check suites = check(DoctorChecks.suiteReads(JkDirs.state()));
         Check shell = checkShell();
         Check mvn = checkMavenSpy(MavenSpyJar.current());
         Check m2 = checkM2();
@@ -175,6 +176,7 @@ public final class DoctorCommand implements CliCommand {
                             jdkPatch,
                             lock,
                             pins,
+                            suites,
                             shell,
                             mvn,
                             m2,
@@ -206,6 +208,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(jdkPatch, t);
         printCheck(lock, t);
         printCheck(pins, t);
+        printCheck(suites, t);
         printCheck(shell, t);
         printCheck(mvn, t);
         printCheck(m2, t);
@@ -914,7 +917,60 @@ public final class DoctorCommand implements CliCommand {
             MavenSettingsRows.Rows settings,
             StoredLogins.Rows logins,
             List<HostRow> windows) {
-        return JsonFields.object()
+        return reportJson(
+                config,
+                client,
+                engine,
+                cache,
+                state,
+                jdk,
+                lock,
+                pins,
+                null,
+                shell,
+                mvn,
+                m2,
+                healthy,
+                pruned,
+                verified,
+                drifted,
+                firstSeen,
+                empty,
+                toolsError,
+                workers,
+                repos,
+                settings,
+                logins,
+                windows);
+    }
+
+    /** As the report above, with the {@code suites} row when it is given. */
+    public static String reportJson(
+            Check config,
+            Check client,
+            Check engine,
+            Check cache,
+            Check state,
+            Check jdk,
+            Check lock,
+            Check pins,
+            @Nullable Check suites,
+            Check shell,
+            Check mvn,
+            Check m2,
+            int healthy,
+            int pruned,
+            int verified,
+            int drifted,
+            int firstSeen,
+            int empty,
+            @Nullable String toolsError,
+            Workers workers,
+            RepoStores.Stores repos,
+            MavenSettingsRows.Rows settings,
+            StoredLogins.Rows logins,
+            List<HostRow> windows) {
+        JsonFields head = JsonFields.object()
                 .token("config", checkJson(config))
                 .token("client", checkJson(client))
                 .token("engine", checkJson(engine))
@@ -923,8 +979,9 @@ public final class DoctorCommand implements CliCommand {
                 .token("jdk", checkJson(jdk))
                 .token("jdk-patch", checkJson(jdkPatch))
                 .token("lock", checkJson(lock))
-                .token("pins", checkJson(pins))
-                .token("shell", checkJson(shell))
+                .token("pins", checkJson(pins));
+        if (suites != null) head = head.token("suites", checkJson(suites));
+        return head.token("shell", checkJson(shell))
                 .token("mvn", checkJson(mvn))
                 .token("m2", checkJson(m2))
                 .token(

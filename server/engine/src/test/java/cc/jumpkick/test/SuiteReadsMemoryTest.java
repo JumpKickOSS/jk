@@ -41,6 +41,13 @@ class SuiteReadsMemoryTest {
         String path;
     }
 
+    /** A program start as the JDK's own event names it. */
+    @Name("jdk.ProcessStart")
+    static final class Start extends Event {
+        @Nullable
+        String command;
+    }
+
     static long sink;
 
     /** Commit along the bits of {@code n}, so each {@code n} below 2^depth has its own stack. */
@@ -92,6 +99,21 @@ class SuiteReadsMemoryTest {
     }
 
     /**
+     * A recording the streaming reader declines (a chunk whose string pool passes its cap) is read by
+     * the JDK's parser in a child JVM instead, never by neither: what it says still comes back.
+     */
+    @Test
+    @Timeout(300)
+    void a_recording_the_fast_reader_declines_is_read_by_the_jdk_parser_in_a_child(@TempDir Path tmp) throws Exception {
+        Path recordings = Files.createDirectories(tmp.resolve("rec"));
+        assertThat(child(tmp, "-Xmx256m", "pool", recordings, tmp)).contains("exit=0", "made");
+        SuiteReads.Observed seen = SuiteReads.collect(recordings, tmp);
+        assertThat(seen.unread()).isNull();
+        assertThat(seen.complete()).isTrue();
+        assertThat(seen.commands()).containsExactly("/opt/tool/bin/fake");
+    }
+
+    /**
      * Run {@link Child} in a fresh JVM; its exit and output, without the name of a heap error: a
      * failure row naming one is taken for this suite's own heap running out, and would grow the
      * heap this suite is given next time.
@@ -128,6 +150,7 @@ class SuiteReadsMemoryTest {
             switch (args[0]) {
                 case "deep" -> deep(recordings, ws);
                 case "wide" -> wide(recordings, ws);
+                case "pool" -> pool(recordings);
                 default -> {
                     SuiteReads.Observed seen = SuiteReads.collect(recordings, ws);
                     long data =
@@ -159,6 +182,22 @@ class SuiteReadsMemoryTest {
                 }
                 r.stop();
                 r.dump(recordings.resolve("big.jfr"));
+            }
+        }
+
+        /** Distinct long command lines: one chunk's string pool far past the reader's cap. */
+        private static void pool(Path recordings) throws IOException {
+            String pad = "x".repeat(200);
+            try (Recording r = new Recording()) {
+                r.enable("jdk.ProcessStart").withThreshold(Duration.ZERO);
+                r.start();
+                for (int i = 0; i < 100_000; i++) {
+                    Start start = new Start();
+                    start.command = "/opt/tool/bin/fake --run " + i + " " + pad;
+                    start.commit();
+                }
+                r.stop();
+                r.dump(recordings.resolve("pool.jfr"));
             }
         }
 

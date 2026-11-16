@@ -58,6 +58,29 @@ public final class RecordingReader {
 
     private RecordingReader() {}
 
+    /**
+     * Whether {@code file} begins as a recording does: the {@code FLR\0} magic and room for a chunk
+     * header, read through a channel this closes. A file that does not is no recording any reader
+     * will make sense of (a torn write, a test's stand-in), so it is not handed to the JDK's parser
+     * in a child JVM either.
+     */
+    public static boolean framed(Path file) {
+        try (FileChannel ch = FileChannel.open(file, StandardOpenOption.READ)) {
+            if (ch.size() < HEADER_SIZE) return false;
+            ByteBuffer head = ByteBuffer.allocate(4);
+            while (head.hasRemaining() && ch.read(head, head.position()) > 0) {
+                // read the magic whole
+            }
+            return head.position() == 4
+                    && head.get(0) == 'F'
+                    && head.get(1) == 'L'
+                    && head.get(2) == 'R'
+                    && head.get(3) == 0;
+        } catch (IOException | RuntimeException unreadable) {
+            return false;
+        }
+    }
+
     /** A chunk too large for the reader's caps: the recording is not read. */
     public static final class TooLarge extends IOException {
         TooLarge(String what) {
