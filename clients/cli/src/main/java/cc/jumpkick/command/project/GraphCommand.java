@@ -99,16 +99,21 @@ public final class GraphCommand extends GroupCommand {
                         List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
                 new GraphOpCommand(
                         "rename",
-                        "Rename a method and every use; candidates applied with --also; proven by a compile",
+                        "Rename a method or a field; proven by a compile",
                         List.of(
                                 Opt.value(
                                         "<ids>",
                                         "Apply candidates the last rename listed: c1,c3,h1, declared, all.",
                                         "--also"),
+                                Opt.value(
+                                        "<kind>", "method, field, type or package (default: what it names).", "--kind"),
+                                Opt.flag("A field alone, not its getX/setX.", "--no-accessors"),
                                 BUDGET),
                         List.of(
                                 Param.of(
-                                        "method", Arity.ONE, "Type.method (every overload) or Type.method(int,String)"),
+                                        "symbol",
+                                        Arity.ONE,
+                                        "Type.method, Type.method(int,String), Type.field, Type or a.package"),
                                 Param.of("name", Arity.ONE, "the new name"))),
                 new GraphOpCommand(
                         "read",

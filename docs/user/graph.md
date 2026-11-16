@@ -330,6 +330,9 @@ search. Reflection and names in strings are not uses.
 | Symbol | What it renames |
 |---|---|
 | `Type.method`, `Type.method(int,String)` | a method: every overload, or one; every override, implementation, call, method reference and `{@link}` |
+| `Type.field` | a field as a bean property: the field, its `getX`/`isX`/`setX` and their overrides, a record component's accessor; `--no-accessors` for the field alone |
+
+`--kind method|field` settles an address that could be two.
 
 **What it edits, and what it hands back.** It edits a use only where a compiler bound it to the symbol:
 javac's reference index for Java (every name javac resolved, at its exact span), or for a method the
@@ -348,6 +351,11 @@ doc, a test class named after a type) after them. `--also c1,c3` (MCP `also`) ap
 later call, each line only while it still reads as it did; `also` takes ids, ranges (`c2-c5`), or a
 kind: `declared`, `inferred`, `must`, `hazards`, `all`. On the rename's own call, `--also declared`
 applies the services files with the rest.
+
+**Hazards.** A rename that changes behaviour with no compile error is flagged with the pin that keeps
+the old behaviour, applied with `also=h1`: a JPA entity field with no column name (`@Column(name =
+"telephone")`), a Jackson-serialized field (`@JsonProperty("telephone")`); a `Serializable` class's
+field is flagged with no pin.
 
 **The proof.** After writing, the rename compiles the modules it edited, main and tests, and checks
 that each renamed symbol's new name has exactly the references javac resolved for the old one, at the

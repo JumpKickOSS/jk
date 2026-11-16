@@ -151,6 +151,7 @@ final class GraphOpCommand implements CliCommand {
         }
         if (in.isSet("libraries")) out.add("libraries=true");
         if (in.isSet("transitive")) out.add("transitive=true");
+        if (in.isSet("no-accessors")) out.add("accessors=false");
         return out;
     }
 
