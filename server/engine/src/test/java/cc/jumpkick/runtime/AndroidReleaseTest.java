@@ -7,6 +7,7 @@ import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
@@ -51,6 +52,9 @@ import org.junit.jupiter.api.io.TempDir;
 @ExtendWith(SysProps.class)
 class AndroidReleaseTest {
 
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
+
     @Test
     void release_build_produces_verified_aab(@TempDir Path tmp) throws Exception {
         Path app = Files.createDirectories(tmp.resolve("relapp"));
@@ -92,7 +96,7 @@ class AndroidReleaseTest {
         assertThat(stepNames).contains("plugin-android-r8").doesNotContain("plugin-android-dex");
 
         // The artifact is the AAB, in bundletool's base-module layout.
-        Path aab = app.resolve("target/relapp-1.0.0.aab");
+        Path aab = app.resolve("target/relapp-" + STAMPED + ".aab");
         assertThat(aab).exists();
         Set<String> entries = zipEntries(aab);
         assertThat(entries)

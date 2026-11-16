@@ -8,6 +8,7 @@ import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineSpawn;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
@@ -37,6 +38,9 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 class InstallFixedPointE2eTest {
 
+    /** The version jk install stamps into what it shelves: the declared one, -SNAPSHOT, outside a release. */
+    private static final String STAMPED = SnapshotQualifier.version("0.1.0");
+
     @Test
     void installing_twice_reshelves_nothing_and_leaves_the_engine_pointer_unchanged(@TempDir Path tmp)
             throws Exception {
@@ -57,7 +61,7 @@ class InstallFixedPointE2eTest {
         try {
             Run first = jk(home, ws, "install", "-C", ws.toString(), "--skip-tests");
             assertThat(first.exit()).as(first.output()).isZero();
-            assertThat(first.output()).contains("Installed com.example:app:0.1.0");
+            assertThat(first.output()).contains("Installed com.example:app:" + STAMPED);
             assertThat(first.output()).doesNotContain("re-shelving");
 
             Run second = jk(home, ws, "install", "-C", ws.toString(), "--skip-tests");
@@ -76,9 +80,9 @@ class InstallFixedPointE2eTest {
                     .orElseThrow();
             assertThat(pins.pins(sandboxEngine.get().engineSha())).isTrue();
             assertThat(pins.source()).isEqualTo(ws.toAbsolutePath().normalize().toString());
-            assertThat(pins.jars()).containsOnlyKeys("com.example:lib:0.1.0", "com.example:app:0.1.0");
-            assertThat(pins.sha("com.example:lib:0.1.0"))
-                    .contains(Hashing.sha256Hex(ws.resolve("lib/target/lib-0.1.0.jar")));
+            assertThat(pins.jars()).containsOnlyKeys("com.example:lib:" + STAMPED, "com.example:app:" + STAMPED);
+            assertThat(pins.sha("com.example:lib:" + STAMPED))
+                    .contains(Hashing.sha256Hex(ws.resolve("lib/target/lib-" + STAMPED + ".jar")));
             Run status = jk(home, ws, "engine", "status");
             assertThat(status.exit()).as(status.output()).isZero();
             assertThat(status.output()).contains("Source").contains(pins.source());

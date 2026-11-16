@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -30,6 +31,9 @@ import org.objectweb.asm.ClassReader;
  */
 @Tag("slow")
 class GrailsBuildE2eTest {
+
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
 
     @Test
     void grails_app_compiles_packages_boot_jar_with_conf_resources(@TempDir Path tmp) throws Exception {
@@ -152,12 +156,12 @@ class GrailsBuildE2eTest {
         assertThat(reader.getInterfaces()).anyMatch(i -> i.equals("org/grails/datastore/gorm/GormEntity"));
 
         // The grails-jar packager replaced the main artifact with a Boot-launcher jar.
-        Path jar = project.resolve("target/gnotes-1.0.0.jar");
+        Path jar = project.resolve("target/gnotes-" + STAMPED + ".jar");
         if (!Files.isRegularFile(jar)) {
             try (var walk = Files.walk(project.resolve("target"))) {
-                jar = walk.filter(f -> f.getFileName().toString().equals("gnotes-1.0.0.jar"))
+                jar = walk.filter(f -> f.getFileName().toString().equals("gnotes-" + STAMPED + ".jar"))
                         .findFirst()
-                        .orElseThrow(() -> new AssertionError("no gnotes-1.0.0.jar under target/"));
+                        .orElseThrow(() -> new AssertionError("no gnotes-" + STAMPED + ".jar under target/"));
             }
         }
         try (JarFile jf = new JarFile(jar.toFile())) {

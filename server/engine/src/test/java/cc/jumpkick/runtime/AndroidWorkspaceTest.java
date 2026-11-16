@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -44,6 +45,9 @@ import org.junit.jupiter.api.io.TempDir;
 @ExtendWith(SysProps.class)
 class AndroidWorkspaceTest {
 
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
+
     @Test
     void library_module_aar_and_non_transitive_r(@TempDir Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
@@ -62,8 +66,8 @@ class AndroidWorkspaceTest {
 
         // Each member writes Maven's layout under its own target/.
         Path libTarget = lib.resolve("target");
-        Path aar = libTarget.resolve("lib-1.0.0.aar");
-        Path conventional = libTarget.resolve("lib-1.0.0.jar");
+        Path aar = libTarget.resolve("lib-" + STAMPED + ".aar");
+        Path conventional = libTarget.resolve("lib-" + STAMPED + ".jar");
         assertThat(aar).exists();
         assertThat(conventional).exists();
         Set<String> aarEntries = zipEntries(aar);
@@ -118,7 +122,7 @@ class AndroidWorkspaceTest {
                 .contains("app_name");
 
         // The APK carries the library's file-shaped resources and the dexed closure.
-        Path apk = appTarget.resolve("app-1.0.0.apk");
+        Path apk = appTarget.resolve("app-" + STAMPED + ".apk");
         assertThat(apk).exists();
         assertThat(zipEntries(apk)).contains("classes.dex", "res/layout/lib_view.xml", "resources.arsc");
     }

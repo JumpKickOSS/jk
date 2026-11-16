@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -26,6 +27,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @Tag("slow")
 class GroovyBuildE2eTest {
+
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
 
     private static final String REPOS = """
             [repositories]
@@ -67,7 +71,7 @@ class GroovyBuildE2eTest {
         // Groovy-only modules still stamp + package.
         assertThat(project.resolve("target/classes/.gstamp")).exists();
         try (var walk = Files.walk(project.resolve("target"))) {
-            assertThat(walk.anyMatch(f -> f.getFileName().toString().equals("gapp-1.0.0.jar")))
+            assertThat(walk.anyMatch(f -> f.getFileName().toString().equals("gapp-" + STAMPED + ".jar")))
                     .as("packaged jar")
                     .isTrue();
         }

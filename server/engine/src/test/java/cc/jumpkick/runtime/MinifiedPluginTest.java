@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -49,6 +50,9 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 class MinifiedPluginTest {
 
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
+
     @Test
     void shrunk_jar_runs_and_dead_code_is_gone(@TempDir Path tmp) throws Exception {
         Path project = writeProject(tmp);
@@ -65,13 +69,13 @@ class MinifiedPluginTest {
         // Artifacts are additive: the thin jar always, the fat jar because minified implies it,
         // and the minified jar itself. The fat jar beside it is what makes the two comparable.
         Path target = project.resolve("target");
-        assertThat(target.resolve("slim-1.0.0.jar")).exists();
-        assertThat(target.resolve("slim-1.0.0-all.jar")).exists();
-        Path jar = target.resolve("slim-1.0.0-min.jar");
+        assertThat(target.resolve("slim-" + STAMPED + ".jar")).exists();
+        assertThat(target.resolve("slim-" + STAMPED + "-all.jar")).exists();
+        Path jar = target.resolve("slim-" + STAMPED + "-min.jar");
         assertThat(jar).exists();
         assertThat(Files.size(jar))
                 .as("the minified jar is smaller than the fat jar it came from")
-                .isLessThan(Files.size(target.resolve("slim-1.0.0-all.jar")));
+                .isLessThan(Files.size(target.resolve("slim-" + STAMPED + "-all.jar")));
 
         // Behavioral: the shrunk jar actually runs — R8 kept the reachable closure.
         Processes.Captured run = Processes.capture(
@@ -111,8 +115,8 @@ class MinifiedPluginTest {
         assertMinifiedStep(first, TaskStatus.SUCCESS, "the record the second build hits must be one this run wrote");
 
         Path target = project.resolve("target");
-        Path jar = target.resolve("slim-1.0.0-min.jar");
-        Path mapping = target.resolve("slim-1.0.0-min-mapping.txt");
+        Path jar = target.resolve("slim-" + STAMPED + "-min.jar");
+        Path mapping = target.resolve("slim-" + STAMPED + "-min-mapping.txt");
         assertThat(jar).exists();
         assertThat(mapping)
                 .as("R8 writes the map when [minified] obfuscate = true")

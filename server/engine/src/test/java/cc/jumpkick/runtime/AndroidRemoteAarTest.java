@@ -8,6 +8,7 @@ import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
@@ -37,6 +38,9 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 @ExtendWith(SysProps.class)
 class AndroidRemoteAarTest {
+
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
 
     @Test
     void androidx_aar_resolves_explodes_and_builds(@TempDir Path tmp) throws Exception {
@@ -83,7 +87,7 @@ class AndroidRemoteAarTest {
         assertThat(Files.readString(depR)).contains("package androidx.core;").contains("0x7f");
 
         // The APK exists — compile (ContextCompat reference) and the dexed closure both held.
-        assertThat(project.resolve("target/remote-1.0.0.apk")).exists();
+        assertThat(project.resolve("target/remote-" + STAMPED + ".apk")).exists();
     }
 
     private static void acceptLicenses() throws Exception {

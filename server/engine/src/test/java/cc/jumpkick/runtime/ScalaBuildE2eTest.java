@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -21,6 +22,9 @@ import org.junit.jupiter.api.io.TempDir;
 /** Engine compile lane: Scala-only and mixed Java+Scala through Zinc compileMixed. */
 @Tag("slow")
 class ScalaBuildE2eTest {
+
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
 
     private static final String REPOS = """
             [repositories]
@@ -57,7 +61,7 @@ class ScalaBuildE2eTest {
                 """);
         BuildPlanResult result = build(project, cache());
         assertThat(result.errors()).as("errors=%s", result.errors()).isEmpty();
-        assertThat(project.resolve("target/newer-1.0.0.jar")).exists();
+        assertThat(project.resolve("target/newer-" + STAMPED + ".jar")).exists();
     }
 
     @Test
@@ -85,7 +89,7 @@ class ScalaBuildE2eTest {
         assertThat(result.success()).isTrue();
         assertThat(project.resolve("target/classes/com/example/Greeting.class")).exists();
         try (var walk = Files.walk(project.resolve("target"))) {
-            assertThat(walk.anyMatch(f -> f.getFileName().toString().equals("sapp-1.0.0.jar")))
+            assertThat(walk.anyMatch(f -> f.getFileName().toString().equals("sapp-" + STAMPED + ".jar")))
                     .as("packaged jar")
                     .isTrue();
         }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -38,6 +39,9 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 @ExtendWith(SysProps.class)
 class KspRoomHiltTest {
+
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
 
     @Test
     void room_and_hilt_generate_via_ksp_and_the_app_builds(@TempDir Path tmp) throws Exception {
@@ -85,7 +89,7 @@ class KspRoomHiltTest {
         }
 
         // And the whole thing packaged: the debug APK exists (dex closure included the gen).
-        assertThat(project.resolve("target/roomhilt-1.0.0.apk")).exists();
+        assertThat(project.resolve("target/roomhilt-" + STAMPED + ".apk")).exists();
     }
 
     private static boolean anyFile(Path root, String stem) throws Exception {
