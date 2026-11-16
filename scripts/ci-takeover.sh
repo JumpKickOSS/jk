@@ -144,5 +144,5 @@ fi
 run cmp target/dist/jk "$JK_HOME/bin/jk"
 engine_sha="$(sha256sum target/dist/lib/jk-engine-*.jar | cut -c1-64)"
 run grep -q "engine-sha256 = \"$engine_sha\"" "$JK_HOME/lib/jk-engine/jk-engine.toml"
-run bash scripts/check-shelf-descriptors.sh "$JK_HOME"
+run env JK_BIN="$JK_HOME/bin/jk" bash scripts/check-shelf-descriptors.sh "$JK_HOME"
 run "$JK_HOME/bin/jk" engine status --no-ansi
