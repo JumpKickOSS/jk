@@ -4,11 +4,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Free-text notes beside the books; not the ledger. */
-public class Journal {
+public class Journal implements Sink {
 
     private final List<String> lines = new ArrayList<>();
 
     /** Add a note. Unrelated to {@code Ledger.post}, despite the name. */
+    @Override
     public void post(String line) {
         lines.add(line);
     }

@@ -258,9 +258,11 @@ The method (breadth first, one run per cell, fail fast, depth only where it deci
 | 1 screen | `screen-ff --series N --task …` on the tasks the change can show, every agent, one run | under an hour | Is every agent better, the same or worse than the baseline? |
 | 2 collection | `screen-ff` on every task; `--runs 3` for the no-graph arm only | hours | Fresh numbers for the docs, or a new agent |
 
-`smoke-test` runs change-tasks' own arms, drivers and grading over `smoke/fixture`, a 127-line
+`smoke-test` runs change-tasks' own arms, drivers and grading over `smoke/fixture`, a 166-line
 project where `Ledger.post` has three callers and `Journal.post` is a same-name decoy, with a caller
-question and a rename (`smoke/tasks.toml`). Each run prints one line: PASS when the answer is right
+question and a rename (`smoke/tasks.toml`). Two opt-in tasks (`--task smoke-rename-field --task
+smoke-rename-class`) carry the rename traps: a field renamed with its accessors where the template must
+follow and the SQL column must not, and a class a services file names. Each run prints one line: PASS when the answer is right
 and the first code-reading call was a jk graph tool, else FAIL with a diagnosis ("never called a jk
 graph tool", "searched with Grep before the graph", "called the graph, then re-read N times").
 Rows and sandboxes go under `$AGENT_LOOP_HOME/smoke/<date>/`.
