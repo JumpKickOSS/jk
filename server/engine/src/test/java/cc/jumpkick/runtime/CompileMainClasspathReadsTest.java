@@ -12,6 +12,9 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -19,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -26,8 +30,16 @@ import org.junit.jupiter.api.io.TempDir;
  * classpath lines, and every one of those lines fingerprints a classpath entry — a sibling's
  * classes tree is a whole walk. On a stamp miss the step reads the classpath once and hands the
  * lines on, rather than reading it again for each.
+ *
+ * <p>The fixture locks against a loopback repository serving the JUnit Platform it is given, in a
+ * store and local repository of its own: the fast tier reaches no remote, and what an earlier run
+ * left in the host's shared pool or {@code ~/.m2} is not what makes it pass.
  */
+@SysProps.TempRoots({"jk.env.JK_STORE_DIR", "jk.m2.local"})
 class CompileMainClasspathReadsTest {
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @Test
     void a_compile_main_that_misses_its_stamp_reads_its_classpath_once(@TempDir Path tmp) throws Exception {
@@ -41,8 +53,11 @@ class CompileMainClasspathReadsTest {
         Files.createDirectories(project.resolve("src/main/java/demo"));
         Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
         Path cache = tmp.resolve("cache");
+        new MavenStub(http)
+                .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
+                .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, http.base(), List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
 

@@ -12,6 +12,9 @@ import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.task.IoLedger;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -22,19 +25,28 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A build under a job's request with no worker scope open (an in-process caller, a harness) is still
  * one request: the forecast's compile scope narrows where forks register, not which request the work
  * serves, so the module list is built once for the whole build.
+ *
+ * <p>The fixture locks against a loopback repository serving the JUnit Platform it is given, in a
+ * store and local repository of its own: the fast tier reaches no remote, and what an earlier run
+ * left in the host's shared pool or {@code ~/.m2} is not what makes it pass.
  */
+@SysProps.TempRoots({"jk.env.JK_STORE_DIR", "jk.m2.local"})
 class BareJobRequestScopeTest {
 
     private static final List<String> MODULES = List.of("a", "b", "c", "d");
 
     @TempDir
     Path tmp;
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @AfterEach
     void clear() {
@@ -45,7 +57,11 @@ class BareJobRequestScopeTest {
     void a_build_under_a_bare_job_request_loads_the_module_list_once() throws Exception {
         Path workspace = workspace();
         Path cache = tmp.resolve("cache");
-        assertThat(LockPlans.lockBuildPlan(workspace, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+        new MavenStub(http)
+                .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
+                .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
+        assertThat(LockPlans.lockBuildPlan(
+                                workspace, cache, http.base(), List.of(), true, false, ResolveObserver.NOOP, null)
                         .run()
                         .success())
                 .as("workspace lock")

@@ -13,6 +13,9 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.SysProps;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,15 +23,32 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * compile-test-fixtures and compile-guard key their action-cache reweigh and their compile on the
  * same classpath lines, and every line fingerprints a classpath entry: each step reads its
  * classpath once and hands the lines on, rather than reading it again for the compile.
+ *
+ * <p>The fixture locks against a loopback repository serving the JUnit Platform it is given, in a
+ * store and local repository of its own: the fast tier reaches no remote, and what an earlier run
+ * left in the host's shared pool or {@code ~/.m2} is not what makes it pass.
  */
+@SysProps.TempRoots({"jk.env.JK_STORE_DIR", "jk.m2.local"})
 class FixturesAndGuardClasspathReadsTest {
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
+
+    @BeforeEach
+    void serveTheJUnitPlatform() {
+        new MavenStub(http)
+                .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
+                .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
+    }
 
     private static final String MANIFEST = """
             group   = "t"
@@ -49,7 +69,7 @@ class FixturesAndGuardClasspathReadsTest {
         lock(app, cache);
 
         long reads = readsIn(
-                TaskNames.COMPILE_TEST_FIXTURES, TestInputs.of(app, cache).withTestOnly(true));
+                TaskNames.COMPILE_TEST_FIXTURES, TestInputs.of(app, cache).withSkipTests(true));
 
         assertThat(layout(app).testFixturesClassesDir().resolve("demo/AppFixture.class"))
                 .isRegularFile();
@@ -97,9 +117,9 @@ class FixturesAndGuardClasspathReadsTest {
         return BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
     }
 
-    private static void lock(Path project, Path cache) throws IOException {
+    private void lock(Path project, Path cache) throws IOException {
         BuildPlanResult lock = LockPlans.lockBuildPlan(
-                        project, cache, null, List.of(), true, false, ResolveObserver.NOOP, null)
+                        project, cache, http.base(), List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(lock.errors()).isEmpty();
     }

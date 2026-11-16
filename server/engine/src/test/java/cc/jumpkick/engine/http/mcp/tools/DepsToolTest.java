@@ -12,19 +12,31 @@ import cc.jumpkick.engine.verbs.ManifestEdit;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.RepoFixtures;
+import cc.jumpkick.testing.LoopbackHttp;
+import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.testing.SysProps;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code deps} writes jk.toml and leaves a lock the next build can trust; a version no configured
  * repository serves is refused, preview or not, and an add the deny policy refuses writes nothing.
+ *
+ * <p>The fixture's Central is a loopback repository serving the JUnit Platform every lock injects,
+ * in a store and local repository of its own: the fast tier reaches no remote, and what an earlier
+ * run left in the host's shared pool or {@code ~/.m2} is not what makes it pass.
  */
+@SysProps.TempRoots({"jk.env.JK_STORE_DIR", "jk.m2.local"})
 class DepsToolTest {
+
+    @RegisterExtension
+    final LoopbackHttp http = new LoopbackHttp();
 
     @Test
     void remove_relocks_so_the_lock_matches_the_manifest(@TempDir Path tmp) throws Exception {
@@ -134,7 +146,10 @@ class DepsToolTest {
     }
 
     /** A project whose only repository is a local one serving {@code com.acme:thing:1.0.0}. */
-    private static Path project(Path tmp) throws Exception {
+    private Path project(Path tmp) throws Exception {
+        new MavenStub(http)
+                .leaf("org.junit.jupiter", "junit-jupiter", "6.1.0")
+                .leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
         Path repo = tmp.resolve("repo");
         RepoFixtures.module(repo, "com.acme", "thing", "1.0.0");
         Path dir = Files.createDirectories(tmp.resolve("app"));
@@ -143,10 +158,13 @@ class DepsToolTest {
                 name = "app"
                 version = "0.1.0"
 
+                [repositories.central]
+                url = "%s"
+
                 [repositories.local]
                 url = "%s"
                 groups = ["com.acme"]
-                """.formatted(repo.toUri()));
+                """.formatted(http.base(), repo.toUri()));
         return dir;
     }
 
