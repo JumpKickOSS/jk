@@ -519,7 +519,7 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
 
 
 class other_jk:
-    """For the jk-before arm: $JK_BEFORE_HOME as JK_HOME and its bin/ first on PATH for the run's prepare,
+    """For the jk-before arm: $JK_BEFORE_HOME as JK_HOME, its bin/ first on PATH and a free HTTP port for the run's prepare,
     agent (whose MCP server inherits the environment) and verification; a no-op for every other arm."""
 
     def __init__(self, spec: dict):
@@ -532,9 +532,12 @@ class other_jk:
         home = os.environ.get("JK_BEFORE_HOME")
         if not home or not (Path(home) / "bin" / "jk").exists():
             raise RuntimeError("the jk-before arm needs $JK_BEFORE_HOME, a jk home whose bin/jk is the client")
-        for k in ("JK_HOME", "PATH"):
+        for k in ("JK_HOME", "PATH", "JK_HTTP_PORT"):
             self.saved[k] = os.environ.get(k)
         os.environ["JK_HOME"] = home
+        # Two engines beside each other: the other home's would take jk's default HTTP port, and an engine
+        # without HTTP serves no MCP. A free port, as jk's own tests run engines.
+        os.environ["JK_HTTP_PORT"] = "0"
         os.environ["PATH"] = str(Path(home) / "bin") + os.pathsep + os.environ.get("PATH", "")
         return self
 
