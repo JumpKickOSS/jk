@@ -54,19 +54,63 @@ final class AnchorAnswers {
                         && e.relation().equals(Relations.DEFINES)
                         && Anchors.is(graph.node(e.target()))) anchors.add(e.target());
             }
+            GraphNode owner = graph.owner(id);
+            GraphNode n = graph.node(id);
+            String property = n == null ? null : property(n.label());
+            if (owner != null && property != null) anchors.addAll(fieldAnchors(owner.id(), property));
         }
+        return hints(anchors);
+    }
+
+    /** The anchors type {@code typeId} maps its field {@code field} to: a JPA entity's column. */
+    List<String> fieldAnchors(String typeId, String field) {
+        Set<String> out = new TreeSet<>();
+        for (GraphEdge e : graph.incident(typeId)) {
+            if (e.source().equals(typeId)
+                    && ("field " + field).equals(e.context())
+                    && Anchors.is(graph.node(e.target()))) out.add(e.target());
+        }
+        return List.copyOf(out);
+    }
+
+    /** {@link #hints} for the anchors field {@code field} of {@code typeId} maps to. */
+    List<String> fieldHints(String typeId, String field) {
+        return hints(new TreeSet<>(fieldAnchors(typeId, field)));
+    }
+
+    /**
+     * One line per anchor: its uses no compiler checks, counted, and the question that lists them. A
+     * route's clients call it over HTTP and a column's queries are strings, so a callers answer from the
+     * compiled classes never names them.
+     */
+    private List<String> hints(Set<String> anchors) {
         List<String> out = new ArrayList<>();
         for (String a : anchors) {
             int uses = (int) edges(a, Relations.USES).stream()
                     .filter(e -> e.confidence() != Confidence.EXTRACTED)
                     .count();
-            out.add("It defines " + GraphQuery.clean(a) + ", "
+            out.add((Anchors.ROUTE.equals(Anchors.kindOf(a)) ? "It defines " : "It maps to ") + GraphQuery.clean(a)
+                    + ", "
                     + (uses == 0
                             ? "which nothing in the graph uses."
                             : count(uses, "use") + " no compiler checks:" + " callers '" + GraphQuery.clean(a)
                                     + "' lists them."));
         }
         return out;
+    }
+
+    /** {@code telephone} for {@code .getTelephone()}, {@code .setTelephone()} or {@code .isTelephone()}; else null. */
+    private static @Nullable String property(String label) {
+        String name = label.startsWith(".") ? label.substring(1) : label;
+        if (name.endsWith("()")) name = name.substring(0, name.length() - 2);
+        for (String prefix : List.of("get", "set", "is")) {
+            if (name.length() > prefix.length()
+                    && name.startsWith(prefix)
+                    && Character.isUpperCase(name.charAt(prefix.length()))) {
+                return Character.toLowerCase(name.charAt(prefix.length())) + name.substring(prefix.length() + 1);
+            }
+        }
+        return null;
     }
 
     /** The most definitions an anchor's place lists. */

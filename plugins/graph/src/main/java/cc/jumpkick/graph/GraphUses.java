@@ -398,6 +398,8 @@ final class GraphUses {
                     + " javac has not indexed as they stand (Kotlin, Groovy, edited or uncompiled Java) spell the"
                     + " name; those lines are matched by name and marked (inferred). Java uses elsewhere are exact.");
         }
+        if (field && s.member() != null)
+            lines.addAll(new GraphTools(g).fieldAnchorHints(s.type().id(), s.member()));
         if (code.isEmpty() && docs == 0) {
             lines.add(guessed.isEmpty() ? "Nothing uses it." : "Nothing resolved uses it.");
             return lines;

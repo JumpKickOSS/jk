@@ -124,7 +124,8 @@ nothing.
 
 A use links only to a table or column some DDL defines, except an explicit JPA name or a jOOQ
 field, which make the anchor themselves, so an entity mapped to a column no migration creates
-answers `No file defines it.`. A column with no use answers `Nothing uses it.`, which is not a
+answers `No file defines it.`. A JPA field's uses answer, and its getter's or setter's callers answer, end with the column it
+maps to and how many uses no compiler checks. A column with no use answers `Nothing uses it.`, which is not a
 promise: a name assembled at run time is not seen. Not read yet: JPQL and HQL (entity names, not
 tables), Spring Data's derived queries, a custom naming strategy, and SQL in Kotlin or Groovy
 string templates.

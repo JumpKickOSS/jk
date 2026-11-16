@@ -844,6 +844,14 @@ public final class GraphTools {
         return anchors.anchor(name);
     }
 
+    /**
+     * The lines a field's uses answer ends with: each anchor type {@code typeId} maps its field {@code
+     * field} to (a JPA entity's column), with its uses no compiler checks.
+     */
+    public List<String> fieldAnchorHints(String typeId, String field) {
+        return anchors.fieldHints(typeId, field);
+    }
+
     /** Every definition and use of an anchor ({@link AnchorAnswers#uses}); {@code null} when {@code name} is none. */
     public @Nullable String anchorUses(String name, int budget) {
         return anchors.uses(name, budget);

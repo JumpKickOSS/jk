@@ -85,6 +85,10 @@ class SqlGraphTest {
 
                     @ManyToOne
                     OrderEntity parent;
+
+                    String getStatus() {
+                        return status;
+                    }
                 }
                 """);
         f.put("src/main/java/com/acme/Reports.java", """
@@ -139,5 +143,16 @@ class SqlGraphTest {
         assertThat(new GraphTools(g).callers("column:customer_order.state", 1, 2000))
                 .startsWith("column:customer_order.state: 1 definition, 3 uses (1 bound, 1 declared, 1 inferred).")
                 .contains("  OrderEntity  src/main/java/com/acme/OrderEntity.java:", "  field status\n");
+        String hint = "It maps to column:customer_order.state, 2 uses no compiler checks:"
+                + " callers 'column:customer_order.state' lists them.";
+        assertThat(new GraphTools(g).callers("OrderEntity.getStatus", 1, 2000))
+                .as("a getter's callers name the column its field maps to")
+                .contains(hint);
+        String entity = g.nodes().stream()
+                .filter(n -> n.label().equals("OrderEntity"))
+                .findFirst()
+                .orElseThrow()
+                .id();
+        assertThat(new GraphTools(g).fieldAnchorHints(entity, "status")).containsExactly(hint);
     }
 }
