@@ -16,7 +16,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Markdown and AsciiDoc: the page, its headings nested by level, links
  * to other files, and code spans naming a symbol — which the linker ties to the code they name.
- * Fenced and delimited code blocks are skipped.
+ * Fenced and delimited code blocks are skipped, but for the requests to this service their URLs
+ * make ({@link Requests}).
  */
 final class DocExtractors {
 
@@ -52,6 +53,7 @@ final class DocExtractors {
                 inBlock = !inBlock;
                 continue;
             }
+            Requests.urls(b, current, line, n);
             if (inBlock) continue;
             Matcher h = heading.matcher(line);
             if (h.matches()) {

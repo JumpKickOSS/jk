@@ -40,6 +40,7 @@ public final class Linker {
     private final Map<String, List<String>> symbols = new HashMap<>();
     private final Map<String, String> files = new HashMap<>();
     private final List<String> configKeys = new ArrayList<>();
+    private final Map<Integer, List<RouteAnchor>> routes = new HashMap<>();
 
     private Linker(Map<String, GraphNode> nodes) {
         this.nodes = nodes;
@@ -47,6 +48,11 @@ public final class Linker {
             if (n.extra().get(QUALIFIED_NAME) instanceof String fqcn) classes.put(fqcn.replace('$', '.'), n.id());
             if (Anchors.is(n)) {
                 if (Anchors.CONFIG.equals(Anchors.kindOf(n.id()))) configKeys.add(n.id());
+                if (Anchors.ROUTE.equals(Anchors.kindOf(n.id()))) {
+                    RouteAnchor r = RouteAnchor.of(n.id());
+                    routes.computeIfAbsent(r.wild() ? -1 : r.segments().size(), k -> new ArrayList<>())
+                            .add(r);
+                }
             } else if (!n.sourceFile().isEmpty() && n.id().equals(GraphIds.file(n.sourceFile()))) {
                 files.put(n.sourceFile(), n.id());
             } else if (n.fileType().equals("code") && !n.sourceFile().isEmpty()) {
@@ -130,15 +136,20 @@ public final class Linker {
                 }
                 for (GraphEdge e : resolved) {
                     if (!e.source().equals(e.target())) {
-                        edges.merge(
-                                e.source() + '\u0000' + e.target() + '\u0000' + e.relation(),
-                                e,
-                                GraphEdge::withSitesOf);
+                        edges.merge(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e, Linker::stronger);
                     }
                 }
             }
         }
         return new Fragment(List.of(), List.copyOf(edges.values()));
+    }
+
+    /**
+     * Two edges between the same nodes as one: the surer one, with the other's sites. A request a test
+     * makes declared and the same literal seen again as a bare path stay declared.
+     */
+    private static GraphEdge stronger(GraphEdge a, GraphEdge b) {
+        return b.confidence().ordinal() < a.confidence().ordinal() ? b.withSitesOf(a) : a.withSitesOf(b);
     }
 
     private List<GraphEdge> resolve(Mention m) {
@@ -152,7 +163,9 @@ public final class Linker {
                     case FILE -> one(files.get(relative(from.sourceFile(), m.text())));
                     case MODULE -> one(module(m.text()));
                     case CONFIG_KEY -> configKeys(m.text());
+                    case ROUTE, ROUTE_CALL -> routes(m.text());
                 };
+        if (m.kind() == Mention.Kind.ROUTE || m.kind() == Mention.Kind.ROUTE_CALL) return routeEdges(m, from, targets);
         boolean inferred = m.kind() == Mention.Kind.SYMBOL || m.kind() == Mention.Kind.CONFIG_KEY;
         String context = m.context() != null
                 ? m.context()
@@ -252,6 +265,102 @@ public final class Linker {
         List<String> out =
                 configKeys.stream().filter(id -> id.startsWith(prefix)).sorted().toList();
         return out.size() > 25 ? out.subList(0, 25) : out;
+    }
+
+    /**
+     * A route anchor split for matching: its method, its path's segments ({@code {}} a variable,
+     * {@code *} any one segment, {@code **} any rest), and how many are literal.
+     */
+    private record RouteAnchor(String id, String method, List<String> segments, int literals, boolean wild) {
+
+        static RouteAnchor of(String id) {
+            String key = id.substring(Anchors.ROUTE.length() + 1);
+            int space = key.indexOf(' ');
+            String method = key.substring(0, space);
+            List<String> segs = segments(key.substring(space + 1));
+            int literals = (int) segs.stream().filter(RouteAnchor::literal).count();
+            return new RouteAnchor(id, method, segs, literals, segs.contains("**"));
+        }
+
+        static List<String> segments(String path) {
+            return path.equals("/") ? List.of() : List.of(path.substring(1).split("/"));
+        }
+
+        static boolean literal(String segment) {
+            return !segment.equals("{}") && !segment.equals("*") && !segment.equals("**");
+        }
+
+        /** Whether a request of {@code method} to {@code path}'s segments reaches this route. */
+        boolean fits(String method, List<String> path) {
+            if (!this.method.equals("*") && !method.equals("*") && !this.method.equals(method)) return false;
+            int i = 0;
+            for (; i < segments.size(); i++) {
+                String s = segments.get(i);
+                if (s.equals("**")) return true;
+                if (i >= path.size()) return false;
+                String p = path.get(i);
+                if (s.equals("{}") || s.equals("*")) continue;
+                // A variable in the request (a template's {id}) fills only a variable of the route.
+                if (!s.equals(p)) return false;
+            }
+            return i == path.size();
+        }
+    }
+
+    /**
+     * The route anchors a request {@code text} ({@code METHOD /path}) fits, those with the most literal
+     * segments only, and only routes with at least one literal segment: {@code /{}} fits every
+     * one-segment path, which says nothing.
+     */
+    private List<String> routes(String text) {
+        String key = Anchors.key(Anchors.ROUTE, text);
+        int space = key.indexOf(' ');
+        String method = key.substring(0, space);
+        List<String> path = RouteAnchor.segments(key.substring(space + 1));
+        List<RouteAnchor> candidates = new ArrayList<>(routes.getOrDefault(path.size(), List.of()));
+        candidates.addAll(routes.getOrDefault(-1, List.of()));
+        int best = 0;
+        List<String> out = new ArrayList<>();
+        for (RouteAnchor r : candidates) {
+            if (r.literals() == 0 || !r.fits(method, path)) continue;
+            if (r.literals() > best) {
+                best = r.literals();
+                out.clear();
+            }
+            if (r.literals() == best) out.add(r.id());
+        }
+        out.sort(null);
+        return out;
+    }
+
+    /**
+     * A request's uses edges: declared for a client call naming a route's own method (or any, for a
+     * route that takes every method) and its very template, inferred otherwise; the path as written as
+     * the context when the route shows it otherwise.
+     */
+    private List<GraphEdge> routeEdges(Mention m, GraphNode from, List<String> targets) {
+        String key = Anchors.key(Anchors.ROUTE, m.text());
+        String path = key.substring(key.indexOf(' ') + 1);
+        String method = key.substring(0, key.indexOf(' '));
+        List<GraphEdge> out = new ArrayList<>();
+        for (String target : targets) {
+            RouteAnchor r = RouteAnchor.of(target);
+            boolean exact = m.kind() == Mention.Kind.ROUTE_CALL
+                    && target.endsWith(" " + path)
+                    && (r.method().equals(method) || r.method().equals("*"));
+            GraphEdge e = GraphEdge.of(
+                    m.source(),
+                    target,
+                    Relations.USES,
+                    exact ? Confidence.DECLARED : Confidence.INFERRED,
+                    from.sourceFile(),
+                    m.line());
+            String written = m.text().strip();
+            int sp = written.indexOf(' ');
+            String writtenPath = sp < 0 ? written : written.substring(sp + 1).strip();
+            out.add(writtenPath.equals(target.substring(target.indexOf(' ') + 1)) ? e : e.withContext(writtenPath));
+        }
+        return out;
     }
 
     /** The key as the mention wrote it, when the anchor shows it otherwise; else {@code null}. */

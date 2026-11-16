@@ -29,6 +29,7 @@ class ExtractorVersionTest {
     private static final List<Path> SOURCES = List.of(
             Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/extract"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmFacts.java"),
+            Path.of("src/main/java/cc/jumpkick/graph/JvmRoutes.java"),
             // Which source a compiled class maps to, and the module and source set tables it reads.
             Path.of("src/main/java/cc/jumpkick/graph/ClassSources.java"),
             Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/Modules.java"),

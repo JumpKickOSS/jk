@@ -13,16 +13,19 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Configuration files. Spring's {@code application*} and {@code bootstrap*} files define one
- * {@code config} anchor per key, so code reading {@code ${server.port}} links to every line that sets it; build files
- * declare their dependencies; everything else contributes only the class names and {@code ${…}}
- * placeholders it mentions. Keys of other files are not nodes: a data file's keys would bury the
- * code they configure.
+ * {@code config} anchor per key, so code reading {@code ${server.port}} links to every line that
+ * sets it; an OpenAPI document's {@code paths} define routes; build files declare their
+ * dependencies; everything else contributes only the class names, {@code ${…}} placeholders and
+ * requests to this service it mentions. Keys of other files are not nodes: a data file's keys
+ * would bury the code they configure.
  */
 final class ConfigExtractors {
 
@@ -39,11 +42,15 @@ final class ConfigExtractors {
     private static final Pattern TOML_TABLE = Pattern.compile("^\\s*\\[\\[?\\s*([^\\]]+?)\\s*]]?\\s*(?:#.*)?$");
     private static final Pattern TOML_KEY = Pattern.compile("^\\s*([A-Za-z0-9_.\\-\"':]+)\\s*=\\s*(.*)$");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+    private static final Pattern OPENAPI = Pattern.compile("(?m)^(?:openapi|swagger)\\s*:");
+    private static final Set<String> HTTP_METHODS =
+            Set.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE");
     private static final Pattern TOML_FIELD = Pattern.compile("\\b(group|name|module)\\s*=\\s*\"([^\"]+)\"");
 
     static Fragment yaml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         boolean spring = SPRING_CONFIG.matcher(relPath).find();
+        boolean openApi = OPENAPI.matcher(text).find();
         List<int[]> indents = new ArrayList<>();
         List<String> path = new ArrayList<>();
         List<String> lines = Lines.split(text);
@@ -67,6 +74,7 @@ final class ConfigExtractors {
                 String value = m.group(3) == null ? "" : m.group(3).strip();
                 boolean leaf = !value.isEmpty() && !value.startsWith("#") && !value.equals("|") && !value.equals(">");
                 if (spring && leaf && keys++ < MAX_KEYS) configKey(b, String.join(".", path), i + 1);
+                if (openApi) openApiOperation(b, path, i + 1);
             }
             values(b, line, i + 1);
         }
@@ -250,18 +258,30 @@ final class ConfigExtractors {
         if (group != null && name != null) Dependencies.declare(b, b.fileId(), group, name, line);
     }
 
+    /**
+     * An OpenAPI document's operation, {@code paths} → {@code /orders/{id}} → {@code get}, as a declared
+     * definition of its route, at the method's line: the document is a definition file.
+     */
+    private static void openApiOperation(FragmentBuilder b, List<String> path, int line) {
+        if (path.size() != 3 || !path.get(0).equals("paths") || !path.get(1).startsWith("/")) return;
+        String method = path.get(2).toUpperCase(Locale.ROOT);
+        if (!HTTP_METHODS.contains(method)) return;
+        b.anchor(b.fileId(), Anchors.ROUTE, method + " " + path.get(1), Relations.DEFINES, Confidence.DECLARED, line);
+    }
+
     /** The file defines the key: one anchor per key, however many profile files set it. */
     private static void configKey(FragmentBuilder b, String key, int line) {
         b.anchor(b.fileId(), Anchors.CONFIG, key, Relations.DEFINES, Confidence.DECLARED, line);
     }
 
-    /** Class names and {@code ${key}} placeholders in one value. */
+    /** Class names, {@code ${key}} placeholders and requests to this service in one value. */
     private static void values(FragmentBuilder b, String value, int line) {
         if (value.isEmpty()) return;
         Matcher m = Lines.FQCN.matcher(value);
         while (m.find()) b.mention(b.fileId(), Mention.Kind.CLASS, m.group(), line);
         Matcher p = PLACEHOLDER.matcher(value);
         while (p.find()) b.mention(b.fileId(), Mention.Kind.CONFIG_KEY, p.group(1), line);
+        Requests.urls(b, b.fileId(), value, line);
     }
 
     private static int lineOf(String text, Lines lines, String needle) {

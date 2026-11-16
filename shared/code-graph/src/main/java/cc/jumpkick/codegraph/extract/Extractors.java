@@ -7,8 +7,9 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The extractor for each file kind a JVM or front-end project carries. Anything else (binaries,
- * media, languages outside the JVM and the web) has none and stays out of the graph.
+ * The extractor for each file kind a JVM or front-end project carries, and the shell scripts that
+ * call it. Anything else (binaries, media, languages outside the JVM and the web) has none and
+ * stays out of the graph.
  */
 public final class Extractors {
 
@@ -58,7 +59,9 @@ public final class Extractors {
             Map.entry("mmd", MarkupExtractors::diagram),
             Map.entry("mermaid", MarkupExtractors::diagram),
             Map.entry("puml", MarkupExtractors::diagram),
-            Map.entry("sql", MarkupExtractors::sql));
+            Map.entry("sql", MarkupExtractors::sql),
+            Map.entry("sh", ShellScripts::extract),
+            Map.entry("bash", ShellScripts::extract));
 
     /** Files under {@code META-INF/} named by their contents' contract, not an extension. */
     private static final Set<String> CLASS_LISTS = Set.of("spring.factories");

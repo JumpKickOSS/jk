@@ -87,13 +87,18 @@ class AnchorGraphTest {
     };
 
     private static CodeGraph graph(Path dir) throws IOException {
+        return graph(dir, FILES);
+    }
+
+    /** The graph of a one-module workspace holding {@code files}, its Java compiled as a build would. */
+    static CodeGraph graph(Path dir, Map<String, String> files) throws IOException {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "com.acme"
                 name = "shop"
                 version = "1.0.0"
                 java = 25
                 """);
-        for (Map.Entry<String, String> f : FILES.entrySet()) {
+        for (Map.Entry<String, String> f : files.entrySet()) {
             Path p = dir.resolve(f.getKey());
             Files.createDirectories(p.getParent());
             Files.writeString(p, f.getValue());

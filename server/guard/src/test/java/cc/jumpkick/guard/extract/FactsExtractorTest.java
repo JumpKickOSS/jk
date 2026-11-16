@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.extract.fixture.Statics;
+import cc.jumpkick.guard.extract.fixture.Varargs;
 import cc.jumpkick.guard.extract.fixture.Versioned;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.CallSite;
@@ -115,6 +116,18 @@ class FactsExtractorTest {
                             "java.security.MessageDigest#getInstance(Ljava/lang/String;)Ljava/security/MessageDigest;");
             assertThat(s.literalBefore()).isEqualTo("SHA-256");
         });
+    }
+
+    @Test
+    void a_literal_before_a_varargs_array_stays_in_the_invokes_window() throws IOException {
+        ClassFacts c = FactsExtractor.extract(classBytes(Varargs.class));
+        CallSite request = c.methods().stream()
+                .filter(m -> m.name().equals("call"))
+                .flatMap(m -> m.calls().stream())
+                .filter(s -> s.name().equals("request"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(request.literals()).containsExactly("/orders/{id}");
     }
 
     @Test

@@ -34,6 +34,8 @@ class.
 | JavaScript, TypeScript, JSX/TSX, Vue | classes, functions, methods | `imports_from` (relative), `imports` (npm packages), `uses` (Angular templates and styles, JSX components) |
 | Markdown, AsciiDoc | pages, headings | `contains`, links to other files, `references` to the code a code span names |
 | Spring `application*`/`bootstrap*` YAML and properties | one [anchor](#anchors) per key, however many profile files set it | `defines` from each file that sets it; `uses` from code reading `${key}` in an annotation (`@Value`), `@ConfigurationProperties` and key-shaped string literals |
+| HTTP handlers (compiled classes): Spring `@RequestMapping` and its shortcuts, JAX-RS `@Path` with `@GET` and the rest, Micronaut `@Controller` with `@Get` and the rest; OpenAPI YAML `paths` | one [route anchor](#routes) per method and path | `defines` from the handler method or the document; `uses` from MockMvc and RestAssured calls, `@HttpExchange` clients, path literals in code, front-end `http.get`/`fetch` calls, and URLs to this service in scripts, workflows, config and Markdown |
+| Shell scripts (`.sh`, `.bash`) | | `uses` of routes their command lines request |
 | `jk.toml`, `pom.xml`, Gradle, version catalogs, `package.json` | dependencies | `depends_on`, workspace and Maven modules |
 | XML, `META-INF/services`, `*.imports`, JSON | | `references` to every class they name |
 | HTML, CSS/SCSS/Less, SQL, DOT/Mermaid/PlantUML, CSV | pages, tables, columns | loaded files, imported stylesheets, drawn types |
@@ -46,8 +48,8 @@ and an answer marks them `(inferred)`.
 ## Anchors
 
 An anchor is a node for something code and other files both name without a compiler between
-them: a configuration key today; environment variables, HTTP routes, SQL tables and columns, and
-CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
+them: configuration keys and HTTP routes today; environment variables, SQL tables and columns,
+and CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
 ```bash
@@ -78,6 +80,27 @@ when a compiler or generator made the link, **inferred** when a string matched, 
 declared. A key read in code and set in no file still has its anchor, and the answer says `No
 file defines it.`; one set and never read says `Nothing uses it.`. Where a symbol and an anchor
 share a name (`Shop.currency`), the bare name is the symbol's; write `config:shop.currency`.
+
+### Routes
+
+A route is `route:<METHOD> <path>` with each path variable as `{}`: `route:GET /api/hotels/{}`
+answers for `@GetMapping("/hotels/{slug}")` under `@RequestMapping("/api")`, and you may write it
+with the variable's name (`jk graph callers 'route:GET /api/hotels/{slug}'`). A handler serving
+every method is `*`. Only literal paths count: a path built at run time defines nothing. `jk graph
+find -t route` lists every route with its definitions and uses; one an OpenAPI document defines
+and no handler serves shows the document alone, and a handler's route the document lacks shows
+the handler alone. A handler's `callers` answer ends with the route it defines and how many uses
+no compiler checks.
+
+A use links to the routes it fits, the one with the most literal segments when several do, and to
+none when no route has a literal segment in common (`/{}` would fit everything). It is declared
+when a client call names the route's own method and template (`get("/api/hotels/{slug}")` in
+MockMvc or RestAssured, an `@HttpExchange` method); a concrete path (`/api/hotels/harborview`), a
+path literal anywhere else in code, a front-end call and a URL in a script or document are
+inferred. A URL counts only when its host is this machine, a variable or a one-label name such as
+a compose service, and a command line's method is its `-X`, POST for `curl` with a body, GET for
+`curl` or `wget`, any otherwise. Not read yet: a context path (`server.servlet.context-path`), Helidon
+SE and other routing written as calls, Kotlin and Groovy route DSLs, and JSON OpenAPI documents.
 
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the

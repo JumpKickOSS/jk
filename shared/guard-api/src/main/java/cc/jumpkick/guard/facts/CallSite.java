@@ -14,9 +14,10 @@ import org.jspecify.annotations.Nullable;
  * @param literalBefore the string constant loaded immediately before the first such invoke, when
  *     there was one ({@code System.getProperty("os.name")} → {@code os.name}); the {@code args} peephole
  * @param literals every distinct string constant loaded since the previous invoke, field access or
- *     allocation, across the merged invokes: the argument window. {@code getProperty("os.name", "")}
- *     carries both, so an {@code args} peephole sees the key behind a default; an enum's constructor
- *     calls in {@code <clinit>} carry the enum's vocabulary here
+ *     allocation (a varargs array's excepted), across the merged invokes: the argument window. {@code
+ *     getProperty("os.name", "")} carries both, so an {@code args} peephole sees the key behind a
+ *     default; {@code get("/orders/{id}", 7)} carries its path ahead of the varargs array; an enum's
+ *     constructor calls in {@code <clinit>} carry the enum's vocabulary here
  */
 public record CallSite(
         String owner,

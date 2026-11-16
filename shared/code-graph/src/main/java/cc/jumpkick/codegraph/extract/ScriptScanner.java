@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
 /**
  * JavaScript, TypeScript and Vue single-file components read at the module level: imports and
  * re-exports (relative ones to the file, packages to an npm node), top-level declarations, class
- * methods, Angular {@code @Component} templates and styles, and JSX/template component use. Used
+ * methods, Angular {@code @Component} templates and styles, JSX/template component use, and the
+ * HTTP requests its calls make with a literal path ({@link Requests}). Used
  * where no front-end toolchain is available to parse the module properly.
  */
 final class ScriptScanner {
@@ -77,6 +78,7 @@ final class ScriptScanner {
         }
         methods(b, code, lines, depth, classes, classIds);
         components(b, relPath, text, new Lines(text));
+        Requests.calls(b, b.fileId(), source, lines);
         for (SourceMask.Comment c : mask.comments) {
             String body = SourceMask.body(c);
             for (String prefix : List.of("NOTE:", "IMPORTANT:", "HACK:", "WHY:", "RATIONALE:")) {

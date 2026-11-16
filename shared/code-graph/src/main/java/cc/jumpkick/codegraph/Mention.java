@@ -36,7 +36,7 @@ public record Mention(
         return switch (kind) {
             case MODULE -> Relations.IMPORTS_FROM;
             case MEMBER -> Relations.CALLS;
-            case CONFIG_KEY -> Relations.USES;
+            case CONFIG_KEY, ROUTE, ROUTE_CALL -> Relations.USES;
             default -> Relations.REFERENCES;
         };
     }
@@ -57,6 +57,17 @@ public record Mention(
          */
         CONFIG_KEY,
         /** A module specifier already resolved to a repo-relative path by the extractor. */
-        MODULE
+        MODULE,
+        /**
+         * An HTTP request, {@code GET /orders/42} ({@code *} for a method not known): resolved to the
+         * route anchors whose paths it fits, preferring the most literal segments, always inferred.
+         */
+        ROUTE,
+        /**
+         * An HTTP request a client or test call makes with a literal path and the method its name
+         * gives ({@code MockMvc get("/orders/{id}")}): declared when it is a route's own method and
+         * template, inferred when it only fits one.
+         */
+        ROUTE_CALL
     }
 }

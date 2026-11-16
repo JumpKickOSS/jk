@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
@@ -39,6 +40,9 @@ import org.objectweb.asm.Type;
  * Measured at ~40 µs per class warm; the whole jk tree is ~100 ms.
  */
 public final class FactsExtractor {
+
+    /** A boxing method's descriptor: one primitive in, its box out ({@code Integer.valueOf(int)}). */
+    private static final Pattern BOXING = Pattern.compile("\\([ZBCSIJFD]\\)Ljava/lang/\\w+;");
 
     private FactsExtractor() {}
 
@@ -212,7 +216,10 @@ public final class FactsExtractor {
             @Nullable
             String lastCall;
 
-            /** String constants loaded since the last invoke, field access or allocation: the argument window. */
+            /**
+             * String constants loaded since the last invoke, field access or allocation other than a
+             * varargs array's: the argument window.
+             */
             final List<String> window = new ArrayList<>();
 
             MethodCollector(int access, String mname, String desc) {
@@ -257,14 +264,20 @@ public final class FactsExtractor {
                 refInternal(owner);
                 refMethodDesc(mdesc);
                 String key = owner + '#' + name + mdesc;
+                // Boxing a primitive argument evaluates an argument of the call that follows: the window is that
+                // call's.
+                boolean boxing = name.equals("valueOf")
+                        && owner.startsWith("java/lang/")
+                        && BOXING.matcher(mdesc).matches();
+                List<String> args = boxing ? List.of() : window;
                 CallSite prior = calls.get(key);
                 calls.put(
                         key,
                         prior == null
-                                ? CallSite.first(owner, name, mdesc, line, lastLdc, window)
-                                : prior.merged(line, lastLdc, window));
+                                ? CallSite.first(owner, name, mdesc, line, lastLdc, args)
+                                : prior.merged(line, lastLdc, args));
                 lastLdc = null;
-                window.clear();
+                if (!boxing) window.clear();
                 lastCall = owner + '#' + name;
             }
 
@@ -294,7 +307,8 @@ public final class FactsExtractor {
             public void visitTypeInsn(int opcode, String type) {
                 refInternal(type);
                 lastLdc = null;
-                window.clear();
+                // A varargs call allocates its array after its leading arguments: they stay in the window.
+                if (opcode != Opcodes.ANEWARRAY) window.clear();
             }
 
             @Override

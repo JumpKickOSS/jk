@@ -270,6 +270,7 @@ final class JvmFacts {
                 facts.merge(from, member, Decl::merge);
                 signature(m.desc(), from, mentions);
                 annotations(m.annotations(), from, rel, nodes, edges, mentions);
+                routes(c, m, from, rel, nodes, edges, mentions);
                 if (!owner.facade() && (m.access() & (ACC_STATIC | ACC_PRIVATE)) == 0) {
                     overrides(c, name, from, m.firstLine(), m.desc() + ">" + m.desc(), mentions);
                 }
@@ -316,6 +317,7 @@ final class JvmFacts {
         }
         for (CallSite site : m.calls()) {
             for (String literal : site.literals()) configKeys(literal, from, site.line(), mentions);
+            mentions.addAll(JvmRoutes.uses(from, site));
         }
     }
 
@@ -439,6 +441,33 @@ final class JvmFacts {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * The routes {@code m}'s mapping annotations name under its type's prefixes: a handler's as a
+     * declared definition from the method, a client interface's ({@code @HttpExchange}) as a request
+     * the linker grades against the routes handlers declare.
+     */
+    private static void routes(
+            ClassFacts c,
+            MethodFacts m,
+            String from,
+            String rel,
+            Map<String, GraphNode> nodes,
+            List<GraphEdge> edges,
+            List<Mention> mentions) {
+        if (m.annotations().isEmpty()) return;
+        List<JvmRoutes.Route> routes = JvmRoutes.routes(
+                JvmRoutes.prefixes(c.annotations()), JvmRoutes.client(c.annotations()), m.annotations());
+        for (JvmRoutes.Route r : routes) {
+            if (r.client()) {
+                mentions.add(new Mention(from, Mention.Kind.ROUTE_CALL, r.name(), m.firstLine()));
+                continue;
+            }
+            GraphNode anchor = Anchors.node(Anchors.ROUTE, r.name());
+            nodes.merge(anchor.id(), anchor, Anchors::preferred);
+            edges.add(Anchors.edge(from, Anchors.ROUTE, r.name(), Relations.DEFINES, Confidence.DECLARED, rel, 0));
         }
     }
 
