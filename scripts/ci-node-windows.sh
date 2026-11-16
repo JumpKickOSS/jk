@@ -65,14 +65,19 @@ module_dir() {
 
 # Every class named here ran at least one test: a fixture that cannot be built on this host
 # (FakePrograms aborts without csc.exe) skips its tests, and a green run of nothing proves nothing.
+# The integration suite's XML lands in target/failsafe-reports, as Failsafe writes it; every other
+# suite's in target/surefire-reports.
 prove_ran() {
   local pair failed=0 python
   python="$(command -v python3 || command -v python)"
   for pair in "$@"; do
-    local report
-    report="$(module_dir "${pair%%:*}")/target/surefire-reports/TEST-${pair#*:}.xml"
+    local report dir name
+    dir="$(module_dir "${pair%%:*}")/target"
+    name="TEST-${pair#*:}.xml"
+    report="$dir/surefire-reports/$name"
+    [[ -f "$report" ]] || report="$dir/failsafe-reports/$name"
     if [[ ! -f "$report" ]]; then
-      echo "::error::${pair#*:} left no report ($report)"
+      echo "::error::${pair#*:} left no report ($dir/surefire-reports/$name or $dir/failsafe-reports/$name)"
       failed=1
       continue
     fi
