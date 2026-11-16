@@ -94,7 +94,10 @@ final class GraphOpCommand implements CliCommand {
         }
         String note = ack.note();
         if (note != null) CommandWedge.printChipErr(Glyphs.BANG, "Graph", note);
-        boolean found = !ack.text().startsWith("No ") && !ack.text().startsWith("Not renamed");
+        boolean found = !ack.text().startsWith("No ")
+                && !ack.text().startsWith("Not renamed")
+                && !ack.text().startsWith("Not moved")
+                && !ack.text().contains("\nRolled back");
         if (json) {
             JsonlShape.row("graph", f -> {
                 f.string("op", op);
@@ -152,7 +155,8 @@ final class GraphOpCommand implements CliCommand {
     }
 
     /** Options passed through to the worker by name. */
-    static final List<String> SETTINGS = List.of("view", "kind", "visibility", "extends", "implements", "annotated");
+    static final List<String> SETTINGS =
+            List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also");
 
     private static int number(Invocation in, String option, int fallback) {
         String raw = in.value(option).orElse(null);

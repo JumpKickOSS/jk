@@ -225,6 +225,11 @@ final class JvmTokens {
         return lineOf.get(token);
     }
 
+    /** The offset in the source where {@code token} starts. */
+    int offset(int token) {
+        return start.get(token);
+    }
+
     /** The innermost body holding {@code line}: its index, or -1 for none. */
     int region(int line) {
         int best = -1;

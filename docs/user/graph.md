@@ -325,34 +325,54 @@ search. Reflection and names in strings are not uses.
 
 ## Rename
 
-`jk graph rename Type.method newName` (MCP `rename`) renames a method in one call: its declaration,
-every override and implementation of it, every call and method reference, and the `{@link}`s to
-it. `Type.method` renames every overload; `Type.method(int,String)` one. The answer lists each file
-and line it changed; build and test next.
+`jk graph rename <symbol> <new name>` (MCP `rename`) renames in one call, by what the symbol is:
 
-The compiled classes say which calls are the method's: a call names its owner and descriptor, and
-the class hierarchy says whether that reaches the method, so a `contains` on a `String` or a `List`
-is never touched. They count a method's calls, not each call's line, so a file is edited only where
-the uses of the name in its source are exactly the ones the classes count; where another method of
-the name is called too, uses are told apart by method body and by argument count. Anything that
-still cannot be told apart (a method reference to the class's own method, a call in a `finally`
-block, which the compiler copies, a call from Groovy that is not `@CompileStatic`, which its classes
-make by name at run time) is left alone and quoted under the answer, as are the uses of the
-name in a module that may call it but has no compiled classes, so the agent edits those few by hand.
-A module may call it when it sees, as the build does, a module declaring the method or one it
-overrides: through any dependency table, a variant value's included, or a published POM a
-member serves. A supertype outside the workspace that may declare the method makes every module one.
-A rename compiles a never-compiled module, and its tests, first, as a question does; when that
-compile cannot run, or a suite a question does not compile has no classes, the answer says it is
-not complete, never that the task is done, and the note names the modules and test directories
-whose calls it could not see. Only a module that may call the method, as above, counts; one that
-cannot leaves the rename complete and is not named. `callers` is not narrowed this way: it names
-every module and test directory with no compiled classes.
+| Symbol | What it renames |
+|---|---|
+| `Type.method`, `Type.method(int,String)` | a method: every overload, or one; every override, implementation, call, method reference and `{@link}` |
 
-It refuses, changing nothing, when a source was edited since the build (build first), when a
-related type already declares the new name with the same parameters, or when the method overrides
-one outside the workspace (`@Override` with no supertype here declaring it) or `Object`'s.
+**What it edits, and what it hands back.** It edits a use only where a compiler bound it to the symbol:
+javac's reference index for Java (every name javac resolved, at its exact span), or for a method the
+compiled classes, where a file's uses of the name are exactly the ones they count. Everything else
+that spells the name is returned, not edited and not dropped, as a candidate with an id, the grade of
+the match and the reason, at `file:line` with the line quoted:
 
+- **declared**: a file whose format names the class by its full name (a `META-INF/services` file,
+  Spring's `*.imports` and `spring.factories`, `jk.toml`, an XML config);
+- **inferred**: a match by name (a template's bean path `${owner.telephone}`, a JPQL string, a
+  reflection string, a Kotlin or Groovy source javac does not index, a source in a module with no
+  compiled classes).
+
+Candidates that should change come first; judgment calls (a message key, a SQL column, a comment, a
+doc, a test class named after a type) after them. `--also c1,c3` (MCP `also`) applies chosen ones in a
+later call, each line only while it still reads as it did; `also` takes ids, ranges (`c2-c5`), or a
+kind: `declared`, `inferred`, `must`, `hazards`, `all`. On the rename's own call, `--also declared`
+applies the services files with the rest.
+
+**The proof.** After writing, the rename compiles the modules it edited, main and tests, and checks
+that each renamed symbol's new name has exactly the references javac resolved for the old one, at the
+same lines, and that the old name has none: `Proven: it compiles, and …`. A local variable the new name
+would shadow, or a compile error (a use only a candidate holds, say), undoes the whole rename: every
+file is put back and the answer says why (`Rolled back, nothing is changed …`), naming the candidate
+to add with `also` when that is the cause. A file whose index javac has not rewritten is named as not
+proven.
+
+A method rename's remaining detail: the compiled classes say which calls are the method's (a call
+names its owner and descriptor, and the class hierarchy says whether that reaches the method), so a
+`contains` on a `String` or a `List` is never touched; where another method of the name is called in
+the same body, uses are told apart by argument count, and what still cannot be told apart is a
+candidate. Comments in the edited files and doc lines that can only mean the method are renamed with
+it. A module may call a method when it sees, as the build does, a module declaring it or one it
+overrides; a module with no compiled classes among those leaves the answer not complete, and its
+uses are candidates. A rename compiles a never-compiled module first, as a question does.
+
+It refuses, changing nothing, when a source was edited since the build (build first), when the new
+name collides (a related type declares the method with the same parameters, the type has a field of
+that name, a type of the new name exists or a file using the type already names another type so),
+when a method overrides one outside the workspace or `Object`'s.
+
+A shared-surface name such as a JPA column or an HTTP route is what the graph's anchors model
+(JK-Q6VJ6); until they answer for it, rename reports it as a candidate or hazard as above.
 
 The [retrieval bench](../../bench/graph-retrieval/README.md) asks who calls a method, what
 implements or overrides it and where it is defined, on seven JVM repositories, and grades every

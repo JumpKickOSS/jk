@@ -34,6 +34,8 @@ options = [
 ]
 
 [test]
+# IndexedJavac: other modules' tests compile with the reference index the compile writes.
+fixtures = true
 # A test plugin drives javac's own Log through reflection to fail a compile without a diagnostic.
 jvm-args = [
   "--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",

@@ -82,7 +82,7 @@ class GroovyRenameTest {
         String answer = rename(dir, DYN);
         assertThat(answer)
                 .contains("Renamed Store.put to add")
-                .contains("a dynamic Groovy call")
+                .contains("dynamic Groovy, bound by name at run time")
                 .contains("src/main/groovy/demo/Dyn.groovy", "store.put(\"a\")")
                 .doesNotContain("The task is done");
         assertThat(Files.readString(dir.resolve("src/main/groovy/demo/Dyn.groovy")))

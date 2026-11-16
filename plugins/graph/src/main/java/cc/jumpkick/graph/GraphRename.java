@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
-import cc.jumpkick.codegraph.Budget;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Modules;
@@ -56,75 +55,30 @@ final class GraphRename {
 
     private static final Set<String> OBJECT_METHODS = Set.of("equals", "hashCode", "toString", "clone", "finalize");
 
-    private static final Set<String> KEYWORDS = Set.of(
-            "abstract",
-            "assert",
-            "boolean",
-            "break",
-            "byte",
-            "case",
-            "catch",
-            "char",
-            "class",
-            "const",
-            "continue",
-            "default",
-            "do",
-            "double",
-            "else",
-            "enum",
-            "extends",
-            "final",
-            "finally",
-            "float",
-            "for",
-            "goto",
-            "if",
-            "implements",
-            "import",
-            "instanceof",
-            "int",
-            "interface",
-            "long",
-            "native",
-            "new",
-            "package",
-            "private",
-            "protected",
-            "public",
-            "return",
-            "short",
-            "static",
-            "strictfp",
-            "super",
-            "switch",
-            "synchronized",
-            "this",
-            "throw",
-            "throws",
-            "transient",
-            "try",
-            "void",
-            "volatile",
-            "while",
-            "true",
-            "false",
-            "null",
-            "var",
-            // Not record: Java restricts it only as a type name, and it is no Kotlin keyword. A
-            // method may be called record. yield stays: an unqualified call of it does not compile.
-            "yield",
-            "fun",
-            "val",
-            "when",
-            "object",
-            "is",
-            "in",
-            "as",
-            "typealias");
-
     /** One class's facts and the module directory its index came from. */
-    private record Loaded(ClassFacts facts, String prefix, String sourceSet) {}
+    record Loaded(ClassFacts facts, String prefix, String sourceSet) {}
+
+    /** Every class set's facts, by internal name: what finds every use of a method. */
+    static Map<String, Loaded> classes(List<GraphBuild.ClassIndex> indexes) throws IOException {
+        Map<String, Loaded> classes = new LinkedHashMap<>();
+        for (GraphBuild.ClassIndex c : indexes) {
+            Path index = c.index();
+            if (index == null) continue;
+            for (ClassFacts cf : FactsFormat.read(index).classes().values()) {
+                classes.putIfAbsent(cf.name(), new Loaded(cf, c.modulePrefix(), c.sourceSet()));
+            }
+        }
+        return classes;
+    }
+
+    /**
+     * Every class and descriptor dispatch joins to method {@code name} with {@code descs} of internal
+     * name {@code owner}: its overrides and implementations, and the declarations it implements.
+     */
+    static Map<String, Set<String>> familyOf(
+            Map<String, Loaded> classes, String owner, String name, Set<String> descs) {
+        return family(classes, new Hierarchy(classes), new Target(owner, name, descs, null));
+    }
 
     /** One use the compiled classes record: whether it is the family's, a declaration, its line, arity and count. */
     private record Rec(boolean mine, boolean decl, int line, int arity, int count) {}
@@ -141,18 +95,18 @@ final class GraphRename {
     }
 
     /**
-     * Renames {@code address} ({@code Type.method}, every overload, or {@code Type.method(int,
-     * String)} for one) to {@code to} under the workspace's root; returns the answer, complete only
-     * when no module or test set that can reach the method lacks the compiled classes that find its
-     * calls, and the sets it names.
+     * Plans the rename of {@code address} ({@code Type.method}, every overload, or {@code
+     * Type.method(int, String)} for one) to {@code to}: the edits the compiled classes and javac's
+     * index bind, and as candidates the uses they cannot tell apart, the uses in modules with no
+     * compiled classes and the calls dynamic Groovy makes by name. Nothing is written here; a
+     * refusal is thrown as {@link RenameRefusal}.
      */
-    static GraphService.Reply rename(GraphService.Workspace w, CodeGraph graph, String address, String to, int budget)
-            throws IOException {
+    static RenamePlan rename(GraphService.Workspace w, CodeGraph graph, String address, String to) throws IOException {
         Path root = w.root();
         List<GraphBuild.ClassIndex> indexes = w.indexes();
-        if (!identifier(to)) throw new IllegalArgumentException("'" + to + "' is not a method name");
+        if (!RenameNames.identifier(to)) throw new IllegalArgumentException("'" + to + "' is not a method name");
         String refused = edited(indexes);
-        if (refused != null) return GraphService.Reply.of(w, refused);
+        if (refused != null) throw new RenameRefusal(refused);
         Map<String, Loaded> classes = new LinkedHashMap<>();
         for (GraphBuild.ClassIndex c : indexes) {
             // The engine indexes every set for a rename: its compiled classes are what find every use.
@@ -164,40 +118,54 @@ final class GraphRename {
         Hierarchy h = new Hierarchy(classes);
         Target target = target(classes, address);
         if (target.error() != null) {
-            return GraphService.Reply.of(
-                    w, RenameHints.withUnbuilt(target.error(), RenameReach.unbuilt(graph, indexes, null)));
+            throw new RenameRefusal(RenameHints.withUnbuilt(target.error(), RenameReach.unbuilt(graph, indexes, null)));
         }
-        if (target.name().equals(to)) return GraphService.Reply.of(w, "'" + address + "' is already named " + to + ".");
+        if (target.name().equals(to)) throw new RenameRefusal("'" + address + "' is already named " + to + ".");
         Map<String, Set<String>> family = family(classes, h, target);
         String clash = clash(classes, h, family, target.name(), to);
-        if (clash != null) return GraphService.Reply.of(w, clash);
+        if (clash != null) throw new RenameRefusal(clash);
         Run run = new Run(root, graph, classes, h, target, family, to);
         run.tally();
         run.unchecked(indexes, w.uncompiled(), w.reach());
         run.edit();
         run.dynamicGroovy(w.reach());
         if (run.annotated > run.overriding) {
-            return GraphService.Reply.of(
-                    w,
-                    "Not renamed: " + display(target) + " overrides a method outside the workspace (@Override with"
-                            + " no supertype here declaring it), so renaming it would break that override.");
+            throw new RenameRefusal("Not renamed: " + display(target) + " overrides a method outside the workspace"
+                    + " (@Override with no supertype here declaring it), so renaming it would break that override.");
         }
-        if (run.edited.isEmpty() && run.unsettled.isEmpty() && run.unchecked.isEmpty()) {
-            return GraphService.Reply.of(
-                    w,
-                    "Nothing renamed: the compiled classes record no declaration of " + display(target)
-                            + " in a source file.");
+        if (run.edited.isEmpty() && run.cands.isEmpty()) {
+            throw new RenameRefusal("Nothing renamed: the compiled classes record no declaration of " + display(target)
+                    + " in a source file.");
         }
         run.docLinks();
         run.prose = RenameMentions.renameAll(
                 root, run.old, to, run.familyTypes, run.edited, run.changedLines, run.textFiles);
         run.mentions = RenameMentions.find(run.root, run.old, run.familyTypes, run.edited, run.textFiles);
+        RenamePlan plan = new RenamePlan(display(target), to);
         for (Map.Entry<String, String> e : run.edited.entrySet()) {
-            Files.writeString(root.resolve(e.getKey()), e.getValue(), StandardCharsets.UTF_8);
+            String original = read(root, e.getKey());
+            if (original == null) continue;
+            plan.edit(
+                    e.getKey(),
+                    original,
+                    e.getValue(),
+                    new TreeSet<>(run.changedLines.getOrDefault(e.getKey(), List.of())));
         }
-        List<String> unseen = GraphService.names(run.unseen);
-        return new GraphService.Reply(
-                Budget.lines(run.answer(unseen.isEmpty()), budget, "Raise the budget for every line"), unseen);
+        plan.count("declaration", run.declarations);
+        plan.count("call", run.calls);
+        plan.count("doc link", run.docs);
+        plan.count("comment or doc mention", run.prose);
+        plan.notes.addAll(RenameMentions.lines(run.mentions, run.old, display(target)));
+        for (String c : run.unplaced) plan.notes.add("  " + c + ": a caller whose source file was not found");
+        plan.candidates.addAll(run.cands);
+        family.forEach((owner, descs) -> descs.forEach(
+                d -> plan.symbols.put(ReferenceIndex.method(owner, run.old, d), ReferenceIndex.method(owner, to, d))));
+        boolean complete = run.unseen.isEmpty();
+        if (run.cands.isEmpty() && run.unplaced.isEmpty()) {
+            plan.next = EditedTests.renamed(graph.modules(), run.edited.keySet(), complete);
+        }
+        plan.unseen.addAll(GraphService.names(run.unseen));
+        return plan;
     }
 
     /** One rename's working state: what the classes record per file, and the edits chosen from it. */
@@ -222,6 +190,8 @@ final class GraphRename {
         final Map<String, String> edited = new TreeMap<>();
         final Map<String, List<Integer>> changedLines = new TreeMap<>();
         final Map<String, List<String>> unsettled = new TreeMap<>();
+        /** The uses not edited, as candidates with the edit {@code also} makes. */
+        final List<RenamePlan.Candidate> cands = new ArrayList<>();
         /** Files edited from the compile's reference index; their doc links were renamed with them. */
         final Set<String> indexed = new TreeSet<>();
         /** Prose that still names the old method: comment lines in edited files, doc lines naming its type. */
@@ -290,7 +260,11 @@ final class GraphRename {
                     if (!synthetic && m.name().equals(old)) {
                         boolean mine = family.getOrDefault(cf.name(), Set.of()).contains(m.desc());
                         uses.add(new Rec(
-                                mine, true, m.firstLine(), paramNames(m.desc()).size(), 1));
+                                mine,
+                                true,
+                                m.firstLine(),
+                                RenameNames.paramNames(m.desc()).size(),
+                                1));
                         if (rel != null) {
                             Tally t = tallies.computeIfAbsent(rel, k -> new Tally());
                             if (mine) t.declaresFamily = true;
@@ -300,8 +274,9 @@ final class GraphRename {
                     }
                     for (CallSite cs : m.calls()) {
                         if (!cs.name().equals(old) && !cs.name().equals(old + "$default")) continue;
-                        int arity =
-                                cs.name().equals(old) ? paramNames(cs.desc()).size() : -2;
+                        int arity = cs.name().equals(old)
+                                ? RenameNames.paramNames(cs.desc()).size()
+                                : -2;
                         uses.add(new Rec(calls(h, family, cs, old), false, cs.line(), arity, Math.max(1, cs.count())));
                     }
                     if (uses.isEmpty()) continue;
@@ -339,7 +314,17 @@ final class GraphRename {
                 List<Integer> uses = tokens.uses(old).stream()
                         .filter(i -> mayCall(tokens, i, familyTypes, namesFamily))
                         .toList();
-                if (!uses.isEmpty()) unchecked.put(rel, quote(text, tokens, uses));
+                if (!uses.isEmpty()) {
+                    unchecked.put(rel, quote(text, tokens, uses));
+                    candidates(
+                            rel,
+                            text,
+                            tokens,
+                            List.of(),
+                            uses,
+                            "in a set with no compiled classes; edit it if it calls " + display(target),
+                            true);
+                }
             }
         }
 
@@ -387,7 +372,59 @@ final class GraphRename {
                 List<Integer> uses = tokens.uses(old).stream()
                         .filter(i -> !tokens.declares(i))
                         .toList();
-                if (!uses.isEmpty()) unsettled.put(rel, quote(text, tokens, uses));
+                if (!uses.isEmpty()) {
+                    unsettled.put(rel, quote(text, tokens, uses));
+                    candidates(rel, text, tokens, List.of(), uses, "dynamic Groovy, bound by name at run time", true);
+                }
+            }
+        }
+
+        /**
+         * One candidate per line of {@code rel} holding a use in {@code left}: the line as {@code
+         * chosen} leaves it, and the line with those uses renamed too; a body with no use found is a
+         * candidate with no edit.
+         */
+        void candidates(
+                String rel,
+                String text,
+                JvmTokens tokens,
+                List<Integer> chosen,
+                List<Integer> left,
+                String reason,
+                boolean must) {
+            List<Integer> found = left.stream().filter(i -> i >= 0).toList();
+            String partly = tokens.replace(text, chosen, old.length(), to);
+            List<Integer> both = new ArrayList<>(chosen);
+            both.addAll(found);
+            String fully = tokens.replace(text, both, old.length(), to);
+            String[] was = partly.split("\n", -1);
+            String[] now = fully.split("\n", -1);
+            Set<Integer> lines = new TreeSet<>();
+            for (int i : found) lines.add(tokens.line(i));
+            for (int n : lines) {
+                if (n < 1 || n > was.length || n > now.length) continue;
+                cands.add(new RenamePlan.Candidate(
+                        must,
+                        RenamePlan.Grade.INFERRED,
+                        reason,
+                        rel,
+                        n,
+                        was[n - 1],
+                        List.of(new RenamePlan.LineChange(rel, n, was[n - 1], now[n - 1])),
+                        null));
+            }
+            for (int i : left) {
+                if (i >= 0) continue;
+                int line = tokens.regionStart(-i - 2);
+                cands.add(new RenamePlan.Candidate(
+                        false,
+                        RenamePlan.Grade.INFERRED,
+                        "the classes record a use in this body that its source does not spell as " + old,
+                        rel,
+                        line,
+                        line <= was.length ? was[line - 1] : "",
+                        List.of(),
+                        "edit by hand"));
             }
         }
 
@@ -400,6 +437,17 @@ final class GraphRename {
                 String text = read(root, rel);
                 if (text == null || rel.endsWith(".groovy")) {
                     unsettled.put(rel, List.of(text == null ? "    (unreadable)" : "    (Groovy: edit by hand)"));
+                    if (text != null) {
+                        JvmTokens g = JvmTokens.of(text);
+                        candidates(
+                                rel,
+                                text,
+                                g,
+                                List.of(),
+                                g.uses(old),
+                                "Groovy source the classes count, edited by hand",
+                                true);
+                    }
                     continue;
                 }
                 JvmTokens tokens = JvmTokens.of(text);
@@ -407,7 +455,17 @@ final class GraphRename {
                 List<Integer> chosen = new ArrayList<>();
                 List<Integer> left = new ArrayList<>();
                 settle(tokens, tokens.uses(old), t, chosen, left);
-                if (!left.isEmpty()) unsettled.put(rel, quote(text, tokens, left));
+                if (!left.isEmpty()) {
+                    unsettled.put(rel, quote(text, tokens, left));
+                    candidates(
+                            rel,
+                            text,
+                            tokens,
+                            chosen,
+                            left,
+                            "another " + old + " is used here too, or the classes" + " count it differently",
+                            false);
+                }
                 if (chosen.isEmpty()) continue;
                 for (int i : chosen) {
                     if (!tokens.declares(i)) {
@@ -471,41 +529,6 @@ final class GraphRename {
                 lines.addAll(doc.lines());
                 changedLines.put(rel, lines.stream().distinct().sorted().toList());
             }
-        }
-
-        List<String> answer(boolean complete) {
-            List<String> lines = new ArrayList<>();
-            lines.add("Renamed " + display(target) + " to " + to + ": " + count(declarations, "declaration") + ", "
-                    + count(calls, "call") + (docs == 0 ? "" : ", " + count(docs, "doc link"))
-                    + (prose == 0 ? "" : ", " + count(prose, "comment or doc mention")) + ", in "
-                    + count(edited.size(), "file") + ".");
-            for (Map.Entry<String, List<Integer>> e : changedLines.entrySet()) {
-                lines.add("  " + e.getKey() + ":" + numbers(e.getValue()));
-            }
-            lines.addAll(RenameMentions.lines(mentions, old, display(target)));
-            if (unsettled.isEmpty() && unplaced.isEmpty() && unchecked.isEmpty()) {
-                lines.add(EditedTests.renamed(graph.modules(), edited.keySet(), complete));
-            }
-            if (!unchecked.isEmpty()) {
-                lines.add("Not checked: these modules may call it but have no compiled classes. Each line below uses a "
-                        + old + "; edit the ones that call " + display(target) + ":");
-                unchecked.forEach((rel, quoted) -> {
-                    lines.add("  " + rel);
-                    lines.addAll(quoted);
-                });
-            }
-            if (!unsettled.isEmpty() || !unplaced.isEmpty()) {
-                lines.add("Not renamed: the lines below also use another " + old + ", or hold a use the classes count"
-                        + " differently (a method reference in its own class, a finally block, a dynamic Groovy call). Edit the"
-                        + " ones that"
-                        + " use " + display(target) + " to " + to + ", then build and test:");
-                unsettled.forEach((rel, quoted) -> {
-                    lines.add("  " + rel);
-                    lines.addAll(quoted);
-                });
-                for (String c : unplaced) lines.add("  " + c + ": its source file was not found");
-            }
-            return lines;
         }
     }
 
@@ -592,7 +615,7 @@ final class GraphRename {
     }
 
     /** Why the classes cannot answer for every source yet, or {@code null} when they can. */
-    private static @Nullable String edited(List<GraphBuild.ClassIndex> indexes) {
+    static @Nullable String edited(List<GraphBuild.ClassIndex> indexes) {
         Set<String> edited = new TreeSet<>();
         for (GraphBuild.ClassIndex c : indexes) edited.addAll(c.stale());
         if (edited.isEmpty()) return null;
@@ -669,7 +692,7 @@ final class GraphRename {
         }
         if (descs.isEmpty()) {
             List<String> shown = overloads.stream()
-                    .map(m -> name + "(" + String.join(",", paramNames(m.desc())) + ")")
+                    .map(m -> name + "(" + String.join(",", RenameNames.paramNames(m.desc())) + ")")
                     .toList();
             return new Target(
                     cls,
@@ -693,7 +716,7 @@ final class GraphRename {
     /** True when the written parameter types name {@code desc}'s: simple names, a lone capital a type variable. */
     static boolean paramsMatch(String written, String desc) {
         List<String> want = written.isBlank() ? List.of() : splitParams(written);
-        List<String> have = paramNames(desc);
+        List<String> have = RenameNames.paramNames(desc);
         if (want.size() != have.size()) return false;
         for (int i = 0; i < want.size(); i++) {
             String w = want.get(i);
@@ -731,41 +754,6 @@ final class GraphRename {
             type = words[1];
         int dot = type.lastIndexOf('.');
         return dot >= 0 ? type.substring(dot + 1) : type;
-    }
-
-    /** {@code (Ljava/lang/String;[I)V} → {@code [String, int[]]}. */
-    static List<String> paramNames(String desc) {
-        List<String> out = new ArrayList<>();
-        int i = 1;
-        while (i < desc.length() && desc.charAt(i) != ')') {
-            int dims = 0;
-            while (desc.charAt(i) == '[') {
-                dims++;
-                i++;
-            }
-            String t;
-            char c = desc.charAt(i);
-            if (c == 'L') {
-                int end = desc.indexOf(';', i);
-                t = simple(desc.substring(i + 1, end));
-                i = end + 1;
-            } else {
-                t = switch (c) {
-                    case 'Z' -> "boolean";
-                    case 'B' -> "byte";
-                    case 'C' -> "char";
-                    case 'S' -> "short";
-                    case 'I' -> "int";
-                    case 'J' -> "long";
-                    case 'F' -> "float";
-                    case 'D' -> "double";
-                    default -> String.valueOf(c);
-                };
-                i++;
-            }
-            out.add(t + "[]".repeat(dims));
-        }
-        return out;
     }
 
     /** Workspace supertypes, transitively, of a class, itself included. */
@@ -900,7 +888,8 @@ final class GraphRename {
                     if (m.name().equals(to)
                             && params.contains(m.desc().substring(0, m.desc().indexOf(')') + 1))) {
                         return "Not renamed: " + y.replace('/', '.') + " already declares " + to + "("
-                                + String.join(",", paramNames(m.desc())) + "), which " + old + " would collide with.";
+                                + String.join(",", RenameNames.paramNames(m.desc())) + "), which " + old
+                                + " would collide with.";
                     }
                 }
             }
@@ -946,13 +935,5 @@ final class GraphRename {
             out.add(String.valueOf(n));
         }
         return String.join(",", out);
-    }
-
-    static boolean identifier(String name) {
-        if (name.isEmpty() || !Character.isJavaIdentifierStart(name.charAt(0)) || KEYWORDS.contains(name)) return false;
-        for (int i = 1; i < name.length(); i++) {
-            if (!Character.isJavaIdentifierPart(name.charAt(i))) return false;
-        }
-        return true;
     }
 }

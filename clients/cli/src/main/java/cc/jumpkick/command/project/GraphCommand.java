@@ -99,8 +99,13 @@ public final class GraphCommand extends GroupCommand {
                         List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
                 new GraphOpCommand(
                         "rename",
-                        "Rename a method and every override, call and doc link to it",
-                        List.of(BUDGET),
+                        "Rename a method and every use; candidates applied with --also; proven by a compile",
+                        List.of(
+                                Opt.value(
+                                        "<ids>",
+                                        "Apply candidates the last rename listed: c1,c3,h1, declared, all.",
+                                        "--also"),
+                                BUDGET),
                         List.of(
                                 Param.of(
                                         "method", Arity.ONE, "Type.method (every overload) or Type.method(int,String)"),

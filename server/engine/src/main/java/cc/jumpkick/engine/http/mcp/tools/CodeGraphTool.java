@@ -59,20 +59,22 @@ public final class CodeGraphTool implements McpTool {
     }
 
     /**
-     * {@code rename}: a method renamed with every override, call, method reference and doc link the
-     * compiled classes record, in one call; the uses it cannot tell apart are listed. It writes, so
-     * it is not read-only.
+     * {@code rename}: a method, field (with its accessors), type or package renamed, or a type moved
+     * (a qualified {@code to}), in one call: every use a compiler bound is edited, the rest listed
+     * with ids that {@code also} applies, and the engine proves the edit (compile, same references)
+     * or undoes it. It writes, so it is not read-only.
      */
     public static McpTool rename() {
         return new CodeGraphTool(
                 new Spec(
                         "rename",
-                        "Rename Type.method (or Type.method(int,String)) to `to` with every override, call and doc"
-                                + " link; it then tests and guards, and says when the task is done.",
+                        "Rename Type.method (or Type.method(int,String)) to `to`; compiler-bound uses edited, also=c1"
+                                + " applies the rest.",
                         McpSchemas.withGoal(
                                 props(Map.of(
                                         "address", McpSchemas.string(),
                                         "to", McpSchemas.string(),
+                                        "also", McpSchemas.string(),
                                         "check", McpSchemas.bool())),
                                 List.of("address", "to"))),
                 "rename",
@@ -202,7 +204,7 @@ public final class CodeGraphTool implements McpTool {
     /** The operation's named settings a call carries, as {@code key=value}. */
     private List<String> options(McpCall in) {
         List<String> out = new ArrayList<>();
-        for (String key : List.of("view", "kind", "visibility", "extends", "implements", "annotated")) {
+        for (String key : List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also")) {
             String v = optional(in, key);
             if (v != null && !v.isBlank()) out.add(key + "=" + v);
         }

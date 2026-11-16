@@ -97,7 +97,8 @@ class GraphRenameTest {
         String answer = rename(root, "Range.contains", "includes");
 
         assertThat(answer)
-                .startsWith("Renamed Range.contains to includes: 1 declaration, 6 calls, 2 doc links, in 3 files.");
+                .startsWith(
+                        "Renamed Range.contains to includes: 1 declaration, 6 calls, 2 doc links, in 3 files; each one javac or the compiled classes bound.");
         assertThat(read(root, "Range.java"))
                 .contains("public boolean includes(T t)", "return includes(r.lo) && includes(r.hi);")
                 .contains("{@link #includes(Object)}", "{@link #containsRange(Range)}", "boolean containsRange(");
@@ -106,7 +107,10 @@ class GraphRenameTest {
                 .contains("hours.includes(now)", ".includes(now + 24)", "return r::includes;", "{@link Range#includes}")
                 .as("other types' contains stay, and the method that calls both is listed, not guessed at")
                 .contains("name.contains(\"x\") && letters.contains(name)", "names.contains(\"shop\")");
-        assertThat(answer).contains("Not renamed", "Shop.java", "letters.contains(name)");
+        assertThat(answer)
+                .containsPattern(
+                        "c\\d+ inferred, another contains is used here too, or the classes count it differently:"
+                                + " src/main/java/com/acme/shop/Shop.java:\\d+ \\| return name.contains\\(\"x\"\\) && letters.contains\\(name\\);");
     }
 
     @Test
@@ -146,10 +150,10 @@ class GraphRenameTest {
 
     @Test
     void recordIsAMethodNameButYieldAndKotlinKeywordsAreNot() {
-        assertThat(GraphRename.identifier("record")).isTrue();
-        assertThat(GraphRename.identifier("yield")).isFalse();
-        assertThat(GraphRename.identifier("when")).isFalse();
-        assertThat(GraphRename.identifier("class")).isFalse();
+        assertThat(RenameNames.identifier("record")).isTrue();
+        assertThat(RenameNames.identifier("yield")).isFalse();
+        assertThat(RenameNames.identifier("when")).isFalse();
+        assertThat(RenameNames.identifier("class")).isFalse();
     }
 
     @Test
@@ -218,7 +222,8 @@ class GraphRenameTest {
         String answer = rename(root, "FlatPricer.price(String)", "cost");
 
         assertThat(answer)
-                .startsWith("Renamed FlatPricer.price to cost: 2 declarations, 2 calls, in 3 files.")
+                .startsWith(
+                        "Renamed FlatPricer.price to cost: 2 declarations, 2 calls, in 3 files; each one javac or the compiled classes bound.")
                 .contains("no search needed. Test next: run(kind=test), or jk test.");
         assertThat(read(root, "Pricer.java")).contains("int cost(String sku);");
         assertThat(read(root, "FlatPricer.java"))
@@ -279,9 +284,9 @@ class GraphRenameTest {
         assertThat(GraphRename.paramsMatch("java.util.List<String>", "(Ljava/util/List;)V"))
                 .isTrue();
         assertThat(GraphRename.paramsMatch("int", "(J)V")).isFalse();
-        assertThat(GraphRename.identifier("includes")).isTrue();
-        assertThat(GraphRename.identifier("class")).isFalse();
-        assertThat(GraphRename.identifier("2x")).isFalse();
+        assertThat(RenameNames.identifier("includes")).isTrue();
+        assertThat(RenameNames.identifier("class")).isFalse();
+        assertThat(RenameNames.identifier("2x")).isFalse();
     }
 
     private static Map<String, String> sources(String... pairs) {
@@ -450,8 +455,8 @@ class GraphRenameTest {
         String answer = GraphService.run(w, request("Square.area", "size"), GraphBuild.Progress.NONE)
                 .text();
         assertThat(answer)
-                .contains("Not checked: these modules may call it but have no compiled classes.")
-                .contains("report/src/main/java/com/acme/report/Report.java", "L5| return s.area();")
+                .containsPattern("c\\d+ inferred, in a set with no compiled classes; edit it if it calls Square.area:")
+                .contains("report/src/main/java/com/acme/report/Report.java:5 | return s.area();")
                 .doesNotContain("other/src/main/java");
     }
 
@@ -509,7 +514,8 @@ class GraphRenameTest {
                         GraphBuild.Progress.NONE)
                 .text();
         assertThat(answer)
-                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.")
+                .startsWith(
+                        "Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files; each one javac or the compiled classes bound.")
                 .contains("Every use the compiled classes record is renamed. Not complete: the note below names the"
                         + " modules with no compiled classes. Test next: run(kind=test), or jk test.")
                 .doesNotContain("no search needed", "the task is done");
@@ -585,7 +591,7 @@ class GraphRenameTest {
                 request("Calc.doubled", "twice"),
                 GraphBuild.Progress.NONE);
         assertThat(answer.text())
-                .contains("Not checked: these modules may call it but have no compiled classes.")
+                .containsPattern("c\\d+ inferred, in a set with no compiled classes; edit it if it calls Calc.doubled:")
                 .contains("src/integration/java/com/acme/shop/CalcIT.java", "return c.doubled(2) == 4;")
                 .doesNotContain("the task is done");
         assertThat(answer.uncompiled()).containsExactly("src/integration");
@@ -682,7 +688,7 @@ class GraphRenameTest {
     void withoutAnIndexABodyCallingTwoMethodsOfTheNameIsListedNotGuessed(@TempDir Path dir) throws IOException {
         Path root = workspace(dir, SIZES);
         String answer = rename(root, "Box.size", "count");
-        assertThat(answer).contains("Not renamed", "Use.java");
+        assertThat(answer).contains("Judgment, left as they are", "Use.java");
         assertThat(read(root, "Use.java")).contains("b.size() + l.size()");
     }
 
@@ -694,8 +700,9 @@ class GraphRenameTest {
 
         String answer = rename(root, "Box.size", "count");
         assertThat(answer)
-                .startsWith("Renamed Box.size to count: 1 declaration, 1 call, in 2 files.")
-                .doesNotContain("Not renamed");
+                .startsWith(
+                        "Renamed Box.size to count: 1 declaration, 1 call, in 2 files; each one javac or the compiled classes bound.")
+                .doesNotContain("Judgment");
         assertThat(read(root, "Box.java")).contains("public int count() {");
         assertThat(read(root, "Use.java")).contains("b.count() + l.size()");
     }
@@ -706,7 +713,7 @@ class GraphRenameTest {
         index(root, "Box.java", sha(root, "Box.java"), BOX_SIZE, "d:int size()");
         index(root, "Use.java", "0".repeat(64), BOX_SIZE, "r:b.size()");
 
-        assertThat(rename(root, "Box.size", "count")).contains("Not renamed", "Use.java");
+        assertThat(rename(root, "Box.size", "count")).contains("Judgment, left as they are", "Use.java");
         assertThat(read(root, "Use.java")).contains("b.size() + l.size()");
     }
 

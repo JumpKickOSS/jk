@@ -210,10 +210,7 @@ public final class GraphService {
     }
 
     static Reply text(Workspace w, GraphBuild.Result build, Request r) throws IOException {
-        if ("rename".equals(r.op())) {
-            List<String> a = r.args();
-            return GraphRename.rename(w, build.graph(), arg(a, 0, "a method"), arg(a, 1, "the new name"), r.budget());
-        }
+        if ("rename".equals(r.op())) return RenameOp.run(w, build.graph(), r);
         if ("callers".equals(r.op())) {
             CodeGraph g = build.graph();
             Scope scope = Scope.of(r.scope(), r.modulePrefixes(), r.sourceSet(), g.modules());

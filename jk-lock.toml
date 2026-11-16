@@ -4,7 +4,7 @@ generated-by-build = "16e3e71601f7"
 generated-by-build-time = "2026-11-15T21:30:46Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.51.1"
-manifests-sha256 = "98e9637a206bfb6d8903b3e0f24f8a2b4d9df26a77fd67eed67f23c4aa367ef9"
+manifests-sha256 = "739bcc94589db816f195df1420a2abdcee1f670ac4304bf8a2ed956eafb4687e"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -64,7 +64,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:5b815a3b05960149a8310a288c2f5f3662fc833c1474079e76b31b2c4dc6d4b3"
 scopes   = ["main"]
 licenses = ["MIT"]
-members  = ["plugins/java-compiler"]
+members  = ["plugins/graph", "plugins/java-compiler"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.10.0",
 ]
@@ -98,7 +98,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:b51f27ada484f6aedfcf15ac86d27029e23422a4ebf50eef0e0a93e93a8b2fdf"
 scopes   = ["main"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/java-compiler"]
+members  = ["plugins/graph", "plugins/java-compiler"]
 deps = [
   "org.scala-lang:scala3-library_3:jar:@3.10.0",
 ]

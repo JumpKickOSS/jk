@@ -149,7 +149,39 @@ public final class GraphRunner {
             ClassIndexes indexes = req.noRefresh() ? ClassIndexes.NONE : classIndexes(root, cache, index);
             List<String> modules = req.noRefresh() ? List.of() : moduleRows(root);
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
+            boolean renames =
+                    "rename".equals(req.op()) && req.options().stream().noneMatch(o -> o.startsWith("phase="));
+            if (renames) Files.deleteIfExists(RenameCheck.proof(root));
             GraphAck ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
+            if (renames && ack.ok() && Files.isRegularFile(RenameCheck.proof(root))) {
+                String line = RenameCheck.prove(root, compiler, phase -> {
+                    List<String> options = new ArrayList<>(req.options());
+                    options.addAll(phase);
+                    GraphRequest check = new GraphRequest(
+                            req.dir(),
+                            req.op(),
+                            req.args(),
+                            req.mode(),
+                            req.depth(),
+                            req.budget(),
+                            req.contexts(),
+                            req.undirected(),
+                            req.maxHops(),
+                            req.relation(),
+                            false,
+                            false,
+                            req.scope(),
+                            req.modules(),
+                            req.sourceSet(),
+                            options);
+                    GraphAck a = ask(
+                            root, check, cache, classIndexes(root, cache, false), modules, prefixes, scripts, progress);
+                    return a.ok() ? a.text() : "the check could not run: " + a.error();
+                });
+                if (!line.isBlank()) ack = withText(ack, line);
+                // A rename undone has nothing to test: the test instruction would send an agent to the old tree.
+                if (line.startsWith("Rolled back")) ack = withoutTestStep(ack);
+            }
             if (!ack.ok() && GraphCacheKeys.GONE.equals(ack.error()) && !index) {
                 indexes = classIndexes(root, cache, true);
                 ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
@@ -355,6 +387,42 @@ public final class GraphRunner {
     static boolean mainSource(String rel, boolean compact) {
         String r = rel.replace('\\', '/');
         return compact ? r.startsWith("src/") || r.startsWith("resources/") : r.startsWith("src/main/");
+    }
+
+    /** {@code ack} with {@code line} added to its text, after a blank line. */
+    static GraphAck withText(GraphAck ack, String line) {
+        if (!ack.ok()) return ack;
+        return new GraphAck(
+                null,
+                ack.text().stripTrailing() + "\n" + line.strip(),
+                ack.nodes(),
+                ack.edges(),
+                ack.files(),
+                ack.extracted(),
+                ack.classes(),
+                ack.millis(),
+                ack.dir(),
+                ack.note(),
+                ack.uncompiled());
+    }
+
+    /** {@code ack} without the rename's test instruction line. */
+    static GraphAck withoutTestStep(GraphAck ack) {
+        if (!ack.ok()) return ack;
+        return new GraphAck(
+                null,
+                ack.text()
+                        .replaceAll("(?m)^Test (?:next|the [a-z ]+edited):.*\\R?", "")
+                        .replaceAll("(?m)^Every use the compiled classes record is renamed.*\\R?", ""),
+                ack.nodes(),
+                ack.edges(),
+                ack.files(),
+                ack.extracted(),
+                ack.classes(),
+                ack.millis(),
+                ack.dir(),
+                ack.note(),
+                ack.uncompiled());
     }
 
     /** {@code ack} with {@code line} added to its note. */
