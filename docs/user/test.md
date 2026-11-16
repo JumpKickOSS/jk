@@ -986,7 +986,10 @@ AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it s
 ```
 
 When the suite fails, what the code under test and its libraries looked up counts too, since an
-undeclared variable may be why. A suite whose JVMs ran without the probe (the test runner's own)
+undeclared variable may be why. The report then gives the failure first and these warnings after
+it; when there are more than five (a library that scans the whole environment, as Testcontainers
+and Flyway do, reads hundreds of names), they are one line, `W 1300 undeclared variables read by
+StoreTest, DriverDataSource, FileUtils, …: jk results`, and `jk results` lists them. A suite whose JVMs ran without the probe (the test runner's own)
 is judged from its test classes' bytecode instead, for `System.getenv("NAME")` and the two JUnit
 conditions:
 

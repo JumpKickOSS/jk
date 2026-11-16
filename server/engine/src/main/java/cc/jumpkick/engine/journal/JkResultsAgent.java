@@ -5,7 +5,6 @@ import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.lock.JumpKickPins;
-import cc.jumpkick.runtime.EnvReadReport;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
@@ -163,11 +162,15 @@ public final class JkResultsAgent {
         appendNotices(sb, record, reason);
         appendGuardWithheld(sb, record);
         appendMemoryEvents(sb, record);
-        appendEnvReads(sb, record, reason);
         if (!ok || reported) {
+            // The failure first: a library that scans the whole environment (Testcontainers, Flyway)
+            // reads a thousand names, and their warnings must not bury what failed.
             sb.append(body(record, loci, tests, opt));
             String delta = deltaLine(record);
             if (delta != null) sb.append(delta).append('\n');
+            JkResultsEnvReads.append(sb, record, reason, true);
+        } else {
+            JkResultsEnvReads.append(sb, record, reason, false);
         }
         if (opt.next == Next.ALL) JkResultsPrinted.append(sb, tests, record.dir());
         return sb.toString();
@@ -240,37 +243,6 @@ public final class JkResultsAgent {
     }
 
     private static final List<String> NOTICE_PREFIXES = List.of("jk: warning: ", "jk: notice: ");
-
-    /**
-     * On every verdict, each variable a suite read that its module does not give it, as a {@code W}
-     * line with the {@code [env]} declaration as its {@code FIX}: a green run whose test saw
-     * {@code null} says why. The first {@link #MAX_PROBLEMS} variables, then a count of the rest; a
-     * failed suite's {@code env-computed} line after them. The warning the headline already gives
-     * as the reason is not repeated.
-     */
-    private static void appendEnvReads(StringBuilder sb, BuildRecord record, @Nullable String headline) {
-        int shown = 0;
-        int more = 0;
-        for (BuildRecord.Diag d : record.diagnostics()) {
-            if (d == null || !EnvReadReport.UNDECLARED.equals(d.code()) || d.message() == null) continue;
-            EnvReadReport.Said said = EnvReadReport.split(JkResultsHints.firstLine(d.message()));
-            if (said.fix().isEmpty() || shown >= MAX_PROBLEMS) {
-                more += said.variables();
-                continue;
-            }
-            if (said.finding().equals(headline) || d.message().strip().equals(headline)) continue;
-            shown++;
-            sb.append("W ").append(one(said.finding(), record.dir())).append('\n');
-            sb.append("FIX ").append(one(said.fix(), record.dir())).append('\n');
-        }
-        if (more > 0) sb.append("W +").append(more).append(" more undeclared variables: jk results\n");
-        for (BuildRecord.Diag d : record.diagnostics()) {
-            if (d == null || !EnvReadReport.COMPUTED.equals(d.code()) || d.message() == null) continue;
-            String line = JkResultsHints.firstLine(d.message());
-            if (!line.isEmpty() && !line.equals(headline))
-                sb.append("W ").append(one(line, record.dir())).append('\n');
-        }
-    }
 
     /**
      * A memory wait, a heap retry, a worker far over its lease, and a warning that says why the next

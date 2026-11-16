@@ -69,6 +69,32 @@ class JkResultsAgentEnvTest {
                         + "W the suite failed and Config read the environment by a name JumpKick cannot see\n");
     }
 
+    /**
+     * A failed suite whose libraries scan the whole environment read hundreds of names: the failure
+     * comes first, and the reads are one line naming the first readers and the count.
+     */
+    @Test
+    void a_failed_run_puts_its_failure_first_and_many_reads_on_one_line() {
+        List<BuildRecord.Diag> diags = new ArrayList<>();
+        String[] readers = {"StoreTest", "DriverDataSource", "FileUtils", "Other"};
+        for (int i = 0; i < 8; i++) {
+            String name = "V" + i;
+            diags.add(envUndeclared(
+                    name,
+                    readers[Math.min(i, 3)] + " read " + name
+                            + ", which jk.toml does not declare; it saw no value. Add to [env] require: \"" + name
+                            + "\""));
+        }
+        diags.add(envUndeclared("", "1292 more undeclared variables read; jk results lists the first 8"));
+
+        String report = JkResultsAgent.render(record(false, new BuildRecord.Tests(1, 0, 1, 0), diags));
+
+        assertThat(report)
+                .startsWith("FAIL test rest-service")
+                .endsWith("W 1300 undeclared variables read by StoreTest, DriverDataSource, FileUtils, …: jk results\n")
+                .doesNotContain("FIX add to [env]");
+    }
+
     private static BuildRecord.Diag envUndeclared(String name, String message) {
         return new BuildRecord.Diag(
                 "warning",
