@@ -101,9 +101,14 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)) && hasContent(p.http()));
         try {
-            List<String> lines = runToWorkspaceFinish(p, ProtoSession.withShell(build(project, cache), shell));
+            // The JDK this test runs on, as a client sends its JAVA_HOME: typed, beside a shell that
+            // names none. Without it the build finds a JDK only by luck of what else has listed
+            // the host's JDKs in this JVM, and otherwise installs one from the feed.
+            String request = ProtoSession.withToolchain(
+                    build(project, cache), null, null, null, System.getProperty("java.home"));
+            List<String> lines = runToWorkspaceFinish(p, ProtoSession.withShell(request, shell));
             assertThat(Jsonl.bool(lines.getLast(), "success", false))
-                    .as("build")
+                    .as(() -> "the fixture build failed:\n" + errorEvents(lines))
                     .isTrue();
             BuildRecord record = settled(project);
             RunSource source = requireNonNull(record.source(), "source");
@@ -191,5 +196,10 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
             return found[0] != null;
         });
         return found[0];
+    }
+
+    /** The stream's error events and its finish line, so a fixture build that fails says why. */
+    private static String errorEvents(List<String> lines) {
+        return String.join("\n", lines.stream().filter(l -> l.contains("rror")).toList());
     }
 }
