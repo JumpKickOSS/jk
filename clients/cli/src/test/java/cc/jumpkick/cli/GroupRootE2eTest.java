@@ -69,8 +69,8 @@ class GroupRootE2eTest {
             // A member by name runs with what it depends on, and nothing else; an unknown name lists them.
             Run one = jk(home, root, "build", "-m", "acme-hello", "-O", "jsonl");
             assertThat(one.exit()).as(one.output()).isZero();
-            String greetingDir = "\"dir\":\"" + root.toRealPath().resolve("greeting");
-            String helloDir = "\"dir\":\"" + root.toRealPath().resolve("apps/hello");
+            String greetingDir = dirField(root.toRealPath().resolve("greeting"));
+            String helloDir = dirField(root.toRealPath().resolve("apps/hello"));
             assertThat(one.output().indexOf(greetingDir))
                     .as("the member a path dependency names runs first")
                     .isNotNegative()
@@ -78,7 +78,7 @@ class GroupRootE2eTest {
             assertThat(one.output())
                     .contains("\"type\":\"group-finish\"")
                     .contains("\"ok\":[\"greeting\",\"apps/hello\"]")
-                    .doesNotContain(root.toRealPath().resolve("libs").toString());
+                    .doesNotContain(inJson(root.toRealPath().resolve("libs")));
             Run unknown = jk(home, root, "build", "-m", "nope");
             assertThat(unknown.exit()).as(unknown.output()).isNotZero();
             assertThat(unknown.output())
@@ -268,6 +268,16 @@ class GroupRootE2eTest {
         Files.deleteIfExists(engineHome.resolve(EngineInstall.SHELF_NAME));
         assumeTrue(Files.isRegularFile(engineHome.resolve(EngineInstall.POINTER_NAME)), "no engine pointer");
         return home;
+    }
+
+    /** The JSONL {@code "dir"} field naming {@code dir}. */
+    private static String dirField(Path dir) {
+        return "\"dir\":\"" + inJson(dir);
+    }
+
+    /** {@code path} as a JSON string spells it: a Windows path's backslashes are escaped. */
+    private static String inJson(Path path) {
+        return path.toString().replace("\\", "\\\\");
     }
 
     private static void write(Path file, String text) throws IOException {
