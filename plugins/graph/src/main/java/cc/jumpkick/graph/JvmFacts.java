@@ -113,6 +113,7 @@ final class JvmFacts {
                 supertypes(c, owner.id(), rel, mentions);
                 annotations(c.annotations(), owner.id(), rel, nodes, edges, mentions);
                 JvmSql.entity(c, owner.id(), rel, nodes, edges, mentions);
+                boundFields(c, owner.id(), rel, nodes, edges);
                 for (FieldFacts f : c.fields()) {
                     if ((f.access() & ACC_SYNTHETIC) != 0) continue;
                     if ((f.access() & ACC_ENUM) != 0) {
@@ -485,6 +486,33 @@ final class JvmFacts {
             GraphNode anchor = Anchors.node(Anchors.ROUTE, r.name());
             nodes.merge(anchor.id(), anchor, Anchors::preferred);
             edges.add(Anchors.edge(from, Anchors.ROUTE, r.name(), Relations.DEFINES, Confidence.DECLARED, rel, 0));
+        }
+    }
+
+    /**
+     * A {@code @ConfigurationProperties} class's fields, each a declared use of the key Spring binds it
+     * to, {@code <prefix>.<field>} (the relaxed key makes {@code maxPerDay} the {@code max-per-day} a file
+     * sets), with the field named on the edge: an accessor's callers answer then names the key, and
+     * the variables that set it.
+     */
+    private static void boundFields(
+            ClassFacts c, String from, String rel, Map<String, GraphNode> nodes, List<GraphEdge> edges) {
+        String prefix = null;
+        for (AnnotationFacts a : c.annotations()) {
+            if (!a.typeName().endsWith(".ConfigurationProperties")) continue;
+            for (String attr : List.of("prefix", "value")) {
+                List<String> v = a.values().getOrDefault(attr, List.of());
+                if (!v.isEmpty() && !v.getFirst().isEmpty()) prefix = v.getFirst();
+            }
+        }
+        if (prefix == null) return;
+        for (FieldFacts f : c.fields()) {
+            if ((f.access() & (ACC_STATIC | ACC_SYNTHETIC)) != 0) continue;
+            String key = prefix + "." + f.name();
+            GraphNode anchor = Anchors.node(Anchors.CONFIG, key);
+            nodes.merge(anchor.id(), anchor, Anchors::preferred);
+            edges.add(GraphEdge.of(from, anchor.id(), Relations.USES, Confidence.DECLARED, rel, 0)
+                    .withContext("field " + f.name()));
         }
     }
 

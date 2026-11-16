@@ -79,7 +79,33 @@ class AnchorGraphTest {
                       max-items: 20
                       currency: EUR
                     """,
-            "src/main/resources/application-prod.properties", "shop.max-items=50\n");
+            "src/main/resources/application-prod.properties", "shop.max-items=50\n",
+            "src/main/java/org/springframework/boot/context/properties/ConfigurationProperties.java", """
+                    package org.springframework.boot.context.properties;
+
+                    @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME)
+                    public @interface ConfigurationProperties {
+                        String prefix() default "";
+                    }
+                    """,
+            "src/main/java/com/acme/shop/VisitLimits.java", """
+                    package com.acme.shop;
+
+                    @org.springframework.boot.context.properties.ConfigurationProperties(prefix = "clinic.visits")
+                    public class VisitLimits {
+                        private int maxPerDay = 10;
+
+                        public int getMaxPerDay() {
+                            return maxPerDay;
+                        }
+                    }
+                    """,
+            "compose.yaml", """
+                    services:
+                      app:
+                        environment:
+                          - CLINIC_VISITS_MAXPERDAY=40
+                    """);
 
     private static final Clock LATER = new Clock() {
         @Override
@@ -171,6 +197,19 @@ class AnchorGraphTest {
         assertThat(new GraphTools(g).callers("config:shop.currency", 1, 2000))
                 .startsWith("config:shop.currency: 1 definition, 1 use (1 inferred).")
                 .contains("Shop.currency()  src/main/java/com/acme/shop/Shop.java:13 (inferred)");
+    }
+
+    @Test
+    void aConfigurationPropertiesFieldUsesItsKeyAndItsGetterNamesTheVariableThatSetsIt(@TempDir Path dir)
+            throws IOException {
+        CodeGraph g = graph(dir);
+        assertThat(g.incident("config:clinic.visits.maxperday"))
+                .filteredOn(e -> e.relation().equals(Relations.USES))
+                .extracting(e -> g.display(e.source()), GraphEdge::confidence, GraphEdge::context)
+                .containsExactly(tuple("VisitLimits", Confidence.DECLARED, "field maxPerDay"));
+        assertThat(new GraphTools(g).callers("VisitLimits.getMaxPerDay", 1, 2000))
+                .contains("It maps to config:clinic.visits.maxperday (set by env:CLINIC_VISITS_MAXPERDAY), 1 use no"
+                        + " compiler checks: callers 'config:clinic.visits.maxperday' lists them.");
     }
 
     @Test

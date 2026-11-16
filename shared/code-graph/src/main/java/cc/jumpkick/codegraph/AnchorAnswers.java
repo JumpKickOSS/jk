@@ -94,7 +94,13 @@ final class AnchorAnswers {
             int uses = (int) edges(a, Relations.USES).stream()
                     .filter(e -> e.confidence() != Confidence.EXTRACTED)
                     .count();
+            List<String> setters = new ArrayList<>();
+            for (GraphEdge e : graph.incident(a)) {
+                if (e.relation().equals(Relations.BINDS) && e.target().equals(a))
+                    setters.add(GraphQuery.clean(e.source()));
+            }
             out.add((Anchors.ROUTE.equals(Anchors.kindOf(a)) ? "It defines " : "It maps to ") + GraphQuery.clean(a)
+                    + (setters.isEmpty() ? "" : " (set by " + String.join(", ", setters) + ")")
                     + ", "
                     + (uses == 0
                             ? "which nothing in the graph uses."
