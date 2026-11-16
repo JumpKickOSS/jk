@@ -89,6 +89,7 @@ public record EngineIdentity(String id, String os, Guest guest, String hostname,
         m.put("version", version);
         m.put("commit", Objects.requireNonNullElse(BuildIdentity.builtFrom(), ""));
         m.put("port", port);
+        m.put(FrontDoor.PROTOCOL_KEY, FrontDoor.PROTOCOL);
         return m;
     }
 

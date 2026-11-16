@@ -122,6 +122,19 @@ door is heard from (`FrontDoorRole`, `FrontDoorDuty`).
   `/api/front-door/step-aside` to the guest's band port; the guest closes its 8910 listener and the
   host's bind retries for 5 s (wslrelay lets go about a second later).
 
+### A WSL engine starts the Windows engine
+
+Before it pairs, a WSL guest with interop makes sure the Windows engine runs (`WindowsHostEngine`):
+the Windows JumpKick home through `cmd.exe` (`%JK_HOME%`, else `%USERPROFILE%\.jk`), `bin\jk.exe`
+through `wslpath`, then that Windows client's `jk engine status -O json`, and its `jk engine start` when it is stopped,
+never `java.exe`. A start is a change-log entry (`JumpKick for Windows` / `start`), which the change
+notices raise; never a question. `[wsl] host-engine = auto | off`; unset is auto except with
+`JK_HOME` set or under `CI`, so JumpKick's own suites in WSL never start the owner's Windows engine.
+Identity carries `frontDoor`, the protocol (`FrontDoor.PROTOCOL`, 1); after the start the guest
+reads Windows' 8910 identity through the PowerShell probe, and a host speaking another protocol
+(or none) is not paired with: the guest unpairs, keeps its band-port dashboard and logs which side
+to update. `JK_FRONT_DOOR_PROTOCOL` in the environment an engine starts in stands in another protocol, to try a mismatch.
+
 ## The engine never idles out
 
 **A resident engine does not self-terminate for being idle.** There is no idle timeout, and adding

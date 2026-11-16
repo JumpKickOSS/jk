@@ -196,15 +196,7 @@ final class FrontDoorDuty implements AutoCloseable {
             RANDOM.nextBytes(bytes);
             String nonce = Hashing.hex(bytes);
             f.setIdentityNonce(nonce);
-            String out;
-            try {
-                // Standard output alone: PowerShell writes progress and errors as CLIXML on stderr.
-                Processes.Captured c = Processes.capture(
-                        new ProcessBuilder(w.command(PowerShell.command(probeScript(f.port())))), VERIFY_WAIT);
-                out = c.timedOut() || c.exit() != 0 ? null : c.output();
-            } catch (IOException | RuntimeException e) {
-                out = null;
-            }
+            String out = probeWindows(w, f.port());
             FrontDoorRole.Reach r = reach(out, nonce);
             if (r == FrontDoorRole.Reach.UNREACHABLE) {
                 String answer = out == null ? "" : out.strip().replaceAll("\\s+", " ");
@@ -212,6 +204,21 @@ final class FrontDoorDuty implements AutoCloseable {
                         + answer.substring(0, Math.min(160, answer.length())));
             }
             return r;
+        }
+    }
+
+    /**
+     * What Windows' {@code 127.0.0.1:<port>} answers {@code GET /api/identity}, asked through
+     * PowerShell from this WSL guest ({@link #probeScript}); null when PowerShell could not run.
+     */
+    static @Nullable String probeWindows(WslWindowsDesktop windows, int port) {
+        try {
+            // Standard output alone: PowerShell writes progress and errors as CLIXML on stderr.
+            Processes.Captured c = Processes.capture(
+                    new ProcessBuilder(windows.command(PowerShell.command(probeScript(port)))), Seat.VERIFY_WAIT);
+            return c.timedOut() || c.exit() != 0 ? null : c.output();
+        } catch (IOException | RuntimeException e) {
+            return null;
         }
     }
 

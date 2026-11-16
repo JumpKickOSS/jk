@@ -123,17 +123,24 @@ public final class GuestPairing {
     static @Nullable Path windowsDir(Interop interop) {
         String state = windowsVar(interop, "JK_STATE_DIR");
         if (state == null) {
-            String home = windowsVar(interop, "JK_HOME");
-            if (home == null) {
-                String profile = windowsVar(interop, "USERPROFILE");
-                if (profile == null) return null;
-                home = profile + "\\.jk";
-            }
+            String home = windowsHome(interop);
+            if (home == null) return null;
             state = home + "\\state";
         }
         String mapped = interop.output(List.of("wslpath", "-u", state));
         if (mapped == null || mapped.isBlank()) return null;
         return Path.of(mapped.strip(), "engine", DIR);
+    }
+
+    /**
+     * The Windows user's JumpKick home as a Windows path: {@code %JK_HOME%}, else {@code
+     * %USERPROFILE%\.jk}; null when interop cannot say.
+     */
+    public static @Nullable String windowsHome(Interop interop) {
+        String home = windowsVar(interop, "JK_HOME");
+        if (home != null) return home;
+        String profile = windowsVar(interop, "USERPROFILE");
+        return profile == null ? null : profile + "\\.jk";
     }
 
     /** Windows' value of {@code name}, as {@code cmd.exe} expands it; null when unset. */

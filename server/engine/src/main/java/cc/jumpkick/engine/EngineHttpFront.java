@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.desktop.WslWindowsDesktop;
 import cc.jumpkick.engine.activity.Activity;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.decisions.DecisionAlerts;
@@ -29,6 +30,8 @@ import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.wire.EnginePaths;
@@ -286,6 +289,19 @@ public final class EngineHttpFront {
         EngineIdentity id = candidate.identity();
         if (id == null || id.guest().kind() != Guest.Kind.WSL || !id.guest().interop()) return;
         SessionContext.startVirtual("jk-engine-guest-pairing", () -> {
+            // The Windows engine is the front door: make sure it runs (JK-2JFBT).
+            long asked = Clock.SYSTEM.millis();
+            WindowsHostEngine.Outcome host = WindowsHostEngine.ensure(
+                    id.guest(),
+                    WindowsHostEngine.Mode.read(JkDirs.userConfigFile()),
+                    name -> {
+                        String v = ProcessEnv.get(name);
+                        return v != null ? v : System.getProperty("jk.env." + name);
+                    },
+                    WindowsHostEngine.SHELL);
+            if (host.state() != WindowsHostEngine.State.SKIPPED) {
+                log.accept("jk engine: " + host.line() + "; " + (Clock.SYSTEM.millis() - asked) + " ms in all");
+            }
             Path dir = GuestPairing.windowsDir();
             if (dir == null) {
                 log.accept("jk engine: could not reach the Windows home to pair with its engine");
@@ -297,6 +313,17 @@ public final class EngineHttpFront {
                 pairing = new Paired(dir, id.id());
                 // Stopped while interop answered: close() found no pairing to remove.
                 if (stopped) {
+                    unpair();
+                    return;
+                }
+                WslWindowsDesktop windows = DecisionAlerts.wslDesktop(id.guest());
+                String mismatch = windows == null
+                        ? null
+                        : WindowsHostEngine.mismatch(
+                                FrontDoorDuty.probeWindows(windows, JkHttpConfig.DEFAULT_PORT), FrontDoor.PROTOCOL);
+                if (mismatch != null) {
+                    // Serve this engine's own dashboard on its band port; the front door cannot show it.
+                    log.accept("jk engine: not pairing with the Windows engine: " + mismatch);
                     unpair();
                     return;
                 }

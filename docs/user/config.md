@@ -176,6 +176,17 @@ They are not project-overridable.
 applies with `[http] enabled = false` or `[mcp] enabled = false` too. Details: [MCP](mcp.md),
 [Web](web.md).
 
+## WSL
+
+```toml
+[wsl]
+# host-engine = "auto"     # a WSL engine starts the Windows engine (jk.exe engine start) when it is stopped; "off" never
+```
+
+Unset, a WSL engine starts the Windows engine except in a private home (`JK_HOME` set) or under
+`CI`; `auto` starts it there too. Each start is a change-log entry, never a question. Details:
+[Engine](engine.md#http-and-mcp).
+
 ## Decisions
 
 ```toml

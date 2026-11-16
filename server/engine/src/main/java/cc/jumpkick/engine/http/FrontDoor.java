@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
@@ -50,6 +51,24 @@ public final class FrontDoor {
 
     /** The path prefix an engine's pages and API are proxied under. */
     public static final String PREFIX = "/engines/";
+
+    /** The identity field that names the front-door protocol an engine speaks. */
+    public static final String PROTOCOL_KEY = "frontDoor";
+
+    /**
+     * The front-door protocol this engine speaks: pairing, the proxy, the control messages. A WSL
+     * guest pairs only with a host that speaks the same one. {@code JK_FRONT_DOOR_PROTOCOL} in the
+     * environment the engine starts in stands in another, to try a mismatch.
+     */
+    public static final int PROTOCOL = protocol(ProcessEnv.get("JK_FRONT_DOOR_PROTOCOL"));
+
+    static int protocol(@Nullable String override) {
+        try {
+            return override == null || override.isBlank() ? 1 : Integer.parseInt(override.strip());
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
 
     /** Where a guest takes the front door's control messages, each with the guest's own token. */
     public static final String CONTROL = "/api/front-door/";
