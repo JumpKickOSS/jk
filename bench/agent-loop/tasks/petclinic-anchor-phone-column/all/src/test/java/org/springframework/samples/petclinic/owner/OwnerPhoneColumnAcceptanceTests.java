@@ -12,7 +12,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-/** The owners table's telephone column is phone everywhere: every schema, the mapping, every report. */
+/** The owners table's telephone column is phone everywhere: every schema, seed and report, and the mapping. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 class OwnerPhoneColumnAcceptanceTests {
@@ -44,12 +44,16 @@ class OwnerPhoneColumnAcceptanceTests {
 	}
 
 	@Test
-	void theOtherDatabasesSchemasNameItPhone() throws Exception {
+	void noSqlFileNamesTheOldColumn() throws Exception {
+		Resource[] files = new PathMatchingResourcePatternResolver().getResources("classpath*:db/**/*.sql");
+		assertThat(files).hasSizeGreaterThan(6);
+		for (Resource r : files) {
+			String sql = r.getContentAsString(StandardCharsets.UTF_8).toLowerCase();
+			assertThat(sql).as(r.getURL().toString()).doesNotContainPattern("\\btelephone\\b");
+		}
 		for (String db : new String[] { "mysql", "postgres" }) {
-			String schema = new PathMatchingResourcePatternResolver().getResource("classpath:db/" + db + "/schema.sql")
-				.getContentAsString(StandardCharsets.UTF_8)
-				.toLowerCase();
-			assertThat(schema).as(db).contains("phone").doesNotContain("telephone");
+			assertThat(new PathMatchingResourcePatternResolver().getResource("classpath:db/" + db + "/schema.sql")
+				.getContentAsString(StandardCharsets.UTF_8)).as(db).containsIgnoringCase("phone");
 		}
 	}
 
