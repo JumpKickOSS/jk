@@ -41,9 +41,27 @@ class StampTokensTest {
         assertThat(StampTokens.reason(was, now)).isEqualTo("test source a/FooTest.java changed (+1 more)");
         assertThat(StampTokens.reason(tokens(SRC, CP), tokens(SRC, "cp:" + "99".repeat(32))))
                 .isEqualTo("runtime classpath changed");
-        assertThat(StampTokens.describe("x:read:bench/agent-loop/README.md")).isEqualTo("agent-loop/README.md changed");
+        assertThat(StampTokens.describe("x:read:bench/agent-loop/README.md"))
+                .isEqualTo("read file bench/agent-loop/README.md changed");
         assertThat(StampTokens.describe("x:worker:jk.test-runner.plugin.jar"))
                 .isEqualTo("worker jk.test-runner.plugin.jar changed");
+    }
+
+    /**
+     * A file a suite was found to read keys the whole selection: jk-core's repo-scanning tests re-ran
+     * 273 classes for an assertion edited in jk-resolver, read as "ExclusionLedgerTest.java changed".
+     * The reason names the file by its whole path and the suites it keys (JK-K4920).
+     */
+    @Test
+    void a_read_file_is_named_whole_with_the_suites_it_keys() {
+        String suites = "x:suites-run:test,integration";
+        var was = tokens(
+                SRC, CP, suites, "x:read:server/resolver/src/test/java/a/ExclusionLedgerTest.java=" + "11".repeat(32));
+        var now = tokens(
+                SRC, CP, suites, "x:read:server/resolver/src/test/java/a/ExclusionLedgerTest.java=" + "22".repeat(32));
+        assertThat(StampTokens.reason(was, now))
+                .isEqualTo("read file server/resolver/src/test/java/a/ExclusionLedgerTest.java changed"
+                        + " · keys suites test,integration");
     }
 
     @Test

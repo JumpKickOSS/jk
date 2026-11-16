@@ -117,8 +117,16 @@ public final class StampTokens {
         for (KeyAudit.Token t : moved) {
             if (t.name().startsWith(JK_TOKEN)) return JK_CHANGED;
         }
-        String first = describe(moved.getFirst().name());
-        return moved.size() == 1 ? first : first + " (+" + (moved.size() - 1) + " more)";
+        String name = moved.getFirst().name();
+        String first = describe(name);
+        String reason = moved.size() == 1 ? first : first + " (+" + (moved.size() - 1) + " more)";
+        // A file the suite was found to read keys the whole selection, wherever in the tree it is:
+        // say which suites it keys, so a repo-scanning test's reach is legible (JK-K4920).
+        if (name.startsWith("x:read:") || name.startsWith("x:list:")) {
+            String suites = suitesRun(now);
+            if (suites != null) reason += " · keys suites " + suites;
+        }
+        return reason;
     }
 
     /** One token's name as the reason reads it. */
@@ -127,8 +135,8 @@ public final class StampTokens {
         if (name.startsWith("main")) return "main classes changed";
         if (name.startsWith("res:")) return "test resources changed";
         if (name.startsWith("cp")) return "runtime classpath changed";
-        if (name.startsWith("x:read:")) return tail(name.substring(7)) + " changed";
-        if (name.startsWith("x:list:")) return "the listing of " + tail(name.substring(7)) + " changed";
+        if (name.startsWith("x:read:")) return "read file " + path(name.substring(7)) + " changed";
+        if (name.startsWith("x:list:")) return "the listing of read dir " + path(name.substring(7)) + " changed";
         if (name.startsWith("x:proc:")) return "program " + tail(name.substring(7)) + " changed";
         if (name.startsWith("x:worker:")) return workerChanged(upTo(name.substring(9), '='));
         if (name.startsWith("x:test-jdk")) return "test JDK changed";
@@ -149,6 +157,22 @@ public final class StampTokens {
     }
 
     /** A path token by its last two segments, which name the file without the whole path. */
+    /** The suites a token map's run ran ({@code x:suites-run:}), or null when it names none. */
+    private static @Nullable String suitesRun(Map<String, String> tokens) {
+        for (String name : tokens.keySet()) {
+            if (name.startsWith(SUITES_RUN)) return upTo(name.substring(SUITES_RUN.length()), '?');
+        }
+        return null;
+    }
+
+    private static final String SUITES_RUN = "x:suites-run:";
+
+    /** A token's whole path, workspace-relative as {@code SuiteReads.tokens} spells it, less its value. */
+    private static String path(String token) {
+        int eq = token.indexOf('=');
+        return eq > 0 ? token.substring(0, eq) : token;
+    }
+
     private static String tail(String path) {
         int eq = path.indexOf('=');
         String p = eq > 0 ? path.substring(0, eq) : path;
