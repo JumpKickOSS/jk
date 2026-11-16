@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -139,10 +140,7 @@ public final class ClassReads {
     /** One window: a class from its start to its finish, in epoch nanos. */
     record Window(String testClass, long start, long end) {}
 
-    /** One event of a recording, reduced to when it started and what it says. */
-    private record Seen(long at, Kind kind, String value) {}
-
-    private enum Kind {
+    enum Kind {
         READ,
         WRITE,
         PROCESS,
@@ -150,7 +148,16 @@ public final class ClassReads {
         HOST
     }
 
-    /** Every recording under {@code dir}, relative paths resolved against {@code cwd}, read and joined. */
+    /**
+     * Every recording under {@code dir}, relative paths resolved against {@code cwd}, read and joined.
+     *
+     * <p>A recording is read twice and never held: the first pass takes only the class windows (the
+     * runner commits a window when its class finishes, so a window follows the events it holds) and
+     * the files the JVM wrote; the second gives each event to its classes as it is read. What this
+     * keeps is bounded by the classes and the distinct files, never by the event count: a long suite
+     * records millions of file reads (jk-cli's, 6.2 million), and holding them all is what ran the
+     * engine out of heap.
+     */
     public static Attributed attribute(Path dir, Path cwd, Layout layout) {
         List<Path> recordings = new ArrayList<>();
         try {
@@ -167,101 +174,144 @@ public final class ClassReads {
         long events = 0;
         for (Path jfr : recordings) {
             List<Window> windows = new ArrayList<>();
-            List<Seen> seen = new ArrayList<>();
+            Set<Path> written = new HashSet<>();
             try (RecordingFile in = new RecordingFile(jfr)) {
-                while (in.hasMoreEvents()) read(in.readEvent(), windows, seen);
+                while (in.hasMoreEvents()) frame(in.readEvent(), cwd, windows, written);
             } catch (IOException | RuntimeException unreadable) {
                 Log.debug("class reads: recording unreadable at " + jfr, unreadable);
                 complete = false;
                 continue;
             }
-            events += seen.size();
-            join(windows, seen, cwd, layout, classes, pooled);
+            Join join = new Join(windows, written, cwd, layout, classes, pooled);
+            try (RecordingFile in = new RecordingFile(jfr)) {
+                while (in.hasMoreEvents()) read(in.readEvent(), join);
+            } catch (IOException | RuntimeException unreadable) {
+                Log.debug("class reads: recording unreadable at " + jfr, unreadable);
+                complete = false;
+            }
+            join.finish();
+            events += join.events;
         }
         return new Attributed(classes, pooled, complete, recordings.size(), events);
     }
 
-    private static void read(RecordedEvent e, List<Window> windows, List<Seen> seen) {
-        long at = nanos(e.getStartTime());
+    /** The first pass: the class windows and the files the JVM wrote. */
+    private static void frame(RecordedEvent e, Path cwd, List<Window> windows, Set<Path> written) {
         switch (e.getEventType().getName()) {
             case WINDOW_EVENT -> {
                 String cls = e.getString("testClass");
-                if (cls != null && !cls.isBlank()) windows.add(new Window(cls, at, nanos(e.getEndTime())));
+                if (cls != null && !cls.isBlank())
+                    windows.add(new Window(cls, nanos(e.getStartTime()), nanos(e.getEndTime())));
             }
-            case "jdk.FileRead" -> add(seen, at, Kind.READ, e.getString("path"));
-            case "jdk.FileWrite" -> add(seen, at, Kind.WRITE, e.getString("path"));
-            case "jdk.ProcessStart" -> add(seen, at, Kind.PROCESS, program(e.getString("command")));
-            case "jdk.NativeLibraryLoad" -> {
-                if (e.hasField("success") && !e.getBoolean("success")) return;
-                add(seen, at, Kind.NATIVE, e.getString("name"));
-            }
-            case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                String address = e.getString("address");
-                if (!local(address)) add(seen, at, Kind.HOST, SuiteReads.hostName(e.getString("host"), address));
+            case "jdk.FileWrite" -> {
+                String path = e.getString("path");
+                if (path != null && !path.isBlank()) resolved(cwd, path).ifPresent(written::add);
             }
             default -> {}
         }
     }
 
-    private static void add(List<Seen> seen, long at, Kind kind, @Nullable String value) {
-        if (value != null && !value.isBlank()) seen.add(new Seen(at, kind, value));
+    /** The second pass: one event, given to its classes as it is read. */
+    private static void read(RecordedEvent e, Join join) {
+        switch (e.getEventType().getName()) {
+            case "jdk.FileRead" -> join.accept(e, Kind.READ, e.getString("path"));
+            case "jdk.FileWrite" -> join.accept(e, Kind.WRITE, e.getString("path"));
+            case "jdk.ProcessStart" -> join.accept(e, Kind.PROCESS, program(e.getString("command")));
+            case "jdk.NativeLibraryLoad" -> {
+                if (e.hasField("success") && !e.getBoolean("success")) return;
+                join.accept(e, Kind.NATIVE, e.getString("name"));
+            }
+            case "jdk.SocketRead", "jdk.SocketWrite" -> {
+                String address = e.getString("address");
+                if (!local(address)) join.accept(e, Kind.HOST, SuiteReads.hostName(e.getString("host"), address));
+            }
+            default -> {}
+        }
     }
 
     /**
-     * Each event of one JVM given to the classes whose window holds it, or to the pool. A file the
-     * JVM wrote is its own output: a read of it is no input.
+     * One JVM's events given to the classes whose window holds each, or to the pool, one at a time. A
+     * file the JVM wrote is its own output: a read of it is no input.
      */
-    static void join(
-            List<Window> windows,
-            List<Seen> seen,
-            Path cwd,
-            Layout layout,
-            Map<String, Observation> classes,
-            Observation pooled) {
-        windows.sort(Comparator.comparingLong(Window::start));
-        long[] starts = new long[windows.size()];
-        long[] reach = new long[windows.size()]; // the latest end of any window up to i
-        for (int i = 0; i < windows.size(); i++) {
-            starts[i] = windows.get(i).start();
-            reach[i] = Math.max(windows.get(i).end(), i > 0 ? reach[i - 1] : Long.MIN_VALUE);
-            of(classes, windows.get(i).testClass());
+    static final class Join {
+        private final List<Window> windows;
+        private final long[] starts;
+        private final long[] reach; // the latest end of any window up to i
+        private final Set<Path> written;
+        private final Path cwd;
+        private final Layout layout;
+        private final Map<String, Observation> classes;
+        private final Observation pooled;
+        private final Map<Path, Boolean> exists = new HashMap<>();
+        /** Each code file read, by the first and the last time it was read. */
+        private final Map<Path, long[]> codeReads = new LinkedHashMap<>();
+
+        long events;
+
+        Join(
+                List<Window> windows,
+                Set<Path> written,
+                Path cwd,
+                Layout layout,
+                Map<String, Observation> classes,
+                Observation pooled) {
+            this.windows = new ArrayList<>(windows);
+            this.windows.sort(Comparator.comparingLong(Window::start));
+            this.written = written;
+            this.cwd = cwd;
+            this.layout = layout;
+            this.classes = classes;
+            this.pooled = pooled;
+            int n = this.windows.size();
+            starts = new long[n];
+            reach = new long[n];
+            for (int i = 0; i < n; i++) {
+                Window w = this.windows.get(i);
+                starts[i] = w.start();
+                reach[i] = Math.max(w.end(), i > 0 ? reach[i - 1] : Long.MIN_VALUE);
+                of(classes, w.testClass());
+            }
         }
-        Set<Path> written = new TreeSet<>();
-        for (Seen s : seen) {
-            if (s.kind() == Kind.WRITE) resolved(cwd, s.value()).ifPresent(written::add);
+
+        private void accept(RecordedEvent e, Kind kind, @Nullable String value) {
+            if (value != null && !value.isBlank()) accept(nanos(e.getStartTime()), kind, value);
         }
-        List<CodeRead> codeReads = new ArrayList<>();
-        Map<Path, Boolean> exists = new HashMap<>();
-        for (Seen s : seen) {
-            if (s.kind() == Kind.WRITE) continue;
-            List<Observation> into = new ArrayList<>();
-            for (int i = lastStartingBy(starts, s.at()); i >= 0 && reach[i] >= s.at(); i--) {
+
+        void accept(long at, Kind kind, String value) {
+            events++;
+            if (kind == Kind.WRITE) return;
+            List<Observation> into = new ArrayList<>(2);
+            for (int i = lastStartingBy(starts, at); i >= 0 && reach[i] >= at; i--) {
                 Window w = windows.get(i);
-                if (w.end() >= s.at()) into.add(of(classes, w.testClass()));
+                if (w.end() >= at) into.add(of(classes, w.testClass()));
             }
             if (into.isEmpty()) into.add(pooled);
-            switch (s.kind()) {
+            switch (kind) {
                 case PROCESS -> {
                     // The test JDK's own launcher (an agent attaching from a second JVM, as Mockito's
                     // does) is the JDK the key already holds, not a program the class depends on.
-                    if (!underJdk(s.value(), layout))
-                        into.forEach(o -> o.processes().add(s.value()));
+                    if (!underJdk(value, layout))
+                        into.forEach(o -> o.processes().add(value));
                 }
-                case HOST -> into.forEach(o -> o.hosts().add(s.value()));
+                case HOST -> into.forEach(o -> o.hosts().add(value));
                 case NATIVE -> {
-                    if (!underJdk(s.value(), layout))
-                        into.forEach(o -> o.nativeCode().add(s.value()));
+                    if (!underJdk(value, layout))
+                        into.forEach(o -> o.nativeCode().add(value));
                 }
                 case READ -> {
-                    Path p = resolved(cwd, s.value()).orElse(null);
-                    if (p == null || written.contains(p)) continue;
+                    Path p = resolved(cwd, value).orElse(null);
+                    if (p == null || written.contains(p)) return;
                     switch (classify(p, layout)) {
                         case LOADED -> {
                             String cls = className(p, layout);
                             if (cls != null) into.forEach(o -> o.loaded().add(cls));
                         }
                         case OS -> into.forEach(o -> o.osPaths().add(p));
-                        case CODE -> codeReads.add(new CodeRead(s.at(), p));
+                        case CODE -> {
+                            long[] span = codeReads.computeIfAbsent(p, k -> new long[] {at, at});
+                            span[0] = Math.min(span[0], at);
+                            span[1] = Math.max(span[1], at);
+                        }
                         case DATA -> {
                             if (exists.computeIfAbsent(p, Files::exists))
                                 into.forEach(o -> o.reads().add(p));
@@ -272,20 +322,25 @@ public final class ClassReads {
                 case WRITE -> {}
             }
         }
-        // A code file read by the time a class finished is one its JVM's loaders may serve it from.
-        for (CodeRead c : codeReads) {
-            boolean any = false;
-            for (Window w : windows) {
-                if (c.at() <= w.end()) {
-                    of(classes, w.testClass()).code().add(c.path());
-                    any = true;
+
+        /**
+         * A code file read by the time a class finished is one its JVM's loaders may serve it from:
+         * the classes a file's first read reaches are every class any read of it reaches, and it is
+         * the pool's when its last read came after every window closed.
+         */
+        void finish() {
+            long lastEnd = Long.MIN_VALUE;
+            for (Window w : windows) lastEnd = Math.max(lastEnd, w.end());
+            for (Map.Entry<Path, long[]> c : codeReads.entrySet()) {
+                long first = c.getValue()[0];
+                for (Window w : windows) {
+                    if (first <= w.end()) of(classes, w.testClass()).code().add(c.getKey());
                 }
+                if (c.getValue()[1] > lastEnd) pooled.code().add(c.getKey());
             }
-            if (!any) pooled.code().add(c.path());
+            codeReads.clear();
         }
     }
-
-    private record CodeRead(long at, Path path) {}
 
     private static Observation of(Map<String, Observation> classes, String testClass) {
         return classes.computeIfAbsent(testClass, c -> Observation.empty());
