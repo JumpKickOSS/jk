@@ -7,7 +7,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ClasspathFingerprint;
-import cc.jumpkick.task.JdkToolchain;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -19,71 +18,53 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The JDK the suite runs on is a run-tests stamp input. A module with no JDK pin compiles on jk's
- * own runtime, so its test compile's key never names the JDK its test JVM gets (the module's
- * resolved JDK): a green marker must not replay once that JDK changes.
+ * A run-tests stamp names the suite's Java level, not the JDK it runs on (JK-74S9K): the module's
+ * {@code java}, else the major of its test JDK, so the level in the key is always concrete. The JDK
+ * that ran is the green marker's TOOLCHAIN, matched by the reader's policy (same major by default),
+ * so a patch, a vendor or a platform keeps the stamp and the policy decides; the level moves it.
  */
 @DisabledOnOs(OS.WINDOWS)
 class TestStampJdkTest {
 
     @Test
-    void a_patch_update_of_the_jdk_the_tests_run_on_moves_the_stamp(@TempDir Path tmp) throws Exception {
+    void a_patch_a_vendor_and_a_platform_keep_the_stamp(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("m"));
-        JkBuild project = project(module);
-        // A stable <vendor>-<major> home updated in place: the path stays, the JDK does not.
-        Path home = fakeJdk(tmp.resolve("temurin-25"), "25.0.1");
-        List<String> before = extras(project, module, home);
-        assertThat(extras(project, module, home))
-                .as("an unchanged JDK costs nothing new")
-                .isEqualTo(before);
-
-        fakeJdk(home, "25.0.10");
-        assertThat(extras(project, module, home))
-                .as("the suite ran on 25.0.1; on 25.0.10 its green marker must not replay")
-                .isNotEqualTo(before);
+        JkBuild project = project(module, "java = 25\n");
+        List<String> base = extras(project, module, fakeJdk(tmp.resolve("t25"), "25.0.1"));
+        assertThat(base).contains("java:25").noneMatch(t -> t.startsWith("test-jdk:"));
+        assertThat(extras(project, module, fakeJdk(tmp.resolve("t25b"), "25.0.10")))
+                .isEqualTo(base);
+        assertThat(extras(project, module, fakeJdk(tmp.resolve("g25"), "25.0.1", "GraalVM Community")))
+                .isEqualTo(base);
+        assertThat(extras(
+                        project,
+                        module,
+                        fakeJdk(tmp.resolve("mac"), "25.0.1", "Eclipse Adoptium", "25.0.1+8-LTS", "Darwin", "aarch64")))
+                .isEqualTo(base);
     }
 
     @Test
-    void another_jdk_moves_the_stamp_and_the_same_jdk_under_another_path_does_not(@TempDir Path tmp) throws Exception {
+    void the_level_moves_the_stamp_and_no_level_keys_the_test_jdks_major(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("m"));
-        JkBuild project = project(module);
-        Path one = fakeJdk(tmp.resolve("one"), "25.0.2");
-        Path two = fakeJdk(tmp.resolve("two"), "25.0.2");
-        Path graal = fakeJdk(tmp.resolve("graal"), "25.0.2", "GraalVM Community");
-        assertThat(extras(project, module, two)).isEqualTo(extras(project, module, one));
-        assertThat(extras(project, module, graal)).isNotEqualTo(extras(project, module, one));
-    }
+        Path jdk25 = fakeJdk(tmp.resolve("t25"), "25.0.1");
+        Path jdk27 = fakeJdk(tmp.resolve("t27"), "27.0.1");
+        List<String> at21 = extras(project(module, "java = 21\n"), module, jdk25);
+        List<String> at25 = extras(project(module, "java = 25\n"), module, jdk25);
+        assertThat(at21).contains("java:21").isNotEqualTo(at25);
 
-    /**
-     * The stamp names the JDK the suite runs on by vendor, version and build, not by the {@code
-     * release} file, which also names the OS, architecture and libc it was built for: a green
-     * suite on one platform is the same result on another (its platform is the record's HOST), and
-     * a build of the same version is not.
-     */
-    @Test
-    void one_jdk_build_on_two_platforms_stamps_alike_and_another_build_does_not(@TempDir Path tmp) throws Exception {
-        Path module = Files.createDirectories(tmp.resolve("m"));
-        JkBuild project = project(module);
-        Path linux = fakeJdk(tmp.resolve("linux"), "25.0.5", "Eclipse Adoptium", "25.0.5+11-LTS", "Linux", "x86_64");
-        Path mac = fakeJdk(tmp.resolve("mac"), "25.0.5", "Eclipse Adoptium", "25.0.5+11-LTS", "Darwin", "aarch64");
-        Path rebuilt =
-                fakeJdk(tmp.resolve("rebuilt"), "25.0.5", "Eclipse Adoptium", "25.0.5+12-LTS", "Linux", "x86_64");
-        assertThat(extras(project, module, mac))
-                .as("the same JDK build on macOS/aarch64 as on Linux/x86_64")
-                .isEqualTo(extras(project, module, linux));
-        assertThat(extras(project, module, rebuilt))
-                .as("build 12 of 25.0.5 is another runtime than build 11")
-                .isNotEqualTo(extras(project, module, linux));
+        JkBuild levelless = project(module, "");
+        assertThat(extras(levelless, module, jdk25)).contains("java:25");
+        assertThat(extras(levelless, module, jdk27)).contains("java:27");
     }
 
     @Test
-    void the_module_on_its_own_stamps_the_jdk_its_resolution_finds(@TempDir Path tmp) throws Exception {
+    void the_module_on_its_own_stamps_its_level(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("m"));
-        JkBuild project = project(module);
+        JkBuild project = project(module, "java = 25\n");
         TestStampInputs.Facts facts = TestStampInputs.Facts.of(module, project);
         assertThat(facts.javaHome()).isEqualTo(JavaHomes.resolveJavaHome(module));
         assertThat(TestStampInputs.of(facts, ClasspathFingerprint.ON_DISK).extras())
-                .contains("test-jdk:" + JdkToolchain.token(facts.javaHome()));
+                .contains("java:25");
     }
 
     /** The module's stamp extras with its tests run on {@code javaHome}, as the live run and the forecast hand it. */
@@ -139,13 +120,12 @@ class TestStampJdkTest {
         return home;
     }
 
-    private static JkBuild project(Path dir) throws Exception {
+    private static JkBuild project(Path dir, String level) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "m"
                 version = "1.0.0"
-                java    = 25
-                """);
+                """ + level);
         return JkBuildParser.parse(dir.resolve("jk.toml"));
     }
 }

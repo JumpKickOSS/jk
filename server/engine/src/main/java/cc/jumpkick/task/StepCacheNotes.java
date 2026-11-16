@@ -59,6 +59,25 @@ final class StepCacheNotes {
         if (n != null) n.stored(key, bytes, reason, changed);
     }
 
+    /**
+     * The records of {@code key} were all made by a JDK this build's policy does not take; {@code
+     * note} says which and the ways out, and becomes the miss reason if the step goes on to run.
+     */
+    static void toolchainMismatch(String key, String note) {
+        Note n = StepScope.local(NOTE);
+        if (n != null) n.mismatch(note);
+    }
+
+    /**
+     * The record the step took for {@code key} was made by another JDK than this build uses;
+     * {@code note} says which and where ("made on temurin-25.0.5, linux-x86_64; this build uses …"),
+     * and is the step's output line and its hit's {@code changed}.
+     */
+    static void madeOn(String key, String note) {
+        Note n = StepScope.local(NOTE);
+        if (n != null) n.madeOn(note);
+    }
+
     /** The step derived {@code key} from {@code tokens}, named. */
     static void derived(String key, Map<String, String> tokens) {
         Note n = StepScope.local(NOTE);
@@ -75,6 +94,8 @@ final class StepCacheNotes {
         Note n = StepScope.local(NOTE);
         StepCache c = n == null ? null : n.toStepCache();
         if (c != null) ctx.cache(c);
+        String madeOn = n == null ? null : n.madeOnNote();
+        if (madeOn != null) ctx.output(madeOn);
     }
 
     /** One step's notes; steps hand work to pool threads, so every change is under the note's lock. */
@@ -88,6 +109,21 @@ final class StepCacheNotes {
         private boolean refused;
         private long producerMillis = -1;
         private final Map<String, Map<String, String>> derived = new HashMap<>();
+
+        private @Nullable String mismatch;
+        private @Nullable String madeOn;
+
+        synchronized void mismatch(String note) {
+            if (mismatch == null) mismatch = note;
+        }
+
+        synchronized void madeOn(String note) {
+            if (madeOn == null) madeOn = note;
+        }
+
+        synchronized @Nullable String madeOnNote() {
+            return outcome == StepCache.Outcome.MISS ? null : madeOn;
+        }
 
         synchronized void derived(String key, Map<String, String> tokens) {
             derived.put(key, Map.copyOf(tokens));
@@ -113,8 +149,9 @@ final class StepCacheNotes {
             if (outcome != StepCache.Outcome.MISS) {
                 outcome = StepCache.Outcome.MISS;
                 this.key = key;
-                this.reason = reason;
-                this.changed = changed;
+                // A miss only because the records on offer came from another JDK says so.
+                this.reason = mismatch != null ? StepCache.Reason.TOOLCHAIN_CHANGED : reason;
+                this.changed = mismatch != null ? mismatch : changed;
             }
         }
 
@@ -129,7 +166,9 @@ final class StepCacheNotes {
         synchronized @Nullable StepCache toStepCache() {
             if (outcome == null) return null;
             long producer = outcome == StepCache.Outcome.MISS ? -1 : producerMillis;
-            return new StepCache(outcome, reason, changed, key, bytesIn, bytesOut, producer);
+            // A hit made by another JDK says where it came from in changed; a miss its reason.
+            String said = outcome == StepCache.Outcome.MISS ? changed : madeOn;
+            return new StepCache(outcome, reason, said, key, bytesIn, bytesOut, producer);
         }
     }
 }

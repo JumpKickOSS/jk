@@ -26,10 +26,10 @@ import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.BuildInfoKeys;
 import cc.jumpkick.task.ClasspathFingerprint;
-import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
+import cc.jumpkick.task.ToolchainPolicy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -237,7 +237,16 @@ public record TestStampInputs(
                 return null; // fail open: retest
             }
         }
-        return TestStamp.computeKey(sources, mainClasses, main, resources, runtimeClasspath, extras, identity);
+        String key = TestStamp.computeKey(sources, mainClasses, main, resources, runtimeClasspath, extras, identity);
+        if (key != null) {
+            ToolchainPolicy.expect(key, facts.javaHome(), level(), ToolchainPolicy.tiedToMajor(jvmArgs), facts.dir());
+        }
+        return key;
+    }
+
+    /** The suite's Java level: the module's {@code java}, else the major of the JDK its tests run on. */
+    int level() {
+        return ToolchainPolicy.level(facts.project().project().javaRelease(), facts.javaHome());
     }
 
     /**
@@ -266,10 +275,10 @@ public record TestStampInputs(
         String node = NodeTestStamp.nodeTestToken(facts.project(), facts.dir());
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
-        // The JDK the suite runs on decides what it computes; a patch update in place moves it too.
-        // Its toolchain (vendor, version, build), never its OS or architecture: a test result's
-        // platform is its record's HOST, not an input (architecture.md, the key table).
-        extras.add("test-jdk:" + JdkToolchain.token(facts.javaHome()));
+        // The suite's Java level, not the JDK it ran on: that JDK is the marker's TOOLCHAIN and a
+        // lookup dimension (ToolchainPolicy, same major by default), as a test result's platform is
+        // its record's HOST (architecture.md, the key table).
+        extras.add("java:" + level());
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
     }
 

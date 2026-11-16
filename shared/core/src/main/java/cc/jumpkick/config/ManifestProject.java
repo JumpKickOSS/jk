@@ -35,6 +35,7 @@ public final class ManifestProject {
             "jdk",
             "jdk-vendor",
             "jdk-version",
+            "jdk-cache",
             "node",
             "java",
             "kotlin",

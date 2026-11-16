@@ -112,11 +112,12 @@ class JdkTokenPortabilityTest {
     /**
      * One locked module under two checkout roots, two user homes (its classpath jar and kotlinc's
      * worker in each home's store) and two JDK homes of one build that differ in OS, architecture,
-     * libc and build host: javac, kotlinc and package-jar keys are equal. A patch apart, the compile keys
-     * differ and the package key, which names the classes, does not.
+     * libc and build host: javac, kotlinc and package-jar keys are equal. A patch apart they are equal
+     * too: compile keys name the Java level, and the JDK is the record's TOOLCHAIN, which the reader's
+     * policy matches (JK-74S9K).
      */
     @Test
-    void a_module_keys_alike_on_two_machines_and_apart_across_a_patch(@TempDir Path tmp) throws IOException {
+    void a_module_keys_alike_on_two_machines_and_across_a_patch(@TempDir Path tmp) throws IOException {
         Machine one = machine(tmp.resolve("one"), "work/app", LINUX, "25.0.5");
         Machine two = machine(tmp.resolve("two"), "src/nested/app", MAC, "25.0.5");
         Machine patched = machine(tmp.resolve("three"), "app", LINUX, "25.0.4");
@@ -125,8 +126,8 @@ class JdkTokenPortabilityTest {
         assertThat(kotlincKey(one)).as("kotlinc").isEqualTo(kotlincKey(two));
         assertThat(jarKey(one)).as("package-jar").isEqualTo(jarKey(two));
 
-        assertThat(javacKey(patched)).as("javac across a patch").isNotEqualTo(javacKey(one));
-        assertThat(kotlincKey(patched)).as("kotlinc across a patch").isNotEqualTo(kotlincKey(one));
+        assertThat(javacKey(patched)).as("javac across a patch").isEqualTo(javacKey(one));
+        assertThat(kotlincKey(patched)).as("kotlinc across a patch").isEqualTo(kotlincKey(one));
         assertThat(jarKey(patched)).as("package-jar across a patch").isEqualTo(jarKey(one));
     }
 

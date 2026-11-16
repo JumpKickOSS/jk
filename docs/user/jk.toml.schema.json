@@ -55,6 +55,23 @@
     "jdk-version": {
       "type": "string"
     },
+    "jdk-cache": {
+      "type": "string",
+      "enum": ["required"],
+      "description": "With a required jdk pin (jdk = \"=corretto-21\"), only cached results made on a JDK the pin admits serve this project (the record's TOOLCHAIN); without it the pin chooses the JDK and the cache takes results by [cache] jdk-match."
+    },
+    "cache": {
+      "type": "object",
+      "description": "How this project takes cached compile and test results made on other JDKs.",
+      "properties": {
+        "jdk-match": {
+          "type": "string",
+          "enum": ["level", "major", "build"],
+          "description": "Which JDKs' cached results serve a compile or a suite: \"major\" (default) any vendor and patch of the major this build uses, \"level\" any JDK at or above the module's java level, \"build\" only the same vendor, version and build. JK_CACHE_JDK_MATCH overrides it for one shell; ~/.jk/config.toml's [cache] jdk-match is the user's default."
+        }
+      },
+      "additionalProperties": false
+    },
     "java": {
       "description": "Java release the sources target.",
       "oneOf": [

@@ -62,6 +62,7 @@ public final class ManifestBuild {
     static Set<String> coreTables() {
         Set<String> out = new HashSet<>(Set.of(
                 "repositories",
+                "cache",
                 "profiles",
                 "features",
                 "workspace",

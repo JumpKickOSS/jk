@@ -100,7 +100,14 @@ public final class ActionKey {
         appendSources(sb, request.sources());
         for (String line : classpathTokens) sb.append(line).append('\n');
         KeyAudit.tapLines(sb);
-        return Hashing.sha256Hex(sb.toString());
+        String key = Hashing.sha256Hex(sb.toString());
+        ToolchainPolicy.expect(
+                key,
+                request.compilerHome(),
+                ToolchainPolicy.level(request.release(), request.compilerHome()),
+                ToolchainPolicy.tiedToMajor(request.extraOptions()),
+                request.outputDir());
+        return key;
     }
 
     /**
@@ -195,6 +202,9 @@ public final class ActionKey {
     public static String javacOptionsDigest(CompileRequest request) throws IOException {
         StringBuilder sb = new StringBuilder();
         appendJavacOptions(sb, request);
+        // The stamp is this checkout's own: a classes tree javac of another JDK wrote is stale here
+        // even where the key, which names the level, would let the cache serve it.
+        sb.append("jdk:").append(JdkToolchain.token(request.compilerHome())).append('\n');
         KeyAudit.tapLines(sb);
         return Hashing.sha256Hex(sb.toString());
     }
@@ -202,13 +212,13 @@ public final class ActionKey {
     private static void appendJavacOptions(StringBuilder sb, CompileRequest request) throws IOException {
         sb.append("release:").append(request.release()).append('\n');
         sb.append("encoding:").append(SOURCE_ENCODING).append('\n');
-        // The JDK that runs javac is a compile INPUT, not a consequence of --release: the compiler
-        // and the platform classes it compiles against (its ct.sym for --release) come from it.
-        // That is jk's runtime for a level it can emit and the module's own JDK for a pin or a
-        // newer level (CompilerJdk), so it is that home, not the module's resolved JDK, the key
-        // names: a level-only module whose JDK moves compiles the same bytes on the same runtime,
-        // and pinning jdk = 21 moves the key because javac 21 is a different compiler.
-        sb.append("jdk:").append(JdkToolchain.token(request.compilerHome())).append('\n');
+        // The module's Java level, not the JDK that ran javac: the JDK is the record's TOOLCHAIN
+        // and a lookup dimension (ToolchainPolicy), so a record from another vendor or patch of
+        // the same major serves by default and one from another major only when the reader allows.
+        // Always concrete: a module with no --release compiles for its compiler's own major.
+        sb.append("java:")
+                .append(ToolchainPolicy.level(request.release(), request.compilerHome()))
+                .append('\n');
         // In argv order, never sorted: options pair with the value that follows them, so
         // `--add-modules a --limit-modules b` and `--add-modules b --limit-modules a` hold the
         // same words and are different compiles.
@@ -279,7 +289,14 @@ public final class ActionKey {
             appendCpToken(sb, "worker:", entry);
         }
         KeyAudit.tapLines(sb);
-        return Hashing.sha256Hex(sb.toString());
+        String key = Hashing.sha256Hex(sb.toString());
+        ToolchainPolicy.expect(
+                key,
+                request.javaHome(),
+                ToolchainPolicy.level(request.jvmTarget(), request.javaHome()),
+                ToolchainPolicy.tiedToMajor(request.extraArgs()),
+                request.outputDir());
+        return key;
     }
 
     /**
@@ -301,11 +318,11 @@ public final class ActionKey {
 
     private static void appendKotlincOptions(StringBuilder sb, KotlincRequest request) throws IOException {
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
-        // The project JDK is a compile INPUT, not a consequence of jvmTarget: KotlincDriver hands
-        // it to kotlinc as -jdk-home, and that is where the platform classes a cross-compile links
-        // against come from. Switching jdk = 17 to 21 leaves jvmTarget alone, so without this the
-        // key never moves and the build restores bytecode linked against the old platform.
-        sb.append("jdk:").append(JdkToolchain.token(request.javaHome())).append('\n');
+        // The module's Java level; the JDK kotlinc links against (-jdk-home) is the record's
+        // TOOLCHAIN and a lookup dimension (ToolchainPolicy), as for javac.
+        sb.append("java:")
+                .append(ToolchainPolicy.level(request.jvmTarget(), request.javaHome()))
+                .append('\n');
         // -module-name reshapes internal-member mangling in the output.
         if (request.moduleName() != null) {
             sb.append("moduleName:").append(request.moduleName()).append('\n');
@@ -396,9 +413,10 @@ public final class ActionKey {
         sb.append("task:").append(taskId).append('\n');
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
-        // groovyc runs on, and links against the platform classes of, the engine's own JDK.
-        sb.append("jdk:")
-                .append(JdkToolchain.token(JavaHomes.runningJavaHome()))
+        // The module's Java level; the engine's own JDK, which groovyc runs on, is the record's
+        // TOOLCHAIN and a lookup dimension (ToolchainPolicy).
+        sb.append("java:")
+                .append(ToolchainPolicy.level(request.jvmTarget(), JavaHomes.runningJavaHome()))
                 .append('\n');
         sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
         for (String token : request.env()) sb.append(token).append('\n');
@@ -409,7 +427,14 @@ public final class ActionKey {
         appendSources(sb, GroovycInputs.compileSet(request));
         for (String line : groovycClasspathTokens(request, cp)) sb.append(line).append('\n');
         KeyAudit.tapLines(sb);
-        return Hashing.sha256Hex(sb.toString());
+        String key = Hashing.sha256Hex(sb.toString());
+        ToolchainPolicy.expect(
+                key,
+                JavaHomes.runningJavaHome(),
+                ToolchainPolicy.level(request.jvmTarget(), JavaHomes.runningJavaHome()),
+                false,
+                request.outputDir());
+        return key;
     }
 
     /**

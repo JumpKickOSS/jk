@@ -22,7 +22,8 @@ class RecordToolchainTest {
 
     @Test
     void a_compile_record_names_its_toolchain_and_no_target() {
-        ActionRecordText.Meta meta = RecordToolchain.withPlatform(META, Map.of("src/A.java", "abc", "jdk", TEMURIN));
+        ActionRecordText.Meta meta =
+                RecordToolchain.withPlatform(META, "k", Map.of("src/A.java", "abc", "jdk", TEMURIN));
         assertThat(meta.toolchain()).isEqualTo(TEMURIN);
         assertThat(meta.target()).isNull();
         assertThat(meta.host()).isEqualTo("linux-x86_64");
@@ -32,14 +33,14 @@ class RecordToolchainTest {
     void a_native_image_record_names_its_target() {
         String tokens = String.join(
                 ";", "cp:abc", "graal:" + TEMURIN, RecordToolchain.TARGET_TOKEN + "macos-aarch64", "main:app.Main");
-        ActionRecordText.Meta meta = RecordToolchain.withPlatform(META, Map.of("inputs", tokens));
+        ActionRecordText.Meta meta = RecordToolchain.withPlatform(META, "k", Map.of("inputs", tokens));
         assertThat(meta.toolchain()).isEqualTo(TEMURIN);
         assertThat(meta.target()).isEqualTo("macos-aarch64");
     }
 
     @Test
     void a_record_with_no_toolchain_is_left_as_it_was() {
-        assertThat(RecordToolchain.withPlatform(META, Map.of("inputs", "classes:dir:abc;main:App")))
+        assertThat(RecordToolchain.withPlatform(META, "k", Map.of("inputs", "classes:dir:abc;main:App")))
                 .isSameAs(META);
     }
 

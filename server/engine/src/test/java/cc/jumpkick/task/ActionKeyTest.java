@@ -13,7 +13,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Settled;
-import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.BuildIdentity;
@@ -654,8 +653,8 @@ class ActionKeyTest {
         // It is in the preimage so that the day the pin moves, every artifact decoded under the old
         // charset stops being a cache hit. A source- and classpath-free request keeps the preimage
         // free of temp-dir paths, so the thing being hashed can be spelled out in full — which also
-        // pins the `jdk:` token added, and the fact that a JDK-less request spells `none`
-        // rather than dropping the line (a dropped line is a preimage two requests can share).
+        // pins the `java:` line: the module's Java level, never the JDK that ran javac (that JDK is
+        // the record's TOOLCHAIN, JK-74S9K).
         CompileRequest request = CompileRequest.builder()
                 .outputDir(tempDir.resolve("out"))
                 .release(25)
@@ -665,9 +664,8 @@ class ActionKeyTest {
         for (String token : WorkerClosure.tokens(PluginJar.JAVA_COMPILER))
             worker.append("worker:").append(token).append('\n');
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
-                .isEqualTo(Hashing.sha256Hex("task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:"
-                        + JdkToolchain.token(JavaHomes.runningJavaHome()) + "\noptions:\n" + worker
-                        + "mirrored:excluded-unless-rewritten\n"));
+                .isEqualTo(Hashing.sha256Hex("task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njava:25"
+                        + "\noptions:\n" + worker + "mirrored:excluded-unless-rewritten\n"));
     }
 
     /** The worker that drives javac is part of what it compiled with: its bytes key the compile. */
@@ -791,67 +789,59 @@ class ActionKeyTest {
                         ActionKey.forKotlinc("compile-main", upgraded, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY));
     }
 
+    /**
+     * A kotlinc key names the module's Java level, not the JDK kotlinc links against (JK-74S9K):
+     * jk.toml moving `jdk = 17` to `jdk = 21` with jvmTarget left alone keeps the key, and the record's
+     * TOOLCHAIN, which the reader's policy matches, says which JDK made it. The level moves the key.
+     */
     @Test
-    void kotlin_jdk_home_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
-        // jk.toml moves `jdk = 17` to `jdk = 21` and leaves jvmTarget alone. kotlinc resolves the
-        // platform classes it links against from -jdk-home, so the key MUST move — otherwise the
-        // build restores bytecode compiled against the 17 platform.
+    void a_kotlin_key_names_the_java_level_not_the_jdk(@TempDir Path tempDir) throws IOException {
         Path src = tempDir.resolve("Main.kt");
         Files.writeString(src, "fun main() {}");
         Path worker = tempDir.resolve("worker.jar");
         Files.writeString(worker, "worker");
-
         Path jdk17 = jdk(tempDir.resolve("temurin-17"), "17.0.12+7");
         Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
 
-        assertThat(ActionKey.forKotlinc(
-                        "compile-kotlin",
-                        kotlin(src, worker, tempDir, jdk17),
-                        "0.1.0",
-                        KotlinClasspathAbi.MEMOIZED_ONLY))
-                .isNotEqualTo(ActionKey.forKotlinc(
-                        "compile-kotlin",
-                        kotlin(src, worker, tempDir, jdk21),
-                        "0.1.0",
-                        KotlinClasspathAbi.MEMOIZED_ONLY));
+        String on17 = ActionKey.forKotlinc(
+                "compile-kotlin", kotlin(src, worker, tempDir, jdk17), "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY);
+        String on21 = ActionKey.forKotlinc(
+                "compile-kotlin", kotlin(src, worker, tempDir, jdk21), "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY);
+        assertThat(on21).isEqualTo(on17);
+        KotlincRequest higher = KotlincRequest.builder()
+                .sources(List.of(src))
+                .outputDir(tempDir.resolve("out"))
+                .jvmTarget(21)
+                .workerClasspath(List.of(worker))
+                .javaHome(jdk21)
+                .build();
+        assertThat(ActionKey.forKotlinc("compile-kotlin", higher, "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY))
+                .as("another level")
+                .isNotEqualTo(on21);
     }
 
+    /**
+     * A javac key names the module's Java level, not the JDK that runs javac (JK-74S9K): a pinned
+     * JDK moving from 21 to 23 under `java = 17` keeps the key, and the record says which JDK made it;
+     * the reader's policy (same major by default) decides whether another host's record serves. The
+     * level moves the key; the freshness stamp, this checkout's own, still names the JDK.
+     */
     @Test
-    void kotlin_jdk_identity_is_content_not_path(@TempDir Path tempDir) throws IOException {
-        // A point release upgraded in place — same JAVA_HOME, different JDK. Keying the path
-        // alone would restore bytecode linked against the superseded platform classes.
-        Path src = tempDir.resolve("Main.kt");
-        Files.writeString(src, "fun main() {}");
-        Path worker = tempDir.resolve("worker.jar");
-        Files.writeString(worker, "worker");
-        Path jdk = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
-
-        String before = ActionKey.forKotlinc(
-                "compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY);
-        jdk(jdk, "21.0.6+11"); // same length: the token is the content, not the file size
-        String after = ActionKey.forKotlinc(
-                "compile-kotlin", kotlin(src, worker, tempDir, jdk), "0.1.0", KotlinClasspathAbi.MEMOIZED_ONLY);
-
-        assertThat(after).isNotEqualTo(before);
-    }
-
-    @Test
-    void javac_jdk_home_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
-        // The same defect forKotlinc had, one lane over: jk.toml moves `jdk = 21` to
-        // `jdk = 23` and leaves `java = 17` alone, so --release does not move. A pinned JDK runs
-        // javac, so the compiler AND the platform classes change under a key that never did —
-        // the build would restore 21-compiled bytecode and call it up to date.
+    void a_javac_key_names_the_java_level_not_the_jdk(@TempDir Path tempDir) throws IOException {
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
         Path jdk21 = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
         Path jdk23 = jdk(tempDir.resolve("temurin-23"), "23.0.1+11");
 
         assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk21), "0.1.0"))
+                .isEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk23), "0.1.0"));
+        assertThat(ActionKey.javacOptionsDigest(javac(src, tempDir, jdk21)))
+                .as("the stamp is this checkout's: another JDK's classes are stale here")
+                .isNotEqualTo(ActionKey.javacOptionsDigest(javac(src, tempDir, jdk23)));
+        CompileRequest atLevel21 = optioned(src, tempDir, jdk23, 21, List.of(), List.of());
+        assertThat(ActionKey.forJavac("compile-main", atLevel21, "0.1.0"))
+                .as("another level")
                 .isNotEqualTo(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk23), "0.1.0"));
-        // A level-only module compiles on jk's runtime whatever JDK it resolved: the same compiler,
-        // the same key.
-        assertThat(ActionKey.forJavac("compile-main", unpinned(src, tempDir, jdk21), "0.1.0"))
-                .isEqualTo(ActionKey.forJavac("compile-main", unpinned(src, tempDir, jdk23), "0.1.0"));
         assertThat(JdkToolchain.token(null)).isEqualTo("toolchain:jdk:none");
     }
 
@@ -912,21 +902,20 @@ class ActionKeyTest {
     }
 
     @Test
-    void javac_jdk_identity_is_content_not_path(@TempDir Path tempDir) throws IOException {
-        // A point release upgraded in place — same JAVA_HOME, different javac. One renderer
-        // (JdkToolchain.token) serves forJavac, forKotlinc and both PlannerPlugin arms, so this
-        // property holds for all four or none.
+    void a_jdk_upgraded_in_place_keeps_the_key_and_the_record_names_it(@TempDir Path tempDir) throws IOException {
+        // A point release upgraded in place — same JAVA_HOME, another javac — keeps the key, which
+        // names the level; the record's inputs name the JDK (what jk explain prints when it moves),
+        // and the local stamp, naming the JDK by content, sees it.
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
         Path jdk = jdk(tempDir.resolve("temurin-21"), "21.0.5+11");
 
         String before = ActionKey.forJavac("compile-main", javac(src, tempDir, jdk), "0.1.0");
-        jdk(jdk, "21.0.6+11"); // same length: the token is the content, not the file size
-        String after = ActionKey.forJavac("compile-main", javac(src, tempDir, jdk), "0.1.0");
-
-        assertThat(after).isNotEqualTo(before);
-        // why-rebuilt must be able to name the reason the key moved, or a JDK switch reads as
-        // "nothing changed, rebuilt anyway".
+        String digestBefore = ActionKey.javacOptionsDigest(javac(src, tempDir, jdk));
+        jdk(jdk, "21.0.6+11");
+        assertThat(ActionKey.forJavac("compile-main", javac(src, tempDir, jdk), "0.1.0"))
+                .isEqualTo(before);
+        assertThat(ActionKey.javacOptionsDigest(javac(src, tempDir, jdk))).isNotEqualTo(digestBefore);
         assertThat(ActionKey.snapshotInputs(javac(src, tempDir, jdk))).containsEntry("jdk", JdkToolchain.token(jdk));
     }
 
@@ -955,16 +944,6 @@ class ActionKeyTest {
                 .release(17) // held fixed on purpose: only the JDK moves
                 .javaHome(javaHome)
                 .pinnedJdk(true)
-                .build();
-    }
-
-    /** A module whose level alone chose {@code javaHome}: jk's runtime runs javac. */
-    private static CompileRequest unpinned(Path src, Path tempDir, Path javaHome) {
-        return CompileRequest.builder()
-                .sources(List.of(src))
-                .outputDir(tempDir.resolve("out"))
-                .release(17)
-                .javaHome(javaHome)
                 .build();
     }
 

@@ -202,6 +202,11 @@ public final class ActionCache {
     private Optional<ActionRecord> lookupLocal(String actionKey) throws IOException {
         Optional<String> content = local.record(actionKey);
         if (content.isEmpty()) return Optional.empty();
+        ToolchainPolicy.Expectation expected = ToolchainPolicy.of(actionKey);
+        if (expected != null) {
+            content = ToolchainChoice.choose(local, actionKey, content.get(), expected);
+            if (content.isEmpty()) return Optional.empty();
+        }
         ActionRecord record;
         try {
             record = parse(content.get(), actionKey);
@@ -220,6 +225,7 @@ public final class ActionCache {
             return Optional.empty();
         }
         ActionRecordText.markRead(local.recordPath(actionKey));
+        if (expected != null) ToolchainChoice.madeOn(actionKey, record.meta(), expected);
         return Optional.of(record);
     }
 
@@ -241,6 +247,13 @@ public final class ActionCache {
             remote.forget(actionKey);
             return Optional.empty();
         }
+        ToolchainPolicy.Expectation expected = ToolchainPolicy.of(actionKey);
+        if (expected != null && !expected.accepts(record.meta().toolchain())) {
+            // Made by a JDK this build's policy does not take: a miss here, kept for those it suits.
+            ToolchainChoice.mismatch(actionKey, record.meta().toolchain(), expected);
+            remote.forget(actionKey);
+            return Optional.empty();
+        }
         if (!forThisPlatform(record.meta().target(), remote.platform())) {
             // Outputs made for another platform: a miss here, and the store keeps them for readers
             // they are for. A record naming no target runs anywhere.
@@ -248,6 +261,7 @@ public final class ActionCache {
             return Optional.empty();
         }
         if (local.missing(record.outputs().values()).isEmpty()) adopt(actionKey, text);
+        if (expected != null) ToolchainChoice.madeOn(actionKey, record.meta(), expected);
         return Optional.of(record);
     }
 
@@ -608,7 +622,7 @@ public final class ActionCache {
             noteStored(task, key, inputs, storedBytes);
         ActionRecordText.Meta meta = ActionRecordText.Meta.now(
                 StepKinds.of(task), kind, producer(), CachePlatform.current(), workedMillis(), sizes);
-        meta = RecordToolchain.withPlatform(meta, inputs);
+        meta = RecordToolchain.withPlatform(meta, key, inputs);
         // Only a record that may leave the machine pays for its tokens: here the blobs are on disk.
         if (remote != null && remote.writes())
             meta = meta.withDerived(DerivedTokens.of(meta.kind(), outputs, cas, local::blobPath));
@@ -616,7 +630,12 @@ public final class ActionCache {
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
-            local.putRecord(key, render(record));
+            String text = render(record);
+            local.putRecord(key, text);
+            // A key that names the Java level holds a record per JDK: this one is kept beside the
+            // latest, so a reader on another JDK still finds the closest it may take.
+            if (meta.toolchain() != null && ToolchainPolicy.of(key) != null)
+                local.putVariant(key, meta.toolchain(), text);
             Path pointer = tasksDir().resolve(task);
             if (HeavyActionPolicy.generations(task) == Integer.MAX_VALUE || outputRoot == null) {
                 AtomicWrites.replace(pointer, key); // not Class-C: no generation list to agree with

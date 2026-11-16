@@ -39,6 +39,10 @@ public final class VerifyCache {
     static void check(ActionCache cache, String taskId, String key, Map<String, String> outputs) throws IOException {
         ActionCache.ActionRecord prior = cache.lookup(key).orElse(null);
         if (prior == null || prior.outputs().isEmpty() || prior.outputs().equals(outputs)) return;
+        // A record another JDK made is a variant of the key, not a second answer to compare with.
+        ToolchainPolicy.Expectation expected = ToolchainPolicy.of(key);
+        String made = prior.meta().toolchain();
+        if (expected != null && made != null && !made.equals(expected.toolchain())) return;
         Set<String> names = new TreeSet<>(prior.outputs().keySet());
         names.addAll(outputs.keySet());
         for (String name : names) {

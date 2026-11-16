@@ -6,6 +6,7 @@ import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import java.io.IOException;
@@ -13,8 +14,10 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -156,6 +159,60 @@ public final class LocalCacheBackend implements CacheBackend {
     public void putRecord(String key, String recordText) throws IOException {
         Files.createDirectories(ActionTree.KEYS.under(root));
         AtomicWrites.replace(recordPath(key), recordText);
+    }
+
+    /**
+     * Where the record of {@code key} that {@code toolchain} made is kept beside the latest one:
+     * {@code keys/<key>~<sha256(toolchain)[0:16]>}. One key holds a record per JDK once keys name
+     * the Java level and not the JDK ({@link ToolchainPolicy}); each variant is a record of its own to
+     * the prune and the sweep.
+     */
+    Path variantPath(String key, String toolchain) {
+        return ActionTree.KEYS
+                .under(root)
+                .resolve(key + VARIANT + Hashing.sha256Hex(toolchain).substring(0, 16));
+    }
+
+    /** {@code keys/<key>~index}: one {@code <toolchain>} per line, the JDKs {@code key} has variants of. */
+    Path variantIndex(String key) {
+        return ActionTree.KEYS.under(root).resolve(key + VARIANT + "index");
+    }
+
+    /** The separator between a key and its variant's suffix. */
+    static final String VARIANT = "~";
+
+    /** Keep {@code recordText} as {@code key}'s variant made by {@code toolchain}, and list it in the index. */
+    void putVariant(String key, String toolchain, String recordText) throws IOException {
+        Files.createDirectories(ActionTree.KEYS.under(root));
+        AtomicWrites.replace(variantPath(key, toolchain), recordText);
+        List<String> known = variants(key);
+        if (!known.contains(toolchain)) {
+            List<String> all = new ArrayList<>(known);
+            all.add(toolchain);
+            AtomicWrites.replace(variantIndex(key), String.join("\n", all) + "\n");
+        }
+    }
+
+    /** The toolchains {@code key} has variants of, as its index lists them; empty without one. */
+    List<String> variants(String key) throws IOException {
+        Optional<String> text;
+        try {
+            text = Optional.of(AtomicWrites.readString(variantIndex(key)));
+        } catch (NoSuchFileException absent) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String line : text.get().split("\n")) if (!line.isBlank()) out.add(line.strip());
+        return out;
+    }
+
+    /** {@code key}'s variant made by {@code toolchain}, or empty. */
+    Optional<String> variant(String key, String toolchain) throws IOException {
+        try {
+            return Optional.of(AtomicWrites.readString(variantPath(key, toolchain)));
+        } catch (NoSuchFileException absent) {
+            return Optional.empty();
+        }
     }
 
     /** Take record {@code key} off this disk: one this machine refused to trust, or found cut short. */

@@ -19,9 +19,16 @@ public final class RecordToolchain {
 
     private RecordToolchain() {}
 
-    /** {@code meta} with the toolchain and target {@code inputs} name; {@code meta} itself when they name neither. */
-    public static ActionRecordText.Meta withPlatform(ActionRecordText.Meta meta, Map<String, String> inputs) {
-        String toolchain = null;
+    /**
+     * {@code meta} with the toolchain and target the record of {@code key} names: the JDK the step
+     * that computed {@code key} ran on when it said ({@link ToolchainPolicy#expect}; a compile's or
+     * a suite's key names only the Java level), else the first toolchain token among {@code inputs};
+     * {@code meta} itself when there is neither and no target.
+     */
+    public static ActionRecordText.Meta withPlatform(
+            ActionRecordText.Meta meta, String key, Map<String, String> inputs) {
+        ToolchainPolicy.Expectation expected = ToolchainPolicy.of(key);
+        String toolchain = expected == null ? null : expected.toolchain();
         String target = null;
         for (String value : inputs.values()) {
             for (String token : value.split(";")) {
