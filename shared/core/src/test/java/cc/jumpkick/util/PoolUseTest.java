@@ -46,13 +46,16 @@ class PoolUseTest {
     void the_units_one_process_remembers_stamping_stay_bounded(@TempDir Path tmp) throws Exception {
         Path tree = tmp.resolve("pooled");
         PoolUse.mark(tree);
-        for (int i = 0; i <= PoolUse.MAX_STAMPED; i++) {
-            PoolUse.touch(tree, Files.createDirectories(tree.resolve("org/example/lib" + i + "/1.0")));
+        // The bound's rule, at a bound of 64: past it what was remembered is let go. At the real
+        // bound (4096) the same walk wrote 8000 directories, 9 s on a Windows host with Defender on.
+        int bound = 64;
+        for (int i = 0; i <= bound; i++) {
+            PoolUse.touch(tree, Files.createDirectories(tree.resolve("org/example/lib" + i + "/1.0")), bound);
         }
 
         assertThat(PoolUse.stampedCount())
                 .as("an engine touches every artifact it resolves; the window it remembers is bounded")
-                .isLessThanOrEqualTo(PoolUse.MAX_STAMPED);
+                .isLessThanOrEqualTo(bound);
     }
 
     @Test

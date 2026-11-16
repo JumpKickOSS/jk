@@ -51,8 +51,10 @@ class StoreCollectorSafePointTest {
         Cas cas = new Cas(root);
         List<String> expired = new ArrayList<>();
         List<String> fresh = new ArrayList<>();
-        for (int i = 0; i < 600; i++) expired.add(put(cas, "expired-" + i, 90));
-        for (int i = 0; i < 600; i++) fresh.add(put(cas, "fresh-" + i, 2));
+        // Large enough that a stop has a scan to land inside; 400 blobs, not 1200: on a Windows host
+        // with Defender on, writing them was the test's whole cost (9 s against a 5 s fast budget).
+        for (int i = 0; i < 200; i++) expired.add(put(cas, "expired-" + i, 90));
+        for (int i = 0; i < 200; i++) fresh.add(put(cas, "fresh-" + i, 2));
 
         AtomicBoolean wanted = new AtomicBoolean();
         AtomicInteger visits = new AtomicInteger();
@@ -60,7 +62,7 @@ class StoreCollectorSafePointTest {
         CountDownLatch asked = new CountDownLatch(1);
         AtomicLong stoppedAt = new AtomicLong();
         SafePoint caller = () -> {
-            if (visits.incrementAndGet() == 300) {
+            if (visits.incrementAndGet() == 100) {
                 // Held here until the stop is asked for, so a fast scan cannot finish first.
                 midScan.countDown();
                 try {

@@ -48,12 +48,17 @@ public final class PoolUse {
 
     /** Record that {@code unit}, a directory under {@code tree}, is in use, if {@code tree} is marked. */
     public static void touch(Path tree, @Nullable Path unit) {
+        touch(tree, unit, MAX_STAMPED);
+    }
+
+    /** As {@link #touch(Path, Path)}, remembering at most {@code maxStamped} units; tests bound it small. */
+    static void touch(Path tree, @Nullable Path unit, int maxStamped) {
         if (unit == null || !POOLED.computeIfAbsent(tree, t -> Files.isRegularFile(t.resolve(MARKER)))) return;
         long now = Clock.SYSTEM.millis();
         Long last = STAMPED.get(unit);
         if (last != null && now - last < EVERY_MILLIS) return;
         STAMPED.put(unit, now);
-        if (STAMPED.size() > MAX_STAMPED) forgetStamped(now);
+        if (STAMPED.size() > maxStamped) forgetStamped(now, maxStamped);
         try {
             Files.setLastModifiedTime(unit, FileTime.fromMillis(now));
         } catch (IOException | RuntimeException absent) {
@@ -62,9 +67,9 @@ public final class PoolUse {
         }
     }
 
-    private static void forgetStamped(long now) {
+    private static void forgetStamped(long now, int maxStamped) {
         STAMPED.values().removeIf(at -> now - at >= EVERY_MILLIS);
-        if (STAMPED.size() > MAX_STAMPED) STAMPED.clear();
+        if (STAMPED.size() > maxStamped) STAMPED.clear();
     }
 
     /** How many units this process remembers stamping. Test seam. */

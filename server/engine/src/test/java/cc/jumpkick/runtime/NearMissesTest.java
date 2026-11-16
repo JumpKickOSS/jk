@@ -83,7 +83,10 @@ class NearMissesTest {
     @Test
     void a_large_store_is_answered_from_a_few_directory_listings(@TempDir Path store) throws Exception {
         Path central = store.resolve("repos/central");
-        for (int g = 0; g < 250; g++) {
+        // About 1,600 directories: the full walk must list over a hundred times what the lookup
+        // lists (twelve at most). 250 groups (8,000 directories, 10,000 files) took 10 s on a
+        // Windows host with Defender on, over the fast tier's 5 s budget, and proved nothing more.
+        for (int g = 0; g < 50; g++) {
             for (int a = 0; a < 10; a++) {
                 for (int v = 0; v < 2; v++) {
                     Path dir = Files.createDirectories(central.resolve("org/g" + g + "/sub/a" + a + "/1." + v));
