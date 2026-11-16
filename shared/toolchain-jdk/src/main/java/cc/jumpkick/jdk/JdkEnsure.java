@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
+import cc.jumpkick.discovery.MiseProbe;
 import cc.jumpkick.discovery.Probes;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
@@ -13,6 +14,8 @@ import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -262,8 +265,8 @@ public final class JdkEnsure {
     }
 
     /**
-     * One {@link JdkRegistry} per JDK root and {@linkplain #gradlePropertiesRoot build root}, for the
-     * life of the process.
+     * One {@link JdkRegistry} per JDK root, {@linkplain #gradlePropertiesRoot build root} and request
+     * probe environment ({@link #REQUEST_PROBE_ENV}), for the life of the process.
      *
      * <p>The registry's hit-list memo is a per-instance field. {@code ensure} is called
      * <em>per module</em>; a fresh registry each time would cold-scan eleven probes (jk dir, SDKMAN,
@@ -272,7 +275,10 @@ public final class JdkEnsure {
      *
      * <p>Sharing is safe because the registry already has the invalidation hook this needs:
      * {@link JdkRegistry#refresh()} drops the memo after an install or uninstall, and every later
-     * caller sees that drop.
+     * caller sees that drop; the memo also lapses when the root changes and after 30 s. The request's
+     * {@code JAVA_HOME} and mise directory are part of the key: a memo filled under one request's
+     * environment, a shell naming no JAVA_HOME say, once answered the next request's, so whether a
+     * build found a JDK depended on who listed first.
      *
      * <p>Without an override the root is the request's managed JDK root: the {@code JK_JDKS_DIR}
      * of the shell running {@code jk} when it set one (it rides the request's client env), else
@@ -284,9 +290,30 @@ public final class JdkEnsure {
         Path root = (jdksDirOverride != null ? jdksDirOverride : requestJdksRoot())
                 .toAbsolutePath()
                 .normalize();
-        if (jdksDirOverride != null) return shared(new Key(root, null), k -> new JdkRegistry(root));
+        if (jdksDirOverride != null) return shared(new Key(root, null, List.of()), k -> new JdkRegistry(root));
         Path buildRoot = gradlePropertiesRoot(projectDir);
-        return shared(new Key(root, buildRoot), k -> new JdkRegistry(root, Probes.defaultChain(root, buildRoot)));
+        return shared(
+                new Key(root, buildRoot, requestProbeEnv()),
+                k -> new JdkRegistry(root, Probes.defaultChain(root, buildRoot)));
+    }
+
+    /**
+     * The names the probe chain reads from the request's environment rather than this process's:
+     * {@code JAVA_HOME} ({@link cc.jumpkick.discovery.EnvVarProbe}, at listing time) and mise's data
+     * directory ({@link cc.jumpkick.discovery.MiseProbe}, when the chain is made). The JDK root is
+     * the request's already, and the other probes read this process's environment.
+     */
+    static final List<String> REQUEST_PROBE_ENV = List.of("JAVA_HOME", "MISE_DATA_DIR", MiseProbe.DATA_HOME_ENV);
+
+    /**
+     * This request's values of {@link #REQUEST_PROBE_ENV}, in order, unset as null: part of a shared
+     * registry's identity, so a listing made under one request's environment never answers a request
+     * whose environment names other JDKs.
+     */
+    private static List<@Nullable String> requestProbeEnv() {
+        List<@Nullable String> values = new ArrayList<>(REQUEST_PROBE_ENV.size());
+        for (String name : REQUEST_PROBE_ENV) values.add(BuildEnv.get(name));
+        return values;
     }
 
     /**
@@ -311,8 +338,11 @@ public final class JdkEnsure {
         return Files.isRegularFile(buildRoot.resolve("gradle.properties")) ? buildRoot : null;
     }
 
-    /** A shared registry's identity: its JDK root, and the build root whose properties it reads. */
-    private record Key(Path root, @Nullable Path buildRoot) {}
+    /**
+     * A shared registry's identity: its JDK root, the build root whose properties it reads, and the
+     * request's values of the environment the probes read ({@link #requestProbeEnv}).
+     */
+    private record Key(Path root, @Nullable Path buildRoot, List<@Nullable String> probeEnv) {}
 
     /** The managed JDK root for this request: the caller's shell first, then this process's. */
     private static Path requestJdksRoot() {
