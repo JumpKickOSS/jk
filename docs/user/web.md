@@ -92,7 +92,10 @@ out) and branch, read from the checkout's git files; the CI system, run id, run 
 the shell that ran `jk` is a GitHub Actions, GitLab CI, Buildkite or CircleCI job (`ci` for any
 other server that sets `CI`), the branch a pull request builds in place of the merge ref; and the
 host's `<os>-<arch>`, processors and memory. `jk history show` prints the branch and the CI run.
-These are what the run's own shell says, shown as such; nothing is decided by them.
+These are what the run's own shell says, shown as such; nothing is decided by them. The client
+sends the engine only the CI variables these fields read, each by its exact name
+(`RequestEnvNames.CI_RUN`), never a CI server's whole prefix, so a job's `CI_JOB_TOKEN` or
+registry password stays in its shell.
 
 The one chip beside a run in a timeline is the strongest signal of its
 [iteration strip](#since-the-previous-run): a test that broke, else a diagnostic that appeared,

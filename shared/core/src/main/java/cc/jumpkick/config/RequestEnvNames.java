@@ -127,15 +127,46 @@ public final class RequestEnvNames {
             "WOODPECKER_",
             "BUILDKITE",
             "CIRCLECI",
-            "CIRCLE_",
-            "CI_",
             "TRAVIS",
             "DRONE",
             "CLAUDE",
             "CODEX_");
 
-    private static final Set<String> NAMES_SET = Set.copyOf(NAMES);
-    private static final Set<String> NAMES_UPPER = Set.copyOf(upper(NAMES.stream()));
+    /**
+     * The CI run a build came from, by exact name and never by prefix: what the run's record names
+     * as its CI provider, run id, run page, event, branch and repository. A CI server's prefix also
+     * holds its secrets (GitLab's {@code CI_JOB_TOKEN}, {@code CI_REGISTRY_PASSWORD}, CircleCI's
+     * tokens), so only these reach the engine; none names a credential.
+     */
+    public static final List<String> CI_RUN = List.of(
+            "GITHUB_ACTIONS",
+            "GITHUB_RUN_ID",
+            "GITHUB_SERVER_URL",
+            "GITHUB_REPOSITORY",
+            "GITHUB_EVENT_NAME",
+            "GITHUB_HEAD_REF",
+            "GITHUB_REF_NAME",
+            "GITLAB_CI",
+            "CI_PIPELINE_ID",
+            "CI_PIPELINE_URL",
+            "CI_PIPELINE_SOURCE",
+            "CI_MERGE_REQUEST_SOURCE_BRANCH_NAME",
+            "CI_COMMIT_REF_NAME",
+            "CI_PROJECT_URL",
+            "BUILDKITE",
+            "BUILDKITE_BUILD_ID",
+            "BUILDKITE_BUILD_URL",
+            "BUILDKITE_SOURCE",
+            "BUILDKITE_BRANCH",
+            "CIRCLECI",
+            "CIRCLE_WORKFLOW_ID",
+            "CIRCLE_BUILD_NUM",
+            "CIRCLE_BUILD_URL",
+            "CIRCLE_BRANCH");
+
+    private static final Set<String> NAMES_SET =
+            Set.copyOf(Stream.concat(NAMES.stream(), CI_RUN.stream()).toList());
+    private static final Set<String> NAMES_UPPER = Set.copyOf(upper(NAMES_SET.stream()));
     private static final List<String> PREFIXES_UPPER =
             PREFIXES.stream().map(p -> p.toUpperCase(Locale.ROOT)).toList();
 
