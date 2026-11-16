@@ -152,13 +152,13 @@ public final class GraphRunner {
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
             boolean renames =
                     "rename".equals(req.op()) && req.options().stream().noneMatch(o -> o.startsWith("phase="));
-            boolean testsBroken = compiled.testsFailed();
+            boolean testsBroken = compiled.testTreeBroken();
             if (renames) {
                 Files.deleteIfExists(RenameCheck.proof(root));
                 // A rename reads every test source's index: an edited test is compiled first, else its
                 // uses would be matched by name and the rename's own compile would fail on them. Tests
                 // the compile step just built need no second compile.
-                if (!compiled.testsCompiled() && !testsBroken) {
+                if (!compiled.testTreeBuilt() && !testsBroken) {
                     testsBroken = RenameCheck.compileTests(root, compiler) != null;
                 }
             }
@@ -247,7 +247,7 @@ public final class GraphRunner {
      * What the compile step did: why it did not run ({@code null} when it ran or had nothing to do),
      * and whether a module it was for had classes from an earlier build to answer from.
      */
-    record Compiled(@Nullable String skipped, boolean earlierClasses, boolean testsCompiled, boolean testsFailed) {
+    record Compiled(@Nullable String skipped, boolean earlierClasses, boolean testTreeBuilt, boolean testTreeBroken) {
         static final Compiled NOTHING = new Compiled(null, false, false, false);
 
         Compiled(@Nullable String skipped, boolean earlierClasses) {
