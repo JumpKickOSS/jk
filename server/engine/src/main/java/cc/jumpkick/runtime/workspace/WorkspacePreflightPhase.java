@@ -76,7 +76,13 @@ public final class WorkspacePreflightPhase {
             Set<Path> jarConsumed,
             Set<Path> launchedAssemblies,
             Set<Path> dirty,
-            Optional<BuildForecasting.Preflight> forecast) {}
+            Optional<BuildForecasting.Preflight> forecast,
+            /**
+             * A test run's module fingerprints, taken before it runs: no forecast captures them, as
+             * every selected module is tested, and the outputs the run leaves are recorded under
+             * them ({@code WorkspaceFinalPhase.certifyTestRun}). Empty for any other run.
+             */
+            Map<Path, String> testRunFingerprints) {}
 
     static Outcome run(WorkspaceRequest request, WorkspaceBuildListener listener) {
         return run(request, listener, Clock.SYSTEM);
@@ -209,7 +215,8 @@ public final class WorkspacePreflightPhase {
                 immutableOrderedSet(jarConsumed),
                 launchedAssemblies(graph),
                 scheduled,
-                forecast.preflight()));
+                forecast.preflight(),
+                forecast.testRunFingerprints()));
     }
 
     /**
@@ -371,6 +378,7 @@ public final class WorkspacePreflightPhase {
         Set<Path> dirty;
         Set<Path> restoreNeeded = Set.of();
         Optional<BuildForecasting.Preflight> preflight = Optional.empty();
+        Map<Path, String> testRunFingerprints = Map.of();
         if (request.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             dirty = new LinkedHashSet<>(ModuleHints.withPrereqs(graph, request.dirtyHint(), request.skipTests()));
@@ -384,6 +392,10 @@ public final class WorkspacePreflightPhase {
         } else if (request.testOnly()) {
             listener.onPreflight("checking", 0, 0, "Testing all selected modules…");
             dirty = Set.copyOf(moduleDirs);
+            // What the outputs this run leaves are built from, taken before it starts: a source
+            // saved while it runs is not among them (JK-NVBS1).
+            testRunFingerprints =
+                    PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
             listener.onPreflight("checking", 1, 1, dirty.size() + " module(s)");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
@@ -426,7 +438,8 @@ public final class WorkspacePreflightPhase {
             else message = dirty.size() + " dirty, " + restoreNeeded.size() + " restore";
             listener.onPreflight("checking", 1, 1, message);
         }
-        return new Forecast(immutableOrderedSet(dirty), immutableOrderedSet(restoreNeeded), preflight);
+        return new Forecast(
+                immutableOrderedSet(dirty), immutableOrderedSet(restoreNeeded), preflight, testRunFingerprints);
     }
 
     /**
@@ -578,5 +591,9 @@ public final class WorkspacePreflightPhase {
         return Collections.unmodifiableSet(ordered);
     }
 
-    private record Forecast(Set<Path> dirty, Set<Path> restoreNeeded, Optional<BuildForecasting.Preflight> preflight) {}
+    private record Forecast(
+            Set<Path> dirty,
+            Set<Path> restoreNeeded,
+            Optional<BuildForecasting.Preflight> preflight,
+            Map<Path, String> testRunFingerprints) {}
 }

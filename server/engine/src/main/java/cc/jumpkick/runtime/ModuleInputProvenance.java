@@ -17,7 +17,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -158,6 +160,53 @@ public final class ModuleInputProvenance {
         List<Path> out = new ArrayList<>(trees(layout));
         out.add(norm(layout.guardClassesDir()));
         return out;
+    }
+
+    /**
+     * Record the outputs a green test run left as built from {@code taken}, the fingerprints it took
+     * before it ran, for every module in {@code green} (those that passed) whose jar the run
+     * packaged ({@code packaged}: the jars a sibling reads, which a test run builds) or which has no
+     * jar on disk. A test run builds every module's steps through its jar for the siblings that read
+     * it, so its outputs are the ones those inputs produce; with no record the next forecast called
+     * every module "built from other inputs" until a {@code jk build} (JK-NVBS1). A module tested
+     * without packaging keeps the record it had: a jar there may be an older build's.
+     */
+    public static void recordTestRun(
+            Path workspaceRoot,
+            BuildGraph.Result graph,
+            Map<Path, String> taken,
+            Collection<Path> green,
+            Set<Path> packaged,
+            RunTrees runTrees) {
+        if (taken.isEmpty() || graph == null) return;
+        Set<Path> passed = new HashSet<>();
+        for (Path dir : green) passed.add(real(dir));
+        Set<Path> jarsBuilt = new HashSet<>();
+        for (Path dir : packaged) jarsBuilt.add(real(dir));
+        Map<Path, String> vouched = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit unit : graph.topoOrder()) {
+            Path dir = unit.dir().toAbsolutePath().normalize();
+            String fp = taken.get(dir);
+            if (fp == null || !passed.contains(real(dir))) continue;
+            if (jarsBuilt.contains(real(dir)) || !jarOnDisk(workspaceRoot, dir, unit.manifest())) vouched.put(dir, fp);
+        }
+        record(workspaceRoot, graph, vouched, runTrees);
+    }
+
+    private static Path real(Path dir) {
+        try {
+            return dir.toRealPath();
+        } catch (IOException gone) {
+            return dir.toAbsolutePath().normalize();
+        }
+    }
+
+    /** Whether a jar the module's record covers ({@link #jars}) is on disk. */
+    private static boolean jarOnDisk(Path workspaceRoot, Path moduleDir, JkBuild build) {
+        for (Path jar : jars(BuildLayout.of(workspaceRoot, moduleDir, build), build)) {
+            if (Files.isRegularFile(jar)) return true;
+        }
+        return false;
     }
 
     private static List<Path> jars(BuildLayout layout, JkBuild build) {

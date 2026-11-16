@@ -638,7 +638,12 @@ record names the outputs part of the module's fingerprint (`PreflightMemo.output
 fingerprint less the skip, the selection and the suite's own inputs, test sources always in), so
 the outputs one verb leaves (`jk install -g`) are the next verb's (`jk build`) when the tree is
 unchanged; every verb compiles the guard suites into the one test-classes tree
-(`TestSuites.compiled`) for the same reason.
+(`TestSuites.compiled`) for the same reason. That part names the module's slice of the workspace lock, not the file (`LockSlice`: the rows its
+classpaths resolve as the member reads the lock, the writer's stamps left out), so one member's
+relock leaves the others' outputs theirs. A green `jk test` records the outputs it leaves too, under
+fingerprints it takes before it runs (`ModuleInputProvenance.recordTestRun`), for each module whose
+jar it packaged or that has none; a module it tested without packaging keeps its record, as its jar
+may be an older build's.
 
 **Two storage tiers** (separate roots, separate budgets):
 

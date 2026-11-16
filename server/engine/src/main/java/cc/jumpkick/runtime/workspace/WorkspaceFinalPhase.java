@@ -156,6 +156,9 @@ final class WorkspaceFinalPhase {
                     knobs.profile(),
                     resources.preflight().forecast(),
                     ModuleInputProvenance.RunTrees.transforms(request.cache()));
+        } else if (request.testOnly()) {
+            certifyTestRun(
+                    resources.preflight(), run.outcomes(), ModuleInputProvenance.RunTrees.transforms(request.cache()));
         }
         // Any run that left a module's classes current vouches for them to the graph, a test run too:
         // an agent's loop is `run` (tests), and a graph that waited for a full build had no calls.
@@ -208,6 +211,33 @@ final class WorkspaceFinalPhase {
         // says the outputs on disk are the ones they produce. The second is what lets preflight
         // tell "nothing to do" from "the artifacts here are from another run".
         ModuleInputProvenance.record(entryDir, graph, fingerprints, runTrees);
+    }
+
+    /**
+     * Record the outputs a green test run left as built from the inputs it ran on, for every module
+     * it tested and whose jar it packaged or which has none: {@code jk test} runs every module's
+     * steps through its jar for the siblings that read it, so its outputs are the ones those inputs
+     * produce, and with no record the next forecast called every module "built from other inputs"
+     * until a {@code jk build} (JK-NVBS1: hotel-reservations after a relock and a green {@code jk test
+     * -g}, and on a fresh clone). A module the run tested without packaging keeps the record it had:
+     * a jar there may be an older build's. Only the provenance record is written; the clean memo
+     * stays the build's, which runs the whole lifecycle.
+     */
+    static void certifyTestRun(
+            WorkspacePreflightPhase.Context preflight,
+            List<ModuleOutcome> outcomes,
+            ModuleInputProvenance.RunTrees runTrees) {
+        List<Path> green = new ArrayList<>();
+        for (ModuleOutcome o : outcomes) {
+            if (o.success()) green.add(o.dir());
+        }
+        ModuleInputProvenance.recordTestRun(
+                preflight.request().entryDir(),
+                preflight.graph(),
+                preflight.testRunFingerprints(),
+                green,
+                preflight.jarConsumed(),
+                runTrees);
     }
 
     /**
