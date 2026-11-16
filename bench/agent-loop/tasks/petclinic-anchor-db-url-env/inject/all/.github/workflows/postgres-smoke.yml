@@ -1,0 +1,20 @@
+name: postgres smoke
+on: [workflow_dispatch]
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: petclinic
+          POSTGRES_PASSWORD: petclinic
+          POSTGRES_DB: petclinic
+        ports: ["5432:5432"]
+    env:
+      SPRING_PROFILES_ACTIVE: postgres
+      POSTGRES_URL: jdbc:postgresql://localhost:5432/petclinic
+    steps:
+      - uses: actions/checkout@v4
+      - run: java -jar target/spring-petclinic.jar &
+      - run: curl --retry 20 --retry-all-errors -fsS http://localhost:8080/ > /dev/null

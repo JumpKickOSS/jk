@@ -274,3 +274,35 @@ Rename the class `Owner` to `Customer`, its file too, and update every use, test
 `owners` table and every URL as they are.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "CustomerRenameTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests", "-S", "PetControllerTests", "-S", "VisitControllerTests"]
+
+# The anchor slice (JK-SW5P6): change tasks whose trap is a file no compiler checks. Each plants that
+# file (inject/all/) and hides a check that fails when only the Java and the obvious files change.
+[tasks.petclinic-anchor-phone-column]
+repo   = "spring-petclinic"
+kind   = "rename-column"
+tools  = ["jk"]
+prompt = """
+The owners table's `telephone` column is renamed to `phone`. Rename it in every database's schema,
+keep the Java property `telephone` (mapped to the new column), and update everything else in the
+repository that names the column.
+"""
+
+[tasks.petclinic-anchor-find-route]
+repo   = "spring-petclinic"
+kind   = "change-route"
+tools  = ["jk"]
+prompt = """
+Move the Find Owners page from `/owners/find` to `/owners/search`. Everything in the repository that
+links to or requests the old address must use the new one; the old address need not keep working.
+"""
+
+[tasks.petclinic-anchor-db-url-env]
+repo   = "spring-petclinic"
+kind   = "rename-env"
+tools  = ["jk"]
+prompt = """
+Rename the environment variable `POSTGRES_URL`, which gives the application its PostgreSQL JDBC URL,
+to `PETCLINIC_DB_URL`. Every place in the repository that sets or reads it must use the new name. The
+PostgreSQL container's own variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) are a
+different thing and keep their names.
+"""
