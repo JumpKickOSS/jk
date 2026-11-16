@@ -50,6 +50,26 @@ class BuildIdentityTest {
         assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(JkVersion.VERSION + SALTED);
     }
 
+    /**
+     * A compile keys by the version and salt alone: an engine rebuilt from other sources under one
+     * -SNAPSHOT version recompiles nothing, while its artifact keys and test stamps (cacheKeyVersion)
+     * still move with it (JK-VWZ0B).
+     */
+    @Test
+    void a_compile_keys_no_engine_identity() {
+        try {
+            BuildIdentity.overrideBuildIdForTests("feedfacecafe");
+            String one = BuildIdentity.compileKeyVersion();
+            BuildIdentity.overrideBuildIdForTests("0123456789ab");
+            assertThat(BuildIdentity.compileKeyVersion()).isEqualTo(one).isEqualTo(JkVersion.VERSION + SALTED);
+            if (JkVersion.VERSION.endsWith("-SNAPSHOT")) {
+                assertThat(BuildIdentity.cacheKeyVersion()).isEqualTo(JkVersion.VERSION + SALTED + "+0123456789ab");
+            }
+        } finally {
+            BuildIdentity.overrideBuildIdForTests(null);
+        }
+    }
+
     @Test
     void the_override_stands_in_for_the_derived_id_until_cleared() {
         try {

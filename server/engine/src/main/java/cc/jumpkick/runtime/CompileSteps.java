@@ -211,7 +211,7 @@ final class CompileSteps {
                 taskId,
                 compileLabel(ctx, TaskNames.COMPILE_MAIN),
                 request,
-                BuildIdentity.cacheKeyVersion(),
+                BuildIdentity.compileKeyVersion(),
                 !rerun,
                 !in.ephemeralActions(), // verify-scratch: no persistent residue
                 actionCache.cas(),
@@ -260,7 +260,7 @@ final class CompileSteps {
         return new KeyedRequest(
                 request,
                 JavaCompile.key(
-                        taskId, request, BuildIdentity.cacheKeyVersion(), ActionKey.javacClasspathTokens(request)));
+                        taskId, request, BuildIdentity.compileKeyVersion(), ActionKey.javacClasspathTokens(request)));
     }
 
     private record KeyedRequest(CompileRequest request, String key) {}
@@ -294,7 +294,7 @@ final class CompileSteps {
             int sources) {
         try {
             boolean restores = actionCache
-                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.cacheKeyVersion(), classpathTokens))
+                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.compileKeyVersion(), classpathTokens))
                     .isPresent();
             ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources));
         } catch (Exception e) {
@@ -499,7 +499,7 @@ final class CompileSteps {
         JavaCompile.Prediction pred = JavaCompile.predict(
                 taskId,
                 req,
-                BuildIdentity.cacheKeyVersion(),
+                BuildIdentity.compileKeyVersion(),
                 s.actionCache,
                 stateDir,
                 s.workerJar,

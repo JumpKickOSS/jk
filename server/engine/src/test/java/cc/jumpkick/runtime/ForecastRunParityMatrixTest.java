@@ -446,7 +446,7 @@ class ForecastRunParityMatrixTest {
         ForecastScope.Parsed parsed = prepared.parsed();
         CompileInputs.Module module = CompileSteps.forecastInputs(s, prepared);
         BuildLayout layout = parsed.layout();
-        String version = BuildIdentity.cacheKeyVersion();
+        String version = BuildIdentity.compileKeyVersion();
         List<String> compiled = new ArrayList<>();
         if (!parsed.mainSrc().isEmpty()) {
             CompileRequest request = PlannerCompile.mainCompileRequest(

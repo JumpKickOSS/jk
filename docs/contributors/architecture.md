@@ -542,7 +542,12 @@ and exclusions stay GA-scoped.
    identity is the engine's code, not its jar file: the commit and build time the packaging stamps
    into the jar's manifest are left out, so an engine repackaged for a new commit with the same
    code (a test-only edit to its module) keeps every key, and the next build of an unchanged tree
-   is a no-op.
+   is a no-op. Compile keys carry no engine identity at all, even on a `-SNAPSHOT`
+   (`BuildIdentity.compileKeyVersion`, version and salt): their producer is the compiler worker,
+   keyed by content beside the compiler JDK, the options and every input, so an engine edit installed
+   with `jk install -S` recompiles nothing. Engine code that changes what a compile records turns
+   `CACHE_KEY_SALT`. Run-tests stamps keep it (`jk:` is `cacheKeyVersion`): the engine decides what
+   a test JVM sees, and no other key names that code.
    A compile key and the freshness stamp's instant are both taken before the compiler reads its
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads

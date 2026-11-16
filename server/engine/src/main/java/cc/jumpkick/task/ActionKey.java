@@ -484,7 +484,7 @@ public final class ActionKey {
         result.put("jdk", JdkToolchain.token(request.compilerHome()));
         // Every other line the key hashes, so the diff can name whatever moved it: jk's identity,
         // the compiler worker, the resources a processor reads, the [env] a processor sees.
-        result.put(JK_INPUT, BuildIdentity.cacheKeyVersion());
+        result.put(JK_INPUT, BuildIdentity.compileKeyVersion());
         result.put("worker", String.join(",", WorkerClosure.tokens(PluginJar.JAVA_COMPILER)));
         if (request.resourcesDigest() != null) result.put("resources", request.resourcesDigest());
         if (processorsMayRun(request.processorPath(), request.extraOptions())

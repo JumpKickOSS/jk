@@ -107,6 +107,26 @@ public final class BuildIdentity {
         return compose(JkVersion.VERSION, keyId());
     }
 
+    /**
+     * The version string a compile keys by: {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT},
+     * without the code's {@link #keyId()} even on a {@code -SNAPSHOT} build. A compile's producer is
+     * the compiler worker, which its key already names by content (javac's wrapper, kotlinc's and
+     * groovyc's closures), with the compiler JDK, the options the engine derives and every source
+     * and classpath entry; the engine's own code reaches its output only through those. So an engine
+     * rebuilt from other sources, a one-line edit to jk-engine installed with {@code jk install -S},
+     * recompiles nothing (JK-VWZ0B): before, every compile of the next build missed. Engine code that
+     * changes what a compile records (which outputs it keeps, how it lays them out) turns the salt,
+     * as on a release build, where no key folds the code. Artifact keys keep the producer ({@link
+     * #cacheKeyVersion}, {@code producer:} in {@code ActionKey.forArtifact}), and so does a run-tests
+     * stamp: the engine itself decides what a test JVM sees (its environment, its flags, which
+     * classes run) and no key names that code.
+     */
+    public static String compileKeyVersion() {
+        String pinned = overrideKeyVersion;
+        if (pinned != null) return pinned;
+        return compose(JkVersion.VERSION, "");
+    }
+
     private static volatile @Nullable String overrideKeyVersion;
 
     /**
