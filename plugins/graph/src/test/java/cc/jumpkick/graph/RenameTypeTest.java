@@ -42,6 +42,10 @@ class RenameTypeTest {
                 .contains("Customer o = new Customer(\"1\");");
         assertThat(answer)
                 .containsPattern("c\\d+ inferred, JPQL entity name: " + OWNER_DIR + "OwnerController.java:5")
+                .contains(
+                        "hazard: Spring MVC names an unnamed model attribute after its type, so views reading ${owner}"
+                                + " get ${customer} instead: name it with @ModelAttribute(\"owner\") where OwnerController.java bind"
+                                + " or return it.")
                 .containsPattern(
                         "c\\d+ inferred, Kotlin source, matched by name: src/main/kotlin/org/acme/petclinic/owner/Report.kt:3")
                 .containsPattern(

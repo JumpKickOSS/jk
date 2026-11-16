@@ -70,7 +70,7 @@ class RenameFieldTest {
                 """
                 package org.acme.petclinic.owner;
 
-                /** Shows an {@link Owner}. */ class OwnerController {
+                /** Shows an {@link Owner}. */ @org.acme.petclinic.Controller class OwnerController {
 
                     static final String FIND = "select o from Owner o where o.telephone = ?1";
 
@@ -88,6 +88,8 @@ class RenameFieldTest {
                 """,
                 OWNER_DIR + "OwnerPlugin.java",
                 "package org.acme.petclinic.owner;\n\npublic class OwnerPlugin implements org.acme.petclinic.Plugin {}\n",
+                "src/main/java/org/acme/petclinic/Controller.java",
+                "package org.acme.petclinic;\n\npublic @interface Controller {}\n",
                 "src/main/java/org/acme/petclinic/Plugin.java",
                 "package org.acme.petclinic;\n\npublic interface Plugin {}\n",
                 "src/main/java/org/acme/petclinic/vet/Clinic.java",

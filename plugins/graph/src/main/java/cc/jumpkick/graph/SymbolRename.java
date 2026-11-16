@@ -661,6 +661,7 @@ final class SymbolRename {
         typeText(c, plan, t.binary(), newBinary, textFiles);
         simpleNameText(c, plan, t, to, textFiles);
         namedTests(c, plan, t, to);
+        modelAttributes(c, plan, t, to, textFiles);
         prose(c, plan, textFiles, words);
         return plan;
     }
@@ -798,6 +799,47 @@ final class SymbolRename {
                     return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "string");
                 },
                 Set.of());
+    }
+
+    /**
+     * Spring MVC names a model attribute it was not given a name for after its type: a controller
+     * handling an {@code Owner} puts it in the model as {@code owner}, and after the rename as
+     * {@code customer}, so a view reading {@code ${owner}} breaks with no compile error. Flagged when
+     * a controller uses the type with no {@code @ModelAttribute("…")} and a template reads the old name.
+     */
+    private static void modelAttributes(Ctx c, RenamePlan plan, Type t, String to, List<String> textFiles) {
+        String oldName =
+                Character.toLowerCase(t.simple().charAt(0)) + t.simple().substring(1);
+        String newName = Character.toLowerCase(to.charAt(0)) + to.substring(1);
+        List<String> controllers = new ArrayList<>();
+        for (String rel : c.javaFiles) {
+            String text = c.text(rel);
+            List<ReferenceIndex.Span> spans = c.spans(rel);
+            if (text == null
+                    || spans == null
+                    || !Pattern.compile("@(?:[\\w.]+\\.)?(?:Rest)?Controller\\b")
+                            .matcher(text)
+                            .find()) continue;
+            if (spans.stream().anyMatch(sp -> sp.symbol().equals("T " + t.binary()))) controllers.add(rel);
+        }
+        if (controllers.isEmpty()) return;
+        Pattern read =
+                Pattern.compile("\\$\\{" + Pattern.quote(oldName) + "\\b|th:object=\"\\$\\{" + Pattern.quote(oldName));
+        boolean viewsRead = textFiles.stream().filter(RenameText::template).anyMatch(rel -> {
+            String text = RenameText.read(c.root, rel);
+            return text != null && read.matcher(text).find();
+        });
+        if (!viewsRead) return;
+        plan.hazards.add(new RenamePlan.Hazard(
+                "Spring MVC names an unnamed model attribute after its type, so views reading ${" + oldName + "} get ${"
+                        + newName + "} instead: name it with @ModelAttribute(\"" + oldName + "\") where "
+                        + String.join(
+                                ", ",
+                                controllers.stream()
+                                        .map(r -> r.substring(r.lastIndexOf('/') + 1))
+                                        .toList())
+                        + " bind or return it.",
+                List.of()));
     }
 
     /** Test classes named after the type ({@code OwnerTests}): judgment, renamed in a call of their own. */
