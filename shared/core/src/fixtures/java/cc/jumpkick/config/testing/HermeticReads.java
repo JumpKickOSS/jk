@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.regex.Pattern;
+import jdk.jfr.EventSettings;
 import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordedFrame;
 import jdk.jfr.consumer.RecordedStackTrace;
@@ -41,11 +43,15 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  * test JVM a home of its own under {@code <home>/test-homes} and points git's global configuration
  * at it; a test reaching past that is a test to fix, not an input to key.
  *
- * <p>Watched in process, through a JFR stream with stack traces for the class's lifetime: {@code
- * jdk.FileRead} and {@code jdk.FileWrite} by path, and {@code jdk.ProcessStart} for a {@code git}
- * started inside the checkout. Stopping the stream at the class's end delivers every event recorded
- * until then, so what the class did is all seen before it is judged. The failure names each path
- * once with the first frames of jk's code that reached it.
+ * <p>Watched in process, through one JFR stream with stack traces for the JVM's life ({@link
+ * Watcher}): {@code jdk.FileRead} and {@code jdk.FileWrite} by path, and {@code jdk.ProcessStart}
+ * for a {@code git} started inside the checkout. An event belongs to the class whose window it
+ * happened in. JFR delivers events about a second late, so a class is judged at its end on what has
+ * arrived, and what arrives later fails the next class to finish, naming the class that did it; what
+ * the JVM's last classes did is judged at its exit, which then ends non-zero. The failure names each
+ * path once; under {@code -Djk.test.hermetic=frames} also the first frames of jk's code that reached
+ * it (off by default: a stack trace on every file event makes the suite's own recording, which the
+ * engine parses after the run, several times larger).
  *
  * <p>Only this JVM's own reads are seen: a {@code git} child reads its configuration where its
  * environment points it, which jk's test environment sets to the sandbox ({@code GIT_CONFIG_GLOBAL},
@@ -107,48 +113,203 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
         }
     }
 
-    /** One class's stream and what it caught: path → the frames that first reached it. */
-    private record Watch(RecordingStream stream, Map<String, String> caught) {}
+    /** One class's run in this JVM: when it started and ended, and what was caught inside it. */
+    static final class Window {
+        final String testClass;
+        final Instant start;
+
+        @Nullable
+        Instant end;
+
+        final Map<String, String> caught = new LinkedHashMap<>();
+        boolean reported;
+
+        Window(String testClass, Instant start) {
+            this.testClass = testClass;
+            this.start = start;
+        }
+    }
+
+    /**
+     * The one stream this JVM watches through, started at the first class and never stopped, and
+     * every class's window. Starting or stopping any JFR recording rotates the chunk of every
+     * recording running in the JVM, the suite's own among them, and each chunk repeats the event
+     * metadata: a stream per class made jk-engine's suite recording 831 chunks and 155 MB for 12 MB
+     * of events, nine times main's, and the engine parses it after the suite (JK-7SPZ1). One stream
+     * for the JVM's life leaves the suite recording at its two chunks; a class's events are told
+     * apart by when they happened, inside its window.
+     */
+    static final class Watcher {
+        private final List<Window> windows = new ArrayList<>();
+        private volatile Instant flushed = Instant.EPOCH;
+
+        Watcher(Fence fence) {
+            RecordingStream stream = new RecordingStream();
+            // Stack traces only on request: settings are shared by every recording in the JVM, so
+            // traces here put one on each of the suite recording's file events too, and jk-engine's
+            // grew from 17 MB to 44 MB with them, all of it parsed by the engine after the suite.
+            boolean frames = FRAMES_ON.equals(System.getProperty(PROPERTY));
+            EventSettings read = stream.enable("jdk.FileRead").withThreshold(Duration.ZERO);
+            EventSettings write = stream.enable("jdk.FileWrite").withThreshold(Duration.ZERO);
+            if (frames) {
+                read.withStackTrace();
+                write.withStackTrace();
+            } else {
+                read.withoutStackTrace();
+                write.withoutStackTrace();
+            }
+            stream.enable("jdk.ProcessStart").withStackTrace();
+            stream.onEvent(event -> {
+                String what = offence(fence, event);
+                if (what == null || isHarness(event.getStackTrace()) || isHarnessGit(event)) return;
+                caught(event.getStartTime(), what, frames(event.getStackTrace()));
+            });
+            // Every event recorded before a flush is delivered before onFlush runs.
+            stream.onFlush(() -> flushed = Instant.now());
+            stream.setReuse(true);
+            stream.setOrdered(false);
+            stream.startAsync();
+            Thread hook = new Thread(this::atExit, "hermetic-reads-exit");
+            Runtime.getRuntime().addShutdownHook(hook);
+        }
+
+        synchronized Window open(String testClass) {
+            Window w = new Window(testClass, Instant.now());
+            windows.add(w);
+            // Only the unreported and the last few windows matter; the rest go.
+            if (windows.size() > 64) windows.removeIf(x -> x.reported && x != w);
+            return w;
+        }
+
+        /** The event at {@code at} goes to the window it happened in, else the last one started before it. */
+        synchronized void caught(Instant at, String what, String frames) {
+            Window into = null;
+            for (Window w : windows) {
+                if (!w.start.isAfter(at)) into = w;
+            }
+            if (into == null) return;
+            into.caught.putIfAbsent(what, frames);
+        }
+
+        /**
+         * Close {@code w} and hand back every finished window with offences not yet reported: its
+         * own, and an earlier class's whose events JFR delivered after that class had finished.
+         */
+        synchronized List<Window> close(Window w) {
+            w.end = Instant.now();
+            List<Window> due = new ArrayList<>();
+            for (Window x : windows) {
+                if (x.end != null && !x.reported && !x.caught.isEmpty()) {
+                    x.reported = true;
+                    due.add(x);
+                }
+            }
+            return due;
+        }
+
+        /**
+         * At the JVM's exit, what its last classes did and JFR had not yet delivered: wait for one
+         * flush past now (JFR flushes about every second), then report what is left on stderr and
+         * end the JVM non-zero, so the run fails for it even though no class is left to fail.
+         */
+        private void atExit() {
+            Instant now = Instant.now();
+            long deadline = System.nanoTime() + 3_000_000_000L;
+            while (flushed.isBefore(now) && System.nanoTime() < deadline) {
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            List<Window> due;
+            synchronized (this) {
+                due = new ArrayList<>();
+                for (Window x : windows) {
+                    if (!x.reported && !x.caught.isEmpty()) {
+                        x.reported = true;
+                        due.add(x);
+                    }
+                }
+            }
+            if (due.isEmpty()) return;
+            for (Window x : due) {
+                keep(x.testClass, x.caught);
+                System.err.println(message(x.testClass, x.caught));
+            }
+            System.err.flush();
+            Runtime.getRuntime().halt(EXIT_REACHED);
+        }
+    }
+
+    /** The exit status of a JVM whose last classes reached outside the sandbox after they finished. */
+    static final int EXIT_REACHED = 71;
+
+    /** The {@link #PROPERTY} value that records the frames reaching each path, at a recording's cost. */
+    static final String FRAMES_ON = "frames";
+
+    /** This JVM's watcher; null until the first class in a sandbox. */
+    private static @Nullable Watcher watcher;
+
+    /**
+     * This JVM's watcher, made at its first class from that class's fence: before the stream starts,
+     * so the fence's own look at the checkout's {@code .git} is not an event it judges.
+     */
+    private static synchronized @Nullable Watcher watcher(Class<?> anchor, String jkHome) {
+        Watcher w = watcher;
+        if (w == null) {
+            Fence fence = fence(anchor, jkHome);
+            if (fence == null) return null;
+            w = new Watcher(fence);
+            watcher = w;
+        }
+        return w;
+    }
+
+    /**
+     * {@link CheckoutUntouched}'s own {@code git status} of the checkout, told by its arguments where
+     * no stack trace is recorded.
+     */
+    static boolean isHarnessGit(RecordedEvent event) {
+        if (!event.getEventType().getName().equals("jdk.ProcessStart")) return false;
+        String command = event.getString("command");
+        return command != null && command.contains(" --no-optional-locks status --porcelain=v1 -z ");
+    }
 
     @Override
     public void beforeAll(ExtensionContext context) {
         if ("off".equals(System.getProperty(PROPERTY))) return;
         String jkHome = System.getenv("JK_HOME");
-        Fence fence = fence(context.getRequiredTestClass(), jkHome);
-        if (fence == null || jkHome == null) return;
+        if (jkHome == null || realHome(jkHome) == null) return;
         sandboxMaven(Path.of(jkHome), System.getenv("JK_M2_LOCAL"));
         sandboxJGit(Path.of(jkHome));
-        Map<String, String> caught = new LinkedHashMap<>();
-        RecordingStream stream = new RecordingStream();
-        stream.enable("jdk.FileRead").withStackTrace().withThreshold(Duration.ZERO);
-        stream.enable("jdk.FileWrite").withStackTrace().withThreshold(Duration.ZERO);
-        stream.enable("jdk.ProcessStart").withStackTrace();
-        stream.onEvent(event -> {
-            String what = offence(fence, event);
-            if (what == null || isHarness(event.getStackTrace())) return;
-            synchronized (caught) {
-                caught.putIfAbsent(what, frames(event.getStackTrace()));
-            }
-        });
-        stream.startAsync();
-        context.getStore(NS).put(WATCH, new Watch(stream, caught));
+        Watcher w = watcher(context.getRequiredTestClass(), jkHome);
+        if (w == null) return;
+        context.getStore(NS).put(WATCH, w.open(context.getRequiredTestClass().getName()));
     }
 
     @Override
     public void afterAll(ExtensionContext context) {
-        Watch watch = context.getStore(NS).remove(WATCH, Watch.class);
-        if (watch == null) return;
-        // stop() returns once every event recorded so far has been delivered.
-        watch.stream().stop();
-        watch.stream().close();
-        Map<String, String> caught;
-        synchronized (watch.caught()) {
-            caught = new LinkedHashMap<>(watch.caught());
+        Window window = context.getStore(NS).remove(WATCH, Window.class);
+        Watcher w = watcher;
+        if (window == null || w == null) return;
+        List<Window> due = w.close(window);
+        if (due.isEmpty()) return;
+        StringBuilder failure = new StringBuilder();
+        for (Window x : due) {
+            keep(x.testClass, x.caught);
+            if (failure.length() > 0) failure.append("\n");
+            failure.append(message(x.testClass, x.caught));
+            if (x != window) {
+                failure.append("\n  (")
+                        .append(x.testClass)
+                        .append(" had finished when JFR delivered these; ")
+                        .append(context.getRequiredTestClass().getName())
+                        .append(" is the class that fails for it)");
+            }
         }
-        if (caught.isEmpty()) return;
-        String testClass = context.getRequiredTestClass().getName();
-        keep(testClass, caught);
-        throw new AssertionError(message(testClass, caught));
+        throw new AssertionError(failure.toString());
     }
 
     /**
@@ -222,7 +383,7 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
                 .append(" reached outside its sandbox: the real jk home, the checkout's .git or git's own")
                 .append(" configuration. Give the test a temp home, a temp repository and the sandbox's")
                 .append(
-                        " git configuration (jk's test JVMs carry all three); see cc.jumpkick.config.testing.HermeticReads.");
+                        " git configuration (jk's test JVMs carry all three); see cc.jumpkick.config.testing.HermeticReads; jk test --jvm-arg=-Djk.test.hermetic=frames shows the code that reached each path.");
         int shown = 0;
         for (Map.Entry<String, String> e : caught.entrySet()) {
             if (shown++ == SHOWN) {
