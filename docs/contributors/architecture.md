@@ -35,8 +35,12 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   `:core` / the native client.
 - **Engine** — dependency resolution, task graph / BuildPlan execution, CAS, toolchains,
   compiler/test workers, hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling
-  **256 MiB** (or **512 MiB** when `CI=1`/`true` and unset) via
-  `~/.jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`.
+  a 64th of host RAM between **256 MiB** and **512 MiB** (`JkEngineConfig.defaultMaxHeapMb`, RAM from
+  `HostRam`; at least **512 MiB** when `CI=1`/`true`); an explicit `~/.jk/config.toml` → `[engine] max-heap-mb`,
+  or `JK_ENGINE_MAX_HEAP_MB`, wins. Memory admission (`MemoryAdmission`) holds back 32 MiB of churn plus the
+  40 MiB peak of one suite-recording read (`SuiteReads.READ_PEAK_BYTES`, one read at a time through
+  `RecordingReader.Permit`), and judges a job by the ledger of estimates and, when the committed heap
+  refuses, by the live set after one full collection (at most one per 2 s).
   **Four budgets:** (1) engine heap = thin coordinator (measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`, replaced by
   `LearnedHeaps` (a generous first heap for an unseen key, then the learned peak
@@ -77,7 +81,7 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   (`[engine] vfs-max-mb` / `JK_ENGINE_VFS_MAX_MB`, default 32 MiB per job, live sum
   capped at 75% of engine heap; further jobs stream). Does **not** follow `CI=1`; extra
   heap is concurrency headroom, extra VFS is a huge-tree knob. See [vfs.md](vfs.md). Do not grow the non-CI engine default toward multi-GiB
-  “just in case”; set `max-heap-mb` or run under CI for a higher default.
+  “just in case”; the default stops at 512 MiB, and `max-heap-mb` goes past it.
   Full `[engine]` / `JK_ENGINE_*` inventory: [user/engine.md](../user/engine.md#configuration).
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
@@ -138,7 +142,7 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
 | **User cancel / EOF** | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid**. Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel` (`jid` or `dir`), MCP `cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → re-probed; a holder that shows life without a reply (younger than 2 min, worker children, CPU advancing) is waited out — 30 s + 15 s per worker, 3 min at most — then left alone with a refusal naming it; one that shows none across two readings is hard-killed once + respawned |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
-| **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/java_pid<pid>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
+| **Out of memory** | The engine JVM runs with `-XX:+ExitOnOutOfMemoryError` and `-XX:+HeapDumpOnOutOfMemoryError`: the first `OutOfMemoryError` writes `<state>/engine/java_pid<pid>.hprof` and ends the process, however it was caught. The next client spawns a fresh engine and reports the exit once; `jk engine status` and `jk doctor` name the dump while it exists. Admission rewrites `<state>/engine/<key>.<pid>.jobs` (live and queued jobs, heap) on every admit and release; the next engine logs it when the engine it names left a dump (`LiveJobsFile`) | Dump ≤ `max-heap-mb`; the idle boundary deletes dumps older than 7 days |
 | **Engine log** | The spawner redirects the engine's stderr to `<state>/engine/<key>.log`; at each spawn it moves `.1` to `.2` and the log to `.1`, unless the log's header names a spawn less than 15 s old — a second spawner racing the first — in which case it appends. The engine writes through a byte-counting sink on the same file and rolls it to `.1` itself when it reaches the cap, so a warning loop cannot fill the disk. Two generations are kept. `jk engine status` shows the size and the last roll. Lines are leveled and redacted — see [Logging](#logging) | `[engine] log-max-mb` / `JK_ENGINE_LOG_MAX_MB` (default **16** MiB; `0` = no cap); `[engine] log-level` / `JK_LOG_LEVEL` (default **info**) |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;

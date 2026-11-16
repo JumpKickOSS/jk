@@ -30,7 +30,7 @@ public final class EngineControls {
             control(
                     "max-heap-mb",
                     "JK_ENGINE_MAX_HEAP_MB",
-                    "256; 512 when CI is set",
+                    "a 64th of RAM, 256 to 512; at least 512 when CI is set",
                     ENGINE_START,
                     "Engine process heap ceiling (-Xmx). 0 = uncapped."),
             control(

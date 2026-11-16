@@ -1101,6 +1101,15 @@ that ran the suite green: a release upgrade, or a snapshot of JumpKick's own tre
 differs (the commit and build time stamped into its jar do not count). A suite with no green run
 on record forecasts as `run tests` alone.
 
+**A recording that cannot be read is never silent.** JumpKick reads a suite's recordings with a
+reader of its own that holds a bounded amount of memory, however large the recording. One it
+cannot follow (a recording format it does not know, a chunk past its limits) is read again by the
+JDK's own parser in a short-lived JVM of its own. Only when that fails too does the run keep no
+discovered inputs and store no marker, and then it says so: `suite recording could not be read:
+<file>: <why>; this suite will not replay` on the run's result line and in its build history, the
+same words in `jk explain`'s forecast for the module, and a `suites` warning row in `jk doctor`
+naming the module and the time until that module's next run is read.
+
 What this does not see: a directory listed where nothing was then read, the clock, and, under a
 suite JDK older than 22, file channel reads. `jk clean` forgets the discovered inputs with the rest
 of `target/`.

@@ -1,7 +1,7 @@
 # Engine
 
-Build work runs in a **resident JVM engine** (memory-capped, default heap on the order of
-**256 MiB**). The CLI is a slim native client. The engine starts automatically on first
+Build work runs in a **resident JVM engine** (memory-capped: by default a 64th of the host's
+RAM, between **256 and 512 MiB**). The CLI is a slim native client. The engine starts automatically on first
 use.
 
 ```bash
@@ -84,8 +84,26 @@ sized by the larger of the lock on disk and 64 KiB per distinct dependency the w
 manifests declare, so a first lock of a large reactor is sized before it starts. What a build
 reads per classpath jar is bounded by design — a jar's ABI is keyed from its central directory a
 window of names at a time — so the size of the largest jar on a classpath is not part of the
-estimate. An idle engine admits any job the heap holds alone. Raising `[engine] max-heap-mb` lets more jobs run at once;
-the default cap runs one build of a large workspace at a time.
+estimate. An idle engine admits any job the heap holds alone. Raising `[engine] max-heap-mb` lets more jobs run at once.
+
+**Heap cap.** Unset, `max-heap-mb` is a 64th of the host's RAM, at least 256 MiB and at most
+512 MiB: 256 MiB on a 16 GB machine, 480 MiB on a 30 GB one, 512 MiB from 32 GB up (in a
+container, a 64th of its memory limit). With `CI=1` or `CI=true` it is at least 512 MiB. A value
+in `~/.jk/config.toml` or `JK_ENGINE_MAX_HEAP_MB` wins either way; `0` leaves the heap to the JVM.
+The engine starts small (`-Xms8m`) and gives back what it does not use (see [Memory after a
+build](#memory-after-a-build)), so a larger cap is room to run more jobs at once, not memory held.
+
+**What is live, not what is committed.** Beside the ledger of estimates, a job is judged by what
+the heap actually holds. A running job leaves the heap committed near its cap, mostly garbage,
+until a collection; when the committed heap has no room for the next job, the engine runs one full
+collection (at most one every two seconds) and judges the job by what survives it. A job that fits
+beside what is live is admitted then, not after whatever collection comes next. Of three test jobs
+of JumpKick's own tree started at once at a 256 MiB cap, two ran side by side 93% of the time this way (two runs, 211 samples),
+against 41% when admission went by the committed heap (280 samples).
+
+Reading a test run's recordings after its suite (the files it read, for [discovered
+inputs](test.md#what-a-suite-read-discovered-inputs)) takes up to 40 MiB of the engine's heap, one
+run at a time; that much, and 32 MiB of churn, is held back from what admission hands out.
 
 A job whose estimate exceeds the whole cap is **refused at once** rather than admitted to die of
 `OutOfMemoryError` and take the engine's other jobs with it: `a lock of /home/me/reactor needs
@@ -330,7 +348,7 @@ and `auto-warmup` do not follow CI.
 <!-- engine-config:start -->
 | Key | Env | Default | Read | Meaning |
 |---|---|---|---|---|
-| `max-heap-mb` | `JK_ENGINE_MAX_HEAP_MB` | 256; 512 when CI is set | engine start | Engine process heap ceiling (-Xmx). 0 = uncapped. |
+| `max-heap-mb` | `JK_ENGINE_MAX_HEAP_MB` | a 64th of RAM, 256 to 512; at least 512 when CI is set | engine start | Engine process heap ceiling (-Xmx). 0 = uncapped. |
 | `jobs` | `JK_JOBS` | cores (0 = all cores) | each command | Concurrent module/worker budget. CLI -j wins. |
 | `continue` | `JK_CONTINUE` | false; true when CI is set | each job | Keep going after a failed module. Does not change the verdict. |
 | `vfs-max-mb` | `JK_ENGINE_VFS_MAX_MB` | 32 | engine start | Per-job input-tree retain in MiB. 0 = off. CI does not bump this. |
@@ -356,6 +374,14 @@ the process; the next `jk` command starts a fresh engine and prints one line nam
 dumps older than seven days between builds. The engine sizes its work to its heap, so an exit on
 `OutOfMemoryError` is a JumpKick bug: run `jk cache clean`, and report the heap dump. Open the `.hprof`
 with any Java heap analyser.
+
+Nothing of the engine runs as it dies, so it keeps what it holds on disk: `~/.jk/state/engine/<key>.<pid>.jobs`,
+rewritten whenever a job is admitted or finishes, names the pid, the heap in use and its cap, each
+live job (jid, kind, estimate, directory) and each queued one. The next engine reads the file of an
+engine that left a heap dump and writes one line to its log before it admits anything: `jk engine:
+the previous engine (pid 4711) exited on OutOfMemoryError with these jobs live: test /home/me/app
+(jid 7, 72 MiB estimated); 2 queued; heap 230 MiB of 256 MiB at the last admission`. It removes the
+file either way; a running predecessor's file is its own.
 
 ### Worker containment
 
