@@ -9,6 +9,13 @@ azul-21.0.13.0.3 to ~/.jdks/azul-21.0.13.0.3`). The engine's own runtime, needed
 runs, installs the way `jk jdk install` does. [Machine output](machine-output.md#toolchain-provisioning)
 has the `-O jsonl` shape.
 
+A build never needs the network for a JDK it already has. When nothing is pinned and discovery finds
+no JDK, the build installs the latest LTS; if the feed or the download cannot be reached (offline, a
+proxy or deny list, an HTTP error), it builds on the JDK JumpKick itself runs on, when that JDK is new
+enough for `java = N`, and says so in a warning. A cached feed past its 12 h refresh is still used
+when the refresh fails. A pinned JDK that is not installed and cannot be fetched fails the build with
+the JDK's name and the `jk jdk install …` command.
+
 Supported **project** floor: **JDK 17+** (no Java 8 or 11). 17 and 21 compile with the
 host JDK 25 via `--release` — do **not** download those obsolete runtimes for bytecode. A `jdk`
 pin also chooses the compiler: `jdk = 21` compiles with JDK 21's javac (see

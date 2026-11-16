@@ -6,6 +6,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.discovery.MiseProbe;
 import cc.jumpkick.discovery.Probes;
+import cc.jumpkick.discovery.ToolHealth;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.lock.JdkPin;
@@ -167,7 +168,20 @@ public final class JdkEnsure {
 
         // A named pin (or the bootstrap latest-LTS) isn't on disk — install it.
         String spec = Objects.requireNonNull(r.installSpec(), "an install decision names its spec");
-        InstalledJdk installed = install(spec, registry, warn, progress);
+        InstalledJdk installed;
+        try {
+            installed = install(spec, registry, warn, progress);
+        } catch (IOException e) {
+            // The feed or the download could not be reached (offline, a denied host, a proxy, an
+            // HTTP error). Nothing pinned: the JDK this process runs on is installed too, and builds
+            // the module if it is new enough. A pin is the user's choice, so it fails, naming it.
+            Optional<InstalledJdk> own =
+                    r.tier() == JdkResolution.Tier.DEFAULT ? runningJdk(javaRelease) : Optional.empty();
+            if (own.isEmpty()) throw new IOException(notInstallable(spec, e), e);
+            warn.accept("could not install " + spec + " (" + reason(e) + "); building on "
+                    + own.get().home() + ", the JDK jk runs on");
+            return new Outcome(own.get(), Source.ALREADY_PINNED, null);
+        }
 
         // A bootstrap install (no JDK was pinned or configured) becomes the
         // de-facto default — but only when no default is set yet, and only for
@@ -241,6 +255,30 @@ public final class JdkEnsure {
                 SessionContext.current().javaHome(),
                 env::apply);
         return JdkResolution.resolve(req, registry, defaults, latestLts);
+    }
+
+    /**
+     * The JDK this process runs on, when it can compile ({@code javac} present) and its major is at
+     * least {@code javaRelease}: for a resident engine its own runtime, which jk installed. Only an
+     * unpinned module whose bootstrap install failed lands here.
+     */
+    static Optional<InstalledJdk> runningJdk(int javaRelease) {
+        String javaHome = System.getProperty("java.home");
+        if (javaHome == null || javaHome.isBlank()) return Optional.empty();
+        if (Runtime.version().feature() < javaRelease) return Optional.empty();
+        Path home = Path.of(javaHome).toAbsolutePath().normalize();
+        if (!ToolHealth.hasJavac(home)) return Optional.empty();
+        return Optional.of(new InstalledJdk(JdkRegistry.identifierFor(home), home));
+    }
+
+    /** What a build says when the JDK it needs is not installed and cannot be: the JDK, why, the command. */
+    static String notInstallable(String spec, IOException cause) {
+        return "JDK " + spec + " is not installed and could not be installed (" + reason(cause)
+                + "); run jk jdk install " + spec + " where the JDK feed can be reached";
+    }
+
+    private static String reason(IOException e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 
     /** Map a resolution tier to the coarse {@link Source} used for status wording. */
