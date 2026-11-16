@@ -429,7 +429,8 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   mirror) and Podman's `CONTAINER_HOST`, the shell running `jk` over the engine's own — a
   Testcontainers suite and `jk image` reach the Docker, Podman or remote daemon that terminal names
 - on Windows also `USERPROFILE`, `SystemRoot`, `SystemDrive`, `windir`, `PATHEXT`, `COMSPEC`,
-  `NUMBER_OF_PROCESSORS`
+  `NUMBER_OF_PROCESSORS`, `ProgramFiles` and `ProgramFiles(x86)` (native-image finds Visual Studio
+  through the second)
 - the `JK_*` settings a worker reads: the product roots (`JK_HOME`, `JK_STATE_DIR`,
   `JK_STORE_DIR`, `JK_CACHE_DIR`, `JK_JDKS_DIR`, `JK_M2_LOCAL`), terminal and output
   switches (`JK_COLOR`, `JK_NO_ANSI`, `JK_FORCE_ANSI`, `JK_NO_OSC`, `JK_NO_PROGRESS`,

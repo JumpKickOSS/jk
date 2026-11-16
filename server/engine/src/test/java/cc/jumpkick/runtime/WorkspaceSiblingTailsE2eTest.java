@@ -25,6 +25,7 @@ import cc.jumpkick.runtime.WorkspaceSiblingClassesE2eTest.Probe;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
+import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -95,8 +96,9 @@ class WorkspaceSiblingTailsE2eTest {
             lock(ws, cache, "lib", "dist");
             BuildLayout lib = BuildLayout.of(ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib/jk.toml")));
             Probe first = new Probe(false);
-            assertThat(build(ws, cache, first).success())
-                    .as("initial build; failed steps " + first.failed())
+            WorkspaceResult built = build(ws, cache, first);
+            assertThat(built.success())
+                    .as("initial build; failed steps " + first.failed() + "; errors " + built.errors())
                     .isTrue();
             Path distDir = ws.resolve("dist").toRealPath();
             assertThat(dirty(ws, cache)).as("settled after the build").doesNotContain(distDir);
@@ -126,8 +128,9 @@ class WorkspaceSiblingTailsE2eTest {
         lock(ws, cache, "lib", "dist");
 
         Probe first = new Probe(false);
-        assertThat(build(ws, cache, first).success())
-                .as("initial build; failed steps " + first.failed())
+        WorkspaceResult built = build(ws, cache, first);
+        assertThat(built.success())
+                .as("initial build; failed steps " + first.failed() + "; errors " + built.errors())
                 .isTrue();
         assertThat(distLibClass(ws, tail)).contains("lib-v1");
 

@@ -58,7 +58,12 @@ public final class BuildEnv {
                     "windir",
                     "PATHEXT",
                     "COMSPEC",
-                    "NUMBER_OF_PROCESSORS")
+                    "NUMBER_OF_PROCESSORS",
+                    // Where Windows installs programs: native-image finds Visual Studio through
+                    // %ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe and fails
+                    // without it, as do other tools that look under the program folders.
+                    "ProgramFiles",
+                    "ProgramFiles(x86)")
             : List.of("PATH", "HOME", "LANG", "LC_ALL");
 
     /**

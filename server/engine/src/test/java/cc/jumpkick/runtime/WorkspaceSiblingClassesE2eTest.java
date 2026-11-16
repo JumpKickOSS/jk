@@ -620,6 +620,7 @@ class WorkspaceSiblingClassesE2eTest {
         private final AtomicBoolean appCompiledBeforeLibPackaged = new AtomicBoolean();
         private final Map<String, List<String>> failedByModule = new LinkedHashMap<>();
         private final Map<String, String> lastLabel = new LinkedHashMap<>();
+        private final Map<String, List<String>> outputByStep = new LinkedHashMap<>();
 
         Probe(boolean holdLibJar) {
             this.holdLibJar = holdLibJar;
@@ -651,13 +652,40 @@ class WorkspaceSiblingClassesE2eTest {
                 }
 
                 @Override
+                public void error(String step, String code, String message) {
+                    synchronized (Probe.this) {
+                        failedByModule
+                                .computeIfAbsent(name, k -> new ArrayList<>())
+                                .add(step + ": " + code + ": " + message);
+                    }
+                }
+
+                @Override
+                public void output(String step, String line) {
+                    tail(step, line);
+                }
+
+                @Override
+                public void forkOutput(String step, String line) {
+                    tail(step, line);
+                }
+
+                private void tail(String step, String line) {
+                    synchronized (Probe.this) {
+                        List<String> lines = outputByStep.computeIfAbsent(name + "/" + step, k -> new ArrayList<>());
+                        lines.add(line);
+                        if (lines.size() > 40) lines.removeFirst();
+                    }
+                }
+
+                @Override
                 public void stepFinish(
                         String step, @Nullable String group, TaskStatus status, Duration duration, Duration waited) {
                     if (status != TaskStatus.FAIL) return;
                     synchronized (Probe.this) {
                         failedByModule
                                 .computeIfAbsent(name, k -> new ArrayList<>())
-                                .add(step);
+                                .add(step + " " + outputByStep.getOrDefault(name + "/" + step, List.of()));
                     }
                 }
             };

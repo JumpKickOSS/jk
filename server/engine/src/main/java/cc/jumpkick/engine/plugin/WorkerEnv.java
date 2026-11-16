@@ -71,7 +71,9 @@ public final class WorkerEnv {
             "windir",
             "PATHEXT",
             "COMSPEC",
-            "NUMBER_OF_PROCESSORS");
+            "NUMBER_OF_PROCESSORS",
+            "ProgramFiles",
+            "ProgramFiles(x86)");
 
     /**
      * The {@code JK_*} variables a worker reads. Everything else in the {@code JK_} namespace stays
