@@ -307,7 +307,9 @@ public final class PomRuntimeClasspath {
         leading.add(local);
         leading.add(jumpkickStore);
         if (extraStore != null && !extraStore.equals(storeRoot.toAbsolutePath().normalize())) {
-            leading.addAll(fileRepos(extraStore, configuredHostM2()));
+            // Read from the host store, written to this one: the memos, origin records and staged
+            // copies a resolve leaves belong to the store that asked, never to the host's.
+            leading.addAll(fileRepos(extraStore, cas, configuredHostM2()));
         }
         return remotes.withReposPrepended(leading);
     }
@@ -347,7 +349,15 @@ public final class PomRuntimeClasspath {
     }
 
     private static List<MavenRepo> fileRepos(Path storeRoot, @Nullable Path hostM2) {
-        Cas cas = Cas.tracked(storeRoot);
+        return fileRepos(storeRoot, Cas.tracked(storeRoot), hostM2);
+    }
+
+    /**
+     * {@code storeRoot}'s worker stores as {@code file:} repositories whose own trees, memos and
+     * staged downloads live under {@code cas}'s store, which may be another: a sandboxed JVM reads
+     * a workspace worker's closure from the host store without writing into it.
+     */
+    private static List<MavenRepo> fileRepos(Path storeRoot, Cas cas, @Nullable Path hostM2) {
         Http http = new Http();
         List<String> names = List.of(
                 RepoArtifactResolver.JK_LOCAL,
@@ -393,7 +403,7 @@ public final class PomRuntimeClasspath {
         Path found = locate(storeRootOf(worker), rel).orElse(null);
         if (found != null) return found;
         Path extra = extraStoreFor(worker);
-        return extra == null ? null : locate(extra, rel).orElse(null);
+        return extra == null ? null : present(extra, rel).orElse(null);
     }
 
     /**
@@ -787,6 +797,22 @@ public final class PomRuntimeClasspath {
 
     private static boolean isUnresolvedProperty(String version) {
         return version.contains("${");
+    }
+
+    /**
+     * {@code relativePath} in {@code storeRoot}'s first-party trees when the file is there, looked
+     * at without writing: {@link RepoArtifactStore#locate} writes a missing {@code .jk} memo, which in
+     * another home's store (the host's, read from a sandbox) is a write into a store this process
+     * does not own.
+     */
+    private static Optional<Path> present(Path storeRoot, String relativePath) {
+        for (RepoArtifactStore store : RepoArtifactStore.firstParty(storeRoot)) {
+            Path root = store.artifactRoot();
+            if (root == null) continue;
+            Path file = root.resolve(relativePath);
+            if (Files.isRegularFile(file)) return Optional.of(file);
+        }
+        return Optional.empty();
     }
 
     private static Optional<Path> locate(Path storeRoot, String relativePath) {

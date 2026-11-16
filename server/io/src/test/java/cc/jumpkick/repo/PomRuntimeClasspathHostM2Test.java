@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.Coordinate;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,11 +67,15 @@ class PomRuntimeClasspathHostM2Test {
                     PomRuntimeClasspath.HOST_M2_PROPERTY,
                     hostM2.toAbsolutePath().toString());
             System.setProperty("jk.m2.local", sandboxM2.toString());
+            List<Path> hostBefore = files(host);
             Path found = PomRuntimeClasspath.resolve(workspaceJar).stream()
                     .filter(p -> "lib-1.0.jar".equals(String.valueOf(p.getFileName())))
                     .findFirst()
                     .orElseThrow();
             assertThat(found).hasSameBinaryContentAs(depJar);
+            assertThat(files(host))
+                    .as("the host store is read, never written: its memos and staged copies land in the sandbox's")
+                    .isEqualTo(hostBefore);
         } finally {
             for (int i = 0; i < keys.size(); i++) {
                 if (previous.get(i) == null) System.clearProperty(keys.get(i));
@@ -82,5 +87,12 @@ class PomRuntimeClasspathHostM2Test {
     private static Path write(Path file, String content) throws Exception {
         Files.createDirectories(requireNonNull(file.getParent()));
         return Files.write(file, content.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Every file under {@code root}, sorted. */
+    private static List<Path> files(Path root) throws IOException {
+        try (var walk = Files.walk(root)) {
+            return walk.filter(Files::isRegularFile).sorted().toList();
+        }
     }
 }

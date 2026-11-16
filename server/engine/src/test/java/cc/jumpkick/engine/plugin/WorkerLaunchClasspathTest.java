@@ -86,7 +86,14 @@ class WorkerLaunchClasspathTest {
             Path workerAbs = workspaceJar.toAbsolutePath().normalize();
             Path sdkAbs = sdkClasses.toAbsolutePath().normalize();
             Path hostCodecAbs = hostCodecJar.toAbsolutePath().normalize();
-            Path depAbs = depJar.toAbsolutePath().normalize();
+            // The dependency's bytes come from the host store and are kept in the sandbox's: the
+            // host store is read, never written.
+            Path depAbs = cp.stream()
+                    .filter(p -> "lib-1.0.jar".equals(String.valueOf(p.getFileName())))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(depAbs).hasSameBinaryContentAs(depJar);
+            assertThat(depAbs).startsWith(sandbox.toAbsolutePath().normalize());
             // : codec dirs must precede the worker jar so a fresh classes/main wins over the
             // codec the jar vendors.
             assertThat(cp).contains(workerAbs, sdkAbs, hostCodecAbs, depAbs);

@@ -397,10 +397,15 @@ class PomRuntimeClasspathTest {
                     PomRuntimeClasspath.HOST_STORE_PROPERTY,
                     host.toAbsolutePath().toString());
             List<Path> cp = PomRuntimeClasspath.resolve(workspaceJar);
-            assertThat(cp)
-                    .contains(
-                            workspaceJar.toAbsolutePath().normalize(),
-                            depJar.toAbsolutePath().normalize());
+            assertThat(cp).contains(workspaceJar.toAbsolutePath().normalize());
+            // The host's bytes, kept in the sandbox's store: the host store is read, never written.
+            Path lib = cp.stream()
+                    .filter(p -> "lib-1.0.jar".equals(String.valueOf(p.getFileName())))
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(lib).hasSameBinaryContentAs(depJar);
+            assertThat(lib.toAbsolutePath().normalize())
+                    .startsWith(sandbox.toAbsolutePath().normalize());
         } finally {
             restoreProp(PomRuntimeClasspath.HOST_STORE_PROPERTY, prevHost);
         }
