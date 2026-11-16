@@ -105,6 +105,7 @@ public final class EventCatalog {
     public static final String SSE_PRESENCE = "presence";
     public static final String SSE_NOTIFY = "notify";
     public static final String SSE_NOTICE = "notice";
+    public static final String SSE_ALERT = "alert";
 
     /** SSE frames published to dashboard subscribers alone ({@code publishDashboard}): not sent to MCP. */
     public static final Set<String> DASHBOARD_ONLY = Set.of(
@@ -116,7 +117,8 @@ public final class EventCatalog {
             SSE_DECISION,
             SSE_PRESENCE,
             SSE_NOTIFY,
-            SSE_NOTICE);
+            SSE_NOTICE,
+            SSE_ALERT);
 
     // Console JSONL record names that are not wire types.
     public static final String JSONL_WORKSPACE_START = "workspace-start";
@@ -393,6 +395,14 @@ public final class EventCatalog {
                     new Omitted("the bell's notices and its seen marker; the CLI has no bell"),
                     new Omitted("the bell's notices"),
                     Carried.as(SSE_NOTICE, "dashboard only: a notice added or the seen marker moved (Notices)")),
+            new Row(
+                    SSE_ALERT,
+                    new Omitted("a desktop notification the front door raises for this engine"),
+                    new Omitted("a desktop notification"),
+                    Carried.as(
+                            SSE_ALERT,
+                            "dashboard only: a decision this engine would notify about while a front door relays its"
+                                    + " notifications (Decisions)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

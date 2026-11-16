@@ -93,6 +93,24 @@ public final class HttpEngineServer implements AutoCloseable {
     /** What MCP raises decisions through; its alerts end with this server. Null before {@link #setDecisions}. */
     private volatile @Nullable Decisions decisions;
 
+    private volatile @Nullable Notices notices;
+
+    /** This server's decisions and their alerts; null without MCP or before {@link #setDecisions}. */
+    public @Nullable Decisions decisions() {
+        return decisions;
+    }
+
+    /** The bell this server serves; null before {@link #setNotices}. */
+    public @Nullable Notices notices() {
+        return notices;
+    }
+
+    /** The bearer token this server accepts, for a link the browser follows into it; null before it has one. */
+    @Nullable
+    String token() {
+        return tokens.tokenText();
+    }
+
     private final HttpHistoryApi historyApi;
     private final HttpCoverageReport coverageReport;
     private final HttpProjectApi projectApi;
@@ -203,8 +221,15 @@ public final class HttpEngineServer implements AutoCloseable {
      * {@link #start}.
      */
     public void setFrontDoorRole(FrontDoorRole role) {
+        // While the front door relays, this engine's notifications become alert events it raises.
+        Decisions d = decisions;
+        if (d != null) {
+            d.relay(
+                    role::relayed,
+                    dec -> events.publishDashboard(EventCatalog.SSE_ALERT, JsonOut.rawObject(dec.toMap())));
+        }
         api.register("POST", FrontDoor.CONTROL + "present", ex -> {
-            role.present();
+            role.present(FrontDoor.RELAYS_ALERTS.equals(ex.getRequestHeaders().getFirst(FrontDoor.RELAYS)));
             HttpResponses.sendJson(ex, 200, "{}");
         });
         api.register("POST", FrontDoor.CONTROL + "leaving", ex -> {
@@ -259,6 +284,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * SSE {@code notice} event, so every tab's bell agrees. Before {@link #start}.
      */
     public void setNotices(Notices notices) {
+        this.notices = notices;
         HttpNoticesApi noticesApi = new HttpNoticesApi(notices);
         api.register("GET", "/api/notices", noticesApi::handleList);
         api.register("POST", HttpNoticesApi.SEEN, noticesApi::handleSeen);

@@ -145,6 +145,14 @@ off` in `~/.jk/config.toml` turns that off. When the two speak different front-d
 older JumpKick on one side), the WSL engine does not pair, keeps its own dashboard on its port, and
 its log names the side to update.
 
+The front door is also the machine's one notifier. A decision a WSL engine would notify you about
+is raised by the front door instead, named for that engine ("WSL Ubuntu-26.10 on BocaMiniPC: …"),
+and clicking it opens the decision under that engine's dashboard; the notification goes once the
+decision is settled anywhere. The engine raises nothing itself while the front door relays for it;
+when the front door stops, or an older one relays nothing, the engine notifies for itself again. A
+WSL engine holding 8910 relays the same way, through Windows' notifications. Each change-log entry
+on an engine's bell is on the front door's bell too, named for the engine.
+
 Only your own engine takes part in the front door. An engine in a test sandbox, in a private home
 (`JK_HOME` set) or under CI does none of it: it serves no engine list, never takes 8910, writes no
 pairing into your Windows profile, starts no Windows engine, runs no check from Windows and raises no

@@ -62,6 +62,7 @@ public final class FrontDoorRole {
     private final Consumer<String> log;
 
     private long heardAt;
+    private boolean relays;
     private boolean leaving;
     private boolean holding;
     private int recentTakeovers;
@@ -82,8 +83,23 @@ public final class FrontDoorRole {
 
     /** A front door said it is there. */
     public synchronized void present() {
+        present(false);
+    }
+
+    /** The front door is there; {@code relays} says it raises this engine's notifications for it. */
+    public synchronized void present(boolean relays) {
         heardAt = clock.millis();
         leaving = false;
+        this.relays = relays;
+    }
+
+    /**
+     * Whether a front door raises this engine's notifications now: it said so in a heartbeat heard
+     * within three beats, it is not leaving, and this engine is not the front door itself. A front
+     * door that relays nothing, or stopped beating, leaves this engine notifying for itself.
+     */
+    public synchronized boolean relayed() {
+        return relays && !leaving && !holding && clock.millis() - heardAt <= 3 * HEARTBEAT_MS;
     }
 
     /** The front door said it is stopping. */

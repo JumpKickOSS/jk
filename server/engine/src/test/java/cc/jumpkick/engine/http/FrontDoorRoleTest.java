@@ -165,4 +165,20 @@ class FrontDoorRoleTest {
         clock.advance(Duration.ofMinutes(10));
         assertThat(role.delayMs()).isEqualTo(5_000);
     }
+
+    @Test
+    void a_front_door_that_relays_takes_the_notifications_while_it_beats() {
+        assertThat(role.relayed()).isFalse();
+        role.present(true);
+        assertThat(role.relayed()).isTrue();
+        clock.advance(Duration.ofMillis(3 * FrontDoorRole.HEARTBEAT_MS + 1));
+        assertThat(role.relayed()).as("three beats unheard").isFalse();
+        role.present(true);
+        role.leaving();
+        assertThat(role.relayed()).as("leaving").isFalse();
+        role.present(false);
+        assertThat(role.relayed()).as("an older front door relays nothing").isFalse();
+        role.present();
+        assertThat(role.relayed()).isFalse();
+    }
 }

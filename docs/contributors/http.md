@@ -56,6 +56,17 @@ engine's builds.
 
 ### The front door
 
+The front door relays notifications (`FrontDoorRelay`). On each heartbeat it holds one `GET
+/api/events` stream open to every paired engine, with that engine's own token, and its `present`
+control message carries `X-Jk-Front-Door-Relays: alerts`. A guest that heard that within three beats,
+and does not hold 8910 itself, publishes a decision it would notify about as an `alert` event
+(`Decisions.relay`) and records the channel `front-door` instead of raising it. The front door raises
+it through its own `DecisionAlerts` with the id `<engine>-<decision>`, the question prefixed by the
+engine's label and the link `/engines/<engine>/#decision/<id>?t=<front-door token>`, and withdraws it
+on the engine's `decision` event for a settled state. An engine's `notice` frames that add a
+change-log notice are added to the front door's bell with the text prefixed and the link under the
+prefix; decision notices are not copied.
+
 Installing JumpKick into a WSL distro from a development build: a `-SNAPSHOT` Windows engine pins
 the newest published release at or below its version, which predates the branch you are trying.
 Start that engine with `JK_DEV_WSL_DIST` naming the absolute Windows folder of a Linux dist built

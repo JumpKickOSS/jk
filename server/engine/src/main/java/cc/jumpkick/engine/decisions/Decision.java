@@ -114,6 +114,11 @@ public record Decision(
         return m;
     }
 
+    /** Reads {@link #toMap}'s shape back, as another engine's event carries it; empty when it is not a whole decision. */
+    public static Optional<Decision> fromMap(Map<?, ?> m) {
+        return of(m);
+    }
+
     /** Reads {@link #toMap}'s shape back; empty when {@code m} is not a whole decision. */
     static Optional<Decision> of(Map<?, ?> m) {
         String id = MiniJson.str(m, "id");

@@ -70,6 +70,12 @@ public final class FrontDoor {
         }
     }
 
+    /** The heartbeat's header that says the front door raises the engine's notifications for it. */
+    public static final String RELAYS = "X-Jk-Front-Door-Relays";
+
+    /** {@link #RELAYS}' value: decisions' notifications ({@code alert} events) are raised by the front door. */
+    public static final String RELAYS_ALERTS = "alerts";
+
     /** Where a guest takes the front door's control messages, each with the guest's own token. */
     public static final String CONTROL = "/api/front-door/";
 
@@ -118,6 +124,9 @@ public final class FrontDoor {
     private final HttpClient client;
     private final Clock clock;
     private final Map<String, Long> verified = new ConcurrentHashMap<>();
+
+    /** Whether this front door raises the paired engines' notifications ({@link FrontDoorRelay}). */
+    private volatile boolean relays;
 
     /**
      * @param guests the directory guests write their pairing to ({@link GuestPairing})
@@ -446,14 +455,35 @@ public final class FrontDoor {
     }
 
     private CompletableFuture<Boolean> control(GuestPairing.Pair pair, String message) {
-        HttpRequest req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + pair.port() + CONTROL + message))
+        HttpRequest.Builder b = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + pair.port() + CONTROL + message))
                 .timeout(CONTROL_WAIT)
                 .header("Authorization", "Bearer " + pair.token())
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .build();
+                .POST(HttpRequest.BodyPublishers.noBody());
+        if (message.equals("present") && relays) b.header(RELAYS, RELAYS_ALERTS);
+        HttpRequest req = b.build();
         return client.sendAsync(req, HttpResponse.BodyHandlers.discarding())
                 .thenApply(r -> r.statusCode() == 200)
                 .exceptionally(failed -> false);
+    }
+
+    /** The identity paired engine {@code id} answers on its paired port; null when it does not answer there. */
+    @Nullable
+    Map<String, Object> identityOfPaired(String id) {
+        GuestPairing.Pair pair = paired().get(id);
+        if (pair == null) return null;
+        Map<String, Object> answering = identityAt(pair.port());
+        return answering != null && id.equals(answering.get("id")) ? answering : null;
+    }
+
+    /** Says in each heartbeat that this front door raises the paired engines' notifications. */
+    public void relays(boolean relays) {
+        this.relays = relays;
+    }
+
+    /** The pairings this front door proxies, by engine id; what {@link FrontDoorRelay} subscribes to. */
+    Map<String, GuestPairing.Pair> pairs() {
+        return paired();
     }
 
     /** The pairings in the guests' directory whose port is one this front door looks on. */

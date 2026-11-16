@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.desktop.PowerShell;
 import cc.jumpkick.desktop.WslWindowsDesktop;
 import cc.jumpkick.engine.http.FrontDoor;
+import cc.jumpkick.engine.http.FrontDoorRelay;
 import cc.jumpkick.engine.http.FrontDoorRole;
 import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.engine.http.HttpEngineServer;
@@ -39,12 +40,18 @@ final class FrontDoorDuty implements AutoCloseable {
 
     private final Supplier<@Nullable FrontDoor> door;
     private final @Nullable FrontDoorRole role;
+    private final @Nullable FrontDoorRelay relay;
     private final Consumer<String> log;
     private volatile boolean closed;
 
-    private FrontDoorDuty(Supplier<@Nullable FrontDoor> door, @Nullable FrontDoorRole role, Consumer<String> log) {
+    private FrontDoorDuty(
+            Supplier<@Nullable FrontDoor> door,
+            @Nullable FrontDoorRole role,
+            @Nullable FrontDoorRelay relay,
+            Consumer<String> log) {
         this.door = door;
         this.role = role;
+        this.relay = relay;
         this.log = log;
     }
 
@@ -56,6 +63,7 @@ final class FrontDoorDuty implements AutoCloseable {
                     return s == null ? null : s.frontDoor();
                 },
                 null,
+                FrontDoorRelay.of(server, server, log),
                 log);
         duty.every(FrontDoorRole.HEARTBEAT_MS, duty::beat);
         return duty;
@@ -75,7 +83,9 @@ final class FrontDoorDuty implements AutoCloseable {
         Seat seat = new Seat(listener, windows, log);
         FrontDoorRole role = new FrontDoorRole(seat, Clock.SYSTEM, () -> outranking(guests, id), log);
         band.setFrontDoorRole(role);
-        FrontDoorDuty duty = new FrontDoorDuty(seat::door, role, log);
+        // Holding 8910, this guest raises the paired engines' notifications, through Windows.
+        FrontDoorRelay relay = FrontDoorRelay.of(() -> seat.front, () -> band, log);
+        FrontDoorDuty duty = new FrontDoorDuty(seat::door, role, relay, log);
         duty.every(1_000, duty::guestTick);
         return duty;
     }
@@ -119,6 +129,8 @@ final class FrontDoorDuty implements AutoCloseable {
             if (r.holding() && now - lastBeat >= FrontDoorRole.HEARTBEAT_MS) {
                 lastBeat = now;
                 beat();
+            } else if (!r.holding() && relay != null) {
+                relay.stop();
             }
         } catch (RuntimeException e) {
             log.accept("jk engine: front door: " + e);
@@ -127,6 +139,8 @@ final class FrontDoorDuty implements AutoCloseable {
 
     private void beat() {
         if (closed) return;
+        FrontDoorRelay r = relay;
+        if (r != null) r.sync();
         FrontDoor d = door.get();
         if (d != null) d.tell("present");
     }
@@ -134,6 +148,8 @@ final class FrontDoorDuty implements AutoCloseable {
     @Override
     public void close() {
         closed = true;
+        FrontDoorRelay rl = relay;
+        if (rl != null) rl.close();
         FrontDoorRole r = role;
         boolean front = r == null || r.holding();
         FrontDoor d = door.get();

@@ -3,6 +3,8 @@ package cc.jumpkick.engine.decisions;
 
 import cc.jumpkick.config.UiAsk;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -40,6 +42,11 @@ public final class Decisions {
     private final Dashboards dashboards;
     private volatile DecisionAlerts alerts = new DecisionAlerts();
     private volatile Supplier<UiAsk> ask = UiAsk::resolve;
+    private volatile BooleanSupplier relayed = () -> false;
+    private volatile Consumer<Decision> relay = d -> {};
+
+    /** The channel {@link #alert} records when a front door raises the notification instead. */
+    static final String CHANNEL_FRONT_DOOR = "front-door";
 
     public Decisions(DecisionQueue queue, Links links, Dashboards dashboards) {
         this.queue = Objects.requireNonNull(queue);
@@ -76,6 +83,11 @@ public final class Decisions {
     public String alert(Decision d, String link) {
         UiAsk mode = ask();
         if (mode == UiAsk.QUIET) return told(d, CHANNEL_NONE, alerts.raise(mode, d, link));
+        if (relayed.getAsBoolean()) {
+            // The front door raises it, named for this engine: a guest never notifies for itself then.
+            relay.accept(d);
+            return told(d, CHANNEL_FRONT_DOOR, "the front door raises it");
+        }
         if (mode == UiAsk.OPEN) return told(d, CHANNEL_OPEN, alerts.raise(mode, d, link));
         return switch (dashboards.channel()) {
             case Dashboards.Channel.InApp i ->
@@ -97,6 +109,27 @@ public final class Decisions {
     /** The current {@code [ui] ask}, read afresh each time so an edit applies without a restart. */
     public UiAsk ask() {
         return ask.get();
+    }
+
+    /**
+     * While {@code relayed} holds, a decision's notification goes to {@code publish} (the {@code
+     * alert} event a front door subscribes to) instead of this engine's desktop.
+     */
+    public Decisions relay(BooleanSupplier relayed, Consumer<Decision> publish) {
+        this.relayed = Objects.requireNonNull(relayed);
+        this.relay = Objects.requireNonNull(publish);
+        return this;
+    }
+
+    /**
+     * On the front door: tells the person about another engine's decision {@code d} as this engine's
+     * {@code [ui] ask} says, the dashboard link {@code link} under that engine's prefix. Nothing is
+     * recorded in this engine's queue: the decision is the other engine's.
+     */
+    public String relayAlert(Decision d, String link) {
+        UiAsk mode = ask();
+        return alerts.raise(
+                mode == UiAsk.OPEN ? UiAsk.OPEN : mode == UiAsk.QUIET ? UiAsk.QUIET : UiAsk.NOTIFY, d, link);
     }
 
     /** Raise alerts through {@code alerts}; tests only. */
