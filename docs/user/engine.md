@@ -157,6 +157,9 @@ such an engine in; `JK_FRONT_DOOR=false` opts any engine out.
 differs per machine, guest and JumpKick home: it is derived from the OS, the WSL distro or container
 instance, the host name and the home's path.
 
+An engine outlives the shell that started it: a closed terminal, an ended ssh session (on Windows
+too, where the session's job would otherwise take it along) or a finished CI step leaves it running.
+
 A resident engine **does not idle out**. It exits on `jk engine stop`, version-skew
 replacement, or (if displaced/orphaned) after draining. Details of lifetime and auth:
 [contributor HTTP](../contributors/http.md). User-facing dashboard: [Web](web.md).

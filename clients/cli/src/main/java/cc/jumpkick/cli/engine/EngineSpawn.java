@@ -766,12 +766,15 @@ public final class EngineSpawn {
         pb.redirectErrorStream(true);
         boolean headed = writeSpawnHeader(paths.log(), engine, freshLog);
         long logOffset = logSize(paths.log());
+        boolean append = headed || !freshLog;
         pb.redirectOutput(
-                headed || !freshLog
+                append
                         ? ProcessBuilder.Redirect.appendTo(paths.log().toFile())
                         : ProcessBuilder.Redirect.to(paths.log().toFile()));
         pb.redirectInput(ProcessBuilder.Redirect.PIPE);
-        Process p = pb.start();
+        // A Windows client in a job (an ssh session's kills its processes when it ends) starts the
+        // engine outside it, so the engine outlives the shell that started it (JobBreakaway).
+        Process p = JobBreakaway.start(pb, paths.log(), append, ProcessBuilder::start);
         p.getOutputStream().close(); // EOF immediately; the engine doesn't read stdin
         return new Spawned(p, logOffset);
     }
