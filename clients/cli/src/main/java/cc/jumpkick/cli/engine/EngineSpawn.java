@@ -25,7 +25,6 @@ import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
-import cc.jumpkick.jdk.ReleaseJdks;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.repo.ReleaseArtifacts;
 import cc.jumpkick.version.Versions;
@@ -539,17 +538,6 @@ public final class EngineSpawn {
             Optional<EngineJdk> own = ownJdk(floor);
             if (own.isPresent()) return own.get();
         }
-        // Unconfigured, the engine prefers this jk release's build of its floor major (ReleaseJdks),
-        // the build unpinned modules prefer, when it is installed; else any installed JDK of the
-        // line, and only when there is none does it install one: the line's newest build. The
-        // release's build is never downloaded for its own sake.
-        if (pinned.isEmpty()) {
-            Optional<String> release = ReleaseJdks.spec(floor);
-            if (release.isPresent()) {
-                Optional<EngineJdk> preferred = findInstalledEngineJdk(release.get());
-                if (preferred.isPresent()) return preferred.get();
-            }
-        }
         String pin = pinned.orElse("temurin-" + floor);
         Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
         if (installed.isPresent()) return installed.get();
@@ -607,11 +595,18 @@ public final class EngineSpawn {
             if (ej.isPresent()
                     && ej.get().vendor() == want.get().vendor()
                     && majorOf(ej.get().version()) == want.get().major()
-                    && (exact == null || ReleaseJdks.isBuild(exact, ej.get().version()))) {
+                    && (exact == null || sameVersion(exact, ej.get().version()))) {
                 return ej;
             }
         }
         return Optional.empty();
+    }
+
+    /** Whether {@code installed} ({@code 25.0.4.1+1}) is the version {@code pin} ({@code temurin-25.0.4.1}) names. */
+    private static boolean sameVersion(String pin, String installed) {
+        String want = pin.substring(pin.lastIndexOf('-') + 1);
+        String v = installed.contains("+") ? installed.substring(0, installed.indexOf('+')) : installed;
+        return v.equals(want);
     }
 
     private static Optional<EngineJdk> probeEngineJdk(Path home) {

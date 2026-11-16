@@ -122,7 +122,7 @@ class JdkResolutionTest {
         Path j26 = makeJdk(jdks, "temurin-26.0.1");
 
         // No pins, no persisted default → policy picks 26 (25 not installed).
-        var r = JdkResolution.resolveWithoutRelease(req(tmp).build(), reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
         assertThat(r.jdkOpt().get().home()).isEqualTo(j26);
     }
@@ -162,7 +162,7 @@ class JdkResolutionTest {
         // No jdk pin, project.java = 26 > latest LTS 25 → implied >=26.
         var req = req(tmp).projectJavaRelease(26).build();
 
-        var r = JdkResolution.resolveWithoutRelease(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_RELEASE_FLOOR);
         assertThat(r.jdkOpt().get().home()).isEqualTo(j26);
     }
@@ -175,7 +175,7 @@ class JdkResolutionTest {
         // The lock was written on 25 before any 26 was installed; java = 26 cannot compile on it.
         var req = req(tmp).lockJdk("temurin", "25.0.3").projectJavaRelease(26).build();
 
-        var r = JdkResolution.resolveWithoutRelease(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.jdkOpt()).isEmpty();
         assertThat(r.wouldInstall()).isTrue();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_RELEASE_FLOOR);
@@ -190,7 +190,7 @@ class JdkResolutionTest {
         Path j26 = makeJdk(jdks, "temurin-26.0.1");
         var req = req(tmp).lockJdk("temurin", "25.0.3").projectJavaRelease(26).build();
 
-        var r = JdkResolution.resolveWithoutRelease(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.jdkOpt().orElseThrow().home()).isEqualTo(j26);
     }
 
@@ -207,7 +207,7 @@ class JdkResolutionTest {
         JdkInventory gdj = gdj(tmp);
         gdj.setDefault(new InstalledJdk("java-25-openjdk", jre));
         // default points at a JRE → skipped; de-facto default should pick the real JDK.
-        var r = JdkResolution.resolveWithoutRelease(req(tmp).build(), reg(jdks), gdj, LATEST_LTS);
+        var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj, LATEST_LTS);
         assertThat(r.jdkOpt().get().home()).isEqualTo(real);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
     }
@@ -218,7 +218,7 @@ class JdkResolutionTest {
         Path j26 = makeJdk(jdks, "temurin-26.0.1");
         var req = req(tmp).lockJdk("temurin", "25.0.4").build();
 
-        var r = JdkResolution.resolveWithoutRelease(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.LOCKFILE);
         assertThat(r.jdkOpt().get().home()).isEqualTo(j26);
         assertThat(r.wouldInstall()).isFalse();
@@ -249,7 +249,7 @@ class JdkResolutionTest {
         // lock never asked; only a required-* pin insists on a particular install.
         var req = req(tmp).lockJdk("temurin", "25.0.4").javaHome(ambient).build();
 
-        var r = JdkResolution.resolveWithoutRelease(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.wouldInstall()).isFalse();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.JAVA_HOME);
         assertThat(r.jdkOpt().orElseThrow().home()).isEqualTo(ambient);
@@ -274,7 +274,7 @@ class JdkResolutionTest {
         Path j25 = makeJdk(jdks, "temurin-25.0.3");
         var req = req(tmp).lockJdk("nosuchvendor", "99").build();
 
-        var r = JdkResolution.resolveWithoutRelease(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        var r = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
         assertThat(r.wouldInstall()).isFalse();
         assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
         assertThat(r.jdkOpt().orElseThrow().home()).isEqualTo(j25);

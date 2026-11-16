@@ -22,7 +22,6 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
-import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.doctor.DoctorChecks;
 import cc.jumpkick.host.JkDirs;
@@ -30,12 +29,10 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JdkFingerprint;
-import cc.jumpkick.jdk.JdkLts;
+import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkKeywords;
 import cc.jumpkick.jdk.JdkRegistry;
-import cc.jumpkick.jdk.ReleaseJdks;
 import cc.jumpkick.jsonl.JsonFields;
-import cc.jumpkick.lock.LockPaths;
-import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
@@ -626,30 +623,23 @@ public final class DoctorCommand implements CliCommand {
     }
 
     /**
-     * The {@code jdk-patch} row: this release's JDK build for the project's Java level ({@link
-     * ReleaseJdks}), whether it is installed, and the shell's {@code JK_JDK}.
+     * The {@code jdk-patch} row: the majors of the JDKs installed here, the cache's JDK match level
+     * and the shell's {@code JK_JDK}, judged against the project's Java level ({@link
+     * DoctorChecks#jdkPatch}).
      */
     private static Check checkJdkPatch() {
         Path project = WorkingDirectory.current();
-        int java = 0;
+        List<Integer> majors = new ArrayList<>();
         try {
-            Path manifest = ManifestPaths.manifestIn(LockPaths.lockOwnerDir(project));
-            if (Files.isRegularFile(manifest))
-                java = TomlScan.scan(manifest, "java").getInt("java", 0);
-        } catch (RuntimeException unreadable) {
-            java = 0;
-        }
-        String spec = ReleaseJdks.specFor(java, JdkLts.OFFLINE_LATEST_LTS).orElse(null);
-        boolean installed = false;
-        if (spec != null) {
-            try {
-                installed = new JdkRegistry()
-                        .hitsMatching(spec).stream().anyMatch(h -> ReleaseJdks.isBuild(spec, h.version()));
-            } catch (RuntimeException unprobed) {
-                installed = false;
+            for (JdkHit hit : new JdkRegistry().listHits()) {
+                Integer major = JdkKeywords.leadingMajor(hit.version());
+                if (major != null && !majors.contains(major)) majors.add(major);
             }
+        } catch (RuntimeException unprobed) {
+            majors.clear();
         }
-        return check(DoctorChecks.jdkPatch(project, spec, installed, ProcessEnv.get("JK_JDK")));
+        return check(
+                DoctorChecks.jdkPatch(project, majors, ProcessEnv.get("JK_CACHE_JDK_MATCH"), ProcessEnv.get("JK_JDK")));
     }
 
     private static Check checkJdk() {

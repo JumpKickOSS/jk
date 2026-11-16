@@ -171,44 +171,77 @@ public final class DoctorChecks {
     }
 
     /**
-     * Which JDK build the project that governs {@code project} builds on here, as a note: cache
-     * keys name the JDK build that ran, so a host on another build shares no JDK-dependent step
-     * with this one. Never a fault: any JDK that satisfies the module's {@code java} level builds it.
-     * An unpinned module prefers {@code releaseSpec}, this release's build of its major, when it is
-     * installed, and otherwise builds on what is; {@code JK_JDK} ({@code jkJdk}) or an exact pin
-     * names the build outright.
+     * How the project that governs {@code project} meets JDKs, as a note, never a fault: compile and
+     * test keys name its Java level and the JDK that ran is a field of each cached result, which the
+     * cache takes by its {@code jdk-match} level ({@code major} by default: any vendor and patch of
+     * the JDK major this build uses). The row says which major the project builds on here and, when
+     * no JDK of its own level is installed, that results cached on that level (as a CI runner on it
+     * most likely made them) will not serve it, with the two ways out. A {@code jdk} requirement
+     * made binding with {@code jdk-cache = "required"} is named.
      *
-     * @param releaseSpec this release's build for the project's major, null when it names none
-     * @param releaseInstalled whether that build is installed on this host
+     * @param installedMajors the majors of the JDKs installed here
+     * @param envMatch the shell's {@code JK_CACHE_JDK_MATCH}, or null
      * @param jkJdk the shell's {@code JK_JDK}, or null
      */
     public static HostRow jdkPatch(
-            Path project, @Nullable String releaseSpec, boolean releaseInstalled, @Nullable String jkJdk) {
+            Path project, List<Integer> installedMajors, @Nullable String envMatch, @Nullable String jkJdk) {
         Path owner = LockPaths.lockOwnerDir(project);
         Path manifest = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(manifest)) return row("jdk-patch", Status.OK, "no jk.toml to check");
-        String shared = "; hosts on another JDK build share no compile or test key with it";
+        TomlScan scan = TomlScan.scan(manifest, "jdk", "java", "jdk-cache", "cache.jdk-match");
+        String match = envMatch != null && !envMatch.isBlank() ? envMatch.strip() : scan.get("cache.jdk-match");
+        if (match == null || match.isBlank()) match = "major";
         if (jkJdk != null && !jkJdk.isBlank()) {
-            return row("jdk-patch", Status.OK, "JK_JDK=" + jkJdk + " picks every build's JDK in this shell" + shared);
-        }
-        TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-version");
-        String jdk = scan.get("jdk");
-        String version = scan.get("jdk-version");
-        String pin = exactBuild(jdk) ? jdk : exactBuild(version) ? version : null;
-        if (pin != null) return row("jdk-patch", Status.OK, "pinned to " + pin.substring(1) + shared);
-        if (releaseSpec == null)
-            return row("jdk-patch", Status.OK, "unpinned: builds on any installed JDK of its Java level" + shared);
-        if (releaseInstalled) {
             return row(
                     "jdk-patch",
                     Status.OK,
-                    "unpinned: builds on " + releaseSpec + ", this jk's preferred build" + shared);
+                    "JK_JDK=" + jkJdk + " picks every build's JDK in this shell; cached results"
+                            + " are taken from JDKs it matches (jdk-match = " + match + ")");
         }
+        String jdk = scan.get("jdk");
+        if (jdk != null && jdk.startsWith("=") && "required".equals(scan.get("jdk-cache"))) {
+            return row(
+                    "jdk-patch",
+                    Status.OK,
+                    "requires " + jdk.substring(1)
+                            + " (jdk-cache = required): it builds only on it, and only results made on it serve it");
+        }
+        if (jdk != null && !jdk.isBlank()) {
+            return row(
+                    "jdk-patch",
+                    Status.OK,
+                    "pinned to " + jdk.replace("=", "")
+                            + "; cached results are taken from JDKs it matches (jdk-match = " + match + ")");
+        }
+        int level = scan.getInt("java", 0);
+        if (level <= 0) {
+            return row(
+                    "jdk-patch",
+                    Status.OK,
+                    "no java level: builds for the major of the JDK it runs on, and takes"
+                            + " cached results made on that major (jdk-match = " + match + ")");
+        }
+        if (installedMajors.contains(level) || "level".equals(match)) {
+            return row(
+                    "jdk-patch",
+                    Status.OK,
+                    "Java " + level + ": builds on an installed JDK " + level
+                            + (installedMajors.contains(level) ? "" : " or newer")
+                            + " and takes cached results made on "
+                            + ("level".equals(match) ? "any JDK " + level + " or newer" : "JDK " + level)
+                            + " (jdk-match = " + match + ")");
+        }
+        int above = installedMajors.stream()
+                .filter(m -> m > level)
+                .min(Integer::compare)
+                .orElse(-1);
         return row(
                 "jdk-patch",
                 Status.OK,
-                "unpinned: builds on an installed JDK of its Java level, not " + releaseSpec
-                        + " (this jk's preferred build, not installed here)" + shared);
+                "Java " + level + ": no JDK " + level + " installed"
+                        + (above > 0 ? ", so it builds on JDK " + above : "")
+                        + "; results cached on JDK " + level + " will not serve it: jk jdk install temurin-" + level
+                        + ", or set [cache] jdk-match = \"level\"");
     }
 
     /** {@code =<vendor>-<a>.<b>.<c>} or {@code =<a>.<b>.<c>}: an exact pin down to the patch. */

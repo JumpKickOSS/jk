@@ -6,47 +6,49 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.winhost.HostRow;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk doctor}'s {@code jdk-patch} row says which JDK build a project builds on here and that
- * hosts on another build share no JDK-dependent key with it, always as a note, never a fault: any
- * JDK that satisfies the module's {@code java} level builds it (JK-ADBJV).
+ * {@code jk doctor}'s {@code jdk-patch} row says, as a note, which JDK major a project builds on and
+ * which cached results serve it under the cache's {@code jdk-match}; when no JDK of the project's
+ * level is installed it names the two ways out (JK-74S9K).
  */
 class DoctorJdkPatchRowTest {
 
-    private static final String RELEASE = "temurin-25.0.4.1";
-
     @Test
-    void an_unpinned_project_on_the_installed_preferred_build_is_a_note(@TempDir Path project) throws Exception {
+    void a_level_with_its_jdk_installed_is_a_plain_note(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njava = 25\n");
-        HostRow row = DoctorChecks.jdkPatch(project, RELEASE, true, null);
-        assertThat(row.id()).isEqualTo("jdk-patch");
+        HostRow row = DoctorChecks.jdkPatch(project, List.of(21, 25, 27), null, null);
         assertThat(row.status()).isEqualTo(HostRow.Status.OK);
-        assertThat(row.detail()).startsWith("unpinned: builds on temurin-25.0.4.1, this jk's preferred build");
-        assertThat(row.fix()).isNull();
+        assertThat(row.detail())
+                .isEqualTo(
+                        "Java 25: builds on an installed JDK 25 and takes cached results made on JDK 25 (jdk-match = major)");
     }
 
     @Test
-    void the_preferred_build_not_installed_is_a_note_with_nothing_to_fix(@TempDir Path project) throws Exception {
-        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\n");
-        HostRow row = DoctorChecks.jdkPatch(project, RELEASE, false, null);
-        assertThat(row.status()).as("not a fault").isEqualTo(HostRow.Status.OK);
-        assertThat(row.detail()).contains("not temurin-25.0.4.1", "not installed here", "share no compile or test key");
-        assertThat(row.fix()).isNull();
+    void no_jdk_of_the_level_names_the_two_ways_out(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njava = 21\n");
+        HostRow row = DoctorChecks.jdkPatch(project, List.of(25, 27), null, null);
+        assertThat(row.status()).as("a note, not a fault").isEqualTo(HostRow.Status.OK);
+        assertThat(row.detail())
+                .contains("no JDK 21 installed, so it builds on JDK 25")
+                .contains("jk jdk install temurin-21", "jdk-match = \"level\"");
     }
 
     @Test
-    void a_pin_and_jk_jdk_are_named_as_notes(@TempDir Path project) throws Exception {
-        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njdk = \"=temurin-25.0.3\"\n");
-        HostRow pinned = DoctorChecks.jdkPatch(project, RELEASE, true, null);
-        assertThat(pinned.status()).isEqualTo(HostRow.Status.OK);
-        assertThat(pinned.detail()).startsWith("pinned to temurin-25.0.3");
+    void the_level_match_takes_any_newer_jdk(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\njava = 21\n\n[cache]\njdk-match = \"level\"\n");
+        assertThat(DoctorChecks.jdkPatch(project, List.of(25), null, null).detail())
+                .contains("any JDK 21 or newer", "jdk-match = level");
+    }
 
-        HostRow shell = DoctorChecks.jdkPatch(project, RELEASE, true, "corretto-25");
-        assertThat(shell.status()).isEqualTo(HostRow.Status.OK);
-        assertThat(shell.detail()).startsWith("JK_JDK=corretto-25");
-        assertThat(shell.fix()).isNull();
+    @Test
+    void a_binding_requirement_is_named(@TempDir Path project) throws Exception {
+        Files.writeString(
+                project.resolve("jk.toml"), "name = \"app\"\njdk = \"=corretto-21\"\njdk-cache = \"required\"\n");
+        assertThat(DoctorChecks.jdkPatch(project, List.of(21), null, null).detail())
+                .startsWith("requires corretto-21 (jdk-cache = required)");
     }
 }

@@ -16,8 +16,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Canonical JDK resolution shared by the build plan and {@code jk activate}. Order: {@code -J}
  * (a spec, or a JDK's absolute home),
- * {@code JK_JDK}, {@code .jdk-version}, a lock requirement, {@code jdk}, this jk release's build of
- * the major when it is installed ({@link ReleaseJdks}), a lock suggestion, java-release floor, the inventory default, {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
+ * {@code JK_JDK}, {@code .jdk-version}, a lock requirement, {@code jdk}, a lock suggestion, java-release floor, the inventory default, {@code JAVA_HOME}/{@code GRAALVM_HOME}, then {@code PATH}. {@link #resolve} stops on an
  * uninstalled named pin with {@code wouldInstall}; {@link #resolveForHook} never installs and falls through.
  */
 public final class JdkResolution {
@@ -28,8 +27,8 @@ public final class JdkResolution {
         JDK_VERSION_FILE,
         LOCKFILE,
         PROJECT_TOML,
-        /** Nothing pinned: the build this jk release names for the major, when installed ({@link ReleaseJdks}). */
-        RELEASE,
+        /** Nothing pinned: an installed JDK whose major is the module's level, else the nearest above it. */
+        LEVEL,
         JAVA_RELEASE_FLOOR,
         DEFAULT,
         JAVA_HOME,
@@ -108,17 +107,7 @@ public final class JdkResolution {
      * find <em>some</em> JDK).
      */
     public static Resolved resolve(Request req, JdkRegistry registry, JdkInventory defaults, int latestLtsMajor) {
-        return walk(req, registry, defaults, latestLtsMajor, true, true, true);
-    }
-
-    /**
-     * As {@link #resolve} without the {@link Tier#RELEASE} tier: what an unpinned module falls back
-     * to when this release's build cannot be installed (offline, the feed unreachable), and what it
-     * resolved to before release builds existed.
-     */
-    public static Resolved resolveWithoutRelease(
-            Request req, JdkRegistry registry, JdkInventory defaults, int latestLtsMajor) {
-        return walk(req, registry, defaults, latestLtsMajor, true, true, false);
+        return walk(req, registry, defaults, latestLtsMajor, true, true);
     }
 
     /**
@@ -126,7 +115,7 @@ public final class JdkResolution {
      * {@code PATH} fallback).
      */
     public static Resolved resolveForHook(Request req, JdkRegistry registry, JdkInventory defaults) {
-        return walk(req, registry, defaults, JdkLts.OFFLINE_LATEST_LTS, false, false, true);
+        return walk(req, registry, defaults, JdkLts.OFFLINE_LATEST_LTS, false, false);
     }
 
     private static Resolved walk(
@@ -135,8 +124,7 @@ public final class JdkResolution {
             JdkInventory defaults,
             int latestLtsMajor,
             boolean canInstall,
-            boolean envFallback,
-            boolean releaseTier) {
+            boolean envFallback) {
         Resolved r;
         if ((r = named(req.switchSpec(), Tier.SWITCH, reg, canInstall, null)) != null) return r;
         if ((r = named(req.envSpec(), Tier.JK_ENV, reg, canInstall, null)) != null) return r;
@@ -151,13 +139,6 @@ public final class JdkResolution {
         // the lock (a workspace's, for a member), so it neither outranks nor floors that choice.
         if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockRequires ? lockFloor : null))
                 != null) return r;
-        // Nothing pinned: this jk release's build of the major when it is already here, as a
-        // preference, so hosts that have it share its keys. Never a requirement and never a
-        // download: absent, the walk goes on to whatever satisfies the module's java level.
-        if (releaseTier
-                && (req.projectJdkSpec() == null || req.projectJdkSpec().isBlank())
-                && !lockRequires
-                && (r = release(req, reg, latestLtsMajor)) != null) return r;
         // A suggestion only records what built the lock, so it never picks a JDK too old to compile
         // the manifest's java level: a lock written on 25 must not hold a java = 26 build to 25.
         if (!lockRequires && (r = lockfile(lockJdk, reg, canInstall, req.projectJavaRelease())) != null) return r;
@@ -176,6 +157,13 @@ public final class JdkResolution {
 
         List<JdkHit> hits = reg.listHits();
         List<JdkHit> pool = lockFloor == null ? hits : meetingFloor(hits, lockFloor);
+
+        // Nothing pinned and the module names a level: an installed JDK of exactly that major first,
+        // what a CI runner on the level most likely used, so the cache's default match (same major)
+        // lines up; else the nearest major above it. Never an install: the tiers below decide that.
+        if ((req.projectJdkSpec() == null || req.projectJdkSpec().isBlank())
+                && req.projectJavaRelease() > 0
+                && (r = levelChoice(pool, req.projectJavaRelease())) != null) return r;
 
         // default: the exact recorded home wins (unambiguous when two installs
         // share a vendor-major identifier), then the recorded identifier, then
@@ -240,33 +228,26 @@ public final class JdkResolution {
     }
 
     /**
-     * The {@link Tier#RELEASE} tier: this release's build for the module's major when it is on
-     * disk by its exact version, or offered as the request's JAVA_HOME; else null, and the tiers
-     * below choose among what is installed (or, when nothing satisfies the module, install the
-     * major's newest build). It never installs: a build that is not here is not worth a download,
-     * and may be older than a host's policy allows.
+     * The {@link Tier#LEVEL} tier: of {@code pool}, a JDK whose major is {@code level}, newest first;
+     * else the one of the nearest major above it; null when none is at least {@code level}.
      */
-    private static @Nullable Resolved release(Request req, JdkRegistry reg, int latestLtsMajor) {
-        int lts = latestLtsMajor > 0 ? latestLtsMajor : JdkLts.OFFLINE_LATEST_LTS;
-        Optional<String> spec = ReleaseJdks.specFor(req.projectJavaRelease(), lts);
-        if (spec.isEmpty()) return null;
-        Optional<JdkHit> hit = releaseHit(reg, spec.get());
-        if (hit.isPresent()) return Resolved.found(installed(hit.get().home()), Tier.RELEASE, spec.get());
-        // The build is the build wherever it sits: the JDK the request names as its JAVA_HOME,
-        // when it is exactly the build the release names, serves without an install though no
-        // root the registry scans holds it.
-        Path offered = req.javaHome();
-        if (offered != null && hasBin(offered) && ReleaseJdks.isReleaseHome(offered))
-            return Resolved.found(installed(offered), Tier.RELEASE, spec.get());
-        return null;
-    }
-
-    /** An install of exactly the build {@code spec} names: its vendor's line at its full version. */
-    static Optional<JdkHit> releaseHit(JdkRegistry reg, String spec) {
-        for (JdkHit h : reg.hitsMatching(spec)) {
-            if (ReleaseJdks.isBuild(spec, h.version()) && hasBin(h.home())) return Optional.of(h);
+    private static @Nullable Resolved levelChoice(List<JdkHit> pool, int level) {
+        JdkHit best = null;
+        int bestMajor = Integer.MAX_VALUE;
+        for (JdkHit h : pool) {
+            Integer major = JdkKeywords.leadingMajor(h.version());
+            if (major == null || major < level || !hasBin(h.home())) continue;
+            boolean better = major < bestMajor
+                    || (major == bestMajor
+                            && best != null
+                            && JdkSelector.versionKey(h.version()).compareTo(JdkSelector.versionKey(best.version()))
+                                    > 0);
+            if (best == null || better) {
+                best = h;
+                bestMajor = major;
+            }
         }
-        return Optional.empty();
+        return best == null ? null : Resolved.found(installed(best.home()), Tier.LEVEL, null);
     }
 
     /** A named-spec tier: resolve on disk; else (build) signal install, else (hook) continue. */
