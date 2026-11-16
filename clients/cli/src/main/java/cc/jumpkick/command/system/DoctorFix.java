@@ -10,15 +10,21 @@ import cc.jumpkick.cli.tui.Interactivity;
 import cc.jumpkick.cli.tui.form.Asker;
 import cc.jumpkick.cli.tui.form.FormRenderer;
 import cc.jumpkick.cli.tui.form.FormSources;
+import cc.jumpkick.config.FrontDoorScope;
 import cc.jumpkick.form.Form;
+import cc.jumpkick.host.Guest;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.winhost.MachineSetup;
 import cc.jumpkick.winhost.SetupConsent;
 import cc.jumpkick.winhost.SetupEnvironment;
+import cc.jumpkick.winhost.SetupMemo;
 import cc.jumpkick.winhost.SetupPlan;
+import cc.jumpkick.winhost.WindowsFromGuest;
 import cc.jumpkick.winhost.WindowsHostCheck;
 import cc.jumpkick.winhost.WindowsSetup;
 import cc.jumpkick.wire.EnginePaths;
@@ -45,7 +51,9 @@ import org.jspecify.annotations.Nullable;
  * dashboard's bell, a notification and {@code jk decide} show it too. At a terminal it is asked here
  * while the command watches the queue, so an answer from another surface ends the prompt; without a
  * terminal the command waits up to {@link #WAIT} for one. {@code -y}, or {@code [windows] fix =
- * apply}, takes every change without asking; {@code [windows] fix = never} records a decline.
+ * apply}, takes every change without asking; {@code [windows] fix = never} records a decline. In a
+ * WSL distro whose Windows side has no JumpKick, the one change is JumpKick for Windows, asked again
+ * whatever was answered before and installed here through {@code powershell.exe}.
  */
 final class DoctorFix {
 
@@ -70,6 +78,8 @@ final class DoctorFix {
 
     static int run(GlobalOptions global) throws IOException {
         if (!Os.isWindows()) {
+            Guest guest = Guest.detect();
+            if (guest.kind() == Guest.Kind.WSL && guest.interop() && FrontDoorScope.active()) return guest(global);
             CommandWedge.printOk("Doctor", "nothing to set up: the host fixes are for Windows");
             return Exit.SUCCESS;
         }
@@ -90,7 +100,13 @@ final class DoctorFix {
         }
         Answer answer = global.yes || consent == SetupConsent.APPLY
                 ? new Answer.Accepted(WindowsSetup.all(plan))
-                : ask(plan, check, global);
+                : ask(
+                        WindowsSetup.QUESTION,
+                        WindowsSetup.detail(),
+                        WindowsSetup.items(plan),
+                        WindowsSetup.YES,
+                        check.project(),
+                        global);
         switch (answer) {
             case Answer.Declined d -> {
                 CommandWedge.printOk("Doctor", "declined; JumpKick keeps working, `jk doctor` notes what is slower");
@@ -115,17 +131,81 @@ final class DoctorFix {
         }
     }
 
+    /**
+     * On a WSL guest: JumpKick for Windows, offered again whatever was answered before, when Windows
+     * has none; installed here when accepted. {@code -y} or {@code [windows] fix = apply} installs
+     * without asking; {@code never} records a decline.
+     */
+    private static int guest(GlobalOptions global) throws IOException {
+        Path memo = SetupMemo.file(JkDirs.state());
+        if (!WindowsFromGuest.missing(WindowsFromGuest.INTEROP)) {
+            CommandWedge.printOk(
+                    "Doctor", "nothing to set up: Windows has JumpKick, or this distro cannot ask Windows");
+            return Exit.SUCCESS;
+        }
+        SetupConsent consent = WindowsSetup.consent();
+        if (consent == SetupConsent.NEVER && !global.yes) {
+            WindowsFromGuest.remember(memo, false, Clock.SYSTEM.millis());
+            CommandWedge.printOk("Doctor", "not asked: " + consent.settledBy() + "; -y installs anyway");
+            return Exit.SUCCESS;
+        }
+        Answer answer = global.yes || consent == SetupConsent.APPLY
+                ? new Answer.Accepted(Set.of(WindowsFromGuest.ROW))
+                : ask(
+                        WindowsFromGuest.QUESTION,
+                        WindowsFromGuest.detail(),
+                        List.of(WindowsFromGuest.row().item()),
+                        WindowsFromGuest.YES,
+                        null,
+                        global);
+        switch (answer) {
+            case Answer.Declined d -> {
+                WindowsFromGuest.remember(memo, false, Clock.SYSTEM.millis());
+                CommandWedge.printOk("Doctor", "declined; builds here keep this distro's own dashboard");
+                return Exit.SUCCESS;
+            }
+            case Answer.Open o -> {
+                CliOutput.out("Still open: answer it with `jk decide " + o.id() + "`"
+                        + (o.link() == null ? "" : " or at " + o.link()) + ", then rerun `jk doctor --fix`.");
+                return Exit.SUCCESS;
+            }
+            case Answer.Failed f -> {
+                CommandWedge.printFail("Doctor", f.message());
+                return Exit.FAILURE;
+            }
+            case Answer.Accepted a -> {
+                if (!a.chosen().contains(WindowsFromGuest.ROW)) {
+                    WindowsFromGuest.remember(memo, false, Clock.SYSTEM.millis());
+                    CommandWedge.printOk("Doctor", "nothing chosen; nothing changed");
+                    return Exit.SUCCESS;
+                }
+                MachineSetup.Result r =
+                        WindowsFromGuest.installFor(JkVersion.VERSION, line -> CliOutput.out("  " + line));
+                if (r.ok()) WindowsFromGuest.remember(memo, true, Clock.SYSTEM.millis());
+                CliOutput.out((r.ok() ? "  ok    " : "  warn  ") + r.line());
+                return r.ok() ? Exit.SUCCESS : Exit.FAILURE;
+            }
+        }
+    }
+
     /** Raises the decision and waits for its answer: typed here at a terminal, else from any surface. */
-    private static Answer ask(SetupPlan plan, WindowsHostCheck check, GlobalOptions global) throws IOException {
+    private static Answer ask(
+            String question,
+            List<String> detail,
+            List<Map<String, Object>> items,
+            String yes,
+            @Nullable Path project,
+            GlobalOptions global)
+            throws IOException {
         boolean terminal = Interactivity.canPrompt() && !global.outputIsJson();
         EnginePaths.Paths paths = EnginePaths.current();
         Map<String, Object> ask = new LinkedHashMap<>();
         ask.put("kind", WindowsSetup.KIND);
-        ask.put("question", WindowsSetup.QUESTION);
-        ask.put("detail", WindowsSetup.detail());
-        ask.put("items", WindowsSetup.items(plan));
-        ask.put("yes", WindowsSetup.YES);
-        if (check.project() != null) ask.put("project", check.project().toString());
+        ask.put("question", question);
+        ask.put("detail", detail);
+        ask.put("items", items);
+        ask.put("yes", yes);
+        if (project != null) ask.put("project", project.toString());
         ask.put("alert", !terminal);
         DecisionsAck raised = EngineClient.decisions(
                 paths, new DecisionsRequest(DecisionsRequest.RAISE, null, null, MiniJson.write(ask)));

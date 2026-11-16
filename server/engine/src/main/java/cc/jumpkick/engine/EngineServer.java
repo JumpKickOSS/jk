@@ -17,6 +17,7 @@ import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.decisions.GuestWindowsOffer;
 import cc.jumpkick.engine.decisions.JournaledDecisions;
 import cc.jumpkick.engine.decisions.MachineSetupDecisions;
 import cc.jumpkick.engine.graph.GraphCompiles;
@@ -168,6 +169,8 @@ public final class EngineServer implements AutoCloseable {
      * all run the same one.
      */
     private final @Nullable MachineEnvironments machine;
+
+    private final @Nullable GuestWindowsOffer guestOffer;
 
     /** The bell's notices and the machine's one seen marker, kept in the state directory. */
     private final Notices notices;
@@ -427,6 +430,9 @@ public final class EngineServer implements AutoCloseable {
                 ? MachineEnvironments.windows(this::frontDoorEngines, this.version)
                 : null;
         MachineSetupDecisions.watch(decisions, setupRows());
+        // A WSL guest's own engine offers JumpKick for Windows once, when Windows has none (JK-YK3TB).
+        this.guestOffer = Os.isWindows() ? null : GuestWindowsOffer.forThisEngine(Guest.detect(), this.version);
+        if (guestOffer != null) guestOffer.watch(decisions);
         this.notices = new Notices(JkDirs.state().resolve(Notices.FILE), Clock.SYSTEM);
         notices.follow(decisions);
         this.changeNotices = new ChangeNotices(ChangeJournal::current, notices);
@@ -621,7 +627,8 @@ public final class EngineServer implements AutoCloseable {
                         () -> metrics.get(),
                         inFlightBuilds),
                 decisions,
-                setupRows());
+                setupRows(),
+                guestOffer);
     }
 
     /** The setup decision's environment rows: the WSL rows on the Windows engine, none elsewhere. */

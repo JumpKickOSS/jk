@@ -100,6 +100,7 @@ public final class SelfCommand extends GroupCommand {
                 new SetupTerminalSub(),
                 new SelfDesktopCommand(),
                 new SelfSetupWslCommand(),
+                new SelfSetupWindowsCommand(),
                 new SelfNukeCommand());
     }
 

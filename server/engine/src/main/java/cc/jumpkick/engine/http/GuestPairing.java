@@ -7,6 +7,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WslInterop;
 import cc.jumpkick.util.MinimalToml;
+import cc.jumpkick.winhost.WindowsFromGuest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -138,10 +139,7 @@ public final class GuestPairing {
      * %USERPROFILE%\.jk}; null when interop cannot say.
      */
     public static @Nullable String windowsHome(Interop interop) {
-        String home = windowsVar(interop, "JK_HOME");
-        if (home != null) return home;
-        String profile = windowsVar(interop, "USERPROFILE");
-        return profile == null ? null : profile + "\\.jk";
+        return WindowsFromGuest.windowsHome(interop::output);
     }
 
     /** Windows' value of {@code name}, as {@code cmd.exe} expands it; null when unset. */

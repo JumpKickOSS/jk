@@ -6,6 +6,7 @@ import cc.jumpkick.engine.decisions.Decision;
 import cc.jumpkick.engine.decisions.DecisionForms;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.DecisionSurface;
+import cc.jumpkick.engine.decisions.GuestWindowsOffer;
 import cc.jumpkick.engine.decisions.MachineSetupDecisions;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
@@ -33,6 +34,7 @@ public final class DecideVerb implements HostedVerb {
     private final VerbHost host;
     private final DecisionQueue queue;
     private final List<SetupEnvironment> setupRows;
+    private final @Nullable GuestWindowsOffer guestOffer;
 
     public DecideVerb(VerbHost host, DecisionQueue queue) {
         this(host, queue, List.of());
@@ -40,9 +42,19 @@ public final class DecideVerb implements HostedVerb {
 
     /** {@code setupRows} are the machine-setup decision's environment rows an offer proposes and applies. */
     public DecideVerb(VerbHost host, DecisionQueue queue, List<SetupEnvironment> setupRows) {
+        this(host, queue, setupRows, null);
+    }
+
+    /** {@code guestOffer} is a WSL guest's offer of JumpKick for Windows, which a person's build asks for. */
+    public DecideVerb(
+            VerbHost host,
+            DecisionQueue queue,
+            List<SetupEnvironment> setupRows,
+            @Nullable GuestWindowsOffer guestOffer) {
         this.host = host;
         this.queue = queue;
         this.setupRows = List.copyOf(setupRows);
+        this.guestOffer = guestOffer;
     }
 
     @Override
@@ -70,7 +82,7 @@ public final class DecideVerb implements HostedVerb {
         try {
             DecisionsAck ack;
             try {
-                ack = answer(queue, DecisionsRequest.decode(requestLine), setupRows);
+                ack = answer(queue, DecisionsRequest.decode(requestLine), setupRows, guestOffer);
             } catch (RuntimeException e) {
                 ack = DecisionsAck.error(Errors.text(e));
             }
@@ -86,11 +98,28 @@ public final class DecideVerb implements HostedVerb {
     }
 
     static DecisionsAck answer(DecisionQueue queue, DecisionsRequest req, List<SetupEnvironment> setupRows) {
+        return answer(queue, req, setupRows, null);
+    }
+
+    /**
+     * Answers {@code req}. An offer on a WSL guest ({@code guestOffer}) answers with the decision it
+     * opened, so the build that asked prints its one hint line; elsewhere the offer runs off the
+     * request path and answers nothing.
+     */
+    static DecisionsAck answer(
+            DecisionQueue queue,
+            DecisionsRequest req,
+            List<SetupEnvironment> setupRows,
+            @Nullable GuestWindowsOffer guestOffer) {
         if (DecisionsRequest.RAISE.equals(req.action())) return raise(queue, req.ask());
         if (DecisionsRequest.OFFER.equals(req.action())) {
             String project = req.ask() != null && MiniJson.parse(req.ask()) instanceof Map<?, ?> ask
                     ? MiniJson.str(ask, "project")
                     : null;
+            if (guestOffer != null) {
+                Decision opened = guestOffer.offer(queue, project);
+                return new DecisionsAck(null, "[]", opened == null ? null : MiniJson.write(opened.toMap()));
+            }
             MachineSetupDecisions.offer(queue, MachineSetupDecisions.project(project), setupRows);
             return new DecisionsAck(null, "[]", null);
         }

@@ -196,6 +196,18 @@ to look, so it gets no row; `jk self setup-wsl` installs there. The same operati
 front door's token; a request from another page's origin is refused) and the MCP `machine` tool,
 which asks you first.
 
+A WSL distro whose Windows side has no JumpKick offers it once. After a build you run at a
+terminal, its engine raises the setup decision with one row, "JumpKick for Windows" (a dashboard on
+your desktop, notifications, one front door at 8910 for all your distros), as a Windows notification
+that opens this distro's dashboard on it, and the build prints one line: `JumpKick for Windows adds a
+desktop dashboard and notifications: jk self setup-windows`. An agent's run (`-a`), a run with no
+terminal, a private home and CI are never offered it. Accepting installs JumpKick for Windows into your
+Windows account through `powershell.exe` (JumpKick's `install.ps1`, pinned to the distro's version;
+no administrator prompt), starts its engine and pairs this distro with it; declining, or leaving it
+unanswered, is remembered, so no later build asks. `jk doctor --fix` in the distro asks again, and
+`jk self setup-windows` installs without asking. `[windows] fix` in `~/.jk/config.toml` answers in
+advance there as on Windows (`apply` installs, `never` declines).
+
 `jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
 (`jk web -O jsonl` prints `url` and `engineId`, and `token` with `--with-token`). The id stays the same across restarts and

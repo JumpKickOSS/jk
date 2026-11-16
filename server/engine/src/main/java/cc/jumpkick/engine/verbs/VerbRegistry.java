@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.decisions.GuestWindowsOffer;
 import cc.jumpkick.winhost.SetupEnvironment;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +41,18 @@ public final class VerbRegistry {
 
     /** {@link #standard(VerbHost, DecisionQueue)}; {@code setupRows} are the setup decision's environment rows. */
     public static VerbRegistry standard(VerbHost host, DecisionQueue decisions, List<SetupEnvironment> setupRows) {
+        return standard(host, decisions, setupRows, null);
+    }
+
+    /**
+     * {@link #standard(VerbHost, DecisionQueue, List)}; {@code guestOffer} is a WSL guest's offer of
+     * JumpKick for Windows, null on any other engine.
+     */
+    public static VerbRegistry standard(
+            VerbHost host,
+            DecisionQueue decisions,
+            List<SetupEnvironment> setupRows,
+            @Nullable GuestWindowsOffer guestOffer) {
         return new VerbRegistry(List.of(
                 new WorkspaceBuildVerb(host),
                 new LockVerb(host),
@@ -64,7 +77,7 @@ public final class VerbRegistry {
                 new GenerateVerb(host),
                 new NewProjectVerb(host),
                 new NewProjectFormVerb(host),
-                new DecideVerb(host, decisions, setupRows),
+                new DecideVerb(host, decisions, setupRows, guestOffer),
                 new TemplateLintVerb(host),
                 new IdeModelVerb(host),
                 new DenyCheckVerb(host),
