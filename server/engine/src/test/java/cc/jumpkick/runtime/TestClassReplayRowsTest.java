@@ -55,7 +55,6 @@ class TestClassReplayRowsTest {
         run(second.recording(TestProgressListener.noop()), "demo.RedTest", "SUCCESSFUL");
         Rows rows = new Rows();
         second.finish(rows, cache, TASK, STAMP, STAMP, new TestSummary(1, 1, 0, 0, List.of()));
-        second.replaySettled(rows);
 
         assertThat(rows.classes).hasSize(1);
         TestClassResult ok = rows.classes.getFirst();

@@ -224,19 +224,11 @@ final class TestSteps {
         // Green once every launch has run: the sandbox has nothing left to show. Red keeps it for a look.
         if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
-        reads.recordClasses(
-                ledger,
-                moduleLabel,
-                testClasses,
-                mainClasses(ctx),
-                runtimeCp,
-                ctx.get(JAVA_HOME).orElse(null));
-        String startedKey = stampKey;
-        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
+        recordClasses(ctx, reads, ledger, moduleLabel, testClasses, runtimeCp, stamp, stampKey);
+        String settledKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
         // The marker is stored under the key that folds in what the suite was found to read.
-        KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
-        result = ledger.finish(ctx, actionCache, testTaskId, startedKey, stampKey, result);
-        ledger.replaySettled(ctx);
+        KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, settledKey, rekey::key);
+        result = ledger.finish(ctx, actionCache, testTaskId, stampKey, settledKey, result);
         List<String> said = EnvReadReport.report(ctx, in, projectUnderTest, testEnv, testClasses, runtimeCp, result);
         settle(
                 ctx,
@@ -248,11 +240,11 @@ final class TestSteps {
                 result.withSuites(suites::suiteOf),
                 actionCache,
                 testTaskId,
-                stampKey,
+                settledKey,
                 !testSrcs.isEmpty(),
                 snippets,
                 said);
-        keepTokens(effectiveSel, stampKey, result, affected, rekey);
+        keepTokens(effectiveSel, settledKey, result, affected, rekey);
     }
 
     /**
@@ -303,6 +295,32 @@ final class TestSteps {
         TestClassLedger.load(actionCache, stampKey, coordinate(project), tier.name())
                 .replayCovered(ctx, cls -> true, suite -> true);
         return true;
+    }
+
+    /**
+     * Keep each class's record of the run {@code reads} recorded, with its key in shadow, before the
+     * environment report empties the lookups.
+     */
+    private static void recordClasses(
+            TaskContext ctx,
+            SuiteDiscovery.Run reads,
+            TestClassLedger ledger,
+            String moduleLabel,
+            Path testClasses,
+            List<Path> runtimeCp,
+            TestStampInputs stamp,
+            @Nullable String stampKey)
+            throws IOException {
+        reads.recordClasses(
+                ledger,
+                moduleLabel,
+                testClasses,
+                mainClasses(ctx),
+                runtimeCp,
+                ctx.get(JAVA_HOME).orElse(null),
+                stamp.extras(),
+                ctx.get(COMPILED_TESTS).map(CompiledTests::resourceDirs).orElse(List.of()),
+                stampKey);
     }
 
     /** {@code group:name}, the label a module's suite reports under. */

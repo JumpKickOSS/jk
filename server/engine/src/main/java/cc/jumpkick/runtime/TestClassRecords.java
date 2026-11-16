@@ -117,13 +117,30 @@ final class TestClassRecords {
             Lookups lookups,
             Path workspace,
             @Nullable String toolchain) {
+        write(moduleDir, module, recorded, seen, lookups, workspace, toolchain, Map.of(), Map.of());
+    }
+
+    /** As above, each row with its class key from {@code keys} and its cone from {@code cones}, by launch and class. */
+    static void write(
+            Path moduleDir,
+            String module,
+            Map<String, TestClassLedger.Entry> recorded,
+            ClassReads.Attributed seen,
+            Lookups lookups,
+            Path workspace,
+            @Nullable String toolchain,
+            Map<String, ClassKeys.Key> keys,
+            Map<String, String> cones) {
         if (recorded.isEmpty()) return;
         Path file = file(moduleDir);
         Map<String, String> rows = new TreeMap<>(previousRows(file));
         Path root = workspace.toAbsolutePath().normalize();
         for (Outcome o : outcomes(recorded)) {
             ClassReads.Observation obs = seen.complete() ? seen.classes().get(o.testClass()) : null;
-            rows.put(rowKey(o.launch(), o.testClass()), row(o, obs, lookups, root));
+            String key = rowKey(o.launch(), o.testClass());
+            ClassKeys.Key classKey = keys.get(key);
+            String cone = cones.get(key);
+            rows.put(key, row(o, obs, lookups, root, classKey, cone));
         }
         StringBuilder sb = new StringBuilder(header(module, seen, lookups, root, toolchain)).append('\n');
         for (String row : rows.values()) sb.append(row).append('\n');
@@ -132,6 +149,17 @@ final class TestClassRecords {
             AtomicWrites.replace(file, sb.toString());
         } catch (IOException | RuntimeException unwritable) {
             Log.debug("test class records: not kept", unwritable);
+        }
+    }
+
+    /** The record file's header line, or null when there is none. */
+    static @Nullable String header(Path file) {
+        if (!Files.isRegularFile(file)) return null;
+        try (var lines = Files.lines(file, StandardCharsets.UTF_8)) {
+            String first = lines.findFirst().orElse(null);
+            return first != null && "suite".equals(Jsonl.str(first, "kind")) ? first : null;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
         }
     }
 
@@ -196,7 +224,13 @@ final class TestClassRecords {
         return List.copyOf(by.values());
     }
 
-    private static String row(Outcome o, ClassReads.@Nullable Observation obs, Lookups lookups, Path root) {
+    private static String row(
+            Outcome o,
+            ClassReads.@Nullable Observation obs,
+            Lookups lookups,
+            Path root,
+            ClassKeys.@Nullable Key classKey,
+            @Nullable String cone) {
         JsonFields f = JsonFields.object()
                 .string("launch", o.launch())
                 .array("container", container(o.testClass()))
@@ -208,6 +242,9 @@ final class TestClassRecords {
                 .number("millis", o.millis())
                 // A class whose recording was not read whole is attributed nothing.
                 .bool("attributed", obs != null);
+        if (classKey != null) {
+            f.string("classKey", classKey.key()).optionalString("fallback", classKey.fallback());
+        }
         if (obs != null) {
             f.array("reads", spelled(obs.reads(), root))
                     .array("code", spelled(obs.code(), root))
@@ -219,6 +256,7 @@ final class TestClassRecords {
         f.array("env", List.copyOf(lookups.env(o.testClass())));
         JsonFields jvm = JsonFields.object().array("props", List.copyOf(lookups.props(o.testClass())));
         if (obs != null) jvm.array("loaded", List.copyOf(obs.loaded()));
+        if (cone != null) jvm.string("cone", cone);
         return f.token("jvm", jvm.finish()).finish();
     }
 
