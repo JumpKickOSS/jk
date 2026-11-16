@@ -211,7 +211,8 @@ public final class PlannerCompile {
             options.add("--source-path");
             options.add(in.layout().groovyStubsDir().toAbsolutePath().toString());
         }
-        List<String> javacOpts = javacOptions(options, in.javac());
+        List<String> javacOpts = GeneratedNullness.withGeneratedUnannotated(
+                javacOptions(options, in.javac()), in.sources(), in.layout().moduleTargetDir());
         List<Path> processorPath = effectiveProcessorPath(in.processorPath(), in.contributedProcessors(), classpath);
         CompileRequest.CompileRequestBuilder req = CompileRequest.builder()
                 .sources(in.sources())

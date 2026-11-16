@@ -233,7 +233,11 @@ What an annotation processor writes is not the module's to fix, so a class marke
 left unchecked even inside a checked package, and so are calls into it: the JDK's `@Generated`, and
 `io.helidon.common.Generated` on everything Helidon's code generators write (JSON converters,
 service descriptors, the application binding). Another generator's marker goes in `options`
-(`-XepOpt:NullAway:CustomGeneratedCodeAnnotations=…`).
+(`-XepOpt:NullAway:CustomGeneratedCodeAnnotations=…`). Every source a code generator JumpKick drives
+writes under the module's `target/` (a plugin step such as `[jooq]`, `[openapi]` or `[protobuf]`, a
+KSP round, build logic) is unannotated too, marked or not: its classes are named to NullAway as
+`UnannotatedClasses`, so a jOOQ record's setter takes a `@Nullable` value from your code while your
+code stays checked.
 
 Checking is on for the module's own code, and you opt packages out. List them in `exclude`, or
 mark one in its `package-info.java`; the JSpecify markings always apply:

@@ -170,6 +170,51 @@ class SchemaPresetExamplesTest {
         assertThat(anyFile(project.resolve("target"), "Shipments.class")).isTrue();
     }
 
+    /**
+     * {@code [jooq]} beside {@code [nullness]}: jOOQ marks none of its classes generated, and they land
+     * in the group's checked packages, so NullAway read every generated setter as non-null and code
+     * passing a nullable column's value failed the compile. Generated sources are unannotated to
+     * NullAway, so the hand-written call compiles, and the hand-written code is still checked.
+     */
+    @Test
+    void the_jooq_example_under_nullness_passes_a_nullable_value_to_a_generated_setter(@TempDir Path tmp)
+            throws Exception {
+        Path project = example(tmp, PluginJar.JOOQ, "plugins/jooq");
+        Files.writeString(project.resolve("jk.toml"), Files.readString(project.resolve("jk.toml")) + "\n[nullness]\n");
+        Files.writeString(
+                project.resolve("src/main/resources/db/migration/V3__shipments.sql"),
+                "create table shipments (id bigint primary key, carrier varchar(64));\n");
+        Path notes = project.resolve("src/main/java/com/acme/Carriers.java");
+        Files.writeString(notes, """
+                package com.acme;
+
+                import com.acme.jooq.tables.records.ShipmentsRecord;
+                import org.jspecify.annotations.Nullable;
+
+                final class Carriers {
+                    private Carriers() {}
+
+                    static void carry(ShipmentsRecord row, @Nullable String carrier) {
+                        row.setCarrier(carrier);
+                    }
+                }
+                """);
+        Path cache = TestCaches.dir("jooq-example-cache");
+        lock(project, cache);
+
+        BuildPlanResult built = build(project, cache);
+        assertThat(built.errors())
+                .as("a nullable value reaches a generated setter")
+                .isEmpty();
+        assertThat(built.success()).isTrue();
+
+        Files.writeString(notes, Files.readString(notes).replace("row.setCarrier(carrier);", "carrier.length();"));
+        BuildPlanResult checked = build(project, cache);
+        assertThat(checked.success())
+                .as("hand-written code is still held to NullAway")
+                .isFalse();
+    }
+
     /** The plugin's example fixture copied under {@code tmp}, its worker jar handed to the engine. */
     static Path example(Path tmp, PluginJar worker, String module) throws IOException {
         workerJarFromWorkspace(PluginJar.GENERATOR, "plugins/generator");

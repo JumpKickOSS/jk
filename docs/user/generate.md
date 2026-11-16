@@ -414,6 +414,10 @@ migration edit regenerates and an unchanged schema is a hit.
 jooq = "3.21.9"                          # the generated classes read it at run time; keep it at the generator's version
 ```
 
+The generated classes need nothing beside `[nullness]`: NullAway treats them as unannotated
+([null checking](build.md#null-checking-nullness)), so code passing a nullable column's value to a record's setter compiles,
+with no `exclude` for the generated package.
+
 The step is `generate-jooq`. A **live database** is opt-in: `jdbc-url` (with `jdbc-user`,
 `jdbc-password`) reads the schema over JDBC instead, jOOQ detecting the dialect from the
 connection, and `driver = "org.postgresql:postgresql:42.7.9"` puts its driver on the generator's
