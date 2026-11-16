@@ -1064,7 +1064,10 @@ values of its `[test] env` and `[env]` table (the declared names and `vars`), it
 The rest is found by watching the suite run. Every JVM that runs tests records, through Java
 Flight Recorder, each file it reads, each process it starts and its socket traffic. A file outside
 everything above — `../shared/fixture.json`, a file under `$HOME`, `jk.toml` read as data — is a
-**discovered input**: it is kept under the module's `target/.jk/` and keys the suite from then on,
+**discovered input**: it is kept in JumpKick's cache under the module's project id and
+workspace-relative path, named relative to the workspace (or to the store, the cache or the JumpKick home), never by
+checkout path, so another checkout of the project, on this machine or one that shares the cache
+directory, finds it and replays the suite instead of running it. It keys the suite from then on,
 by content, together with the listing of the directory it sits in, so a file added beside it is
 seen too. A started program keys the suite by its executable. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
@@ -1116,8 +1119,9 @@ same words in `jk explain`'s forecast for the module, and a `suites` warning row
 naming the module and the time until that module's next run is read.
 
 What this does not see: a directory listed where nothing was then read, the clock, and, under a
-suite JDK older than 22, file channel reads. `jk clean` forgets the discovered inputs with the rest
-of `target/`.
+suite JDK older than 22, file channel reads. `jk clean` keeps the discovered inputs, so a clean
+build is keyed as the build before it was. A remote cache tier holds the suite's markers but not
+these lists yet (JK-02G9W), so a host that shares only a remote tier finds them on its first run of the suite.
 
 ## JUnit in-process parallel vs `-w`
 

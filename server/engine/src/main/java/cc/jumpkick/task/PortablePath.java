@@ -77,7 +77,7 @@ public final class PortablePath {
      * the jk home; the absolute path when none does. The store and the cache are tried first, since
      * either may be moved outside the home.
      */
-    static String underJkRoot(Path abs) {
+    public static String underJkRoot(Path abs) {
         for (var root : List.of(
                 Map.entry("store:", JkDirs.store()),
                 Map.entry("cache:", JkDirs.cache()),
@@ -86,6 +86,25 @@ public final class PortablePath {
             if (abs.startsWith(dir) && !abs.equals(dir)) return root.getKey() + slashed(dir.relativize(abs));
         }
         return slashed(abs);
+    }
+
+    /**
+     * The path {@link #underJkRoot} spelled, on this machine: {@code store:}, {@code cache:} and
+     * {@code jk-home:} resolved against this host's roots; anything else as written.
+     */
+    public static Path fromJkRoot(String spelled) {
+        for (var root : List.of(
+                Map.entry("store:", JkDirs.store()),
+                Map.entry("cache:", JkDirs.cache()),
+                Map.entry("jk-home:", JkDirs.home()))) {
+            if (spelled.startsWith(root.getKey())) {
+                return root.getValue()
+                        .toAbsolutePath()
+                        .normalize()
+                        .resolve(spelled.substring(root.getKey().length()));
+            }
+        }
+        return Path.of(spelled);
     }
 
     private static Optional<String> moduleRelative(Path abs) {

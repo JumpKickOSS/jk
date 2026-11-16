@@ -3,6 +3,7 @@ package cc.jumpkick.test;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -13,7 +14,9 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -480,16 +483,13 @@ public final class SuiteReads {
     /**
      * Where a module keeps what its suites under {@code selection} were found to read: in jk's cache
      * for the project, not under {@code target}, so a clean build is keyed as the build before it was.
+     * The directory is named by the module's portable tag ({@link ActionKey#taskTag}: the project id
+     * and the module's workspace-relative path), never its checkout path, so another checkout of the
+     * project, here or on a host the cache is shared with, finds it (JK-PCXMC).
      */
     static Path discoveredFile(Path moduleDir, TestSelection selection) {
         String tier = Hashing.sha256Hex(selection.identityToken()).substring(0, 12);
-        Path dir = moduleDir.toAbsolutePath().normalize();
-        try {
-            if (Files.exists(dir)) dir = dir.toRealPath();
-        } catch (IOException keepNormalized) {
-            // the normalized path names it
-        }
-        String module = Hashing.sha256Hex(dir.toString()).substring(0, 16);
+        String module = "m-" + ActionKey.taskTag(moduleDir);
         return CacheTree.PROJECTS
                 .under(JkDirs.cache())
                 .resolve(module)
@@ -505,8 +505,9 @@ public final class SuiteReads {
         Set<String> commands = new TreeSet<>();
         Set<String> hosts = new TreeSet<>();
         try {
+            Path workspace = workspaceOf(moduleDir);
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                if (line.startsWith("file ")) files.add(Path.of(line.substring(5)));
+                if (line.startsWith("file ")) files.add(unspell(workspace, line.substring(5)));
                 else if (line.startsWith("command ")) commands.add(line.substring(8));
                 else if (line.startsWith(NETWORK_LINE)) hosts.add(line.substring(NETWORK_LINE.length()));
             }
@@ -595,7 +596,9 @@ public final class SuiteReads {
     /** Keep {@code d} for the module's suites under {@code selection}. Best-effort. */
     public static void save(Path moduleDir, TestSelection selection, Discovered d) {
         StringBuilder sb = new StringBuilder();
-        for (Path f : d.files()) sb.append("file ").append(f).append('\n');
+        // Each file as the key spells it, so the list means the same in every checkout that reads it.
+        Path workspace = workspaceOf(moduleDir);
+        for (Path f : d.files()) sb.append("file ").append(keep(workspace, f)).append('\n');
         for (String c : d.commands())
             sb.append("command ").append(c.replace('\n', ' ')).append('\n');
         for (String h : d.hosts()) sb.append(NETWORK_LINE).append(h).append('\n');
@@ -671,7 +674,32 @@ public final class SuiteReads {
     }
 
     private static String spell(Path root, Path p) {
-        return p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : p.toString();
+        return p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : PortablePath.underJkRoot(p);
+    }
+
+    /** The line prefix of a kept file inside the workspace, which follows the checkout. */
+    private static final String WORKSPACE = "ws:";
+
+    /** {@code f} as a kept line spells it: workspace-relative, else relative to a jk root, else absolute. */
+    static String keep(Path workspace, Path f) {
+        Path abs = f.toAbsolutePath().normalize();
+        if (abs.startsWith(workspace))
+            return WORKSPACE + workspace.relativize(abs).toString().replace('\\', '/');
+        return PortablePath.underJkRoot(abs);
+    }
+
+    /** The file a kept line names, on this checkout and host. */
+    static Path unspell(Path workspace, String kept) {
+        if (kept.startsWith(WORKSPACE))
+            return workspace.resolve(kept.substring(WORKSPACE.length())).normalize();
+        return PortablePath.fromJkRoot(kept);
+    }
+
+    private static Path workspaceOf(Path moduleDir) {
+        return WorkspaceScan.findRoot(moduleDir)
+                .orElse(moduleDir)
+                .toAbsolutePath()
+                .normalize();
     }
 
     private static String listing(Path dir) {

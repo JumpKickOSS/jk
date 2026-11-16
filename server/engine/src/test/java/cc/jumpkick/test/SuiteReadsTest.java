@@ -154,6 +154,40 @@ class SuiteReadsTest {
                 .containsExactly("proc:" + tool + "=" + FileHashMemo.contentHash(tool));
     }
 
+    /**
+     * What a suite was found to read is kept under the module's portable tag with checkout-relative
+     * names: another checkout of the project finds it and reads it as its own files (JK-PCXMC).
+     */
+    @Test
+    void another_checkout_of_the_project_finds_the_reads_as_its_own_files(@TempDir Path tmp) throws Exception {
+        Path one = checkout(tmp.resolve("one/app"));
+        Path two = checkout(tmp.resolve("elsewhere/deeper/two"));
+        assertThat(SuiteReads.discoveredFile(one, TestSelection.DEFAULT))
+                .isEqualTo(SuiteReads.discoveredFile(two, TestSelection.DEFAULT));
+        Path fixture =
+                Files.writeString(Files.createDirectories(one.resolve("data")).resolve("in.txt"), "x");
+        SuiteReads.save(
+                one, TestSelection.DEFAULT, SuiteReads.Discovered.NONE.with(Set.of(fixture), Set.of(), Set.of()));
+        assertThat(Files.readString(SuiteReads.discoveredFile(one, TestSelection.DEFAULT)))
+                .as("no checkout path is kept")
+                .contains("file ws:data/in.txt")
+                .doesNotContain(tmp.toString());
+        assertThat(SuiteReads.load(two, TestSelection.DEFAULT).files())
+                .containsExactly(two.resolve("data/in.txt").toAbsolutePath().normalize());
+        Files.writeString(Files.createDirectories(two.resolve("data")).resolve("in.txt"), "x");
+        assertThat(SuiteReads.tokens(two, TestSelection.DEFAULT, two))
+                .isEqualTo(SuiteReads.tokens(one, TestSelection.DEFAULT, one));
+    }
+
+    private static Path checkout(Path dir) throws Exception {
+        Files.createDirectories(dir);
+        // Two clones of one commit carry one project id, as the lock's project-id does.
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                "id = \"portable-reads-1\"\ngroup = \"com.example\"\nname = \"portable-reads\"\nversion = \"1.0.0\"\n");
+        return dir;
+    }
+
     @Test
     void a_discovered_set_covers_a_run_that_read_nothing_new() {
         Path a = Path.of("/w/a.txt");

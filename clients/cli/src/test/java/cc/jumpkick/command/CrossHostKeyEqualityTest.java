@@ -46,7 +46,10 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Then the 27 side takes the 25 side's cache: under {@code jdk-match = level} its build is
  * served, with a note naming the JDK the results were made on; under the default {@code major} it
- * builds again on its own and says once why, naming both ways out.
+ * builds again on its own and says once why, naming both ways out. A third host on Temurin
+ * 25.0.7, another patch of the first host's major, handed the first host's cache, replays its suite
+ * under the default match with no test JVM started: what the suite was found to read is kept under
+ * the module's portable tag with checkout-relative names, so another checkout finds it (JK-PCXMC).
  *
  * <p>The comparison is over each home's task pointers ({@code cache/actions/tasks/<step>@<tag>},
  * the tag being the project id and the output's workspace-relative path, both portable). A key that
@@ -106,13 +109,15 @@ class CrossHostKeyEqualityTest {
     private record Side(String name, Path root, Path home, Path checkout, Map<String, String> env) {}
 
     @Test
-    @Timeout(value = 25, unit = TimeUnit.MINUTES) // two cold engines in fresh homes, then the 27 side twice more
+    @Timeout(value = 30, unit = TimeUnit.MINUTES) // three cold engines in fresh homes, the 27 side twice more
     void two_hosts_compute_every_action_key_alike(@TempDir Path tmp) throws Exception {
         assumeFalse(Os.isWindows(), "the sides are POSIX shells' environments");
         Side a = side(tmp, "a", "work/app", "keyeqa", "en_US.UTF-8", "America/New_York");
         Side b = side(tmp, "b", "elsewhere/much/deeper/checkout-two", "keyeqb", "de_DE.UTF-8", "Asia/Tokyo");
         jdkInventory(a, "temurin-25.0.5", "Eclipse Adoptium", "25.0.5", "25.0.5+11-LTS");
         jdkInventory(b, "openjdk-27.0.1", "Oracle Corporation", "27.0.1", "27.0.1+9");
+        Side c = side(tmp, "c", "third/clone", "keyeqc", "en_US.UTF-8", "Europe/Berlin");
+        jdkInventory(c, "temurin-25.0.7", "Eclipse Adoptium", "25.0.7", "25.0.7+6-LTS");
         b.env().put("LC_ALL", "de_DE.UTF-8");
         b.env().put("LANGUAGE", "de");
         try {
@@ -164,12 +169,6 @@ class CrossHostKeyEqualityTest {
             jk(b, "engine", "stop");
             replaceCache(a.home(), b.home());
             deleteTree(b.checkout().resolve("target")); // a fresh clone: nothing of its own built yet
-            // What a suite was found to read is kept under the checkout's absolute path, which a
-            // shared cache does not carry (JK-PCXMC); hand it over as that fix will.
-            Path readsA = b.home().resolve("cache/projects").resolve(moduleId(a.checkout()));
-            if (Files.isDirectory(readsA)) {
-                Files.move(readsA, b.home().resolve("cache/projects").resolve(moduleId(b.checkout())));
-            }
             b.env().put("JK_CACHE_JDK_MATCH", "level");
             assertThat(jk(b, "build")).as("site b builds from site a's records").isZero();
             assertThat(b.root().resolve("jk-build.log"))
@@ -190,9 +189,21 @@ class CrossHostKeyEqualityTest {
                     .contains("made on JDK 25")
                     .contains("jk jdk install temurin-25")
                     .contains("jdk-match = \"level\"");
+
+            // A third host on another patch of site a's major, handed site a's cache: under the
+            // default match it replays a's suite, no test JVM started, and says where it was made.
+            replaceCache(a.home(), c.home());
+            copySources(a.checkout(), c.checkout());
+            assertThat(jk(c, "build")).as("site c builds from site a's records").isZero();
+            assertThat(c.root().resolve("jk-build.log"))
+                    .as("the suite replays from the shared cache: no test JVM starts")
+                    .content()
+                    .doesNotContain("test JVM flags")
+                    .contains("made on eclipse-adoptium 25.0.5+11-LTS");
         } finally {
             jk(a, "engine", "stop");
             jk(b, "engine", "stop");
+            jk(c, "engine", "stop");
         }
     }
 
