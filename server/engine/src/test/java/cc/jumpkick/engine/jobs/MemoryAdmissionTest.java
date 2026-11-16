@@ -42,6 +42,10 @@ class MemoryAdmissionTest {
     static final class FakeHeap implements MemoryAdmission.Heap {
         final long max;
         volatile long committed;
+        /** What a collection leaves in use, the live set; negative: as much as is committed. */
+        volatile long liveAfterCollect = -1;
+
+        volatile long used = -1;
         final AtomicInteger collections = new AtomicInteger();
 
         FakeHeap(long maxMib, long committedMib) {
@@ -62,6 +66,12 @@ class MemoryAdmissionTest {
         @Override
         public void collect() {
             collections.incrementAndGet();
+            if (liveAfterCollect >= 0) used = liveAfterCollect;
+        }
+
+        @Override
+        public long usedBytes() {
+            return used >= 0 ? used : committed;
         }
     }
 
@@ -118,6 +128,33 @@ class MemoryAdmissionTest {
         // A collection (or the job's own release of memory) brings committed back; the poll notices.
         heap.committed = 300 * MIB;
         assertThat(second.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
+    }
+
+    /**
+     * A finished large job leaves the heap committed and full of garbage until a collection. A second
+     * job the live set has room for is admitted at once, after one collection admission asks for,
+     * not after whatever collection happens next; one the live set has no room for still waits.
+     */
+    @Test
+    void a_heap_committed_but_mostly_garbage_is_collected_and_judged_by_what_is_live() throws Exception {
+        FakeHeap heap = new FakeHeap(1000, 100);
+        MemoryAdmission gate = gate(heap, (kind, dir) -> "/big".equals(dir) ? 700 * MIB : 100 * MIB);
+        assertThat(gate.admit(1, "test", "/app", NEVER_QUEUED, () -> false)).isEqualTo(Verdict.ADMITTED);
+        // The running suite has committed 900 MiB, of which 150 MiB are live.
+        heap.committed = 900 * MIB;
+        heap.liveAfterCollect = 150 * MIB;
+        assertThat(gate.admit(2, "build", "/lib", NEVER_QUEUED, () -> false))
+                .as("100 MiB beside a 150 MiB live set")
+                .isEqualTo(Verdict.ADMITTED);
+        assertThat(heap.collections).as("one collection measured the live set").hasValue(1);
+
+        CompletableFuture<Verdict> big =
+                async(() -> gate.admit(3, "build", "/big", (ahead, waited) -> {}, () -> false));
+        Await.until(HANG, () -> gate.queued() == 1);
+        assertThat(big).as("the ledger has no room for 700 MiB beside two jobs").isNotDone();
+        gate.release(1);
+        gate.release(2);
+        assertThat(big.get(HANG.toSeconds(), TimeUnit.SECONDS)).isEqualTo(Verdict.ADMITTED);
     }
 
     /** A job the whole heap could not hold is refused before it starts; one that fits alone is admitted at once. */

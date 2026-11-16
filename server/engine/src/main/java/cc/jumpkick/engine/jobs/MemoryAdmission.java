@@ -68,6 +68,14 @@ public final class MemoryAdmission {
         /** A full collection, so committed heap reflects live data before a waiter is re-judged. */
         void collect();
 
+        /**
+         * The heap in use now, garbage included; right after {@link #collect} it is the live set.
+         * A fake that does not say is in use up to what it has committed.
+         */
+        default long usedBytes() {
+            return committedBytes();
+        }
+
         static Heap runtime() {
             Runtime rt = Runtime.getRuntime();
             return new Heap() {
@@ -84,6 +92,11 @@ public final class MemoryAdmission {
                 @Override
                 public void collect() {
                     System.gc();
+                }
+
+                @Override
+                public long usedBytes() {
+                    return rt.totalMemory() - rt.freeMemory();
                 }
             };
         }
@@ -377,7 +390,11 @@ public final class MemoryAdmission {
             admittedBytes -= estimate;
             live.remove(jid);
             publish();
-            if (!queue.isEmpty()) heap.collect();
+            if (!queue.isEmpty()) {
+                heap.collect();
+                lastCollectMillis = nowMillis.getAsLong();
+                liveBytes = heap.usedBytes();
+            }
             if (admitted.isEmpty()) idleCommittedBytes = Math.min(idleCommittedBytes, heap.committedBytes());
             lock.notifyAll();
         }
@@ -453,11 +470,38 @@ public final class MemoryAdmission {
         }
     }
 
+    /**
+     * Whether {@code estimate} fits beside the admitted jobs. The ledger of estimates always counts;
+     * beside it, what the heap actually holds: the committed heap when that already leaves room,
+     * else the live set. A running job's committed heap is mostly garbage until a collection, and
+     * judged by it alone a second job waited for an unrelated collection while one job ran (on the
+     * shared engine on 2026-11-15, 141 of 144 queued jobs found one job live). So when the committed
+     * heap refuses, a full collection, at most one per {@link #COLLECT_EVERY_MS}, measures the live
+     * set, and that is what the job is judged by; between collections, the last one measured.
+     */
     private boolean fits(long estimate) {
         if (admitted.isEmpty()) return true;
-        long spokenFor = Math.max(idleCommittedBytes + admittedBytes, heap.committedBytes());
-        return estimate <= heap.maxBytes() - RESERVE_BYTES - spokenFor;
+        long room = heap.maxBytes() - RESERVE_BYTES;
+        long ledger = idleCommittedBytes + admittedBytes;
+        if (estimate > room - ledger) return false;
+        if (estimate <= room - heap.committedBytes()) return true;
+        long now = nowMillis.getAsLong();
+        if (lastCollectMillis == Long.MIN_VALUE || now - lastCollectMillis >= COLLECT_EVERY_MS) {
+            heap.collect();
+            lastCollectMillis = now;
+            liveBytes = heap.usedBytes();
+        }
+        return estimate <= room - Math.max(ledger, liveBytes);
     }
+
+    /** The least time between two collections admission asks for to measure the live set. */
+    static final long COLLECT_EVERY_MS = 2_000L;
+
+    /** When admission last collected to measure the live set; {@code Long.MIN_VALUE} before the first. */
+    private long lastCollectMillis = Long.MIN_VALUE;
+
+    /** The live set that collection measured. */
+    private long liveBytes;
 
     /**
      * The fairness view, for a brief job and for the head past its fair wait: the ledger of
