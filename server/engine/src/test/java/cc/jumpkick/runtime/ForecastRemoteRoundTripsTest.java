@@ -9,7 +9,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.lock.LockFreshness;
-import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
@@ -196,13 +196,7 @@ class ForecastRemoteRoundTripsTest {
         // Unstamped, the first build would resolve the default test platform to write one, which
         // needs those artifacts in the store or the network; without them it kept the stale lock,
         // and the second checkout's forecast priced every step as waiting on a lock update.
-        Files.writeString(ws.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                manifests-sha256 = "%s"
-                project-id = "4f0c2a7e9b1d43c6a85e17f2d09b6c31"
-                """.formatted(LockManifestDigest.compute(ws)));
+        CommittedLocks.write(ws);
         return ws;
     }
 

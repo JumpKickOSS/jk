@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.task.ActionCache;
@@ -120,13 +120,7 @@ class TaskForecasterExtraRootTest {
 
     /** Same manifests-sha256 pinning as {@link TaskForecasterGroovyTest} — see its comment. */
     private static void lock(Path tmp) throws Exception {
-        String manifestsSha = LockManifestDigest.compute(tmp);
-        Files.writeString(tmp.resolve("jk-lock.toml"), """
-            version = 1
-            generated-by = "test"
-            resolution-algorithm = "pubgrub-v1"
-            manifests-sha256 = "%s"
-            """.formatted(manifestsSha));
+        CommittedLocks.write(tmp);
     }
 
     /**

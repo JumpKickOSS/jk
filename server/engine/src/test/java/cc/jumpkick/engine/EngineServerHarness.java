@@ -3,6 +3,7 @@ package cc.jumpkick.engine;
 
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.ShortTempDirs;
@@ -189,6 +190,36 @@ abstract class EngineServerHarness {
             }
         }
         throw new IOException("disconnected before workspace-finish");
+    }
+
+    /**
+     * Fails unless the transcript {@link #runToWorkspaceFinish} returned ends in a successful
+     * {@code workspace-finish}; the failure carries the build's error events (a failed step's or
+     * plan's finish, its error lines, warnings and diagnostics), so a build that stopped on its lock
+     * step, say, names the lock and the reason instead of "expected true".
+     */
+    static void assertBuildSucceeded(List<String> lines, String what) {
+        if (!lines.isEmpty() && Jsonl.bool(lines.getLast(), "success", false)) return;
+        List<String> errors =
+                lines.stream().filter(EngineServerHarness::isErrorEvent).toList();
+        List<String> shown = errors.isEmpty() ? lines.subList(Math.max(0, lines.size() - 40), lines.size()) : errors;
+        throw new AssertionError(what + " did not succeed; "
+                + (errors.isEmpty() ? "no error event, its last lines" : "its error events") + ":\n"
+                + String.join("\n", shown));
+    }
+
+    private static boolean isErrorEvent(String line) {
+        String type = EngineProtocol.typeOf(line);
+        if (type == null) return false;
+        return switch (type) {
+            case EngineProtocol.ERROR_LINE,
+                    EngineProtocol.WARN,
+                    EngineProtocol.BUILDPLAN_DIAGNOSTIC,
+                    EngineProtocol.ERROR -> true;
+            case EngineProtocol.TASK_FINISH, EngineProtocol.BUILDPLAN_FINISH, EngineProtocol.MODULE_FINISH ->
+                !Jsonl.bool(line, "success", true);
+            default -> false;
+        };
     }
 
     /** Minimal metadata + dependency-free POM + stub jar for one coordinate on the mock repo. */

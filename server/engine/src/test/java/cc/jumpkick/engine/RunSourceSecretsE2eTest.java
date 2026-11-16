@@ -10,8 +10,8 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.RunSource;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -66,11 +66,7 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
         Path src = project.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example;\npublic class Hello {}\n");
-        Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                """);
+        CommittedLocks.write(project);
 
         Map<String, String> job = new LinkedHashMap<>();
         job.put("PATH", String.valueOf(System.getenv("PATH")));
@@ -119,9 +115,7 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
             String home = System.getProperty("java.home");
             String request = ProtoSession.withToolchain(build(project, cache, true), home, null, null, home);
             List<String> lines = runToWorkspaceFinish(p, ProtoSession.withShell(request, shell));
-            assertThat(Jsonl.bool(lines.getLast(), "success", false))
-                    .as(() -> "the fixture build failed:\n" + errorEvents(lines))
-                    .isTrue();
+            assertBuildSucceeded(lines, "the fixture build");
             BuildRecord record = settled(project);
             RunSource source = requireNonNull(record.source(), "source");
             assertThat(source.ciProvider()).isEqualTo("gitlab-ci");
@@ -229,9 +223,7 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
             String jdk = System.getProperty("java.home");
             String request = ProtoSession.withToolchain(build(project, cache, false), jdk, null, null, jdk);
             List<String> lines = runToWorkspaceFinish(p, ProtoSession.withShell(request, job));
-            assertThat(Jsonl.bool(lines.getLast(), "success", false))
-                    .as(() -> "the fixture build failed:\n" + errorEvents(lines))
-                    .isTrue();
+            assertBuildSucceeded(lines, "the fixture build");
             assertThat(dump).as("the suite ran and wrote its environment").isRegularFile();
             String testJvm = Files.readString(dump);
             assertThat(testJvm)
@@ -347,10 +339,5 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
             return found[0] != null;
         });
         return found[0];
-    }
-
-    /** The stream's error events and its finish line, so a fixture build that fails says why. */
-    private static String errorEvents(List<String> lines) {
-        return String.join("\n", lines.stream().filter(l -> l.contains("rror")).toList());
     }
 }

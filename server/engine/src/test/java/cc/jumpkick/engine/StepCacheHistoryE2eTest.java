@@ -9,8 +9,8 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.RunSource;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.task.CachePlatform;
@@ -56,12 +56,8 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
         Path src = project.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(src, HELLO);
-        // A fresh empty lock stands in for "already locked": nothing to resolve.
-        Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                """);
+        // The lock a committed project carries: nothing to resolve, so no build re-locks it.
+        CommittedLocks.write(project);
         // A checkout on a branch with a remote: the run's record names both, and its host.
         Path git = Files.createDirectories(project.resolve(".git"));
         Files.writeString(git.resolve("HEAD"), "ref: refs/heads/feature/history\n");
@@ -74,9 +70,7 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
         waitUntil(Duration.ofSeconds(10), () -> Files.exists(EnginePaths.endpoint(p)) && hasContent(p.http()));
         try {
             List<String> first = runToWorkspaceFinish(p, build(project, cache));
-            assertThat(Jsonl.bool(first.getLast(), "success", false))
-                    .as("first build")
-                    .isTrue();
+            assertBuildSucceeded(first, "first build");
             BuildRecord firstRecord = settled(project, 1);
             assertThat(firstRecord.modules().stream().flatMap(m -> m.steps().stream()))
                     .as("a workspace build's steps keep the labels they set: " + firstRecord.modules())
@@ -89,9 +83,7 @@ class StepCacheHistoryE2eTest extends EngineServerHarness {
 
             Files.writeString(src, HELLO.replace("\"hi\"", "\"hello\""));
             List<String> second = runToWorkspaceFinish(p, build(project, cache));
-            assertThat(Jsonl.bool(second.getLast(), "success", false))
-                    .as("rebuild")
-                    .isTrue();
+            assertBuildSucceeded(second, "rebuild");
             BuildRecord record = settled(project, 2);
             StepCache edited = compile(record);
             assertThat(edited.outcome()).isEqualTo(StepCache.Outcome.MISS);

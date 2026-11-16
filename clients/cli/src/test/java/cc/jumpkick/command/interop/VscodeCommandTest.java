@@ -8,7 +8,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.MavenLayout;
@@ -175,12 +175,9 @@ class VscodeCommandTest {
         // artifact it hands back.
         byte[] processorJar = "dummy-jar".getBytes(StandardCharsets.UTF_8);
         String hex = Hashing.sha256Hex(processorJar);
-        Files.writeString(ws.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                manifests-sha256 = "%s"
-
+        // Fresh (CommittedLocks) so the invisible freshen keeps the processor row the fixture
+        // manifest never declares.
+        CommittedLocks.write(ws, """
                 [jdk]
                 suggested-vendor = "temurin"
                 suggested-version = "25.0.3"
@@ -191,10 +188,7 @@ class VscodeCommandTest {
                 source = "central+https://repo.maven.apache.org/maven2/"
                 checksum = "sha256:%s"
                 scopes = ["processor"]
-                """
-                // Digest-stamped so the invisible freshen sees a fresh lock and keeps the
-                // processor row (the fixture manifest never declares it).
-                .formatted(LockManifestDigest.compute(ws), hex));
+                """.formatted(hex));
 
         // Stage the processor JAR exactly where a real `jk sync` leaves it: a Maven-layout entry
         // under the Maven local repository, where Central's artifacts live. That tree — not a bare CAS blob — is what

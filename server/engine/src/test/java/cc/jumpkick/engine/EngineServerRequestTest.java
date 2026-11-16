@@ -11,6 +11,7 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
@@ -347,11 +348,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                     }
                 }
                 """);
-        Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                """);
+        CommittedLocks.write(project);
         Path cache = shortTempDir();
 
         EnginePaths.Paths p = paths(shortTempDir());
@@ -422,13 +419,9 @@ class EngineServerRequestTest extends EngineServerHarness {
                     }
                 }
                 """);
-        // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the plan's
-        // parse-build then uses it verbatim instead of resolving over the network.
-        Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                """);
+        // The lock a committed project carries stands in for "already locked": the plan's
+        // parse-build uses it verbatim instead of resolving.
+        CommittedLocks.write(project);
         Path cache = shortTempDir();
 
         EnginePaths.Paths p = paths(shortTempDir());
@@ -467,9 +460,7 @@ class EngineServerRequestTest extends EngineServerHarness {
                 .map(l -> requireNonNull(EngineProtocol.typeOf(l), l))
                 .toList();
         assertThat(types).contains(EngineProtocol.MODULE_FINISH, EngineProtocol.WORKSPACE_FINISH);
-        assertThat(Jsonl.bool(lines.getLast(), "success", false))
-                .as("hosted compile succeeded: " + lines)
-                .isTrue();
+        assertBuildSucceeded(lines, "the hosted compile");
         // The engine (not the client) ran the compile.
         assertThat(Files.isRegularFile(project.resolve("target/classes/example/Hello.class")))
                 .isTrue();

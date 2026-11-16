@@ -9,6 +9,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -83,12 +84,7 @@ class EngineConnectionTest extends EngineServerHarness {
         EnginePaths.Paths p = start();
         Path project = shortTempDir();
         Files.writeString(project.resolve("jk.toml"), "group = \"com.example\"\nname = \"app\"\nversion = \"1.0.0\"\n");
-        Files.writeString(project.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                jk-min = "9.9.9"
-                """);
+        CommittedLocks.write(project, "jk-min = \"9.9.9\"\n");
         try (Client c = new Client(EnginePaths.activeSocket(p))) {
             String reply = c.send(new BuildRequest(
                             project.toString(),

@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.lock.LockManifestDigest;
+import cc.jumpkick.lock.testing.CommittedLocks;
 import cc.jumpkick.model.command.Exit;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
@@ -143,12 +143,7 @@ class AuditCommandE2eTest {
                 version = "0.1.0"
                 java = 25
                 """ + auditTable);
-        Files.writeString(dir.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                manifests-sha256 = "%s"
-
+        CommittedLocks.write(dir, """
                 [jdk]
                 suggested-vendor = "temurin"
                 suggested-version = "25.0.3"
@@ -159,7 +154,7 @@ class AuditCommandE2eTest {
                 source   = "central+https://repo.maven.apache.org/maven2/"
                 checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d954c2"
                 scopes   = ["main"]
-                """.formatted(LockManifestDigest.compute(dir)));
+                """);
     }
 
     private Run audit(Path dir) {
