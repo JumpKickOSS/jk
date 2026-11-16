@@ -99,22 +99,26 @@ public final class GraphCommand extends GroupCommand {
                         List.of(Param.of("method", Arity.ONE, "Type.method (every overload)"))),
                 new GraphOpCommand(
                         "rename",
-                        "Rename a method, field, type or package, or move a type; proven by a compile",
+                        "Rename a method, field, type or package, or move a type",
                         List.of(
                                 Opt.value(
                                         "<ids>",
                                         "Apply candidates the last rename listed: c1,c3,h1, declared, all.",
+                                        "-A",
                                         "--also"),
                                 Opt.value(
-                                        "<kind>", "method, field, type or package (default: what it names).", "--kind"),
-                                Opt.flag("A field alone, not its getX/setX.", "--no-accessors"),
-                                Opt.value("<dir>", "The module a moved type lands in.", "--module"),
+                                        "<kind>",
+                                        "method, field, type or package (default: what it names).",
+                                        "-t",
+                                        "--kind"),
+                                Opt.flag("A field alone, not its getX/setX.", "-N", "--no-accessors"),
+                                Opt.value("<dir>", "The module a moved type lands in.", "-m", "--module"),
                                 BUDGET),
                         List.of(
                                 Param.of(
                                         "symbol",
                                         Arity.ONE,
-                                        "Type.method, Type.method(int,String), Type.field, Type or a.package"),
+                                        "Type.method[(int,String)], Type.field, Type or a.package"),
                                 Param.of("name", Arity.ONE, "the new name; a qualified name moves a type"))),
                 new GraphOpCommand(
                         "read",
