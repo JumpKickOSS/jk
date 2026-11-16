@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
@@ -15,7 +17,6 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
-import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -43,8 +44,11 @@ public final class AutoLock {
     /**
      * If {@code lockFile} is stale (jk.toml changed), performs a keep-pins re-lock, writes the
      * updated lock file, and returns the new {@link Lockfile}. Returns {@code null} if the lock is
-     * up-to-date or if re-locking fails (the caller should fall back to reading the existing lock and
-     * optionally surface a warning).
+     * up-to-date. A re-lock that cannot resolve (a host unreachable or denied, an artifact missing,
+     * an empty store offline) throws {@link RefreshFailed} naming the stale lock and the reason: a
+     * build never carries on silently with pins jk.toml no longer names. Offline, a lock whose pins
+     * still cover jk.toml from the local store is kept, unstamped, with one warning
+     * ({@link LockPipeline}).
      *
      * @param dir project root (contains {@code jk.toml}); a workspace member redirects to its root
      * @param existing current contents of {@code jk-lock.toml} — the pins the solver prefers
@@ -54,9 +58,6 @@ public final class AutoLock {
      * @param features active feature flags
      * @param withDefaults whether to include the project's default features
      * @param observer resolver progress callbacks
-     * @param warn sink for a soft-failure warning (one line per call); the engine must NOT write to
-     * {@code System.out}/{@code System.err}, so callers route this to the view layer (e.g. {@code
-     * ctx::output}). May be {@code null} to discard.
      */
     public static @Nullable Lockfile maybeReLock(
             Path dir,
@@ -66,8 +67,7 @@ public final class AutoLock {
             @Nullable URI repoUrl,
             @Nullable Collection<String> features,
             boolean withDefaults,
-            ResolveObserver observer,
-            @Nullable Consumer<String> warn) {
+            ResolveObserver observer) {
         if (!isStale(dir, lockFile)) return null;
         // Serialize per lock owner; a concurrent job may have freshened while we waited.
         synchronized (LockGate.monitorFor(LockPaths.lockOwnerDir(dir))) {
@@ -79,19 +79,18 @@ public final class AutoLock {
                     Log.debug("maybeReLock: unreadable", e);
                 }
             }
-            return reLock(dir, existing, cache, repoUrl, features, withDefaults, observer, warn);
+            return reLock(dir, existing, cache, repoUrl, features, withDefaults, observer);
         }
     }
 
-    private static @Nullable Lockfile reLock(
+    private static Lockfile reLock(
             Path dir,
             Lockfile existing,
             Path cache,
             @Nullable URI repoUrl,
             @Nullable Collection<String> features,
             boolean withDefaults,
-            ResolveObserver observer,
-            @Nullable Consumer<String> warn) {
+            ResolveObserver observer) {
         try {
             // One lock scope, shared with every other lock entry point: a workspace member (or
             // root) resolves the merged union at the root — a module-scoped relock
@@ -106,19 +105,33 @@ public final class AutoLock {
                     withDefaults,
                     new LockMode.Freshen());
             return pipeline.run(existing, observer, LockPipeline.Progress.SILENT);
-        } catch (UnsatisfiableException | LockRewriteGuard.LockRewriteRefused e) {
-            // Hard failures: dependencies genuinely unsatisfiable, or a lock a newer jk wrote —
-            // re-throw so the build fails instead of silently continuing with a stale lock.
+        } catch (UnsatisfiableException | LockRewriteGuard.LockRewriteRefused | UserConfigParseException e) {
+            // Their own failures, with their own message: dependencies genuinely unsatisfiable, a
+            // lock a newer jk wrote, or a config.toml that does not parse (with its position).
             throw e;
         } catch (Exception e) {
-            // Soft failure (network, I/O, etc.): warn and fall back to the existing
-            // lock so a transient connectivity issue doesn't block the build. The engine
-            // is a server — route the warning through the caller's sink (the view layer
-            // owns the terminal streams) instead of touching System.err.
-            if (warn != null) {
-                warn.accept("‼ jk: could not update jk-lock.toml: " + e.getMessage() + "; run jk lock");
-            }
-            return null;
+            // Network, a denied host, a missing artifact, an empty store: the build stops here
+            // rather than run on pins jk.toml no longer names. Carrying on cost a CI run its
+            // cause: a test failed far from it, and the next checkout's forecast waited on the
+            // same update (JK-K43HA).
+            throw new RefreshFailed(e);
+        }
+    }
+
+    /** A stale lock the build could not update: the message names the lock, the reason and the way out. */
+    public static final class RefreshFailed extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        RefreshFailed(Exception cause) {
+            super(message(Errors.text(cause)), cause);
+        }
+
+        /** What a build says when it stops on a stale lock it could not update for {@code reason}. */
+        public static String message(@Nullable String reason) {
+            return LockFreshness.STALE + ", and updating it failed: "
+                    + (reason == null || reason.isBlank() ? "dependency resolution failed" : reason.strip())
+                    + "\nThe build stops rather than run on pins jk.toml no longer names: run jk lock once it can"
+                    + " resolve (online, the host allowed, the artifact published), or undo the jk.toml change";
         }
     }
 }

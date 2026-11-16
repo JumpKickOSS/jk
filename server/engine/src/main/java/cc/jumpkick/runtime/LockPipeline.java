@@ -24,6 +24,7 @@ import cc.jumpkick.jdk.ToolchainLockStamp;
 import cc.jumpkick.kotlin.KotlinResolver;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
@@ -210,6 +211,14 @@ public final class LockPipeline {
     private final String jkVersion;
     private final Policy policy;
 
+    /**
+     * True once a freshen kept a stale lock as it was because the run is offline and its pins cover
+     * the manifests from the local store: {@link #write} then leaves the file unstamped, so the
+     * lock still reads stale and the next online build updates it, rather than stamping pins
+     * jk.toml may no longer name as fresh.
+     */
+    private volatile boolean keptStaleOffline;
+
     /** What the last {@link #resolve} checked its downloads against; {@code NONE} until it ran. */
     private volatile RepoGroup.TrustSummary trust = RepoGroup.TrustSummary.NONE;
 
@@ -332,6 +341,14 @@ public final class LockPipeline {
         Optional<Lockfile> reused = offlineReuse(existing, cas);
         if (reused.isPresent()) {
             progress.tick(reused.get().artifacts().size());
+            if (policy.offlineReuse() == OfflineReuse.PREFERRED && LockFreshness.isStale(lockDir, lockFile())) {
+                keptStaleOffline = true;
+                RunNotices.warnOnce(
+                        "lock-stale-offline:" + lockDir,
+                        () -> LockFreshness.STALE + ", and it was kept as it is: offline, its pins cover jk.toml's"
+                                + " dependencies from the local store but were not checked against it. Run jk lock"
+                                + " online to update it");
+            }
             return reused.get();
         }
 
@@ -876,6 +893,7 @@ public final class LockPipeline {
      * the missing-package hint keys the previous lock by that id.
      */
     public Lockfile write(Lockfile lock, String manifestsSha) throws IOException {
+        if (keptStaleOffline) return lock;
         refuseOlderWriter();
         Lockfile stamped = LockfileModules.stamp(lock, lockDir);
         Path file = lockFile();

@@ -128,8 +128,7 @@ class AutoLockWorkspaceTest {
                 repo.toUri(),
                 List.of(),
                 true,
-                ResolveObserver.NOOP,
-                null));
+                ResolveObserver.NOOP));
 
         assertThat(updated).as("stale member relock produced a lock").isNotNull();
         // The committed header carries the PRODUCT version. This path once stamped
@@ -185,8 +184,7 @@ class AutoLockWorkspaceTest {
                 repo.toUri(),
                 List.of(),
                 true,
-                ResolveObserver.NOOP,
-                null));
+                ResolveObserver.NOOP));
 
         assertThat(updated).isNotNull();
         assertThat(updated.modules())

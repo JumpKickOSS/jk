@@ -11,6 +11,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.layout.TestSuites;
+import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -593,7 +594,7 @@ public final class ForecastScope implements StepForecast.Scope {
         if (!Files.isRegularFile(lockFile)) return "no jk-lock.toml yet";
         // Digest-only staleness — the same predicate the build's freshen uses, so the forecast
         // and the live build agree on whether a lock update runs.
-        if (AutoLock.isStale(dir, lockFile)) return "jk.toml changed: jk-lock.toml needs an update";
+        if (AutoLock.isStale(dir, lockFile)) return LockFreshness.STALE + "; the build updates it first";
         return null;
     }
 

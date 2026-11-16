@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
@@ -13,6 +14,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
+import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.runtime.base.BuildMetrics;
@@ -50,17 +52,23 @@ public final class WorkspaceLock {
     public static BuildService.LockGuard ensureWorkspaceLockFresh(
             Path root, Path cache, boolean stale, @Nullable URI repoUrl) {
         if (!stale) return BuildService.LockGuard.OK;
+        // A lock on disk that could not be updated is named as stale; with none yet, the
+        // resolver's reason alone says why the first lock failed.
+        boolean onDisk = Files.isRegularFile(LockPaths.lockFile(root));
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
             // explicit `jk lock`, so lock content never depends on which path freshened.
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, repoUrl);
-            return r.status() != 0
-                    ? new BuildService.LockGuard(r.status(), r.error(), null)
-                    : BuildService.LockGuard.OK;
+            if (r.status() == 0) return BuildService.LockGuard.OK;
+            return new BuildService.LockGuard(
+                    r.status(), onDisk ? AutoLock.RefreshFailed.message(r.error()) : r.error(), null);
         } catch (UnsatisfiableException e) {
             return new BuildService.LockGuard(Exit.RESOLVE, e.getMessage(), FailureLocation.of(e, root));
         } catch (Exception e) {
-            return BuildService.LockGuard.OK; // soft failure — let the per-module path surface real errors
+            // Never carry on with a stale lock in silence (JK-K43HA): the build stops, naming why.
+            String reason = Errors.text(e);
+            return new BuildService.LockGuard(
+                    Exit.RESOLVE, onDisk ? AutoLock.RefreshFailed.message(reason) : reason, null);
         }
     }
 

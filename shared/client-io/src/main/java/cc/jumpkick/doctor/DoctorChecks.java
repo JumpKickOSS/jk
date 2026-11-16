@@ -10,6 +10,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.JumpKickPins;
+import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
@@ -256,7 +257,10 @@ public final class DoctorChecks {
         return v.chars().filter(c -> c == '.').count() >= 2;
     }
 
-    /** The lock that governs {@code project}: present and of this format, with its artifact count. */
+    /**
+     * The lock that governs {@code project}: present, of this format and not stale, with its
+     * artifact count. A lock jk.toml moved past is a {@code WARN} naming it.
+     */
     public static HostRow lock(Path project) {
         Path lock = LockPaths.lockFile(project);
         Path owner = lock.getParent();
@@ -269,6 +273,15 @@ public final class DoctorChecks {
             long artifacts = text.lines()
                     .filter(l -> l.trim().startsWith("[[artifact]]"))
                     .count();
+            if (LockFreshness.isStale(project, lock)) {
+                // The same phrase the build fails or warns with, and jk explain gives as its reason.
+                return new HostRow(
+                        "lock",
+                        "lock",
+                        Status.WARN,
+                        LockFreshness.STALE + " · " + lock,
+                        "run jk lock; the next build updates it first and stops, naming why, if it cannot resolve");
+            }
             return row("lock", Status.OK, artifacts + " artifacts · " + lock);
         } catch (IOException e) {
             return row("lock", Status.WARN, "check failed: " + e.getMessage());

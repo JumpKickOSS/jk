@@ -52,6 +52,22 @@ or `jk test` relocks first and `jk explain` says it will. A member's bytes count
 even while its manifest is refused (a table it may not set, say): fixing it and every later edit to
 it moves the digest like any other.
 
+**When the relock cannot resolve.** A stale lock is never built on in silence. If the relock fails
+(a repository unreachable or a host denied, an artifact no repository serves, an empty store with
+the network off), the build stops on its `lock` step and leaves the file as it was:
+
+```
+jk-lock.toml is stale: jk.toml changed since it was written, and updating it failed: <why>
+The build stops rather than run on pins jk.toml no longer names: run jk lock once it can resolve
+(online, the host allowed, the artifact published), or undo the jk.toml change
+```
+
+`--offline` is the one exception, and it warns: when the lock still pins every dependency `jk.toml`
+declares and the local store holds them all, the build keeps it with one warning (`jk-lock.toml is
+stale: …, and it was kept as it is: offline …`). The lock is not stamped fresh, so it still reads
+stale, and the next online build relocks it. `jk explain` gives the same `jk-lock.toml is stale`
+reason for every step it forecasts, and `jk doctor`'s `lock` row warns with it.
+
 ## `jk update`
 
 `jk update` is the bump verb. It rewrites the **declared** versions in `jk.toml`, then relocks:

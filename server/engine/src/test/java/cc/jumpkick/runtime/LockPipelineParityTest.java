@@ -120,8 +120,7 @@ class LockPipelineParityTest {
                         f.repo,
                         List.of(),
                         true,
-                        ResolveObserver.NOOP,
-                        null);
+                        ResolveObserver.NOOP);
                 assertThat(updated).as("auto-lock produced a lock").isNotNull();
             }
         }

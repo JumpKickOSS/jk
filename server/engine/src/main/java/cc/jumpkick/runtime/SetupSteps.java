@@ -179,11 +179,13 @@ final class SetupSteps {
                                     null,
                                     List.of(),
                                     true,
-                                    ResolveObserver.NOOP,
-                                    ctx::output);
+                                    ResolveObserver.NOOP);
                         } catch (LockRewriteGuard.LockRewriteRefused e) {
                             ctx.error("verbatim", Errors.text(e));
                             throw new RuntimeException("lock refused");
+                        } catch (AutoLock.RefreshFailed e) {
+                            ctx.error("lock-stale", Errors.text(e));
+                            throw new RuntimeException("stale jk-lock.toml not updated");
                         }
                         lock = memberView(in, updated != null ? updated : existing);
                     } else {

@@ -51,7 +51,7 @@ class LockRewriteRefusalTest {
         assertThat(AutoLock.isStale(tmp, lock)).isTrue();
 
         assertThatThrownBy(() -> AutoLock.maybeReLock(
-                        tmp, existing, lock, tmp.resolve("cache"), null, List.of(), true, ResolveObserver.NOOP, null))
+                        tmp, existing, lock, tmp.resolve("cache"), null, List.of(), true, ResolveObserver.NOOP))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("written by JumpKick " + NEWER)
                 .hasMessageContaining("this engine is JumpKick " + JkVersion.VERSION)
