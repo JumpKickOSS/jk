@@ -66,8 +66,7 @@ class JdkEnsurePendingInstallTest {
     }
 
     @Test
-    void a_java_level_above_the_latest_lts_asks_for_this_releases_build_of_that_major(@TempDir Path tmp)
-            throws IOException {
+    void a_java_level_above_the_latest_lts_is_the_tier_that_asks(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         Path project = Files.createDirectories(tmp.resolve("app"));
         int above = JdkLts.OFFLINE_LATEST_LTS + 1;
@@ -75,9 +74,8 @@ class JdkEnsurePendingInstallTest {
         Optional<JdkEnsure.Pending> pending = JdkEnsure.pendingInstall(project, jdks, null, above, null);
 
         assertThat(pending)
-                .contains(ReleaseJdks.spec(above)
-                        .map(spec -> new JdkEnsure.Pending(spec, JdkResolution.Tier.RELEASE))
-                        .orElse(new JdkEnsure.Pending(">=" + above, JdkResolution.Tier.JAVA_RELEASE_FLOOR)));
+                .as("the release's build is never installed for its own sake")
+                .contains(new JdkEnsure.Pending(">=" + above, JdkResolution.Tier.JAVA_RELEASE_FLOOR));
     }
 
     @Test

@@ -14,10 +14,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * An unpinned module resolves to this jk release's exact build of its major ({@link ReleaseJdks}),
- * whatever else the host has installed, so two hosts with different patches build it on one JDK;
- * a pin still wins; a build installs the release build when it is absent, and the walk that may not
- * install (the shell hook, the engine) goes on to what is installed.
+ * An unpinned module prefers this jk release's build of its major ({@link ReleaseJdks}) when it is
+ * installed, whatever else the host has, so two hosts that both have it build on one JDK; a pin
+ * still wins; absent, it is never installed for its own sake and the module builds on whatever
+ * installed JDK satisfies it.
  */
 class ReleaseJdkResolutionTest {
 
@@ -55,26 +55,29 @@ class ReleaseJdkResolutionTest {
         assertThat(r.jdkOpt().orElseThrow().home().getFileName().toString()).isEqualTo("temurin-25.0.2");
     }
 
+    /**
+     * Absent, the release build is not a requirement: a build and the hook alike take the JDK that
+     * is installed and satisfies the module, and nothing is installed (JK-ADBJV).
+     */
     @Test
-    void absent_it_is_installed_by_a_build_and_passed_over_by_the_hook(@TempDir Path tmp) throws IOException {
+    void absent_it_is_passed_over_and_nothing_is_installed(@TempDir Path tmp) throws IOException {
         Path jdks = Files.createDirectories(tmp.resolve("jdks"));
         makeJdk(jdks, "temurin-25.0.2");
-        JdkResolution.Resolved build = JdkResolution.resolve(req(tmp, null), reg(jdks), inv(tmp), 25);
-        assertThat(build.tier()).isEqualTo(JdkResolution.Tier.RELEASE);
-        assertThat(build.wouldInstall()).isTrue();
-        assertThat(build.installSpec()).isEqualTo(RELEASE);
-
-        JdkResolution.Resolved hook = JdkResolution.resolveForHook(req(tmp, null), reg(jdks), inv(tmp));
-        assertThat(hook.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
-        assertThat(hook.jdkOpt().orElseThrow().home().getFileName().toString()).isEqualTo("temurin-25.0.2");
+        for (JdkResolution.Resolved r : List.of(
+                JdkResolution.resolve(req(tmp, null), reg(jdks), inv(tmp), 25),
+                JdkResolution.resolveForHook(req(tmp, null), reg(jdks), inv(tmp)))) {
+            assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
+            assertThat(r.wouldInstall()).isFalse();
+            assertThat(r.jdkOpt().orElseThrow().home().getFileName().toString()).isEqualTo("temurin-25.0.2");
+        }
     }
 
     /**
      * The release build offered as the request's JAVA_HOME serves the tier though no root jk scans
-     * holds it; another build offered so does not, and the build installs the release one.
+     * holds it; another build offered so builds as the JAVA_HOME it is, with nothing installed.
      */
     @Test
-    void the_release_build_offered_as_java_home_serves_and_another_build_does_not(@TempDir Path tmp)
+    void the_release_build_offered_as_java_home_serves_and_another_build_serves_as_itself(@TempDir Path tmp)
             throws IOException {
         Path elsewhere = makeJdk(Files.createDirectories(tmp.resolve("opt")), RELEASE);
         Path other = makeJdk(Files.createDirectories(tmp.resolve("opt2")), "temurin-25.0.2");
@@ -85,8 +88,11 @@ class ReleaseJdkResolutionTest {
         assertThat(offered.jdkOpt().orElseThrow().home()).isEqualTo(elsewhere);
 
         JdkResolution.Resolved notIt = JdkResolution.resolve(withJavaHome(tmp, other), reg(jdks), inv(tmp), 25);
-        assertThat(notIt.wouldInstall()).isTrue();
-        assertThat(notIt.installSpec()).isEqualTo(RELEASE);
+        assertThat(notIt.wouldInstall())
+                .as("another build that satisfies the module is used, not replaced")
+                .isFalse();
+        assertThat(notIt.tier()).isEqualTo(JdkResolution.Tier.JAVA_HOME);
+        assertThat(notIt.jdkOpt().orElseThrow().home()).isEqualTo(other);
     }
 
     /** A release build in a scanned root is found whatever JDK the request names as its JAVA_HOME. */

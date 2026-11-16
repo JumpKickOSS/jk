@@ -33,13 +33,14 @@ jk jdk verify                  # fingerprint managed trees (`jk jdks verify`)
 jk shell                       # subshell with the project JDK
 ```
 
-## Unpinned modules build on this release's JDK
+## Unpinned modules prefer this release's JDK
 
 A module with no JDK pin (no `jdk` in `jk.toml`, no `.jdk-version`, no `required-*` in the lock,
-no `--jdk` or `JK_JDK`) compiles and tests on the exact build this JumpKick release names for its
-major: the latest LTS, or its `java` level when that is newer.
+no `--jdk` or `JK_JDK`) builds on any installed JDK that satisfies its `java` level. Among those it
+prefers the build this JumpKick release names for its major (the latest LTS, or its `java` level when
+that is newer), when that build is installed or is the shell's `JAVA_HOME`:
 
-| Major | Build |
+| Major | Preferred build |
 |---|---|
 | 17 | `temurin-17.0.20.1` |
 | 21 | `temurin-21.0.12.1` |
@@ -47,19 +48,16 @@ major: the latest LTS, or its `java` level when that is newer.
 | 26 | `temurin-26.0.2.1` |
 | 27 | `temurin-27.0.1.0.2` |
 
-JumpKick looks for it wherever it finds JDKs, and takes the shell's `JAVA_HOME` when that is exactly
-this build; otherwise it installs it, as it installs a pin, and the engine runs on the build for
-its own major when `[toolchain] jdk` names no other. Every host on one release therefore compiles
-and tests an unpinned module on one JDK and shares its cache keys, which name the JDK build exactly
-([Cache](cache.md)). A pin still wins. A new JumpKick release may name newer builds, so upgrading
-JumpKick can download a JDK; the builds it no longer names are removed by `jk jdk update`.
+The preference is never a requirement: JumpKick does not download the preferred build, a build never
+fails for want of it, under `CI` or not, and an organisation's newer patch is used as it is. JumpKick
+installs a JDK only when nothing installed satisfies the module, and then the newest build of the
+major. The engine prefers the build for its own major the same way when `[toolchain] jdk` names no
+other. A pin still wins.
 
-When the build cannot be installed (offline, or the JDK feed unreachable) a build on a developer's
-machine goes on with an installed JDK of the major and says so: `this jk builds unpinned modules
-on temurin-25.0.4.1, which is not installed and could not be (…); run jk jdk install
-temurin-25.0.4.1; building on temurin-25.0.2, so this host shares no compile or test key with hosts
-on temurin-25.0.4.1`. With `CI` set, the build fails with the same words instead. `jk doctor`'s
-`jdk-patch` row names the build and warns only where this host diverges from it.
+Cache keys name the JDK build that ran ([Cache](cache.md)), so two hosts on the same build share a
+module's compile and test results and hosts on different builds do not share those steps; nothing
+built with one JDK is served to another. `jk doctor`'s `jdk-patch` row says, as a note, which build a
+project uses here, and `jk explain` names both builds when a step reruns because the JDK moved.
 
 Discovery looks at existing installs before downloading from the JetBrains JDK feed (or a mirror of
 it and its vendor hosts: [Config § Tool mirrors](config.md#tool-mirrors)). Each JDK `jk jdk list`

@@ -539,29 +539,20 @@ public final class EngineSpawn {
             Optional<EngineJdk> own = ownJdk(floor);
             if (own.isPresent()) return own.get();
         }
-        // Unconfigured, the engine runs on this jk release's build of its floor major (ReleaseJdks),
-        // the build unpinned modules compile on, so its warm compiler worker is theirs.
-        Optional<String> release = ReleaseJdks.spec(floor);
-        String pin = pinned.orElse(release.orElse("temurin-" + floor));
-        Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
-        if (installed.isPresent()) return installed.get();
-        if (pinned.isEmpty() && release.isPresent()) {
-            try {
-                return installEngineJdk(pin);
-            } catch (IOException notInstallable) {
-                // Offline or the feed unreachable: any install of the line runs the engine, and
-                // the build says what an unpinned module then compiles on.
-                Optional<EngineJdk> line = findInstalledEngineJdk("temurin-" + floor);
-                if (line.isPresent()) {
-                    CliOutput.stderr()
-                            .println("warning: the build engine runs on "
-                                    + line.get().version() + ", not " + pin + " (" + notInstallable.getMessage()
-                                    + "); run jk jdk install " + pin);
-                    return line.get();
-                }
-                throw notInstallable;
+        // Unconfigured, the engine prefers this jk release's build of its floor major (ReleaseJdks),
+        // the build unpinned modules prefer, when it is installed; else any installed JDK of the
+        // line, and only when there is none does it install one: the line's newest build. The
+        // release's build is never downloaded for its own sake.
+        if (pinned.isEmpty()) {
+            Optional<String> release = ReleaseJdks.spec(floor);
+            if (release.isPresent()) {
+                Optional<EngineJdk> preferred = findInstalledEngineJdk(release.get());
+                if (preferred.isPresent()) return preferred.get();
             }
         }
+        String pin = pinned.orElse("temurin-" + floor);
+        Optional<EngineJdk> installed = findInstalledEngineJdk(pin);
+        if (installed.isPresent()) return installed.get();
         return installEngineJdk(pin);
     }
 

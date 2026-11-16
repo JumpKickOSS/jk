@@ -14,17 +14,15 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The exact JDK build this jk release resolves an unpinned module to, per supported major: what a
- * module with no {@code jdk} pin, {@code .jdk-version}, lock requirement or {@code --jdk}
- * compiles and tests on, and what the engine runs on when nothing names another. Every host on one
- * jk release therefore compiles and tests an unpinned module on one build and shares its keys
- * (keys name the JDK build exactly, {@code JdkToolchain}); jk installs the build when it is absent,
- * as it installs an explicit pin. A pin of the user's still wins.
+ * The JDK build this jk release prefers for an unpinned module, per supported major: what a module
+ * with no {@code jdk} pin, {@code .jdk-version}, lock requirement or {@code --jdk} compiles and
+ * tests on, and what the engine runs on, when the host has it installed. Hosts that have it share
+ * the module's keys (keys name the JDK build exactly, {@code JdkToolchain}). A preference only: jk
+ * never downloads it and never requires it; a host without it builds on any installed JDK that
+ * satisfies the module, and a pin of the user's wins (JK-ADBJV).
  *
- * <p>Updated at each release to the newest build of each vendor line the JetBrains feed carries
- * (docs/contributors/releases.md, "Cutting a release"); {@link #REVIEWED} says when it last was.
- * The builds named here should be installed on the hosts that run jk's own suites, or every nested
- * build there downloads them.
+ * <p>Updated at each release to the newest build of each vendor line (docs/contributors/releases.md,
+ * "Cutting a release"); {@link #REVIEWED} says when it last was.
  */
 public final class ReleaseJdks {
 

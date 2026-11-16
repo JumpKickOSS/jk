@@ -2,7 +2,6 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -14,14 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * When this release's JDK build for an unpinned module cannot be installed (here: a resolution
- * that may not install, as offline or in an engine that does not), a developer's build goes on with
- * an installed JDK of the major and says, by name, that this host then shares no key and what to run;
- * under {@code CI} the build fails with the same words instead.
+ * An unpinned module whose release build is not installed builds on the installed JDK that
+ * satisfies it, under CI as anywhere: no failure, no download, no warning to act on (JK-ADBJV).
  */
 class JdkEnsureReleaseFallbackTest {
-
-    private static final String RELEASE = ReleaseJdks.spec(25).orElseThrow();
 
     @AfterEach
     void forget() {
@@ -29,32 +24,24 @@ class JdkEnsureReleaseFallbackTest {
     }
 
     @Test
-    void a_developer_build_falls_back_loudly(@TempDir Path tmp) throws Exception {
-        Path project = project(tmp);
-        Path jdks = jdks(tmp);
-        List<String> warnings = new ArrayList<>();
-
-        JdkEnsure.Outcome outcome = JdkEnsure.ensure(project, jdks, null, 25, null, warnings::add, false);
-
-        assertThat(outcome.jdkOpt().orElseThrow().home().getFileName().toString())
-                .isEqualTo("temurin-25.0.2");
-        assertThat(warnings)
-                .singleElement()
-                .asString()
-                .contains("this jk builds unpinned modules on " + RELEASE, "run jk jdk install " + RELEASE)
-                .contains("shares no compile or test key with hosts on " + RELEASE);
+    void a_developer_build_uses_what_is_installed(@TempDir Path tmp) throws Exception {
+        assertUsesInstalled(project(tmp), jdks(tmp));
     }
 
     @Test
-    void a_ci_build_fails_naming_the_build_and_the_command(@TempDir Path tmp) throws Exception {
+    void a_ci_build_uses_what_is_installed_too(@TempDir Path tmp) throws Exception {
         Path project = project(tmp);
         Files.writeString(project.resolve(".env"), "CI=true\n");
-        Path jdks = jdks(tmp);
+        assertUsesInstalled(project, jdks(tmp));
+    }
 
-        assertThatThrownBy(() -> JdkEnsure.ensure(project, jdks, null, 25, null, m -> {}, false))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("run jk jdk install " + RELEASE)
-                .hasMessageContaining("CI builds only on it");
+    private static void assertUsesInstalled(Path project, Path jdks) throws Exception {
+        List<String> warnings = new ArrayList<>();
+        JdkEnsure.Outcome outcome = JdkEnsure.ensure(project, jdks, null, 25, null, warnings::add, true);
+        assertThat(outcome.jdkOpt().orElseThrow().home().getFileName().toString())
+                .isEqualTo("temurin-25.0.2");
+        assertThat(outcome.source()).as("nothing installed").isNotEqualTo(JdkEnsure.Source.INSTALLED);
+        assertThat(warnings).isEmpty();
     }
 
     private static Path project(Path tmp) throws IOException {

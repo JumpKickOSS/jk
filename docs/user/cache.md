@@ -67,12 +67,12 @@ A key names a JDK by its build: vendor, version with build number and the conten
 (`toolchain:jdk:eclipse-adoptium/25.0.4.1+1-LTS/…`), never its OS, architecture or install path, so
 a Linux laptop and a macOS runner on the same Temurin build share compile, packaging, plugin and
 test keys. A jlink image and a native binary are for one platform: their keys and records also name
-it (`TARGET linux-x86_64-gnu`). A module without a JDK pin compiles and tests on the exact
-build this JumpKick release names for its Java major (`temurin-25.0.4.1` for Java 25; [JDK](jdk.md#unpinned-modules-build-on-this-releases-jdk)),
-which JumpKick installs when it is absent, so every host on one release shares its compile and test
-keys with no pin. `jk doctor`'s `jdk-patch` row warns only where this host diverges (the build is
-not installed, `JK_JDK` forces another, or the project pins an older build), and `jk explain`
-names both builds when a compile reruns for the JDK. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
+it (`TARGET linux-x86_64-gnu`). A module without a JDK pin builds on any installed JDK that
+satisfies its `java` level, preferring this release's build of its major when it is installed
+([JDK](jdk.md#unpinned-modules-prefer-this-releases-jdk)); keys name the build that ran, so hosts on
+different builds do not share its compile and test steps. `jk doctor`'s `jdk-patch` row says which
+build a project uses here, as a note, and `jk explain` names both builds when a compile reruns for
+the JDK. A test JVM runs in a fixed locale and time zone (`en-US` and `UTC`
 unless the module's `[test] locale` or `[test] timezone` says otherwise,
 [Test](test.md#the-test-jvms-locale-and-time-zone-test-locale-test-timezone)), so the shell's
 `LANG`, `LC_*` and `TZ` key no suite; only `inherit` keys them. A hit on a machine with no history of the step (a fresh checkout, a record

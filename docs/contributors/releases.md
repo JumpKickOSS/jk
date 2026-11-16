@@ -225,10 +225,8 @@ floors). Local development then continues on the next version; `jk install` is t
 for it. `jk release --dry-run` says what it would do.
 
 Before the release commit, bring `ReleaseJdks` (shared/toolchain-jdk) to the newest build of each
-major the JetBrains feed carries (`jk jdk list -A`) and set its `REVIEWED` date: it is the JDK every
-unpinned module of the release compiles and tests on, and every host installs it. Install the new
-builds on the machines that run JumpKick's own suites first, or their nested builds download them.
-`jk doctor`'s `jdk-patch` row on a release build names what it resolves to.
+major (`jk jdk list -A`) and set its `REVIEWED` date: it is the build unpinned modules and the engine
+prefer when a host has it installed, never one JumpKick downloads or requires.
 
 Releases are cut **by hand**: each platform is built on a machine of that platform, the trees are
 merged and signed on the one machine that holds the release key, and the same machine uploads

@@ -171,12 +171,12 @@ public final class DoctorChecks {
     }
 
     /**
-     * Whether the project that governs {@code project} builds on the JDK every host on this jk
-     * release builds it on. An unpinned module compiles and tests on {@code releaseSpec}, this
-     * release's build of its major, so hosts share its keys with no pin; the row warns only where a
-     * host diverges from that: the build is not installed here (the next build installs it, an
-     * offline one falls back to another and shares no key), {@code JK_JDK} ({@code jkJdk}) forces
-     * another for every build of this shell, or the project pins a build older than the release's.
+     * Which JDK build the project that governs {@code project} builds on here, as a note: cache
+     * keys name the JDK build that ran, so a host on another build shares no JDK-dependent step
+     * with this one. Never a fault: any JDK that satisfies the module's {@code java} level builds it.
+     * An unpinned module prefers {@code releaseSpec}, this release's build of its major, when it is
+     * installed, and otherwise builds on what is; {@code JK_JDK} ({@code jkJdk}) or an exact pin
+     * names the build outright.
      *
      * @param releaseSpec this release's build for the project's major, null when it names none
      * @param releaseInstalled whether that build is installed on this host
@@ -187,48 +187,28 @@ public final class DoctorChecks {
         Path owner = LockPaths.lockOwnerDir(project);
         Path manifest = ManifestPaths.manifestIn(owner);
         if (!Files.isRegularFile(manifest)) return row("jdk-patch", Status.OK, "no jk.toml to check");
+        String shared = "; hosts on another JDK build share no compile or test key with it";
         if (jkJdk != null && !jkJdk.isBlank()) {
-            return new HostRow(
-                    "jdk-patch",
-                    "jdk-patch",
-                    Status.WARN,
-                    "JK_JDK=" + jkJdk + " picks every build's JDK in this shell, so it shares no compile or test key"
-                            + " with hosts on " + (releaseSpec != null ? releaseSpec : "this jk's build"),
-                    "unset JK_JDK");
+            return row("jdk-patch", Status.OK, "JK_JDK=" + jkJdk + " picks every build's JDK in this shell" + shared);
         }
         TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-version");
         String jdk = scan.get("jdk");
         String version = scan.get("jdk-version");
         String pin = exactBuild(jdk) ? jdk : exactBuild(version) ? version : null;
-        if (pin != null) {
-            String build = pin.substring(1);
-            String pinVersion = build.substring(build.lastIndexOf('-') + 1);
-            if (releaseSpec != null && olderThan(pinVersion, releaseSpec.substring(releaseSpec.indexOf('-') + 1))) {
-                return new HostRow(
-                        "jdk-patch",
-                        "jdk-patch",
-                        Status.WARN,
-                        "pinned to " + build + ", older than " + releaseSpec + ", the build this jk gives unpinned"
-                                + " modules",
-                        "drop the jdk pin to build on " + releaseSpec + ", or move it there");
-            }
-            return row("jdk-patch", Status.OK, "pinned to " + build + ": every host compiles and tests on that build");
-        }
-        if (releaseSpec == null) return row("jdk-patch", Status.OK, "no release build for this project's Java level");
-        if (!releaseInstalled) {
-            return new HostRow(
+        if (pin != null) return row("jdk-patch", Status.OK, "pinned to " + pin.substring(1) + shared);
+        if (releaseSpec == null)
+            return row("jdk-patch", Status.OK, "unpinned: builds on any installed JDK of its Java level" + shared);
+        if (releaseInstalled) {
+            return row(
                     "jdk-patch",
-                    "jdk-patch",
-                    Status.WARN,
-                    releaseSpec + ", the build every host on this jk compiles and tests this project on, is not"
-                            + " installed: the next build installs it, and an offline one builds on another and shares"
-                            + " no compile or test key",
-                    "run jk jdk install " + releaseSpec);
+                    Status.OK,
+                    "unpinned: builds on " + releaseSpec + ", this jk's preferred build" + shared);
         }
         return row(
                 "jdk-patch",
                 Status.OK,
-                "unpinned: compiles and tests on " + releaseSpec + ", as every host on this jk release does");
+                "unpinned: builds on an installed JDK of its Java level, not " + releaseSpec
+                        + " (this jk's preferred build, not installed here)" + shared);
     }
 
     /** {@code =<vendor>-<a>.<b>.<c>} or {@code =<a>.<b>.<c>}: an exact pin down to the patch. */
@@ -236,26 +216,6 @@ public final class DoctorChecks {
         if (spec == null || !spec.startsWith("=")) return false;
         String v = spec.substring(spec.lastIndexOf('-') + 1);
         return v.chars().filter(c -> c == '.').count() >= 2;
-    }
-
-    /** Whether dotted version {@code a} is below {@code b}, number by number. */
-    static boolean olderThan(String a, String b) {
-        String[] x = a.split("\\.");
-        String[] y = b.split("\\.");
-        for (int i = 0; i < Math.max(x.length, y.length); i++) {
-            int c = Integer.compare(number(x, i), number(y, i));
-            if (c != 0) return c < 0;
-        }
-        return false;
-    }
-
-    private static int number(String[] parts, int i) {
-        if (i >= parts.length) return 0;
-        try {
-            return Integer.parseInt(parts[i].replaceAll("\\D.*", ""));
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     /** The lock that governs {@code project}: present and of this format, with its artifact count. */
