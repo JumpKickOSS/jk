@@ -8,7 +8,9 @@ import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SnapshotQualifier;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -138,7 +140,9 @@ class AndroidReleaseTest {
         assertThat(bundletoolRun(bundletool, "validate", "--bundle=" + aab.toAbsolutePath()))
                 .contains("App Bundle information");
         Path apks = tmp.resolve("universal.apks");
-        Path aapt2 = app.resolve("target/plugin/android-res/tools/aapt2");
+        // android-res extracts aapt2 into its private scratch dir (TaskExec.privateDir), as aapt2.exe on Windows.
+        Path aapt2 = app.resolve("target/plugin/android-res/" + TreeContent.SCRATCH_PREFIX + "tools/"
+                + (Os.isWindows() ? "aapt2.exe" : "aapt2"));
         assertThat(aapt2).exists();
         bundletoolRun(
                 bundletool,

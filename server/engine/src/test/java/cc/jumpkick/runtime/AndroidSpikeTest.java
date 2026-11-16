@@ -7,6 +7,7 @@ import cc.jumpkick.androidsdk.AndroidRepoFeed;
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
@@ -46,6 +47,9 @@ import org.junit.jupiter.api.io.TempDir;
 @ExtendWith(SysProps.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AndroidSpikeTest {
+
+    /** The version a non-release build stamps into its artifacts' names. */
+    private static final String STAMPED = SnapshotQualifier.version("1.0.0");
 
     /** The built hello-world: its checkout, the CAS it built against, the managed SDK root, the APK. */
     private record Built(Path project, Path cache, Path sdkRoot, Path apk) {}
@@ -129,9 +133,7 @@ class AndroidSpikeTest {
     void deploy_installs_and_starts_the_app_through_adb() throws Exception {
         Built b = built();
         Path adbLog = tmp.resolve("adb.log");
-        Path fakeAdb = tmp.resolve("fake-adb");
-        Files.writeString(fakeAdb, "#!/bin/sh\necho \"$@\" >> " + adbLog.toAbsolutePath() + "\necho Success\n");
-        fakeAdb.toFile().setExecutable(true);
+        Path fakeAdb = FakeAdbMain.install(tmp, "fake-adb", adbLog);
 
         var deploy = PluginCommands.run(
                 b.project(),
@@ -155,30 +157,7 @@ class AndroidSpikeTest {
     void instrument_runs_the_androidx_runner_and_reads_its_transcript() throws Exception {
         Built b = built();
         Path instrLog = tmp.resolve("instr-adb.log");
-        Path instrAdb = tmp.resolve("fake-instr-adb");
-        Files.writeString(
-                instrAdb,
-                "#!/bin/sh\n"
-                        + "echo \"$@\" >> " + instrLog.toAbsolutePath() + "\n"
-                        + "case \"$*\" in\n"
-                        + "  *\"am instrument\"*)\n"
-                        + "    printf '%s\\n' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: class=com.example.hello.SmokeTest' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: test=works' \\\n"
-                        + "      'INSTRUMENTATION_STATUS_CODE: 1' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: class=com.example.hello.SmokeTest' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: test=works' \\\n"
-                        + "      'INSTRUMENTATION_STATUS_CODE: 0' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: class=com.example.hello.SmokeTest' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: test=broken' \\\n"
-                        + "      'INSTRUMENTATION_STATUS_CODE: 1' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: test=broken' \\\n"
-                        + "      'INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: boom' \\\n"
-                        + "      'INSTRUMENTATION_STATUS_CODE: -2' \\\n"
-                        + "      'INSTRUMENTATION_CODE: -1' ;;\n"
-                        + "  *) echo Success ;;\n"
-                        + "esac\n");
-        instrAdb.toFile().setExecutable(true);
+        Path instrAdb = FakeAdbMain.install(tmp, "fake-instr-adb", instrLog);
         var instrument = PluginCommands.run(
                 b.project(),
                 b.cache(),
@@ -275,7 +254,7 @@ class AndroidSpikeTest {
         BuildPlanResult result = plan.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        return new Built(project, CACHE, SDK_ROOT, project.resolve("target/hello-1.0.0.apk"));
+        return new Built(project, CACHE, SDK_ROOT, project.resolve("target/hello-" + STAMPED + ".apk"));
     }
 
     /**
