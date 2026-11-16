@@ -732,6 +732,13 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Unpinned JDK | A module without an exact pin (`java = 25`, or `jdk` without `=` and a full version) compiles on JumpKick's runtime and runs its suites on the JDK the resolution finds, so its keys name this host's build | Hosts share those keys only on the same build. `jk doctor`'s `jdk-patch` row names the exact pin (`jdk = "=temurin-25.0.4.1"`) and `jk explain` names both builds when the JDK moves (`JDK changed (… 25.0.4.1+1-LTS → … 25.0.5+11-LTS)`) |
 | Build info | `[build-info]`'s `git.properties` and Boot's `META-INF/build-info.properties` by their stable entries (`BuildInfoKeys.stableDigest`: the commit, branch, dirty state and times left out) in the run-tests `main:` token and a compile's `res:` token; a suite whose sources name a volatile value keys the files whole (`BuildInfoKeys.namedBy`) | The rule `BuildIdentity.keyId` applies to the engine's `Build-Commit`/`Build-Time`; JK-M9055 |
 
+`CrossHostKeyEqualityTest` (clients/cli, integration tier) is the guard for this table: one project
+built by two client processes with cleared environments against two engines in fresh homes, at two
+checkout paths, under two users, `$HOME`s, temp roots, locales (`en_US.UTF-8` and `de_DE.UTF-8` with
+`LC_ALL`) and time zones, must key every step alike; a key that differs fails naming each input whose
+value differs, from the two records' `INPUT` lines and the suites' kept stamp tokens. Both sides share
+the JDK and the tier's Maven local repository, so a JDK patch is not covered there.
+
 **CAS addressing:** blobs are `sha256` content-addressed; a remote store can use the same hex
 keys. Local restore remains copy-not-link (see CAS invariant tests).
 
