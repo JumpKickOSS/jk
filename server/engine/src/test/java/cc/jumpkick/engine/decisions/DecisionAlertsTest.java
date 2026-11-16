@@ -18,6 +18,10 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -330,6 +334,109 @@ class DecisionAlertsTest {
         String script = script(launcher.launched.getLast());
         assertThat(script).contains("::History.Remove(");
         assertThat(embedded(script)).containsExactly("abc", "JumpKick", "cc.jumpkick.JumpKick");
+    }
+
+    /**
+     * A decision settled while the WSL guest still registers JumpKick in the Windows profile: the
+     * withdrawal does not wait for it, and the toast the show then puts up is removed after it, so
+     * none is left behind.
+     */
+    @Test
+    void a_settle_during_a_slow_registration_leaves_no_toast() throws Exception {
+        CountDownLatch registering = new CountDownLatch(1);
+        CountDownLatch registered = new CountDownLatch(1);
+        WslWindowsDesktop wsl = new WslWindowsDesktop(new WslWindowsDesktop.Shell() {
+            @Override
+            public @Nullable String output(List<String> argv) {
+                registering.countDown();
+                await(registered);
+                return null;
+            }
+
+            @Override
+            public boolean run(List<String> argv) {
+                return true;
+            }
+        });
+        DecisionAlerts alerts = new DecisionAlerts(launcher, "Linux", name -> null, identity("Linux"), wsl);
+
+        CompletableFuture<String> raised =
+                CompletableFuture.supplyAsync(() -> alerts.raise(UiAsk.NOTIFY, decision(), LINK));
+        assertThat(registering.await(10, TimeUnit.SECONDS)).isTrue();
+        alerts.withdraw("abc");
+        assertThat(launcher.launched).as("nothing shown yet, nothing removed").isEmpty();
+
+        registered.countDown();
+        assertThat(raised.get(10, TimeUnit.SECONDS)).isEqualTo("sent a desktop notification");
+        assertThat(launcher.launched).hasSize(2);
+        assertThat(script(launcher.launched.get(0))).contains("CreateToastNotifier(");
+        assertThat(script(launcher.launched.get(1))).contains("History.Remove(");
+
+        alerts.withdraw("abc");
+        assertThat(launcher.launched).as("withdrawn once").hasSize(2);
+    }
+
+    /**
+     * A removal asked for while the show's PowerShell still runs starts only once that process has
+     * ended, so it cannot overtake the show it takes back.
+     */
+    @Test
+    void a_removal_asked_for_during_the_show_runs_after_the_show_ends() throws Exception {
+        List<String> events = new CopyOnWriteArrayList<>();
+        CountDownLatch showing = new CountDownLatch(1);
+        CountDownLatch shown = new CountDownLatch(1);
+        DecisionAlerts.Launcher slow = new DecisionAlerts.Launcher() {
+            @Override
+            public boolean launch(List<String> argv) {
+                events.add(script(argv).contains("History.Remove(") ? "remove runs" : "launch");
+                return true;
+            }
+
+            @Override
+            public boolean runToEnd(List<String> argv) {
+                events.add("show starts");
+                showing.countDown();
+                await(shown);
+                events.add("show ends");
+                return true;
+            }
+        };
+        DecisionAlerts alerts = new DecisionAlerts(slow, "Windows 11", name -> null, identity("Windows 11"));
+
+        CompletableFuture<String> raised =
+                CompletableFuture.supplyAsync(() -> alerts.raise(UiAsk.NOTIFY, decision(), LINK));
+        assertThat(showing.await(10, TimeUnit.SECONDS)).isTrue();
+        alerts.withdraw("abc");
+        assertThat(events).as("the withdrawal returned without starting a removal").containsExactly("show starts");
+
+        shown.countDown();
+        assertThat(raised.get(10, TimeUnit.SECONDS)).isEqualTo("sent a desktop notification");
+        assertThat(events).containsExactly("show starts", "show ends", "remove runs");
+    }
+
+    /** A show that fails leaves nothing to withdraw. */
+    @Test
+    void a_toast_that_did_not_show_is_not_removed() {
+        DecisionAlerts.Launcher failing = new DecisionAlerts.Launcher() {
+            @Override
+            public boolean launch(List<String> argv) {
+                launcher.launched.add(argv);
+                return false;
+            }
+        };
+        DecisionAlerts alerts = new DecisionAlerts(failing, "Windows 11", name -> null, identity("Windows 11"));
+        assertThat(alerts.raise(UiAsk.NOTIFY, decision(), LINK)).isEqualTo("could not notify");
+        alerts.withdraw("abc");
+        assertThat(launcher.launched).hasSize(1);
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) throw new AssertionError("the test never released the latch");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(e);
+        }
     }
 
     @Test

@@ -20,7 +20,6 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -57,6 +56,14 @@ public final class DecisionAlerts implements AutoCloseable {
         /** Starts {@code argv} with its output discarded; true when a process started. */
         boolean launch(List<String> argv);
 
+        /**
+         * Runs {@code argv}, its output discarded, to its end; true when it exited 0. A toast is shown
+         * this way, so its removal never starts before the show it takes back has ended.
+         */
+        default boolean runToEnd(List<String> argv) {
+            return launch(argv);
+        }
+
         /** Runs {@code argv} to its end and answers what it printed; null when it could not. */
         default @Nullable String output(List<String> argv) {
             return null;
@@ -78,6 +85,19 @@ public final class DecisionAlerts implements AutoCloseable {
         void stop();
     }
 
+    /**
+     * A Windows toast for one decision, from the moment {@link #notify} takes it on: {@code showing}
+     * while the identity registers and the show runs, then {@code shown} once the show has ended. A
+     * {@link #withdraw} that arrives while it is still showing only marks it {@code withdrawn}, and
+     * the show, once it ends, removes the toast itself; so a settle during a slow registration, or
+     * before the show's PowerShell has exited, never leaves a stale toast behind.
+     */
+    private static final class Toast {
+        boolean showing = true;
+        boolean shown;
+        boolean withdrawn;
+    }
+
     /** A Linux notification waiting for its click: the process and, once it printed it, the server's id. */
     private static final class Waiting {
         volatile @Nullable Watch watch;
@@ -92,7 +112,7 @@ public final class DecisionAlerts implements AutoCloseable {
     private final @Nullable WslWindowsDesktop wsl;
 
     private final Map<String, Waiting> waiting = new ConcurrentHashMap<>();
-    private final Set<String> toasts = ConcurrentHashMap.newKeySet();
+    private final Map<String, Toast> toasts = new ConcurrentHashMap<>();
     private volatile @Nullable Boolean actions;
 
     public DecisionAlerts() {
@@ -156,9 +176,16 @@ public final class DecisionAlerts implements AutoCloseable {
 
     /** Takes back the notification {@link #raise} showed for decision {@code id}, if it still shows. */
     public void withdraw(String id) {
-        if (toasts.remove(id)) {
-            WslWindowsDesktop guest = wsl;
-            run(guest == null ? toastRemoveCommand(id) : guest.command(toastRemoveCommand(id)));
+        Toast toast = toasts.get(id);
+        if (toast != null) {
+            boolean settled;
+            boolean remove;
+            synchronized (toast) {
+                toast.withdrawn = true;
+                settled = !toast.showing; // still showing: the show removes it once it ends
+                remove = settled && toast.shown;
+            }
+            if (settled && toasts.remove(id, toast) && remove) removeToast(id);
         }
         Waiting w = waiting.remove(id);
         if (w == null) return;
@@ -187,14 +214,7 @@ public final class DecisionAlerts implements AutoCloseable {
         String body = body(d);
         if (Os.isDarwin(os)) return run(appleCommand(TITLE, body, link));
         WslWindowsDesktop guest = wsl;
-        if (Os.isWindows(os) || guest != null) {
-            if (guest != null) guest.ensure(dashboard(link));
-            else identity.ensure();
-            List<String> toast = toastCommand(d.id(), TITLE, body, link);
-            if (!run(guest == null ? toast : guest.command(toast))) return false;
-            toasts.add(d.id());
-            return true;
-        }
+        if (Os.isWindows(os) || guest != null) return toast(d, body, link, guest);
         identity.ensure();
         Path icon = identity.png();
         if (!notifySendActions()) return run(notifySendCommand(TITLE, body, link, icon));
@@ -216,6 +236,46 @@ public final class DecisionAlerts implements AutoCloseable {
         // Withdrawn or ended before the handle was stored: stop it here instead.
         if (waiting.get(d.id()) != w) watch.stop();
         return true;
+    }
+
+    /**
+     * Shows decision {@code d}'s toast, registering JumpKick's identity first when it is missing, and
+     * runs the show to its end; a withdrawal that arrived meanwhile is carried out once it has.
+     */
+    private boolean toast(Decision d, String body, String link, @Nullable WslWindowsDesktop guest) {
+        String id = d.id();
+        Toast toast = new Toast();
+        toasts.put(id, toast);
+        boolean ok;
+        try {
+            if (guest != null) guest.ensure(dashboard(link));
+            else identity.ensure();
+            List<String> show = toastCommand(id, TITLE, body, link);
+            ok = launcher.runToEnd(guest == null ? show : guest.command(show));
+        } catch (RuntimeException e) {
+            ok = false;
+        }
+        boolean withdrawn;
+        synchronized (toast) {
+            toast.showing = false;
+            toast.shown = ok;
+            withdrawn = toast.withdrawn;
+        }
+        if (withdrawn || !ok) {
+            toasts.remove(id, toast);
+            if (withdrawn && ok) removeToast(id);
+        }
+        return ok;
+    }
+
+    /**
+     * Removes decision {@code id}'s toast. Only ever called once its show has ended, so the removal
+     * can start without waiting for its own end: nothing is left for it to overtake.
+     */
+    private void removeToast(String id) {
+        WslWindowsDesktop guest = wsl;
+        List<String> remove = toastRemoveCommand(id);
+        run(guest == null ? remove : guest.command(remove));
     }
 
     /** The dashboard's base URL: {@code link} without its fragment. */
@@ -394,6 +454,19 @@ public final class DecisionAlerts implements AutoCloseable {
                         .redirectError(Redirect.DISCARD)
                         .start();
                 return true;
+            } catch (IOException | RuntimeException e) {
+                return false;
+            }
+        }
+
+        /** How long a toast's show may take: PowerShell's start and a first WinRT load. */
+        private static final Duration TOAST_WAIT = Duration.ofSeconds(30);
+
+        @Override
+        public boolean runToEnd(List<String> argv) {
+            try {
+                Processes.Captured c = Processes.capture(argv, TOAST_WAIT);
+                return !c.timedOut() && c.exit() == 0;
             } catch (IOException | RuntimeException e) {
                 return false;
             }
