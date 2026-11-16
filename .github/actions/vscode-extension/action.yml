@@ -1,7 +1,9 @@
 # The VS Code extension (clients/vscode), its steps written once for the three desktop OSes ci.yml
 # runs it on (a job per OS, so the expensive runners start only after the Linux row has passed).
 # Unit tests run under Node's runner; the integration suite starts VS Code against a stub engine and
-# a fake jk. The job checks out the repository first.
+# a fake jk. The job checks out the repository first. Steps run in the runner's default shell
+# (pwsh on Windows, bash elsewhere): jdtls/build.mjs calls tar, and under Git bash that is GNU tar,
+# which reads D:\... as a remote host.
 name: VS Code extension
 description: Build, unit-test and integration-test the VS Code extension.
 inputs:
@@ -22,33 +24,33 @@ runs:
         github-token: ${{ inputs.github-token }}
 
     - name: Install from the lockfile
-      shell: bash
+      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
       working-directory: clients/vscode
       run: npm ci
 
     - name: Type-check and bundle
-      shell: bash
+      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
       working-directory: clients/vscode
       run: npm run build
 
     - name: Java language server bundle and its tests
-      shell: bash
+      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
       working-directory: clients/vscode
       run: npm run test:jdtls
 
     - name: Unit tests
-      shell: bash
+      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
       working-directory: clients/vscode
       run: npm run test:unit
 
     - name: Integration tests (Linux, virtual display)
       if: runner.os == 'Linux'
-      shell: bash
+      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
       working-directory: clients/vscode
       run: xvfb-run -a npm run test:integration
 
     - name: Integration tests
       if: runner.os != 'Linux'
-      shell: bash
+      shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
       working-directory: clients/vscode
       run: npm run test:integration
