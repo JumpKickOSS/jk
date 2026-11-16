@@ -88,7 +88,7 @@ async function installRedhatJava(root: string, vscode: string, extensions: strin
   if (r.status !== 0) throw new Error(`installing redhat.java exited ${r.status}`);
 }
 
-/** A `jk` that waits for the suite's connect line and prints it, as `jk web -O jsonl` would. */
+/** A `jk` that waits for the suite's connect line and prints it, as `jk web -O jsonl --with-token` would. */
 function writeFakeJk(dir: string, connectFile: string): string {
   fs.mkdirSync(dir, { recursive: true });
   const script = path.join(dir, "fake-jk.js");
@@ -97,7 +97,7 @@ function writeFakeJk(dir: string, connectFile: string): string {
     `const fs = require("fs");
 const file = ${JSON.stringify(connectFile)};
 const args = process.argv.slice(2).join(" ");
-if (args !== "web -O jsonl") { console.error("fake jk: unexpected arguments: " + args); process.exit(2); }
+if (args !== "web -O jsonl --with-token") { console.error("fake jk: unexpected arguments: " + args); process.exit(2); }
 const deadline = Date.now() + 30000;
 (function poll() {
   if (fs.existsSync(file)) { process.stdout.write(fs.readFileSync(file, "utf8") + "\\n"); return; }

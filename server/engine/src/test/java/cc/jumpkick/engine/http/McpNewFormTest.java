@@ -57,7 +57,7 @@ import org.junit.jupiter.api.io.TempDir;
 class McpNewFormTest {
 
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
-    private final NewProjectWizard wizard = new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> "T");
+    private final NewProjectWizard wizard = new NewProjectWizard(() -> "http://127.0.0.1:8910/");
     private final McpHandler mcp = handler(wizard);
 
     @TempDir
@@ -340,7 +340,9 @@ class McpNewFormTest {
         assertThat(String.valueOf(params.get("url")))
                 .startsWith("http://127.0.0.1:8910/#new?")
                 .contains("name=widget", "motto=hi", "dir=" + enc(parent.toString()), "template=")
-                .contains("&elicitation=" + id, "&t=T");
+                .contains("&elicitation=" + id)
+                .as("the wizard link an agent's host is handed carries no token")
+                .doesNotContain("t=");
         mcp.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(ask.get("id")))
                         + ",\"result\":{\"action\":\"accept\"}}",
@@ -384,7 +386,7 @@ class McpNewFormTest {
     void a_create_after_the_call_stopped_waiting_still_gets_its_agents_and_says_the_call_ended() throws Exception {
         NewProjectAgents.env(key -> null);
         NewProjectWizard brief =
-                new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> "T", Duration.ofMillis(200), Clock.SYSTEM);
+                new NewProjectWizard(() -> "http://127.0.0.1:8910/", Duration.ofMillis(200), Clock.SYSTEM);
         McpHandler briefMcp = handler(brief);
         HttpServer site = createSite(brief);
         try {

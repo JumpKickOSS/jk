@@ -54,7 +54,8 @@ class McpDecisionsTest {
     private final ExecutorService threads = Executors.newVirtualThreadPerTaskExecutor();
     private final DecisionQueue queue = new DecisionQueue();
     private final List<List<String>> launched = Collections.synchronizedList(new ArrayList<>());
-    private final Decisions decisions = new Decisions(queue, id -> BASE + "#decision/" + id + "?t=T", new Dashboards())
+    private final Decisions decisions = new Decisions(queue, id -> BASE + "#decision/" + id, new Dashboards())
+            .signAlerts(link -> link + "?t=T")
             .alerts(new DecisionAlerts(argv -> launched.add(argv), "Linux", name -> null, scratchIdentity()))
             .ask(() -> UiAsk.NOTIFY);
     private final AtomicInteger done = new AtomicInteger();
@@ -171,7 +172,9 @@ class McpDecisionsTest {
         Decision open = queue.list().getFirst();
         assertThat(params.get("mode")).isEqualTo("url");
         assertThat(params.get("elicitationId")).isEqualTo(open.id());
-        assertThat(String.valueOf(params.get("url"))).isEqualTo(BASE + "#decision/" + open.id() + "?t=T");
+        assertThat(String.valueOf(params.get("url")))
+                .as("the agent's host is handed the link without the token")
+                .isEqualTo(BASE + "#decision/" + open.id());
         answer(session, request, "{\"action\":\"accept\"}");
 
         assertThat(queue.accept(open.id(), Map.of("answer", "yes"), DecisionSurface.DASHBOARD))
@@ -212,16 +215,19 @@ class McpDecisionsTest {
 
         String reply = text(mcp.handle(call("risky", Map.of()), session, null, null, sent::add));
         Decision d = queue.list().getFirst();
-        String link = BASE + "#decision/" + d.id() + "?t=T";
+        String link = BASE + "#decision/" + d.id();
         assertThat(reply)
                 .startsWith("NEEDS-YOU Do the risky thing?\n")
                 .contains("  a → b\n")
                 .contains("the user answers it: " + link + "\n")
                 .doesNotContain("terminal")
+                .doesNotContain("t=T")
                 .endsWith("run(decision=" + d.id() + ")\n");
         assertThat(launched).singleElement().satisfies(argv -> {
             assertThat(argv.getFirst()).isEqualTo("notify-send");
-            assertThat(argv.getLast()).contains("Do the risky thing?", "Answer it in the dashboard.", link);
+            assertThat(argv.getLast())
+                    .as("the desktop's own notification opens the decision signed in")
+                    .contains("Do the risky thing?", "Answer it in the dashboard.", link + "?t=T");
         });
 
         // Calling the tool again while it is open opens nothing new and notifies nobody again.

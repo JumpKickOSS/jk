@@ -19,7 +19,9 @@ export DEMO_OUT="$root/target/demo"
 rm -rf "$DEMO_OUT"
 mkdir -p "$DEMO_OUT"
 
-url="$(cd "$demo" && jk web -n 2>&1 | grep -o 'http://127.0.0.1:[0-9]*/#t=[A-Za-z0-9_=-]*' | head -1)"
+# Piped output never carries the token; the connect line hands it over when asked.
+url="$(cd "$demo" && jk web -O jsonl --with-token 2>/dev/null | grep '^{' | tail -1 \
+  | node -e 'const l = JSON.parse(require("fs").readFileSync(0, "utf8")); process.stdout.write(l.url.replace(/\/?$/, "/") + "#t=" + l.token)')"
 project="$(find "$JK_STATE_DIR/builds/projects" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" | head -1)"
 [[ -n "$url" && -n "$project" ]] || { echo "no dashboard URL or project: run setup.sh --agents first" >&2; exit 1; }
 

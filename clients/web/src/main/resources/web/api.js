@@ -35,9 +35,9 @@ export function capList(rows) {
 }
 
 /**
- * On load, adopt a token from the URL fragment — `#t=…` as `jk engine status` prints it, or
- * `?t=…` in a route's fragment query as an MCP result's `dashboard` link carries it
- * (`#project/<id>?t=…`) — stash it in sessionStorage <em>and</em> localStorage, and scrub it from
+ * On load, adopt a token from the URL fragment — `#t=…` as `jk web` opens it (and prints it at a
+ * terminal), or `?t=…` in a route's fragment query as the engine's own alerts carry it
+ * (`#decision/<id>?t=…`) — stash it in sessionStorage <em>and</em> localStorage, and scrub it from
  * the address bar, keeping the route. Fragments never leave the browser. localStorage lets a new
  * tab on the same origin load history without re-opening the tokenized URL (sessionStorage alone
  * is per-tab).

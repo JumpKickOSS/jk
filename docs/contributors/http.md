@@ -327,8 +327,10 @@ files (a named `web-root` or the overlay) are also `no-cache` (`Last-Modified`).
 security patches, and `location.reload()` after an `engineEpoch` mismatch does not bust
 subresources the browser still considers fresh. Non-loopback clients carry the token the same way; `EventSource`
 cannot send headers, so SSE passes it as an `access_token` query parameter. The SPA bootstraps
-from a `#t=` fragment. **`jk web`** starts the engine if needed, prints the tokenized URL, and
-opens a browser (`$BROWSER` or the platform default).
+from a `#t=` fragment. **`jk web`** starts the engine if needed, opens a browser (`$BROWSER` or
+the platform default) on the tokenized URL, and prints it tokenized only at an interactive
+terminal (`DashboardToken`); a link the engine answers with never carries the token
+(`DashboardLinks`), and `jk web -O jsonl` prints it only with `--with-token`.
 
 Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generation mismatch →
 **409** with `engine-epoch-mismatch` (see below).
@@ -940,7 +942,7 @@ every bridge already running until it restarts: put it in the engine instead.
 
 MCP `new` climbs from form mode to URL mode (`McpNewForm`): with only URL mode declared, it opens an
 id in `NewProjectWizard`, sends a `mode: "url"` request whose link is the dashboard's wizard
-(`#new?<key>=<value>&…&elicitation=<id>&t=<token>`), and after an accept waits for
+(`#new?<key>=<value>&…&elicitation=<id>`, no token: the agent's host holds the link), and after an accept waits for
 `POST /api/projects` to carry that `elicitation`. The create completes the wait, the call answers
 with the created project and sends `notifications/elicitation/complete`.
 

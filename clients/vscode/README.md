@@ -29,7 +29,7 @@ curl -fsSL https://jumpkick.build/install.sh | bash      # macOS, Linux
 irm https://jumpkick.build/install.ps1 | iex              # Windows PowerShell
 ```
 
-The extension runs the `jk` you installed to find its engine (`jk web -O jsonl` prints the address
+The extension runs the `jk` you installed to find its engine (`jk web -O jsonl --with-token` prints the address
 and token, and starts the engine when none is running). It does not bundle or pin a `jk`. In a
 Remote-WSL, SSH or container window it runs where the folder is, so it reaches that machine's
 engine.

@@ -12,7 +12,7 @@ export type SessionState =
   | { readonly kind: "failed"; readonly reason: string };
 
 export interface SessionOptions {
-  /** Finds the engine; `discover` (runs `jk web -O jsonl`) unless a test supplies its own. */
+  /** Finds the engine; `discover` (runs `jk web -O jsonl --with-token`) unless a test supplies its own. */
   readonly discover?: () => Promise<EngineEndpoint>;
   readonly bin?: string;
   readonly cwd?: string;

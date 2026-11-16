@@ -904,7 +904,7 @@ MCP `ide` runs in-process. `wire` cannot host them (it is the frozen protocol co
 generators need `toolchain-jdk`); `core` cannot see the wire record at all.
 
 - **VS Code:** `clients/vscode/` — a TypeScript VSIX; commands and the status bar speak the
-  engine's `/api` and event stream, with the address and token from `jk web -O jsonl`. The Java
+  `/api` and event stream of the engine, with the address and token from `jk web -O jsonl --with-token`. The Java
   language server (redhat.java, a declared dependency) loads the VSIX's `server/jk-jdtls.jar`
   through `javaExtensions`: an OSGi bundle (`clients/vscode/jdtls/`, built by `npm run build:jdtls`
   against the pinned redhat.java's own Eclipse jars, never by JumpKick) whose importer claims a `jk.toml`

@@ -28,8 +28,9 @@ import org.jspecify.annotations.Nullable;
  * for the call's agents, and {@link #complete} says no call took it. A create spends its link. At
  * most {@link #MAX_OPEN} links are kept; past that the oldest goes.
  *
- * <p>Link shape: {@code <base>#new?<key>=<value>&…&elicitation=<id>&t=<token>}, one pair per
- * answer, a {@code multi} joined on commas. The SPA stores and scrubs {@code t}.
+ * <p>Link shape: {@code <base>#new?<key>=<value>&…&elicitation=<id>}, one pair per answer, a
+ * {@code multi} joined on commas. It carries no token: the agent that asked holds it in its
+ * transcript, so the browser opens it with the token it already keeps ({@code DashboardLinks}).
  */
 public final class NewProjectWizard {
 
@@ -45,7 +46,6 @@ public final class NewProjectWizard {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final Supplier<@Nullable String> base;
-    private final Supplier<@Nullable String> token;
     private final Duration wait;
     private final Clock clock;
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
@@ -66,17 +66,14 @@ public final class NewProjectWizard {
     /**
      * @param base the dashboard's base URL ({@code http://127.0.0.1:8910/}), or null while HTTP is
      *     not serving
-     * @param token the bearer token a link carries, or null when there is none
      */
-    public NewProjectWizard(Supplier<@Nullable String> base, Supplier<@Nullable String> token) {
-        this(base, token, McpNewForm.WAIT, Clock.SYSTEM);
+    public NewProjectWizard(Supplier<@Nullable String> base) {
+        this(base, McpNewForm.WAIT, Clock.SYSTEM);
     }
 
     /** As above, with a call waiting {@code wait} for a create and links aging by {@code clock}. */
-    public NewProjectWizard(
-            Supplier<@Nullable String> base, Supplier<@Nullable String> token, Duration wait, Clock clock) {
+    public NewProjectWizard(Supplier<@Nullable String> base, Duration wait, Clock clock) {
         this.base = base;
-        this.token = token;
         this.wait = wait;
         this.clock = clock;
     }
@@ -104,8 +101,6 @@ public final class NewProjectWizard {
             out.append(sep).append(ELICITATION).append('=').append(enc(elicitation));
             sep = '&';
         }
-        String t = token.get();
-        if (t != null && !t.isBlank()) out.append(sep).append("t=").append(t.strip());
         return out.toString();
     }
 

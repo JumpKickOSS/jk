@@ -89,18 +89,30 @@ class McpConnectionTest {
     }
 
     @Test
-    void dashboard_links_carry_the_token_the_project_route_and_the_checkout() {
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "T", "abc", "/ws/my app"))
-                .isEqualTo("http://127.0.0.1:8910/#project/abc?dir=%2Fws%2Fmy%20app&t=T");
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "T", "abc", null))
-                .isEqualTo("http://127.0.0.1:8910/#project/abc?t=T");
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910", "T", null, "/ws"))
-                .isEqualTo("http://127.0.0.1:8910/#t=T");
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", null, "abc", "/ws"))
-                .isEqualTo("http://127.0.0.1:8910/#project/abc?dir=%2Fws");
-        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", null, "abc", null))
+    void dashboard_links_carry_the_project_route_and_the_checkout_and_never_the_token() {
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "abc", "/ws/my app"))
+                .isEqualTo("http://127.0.0.1:8910/#project/abc?dir=%2Fws%2Fmy%20app");
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910/", "abc", null))
                 .isEqualTo("http://127.0.0.1:8910/#project/abc");
-        assertThat(DashboardLinks.project(null, "T", "abc", "/ws")).isNull();
+        assertThat(DashboardLinks.project("http://127.0.0.1:8910", null, "/ws")).isEqualTo("http://127.0.0.1:8910/");
+        assertThat(DashboardLinks.project(null, "abc", "/ws")).isNull();
+        assertThat(DashboardLinks.decision("http://127.0.0.1:8910", "d1"))
+                .isEqualTo("http://127.0.0.1:8910/#decision/d1");
+        assertThat(DashboardLinks.decision(null, "d1")).isNull();
+    }
+
+    /** What the engine opens or shows itself is signed the way the SPA adopts it (JK-JDT0Y). */
+    @Test
+    void a_signed_link_puts_the_token_where_the_dashboard_adopts_it() {
+        assertThat(DashboardLinks.signed("http://127.0.0.1:8910/", "T")).isEqualTo("http://127.0.0.1:8910/#t=T");
+        assertThat(DashboardLinks.signed("http://127.0.0.1:8910/#", "T")).isEqualTo("http://127.0.0.1:8910/#t=T");
+        assertThat(DashboardLinks.signed("http://127.0.0.1:8910/#decision/d1", "T"))
+                .isEqualTo("http://127.0.0.1:8910/#decision/d1?t=T");
+        assertThat(DashboardLinks.signed("http://127.0.0.1:8910/#project/abc?dir=%2Fws", " T\n"))
+                .isEqualTo("http://127.0.0.1:8910/#project/abc?dir=%2Fws&t=T");
+        assertThat(DashboardLinks.signed("http://127.0.0.1:8910/#decision/d1", null))
+                .isEqualTo("http://127.0.0.1:8910/#decision/d1");
+        assertThat(DashboardLinks.signed(null, "T")).isNull();
     }
 
     @Test

@@ -15,20 +15,21 @@ export interface EngineEndpoint {
 const WINDOWS_NOT_FOUND = 9009;
 
 /**
- * Ask the user's own jk for its engine: `jk web -O jsonl` starts the engine when none is running and
- * prints `{url, token, engineId}`. The token comes from the engine's owner-only file through jk, so
+ * Ask the jk the user installed for its engine: `jk web -O jsonl --with-token` starts the engine
+ * when none is running and prints `{url, token, engineId}`; without `--with-token` jk leaves the token out of
+ * machine output, which agents and CI capture. The token comes from the engine's owner-only file through jk, so
  * the extension never reads the engine's state directory and always lands on the engine this
  * machine's jk uses: a WSL distro's or a container's own when the window is remote.
  */
 export async function discover(bin: string, cwd: string, run: typeof runJk = runJk): Promise<EngineEndpoint> {
-  const result = await run(bin, ["web", "-O", "jsonl"], cwd);
+  const result = await run(bin, ["web", "-O", "jsonl", "--with-token"], cwd);
   if (process.platform === "win32" && result.code === WINDOWS_NOT_FOUND) {
     throw new JkNotFound(bin, `'${bin}' was not found. Install jk, or set jk.path in your user settings.`);
   }
   return parseEndpoint(result);
 }
 
-/** The endpoint from `jk web -O jsonl`'s output; throws with jk's own words when it has none. */
+/** The endpoint from `jk web -O jsonl --with-token`'s output; throws with jk's own words when it has none. */
 export function parseEndpoint(result: JkRun): EngineEndpoint {
   const line = lastJsonLine(result.stdout);
   if (line && typeof line["url"] === "string" && line["url"] !== "") {

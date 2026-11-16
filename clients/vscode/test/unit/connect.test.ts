@@ -28,5 +28,5 @@ test("discover runs jk web with JSONL output in the project folder", async () =>
     return { code: 0, stdout: '{"url":"http://127.0.0.1:8910/","token":"t","engineId":""}', stderr: "" };
   });
   assert.equal(ep.url, "http://127.0.0.1:8910/");
-  assert.deepEqual(calls, [["/opt/jk/bin/jk", ["web", "-O", "jsonl"], "/work/app"]]);
+  assert.deepEqual(calls, [["/opt/jk/bin/jk", ["web", "-O", "jsonl", "--with-token"], "/work/app"]]);
 });

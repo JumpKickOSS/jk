@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import static java.util.Objects.requireNonNullElse;
+
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.DashboardToken;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.engine.BuildStamps;
@@ -26,8 +29,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -170,7 +171,7 @@ public final class EngineStatusCommand implements CliCommand {
             // Align under the value column (same indent as status dotted-label values).
             if (bar != null) CliOutput.out(" ".repeat(VALUE_COL) + bar);
         }
-        String http = describeHttp(s, paths);
+        String http = describeHttp(s, global, paths);
         // OSC-8 hyperlink; visible text is white to match other status values.
         String webUi = s.httpUrl() != null
                 ? Osc.hyperlink(http, Theme.paint(http, Theme.active().brightWhite()))
@@ -643,20 +644,13 @@ public final class EngineStatusCommand implements CliCommand {
 
     /**
      * The embedded HTTP server's state — serving URL, bind error, or disabled ({@code docs/contributors/http.md}).
-     * The serving URL carries the bearer token as a fragment ({@code #t=…}) when the engine's
-     * owner-only token file is readable: fragments never leave the browser, and this line is how
-     * the dashboard SPA bootstraps its token — click/open the printed URL and it's authenticated.
+     * The serving URL carries the bearer token as a fragment ({@code #t=…}) only at a person's
+     * interactive terminal ({@link DashboardToken}): there clicking it signs the dashboard in;
+     * anywhere else the line is captured, and the token opens every engine this machine pairs.
      */
-    private static String describeHttp(EngineProbe.Status s, EnginePaths.Paths paths) {
-        if (s.httpUrl() != null) {
-            try {
-                String token = Files.readString(paths.httpToken()).trim();
-                if (!token.isEmpty()) return s.httpUrl() + "#t=" + token;
-            } catch (IOException e) {
-                // token file unreadable/missing — the plain URL still serves static + loopback reads
-            }
-            return s.httpUrl();
-        }
+    private static String describeHttp(EngineProbe.Status s, GlobalOptions global, EnginePaths.Paths paths) {
+        if (s.httpUrl() != null)
+            return requireNonNullElse(DashboardToken.forOutput(s.httpUrl(), global, paths), s.httpUrl());
         if (s.httpError() != null) return "failed to start (" + s.httpError() + ")";
         return "disabled";
     }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import static java.util.Objects.requireNonNullElse;
+
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.DashboardToken;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.OpenBrowser;
 import cc.jumpkick.cli.api.Osc;
@@ -21,19 +24,20 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.terminal.Style;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk web} — ensure the engine is up, print the authenticated dashboard URL (OSC-8 clickable
- * link), and open it in the default browser ({@code $BROWSER}, else {@code open}/{@code start}/
- * {@code xdg-open}). The URL carries {@code #t=<token>} when the owner-only token file is readable
- * so the SPA can bootstrap auth (see docs/contributors/webclient.md).
+ * {@code jk web} — ensure the engine is up, print the dashboard URL (OSC-8 clickable link), and
+ * open it in the default browser ({@code $BROWSER}, else {@code open}/{@code start}/{@code
+ * xdg-open}). The browser is handed the URL signed with {@code #t=<token>} so the SPA can bootstrap
+ * auth (see docs/contributors/webclient.md); the printed URL carries it only at a person's
+ * interactive terminal ({@link DashboardToken}).
  *
- * <p>{@code -O jsonl} prints one {@code {url, token, engineId}} object instead and opens nothing:
- * how an editor extension finds and authenticates to the engine this home's {@code jk} uses,
- * without reading the engine's state directory itself.
+ * <p>{@code -O jsonl} prints one {@code {url, engineId}} object instead and opens nothing; {@code
+ * --with-token} adds {@code token}: how an editor extension finds and authenticates to the engine
+ * this home's {@code jk} uses, without reading the engine's state directory itself. Only that
+ * explicit ask prints the token in machine output.
  */
 public final class WebCommand implements CliCommand {
 
@@ -55,7 +59,9 @@ public final class WebCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Print the URL only; do not open a browser", "-n", "--no-open"));
+        return List.of(
+                Opt.flag("Print the URL only; do not open a browser", "-n", "--no-open"),
+                Opt.flag("With -O jsonl: include the engine's bearer token (for an editor)", "-T", "--with-token"));
     }
 
     @Override
@@ -81,11 +87,13 @@ public final class WebCommand implements CliCommand {
             return fail(json, why, Exit.FAILURE);
         }
         if (json) {
-            CliOutput.machine(connectJson(status.httpUrl(), token(paths), status.engineId()));
+            String token = in.isSet("with-token") ? DashboardToken.token(paths) : null;
+            CliOutput.machine(connectJson(status.httpUrl(), token, status.engineId()));
             return Exit.SUCCESS;
         }
 
-        String url = tokenizedUrl(status.httpUrl(), paths);
+        GlobalOptions global = GlobalOptions.from(in);
+        String url = printedUrl(status.httpUrl(), DashboardToken.mayPrint(global), paths);
         Theme t = Theme.active();
         CommandWedge.envelopeStart();
         CliOutput.out(JkWedge.chipLine(Glyphs.PLAY, "Web", GlobalConfig.nerdFont(), "JumpKick Web Interface"));
@@ -95,8 +103,15 @@ public final class WebCommand implements CliCommand {
         String visible = Theme.paint(url, t.path());
         CliOutput.out("  " + Osc.hyperlink(url, visible));
 
+        if (!DashboardToken.mayPrint(global)) {
+            CliOutput.out(Theme.paint(
+                    "  The token is left out here (not an interactive terminal); a browser that has signed in"
+                            + " opens it, else run `jk web` at a terminal.",
+                    t.darkGray()));
+        }
+
         if (!noOpen) {
-            boolean opened = OpenBrowser.open(url);
+            boolean opened = OpenBrowser.open(requireNonNullElse(DashboardToken.signed(status.httpUrl(), paths), url));
             if (opened) {
                 CliOutput.out("");
                 CliOutput.out(Theme.paint("  Opening in your browser…", t.darkGray()));
@@ -117,34 +132,23 @@ public final class WebCommand implements CliCommand {
     }
 
     /**
-     * The {@code -O jsonl} line: the engine's HTTP base URL, its bearer token ({@code ""} when the
-     * owner-only token file cannot be read) and its identity id. Package-visible for tests.
+     * The {@code -O jsonl} line: the engine's HTTP base URL, its identity id and, only when {@code
+     * --with-token} asked, its bearer token ({@code ""} when the owner-only token file cannot be
+     * read). Package-visible for tests.
      */
-    static String connectJson(String httpUrl, String token, @Nullable String engineId) {
-        return JsonFields.object()
-                .string("url", httpUrl)
-                .string("token", token)
-                .string("engineId", engineId, "")
-                .finish();
-    }
-
-    /** The bearer token from the owner-only token file, {@code ""} when it cannot be read. */
-    private static String token(EnginePaths.Paths paths) {
-        try {
-            return Files.readString(paths.httpToken()).trim();
-        } catch (IOException e) {
-            return "";
-        }
+    static String connectJson(String httpUrl, @Nullable String token, @Nullable String engineId) {
+        JsonFields fields = JsonFields.object().string("url", httpUrl);
+        if (token != null) fields.string("token", token);
+        return fields.string("engineId", engineId, "").finish();
     }
 
     /**
-     * Dashboard URL with {@code #t=<token>} when the owner-only token file is readable (SPA bootstrap).
-     * Package-visible for tests.
+     * The dashboard URL as printed: signed with {@code #t=<token>} when {@code signed} and the
+     * owner-only token file is readable, else bare. Package-visible for tests.
      */
-    static String tokenizedUrl(String httpUrl, EnginePaths.Paths paths) {
+    static String printedUrl(String httpUrl, boolean signed, EnginePaths.Paths paths) {
         if (httpUrl == null || httpUrl.isBlank()) return "";
-        String token = token(paths);
-        // A plain URL still serves the shell; mutations need a token.
-        return token.isEmpty() ? httpUrl : httpUrl + "#t=" + token;
+        // A plain URL still serves the shell; mutations need a token the browser already holds.
+        return signed ? requireNonNullElse(DashboardToken.signed(httpUrl, paths), httpUrl) : httpUrl;
     }
 }

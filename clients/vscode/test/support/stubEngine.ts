@@ -53,7 +53,7 @@ export class StubEngine {
     return `http://127.0.0.1:${this.port}/`;
   }
 
-  /** The line `jk web -O jsonl` prints for this engine. */
+  /** The line `jk web -O jsonl --with-token` prints for this engine. */
   connectLine(): string {
     return JSON.stringify({ url: this.url, token: this.token, engineId: this.identity.id });
   }

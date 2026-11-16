@@ -155,7 +155,7 @@ Wire-level BSP notes: [Architecture](../contributors/architecture.md).
   without the plugin.
 - **VS Code** — `clients/vscode/` in the JumpKick repo; package with
   `./scripts/package-vscode.sh`. Opening a folder with a `jk.toml` connects the window to the
-  engine your `jk` uses (it asks `jk web -O jsonl` for the address and token, so a Remote-WSL or
+  engine your `jk` uses (it asks `jk web -O jsonl --with-token` for the address and token, so a Remote-WSL or
   container window reaches that guest's own engine). **JumpKick: Build**, **Test**, **Lock** and
   **Sync dependencies** start the same engine jobs the CLI does; the status bar follows every job
   in the window's folders, a terminal `jk build` included, from the engine's event stream, and the

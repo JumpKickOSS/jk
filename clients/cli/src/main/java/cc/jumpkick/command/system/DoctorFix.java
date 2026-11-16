@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.DashboardToken;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -96,8 +97,9 @@ final class DoctorFix {
                 return Exit.SUCCESS;
             }
             case Answer.Open o -> {
+                String link = DashboardToken.forOutput(o.link(), global, EnginePaths.current());
                 CliOutput.out("Still open: answer it with `jk decide " + o.id() + "`"
-                        + (o.link() == null ? "" : " or at " + o.link()) + ", then rerun `jk doctor --fix`.");
+                        + (link == null ? "" : " or at " + link) + ", then rerun `jk doctor --fix`.");
                 return Exit.SUCCESS;
             }
             case Answer.Failed f -> {
@@ -134,8 +136,8 @@ final class DoctorFix {
         }
         String id = String.valueOf(MiniJson.str(d, "id"));
         DecideView.card(d).forEach(CliOutput::out);
-        CliOutput.out("  answer here, with `jk decide " + id + "`"
-                + (raised.link() == null ? "" : ", or at " + raised.link()));
+        String link = DashboardToken.forOutput(raised.link(), global, paths);
+        CliOutput.out("  answer here, with `jk decide " + id + "`" + (link == null ? "" : ", or at " + link));
         Form form = Form.fromJson(MiniJson.write(d.get("form")));
         Asker asker = terminal && "open".equals(MiniJson.str(d, "state")) ? Asker.interactive() : null;
         CompletableFuture<Optional<Map<String, Object>>> typed = new CompletableFuture<>();

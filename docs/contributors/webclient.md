@@ -60,9 +60,13 @@ stopped providing.
 
 ## Auth
 
-Token bootstrap rides the URL fragment: `jk web` (and `jk engine status`) print a dashboard link
-ending in `#t=<token>`, and an MCP result's `dashboard` link carries it in a project route's
-fragment query, `#project/<id>?t=<token>` (`DashboardLinks` engine-side); on load `api.js`
+Token bootstrap rides the URL fragment: the browser `jk web` opens is handed a link ending in
+`#t=<token>`, and `jk web` and `jk engine status` print it so at a person's interactive terminal
+only (`DashboardToken`: never piped, under `--agent`, `-O json`, `CI` or a coding agent's shell);
+a route carries it in the fragment query, `#decision/<id>?t=<token>`, where the engine signs
+the browser it opens and the notification it shows (`DashboardLinks.signed`). Links the engine
+answers with (MCP results, decision acks, `/api/decisions`, the wizard) carry none, and open
+signed in only in a browser that already stored the token. On load `api.js`
 (`adoptFragmentToken`) stashes the token in `sessionStorage` and `localStorage` and scrubs it from
 the address bar, keeping the route (fragments never leave the browser). Later
 tabs/refreshes reuse the stored token. Every `/api` call then sends `Authorization: Bearer <token>`.
@@ -77,8 +81,8 @@ When a token is **missing or invalid** (bare `http://localhost:8910` with no sto
 rotated/stale token, or any `401` from the engine), the SPA opens a **blocking “Access Denied”
 dialog** and freezes the rest of the UI — it does **not** paint the console, vitals, or a quiet
 empty state. There is no paste field and no dismiss: recover by running
-`jk web` (opens an authenticated tab and prints a clickable `#t=…` URL if the browser cannot
-open). The dialog shows a console-style `jk web` snippet with a copy button.
+`jk web` (opens an authenticated tab, and at a terminal prints a clickable `#t=…` URL if the
+browser cannot open). The dialog shows a console-style `jk web` snippet with a copy button.
 
 ## Tooltips
 

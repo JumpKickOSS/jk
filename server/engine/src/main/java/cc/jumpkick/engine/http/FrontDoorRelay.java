@@ -207,7 +207,8 @@ public final class FrontDoorRelay implements AutoCloseable {
         Decision decision = Decision.fromMap(named).orElse(null);
         if (decision == null) return;
         String engineBase = (base.endsWith("/") ? base : base + "/") + FrontDoor.PREFIX.substring(1) + t.id() + "/";
-        String link = DashboardLinks.decision(engineBase, token.get(), id);
+        // Raised on this machine's desktop, which no transcript captures: signed with the front door's token.
+        String link = DashboardLinks.signed(DashboardLinks.decision(engineBase, id), token.get());
         if (link == null || !raised.add(decision.id())) return;
         String what = d.relayAlert(decision, link);
         log.accept("jk engine: front door relayed " + t.label() + "'s decision " + id + ": " + what);

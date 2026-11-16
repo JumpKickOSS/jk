@@ -3,12 +3,15 @@
 ```bash
 jk web                 # ensure engine, print URL, open browser
 jk web -n              # print only
-jk web -O jsonl        # one {url, token, engineId} object; opens nothing
+jk web -O jsonl        # one {url, engineId} object; opens nothing
+jk web -O jsonl --with-token   # the same, with the engine's bearer token
 ```
 
-The JSONL form is how an editor extension (the VS Code extension, for one) finds the engine your
-`jk` uses and authenticates to it: it runs `jk` and reads the line, so it never reads the engine's
-state directory itself and lands on the right engine inside a WSL distro or a container.
+The JSONL form with `--with-token` is how an editor extension (the VS Code extension, for one)
+finds the engine your `jk` uses and authenticates to it: it runs `jk` and reads the line, so it
+never reads the engine's state directory itself and lands on the right engine inside a WSL distro
+or a container. Without `--with-token` the line has no token: that flag is the one way a command
+prints it in machine output.
 
 The resident engine serves a small dashboard (thin renderer; the engine owns all build
 logic). `jk engine status` also prints the authenticated URL.
@@ -228,7 +231,17 @@ figures are the record's `coverage[]` rows — the same facts as `target/jk-resu
 `run`; the baseline is the nearest earlier record of the project whose coverage is not
 empty, as the results file chooses it.
 
-The link ends in `#t=<token>`; a project link from MCP carries it as `#project/<id>?t=<token>`.
+At an interactive terminal the link `jk web` and `jk engine status` print ends in `#t=<token>`,
+and the browser `jk web` opens is always handed that link. Anywhere a command's output is
+captured, the link is printed without the token: when the output is piped or redirected, under
+`--agent` or `-O json`/`jsonl`, with `CI` set, or in a coding agent's shell (`CLAUDECODE`,
+`CODEX_THREAD_ID`, `CURSOR_AGENT`, `GEMINI_CLI`, …). The token opens this engine, and through a
+front door every engine on the machine, so it does not belong in an agent transcript, a CI log or
+a recorded terminal. Links the engine answers with — an MCP result's dashboard or decision link,
+the new-project wizard an agent offers, `jk decide`'s and `jk doctor --fix`'s decision link —
+never carry it; only the browser the engine opens itself (`[ui] ask = open`) and its desktop
+notification do. A browser that has opened a signed link once keeps the token and opens these
+links signed in; one that has not shows **Access Denied**: run `jk web` at a terminal.
 The page stores the token in `sessionStorage` / `localStorage` and scrubs it from the address
 bar, keeping the route. Every `/api/*` call sends
 `Authorization: Bearer <token>` — including loopback. Static shell assets stay open so

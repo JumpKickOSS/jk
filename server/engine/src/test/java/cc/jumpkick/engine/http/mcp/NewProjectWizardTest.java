@@ -20,7 +20,7 @@ class NewProjectWizardTest {
 
     private final FakeClock clock = new FakeClock();
     private final NewProjectWizard wizard =
-            new NewProjectWizard(() -> "http://127.0.0.1:8910/", () -> null, Duration.ofMinutes(5), clock);
+            new NewProjectWizard(() -> "http://127.0.0.1:8910/", Duration.ofMinutes(5), clock);
 
     @Test
     void a_waiting_call_takes_the_create_and_the_create_spends_the_link() {

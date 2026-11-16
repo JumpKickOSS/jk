@@ -176,7 +176,8 @@ Most lines also carry aggregate `progress` (0–100 or `null`).
 ## MCP in one paragraph
 
 MCP is **on by default** when the engine HTTP server is on (loopback, token-gated). Discover
-the URL with `jk engine status`. Send `Authorization: Bearer <token>`. Pass `dir` on the first
+the URL with `jk engine status`. Send `Authorization: Bearer <token>`
+(`jk web -O jsonl --with-token` prints it; an agent's own output never does, [Web](web.md)). Pass `dir` on the first
 call — that binds the connection — then omit it; `bind` switches.
 
 The default `tools/list` is `run`, `diagnostics`, `deps`, `callers`, `rename`, and `skill`: every

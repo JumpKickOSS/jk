@@ -198,7 +198,7 @@ which asks you first.
 
 `jk engine status` names the engine and its id (`Engine.....: WSL Ubuntu on Daybreak (id
 3819973a207a)`) and prints its URL; give bookmarks and MCP configs the URL `jk web` prints there
-(`jk web -O jsonl` prints `url`, `token` and `engineId`). The id stays the same across restarts and
+(`jk web -O jsonl` prints `url` and `engineId`, and `token` with `--with-token`). The id stays the same across restarts and
 differs per machine, guest and JumpKick home: it is derived from the OS, the WSL distro or container
 instance, the host name and the home's path.
 

@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -30,7 +31,10 @@ public final class Decisions {
     /** {@code [ui] ask = quiet}: only the link in the tool result. */
     public static final String CHANNEL_NONE = "none";
 
-    /** The dashboard link to a decision; null while the dashboard is not serving. */
+    /**
+     * The dashboard link to a decision; null while the dashboard is not serving. It carries no
+     * token: it is answered to MCP, {@code jk decide} and the API, and lands in transcripts and logs.
+     */
     @FunctionalInterface
     public interface Links {
         @Nullable
@@ -44,6 +48,7 @@ public final class Decisions {
     private volatile Supplier<UiAsk> ask = UiAsk::resolve;
     private volatile BooleanSupplier relayed = () -> false;
     private volatile Consumer<Decision> relay = d -> {};
+    private volatile UnaryOperator<String> signed = UnaryOperator.identity();
 
     /** The channel {@link #alert} records when a front door raises the notification instead. */
     static final String CHANNEL_FRONT_DOOR = "front-door";
@@ -75,12 +80,27 @@ public final class Decisions {
     }
 
     /**
-     * Tells the person about fresh decision {@code d}, whose dashboard link is {@code link}, as
+     * Tells the person about fresh decision {@code d}, whose dashboard link is {@code link} (signed
+     * here, {@link #signAlerts}), as
      * {@code [ui] ask} says; answers what happened. Under {@code notify}: nothing when a dashboard is
      * in use (it shows the decision in the page), a browser notification from a dashboard that may
      * show one, else the native notification.
      */
     public String alert(Decision d, String link) {
+        return tell(d, signed.apply(link));
+    }
+
+    /**
+     * Sign the link of every alert this engine raises itself with {@code sign}: the browser it
+     * opens and the notification it shows are seen by the person at this machine and captured by
+     * nothing, so they carry the token the answers leave out.
+     */
+    public Decisions signAlerts(UnaryOperator<String> sign) {
+        this.signed = Objects.requireNonNull(sign);
+        return this;
+    }
+
+    private String tell(Decision d, String link) {
         UiAsk mode = ask();
         if (mode == UiAsk.QUIET) return told(d, CHANNEL_NONE, alerts.raise(mode, d, link));
         if (relayed.getAsBoolean()) {

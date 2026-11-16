@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.decisions.Decision;
@@ -63,6 +64,21 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
         assertThat(MiniJson.str(MiniJson.parse(res.body()), "state")).isEqualTo("accepted");
         assertThat(queue.find(d.id()).orElseThrow().answeredBy()).isEqualTo(DecisionSurface.DASHBOARD);
         assertThat(queue.spend(d.id())).as("the operation proceeds, once").isTrue();
+    }
+
+    /**
+     * The link a decision is answered with — {@code jk decide}'s and {@code jk doctor --fix}'s ack,
+     * an MCP result, the API — carries no token: it lands in transcripts and logs (JK-JDT0Y).
+     */
+    @Test
+    void a_decisions_link_and_the_list_never_carry_the_token() throws Exception {
+        Decision d = open("update");
+
+        assertThat(queue.link(d.id())).isEqualTo(baseUrl + "#decision/" + d.id());
+        assertThat(requireNonNull(server.decisions()).link(d.id())).doesNotContain(token());
+        HttpResponse<String> list = get("/api/decisions");
+        assertThat(list.statusCode()).isEqualTo(200);
+        assertThat(list.body()).doesNotContain(token());
     }
 
     @Test

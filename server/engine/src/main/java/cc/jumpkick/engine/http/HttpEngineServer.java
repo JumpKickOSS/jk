@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -182,8 +183,9 @@ public final class HttpEngineServer implements AutoCloseable {
         api.registerPrefix("POST", HttpDecisionsApi.PREFIX, decisionsApi::handleAnswer);
         queue.onChange(d -> events.publishDashboard(EventCatalog.SSE_DECISION, JsonOut.rawObject(d.toMap())));
         if (mcp != null) {
-            Decisions decisions =
-                    new Decisions(queue, id -> DashboardLinks.decision(url(), tokens.tokenText(), id), dashboards);
+            Decisions decisions = new Decisions(queue, id -> DashboardLinks.decision(url(), id), dashboards)
+                    .signAlerts(
+                            link -> Objects.requireNonNullElse(DashboardLinks.signed(link, tokens.tokenText()), link));
             this.decisions = decisions;
             mcp.decisions(decisions);
         }
@@ -402,7 +404,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.coverageReport = new HttpCoverageReport(journal, tokens);
         this.projectApi = new HttpProjectApi();
-        NewProjectWizard wizard = new NewProjectWizard(this::url, tokens::tokenText);
+        NewProjectWizard wizard = new NewProjectWizard(this::url);
         if (this.mcp != null) this.mcp.wizard(wizard);
         HttpNewProjectApi newProjectApi = new HttpNewProjectApi(journal, wizard);
         this.readApi = new HttpReadApi(
