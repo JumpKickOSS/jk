@@ -136,10 +136,22 @@ final class RenameStore {
      */
     static void writeProof(Path out, Set<String> modules, Map<String, String> symbols, List<String[]> refs)
             throws IOException {
+        writeProof(out, modules, symbols, refs, List.of());
+    }
+
+    /**
+     * As above, with {@code unseen}: the sets that may call what was renamed and have no compiled
+     * classes, which neither the edit nor the proof covers.
+     */
+    static void writeProof(
+            Path out, Set<String> modules, Map<String, String> symbols, List<String[]> refs, List<String> unseen)
+            throws IOException {
         StringBuilder s = new StringBuilder("modules\t");
         s.append(String.join(
                 ",", modules.stream().map(p -> p.isEmpty() ? "." : p).toList()));
         s.append('\n');
+        if (!unseen.isEmpty())
+            s.append("unseen\t").append(String.join(",", unseen)).append('\n');
         symbols.forEach(
                 (a, b) -> s.append("sym\t").append(a).append('\t').append(b).append('\n'));
         for (String[] r : refs)
@@ -155,7 +167,7 @@ final class RenameStore {
     }
 
     /** What {@link #writeProof} wrote, or {@code null}. */
-    record Proof(List<String> modules, Map<String, String> symbols, List<String[]> refs) {}
+    record Proof(List<String> modules, Map<String, String> symbols, List<String[]> refs, List<String> unseen) {}
 
     static @Nullable Proof readProof(Path out) throws IOException {
         Path file = dir(out).resolve(PROOF);
@@ -163,6 +175,7 @@ final class RenameStore {
         List<String> modules = new ArrayList<>();
         Map<String, String> symbols = new LinkedHashMap<>();
         List<String[]> refs = new ArrayList<>();
+        List<String> unseen = new ArrayList<>();
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             String[] f = line.split("\t", -1);
             switch (f[0]) {
@@ -172,11 +185,12 @@ final class RenameStore {
                     }
                 }
                 case "sym" -> symbols.put(f[1], f[2]);
+                case "unseen" -> unseen.addAll(List.of(f[1].split(",")));
                 case "ref" -> refs.add(new String[] {f[1], f[2], f[3]});
                 default -> {}
             }
         }
-        return new Proof(modules, symbols, refs);
+        return new Proof(modules, symbols, refs, unseen);
     }
 
     // ---- pending candidates ----

@@ -185,10 +185,12 @@ text declares, and every other file of the module keeps its compiled facts, so t
 still there mid-edit; the answer names the edited files. A module's tests that were never
 compiled are compiled the same way, in a job of their own after the main sources (in the history
 as a `compile`), so a fresh checkout's callers include its tests; when that compile cannot run, the
-line names their directory (`core/src/test`). Only the default suite is compiled for a question:
-another suite (`core/src/integration`) is named the same way until a run that compiles it, such as
-`jk guard`, leaves its classes, and so is the guard suite (`core/src/guard`) until `jk guard`
-compiles it into `target/guard/classes`, which the graph reads too. An edited test is not compiled for a question: it is named with the
+line names their directory (`core/src/test`). A question compiles the same test tree every verb
+does: the default suite with the suites the guard runs (`[test] guard-suites`, by default `test` and
+`integration`), so `core/src/integration`'s calls are there on a fresh checkout. A suite outside that
+tree (`core/src/e2e` unless the guard runs it) is named the same way until a run that compiles it
+leaves its classes, and so is the guard suite (`core/src/guard`) until `jk guard` compiles it into
+`target/guard/classes`, which the graph reads too. An edited test is not compiled for a question: it is named with the
 edited files. A module whose class
 files the build did not write, or that is being built while the graph refreshes, contributes what
 its sources declare, and the answer says which modules those are. `jk build` brings the compiled
@@ -467,7 +469,12 @@ field is flagged with no pin.
 
 **The proof.** After writing, the rename compiles the modules it edited, main and tests, and checks
 that each renamed symbol's new name has exactly the references javac resolved for the old one, at the
-same lines, and that the old name has none: `Proven: it compiles, and …`. A local variable the new name
+same lines, and that the old name has none: `Proven: it compiles, and …`. The proof covers what
+compiled: when a set that may call the old name has no compiled classes (a suite outside the test
+tree, a module with no classes), its uses are listed as candidates, the answer says `Not checked: …`,
+and the proof reads `Proven only where it compiled; not for <set> …, so the rename is not done`. Tests
+that did not compile before the rename are not compiled for its proof, so a failure the rename did not
+cause never undoes it; they are named as not checked. A local variable the new name
 would shadow, or a compile error (a use only a candidate holds, say), undoes the whole rename: every
 file is put back and the answer says why (`Rolled back, nothing is changed …`), naming the candidate
 to add with `also` when that is the cause. A file whose index javac has not rewritten is named as not

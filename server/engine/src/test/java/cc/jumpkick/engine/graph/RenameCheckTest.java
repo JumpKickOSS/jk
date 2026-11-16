@@ -45,6 +45,7 @@ class RenameCheckTest {
         List<List<String>> asked = new ArrayList<>();
         String line = RenameCheck.prove(
                 root,
+                true,
                 (r, modules, tests) -> {
                     compiled.add(modules + " tests=" + tests);
                     return null;
@@ -63,7 +64,7 @@ class RenameCheckTest {
         Path root = workspace(dir);
         List<List<String>> asked = new ArrayList<>();
         RenameCheck.prove(
-                root, (r, modules, tests) -> "the code does not compile (A.java:3: cannot find symbol)", o -> {
+                root, true, (r, modules, tests) -> "the code does not compile (A.java:3: cannot find symbol)", o -> {
                     asked.add(o);
                     return "Rolled back";
                 });
@@ -74,7 +75,7 @@ class RenameCheckTest {
     @Test
     void aCompileThatCouldNotRunLeavesTheEditAndSaysSo(@TempDir Path dir) throws Exception {
         Path root = workspace(dir);
-        String line = RenameCheck.prove(root, (r, modules, tests) -> "a build of this checkout is running", o -> {
+        String line = RenameCheck.prove(root, true, (r, modules, tests) -> "a build of this checkout is running", o -> {
             throw new AssertionError("no check without a compile");
         });
         assertThat(line)

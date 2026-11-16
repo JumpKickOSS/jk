@@ -59,6 +59,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -151,15 +152,19 @@ public final class GraphRunner {
             GraphScripts.Tools scripts = req.noRefresh() ? null : GraphScripts.of(root);
             boolean renames =
                     "rename".equals(req.op()) && req.options().stream().noneMatch(o -> o.startsWith("phase="));
+            boolean testsBroken = compiled.testsFailed();
             if (renames) {
                 Files.deleteIfExists(RenameCheck.proof(root));
                 // A rename reads every test source's index: an edited test is compiled first, else its
-                // uses would be matched by name and the rename's own compile would fail on them.
-                RenameCheck.compileTests(root, compiler);
+                // uses would be matched by name and the rename's own compile would fail on them. Tests
+                // the compile step just built need no second compile.
+                if (!compiled.testsCompiled() && !testsBroken) {
+                    testsBroken = RenameCheck.compileTests(root, compiler) != null;
+                }
             }
             GraphAck ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
             if (renames && ack.ok() && Files.isRegularFile(RenameCheck.proof(root))) {
-                String line = RenameCheck.prove(root, compiler, phase -> {
+                String line = RenameCheck.prove(root, !testsBroken, compiler, phase -> {
                     List<String> options = new ArrayList<>(req.options());
                     options.addAll(phase);
                     GraphRequest check = new GraphRequest(
@@ -242,8 +247,12 @@ public final class GraphRunner {
      * What the compile step did: why it did not run ({@code null} when it ran or had nothing to do),
      * and whether a module it was for had classes from an earlier build to answer from.
      */
-    record Compiled(@Nullable String skipped, boolean earlierClasses) {
-        static final Compiled NOTHING = new Compiled(null, false);
+    record Compiled(@Nullable String skipped, boolean earlierClasses, boolean testsCompiled, boolean testsFailed) {
+        static final Compiled NOTHING = new Compiled(null, false, false, false);
+
+        Compiled(@Nullable String skipped, boolean earlierClasses) {
+            this(skipped, earlierClasses, false, false);
+        }
 
         /** The line an answer from the last build's classes carries, else {@code null}. */
         @Nullable
@@ -293,7 +302,8 @@ public final class GraphRunner {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String arg =
                     moduleArg(root, module.getKey(), module.getValue().project().name());
-            if (uncompiledSuites(module.getKey(), layout).contains(TestSuites.DEFAULT)) {
+            List<String> missing = uncompiledSuites(module.getKey(), layout);
+            if (treeSuites(module.getKey(), module.getValue()).stream().anyMatch(missing::contains)) {
                 tests.add(arg);
             }
             if (!hasClasses(layout.classesDir())) {
@@ -314,7 +324,32 @@ public final class GraphRunner {
             if (why != null) return new Compiled(why, earlierClasses);
         }
         if (tests.isEmpty()) return Compiled.NOTHING;
-        return new Compiled(c.compile(root, whole ? List.of() : tests, true), false);
+        String why = c.compile(root, whole ? List.of() : tests, true);
+        return new Compiled(why, false, why == null, why != null);
+    }
+
+    /**
+     * The test suites a test compile of the module at {@code dir} builds, each with sources: the
+     * default suite widened by the guard's suites, as every verb's test compile is (one tree for
+     * {@code jk build}, {@code jk test} and {@code jk install}), so a question reads the calls a test
+     * run would compile.
+     */
+    static List<String> treeSuites(Path dir, JkBuild build) {
+        try {
+            boolean compact = ModuleLayout.isCompact(dir);
+            Set<String> present = new HashSet<>(TestSuites.discover(dir, compact));
+            return TestSuites.compiled(
+                            dir,
+                            compact,
+                            List.of(TestSuites.DEFAULT),
+                            build.build().runSuites())
+                    .stream()
+                    .filter(present::contains)
+                    .toList();
+        } catch (RuntimeException unreadable) {
+            Log.debug("graph: cannot list the test suites under " + dir, unreadable);
+            return List.of(TestSuites.DEFAULT);
+        }
     }
 
     /** Whether the module at {@code dir} has a JVM source among its main sources: one a compile makes classes of. */
@@ -345,9 +380,9 @@ public final class GraphRunner {
 
     /**
      * The test suites of the module at {@code dir} that have sources and no classes the graph reads:
-     * each suite its test classes were not compiled for (a test compile compiles the default suite
-     * only, {@code jk guard} the integration suite with it), and the guard suite until {@code jk
-     * guard} compiles it into its own classes. Only the default suite is compiled for a question.
+     * each suite its test classes were not compiled for, and the guard suite until {@code jk guard}
+     * compiles it into its own classes. A question compiles the suites of {@link #treeSuites}, the
+     * ones every verb's test compile builds; a suite outside them stays named here.
      */
     static List<String> uncompiledSuites(Path dir, BuildLayout layout) {
         try {

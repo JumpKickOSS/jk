@@ -158,8 +158,13 @@ final class RenameProof {
         for (String[] r : p.refs()) {
             if (!r[0].equals("*") && unindexed.contains(r[1])) notProven.add(r[1]);
         }
+        // A proof covers what compiled: sets that may call the old name and have no classes are named, never proven.
+        String scope = p.unseen().isEmpty()
+                ? "Proven: "
+                : "Proven only where it compiled; not for " + String.join(", ", p.unseen())
+                        + ", which may call it and has no compiled classes, so the rename is not done: ";
         if (p.symbols().isEmpty()) {
-            return "Proven: it compiles."
+            return scope + "it compiles."
                     + (notProven.isEmpty() ? "" : " Not proven for " + String.join(", ", notProven) + ".");
         }
         String names = p.symbols().size() == 1
@@ -167,7 +172,7 @@ final class RenameProof {
                         + (total == 1 ? "" : "s") + " "
                         + show(p.symbols().keySet().iterator().next()) + " had"
                 : "the " + p.symbols().size() + " renamed symbols have the " + total + " references they had";
-        return "Proven: it compiles, and " + names + ", at the same lines; nothing else binds to the new name."
+        return scope + "it compiles, and " + names + ", at the same lines; nothing else binds to the new name."
                 + (notProven.isEmpty()
                         ? ""
                         : " Not proven for " + notProven.size() + " file" + (notProven.size() == 1 ? "" : "s")

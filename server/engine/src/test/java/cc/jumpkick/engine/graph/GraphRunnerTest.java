@@ -78,6 +78,15 @@ class GraphRunnerTest {
         public @Nullable String compile(Path root, List<String> modules, boolean tests) {
             runs.add(modules);
             this.tests.add(tests);
+            // A test-compile job compiles the main sources it depends on first, as the engine's does.
+            if (tests) {
+                String main = javac(root, false);
+                if (main != null) return main;
+            }
+            return javac(root, tests);
+        }
+
+        private static @Nullable String javac(Path root, boolean tests) {
             try {
                 Path classes = root.resolve("target/classes");
                 List<String> args = new ArrayList<>(List.of(
@@ -87,9 +96,18 @@ class GraphRunnerTest {
                                 .toString(),
                         "-cp",
                         classes.toString()));
-                PathUtil.forEachRegularFile(root.resolve(tests ? "src/test/java" : "src/main/java"), (f, attrs) -> {
-                    if (f.toString().endsWith(".java")) args.add(f.toString());
-                });
+                // A test compile builds the one tree every verb's does: the default suite and the
+                // guard's integration suite, stamped with the suites it holds.
+                List<String> suites = new ArrayList<>();
+                for (String dir : tests ? List.of("test", "integration") : List.of("main")) {
+                    Path src = root.resolve("src").resolve(dir).resolve("java");
+                    if (!Files.isDirectory(src)) continue;
+                    suites.add(dir);
+                    PathUtil.forEachRegularFile(src, (f, attrs) -> {
+                        if (f.toString().endsWith(".java")) args.add(f.toString());
+                    });
+                }
+                if (suites.isEmpty()) return null;
                 int exit = ToolProvider.getSystemJavaCompiler()
                         .run(
                                 null,
@@ -97,6 +115,9 @@ class GraphRunnerTest {
                                 OutputStream.nullOutputStream(),
                                 args.toArray(String[]::new));
                 if (exit != 0) return "the code does not compile";
+                if (tests)
+                    Files.writeString(
+                            PlannerTest.suiteMarker(root.resolve("target/test-classes")), String.join(",", suites));
                 BuildGraph.Result graph =
                         BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
                 ModuleInputProvenance.recordClasses(
@@ -260,7 +281,8 @@ class GraphRunnerTest {
 
     /**
      * A rename on a fresh checkout compiles the main sources and the tests first, so the test's call
-     * is renamed with the rest and the answer is complete.
+     * is renamed with the rest and the answer is complete; then it compiles what it wrote, its proof.
+     * The tests the first compile built are not compiled again before the rename plans.
      */
     @Test
     void aRenameOnAFreshCheckoutCompilesFirstAndRenamesTheTestsCallToo(@TempDir Path tmp) throws Exception {
@@ -269,11 +291,15 @@ class GraphRunnerTest {
         GraphRunner.compiler(javac);
         GraphAck ack = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
         assertThat(ack.error()).isNull();
-        assertThat(javac.tests).containsExactly(false, true);
+        assertThat(javac.tests)
+                .as("the main sources, the tests, then the rename's proof")
+                .containsExactly(false, true, true);
         assertThat(ack.text())
-                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.")
+                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files;")
                 .contains("no search needed")
-                .contains("the task is done");
+                .contains("the task is done")
+                .contains("Proven: it compiles")
+                .doesNotContain("Not checked", "not done");
         assertThat(ack.uncompiled()).isEmpty();
         assertThat(root.resolve("src/main/java/demo/Calc.java")).content().contains("public int twice(int n)");
         assertThat(root.resolve("src/test/java/demo/CalcTest.java")).content().contains("new Calc().twice(2)");
@@ -281,7 +307,9 @@ class GraphRunnerTest {
 
     /**
      * A rename while a test set does not compile renames what the compiled classes record, names
-     * the set, and never says the task is done: calls made there may be missing.
+     * the set, and never says the task is done: calls made there may be missing. The tests were
+     * broken before the rename, so its proof compiles the main sources alone: a failure the rename
+     * did not cause never rolls it back, and the proof says it covers what compiled.
      */
     @Test
     void aRenameWhileTestsDoNotCompileNamesThemAndIsNotDone(@TempDir Path tmp) throws Exception {
@@ -303,9 +331,10 @@ class GraphRunnerTest {
         GraphAck ack = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
         assertThat(ack.error()).isNull();
         assertThat(ack.text())
-                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files.")
+                .startsWith("Renamed Calc.doubled to twice: 1 declaration, 1 call, in 2 files;")
                 .contains("Not complete: the note below names the modules with no compiled classes.")
-                .doesNotContain("no search needed", "the task is done");
+                .contains("Proven only where it compiled; not for src/test")
+                .doesNotContain("no search needed", "the task is done", "Rolled back", "Proven: ");
         assertThat(ack.uncompiled()).containsExactly("src/test");
         assertThat(ack.note())
                 .isEqualTo("compile skipped: the code does not compile; src/test has no compiled classes, so the calls"
@@ -314,10 +343,11 @@ class GraphRunnerTest {
     }
 
     /**
-     * A question compiles the default test suite only, so the integration suite of a fresh checkout
-     * stays uncompiled: callers names its directory and is not complete, and a rename does not
-     * claim done: it quotes the suite's uses of the name instead. Once a compile that selected the
-     * suite leaves its classes, its call is listed and renamed, and both are complete.
+     * A question's test compile builds the tree every verb's does, the default suite with the guard's
+     * integration suite, so a fresh checkout's integration call is listed and renamed and the proof
+     * covers it. A suite outside that tree ({@code src/e2e} here) is not compiled for a question: callers
+     * names its directory and is not complete, and a rename quotes its uses, names it, scopes its proof
+     * and never says done. Once a compile that selected the suite leaves its classes, its call counts.
      */
     @Test
     void anIntegrationSuiteWithNoClassesIsNamedAndOnceCompiledItsCallsCount(@TempDir Path tmp) throws Exception {
@@ -327,30 +357,48 @@ class GraphRunnerTest {
         GraphAck callers = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
         assertThat(callers.error()).isNull();
         assertThat(javac.tests)
-                .as("the main sources and the default suite: the integration suite is not compiled")
+                .as("the main sources, then the test tree with its integration suite")
                 .containsExactly(false, true);
         assertThat(callers.text())
+                .contains("CalcIT.doubledReturnsTwiceTheValue()")
+                .contains("Complete from the compiled classes");
+        assertThat(callers.uncompiled()).isEmpty();
+        GraphAck renamed = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(renamed.text())
+                .contains("1 call")
+                .contains("the task is done")
+                .contains("run(kind=test, suites=[integration], classes=CalcIT), or jk test -s integration -S CalcIT.")
+                .contains("Proven: it compiles");
+        assertThat(root.resolve("src/integration/java/demo/CalcIT.java"))
+                .content()
+                .contains("new Calc().twice(2)");
+
+        Path outside = calcIt(Files.createDirectories(tmp.resolve("outside")));
+        Path e2e = Files.createDirectories(outside.resolve("src/e2e/java/demo"));
+        Files.move(outside.resolve("src/integration/java/demo/CalcIT.java"), e2e.resolve("CalcIT.java"));
+        GraphAck named = GraphRunner.run(request(outside, "callers", List.of("Calc.doubled")), p -> {});
+        assertThat(named.text())
                 .contains("0 in main sources, 0 in tests")
                 .contains("Not complete")
                 .doesNotContain("Complete from the compiled classes");
-        assertThat(callers.note())
-                .isEqualTo("src/integration has no compiled classes, so the calls made there are missing: search it for"
-                        + " calls too");
-
-        GraphAck renamed = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
-        assertThat(renamed.error()).isNull();
-        assertThat(renamed.text())
+        assertThat(named.note())
+                .isEqualTo("src/e2e has no compiled classes, so the calls made there are missing: search it for calls"
+                        + " too");
+        GraphAck partial = GraphRunner.run(request(outside, "rename", List.of("Calc.doubled", "twice")), p -> {});
+        assertThat(partial.error()).isNull();
+        assertThat(partial.text())
                 .contains("Not checked: these modules may call it but have no compiled classes.")
-                .contains("src/integration/java/demo/CalcIT.java", "return new Calc().doubled(2) == 4;")
-                .doesNotContain("no search needed", "the task is done");
-        assertThat(renamed.uncompiled()).containsExactly("src/integration");
+                .contains("src/e2e/java/demo/CalcIT.java", "return new Calc().doubled(2) == 4;")
+                .contains("Proven only where it compiled; not for src/e2e")
+                .doesNotContain("no search needed", "the task is done", "Proven: ");
+        assertThat(partial.uncompiled()).containsExactly("src/e2e");
+        assertThat(e2e.resolve("CalcIT.java")).content().contains("new Calc().doubled(2)");
+        GraphAck applied = GraphRunner.run(
+                withOptions(request(outside, "rename", List.of("Calc.doubled", "twice")), List.of("also=c1")), p -> {});
+        assertThat(applied.error()).isNull();
+        assertThat(e2e.resolve("CalcIT.java")).content().contains("new Calc().twice(2)");
 
-        root = calcIt(Files.createDirectories(tmp.resolve("compiled")));
-        assertThat(GraphRunner.compileStale(root).skipped())
-                .as("the main sources compile")
-                .isNull();
-        Path it = root.resolve("src/integration/java/demo");
-        Path testClasses = Files.createDirectories(root.resolve("target/test-classes"));
+        Path testClasses = outside.resolve("target/test-classes");
         int exit = ToolProvider.getSystemJavaCompiler()
                 .run(
                         null,
@@ -360,21 +408,18 @@ class GraphRunnerTest {
                         "-d",
                         testClasses.toString(),
                         "-cp",
-                        root.resolve("target/classes").toString(),
-                        it.resolve("CalcIT.java").toString());
+                        outside.resolve("target/classes").toString(),
+                        e2e.resolve("CalcIT.java").toString());
         assertThat(exit).isZero();
-        Files.writeString(PlannerTest.suiteMarker(testClasses), "test,integration");
+        Files.writeString(PlannerTest.suiteMarker(testClasses), "test,e2e");
         BuildGraph.Result graph =
-                BuildGraph.resolve(root, JkBuildParser.parse(Files.readString(root.resolve("jk.toml"))));
+                BuildGraph.resolve(outside, JkBuildParser.parse(Files.readString(outside.resolve("jk.toml"))));
         ModuleInputProvenance.recordClasses(
-                root, graph, Set.of(root.toAbsolutePath().normalize()));
-        GraphAck compiled = GraphRunner.run(request(root, "callers", List.of("Calc.doubled")), p -> {});
+                outside, graph, Set.of(outside.toAbsolutePath().normalize()));
+        GraphAck compiled = GraphRunner.run(request(outside, "callers", List.of("Calc.twice")), p -> {});
         assertThat(compiled.text())
                 .contains("CalcIT.doubledReturnsTwiceTheValue()")
                 .contains("Complete from the compiled classes");
-        GraphAck done = GraphRunner.run(request(root, "rename", List.of("Calc.doubled", "twice")), p -> {});
-        assertThat(done.text()).contains("1 call").contains("the task is done");
-        assertThat(it.resolve("CalcIT.java")).content().contains("new Calc().twice(2)");
     }
 
     /**
@@ -655,6 +700,26 @@ class GraphRunnerTest {
                 guard.resolve("CalcRules.java"), Files.readString(test).replace("CalcTest", "CalcRules"));
         Files.writeString(test, "package demo;\n\nclass CalcTest {}\n");
         return dir;
+    }
+
+    private static GraphRequest withOptions(GraphRequest r, List<String> options) {
+        return new GraphRequest(
+                r.dir(),
+                r.op(),
+                r.args(),
+                r.mode(),
+                r.depth(),
+                r.budget(),
+                r.contexts(),
+                r.undirected(),
+                r.maxHops(),
+                r.relation(),
+                false,
+                false,
+                r.scope(),
+                r.modules(),
+                r.sourceSet(),
+                options);
     }
 
     private static GraphRequest request(Path dir, String op, List<String> args) {

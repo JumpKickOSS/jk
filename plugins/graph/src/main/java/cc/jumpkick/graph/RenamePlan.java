@@ -234,6 +234,12 @@ final class RenamePlan {
                     + (h.pin().isEmpty() ? "" : " also=h" + (i + 1) + " pins it."));
         }
         if (next != null) out.add(next);
+        if (!unseen.isEmpty() && (next == null || !next.contains("Not complete"))) {
+            // Calls made where nothing compiled are not renamed or proven: the rename is not done.
+            out.add("Not checked: these modules may call it but have no compiled classes. The rename is not done until"
+                    + " the uses above in " + String.join(", ", unseen) + " are applied or "
+                    + (unseen.size() == 1 ? "it compiles." : "they compile."));
+        }
         if (!may.isEmpty()) {
             out.add("Judgment, left as they are unless chosen (also=c" + (id + 1) + ",…):");
             grouped(out, may, id);

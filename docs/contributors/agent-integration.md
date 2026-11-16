@@ -43,9 +43,12 @@ changelog. Errors are short and say what to pass (`Did you mean a.b.Type.m?`), n
 not re-read the files it names. Keep that sentence on every graph answer, and make it true: a
 question compiles a module, or a module's tests, that has no classes first, and only when that
 compile cannot run does the answer drop the sentence and name the module or the tests' directory.
-A suite a question does not compile (`src/integration`, whose dependencies can be heavy, and
-`src/guard`, which `jk guard` compiles into classes of its own) is named the same way while it has
-no classes.
+A question compiles the test tree every verb compiles (the default suite with the guard's suites,
+`src/integration` by default), so its answer and a rename's proof cover what `jk test` would; a suite
+outside that tree, and `src/guard` (which `jk guard` compiles into classes of its own), is named the
+same way while it has no classes. A rename's proof says what it covered: "Proven" alone only when
+nothing that may call the old name went unchecked, else "Proven only where it compiled; not for …"
+and never done.
 
 **One number per job.** An MCP reply names a job by its `jid` only, and `run(jid=N)`, `run(run=N)` and a
 duplicate `run(kind=…)` all wait on that job. Two numbers for one job send agents chasing the wrong one.

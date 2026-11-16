@@ -55,19 +55,44 @@ final class EditedTests {
             }
             touched.add(m.prefix().substring(0, m.prefix().length() - 1));
         }
+        // A class outside the default suite runs only with its suite named: jk test -S refuses it otherwise.
+        Set<String> suites = classes.isEmpty() ? Set.of() : suites(modules, edited);
+        boolean named = suites.stream().anyMatch(x -> !x.equals("test"));
+        String mcpSuites = named ? ", suites=[" + String.join(",", suites) + "]" : "";
+        String cliSuites = named ? " -s " + String.join(" -s ", suites) : "";
         if (whole || touched.isEmpty()) {
             if (classes.isEmpty()) return "Test next: run(kind=test), or jk test." + done;
-            return "Test the test classes it edited: run(kind=test, classes=" + String.join(",", classes)
-                    + "), or jk test -S " + String.join(" -S ", classes) + "." + done;
+            return "Test the test classes it edited: run(kind=test" + mcpSuites + ", classes="
+                    + String.join(",", classes) + "), or jk test" + cliSuites + " -S " + String.join(" -S ", classes)
+                    + "." + done;
         }
         String only = String.join(",", touched);
         if (classes.isEmpty()) {
             return "Test the modules it edited: run(kind=test, modules=" + only + "), or jk test -m " + only + "."
                     + done;
         }
-        return "Test the test classes it edited: run(kind=test, modules=" + only + ", classes="
-                + String.join(",", classes) + "), or jk test -m " + only + " -S " + String.join(" -S ", classes) + "."
-                + done;
+        return "Test the test classes it edited: run(kind=test, modules=" + only + mcpSuites + ", classes="
+                + String.join(",", classes) + "), or jk test -m " + only + cliSuites + " -S "
+                + String.join(" -S ", classes) + "." + done;
+    }
+
+    /** The test suites the edited test sources sit in: {@code src/<suite>/}, or a compact module's {@code <suite>/src/}. */
+    static Set<String> suites(Modules modules, Collection<String> edited) {
+        Set<String> out = new TreeSet<>();
+        for (String rel : edited) {
+            if (modules.sourceSet(rel) != Modules.SourceSet.TEST || !rel.matches(".*\\.(java|kt)$")) continue;
+            Modules.Module m = modules.of(rel);
+            String inside = m == null
+                    ? rel.substring(Math.max(0, rel.indexOf("src/")))
+                    : rel.substring(m.prefix().length());
+            String[] parts = inside.split("/");
+            if (m != null && m.compact()) {
+                if (parts.length > 1 && parts[1].equals("src")) out.add(parts[0]);
+            } else if (parts.length > 1 && parts[0].equals("src")) {
+                out.add(parts[1]);
+            }
+        }
+        return out;
     }
 
     /**

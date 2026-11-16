@@ -76,7 +76,7 @@ final class RenameOp {
         if (!plan.after.isEmpty() || !plan.rawMoves.isEmpty()) RenameStore.write(root, out, plan);
         if (ordered.isEmpty() && plan.hazards.isEmpty()) RenameStore.clearPending(out);
         else RenameStore.writePending(out, address, to, ordered, plan.hazards);
-        if (!plan.after.isEmpty()) RenameStore.writeProof(out, modules, plan.symbols, refs);
+        if (!plan.after.isEmpty()) RenameStore.writeProof(out, modules, plan.symbols, refs, plan.unseen);
         // A method rename names the sets it could not see; every other kind lists their uses as candidates.
         List<String> unseen = plan.unseen;
         return new GraphService.Reply(
