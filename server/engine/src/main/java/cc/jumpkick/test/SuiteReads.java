@@ -32,7 +32,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
@@ -156,13 +155,10 @@ public final class SuiteReads {
     /**
      * The most heap reading one run's recordings can hold: the reader's own peak and the paths it
      * keeps. Memory admission keeps this much of the engine's heap free of jobs ({@code
-     * MemoryAdmission}), and {@link #READS} lets one read run at a time, so a job is never admitted
+     * MemoryAdmission}), and {@link RecordingReader.Permit} lets one read run at a time, so a job is never admitted
      * into a read's peak.
      */
     public static final long READ_PEAK_BYTES = RecordingReader.PEAK_BYTES + MAX_PATHS * BYTES_PER_PATH;
-
-    /** One recording read at a time across the engine: {@link #READ_PEAK_BYTES} covers one. */
-    private static final Semaphore READS = new Semaphore(1, true);
 
     /**
      * Every recording under {@code dir}, relative paths resolved against {@code cwd}. The recordings
@@ -184,7 +180,7 @@ public final class SuiteReads {
             return new Observed(files, commands, hosts, false, "the suite wrote no recording");
         }
         if (recordings.isEmpty()) return new Observed(files, commands, hosts, true, null);
-        RecordingReader.Sink sink = (name, at, v) -> {
+        RecordingReader.Sink sink = (name, at, end, v) -> {
             switch (name) {
                 case "jdk.FileRead" -> {
                     if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], files);
@@ -237,7 +233,7 @@ public final class SuiteReads {
      * the second; every consumer of them keeps sets, so a repeat changes nothing.
      */
     private static void read(Path jfr, RecordingReader.Sink sink) throws IOException {
-        try (Held held = Held.acquire()) {
+        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
             RecordingReader.read(jfr, WANTED, sink);
             return;
         } catch (TooManyPaths wide) {
@@ -249,28 +245,10 @@ public final class SuiteReads {
                     + declined.getMessage());
         }
         Path lines = RecordingDump.dump(jfr, WANTED);
-        try (Held held = Held.acquire()) {
+        try (RecordingReader.Permit permit = RecordingReader.Permit.acquire()) {
             RecordingDump.stream(lines, WANTED, sink);
         } finally {
             Files.deleteIfExists(lines);
-        }
-    }
-
-    /** One permit of {@link #READS}, released on close. */
-    private static final class Held implements AutoCloseable {
-        static Held acquire() throws IOException {
-            try {
-                READS.acquire();
-            } catch (InterruptedException stopped) {
-                Thread.currentThread().interrupt();
-                throw new IOException("interrupted waiting to read a recording");
-            }
-            return new Held();
-        }
-
-        @Override
-        public void close() {
-            READS.release();
         }
     }
 

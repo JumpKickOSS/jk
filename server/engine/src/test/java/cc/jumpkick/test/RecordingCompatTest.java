@@ -119,7 +119,7 @@ class RecordingCompatTest {
 
             List<String> baseline = baseline(jfr);
             List<String> fast = new ArrayList<>();
-            RecordingReader.read(jfr, FIELDS, (name, at, v) -> fast.add(line(name, v)));
+            RecordingReader.read(jfr, FIELDS, (name, at, end, v) -> fast.add(line(name, v)));
             assertThat(fast)
                     .as("JDK " + jdk.getKey() + " (" + jdk.getValue() + ")")
                     .isEqualTo(baseline);

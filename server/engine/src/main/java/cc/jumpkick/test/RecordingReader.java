@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -81,6 +82,32 @@ public final class RecordingReader {
         }
     }
 
+    /** One read in the engine's heap at a time, engine-wide: memory admission holds back the peak of one. */
+    private static final Semaphore READS = new Semaphore(1, true);
+
+    /**
+     * A turn to read recordings in the engine's heap, released on close. Every reader of suite
+     * recordings takes one, so their peaks never add up past the one memory admission holds back.
+     */
+    public static final class Permit implements AutoCloseable {
+        private Permit() {}
+
+        public static Permit acquire() throws IOException {
+            try {
+                READS.acquire();
+            } catch (InterruptedException stopped) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted waiting to read a recording");
+            }
+            return new Permit();
+        }
+
+        @Override
+        public void close() {
+            READS.release();
+        }
+    }
+
     /** A chunk too large for the reader's caps: the recording is not read. */
     public static final class TooLarge extends IOException {
         TooLarge(String what) {
@@ -88,15 +115,16 @@ public final class RecordingReader {
         }
     }
 
-    /** Receives each wanted event: its name, its start in epoch nanos and the asked-for fields. */
+    /** Receives each wanted event: its name, its start and end in epoch nanos and the asked-for fields. */
     @FunctionalInterface
     public interface Sink {
         /**
+         * @param endNanos the start plus the event's duration; the start for an event without one
          * @param values the fields in the order {@link #read} was asked for them: a string field as
          *     its value, a boolean as {@code "true"} or {@code "false"}, a number in decimal, a field
          *     the event type does not have or that was null as {@code null}
          */
-        void event(String name, long startNanos, @Nullable String[] values);
+        void event(String name, long startNanos, long endNanos, @Nullable String[] values);
     }
 
     /**
@@ -151,24 +179,28 @@ public final class RecordingReader {
             if (want != null) {
                 @Nullable String[] values = new String[want.slots];
                 long ticks = 0;
-                boolean first = true;
-                for (Field f : want.type.fields) {
+                long duration = 0;
+                List<Field> fields = want.type.fields;
+                for (int i = 0; i < fields.size(); i++) {
+                    Field f = fields.get(i);
                     Integer slot = want.slotOf.get(f.name);
-                    if (first) {
+                    if (i == 0) {
                         // startTime: every event's first field, in ticks
                         ticks = in.varLong();
-                        first = false;
                         if (slot != null) values[slot] = Long.toString(ticks);
+                    } else if (i == 1 && f.name.equals("duration")) {
+                        // the duration of an event that has one, in ticks
+                        duration = in.varLong();
+                        if (slot != null) values[slot] = Long.toString(duration);
                     } else if (slot != null) {
                         values[slot] = value(in, f, meta, strings);
                     } else {
                         skip(in, f, meta);
                     }
                 }
-                long nanos = ticksPerSecond <= 0
-                        ? startNanos
-                        : startNanos + (long) ((ticks - startTicks) * (1_000_000_000.0 / ticksPerSecond));
-                sink.event(want.type.name, nanos, values);
+                double nanosPerTick = ticksPerSecond <= 0 ? 0 : 1_000_000_000.0 / ticksPerSecond;
+                long nanos = startNanos + (long) ((ticks - startTicks) * nanosPerTick);
+                sink.event(want.type.name, nanos, nanos + (long) (duration * nanosPerTick), values);
             }
             in.position(pos + eventSize);
         }

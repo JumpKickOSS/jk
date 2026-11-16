@@ -112,7 +112,7 @@ public final class RecordingDump {
         }
     }
 
-    /** The child's lines: {@code E}, the event's name, its start in epoch nanos, then each field. */
+    /** The child's lines: {@code E}, the event's name, its start and end in epoch nanos, then each field. */
     static void stream(Path out, Map<String, List<String>> wanted, RecordingReader.Sink sink) throws IOException {
         boolean finished = false;
         try (BufferedReader in = Files.newBufferedReader(out, StandardCharsets.UTF_8)) {
@@ -123,12 +123,12 @@ public final class RecordingDump {
                 }
                 if (!line.startsWith("E\t")) continue;
                 String[] cells = line.split("\t", -1);
-                if (cells.length < 3) throw new IOException("a malformed line from the JDK's parser");
+                if (cells.length < 4) throw new IOException("a malformed line from the JDK's parser");
                 List<String> fields = wanted.get(cells[1]);
                 if (fields == null) continue;
                 @Nullable String[] values = new String[fields.size()];
-                for (int i = 0; i < values.length && 3 + i < cells.length; i++) values[i] = unescape(cells[3 + i]);
-                sink.event(cells[1], Long.parseLong(cells[2]), values);
+                for (int i = 0; i < values.length && 4 + i < cells.length; i++) values[i] = unescape(cells[4 + i]);
+                sink.event(cells[1], Long.parseLong(cells[2]), Long.parseLong(cells[3]), values);
             }
         }
         if (!finished) throw new IOException("the JDK's parser stopped before the recording's end");
@@ -183,6 +183,10 @@ public final class RecordingDump {
         return null;
     }
 
+    private static long nanos(Instant t) {
+        return t.getEpochSecond() * 1_000_000_000L + t.getNano();
+    }
+
     /** The child: {@code <recording> <lines file> <event>=<field>,<field> ...}. */
     public static void main(String[] args) throws IOException {
         Map<String, List<String>> wanted = new LinkedHashMap<>();
@@ -198,9 +202,9 @@ public final class RecordingDump {
                 String name = e.getEventType().getName();
                 List<String> fields = wanted.get(name);
                 if (fields == null) continue;
-                Instant t = e.getStartTime();
                 w.append("E\t").append(name).append('\t');
-                w.append(Long.toString(t.getEpochSecond() * 1_000_000_000L + t.getNano()));
+                w.append(Long.toString(nanos(e.getStartTime()))).append('\t');
+                w.append(Long.toString(nanos(e.getEndTime())));
                 for (String f : fields) w.append('\t').append(escape(render(e, f)));
                 w.append('\n');
             }

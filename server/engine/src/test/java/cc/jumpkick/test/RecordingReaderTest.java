@@ -3,11 +3,13 @@ package cc.jumpkick.test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.data.Offset.offset;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -112,7 +114,7 @@ class RecordingReaderTest {
         RecordingReader.read(
                 jfr,
                 Map.of("jk.test.Sample", FIELDS, "jdk.FileRead", List.of("path"), "jdk.FileWrite", List.of("path")),
-                (name, at, v) -> {
+                (name, at, end, v) -> {
                     if (name.equals("jk.test.Sample")) {
                         actual.add(name + " " + String.join(" ", stringsOf(v)));
                     } else {
@@ -121,6 +123,47 @@ class RecordingReaderTest {
                 });
         assertThat(expected).hasSizeGreaterThanOrEqualTo(900);
         assertThat(actual).containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    @Test
+    void an_event_s_start_and_end_are_the_jdk_parser_s(@TempDir Path tmp) throws Exception {
+        Path jfr = tmp.resolve("t.jfr");
+        try (Recording r = new Recording()) {
+            r.enable("jk.test.Sample").withThreshold(Duration.ZERO);
+            r.start();
+            for (int i = 0; i < 20; i++) {
+                Sample s = new Sample();
+                s.begin();
+                s.text = "w" + i;
+                Thread.sleep(2);
+                s.commit();
+            }
+            r.stop();
+            r.dump(jfr);
+        }
+        List<long[]> expected = new ArrayList<>();
+        try (RecordingFile in = new RecordingFile(jfr)) {
+            while (in.hasMoreEvents()) {
+                RecordedEvent e = in.readEvent();
+                if (!e.getEventType().getName().equals("jk.test.Sample")) continue;
+                expected.add(new long[] {nanos(e.getStartTime()), nanos(e.getEndTime())});
+            }
+        }
+        List<long[]> actual = new ArrayList<>();
+        RecordingReader.read(
+                jfr,
+                Map.of("jk.test.Sample", List.of("text")),
+                (n, start, end, v) -> actual.add(new long[] {start, end}));
+        assertThat(actual).hasSameSizeAs(expected).hasSize(20);
+        for (int i = 0; i < expected.size(); i++) {
+            assertThat(actual.get(i)[0]).isCloseTo(expected.get(i)[0], offset(1_000L));
+            assertThat(actual.get(i)[1]).isCloseTo(expected.get(i)[1], offset(1_000L));
+            assertThat(actual.get(i)[1] - actual.get(i)[0]).isGreaterThanOrEqualTo(1_000_000L);
+        }
+    }
+
+    private static long nanos(Instant t) {
+        return t.getEpochSecond() * 1_000_000_000L + t.getNano();
     }
 
     @Test
@@ -139,11 +182,12 @@ class RecordingReaderTest {
         }
         byte[] whole = Files.readAllBytes(jfr);
         Path cut = Files.write(tmp.resolve("cut.jfr"), Arrays.copyOf(whole, whole.length / 2));
-        assertThatThrownBy(() -> RecordingReader.read(cut, Map.of("jk.test.Sample", List.of("text")), (n, a, v) -> {}))
+        assertThatThrownBy(
+                        () -> RecordingReader.read(cut, Map.of("jk.test.Sample", List.of("text")), (n, a, e, v) -> {}))
                 .isInstanceOf(IOException.class);
         Path junk =
                 Files.writeString(tmp.resolve("junk.jfr"), "not a recording at all, but long enough to hold a header?");
-        assertThatThrownBy(() -> RecordingReader.read(junk, Map.of(), (n, a, v) -> {}))
+        assertThatThrownBy(() -> RecordingReader.read(junk, Map.of(), (n, a, e, v) -> {}))
                 .isInstanceOf(IOException.class);
     }
 
