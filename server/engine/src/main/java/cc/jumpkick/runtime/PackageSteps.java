@@ -9,6 +9,7 @@ import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 import static cc.jumpkick.runtime.PlannerPlugin.applicationSbom;
 import static cc.jumpkick.runtime.PlannerPlugin.packagePlugin;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.PackagedTree;
@@ -462,7 +463,8 @@ final class PackageSteps {
                     .map(Map.Entry::getValue)
                     .findFirst()
                     .or(() -> rec.outputs().values().stream().findFirst())
-                    .ifPresent(sha -> s.restored.pinJar(jar, sha)));
+                    .ifPresent(sha ->
+                            s.restored.pinJar(jar, sha, rec.meta().derived().get(ActionRecordText.Meta.INTERFACE))));
         }
         if (hit)
             return new TaskForecast.Task(

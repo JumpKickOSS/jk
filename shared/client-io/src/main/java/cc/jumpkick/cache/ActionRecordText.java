@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * The text of one action-cache key record, {@code actions/keys/<actionKey>}: {@code TASK} and {@code
  * KEY} lines, then what the record says about itself ({@link Meta}: {@code FORMAT}, {@code KIND}, {@code WRITES},
- * {@code CREATED}, {@code PRODUCER}, {@code HOST}, {@code TOOLCHAIN}, {@code TARGET}, {@code WALL}), then {@code INPUT <value> <name>}, {@code OUTPUT
+ * {@code CREATED}, {@code PRODUCER}, {@code HOST}, {@code TOOLCHAIN}, {@code TARGET}, {@code WALL}, {@code DERIVED <role> <token>}), then {@code INPUT <value> <name>}, {@code OUTPUT
  * <sha256>/<bytes> <path>} and {@code EXEC <path>} lines in name order, then {@code SAID <line>}
  * lines in the order the action said them, then {@code END <outputCount>}. An output that is a
  * marker scalar rather than a blob carries no size. A record without that last line, or whose count disagrees with its
@@ -110,7 +110,9 @@ public final class ActionRecordText {
      * blob, by output path. The host is where the outputs were made; the target is what they run
      * on, absent for outputs that run anywhere (bytecode, resources, a jar), so a reader may take a
      * record made on any host unless it names a target. Neither is part of the key. A record
-     * written without a field reads it as null, zero or empty.
+     * written without a field reads it as null, zero or empty. {@code derived} holds the tokens its
+     * consumers key on, by role ({@link #INTERFACE}, {@link #CONTENT}, {@link #PAYLOAD}), so a
+     * reader that lacks the blobs can still compute the keys downstream of it.
      */
     public record Meta(
             int format,
@@ -122,12 +124,44 @@ public final class ActionRecordText {
             @Nullable String toolchain,
             @Nullable String target,
             long wallMillis,
-            Map<String, Long> sizes) {
+            Map<String, Long> sizes,
+            Map<String, String> derived) {
+
+        /** The interface its consumers compile against: a JVM tree's or jar's ABI token. */
+        public static final String INTERFACE = "interface";
+
+        /** The content identity of the outputs as a whole. */
+        public static final String CONTENT = "content";
+
+        /** The digest of the one artifact the record restores (a jar's bytes). */
+        public static final String PAYLOAD = "payload";
 
         public static final Meta NONE = new Meta(0, null, null, null, null, null, null, null, -1, Map.of());
 
         public Meta {
             sizes = Map.copyOf(sizes);
+            derived = Map.copyOf(new TreeMap<>(derived));
+        }
+
+        /** A record that carries no derived token. */
+        public Meta(
+                int format,
+                @Nullable String kind,
+                @Nullable Writes writes,
+                @Nullable Instant created,
+                @Nullable String producer,
+                @Nullable String host,
+                @Nullable String toolchain,
+                @Nullable String target,
+                long wallMillis,
+                Map<String, Long> sizes) {
+            this(format, kind, writes, created, producer, host, toolchain, target, wallMillis, sizes, Map.of());
+        }
+
+        /** This record's header with {@code derived} (role to token) as its derived tokens. */
+        public Meta withDerived(Map<String, String> derived) {
+            return new Meta(
+                    format, kind, writes, created, producer, host, toolchain, target, wallMillis, sizes, derived);
         }
 
         /**
@@ -302,6 +336,13 @@ public final class ActionRecordText {
         if (meta.target() != null)
             sb.append("TARGET ").append(oneWord(meta.target())).append('\n');
         if (meta.wallMillis() >= 0) sb.append("WALL ").append(meta.wallMillis()).append('\n');
+        for (Map.Entry<String, String> d : new TreeMap<>(meta.derived()).entrySet()) {
+            sb.append("DERIVED ")
+                    .append(oneWord(d.getKey()))
+                    .append(' ')
+                    .append(oneWord(d.getValue()))
+                    .append('\n');
+        }
         for (Map.Entry<String, String> e : new TreeMap<>(inputs).entrySet()) {
             sb.append("INPUT ")
                     .append(encodeValue(e.getValue()))
@@ -449,6 +490,7 @@ public final class ActionRecordText {
         @Nullable String toolchain = null;
         @Nullable String target = null;
         long wallMillis = -1;
+        Map<String, String> derived = new TreeMap<>();
         int declaredOutputs = -1;
         for (String line : content.split("\n")) {
             if (line.isBlank()) continue;
@@ -490,6 +532,11 @@ public final class ActionRecordText {
                 host = line.substring("HOST ".length()).trim();
             } else if (line.startsWith("TOOLCHAIN ")) {
                 toolchain = line.substring("TOOLCHAIN ".length()).trim();
+            } else if (line.startsWith("DERIVED ")) {
+                String body = line.substring("DERIVED ".length()).trim();
+                int sp = body.indexOf(' ');
+                if (sp > 0)
+                    derived.put(body.substring(0, sp), body.substring(sp + 1).trim());
             } else if (line.startsWith("TARGET ")) {
                 target = line.substring("TARGET ".length()).trim();
             } else if (line.startsWith("EXEC ")) {
@@ -523,7 +570,7 @@ public final class ActionRecordText {
                 outputs,
                 executables,
                 List.copyOf(said),
-                new Meta(format, kind, writes, created, producer, host, toolchain, target, wallMillis, sizes));
+                new Meta(format, kind, writes, created, producer, host, toolchain, target, wallMillis, sizes, derived));
     }
 
     private static boolean isSize(String digits) {

@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.BuildPlanner.MODULE;
 import static cc.jumpkick.runtime.BuildPlanner.PARSED_BUILD;
 import static cc.jumpkick.runtime.BuildPlanner.mainClasses;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
@@ -37,6 +38,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
@@ -185,7 +187,12 @@ public final class PlannerFixtures {
                     || !ModuleOutputs.compileOutputsOnDisk(actionCache, fxPred.actionKey(), fxDir)) {
                 actionCache
                         .lookup(fxPred.actionKey())
-                        .ifPresent(record -> restored.projectTree(fxDir, record.outputs(), List.of()));
+                        .ifPresent(record -> restored.projectTree(
+                                fxDir,
+                                record.outputs(),
+                                List.of(),
+                                Map.of(),
+                                record.meta().derived().get(ActionRecordText.Meta.INTERFACE)));
             }
         }
         return !fxStep.cached();

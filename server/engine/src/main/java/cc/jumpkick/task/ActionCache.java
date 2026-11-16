@@ -590,15 +590,11 @@ public final class ActionCache {
         String key = Objects.requireNonNull(actionKey, "actionKey");
         if (VerifyCache.on()) VerifyCache.check(this, task, key, outputs);
         if (StepCacheNotes.inStep()) noteStored(task, key, inputs, storedBytes);
-        ActionRecord record = new ActionRecord(
-                task,
-                key,
-                inputs,
-                outputs,
-                executables,
-                said,
-                ActionRecordText.Meta.now(
-                        StepKinds.of(task), kind, producer(), CachePlatform.current(), workedMillis(), sizes));
+        ActionRecordText.Meta meta = ActionRecordText.Meta.now(
+                StepKinds.of(task), kind, producer(), CachePlatform.current(), workedMillis(), sizes);
+        // Only a record that may leave the machine pays for its tokens: here the blobs are on disk.
+        if (remote != null && remote.writes()) meta = meta.withDerived(derivedTokens(meta.kind(), outputs));
+        ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables, said, meta);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         try {
@@ -670,6 +666,34 @@ public final class ActionCache {
             reason = StepCache.Reason.KEY_CHANGED;
         }
         StepCacheNotes.stored(key, bytes, reason, changed);
+    }
+
+    /**
+     * The tokens consumers of {@code outputs} key on, by role, so a machine without the blobs can
+     * compute their keys: a classes tree's interface (the ABI token of its {@code .class} outputs,
+     * as {@link ClasspathAbi#tokenFromOutputs} reads them), and for a packaging step's one
+     * artifact its payload digest and, for a jar, its interface. Empty when there is nothing to
+     * derive or a blob cannot be read.
+     */
+    private Map<String, String> derivedTokens(@Nullable String kind, Map<String, String> outputs) {
+        Map<String, String> derived = new TreeMap<>();
+        try {
+            if (outputs.keySet().stream().anyMatch(path -> path.endsWith(".class"))) {
+                derived.put(ActionRecordText.Meta.INTERFACE, ClasspathAbi.tokenFromOutputs(outputs, List.of(), cas));
+            } else if (kind != null && kind.startsWith("package:") && outputs.size() == 1) {
+                Map.Entry<String, String> artifact =
+                        outputs.entrySet().iterator().next();
+                if (!isSha256Hex(artifact.getValue())) return derived;
+                derived.put(ActionRecordText.Meta.PAYLOAD, artifact.getValue());
+                if (artifact.getKey().endsWith(".jar"))
+                    derived.put(
+                            ActionRecordText.Meta.INTERFACE, ClasspathAbi.token(local.blobPath(artifact.getValue())));
+            }
+        } catch (IOException | RuntimeException e) {
+            Log.debug("derived tokens: the record carries none", e);
+            return Map.of();
+        }
+        return derived;
     }
 
     /** The running step's own time so far, which a record states as the cost of making it; {@code -1} outside a step. */

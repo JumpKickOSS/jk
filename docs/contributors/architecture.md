@@ -729,7 +729,10 @@ keys. Local restore remains copy-not-link (see CAS invariant tests).
 `CREATED <instant>`, `PRODUCER jk/<cache-key version>`, `HOST <os>-<arch>` (where the outputs
 were made), `TOOLCHAIN toolchain:<kind>:<identity>` and `TARGET <os>-<arch>[-<libc>]` (the platform
 the outputs are for; absent for outputs that run anywhere, so bytecode and jars name none; nothing
-writes either line yet), all statements and never key material, `WALL <millis>` (the storing step's own time, waits
+writes either line yet), all statements and never key material, `DERIVED <role> <token>` (the
+tokens a record's consumers key on, by role: `interface`, the ABI token of a compile's classes or
+a jar; `payload`, a packaging step's one artifact; `content` is reserved for an output's content
+identity, which JumpKick computes from the record alone and so does not write), `WALL <millis>` (the storing step's own time, waits
 excluded, when it stored inside a step), then `INPUT <value> <name>`, `OUTPUT <sha256>/<bytes>
 <path>` (a marker scalar in place of a blob carries no size) and `EXEC <path>` in name order, then
 `SAID <line>` in order, then `END <output count>`. A reader skips a line it does not know, and a
@@ -787,7 +790,15 @@ kept locally on its first lookup. The tier remembers each key's answer for the b
 few milliseconds of each other share one lookup, so the preflight forecast, whose lanes price a
 wave of independent modules at once, costs one round trip per wave. Within one module the keys
 stay a chain (a package key reads its compile's record), so a cold module costs one round trip
-per step. A remote record is parsed as untrusted as a
+per step. A record stored for a writing tier carries its derived tokens (computed then, while the
+blobs are on disk; a build that uploads nothing computes none), and the forecast reads a sibling's
+interface from its record when the blobs are not on this machine (`RestoredOutputs`: one compile's
+record, not a merge of several or of a KSP round's classes), so a machine with an empty cache
+prices every step downstream of a remote record as the hit the build takes without fetching a
+blob. `ForecastRemoteRoundTripsTest` measures a chain of three modules forecast from another
+checkout's records: without the tokens, 4 lookups and only the first module priced as hits; with
+them, every compile and jar a hit, no blob fetched, 6 lookups for 6 keys (one per step, since the
+walk prices a module's steps in order and a consumer after its producer's module). A remote record is parsed as untrusted as a
 local one, and a refusal is a miss for this build only: the interface has no delete, so no reader
 removes a record from a store others share (`LocalCacheBackend.discard` is the local disk's own).
 A tier that fails is off for the rest of the build after one `remote-cache-unreachable` warning on

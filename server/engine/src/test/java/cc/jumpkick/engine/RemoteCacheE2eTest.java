@@ -110,13 +110,13 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                 .hasSize(1);
 
         Map<String, ExplainTaskEvent> forecast = explain(b, cacheB, reading(remote));
-        // lib's compile and jar key on its sources alone. Its test compile and app's compile key on
-        // the ABI of lib's classes, which the forecast computes from their blobs, still on the
-        // remote: until records carry that token (JK-8B4A7) those steps forecast as rebuilds.
-        assertThat(status(forecast, "lib", "compile-java"))
-                .as("B's forecast prices lib's compile as a hit from the remote: " + forecast.values())
-                .isEqualTo("CACHED");
-        assertThat(status(forecast, "lib", "package-jar")).isEqualTo("CACHED");
+        // B holds none of A's blobs: the keys that read the ABI of lib's classes (lib's test
+        // compile, app's compile) come from the interface token A's records state.
+        assertThat(forecast.values())
+                .as("B's forecast prices every step as a hit from the remote: " + forecast.values())
+                .filteredOn(t -> !t.name().equals("restore-outputs"))
+                .hasSize(6)
+                .allMatch(t -> t.status().equals("CACHED"));
 
         List<String> again = build(b, cacheB, reading(remote));
         assertThat(succeeded(again)).as("machine B builds: " + again).isTrue();
@@ -130,8 +130,14 @@ class RemoteCacheE2eTest extends EngineServerHarness {
         List<StepCache> remoteHits = cacheOf(record).stream()
                 .filter(c -> c.outcome() == StepCache.Outcome.REMOTE_HIT)
                 .toList();
+        // A record with no blob (the suite's green marker) is kept here on its first lookup, which
+        // B's explain made: the build reads it locally. Every step that restores outputs fetched
+        // them from the remote.
         assertThat(cacheOf(record))
-                .as("every step that consulted the cache hit the remote: " + record.modules())
+                .as("no step ran: " + record.modules())
+                .isNotEmpty()
+                .noneMatch(c -> c.outcome() == StepCache.Outcome.MISS)
+                .filteredOn(c -> c.bytesIn() > 0)
                 .isNotEmpty()
                 .allMatch(c -> c.outcome() == StepCache.Outcome.REMOTE_HIT);
         assertThat(remoteHits).anyMatch(c -> c.bytesIn() > 0);

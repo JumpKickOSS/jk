@@ -73,7 +73,8 @@ class ActionRecordMetaTest {
                 "toolchain:jdk:25.0.4+7",
                 "linux-aarch64",
                 4120,
-                Map.of("A.class", 812L));
+                Map.of("A.class", 812L),
+                Map.of(ActionRecordText.Meta.INTERFACE, "abi:" + "c".repeat(64)));
         String local = ActionRecordText.render(
                 "compile-main@x",
                 key,
@@ -87,6 +88,7 @@ class ActionRecordMetaTest {
 
         ActionRecordText.Parsed back = ActionRecordText.parse(shared, key);
         assertThat(back.meta()).isEqualTo(meta);
+        assertThat(shared).contains("\nDERIVED interface abi:" + "c".repeat(64) + "\n");
         assertThat(back.outputs()).containsEntry("A.class", "a".repeat(64)).containsEntry("b/B.class", "b".repeat(64));
         assertThat(back.inputs()).containsOnlyKeys("src/A.java");
         assertThat(shared).doesNotContain("SAID ").doesNotContain(tmp.toString());

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
@@ -50,6 +51,9 @@ final class RestoredOutputs {
     /** Wiped tree → the {@code dir:} content identity of the tree its record restores. */
     private final Map<Path, String> treeIdentity = new ConcurrentHashMap<>();
 
+    /** Wiped jar → the interface token its package record states, for a payload not in the CAS. */
+    private final Map<Path, String> jarInterface = new ConcurrentHashMap<>();
+
     RestoredOutputs(ActionCache actionCache) {
         this.actionCache = actionCache;
     }
@@ -61,7 +65,16 @@ final class RestoredOutputs {
 
     /** Pin the content of a wiped jar from the record its current package key names. */
     void pinJar(Path jar, String sha) {
+        pinJar(jar, sha, null);
+    }
+
+    /**
+     * As above, with the interface token the record states ({@link ActionRecordText.Meta#INTERFACE}):
+     * what a consumer's key reads when the payload is not in this machine's CAS.
+     */
+    void pinJar(Path jar, String sha, @Nullable String interfaceToken) {
         jarShas.put(key(jar), sha);
+        if (interfaceToken != null) jarInterface.put(key(jar), interfaceToken);
     }
 
     /**
@@ -72,7 +85,7 @@ final class RestoredOutputs {
      * of the live tree is a lookup.
      */
     void projectTree(Path tree, Map<String, String> outputs, List<Path> resourceRoots) {
-        projectTree(tree, outputs, resourceRoots, Map.of());
+        projectTree(tree, outputs, resourceRoots, Map.of(), null);
     }
 
     /**
@@ -80,18 +93,41 @@ final class RestoredOutputs {
      * sha) after the resource roots — a plugin worker's module-root manifest.
      */
     void projectTree(
-            Path tree, Map<String, String> outputs, List<Path> resourceRoots, Map<String, String> copiedFiles) {
+            Path tree,
+            Map<String, String> outputs,
+            List<Path> resourceRoots,
+            Map<String, String> copiedFiles,
+            @Nullable String interfaceToken) {
         Path abs = key(tree);
         try {
             treeIdentity.put(
                     abs, ClasspathFingerprint.entryFromCompileAndResources(outputs, resourceRoots, copiedFiles));
-            treeAbi.put(abs, ClasspathAbi.tokenFromOutputs(outputs, resourceRoots, copiedFiles, actionCache.cas()));
+            treeAbi.put(abs, abi(outputs, resourceRoots, copiedFiles, interfaceToken));
         } catch (IOException e) {
             // Without the projection a consumer keys on the tree's absence: the pessimistic
             // answer, never a false hit.
             treeIdentity.remove(abs);
             treeAbi.remove(abs);
             Log.debug("projectTree: consumers key on the tree as it is", e);
+        }
+    }
+
+    /**
+     * The ABI token of a tree of {@code outputs}, read from their class blobs; when a blob is not in
+     * this machine's CAS (the record came from another machine), the interface token the record
+     * states for exactly these classes, else the read's failure.
+     */
+    private String abi(
+            Map<String, String> outputs,
+            List<Path> resourceRoots,
+            Map<String, String> copiedFiles,
+            @Nullable String interfaceToken)
+            throws IOException {
+        try {
+            return ClasspathAbi.tokenFromOutputs(outputs, resourceRoots, copiedFiles, actionCache.cas());
+        } catch (IOException blobsElsewhere) {
+            if (interfaceToken == null) throw blobsElsewhere;
+            return interfaceToken;
         }
     }
 
@@ -111,15 +147,20 @@ final class RestoredOutputs {
             Map<String, String> copiedFiles)
             throws IOException {
         Map<String, String> merged = new LinkedHashMap<>();
+        // One compile's record states the interface of its own classes; a merge of several, or
+        // of classes a KSP round mirrors in, has no stated token and reads its blobs.
+        String stated = null;
         for (String key : keys) {
             if (key == null) return;
             var record = actionCache.lookup(key);
             if (record.isEmpty()) return;
             merged.putAll(record.get().outputs());
+            stated = keys.size() == 1 ? record.get().meta().derived().get(ActionRecordText.Meta.INTERFACE) : null;
         }
+        if (mirrored.keySet().stream().anyMatch(path -> path.endsWith(".class"))) stated = null;
         merged.putAll(mirrored);
         if (merged.isEmpty() && resourceRoots.isEmpty() && copiedFiles.isEmpty()) return;
-        projectTree(tree, merged, resourceRoots, copiedFiles);
+        projectTree(tree, merged, resourceRoots, copiedFiles, stated);
     }
 
     /**
@@ -131,7 +172,14 @@ final class RestoredOutputs {
         if (key == null) return;
         try {
             if (TaskForecaster.classesDirHasContent(tree)) return;
-            actionCache.lookup(key).ifPresent(record -> projectTree(tree, record.outputs(), List.of()));
+            actionCache
+                    .lookup(key)
+                    .ifPresent(record -> projectTree(
+                            tree,
+                            record.outputs(),
+                            List.of(),
+                            Map.of(),
+                            record.meta().derived().get(ActionRecordText.Meta.INTERFACE)));
         } catch (IOException e) {
             Log.debug("projectFromRecord: compile-main keys on the tree as it is", e);
         }
@@ -172,7 +220,9 @@ final class RestoredOutputs {
                 String projected = treeAbi.get(abs);
                 if (projected != null) return projected;
                 Path blob = pinnedBlob(abs);
-                return blob != null ? ClasspathAbi.token(blob) : ClasspathAbi.token(entry);
+                if (blob != null) return ClasspathAbi.token(blob);
+                String stated = Files.exists(abs) ? null : jarInterface.get(abs);
+                return stated != null ? stated : ClasspathAbi.token(entry);
             }
 
             /**
