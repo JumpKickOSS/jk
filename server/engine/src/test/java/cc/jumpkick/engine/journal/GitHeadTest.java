@@ -47,12 +47,23 @@ class GitHeadTest {
         assertThat(GitHead.of(tree).commit()).isEqualTo(gitShort(tree)).isNotEqualTo(gitShort(repo));
     }
 
+    /**
+     * Objects in several packs and loose beside them, as a long-lived checkout holds them: the
+     * abbreviation counts every pack's objects. A repository of its own, not the checkout the suite
+     * runs from, whose refs and packs move under any other git command on the machine.
+     */
     @Test
-    void this_checkout_reads_as_git_says() throws Exception {
-        Path here = Path.of("").toAbsolutePath();
-        String expected = gitShort(here);
-        assumeTrue(expected != null, "not run from a git checkout");
-        assertThat(GitHead.of(here).commit()).isEqualTo(expected);
+    void a_repository_with_several_packs_and_loose_objects_reads_as_git_says(@TempDir Path dir) throws Exception {
+        Path repo = repoWithCommits(dir.resolve("r"), 2);
+        for (int round = 0; round < 3; round++) {
+            git(repo, "-c", "gc.auto=0", "repack", "-q");
+            commit(repo, "packed" + round);
+        }
+        try (var packs = Files.list(repo.resolve(".git/objects/pack"))) {
+            assertThat(packs.filter(p -> p.toString().endsWith(".idx"))).hasSizeGreaterThan(1);
+        }
+
+        assertThat(GitHead.of(repo).commit()).isEqualTo(gitShort(repo));
     }
 
     @Test
@@ -74,12 +85,27 @@ class GitHeadTest {
     private static Path repoWithCommits(Path repo, int commits) throws Exception {
         Files.createDirectories(repo);
         assumeTrue(git(repo, "init", "-q") != null, "git is not installed");
-        for (int i = 0; i < commits; i++) {
-            Files.writeString(repo.resolve("f.txt"), "v" + i);
-            git(repo, "add", "f.txt");
-            git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c" + i);
-        }
+        for (int i = 0; i < commits; i++) commit(repo, "v" + i);
         return repo;
+    }
+
+    private static void commit(Path repo, String content) throws Exception {
+        Files.writeString(repo.resolve("f.txt"), content);
+        git(repo, "add", "f.txt");
+        git(
+                repo,
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "gc.auto=0",
+                "-c",
+                "maintenance.auto=false",
+                "commit",
+                "-q",
+                "-m",
+                content);
     }
 
     private static @Nullable String gitShort(Path dir) throws Exception {
