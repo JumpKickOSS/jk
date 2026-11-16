@@ -31,10 +31,19 @@ class TestStoreSeedTest {
 
     private @Nullable String priorHome;
 
-    /** The machine: the developer's {@code ~/.m2} is {@code tmp/home/.m2/repository}, nothing real is read. */
+    private @Nullable String priorRepoLocal;
+
+    private @Nullable String priorSettings;
+
+    /**
+     * The machine: the developer's {@code ~/.m2} is {@code tmp/home/.m2/repository}, nothing real is
+     * read. The harness's sandbox user repository and settings give way to it for the test.
+     */
     @BeforeEach
     void isolate() {
         priorHome = System.getProperty("user.home");
+        priorRepoLocal = System.clearProperty("maven.repo.local");
+        priorSettings = System.clearProperty("jk.m2.settings");
         System.setProperty("user.home", tmp.resolve("home").toString());
         System.setProperty("jk.m2.local", tmp.resolve("own").toString());
     }
@@ -42,6 +51,8 @@ class TestStoreSeedTest {
     @AfterEach
     void restore() {
         if (priorHome != null) System.setProperty("user.home", priorHome);
+        if (priorRepoLocal != null) System.setProperty("maven.repo.local", priorRepoLocal);
+        if (priorSettings != null) System.setProperty("jk.m2.settings", priorSettings);
     }
 
     private Path userM2() {
