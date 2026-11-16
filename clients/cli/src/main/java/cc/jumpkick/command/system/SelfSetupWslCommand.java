@@ -296,10 +296,23 @@ public final class SelfSetupWslCommand implements CliCommand {
         static Api connect() throws IOException {
             EnginePaths.Paths paths = EnginePaths.current();
             EngineClient.ensured(paths);
-            EngineProbe.Status status =
-                    EngineProbe.status(EnginePaths.activeSocket(paths)).orElse(null);
-            if (status == null || status.httpUrl() == null || status.httpUrl().isBlank()) {
-                throw new IOException("the engine's dashboard is not serving; `jk engine status` says why");
+            // Just started, the engine may still be binding its port (a WSL engine hands 8910 back).
+            EngineProbe.Status status = null;
+            long until = Clock.SYSTEM.nanos() + Duration.ofSeconds(15).toNanos();
+            while (true) {
+                status = EngineProbe.status(EnginePaths.activeSocket(paths)).orElse(null);
+                if (status != null
+                        && status.httpUrl() != null
+                        && !status.httpUrl().isBlank()) break;
+                if (Clock.SYSTEM.nanos() > until) {
+                    throw new IOException("the engine's dashboard is not serving; `jk engine status` says why");
+                }
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted");
+                }
             }
             String token = Files.readString(paths.httpToken()).strip();
             String url = status.httpUrl();
@@ -308,6 +321,13 @@ public final class SelfSetupWslCommand implements CliCommand {
                     .connectTimeout(Duration.ofSeconds(5))
                     .version(HttpClient.Version.HTTP_1_1)
                     .build();
+            // The address must answer as this engine: right after a start, a WSL engine can still hold
+            // 8910 for a moment before handing it back, and its API is not this one.
+            String engineId = status.engineId();
+            if (engineId != null && !answersAs(client, base, engineId)) {
+                throw new IOException(base + " is held by another engine, not this home's (" + engineId
+                        + "); it is handed back within seconds of a start: try again");
+            }
             // Every /api call but the bootstrap reads names the engine it is for: its epoch, from its status.
             HttpRequest statusReq = HttpRequest.newBuilder(URI.create(base + "/api/status"))
                     .timeout(Duration.ofSeconds(30))
@@ -323,6 +343,33 @@ public final class SelfSetupWslCommand implements CliCommand {
                 throw new IOException("interrupted");
             }
             return new Api(client, base, token, epoch);
+        }
+
+        /** Whether {@code base}'s token-free identity names engine {@code id}, waited on for up to 15 s. */
+        private static boolean answersAs(HttpClient client, String base, String id) throws IOException {
+            HttpRequest req = HttpRequest.newBuilder(URI.create(base + "/api/identity"))
+                    .timeout(Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+            long deadline = Clock.SYSTEM.nanos() + Duration.ofSeconds(15).toNanos();
+            while (true) {
+                try {
+                    HttpResponse<String> r = client.send(req, HttpResponse.BodyHandlers.ofString());
+                    if (parse(r.body()) instanceof Map<?, ?> m && id.equals(m.get("id"))) return true;
+                } catch (IOException notYet) {
+                    // Not listening yet: the start is binding.
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+                if (Clock.SYSTEM.nanos() > deadline) return false;
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
         }
 
         String get() throws IOException, InterruptedException {
