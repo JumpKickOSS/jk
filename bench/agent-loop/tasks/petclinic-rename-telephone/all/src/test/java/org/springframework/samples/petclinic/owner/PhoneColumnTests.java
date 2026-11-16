@@ -14,17 +14,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 class PhoneColumnTests {
 
-	@Autowired
-	OwnerRepository owners;
+    @Autowired
+    OwnerRepository owners;
 
-	@Autowired
-	JdbcTemplate jdbc;
+    @Autowired
+    JdbcTemplate jdbc;
 
-	@Test
-	void theStoredTelephoneLoadsAsThePhone() {
-		String stored = this.jdbc.queryForObject("SELECT telephone FROM owners WHERE id = 1", String.class);
-		Owner george = this.owners.findById(1).orElseThrow();
-		assertThat(george.getPhone()).isEqualTo(stored).isEqualTo("6085551023");
-	}
-
+    @Test
+    void theStoredTelephoneLoadsAsThePhone() {
+        String stored = this.jdbc.queryForObject("SELECT telephone FROM owners WHERE id = 1", String.class);
+        Owner george = this.owners.findById(1).orElseThrow();
+        assertThat(george.getPhone()).isEqualTo(stored).isEqualTo("6085551023");
+    }
 }

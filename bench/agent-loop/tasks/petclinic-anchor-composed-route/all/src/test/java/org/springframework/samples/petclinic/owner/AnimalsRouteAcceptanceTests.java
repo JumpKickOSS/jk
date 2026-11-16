@@ -22,43 +22,41 @@ import org.springframework.web.client.HttpStatusCodeException;
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class AnimalsRouteAcceptanceTests {
 
-	@LocalServerPort
-	int port;
+    @LocalServerPort
+    int port;
 
-	@Autowired
-	RestTemplateBuilder builder;
+    @Autowired
+    RestTemplateBuilder builder;
 
-	private ResponseEntity<String> get(String path) {
-		try {
-			return builder.baseUri("http://localhost:" + port)
-				.build()
-				.exchange(RequestEntity.get(path).build(), String.class);
-		}
-		catch (HttpStatusCodeException e) {
-			return ResponseEntity.status(e.getStatusCode()).body(e.getResponseBodyAsString());
-		}
-	}
+    private ResponseEntity<String> get(String path) {
+        try {
+            return builder.baseUri("http://localhost:" + port)
+                    .build()
+                    .exchange(RequestEntity.get(path).build(), String.class);
+        } catch (HttpStatusCodeException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getResponseBodyAsString());
+        }
+    }
 
-	@Test
-	void theEndpointIsAnimals() {
-		ResponseEntity<String> page = get("/api/owners/1/animals");
-		assertThat(page.getStatusCode().value()).isEqualTo(200);
-		assertThat(page.getBody()).contains("Leo");
-	}
+    @Test
+    void theEndpointIsAnimals() {
+        ResponseEntity<String> page = get("/api/owners/1/animals");
+        assertThat(page.getStatusCode().value()).isEqualTo(200);
+        assertThat(page.getBody()).contains("Leo");
+    }
 
-	@Test
-	void everyRequestTheRosterScriptMakesIsServed() throws Exception {
-		String script = Files.readString(Path.of("scripts/pet-roster.sh")).replace("$owner", "1");
-		Matcher m = Pattern.compile("http://localhost:8080(/[^\\s\"']*)").matcher(script);
-		List<String> paths = new ArrayList<>();
-		while (m.find()) {
-			paths.add(m.group(1));
-		}
-		assertThat(paths).hasSize(2);
-		for (String p : paths) {
-			assertThat(p).as(p).endsWith("/animals");
-			assertThat(get(p).getStatusCode().value()).as(p).isEqualTo(200);
-		}
-	}
-
+    @Test
+    void everyRequestTheRosterScriptMakesIsServed() throws Exception {
+        String script = Files.readString(Path.of("scripts/pet-roster.sh")).replace("$owner", "1");
+        Matcher m = Pattern.compile("http://localhost:8080(/[^\\s\"']*)").matcher(script);
+        List<String> paths = new ArrayList<>();
+        while (m.find()) {
+            paths.add(m.group(1));
+        }
+        assertThat(paths).hasSize(2);
+        for (String p : paths) {
+            assertThat(p).as(p).endsWith("/animals");
+            assertThat(get(p).getStatusCode().value()).as(p).isEqualTo(200);
+        }
+    }
 }

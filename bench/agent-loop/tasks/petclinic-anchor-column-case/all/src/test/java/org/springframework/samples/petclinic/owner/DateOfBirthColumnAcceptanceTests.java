@@ -17,33 +17,37 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 class DateOfBirthColumnAcceptanceTests {
 
-	@Autowired
-	JdbcTemplate jdbc;
+    @Autowired
+    JdbcTemplate jdbc;
 
-	@Autowired
-	OwnerRepository owners;
+    @Autowired
+    OwnerRepository owners;
 
-	@Test
-	void theColumnIsDateOfBirthAndTheMappingReadsIt() {
-		assertThat(jdbc.queryForObject("SELECT COUNT(date_of_birth) FROM pets", Integer.class)).isPositive();
-		assertThat(owners.findById(1)).hasValueSatisfying(o -> assertThat(o.getPets().get(0).getBirthDate()).isNotNull());
-	}
+    @Test
+    void theColumnIsDateOfBirthAndTheMappingReadsIt() {
+        assertThat(jdbc.queryForObject("SELECT COUNT(date_of_birth) FROM pets", Integer.class))
+                .isPositive();
+        assertThat(owners.findById(1))
+                .hasValueSatisfying(
+                        o -> assertThat(o.getPets().get(0).getBirthDate()).isNotNull());
+    }
 
-	@Test
-	void everyReportQueryRuns() throws Exception {
-		for (Resource r : new PathMatchingResourcePatternResolver().getResources("classpath*:db/reports/*.sql")) {
-			String sql = r.getContentAsString(StandardCharsets.UTF_8).replaceAll("(?m)^--.*$", "").replace(";", "");
-			assertThat(jdbc.queryForList(sql)).as(r.getFilename()).isNotEmpty();
-		}
-	}
+    @Test
+    void everyReportQueryRuns() throws Exception {
+        for (Resource r : new PathMatchingResourcePatternResolver().getResources("classpath*:db/reports/*.sql")) {
+            String sql = r.getContentAsString(StandardCharsets.UTF_8)
+                    .replaceAll("(?m)^--.*$", "")
+                    .replace(";", "");
+            assertThat(jdbc.queryForList(sql)).as(r.getFilename()).isNotEmpty();
+        }
+    }
 
-	@Test
-	void noSqlFileNamesTheOldColumn() throws Exception {
-		for (Resource r : new PathMatchingResourcePatternResolver().getResources("classpath*:db/**/*.sql")) {
-			assertThat(r.getContentAsString(StandardCharsets.UTF_8).toLowerCase())
-				.as(r.getURL().toString())
-				.doesNotContainPattern("\\bbirth_date\\b");
-		}
-	}
-
+    @Test
+    void noSqlFileNamesTheOldColumn() throws Exception {
+        for (Resource r : new PathMatchingResourcePatternResolver().getResources("classpath*:db/**/*.sql")) {
+            assertThat(r.getContentAsString(StandardCharsets.UTF_8).toLowerCase())
+                    .as(r.getURL().toString())
+                    .doesNotContainPattern("\\bbirth_date\\b");
+        }
+    }
 }

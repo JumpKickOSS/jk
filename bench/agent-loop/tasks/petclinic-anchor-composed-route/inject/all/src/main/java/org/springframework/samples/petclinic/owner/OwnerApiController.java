@@ -28,17 +28,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/owners")
 class OwnerApiController {
 
-	private final OwnerRepository owners;
+    private final OwnerRepository owners;
 
-	OwnerApiController(OwnerRepository owners) {
-		this.owners = owners;
-	}
+    OwnerApiController(OwnerRepository owners) {
+        this.owners = owners;
+    }
 
-	@GetMapping("/{ownerId}/pets")
-	List<String> pets(@PathVariable("ownerId") int ownerId) {
-		return this.owners.findById(ownerId)
-			.map(owner -> owner.getPets().stream().map(Pet::getName).toList())
-			.orElse(List.of());
-	}
-
+    @GetMapping("/{ownerId}/pets")
+    List<String> pets(@PathVariable("ownerId") int ownerId) {
+        return this.owners
+                .findById(ownerId)
+                .map(owner -> owner.getPets().stream().map(Pet::getName).toList())
+                .orElse(List.of());
+    }
 }

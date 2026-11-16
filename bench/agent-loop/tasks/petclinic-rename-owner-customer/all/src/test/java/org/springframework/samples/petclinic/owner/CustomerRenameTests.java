@@ -14,14 +14,13 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 @AutoConfigureTestDatabase(replace = Replace.NONE)
 class CustomerRenameTests {
 
-	@Autowired
-	OwnerRepository owners;
+    @Autowired
+    OwnerRepository owners;
 
-	@Test
-	void theRenamedClassKeepsItsTableAndItsData() {
-		assertThat(Customer.class.getAnnotation(Table.class).name()).isEqualTo("owners");
-		Customer george = this.owners.findById(1).orElseThrow();
-		assertThat(george.getLastName()).isEqualTo("Franklin");
-	}
-
+    @Test
+    void theRenamedClassKeepsItsTableAndItsData() {
+        assertThat(Customer.class.getAnnotation(Table.class).name()).isEqualTo("owners");
+        Customer george = this.owners.findById(1).orElseThrow();
+        assertThat(george.getLastName()).isEqualTo("Franklin");
+    }
 }
