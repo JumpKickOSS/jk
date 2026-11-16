@@ -9,6 +9,7 @@ import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
+import cc.jumpkick.host.Settled;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -118,6 +119,52 @@ class ToolIdentityTest {
         Path exe = Path.of(System.getProperty("user.home"), "tools/bin/tool");
         assertThat(ToolIdentity.normalized("tool 1.2  at " + exe + "  (" + System.getProperty("user.home") + ")", exe))
                 .isEqualTo("tool 1.2 at tool (~)");
+    }
+
+    /**
+     * A hang is the binary's: once a tool hung on {@code --version}, no directory and no later request
+     * asks it again while its file is unchanged. Remembered per request and per directory, the
+     * timeout was paid by every module whose suite starts the tool on every build (5.1 s in each of
+     * hotel-reservations' two Testcontainers modules on every replayed {@code jk test -g} on WSL).
+     * A changed file is asked again.
+     */
+    @Test
+    void a_tool_that_hung_is_not_asked_again_until_its_file_changes(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path count = tmp.resolve("count");
+        String file = "'" + count + "'";
+        String body = "n=0; [ -f " + file + " ] && read n < " + file + "; echo $((n + 1)) > " + file
+                + "; exec /bin/sleep 120";
+        Path helper = tool(bin, "docker-credential-probe", body);
+        // A file written this instant vouches for nothing until it settles: judge as if it had.
+        Settled.aheadForTests(Duration.ofSeconds(10));
+        try {
+            hangsOnce(helper, bin, tmp, count, body);
+        } finally {
+            Settled.aheadForTests(null);
+        }
+    }
+
+    private static void hangsOnce(Path helper, Path bin, Path tmp, Path count, String body) throws Exception {
+        Path service = Files.createDirectories(tmp.resolve("service"));
+        Path rest = Files.createDirectories(tmp.resolve("rest"));
+
+        assertThat(ToolIdentity.probeOnce(helper, service, bin.toString(), 300).timedOut())
+                .isTrue();
+        long start = System.nanoTime();
+        assertThat(ToolIdentity.probeOnce(helper, rest, bin.toString(), 300).timedOut())
+                .as("another directory, another build: the hang stands")
+                .isTrue();
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMillis(250));
+        assertThat(Files.readString(count).strip()).isEqualTo("1");
+
+        Files.writeString(helper, "#!/bin/sh\n# upgraded\n" + body + "\n");
+        assertThat(ToolIdentity.probeOnce(helper, rest, bin.toString(), 300).timedOut())
+                .isTrue();
+        assertThat(Files.readString(count).strip())
+                .as("a changed file is asked again")
+                .isEqualTo("2");
     }
 
     private static Path tool(Path bin, String name, String body) throws Exception {

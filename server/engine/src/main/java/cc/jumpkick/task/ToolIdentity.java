@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Os;
@@ -30,7 +31,7 @@ import org.jspecify.annotations.Nullable;
  * would ask it: a toolchain manager's shim ({@code mise}, {@code asdf}, {@code volta}) answers
  * with the version the directory and the shell select, which can change without the binary
  * changing. So the answer is remembered for one request only; a tool that exited without a version
- * line is asked again, and one that hung is not asked again within the request.
+ * line is asked again, and one that hung is not asked again while its file is unchanged.
  */
 public final class ToolIdentity {
 
@@ -50,6 +51,15 @@ public final class ToolIdentity {
     private record Versions() {}
 
     private static final Versions VERSIONS = new Versions();
+
+    /**
+     * The executables that hung on {@code --version}, while the file keeps its stat. A hang is the
+     * binary's, not the directory's or the request's: remembered per request and per directory, it
+     * cost every module whose suite starts it the whole timeout on every build, as two Testcontainers
+     * modules of hotel-reservations paid 5.1 s each on every replayed {@code jk test -g} on WSL.
+     */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, Boolean> HUNG =
+            StampedMemo.<Path, StampedMemo.FileStamp, Boolean>bounded(64).keeping(Boolean::booleanValue);
 
     private ToolIdentity() {}
 
@@ -99,11 +109,25 @@ public final class ToolIdentity {
         VersionKey key = new VersionKey(exe, dir, path);
         String known = versions.get(key);
         if (known != null) return known;
-        Answer a = probe(exe, dir, path, VERSION_TIMEOUT_MILLIS);
-        // A hang is remembered for the request, so it costs one timeout per build, not one per
-        // module; a tool that exited without a version line is asked again.
+        Answer a = probeOnce(exe, dir, path, VERSION_TIMEOUT_MILLIS);
+        // A version line is remembered for the request, as a shim may answer another one in another
+        // directory; a hang for as long as the file holds still (HUNG); a tool that exited without a
+        // version line is asked again.
         if (a.timedOut() || !a.line().equals(NO_VERSION)) versions.put(key, a.line());
         return a.line();
+    }
+
+    /** {@link #probe}, unless the file at {@code exe} hung on it before and has not changed since. */
+    static Answer probeOnce(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
+        StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(exe);
+        if (stamp == null) return probe(exe, dir, path, timeoutMillis);
+        Answer[] asked = {null};
+        boolean hung = HUNG.get(exe, stamp, () -> {
+            asked[0] = probe(exe, dir, path, timeoutMillis);
+            return asked[0].timedOut();
+        });
+        if (asked[0] != null) return asked[0];
+        return hung ? new Answer(NO_VERSION, true) : probe(exe, dir, path, timeoutMillis);
     }
 
     /** What {@code --version} gave: its first line or {@link #NO_VERSION}, and whether it hung. */
