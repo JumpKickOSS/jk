@@ -6,6 +6,13 @@
 # (jk format, jk guard, jk install) and the push gate (jk install -g) run on the
 # developer's machine. A workflow_dispatch re-runs the gate on any ref; on a release tag, a green
 # dispatch releases it like the tag push would.
+#
+# Runners are spent in order, cheapest first: every Linux job, then the Windows jobs once all of
+# those passed, then the macOS jobs once the Windows ones passed. A build already broken on Linux
+# never starts a Windows or macOS runner, and one broken on Windows never starts a macOS runner
+# (guard workflow-runners-in-cost-order). Steps shared by several OSes are written once, in a
+# composite action under .github/actions/, and each OS is a job of its own, since `needs` orders
+# jobs and not the rows of one matrix.
 
 name: CI
 
@@ -70,79 +77,16 @@ jobs:
   # The shell fixtures behind the installers, the wrapper, the Maven-repository publisher, the
   # release scripts and the curated lane's runner: network-free, and they need bash, openssl and xz
   # rather than a JDK, so they are a merge requirement of their own instead of sharing a verdict
-  # with the self-host job. The macOS row runs them on BSD userland, LibreSSL and stock macOS's
-  # missing xz, which install.sh and the jk wrapper meet there.
+  # with the self-host job. Steps in .github/actions/shell-fixtures; the macOS job below runs them
+  # on BSD userland, LibreSSL and stock macOS's missing xz, which install.sh and the jk wrapper
+  # meet there.
   fixtures:
-    name: Shell fixtures (installer, wrapper, publish, release, curated lane)${{ matrix.os == 'macos-latest' && ' on macOS' || '' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    name: Shell fixtures (installer, wrapper, publish, release, curated lane)
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # On macOS, under the /bin/bash 3.2 that `curl | bash` gets there, with nothing newer on PATH.
-      - name: Shell installer verification fixtures
-        run: ${{ matrix.os == 'macos-latest' && 'env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash' || 'bash' }} scripts/test-installer-verification.sh
-
-      - name: Wrapper bootstrap fixtures
-        run: bash scripts/test-wrapper-bootstrap.sh
-
-      - name: Maven-repository publish fixtures
-        run: bash scripts/test-publish-maven-repo.sh
-
-      - name: Release-version fixtures
-        run: bash scripts/test-release-version.sh
-
-      - name: Release-flatten fixtures
-        run: bash scripts/test-flatten-release.sh
-
-      - name: Release-assembly fixtures
-        run: bash scripts/test-assemble-release-dir.sh
-
-      - name: Bootstrap fixtures
-        run: bash scripts/test-ci-bootstrap.sh
-
-      - name: Takeover fixtures
-        run: bash scripts/test-ci-takeover.sh
-
-      - name: Release-session fixtures
-        run: bash scripts/test-release-session.sh
-
-      - name: Manual release merge and publish fixtures
-        run: bash scripts/test-release-publish.sh
-
-      - name: Manual release lane fixtures
-        run: bash scripts/test-release-lane.sh
-
-      - name: Release-notes fixtures
-        run: bash scripts/test-release-notes.sh
-
-      - name: GitHub Release attach fixtures
-        run: bash scripts/test-publish-github-release.sh
-
-      - name: Release environment fixtures
-        run: bash scripts/test-release-environment.sh
-
-      - name: Example lock-drift fixtures
-        run: bash scripts/test-examples-lock-drift.sh
-
-      - name: Example regenerate-and-diff fixtures
-        run: bash scripts/test-examples-regen-check.sh
-
-      - name: Template catalog sync fixtures
-        run: bash scripts/test-templates-sync.sh
-
-      - name: Curated integration lane fixtures
-        run: bash scripts/test-curated-integration.sh
-
-      - name: Shelf descriptor check fixtures
-        run: bash scripts/test-check-shelf-descriptors.sh
-
-      - name: Reinstall chain fixtures
-        run: bash scripts/test-reinstall-chain.sh
+      - uses: ./.github/actions/shell-fixtures
 
   # The workflow files themselves. actionlint (syntax, expressions, shellcheck of every run:
   # script), then the two rules scripts/check-workflows.sh owns: every action pinned to a commit
@@ -327,57 +271,42 @@ jobs:
         if: failure() && steps.audit.outcome == 'failure'
         run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl HIGH
 
-  # The VS Code extension (clients/vscode), on the three desktop OSes. It is not a jk module: jk's
-  # own build never needs Node.js. Unit tests run under Node's runner; the integration suite starts
-  # VS Code (downloaded by @vscode/test-electron) against a stub engine and a fake jk, so it needs
-  # no engine and no jk install. Locally: the same npm commands, with VSCODE_EXECUTABLE naming an
-  # installed VS Code (clients/vscode/README.md).
-  vscode-extension:
-    name: VS Code extension (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  # The VS Code extension (clients/vscode), on the three desktop OSes, a job each (steps in
+  # .github/actions/vscode-extension). It is not a jk module: jk's own build never needs Node.js.
+  # Unit tests run under Node's runner; the integration suite starts VS Code (downloaded by
+  # @vscode/test-electron) against a stub engine and a fake jk, so it needs no engine and no jk
+  # install. Locally: the same npm commands, with VSCODE_EXECUTABLE naming an installed VS Code
+  # (clients/vscode/README.md).
+  vscode-extension-linux:
+    name: VS Code extension (ubuntu-latest)
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: clients/vscode
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: ./.github/actions/vscode-extension
         with:
-          node-version-file: '.nvmrc'
-
-      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
-        with:
-          java-version: '25'
-          distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install from the lockfile
-        run: npm ci
+  # ---- Windows: only once every Linux job has passed -------------------------------------------
 
-      - name: Type-check and bundle
-        run: npm run build
-
-      - name: Java language server bundle and its tests
-        run: npm run test:jdtls
-
-      - name: Unit tests
-        run: npm run test:unit
-
-      - name: Integration tests (Linux, virtual display)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:integration
-
-      - name: Integration tests
-        if: runner.os != 'Linux'
-        run: npm run test:integration
+  vscode-extension-windows:
+    name: VS Code extension (windows-latest)
+    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host]
+    # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/vscode-extension
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   installer-windows:
     name: PowerShell 5.1 installer verification
+    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host]
+    # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -392,6 +321,9 @@ jobs:
   # a native client.
   node-windows:
     name: Node.js toolchain (Windows)
+    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host]
+    # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -423,3 +355,25 @@ jobs:
       - name: Node.js toolchain suites
         shell: bash
         run: bash scripts/ci-node-windows.sh
+
+  # ---- macOS: only once every Windows job has passed --------------------------------------------
+
+  fixtures-macos:
+    name: Shell fixtures (installer, wrapper, publish, release, curated lane) on macOS
+    needs: [vscode-extension-windows, installer-windows, node-windows]
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/shell-fixtures
+
+  vscode-extension-macos:
+    name: VS Code extension (macos-latest)
+    needs: [vscode-extension-windows, installer-windows, node-windows]
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/vscode-extension
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}

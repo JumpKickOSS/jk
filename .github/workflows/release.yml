@@ -7,7 +7,8 @@
 # anything is built (scripts/release-version.sh). The chain:
 #
 #   gate    — the CI run was green and its ref is a tag on the commit it tested.
-#   build   — the native client and engine of every platform, built by jk (tests skipped: CI ran them).
+#   build   — the native client and engine of every platform, built by jk (tests skipped: CI ran them):
+#             Linux first, then Windows, then macOS, each only once the one before has built.
 #   merge   — one version tree from the platforms, the SBOM and the notes. No secrets.
 #   publish — signs the tree, uploads it to GCS, redeploys the installers, releases the plugin SDK to
 #             Central, and creates the GitHub Release with the tree, the SBOM and the notes. The
@@ -110,179 +111,71 @@ jobs:
           fi
           echo "release=true" >> "$GITHUB_OUTPUT"
 
-  build:
+  # One job per OS, each platform built only after the cheaper ones have: Linux (both
+  # architectures), then Windows, then macOS (guard workflow-runners-in-cost-order). The steps are
+  # .github/actions/release-build. One row per platform jumpkick.build serves a native client for at
+  # the release .jk/ci/ci-bootstrap-version pins; jk is installed the way a user installs it, the
+  # same bootstrap as ci.yml's self-host job, and builds this commit's dist. macOS on Intel has no
+  # client.
+  build-linux:
     name: ${{ matrix.arch_label }}
     needs: gate
     if: ${{ needs.gate.outputs.release == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        # One row per platform jumpkick.build serves a native client for at the release
-        # .jk/ci/ci-bootstrap-version pins. jk is installed the way a user installs it, the same
-        # bootstrap as ci.yml's self-host job, and builds this commit's dist.
-        # macOS on Intel has no client.
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
           # The arm runner of a public repository.
           - os: ubuntu-24.04-arm
             arch_label: linux-aarch64
-          - os: macos-14
-            arch_label: macos-aarch64
-          # Visual Studio 2022: the one native-image locates on its own, which the hosted
-          # bootstrap's engine leaves it to do (the Dist step below). Once the pin's engine
-          # inherits INCLUDE and LIB, any Windows image serves.
-          - os: windows-2022
-            arch_label: windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_SHA }}
-
-      # The home sits outside the checkout: the guard lanes of `jk build` read the whole workspace,
-      # and on Windows a read of the engine's byte-range-locked files under the home fails.
-      - name: Home outside the checkout
-        shell: bash
-        run: echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
-
-      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      - uses: ./.github/actions/release-build
         with:
-          java-version: '25'
-          distribution: 'graalvm'
+          arch-label: ${{ matrix.arch_label }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # The tag too: jk builds the release only from a clean checkout whose HEAD carries
-      # v<version>, and anything else is a -SNAPSHOT. A dry run is therefore dispatched on the tag.
-      - name: Resolve version
-        shell: bash
-        run: |
-          set -euo pipefail
-          VER="$(scripts/release-version.sh "${RELEASE_TAG#v}")"
-          echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
-          echo "Building release $VER (${{ matrix.arch_label }})"
-          git fetch --no-tags --depth=1 origin "+refs/tags/v$VER:refs/tags/v$VER" \
-            || { echo "::error::no tag v$VER: a release is built from its tag; dispatch the dry run on it"; exit 1; }
-          bash scripts/release-session.sh
-
-      # The shipped artifacts are what jk builds of itself. The jk that builds them is the one
-      # scripts/ci-bootstrap.sh installs: the hosted release .jk/ci/ci-bootstrap-version pins, or the
-      # bridge commit .jk/ci/ci-bootstrap-reader names, built by it. JK_VERSION in this job's
-      # environment is the release being cut; the script hands the pin's version to the installer alone.
-      # Every row bootstraps a native client, so a platform the pin stops serving fails here.
-      - name: Bootstrap jk from the hosted release
-        shell: bash
-        env:
-          JK_CLIENT: native
-        run: bash scripts/ci-bootstrap.sh
-
-      # On Windows, setup-graalvm exports the Visual Studio environment and puts cl.exe on PATH.
-      # The hosted bootstrap's engine keeps PATH and drops INCLUDE and LIB, and a cl.exe it can
-      # reach without headers is the one state native-image neither compiles in nor sets up
-      # itself. The installer started an engine under that environment, so it is stopped and
-      # respawned by the first jk command with those gone: native-image then locates Visual
-      # Studio 2022 on its own. Retire this once the pin's engine inherits INCLUDE, LIB and LIBPATH.
-      - name: Dist (native client + engine), built by jk
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            unset INCLUDE LIB LIBPATH EXTERNAL_INCLUDE
-            PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -i 'Microsoft Visual Studio\|Windows Kits' | paste -sd:)"
-            export PATH
-            jk engine stop --now --no-ansi
-          fi
-          # Every lane packages with the same jk, the tree's own: the bootstrap installs the tree,
-          # the tree's client takes the home over and installs this commit as the release (a clean
-          # checkout at its tag, which --release asserts), and that jk builds the dist. The engine
-          # jar embeds an SBOM naming its packager, and the lanes' jars must be byte-identical for
-          # the flatten.
-          bash scripts/ci-takeover.sh --install-only --release
-          packager="$(jk --version --no-ansi | head -1 | tr -d '\r')"
-          if [[ "$packager" != "jk $JK_VERSION" ]]; then
-            echo "::error::the dist must be built by jk $JK_VERSION, the tree's own release; jk on PATH is: $packager"
-            exit 1
-          fi
-          jk build --skip-tests --no-ansi
-          ls -la target/dist target/dist/lib
-
-      # The bill of materials of the engine: the CycloneDX document the shipped engine jar embeds
-      # under META-INF/sbom/ (one writer, derived from jk-lock.toml; docs/user/packaging.md).
-      # Staged beside the version tree, never in it, so the signed SHA256SUMS the installers
-      # verify stays byte for byte what the publish job signs.
-      - name: Write the SBOM of the engine
-        if: matrix.arch_label == 'linux-x86_64'
-        shell: bash
-        run: bash scripts/release-sbom.sh "target/dist/lib/jk-engine-${JK_VERSION}.jar" "out/sbom/jk-${JK_VERSION}.cdx.json"
-
-      - name: Upload the SBOM (artifact)
-        if: matrix.arch_label == 'linux-x86_64'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  # Visual Studio 2022: the one native-image locates on its own, which the hosted bootstrap's engine
+  # leaves it to do (the Dist step). Once the pin's engine inherits INCLUDE and LIB, any Windows
+  # image serves.
+  build-windows:
+    name: windows-x86_64
+    needs: [gate, build-linux]
+    if: ${{ needs.gate.outputs.release == 'true' }}
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: sbom-${{ env.JK_VERSION }}
-          path: out/sbom
-          if-no-files-found: error
-
-      - name: Stage the first-party Maven repository
-        if: matrix.arch_label == 'linux-x86_64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          JK_MAVEN_STAGE_ONLY=1 JK_MAVEN_STAGE_DIR=target/release/repo scripts/publish-maven-repo.sh
-          find target/release/repo -name '*.jar' | sed 's|target/release/repo/||' | sort
-
-      - name: Upload the Maven repository (artifact)
-        if: matrix.arch_label == 'linux-x86_64'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: ./.github/actions/release-build
         with:
-          name: maven-repo-${{ env.JK_VERSION }}
-          path: target/release/repo
-          if-no-files-found: error
+          arch-label: windows-x86_64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Unsigned: the per-platform SHA256SUMS is discarded when the trees are merged, and the
-      # signing key stays with the one job whose signature ships.
-      - name: Assemble release dir
-        shell: bash
-        env:
-          DIST_DIR: target/dist
-          # linux-x86_64 staged repo/ above; its jk-repo lists everything that goes there.
-          JK_REPO_STAGE_DIR: ${{ matrix.arch_label == 'linux-x86_64' && 'target/release/repo' || '' }}
-        run: |
-          set -euo pipefail
-          chmod +x scripts/assemble-release-dir.sh
-          OUT="target/release/${JK_VERSION}-${{ matrix.arch_label }}"
-          scripts/assemble-release-dir.sh "$OUT"
-          ls -la "$OUT"
-
-      # The engine refuses a worker from repo/ that does not hash to its line in the signed
-      # jk-repo-<version>.sha256, which lists the dist's shelf; the stage comes from the home's
-      # shelf. Every staged jar and POM must be the one listed, or the release ships workers its
-      # own engine refuses.
-      - name: Check the staged repository against the release's digests
-        if: matrix.arch_label == 'linux-x86_64'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sums="$PWD/target/release/${JK_VERSION}-${{ matrix.arch_label }}/jk-repo-${JK_VERSION}.sha256"
-          cd target/release/repo
-          find . -type f \( -name "*-${JK_VERSION}.jar" -o -name "*-${JK_VERSION}.pom" \) | sed 's|^\./||' | LC_ALL=C sort >"$RUNNER_TEMP/staged.txt"
-          awk '{print $2}' "$sums" | LC_ALL=C sort >"$RUNNER_TEMP/listed.txt"
-          comm -23 "$RUNNER_TEMP/staged.txt" "$RUNNER_TEMP/listed.txt" | sed 's/^/::error::staged but not listed: /' | tee "$RUNNER_TEMP/unlisted.txt"
-          [[ ! -s "$RUNNER_TEMP/unlisted.txt" ]]
-          sha256sum --check --strict --quiet --ignore-missing "$sums"
-
-      - name: Upload workflow artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+  build-macos:
+    name: macos-aarch64
+    needs: [gate, build-windows]
+    if: ${{ needs.gate.outputs.release == 'true' }}
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: release-${{ env.JK_VERSION }}-${{ matrix.arch_label }}
-          path: target/release/${{ env.JK_VERSION }}-${{ matrix.arch_label }}/
-          if-no-files-found: error
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: ./.github/actions/release-build
+        with:
+          arch-label: macos-aarch64
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # One version tree from the platforms. Nothing here signs or publishes, so it holds no secret and
   # a dry run ends here with the unsigned tree as a workflow artifact.
   merge:
     name: Merge
-    needs: build
+    needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       # The whole history and every tag: the notes list the commits since the previous release.

@@ -1,0 +1,54 @@
+# The VS Code extension (clients/vscode), its steps written once for the three desktop OSes ci.yml
+# runs it on (a job per OS, so the expensive runners start only after the Linux row has passed).
+# Unit tests run under Node's runner; the integration suite starts VS Code against a stub engine and
+# a fake jk. The job checks out the repository first.
+name: VS Code extension
+description: Build, unit-test and integration-test the VS Code extension.
+inputs:
+  github-token:
+    description: The token setup-graalvm reads releases with.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: '.nvmrc'
+
+    - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      with:
+        java-version: '25'
+        distribution: 'graalvm'
+        github-token: ${{ inputs.github-token }}
+
+    - name: Install from the lockfile
+      shell: bash
+      working-directory: clients/vscode
+      run: npm ci
+
+    - name: Type-check and bundle
+      shell: bash
+      working-directory: clients/vscode
+      run: npm run build
+
+    - name: Java language server bundle and its tests
+      shell: bash
+      working-directory: clients/vscode
+      run: npm run test:jdtls
+
+    - name: Unit tests
+      shell: bash
+      working-directory: clients/vscode
+      run: npm run test:unit
+
+    - name: Integration tests (Linux, virtual display)
+      if: runner.os == 'Linux'
+      shell: bash
+      working-directory: clients/vscode
+      run: xvfb-run -a npm run test:integration
+
+    - name: Integration tests
+      if: runner.os != 'Linux'
+      shell: bash
+      working-directory: clients/vscode
+      run: npm run test:integration

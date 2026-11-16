@@ -1,0 +1,14 @@
+# A workflow that only runs on Linux has nothing to order.
+name: Lint
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo lint

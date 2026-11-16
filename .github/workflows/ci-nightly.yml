@@ -5,6 +5,9 @@
 # Every job bootstraps the way ci.yml's self-host job does: the hosted release
 # .jk/ci/ci-bootstrap-version pins installs the checkout (building it), which hands the isolated JK_HOME
 # to the checkout's own client, engine and workers, so each tier is run by the commit's jk.
+#
+# Runners are spent in order, cheapest first: the Linux jobs, then Windows once the Linux jobs that
+# build and test jk have passed, then macOS once Windows has (guard workflow-runners-in-cost-order).
 name: CI (nightly)
 
 on:
@@ -347,52 +350,29 @@ jobs:
       - name: A relock may move first-party plugin checksums and nothing else; an npm lock may not move
         run: scripts/examples-lock-drift.sh jk-examples
 
-  # Product smoke on the OSes the PR gate does not run. Bootstraps the hosted client the way a user
-  # installs it (the native client on macOS, jk.exe on Windows), hands the home to the checkout's own
-  # jk, and drives a fresh project end to end. Network is required (first lock/build of a fresh
-  # project).
-  os-smoke:
-    name: Product smoke (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        # windows-2022 while the hosted bootstrap predates the engine passing the developer
-        # prompt's INCLUDE and LIB through: native-image locates Visual Studio 2022 on its own.
-        os: [macos-latest, windows-2022]
-    runs-on: ${{ matrix.os }}
+  # ---- Windows: once the Linux jobs that build and test jk itself have passed ---------------------
+  # integration and coverage: both install the checkout and run its suites, so a green pair proves the
+  # Linux build. The advisory and environment jobs (audit, templates drift, bench, network, examples,
+  # the heap guard, slow's framework e2e) do not hold Windows back: their red hides no Windows signal.
+
+  # Product smoke on the OSes the PR gate does not run (steps in .github/actions/product-smoke).
+  # windows-2022 while the hosted bootstrap predates the engine passing the developer prompt's
+  # INCLUDE and LIB through: native-image locates Visual Studio 2022 on its own.
+  os-smoke-windows:
+    name: Product smoke (windows-2022)
+    needs: [integration, coverage]
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # The home sits outside the checkout: the guard lanes of `jk build` read the whole workspace,
-      # and on Windows a read of the engine's byte-range-locked files under the home fails.
-      - name: Home outside the checkout
-        shell: bash
-        run: echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
-
-      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      - uses: ./.github/actions/product-smoke
         with:
-          java-version: '25'
-          distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Bootstrap jk from the hosted release
-        shell: bash
-        env:
-          JK_CLIENT: native
-        run: bash scripts/ci-bootstrap.sh
-
-      - name: The checkout's own jk takes over
-        shell: bash
-        run: bash scripts/ci-takeover.sh --install-only
-
-      - name: Product smoke
-        shell: bash
-        run: JK_BIN=jk ./scripts/ci-product-smoke.sh
 
   # The Node.js toolchain on Windows with the suites that fetch real generators from npm, which the
   # push gate's row of the same name leaves out.
   node-windows-network:
     name: Node.js toolchain with network (Windows)
+    needs: [integration, coverage]
     # windows-2022 for the reason the product smoke gives.
     runs-on: windows-2022
     steps:
@@ -424,6 +404,18 @@ jobs:
       - name: Node.js toolchain suites
         shell: bash
         run: bash scripts/ci-node-windows.sh --network
+
+  # ---- macOS: once the Windows jobs have passed ---------------------------------------------------
+
+  os-smoke-macos:
+    name: Product smoke (macos-latest)
+    needs: [os-smoke-windows, node-windows-network]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/product-smoke
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # The JVM client on a runner that brings a plain JDK and no GraalVM — the shape of every platform
   # with no hosted native client, and the one place nothing else exercises bin/jk-jvm. The

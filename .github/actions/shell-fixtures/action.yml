@@ -1,0 +1,89 @@
+# The shell fixtures behind the installers, the wrapper, the Maven-repository publisher, the release
+# scripts and the curated lane's runner, written once for every OS ci.yml runs them on (a job per
+# OS, so the expensive runners start only after the Linux row has passed). The job checks out the
+# repository first; on macOS the installer fixture runs under the /bin/bash 3.2 `curl | bash` gets.
+name: Shell fixtures
+description: Every network-free shell fixture of the release, install and CI scripts.
+runs:
+  using: composite
+  steps:
+    # On macOS, under the /bin/bash 3.2 that `curl | bash` gets there, with nothing newer on PATH.
+    - name: Shell installer verification fixtures
+      shell: bash
+      run: ${{ runner.os == 'macOS' && 'env PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/bash' || 'bash' }} scripts/test-installer-verification.sh
+
+    - name: Wrapper bootstrap fixtures
+      shell: bash
+      run: bash scripts/test-wrapper-bootstrap.sh
+
+    - name: Maven-repository publish fixtures
+      shell: bash
+      run: bash scripts/test-publish-maven-repo.sh
+
+    - name: Release-version fixtures
+      shell: bash
+      run: bash scripts/test-release-version.sh
+
+    - name: Release-flatten fixtures
+      shell: bash
+      run: bash scripts/test-flatten-release.sh
+
+    - name: Release-assembly fixtures
+      shell: bash
+      run: bash scripts/test-assemble-release-dir.sh
+
+    - name: Bootstrap fixtures
+      shell: bash
+      run: bash scripts/test-ci-bootstrap.sh
+
+    - name: Takeover fixtures
+      shell: bash
+      run: bash scripts/test-ci-takeover.sh
+
+    - name: Release-session fixtures
+      shell: bash
+      run: bash scripts/test-release-session.sh
+
+    - name: Manual release merge and publish fixtures
+      shell: bash
+      run: bash scripts/test-release-publish.sh
+
+    - name: Manual release lane fixtures
+      shell: bash
+      run: bash scripts/test-release-lane.sh
+
+    - name: Release-notes fixtures
+      shell: bash
+      run: bash scripts/test-release-notes.sh
+
+    - name: GitHub Release attach fixtures
+      shell: bash
+      run: bash scripts/test-publish-github-release.sh
+
+    - name: Release environment fixtures
+      shell: bash
+      run: bash scripts/test-release-environment.sh
+
+    - name: Example lock-drift fixtures
+      shell: bash
+      run: bash scripts/test-examples-lock-drift.sh
+
+    - name: Example regenerate-and-diff fixtures
+      shell: bash
+      run: bash scripts/test-examples-regen-check.sh
+
+    - name: Template catalog sync fixtures
+      shell: bash
+      run: bash scripts/test-templates-sync.sh
+
+    - name: Curated integration lane fixtures
+      shell: bash
+      run: bash scripts/test-curated-integration.sh
+
+    - name: Shelf descriptor check fixtures
+      shell: bash
+      run: bash scripts/test-check-shelf-descriptors.sh
+
+    - name: Reinstall chain fixtures
+      shell: bash
+      run: bash scripts/test-reinstall-chain.sh

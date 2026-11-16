@@ -24,8 +24,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ $# -gt 0 ]]; then
   FILES=("$@")
+  ACTIONS=()
 else
   FILES=("$ROOT"/.github/workflows/*.yml)
+  # A composite action's steps run in the workflows that use it: its uses: are pinned the same.
+  shopt -s nullglob
+  ACTIONS=("$ROOT"/.github/actions/*/action.yml)
+  shopt -u nullglob
 fi
 
 findings=0
@@ -114,6 +119,9 @@ for f in "${FILES[@]}"; do
   [[ -f "$f" ]] || { echo "check-workflows: $f is not a file" >&2; exit 2; }
   check_uses "$f"
   check_permissions "$f"
+done
+for f in ${ACTIONS[@]+"${ACTIONS[@]}"}; do
+  check_uses "$f"
 done
 
 if [[ $findings -gt 0 ]]; then

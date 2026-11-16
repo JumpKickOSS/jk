@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo build
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - run: echo windows
+
+  macos:
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - run: echo macos

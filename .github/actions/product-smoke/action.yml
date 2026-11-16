@@ -1,0 +1,38 @@
+# Product smoke, written once for the OSes the nightly runs it on (a job per OS, so macOS starts only
+# after Windows passed). Bootstraps the hosted client the way a user installs it (the native client on
+# macOS, jk.exe on Windows), hands the home to the checkout's own jk, and drives a fresh project end
+# to end. The job checks out the repository first.
+name: Product smoke
+description: Bootstrap, take over, and drive a fresh project through the checkout's jk.
+inputs:
+  github-token:
+    description: The token setup-graalvm reads releases with.
+    required: true
+runs:
+  using: composite
+  steps:
+    # The home sits outside the checkout: the guard lanes of `jk build` read the whole workspace,
+    # and on Windows a read of the engine's byte-range-locked files under the home fails.
+    - name: Home outside the checkout
+      shell: bash
+      run: echo "JK_HOME=$RUNNER_TEMP/jk-home" >> "$GITHUB_ENV"
+
+    - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+      with:
+        java-version: '25'
+        distribution: 'graalvm'
+        github-token: ${{ inputs.github-token }}
+
+    - name: Bootstrap jk from the hosted release
+      shell: bash
+      env:
+        JK_CLIENT: native
+      run: bash scripts/ci-bootstrap.sh
+
+    - name: The checkout's own jk takes over
+      shell: bash
+      run: bash scripts/ci-takeover.sh --install-only
+
+    - name: Product smoke
+      shell: bash
+      run: JK_BIN=jk ./scripts/ci-product-smoke.sh
