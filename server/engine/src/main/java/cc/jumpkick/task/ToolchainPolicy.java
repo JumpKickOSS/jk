@@ -9,6 +9,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JdkTable;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,41 +101,7 @@ public final class ToolchainPolicy {
         }
 
         private boolean versionMatches(String tokenVersion) {
-            String plain =
-                    tokenVersion.contains("+") ? tokenVersion.substring(0, tokenVersion.indexOf('+')) : tokenVersion;
-            if (version.startsWith(">=")) {
-                String floor = version.substring(2).strip();
-                return major(plain) == major(floor) && compareDotted(plain, floor) >= 0;
-            }
-            return plain.equals(version) || plain.startsWith(version + ".");
-        }
-
-        private static int major(String v) {
-            int dot = v.indexOf('.');
-            try {
-                return Integer.parseInt(dot < 0 ? v : v.substring(0, dot));
-            } catch (NumberFormatException e) {
-                return -1;
-            }
-        }
-
-        private static int compareDotted(String a, String b) {
-            String[] x = a.split("\\.");
-            String[] y = b.split("\\.");
-            for (int i = 0; i < Math.max(x.length, y.length); i++) {
-                int c = Integer.compare(part(x, i), part(y, i));
-                if (c != 0) return c;
-            }
-            return 0;
-        }
-
-        private static int part(String[] p, int i) {
-            if (i >= p.length) return 0;
-            try {
-                return Integer.parseInt(p[i].replaceAll("\\D.*", ""));
-            } catch (NumberFormatException e) {
-                return 0;
-            }
+            return JdkTable.admits(tokenVersion, version);
         }
     }
 

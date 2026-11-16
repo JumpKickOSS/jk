@@ -563,7 +563,7 @@ public record Project(
     /** First numeric-leading token in a JDK spec (before {@code .}); 0 if none. */
     public static int majorOf(@Nullable String spec) {
         if (spec == null) return 0;
-        for (String tok : spec.toLowerCase(Locale.ROOT).split("[-_]")) {
+        for (String tok : spec.toLowerCase(Locale.ROOT).replace(">=", "").split("[-_]")) {
             if (tok.isEmpty() || !Character.isDigit(tok.charAt(0))) continue;
             int dot = tok.indexOf('.');
             try {
@@ -578,7 +578,7 @@ public record Project(
     /** True when the spec pins a point release (e.g. {@code "25.0.3"}); jk rejects these. */
     public static boolean hasPointRelease(@Nullable String spec) {
         if (spec == null) return false;
-        for (String tok : spec.toLowerCase(Locale.ROOT).split("[-_]")) {
+        for (String tok : spec.toLowerCase(Locale.ROOT).replace(">=", "").split("[-_]")) {
             if (!tok.isEmpty() && Character.isDigit(tok.charAt(0)) && tok.indexOf('.') >= 0) {
                 return true;
             }

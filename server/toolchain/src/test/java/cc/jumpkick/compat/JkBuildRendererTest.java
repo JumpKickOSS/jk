@@ -57,6 +57,21 @@ class JkBuildRendererTest {
     }
 
     @Test
+    void a_required_patch_floor_survives_a_rewrite() {
+        JkBuild parsed = JkBuildParser.parse("""
+                group = "com.example"
+                name = "widget"
+                version = "1.0.0"
+                java = 21
+                jdk = { vendor = "corretto", version = ">=25.0.5", required = true }
+                """);
+        String out = JkBuildRenderer.render(parsed);
+        assertThat(out).contains("jdk      = { vendor = \"corretto\", version = \">=25.0.5\", required = true }");
+        assertThat(JkBuildParser.parse(out).project().jdkSpec())
+                .isEqualTo(parsed.project().jdkSpec());
+    }
+
+    @Test
     void renders_application_and_native_blocks_when_set() {
         JkBuild model = JkBuild.builder(Project.builder("com.example", "widget", "1.0.0")
                         .jdkMajor(25)

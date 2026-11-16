@@ -39,6 +39,7 @@ import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ProjectedFiles;
+import cc.jumpkick.task.ToolchainPolicy;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -388,6 +389,35 @@ public final class PlannerKsp {
     }
 
     /**
+     * The options digest a round's action key hashes: {@link #roundDigest}'s, naming the Java level
+     * ({@code java:<level>}) where the stamp names the JDK, as every compile key does (JK-74S9K);
+     * the record names the JDK that ran and the reader's policy decides ({@link #expectRound}).
+     */
+    @KeyOwner(step = TaskNames.KSP)
+    static String roundKeyDigest(JkBuild project, Lockfile lock, Path dir, Path javaHome, int release)
+            throws IOException {
+        return kspDigest(
+                project,
+                lock,
+                dir,
+                kotlinVersion(lock, project),
+                KspResolver.versionFor(project),
+                javaHome,
+                release,
+                "java:" + ToolchainPolicy.level(release, javaHome));
+    }
+
+    /** State what a reader of round {@code key} accepts: records made on {@code javaHome}'s major by default. */
+    static void expectRound(String key, Path javaHome, int release, Path moduleDir) {
+        ToolchainPolicy.expect(key, javaHome, ToolchainPolicy.level(release, javaHome), false, moduleDir);
+    }
+
+    /** What a reader of round {@code key} accepts, for a caller off a job's request (the forecast). */
+    static ToolchainPolicy.@Nullable Expectation roundExpectation(Path javaHome, int release, Path moduleDir) {
+        return ToolchainPolicy.expectation(javaHome, ToolchainPolicy.level(release, javaHome), false, moduleDir);
+    }
+
+    /**
      * Whether the freshness stamp under a round's {@code outBase} vouches for it: the hand-written
      * sources it reads, its classpath and KSP jars, the release and the round's option digest
      * ({@link #kspStampDigest}).
@@ -583,11 +613,32 @@ public final class PlannerKsp {
             Path javaHome,
             int release)
             throws IOException {
+        return kspDigest(
+                project,
+                lock,
+                moduleDir,
+                kotlinVersion,
+                kspVersion,
+                javaHome,
+                release,
+                "jdk:" + JdkToolchain.token(javaHome));
+    }
+
+    private static String kspDigest(
+            JkBuild project,
+            Lockfile lock,
+            Path moduleDir,
+            String kotlinVersion,
+            String kspVersion,
+            Path javaHome,
+            int release,
+            String jdkPart)
+            throws IOException {
         List<String> parts = new ArrayList<>();
         parts.add("kotlin:" + kotlinVersion);
         parts.add("ksp:" + kspVersion);
         parts.add("jvmTarget:" + CompileSupport.kotlinJvmTarget(release, JvmOptions.hostFeature(javaHome)));
-        parts.add("jdk:" + JdkToolchain.token(javaHome));
+        parts.add(jdkPart);
         parts.add("moduleName:" + project.project().name());
         for (String option : kspOptions(project, moduleDir, lock)) parts.add("option:" + option);
         // The round forks with the module's [env], and a KSP processor can read it.

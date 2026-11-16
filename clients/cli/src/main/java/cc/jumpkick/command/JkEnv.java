@@ -12,6 +12,7 @@ import cc.jumpkick.jdk.DefaultGraalPolicy;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkInventory;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkRequirementScan;
 import cc.jumpkick.jdk.JdkResolution;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.jdk.LockPinMatch;
@@ -136,7 +137,8 @@ public final class JkEnv {
                 root.orElse(cwd), /*switch*/
                 null,
                 System.getenv("JK_JDK"),
-                lockPins.jdk(),
+                LockPinMatch.withRequirement(
+                        lockPins.jdk(), root.isPresent() ? JdkRequirementScan.of(root.get()) : null),
                 projectJdk,
                 javaRelease,
                 // The shell hook must not re-export the shell's own JDK as a jk activation, so

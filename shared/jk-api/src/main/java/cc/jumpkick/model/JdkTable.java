@@ -19,27 +19,67 @@ public final class JdkTable {
     private JdkTable() {}
 
     /**
-     * The {@link ToolchainSpec} a table states: a suggestion, or with {@code required} the vendor and
-     * an exact build as required axes (a major or a floor keeps its major as the version to resolve).
+     * The {@link ToolchainSpec} a table states. Without {@code required}: a suggestion (vendor, and a
+     * major or an exact build). With it, every axis it names is required: the vendor, and the
+     * version as written ({@code "21"}: that major; {@code "25.0.4.1"}: that build; {@code
+     * ">=25.0.5"}: that patch or later within its major), which {@link #admits} reads.
      *
-     * @throws IllegalArgumentException for a version that is none of the three forms
+     * @throws IllegalArgumentException for a version that is none of the three forms, or a floor
+     *     without {@code required} (a floor that binds nothing says nothing)
      */
     public static ToolchainSpec spec(@Nullable String vendor, @Nullable String version, boolean required) {
-        String v = version == null ? "" : version.strip();
+        String v = version == null ? "" : version.strip().replace(" ", "");
         String ven = vendor == null ? "" : vendor.strip().toLowerCase(Locale.ROOT);
         if (!ven.isEmpty() && Character.isDigit(ven.charAt(0))) {
             throw new IllegalArgumentException("jdk.vendor = \"" + vendor + "\" must name a vendor, not a version");
         }
-        String resolve = "";
-        boolean exact = false;
-        if (!v.isEmpty()) {
-            int major = major(v);
-            if (major <= 0) throw badVersion(v);
-            exact = !v.startsWith(">=") && v.chars().filter(c -> c == '.').count() >= 2;
-            resolve = exact ? v : Integer.toString(major);
+        if (!v.isEmpty() && major(v) <= 0) throw badVersion(v);
+        boolean floor = v.startsWith(">=");
+        if (floor && !required) {
+            throw new IllegalArgumentException("jdk.version = \"" + v + "\" is a patch floor, which only binds:"
+                    + " add required = true, or write version = \"" + major(v) + "\" for a suggestion");
         }
-        if (!required) return new ToolchainSpec(ven, resolve, "", "");
-        return new ToolchainSpec("", exact ? "" : resolve, ven, exact ? resolve : "");
+        if (required) return new ToolchainSpec("", "", ven, v);
+        return new ToolchainSpec(ven, v, "", "");
+    }
+
+    /**
+     * Whether a JDK of {@code hitVersion} ({@code 25.0.5}, {@code 25.0.5+11-LTS}) meets a required
+     * {@code version}: the same major for {@code "25"}, that patch or later within its major for
+     * {@code ">=25.0.5"}, exactly that build otherwise. An empty requirement admits every JDK.
+     */
+    public static boolean admits(@Nullable String hitVersion, String required) {
+        if (required.isEmpty()) return true;
+        if (hitVersion == null) return false;
+        String hit = hitVersion.contains("+") ? hitVersion.substring(0, hitVersion.indexOf('+')) : hitVersion;
+        if (required.startsWith(">=")) {
+            String floor = required.substring(2);
+            return leading(hit) == leading(floor) && compareDotted(hit, floor) >= 0;
+        }
+        if (required.indexOf('.') < 0) return leading(hit) == leading(required);
+        return hit.equals(required);
+    }
+
+    private static int leading(String v) {
+        int end = 0;
+        while (end < v.length() && Character.isDigit(v.charAt(end))) end++;
+        return end == 0 ? -1 : Integer.parseInt(v.substring(0, end));
+    }
+
+    private static int compareDotted(String a, String b) {
+        String[] x = a.split("[.]");
+        String[] y = b.split("[.]");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int c = Integer.compare(part(x, i), part(y, i));
+            if (c != 0) return c;
+        }
+        return 0;
+    }
+
+    private static int part(String[] p, int i) {
+        if (i >= p.length) return 0;
+        int n = leading(p[i]);
+        return Math.max(n, 0);
     }
 
     /**
@@ -50,7 +90,7 @@ public final class JdkTable {
     public static @Nullable String resolverSpec(@Nullable String vendor, @Nullable String version) {
         if ((vendor == null || vendor.isBlank()) && (version == null || version.isBlank())) return null;
         try {
-            String spec = spec(vendor, version, false).resolverSpec();
+            String spec = spec(vendor, version, true).resolverSpec();
             return spec.isEmpty() ? null : spec;
         } catch (IllegalArgumentException unreadable) {
             return null;

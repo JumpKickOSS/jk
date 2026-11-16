@@ -101,7 +101,11 @@ public final class JdkEnsure {
                 jdksDirOverride,
                 (build != null && build.project() != null) ? build.project().jdk() : null,
                 (build != null && build.project() != null) ? build.project().javaRelease() : 0,
-                lock == null ? null : lock.jdk(),
+                LockPinMatch.withRequirement(
+                        lock == null ? null : lock.jdk(),
+                        (build != null && build.project() != null)
+                                ? build.project().jdkSpec()
+                                : null),
                 warn,
                 allowInstall,
                 progress);
@@ -181,6 +185,18 @@ public final class JdkEnsure {
             warn.accept("could not install " + spec + " (" + reason(e) + "); building on "
                     + own.get().home() + ", the JDK jk runs on");
             return new Outcome(own.get(), Source.ALREADY_PINNED, null);
+        }
+
+        // A required major or patch floor installs the major's newest; one still below the floor
+        // (the feed has nothing newer yet) is not a JDK this project builds on.
+        if (lockJdk != null && lockJdk.hasRequirement()) {
+            Optional<JdkHit> hit = LockPinMatch.hitFor(installed.home(), registry.listHits());
+            if (hit.isEmpty() || !LockPinMatch.satisfies(hit.get(), lockJdk)) {
+                throw new IOException("the project requires JDK " + LockPinMatch.requirementText(lockJdk)
+                        + " (jdk required = true), and the newest jk could install is "
+                        + hit.map(JdkHit::version).orElse(spec) + "; install one that meets it and name it"
+                        + " with --jdk <home>, or change jk.toml's jdk table");
+            }
         }
 
         // A bootstrap install (no JDK was pinned or configured) becomes the

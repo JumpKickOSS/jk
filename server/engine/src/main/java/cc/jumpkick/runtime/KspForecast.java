@@ -163,9 +163,11 @@ final class KspForecast {
         boolean fresh = StepWarnings.kept(in.dir(), CompileWarnings.roundFile(producer))
                 && PlannerKsp.roundStampFresh(outBase, stampInputs, classpath, kspJars, in.release(), digest);
         // The processor path is in the key by content: a processor bump names another record.
-        String key = PlannerKsp.roundKey(outBase, digest, stampInputs, classpath, processorCp, in.identity());
+        String keyDigest = PlannerKsp.roundKeyDigest(in.project(), in.lock(), in.dir(), in.javaHome(), in.release());
+        String key = PlannerKsp.roundKey(outBase, keyDigest, stampInputs, classpath, processorCp, in.identity());
+        // The forecast is no job, so it states what the round's reader accepts itself.
         Map<String, String> outputs = in.actionCache()
-                .lookup(key)
+                .restorable(key, PlannerKsp.roundExpectation(in.javaHome(), in.release(), in.dir()))
                 .map(ActionCache.ActionRecord::outputs)
                 .orElse(null);
         State state = fresh ? State.FRESH : outputs != null ? State.RECORDED : State.RUNS;

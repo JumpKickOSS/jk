@@ -8,7 +8,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ToolchainSpec;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code jdk} is a table, the one spelling of a project's JDK vendor and version (JK-74S9K):
@@ -48,17 +52,39 @@ class JkBuildParserJdkTest {
                 .project()
                 .jdkSpec();
         assertThat(major.requiredVendor()).isEqualTo("corretto");
-        assertThat(major.suggestedVersion()).isEqualTo("21");
+        assertThat(major.requiredVersion()).as("that major, any patch").isEqualTo("21");
         ToolchainSpec exact = parse("jdk = { vendor = \"temurin\", version = \"25.0.4.1\", required = true }")
                 .project()
                 .jdkSpec();
         assertThat(exact.requiredVendor()).isEqualTo("temurin");
         assertThat(exact.requiredVersion()).isEqualTo("25.0.4.1");
-        ToolchainSpec floor = parse("jdk = { version = \">=25.0.5\", required = true }")
-                .project()
-                .jdkSpec();
-        assertThat(floor.requiredVendor()).isEmpty();
-        assertThat(floor.suggestedVersion()).isEqualTo("25");
+        JkBuild floored = parse("jdk = { version = \">=25.0.5\", required = true }");
+        assertThat(floored.project().jdkSpec().requiredVendor()).isEmpty();
+        assertThat(floored.project().jdkSpec().requiredVersion()).isEqualTo(">=25.0.5");
+        assertThat(floored.project().jdkMajor()).isEqualTo(25);
+        assertThat(floored.project().jdk()).as("the resolver's projection").isEqualTo("25");
+    }
+
+    @Test
+    void a_patch_floor_binds_only_with_required() {
+        assertThatThrownBy(() -> parse("jdk = { version = \">=25.0.5\" }"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("add required = true");
+    }
+
+    @Test
+    void the_refusal_of_a_retired_spelling_names_the_file_and_line(@TempDir Path dir) throws Exception {
+        Path manifest = dir.resolve("jk.toml");
+        Files.writeString(
+                manifest, "group = \"com.example\"\nname = \"widget\"\nversion = \"1.0.0\"\njdk = \"=corretto-21\"\n");
+        assertThatThrownBy(() -> JkBuildParser.parse(manifest))
+                .isInstanceOfSatisfying(JkBuildParseException.class, e -> {
+                    assertThat(e.getMessage())
+                            .contains("jdk = { vendor = \"corretto\", version = \"21\", required = true }");
+                    var at = Objects.requireNonNull(e.location());
+                    assertThat(at.file()).endsWith("jk.toml");
+                    assertThat(at.line()).isEqualTo(4);
+                });
     }
 
     @Test

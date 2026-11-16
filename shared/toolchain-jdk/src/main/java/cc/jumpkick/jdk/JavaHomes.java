@@ -8,6 +8,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -18,6 +19,7 @@ import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -56,8 +58,11 @@ public final class JavaHomes {
      * both this walk and whatever the caller does next with the same registry.
      */
     public static Path resolveJavaHome(Path projectDir, JdkRegistry registry) {
+        JdkPin required = null;
         try {
             Lockfile lock = readLockSoft(projectDir);
+            required =
+                    LockPinMatch.withRequirement(lock == null ? null : lock.jdk(), JdkRequirementScan.of(projectDir));
             JkBuild build = readBuildSoft(projectDir);
             // The request's environment, not the daemon's.
             Function<String, @Nullable String> env = BuildEnv.forModule(projectDir);
@@ -65,7 +70,7 @@ public final class JavaHomes {
                     projectDir,
                     SessionContext.current().jdkSpec(),
                     null,
-                    lock == null ? null : lock.jdk(),
+                    required,
                     (build != null && build.project() != null) ? build.project().jdk() : null,
                     (build != null && build.project() != null) ? build.project().javaRelease() : 0,
                     SessionContext.current().javaHome(),
@@ -79,7 +84,17 @@ public final class JavaHomes {
             // fall through to the running JVM
             Log.debug("resolveJavaHome: fall through to the running JVM", e);
         }
-        return runningJavaHome();
+        Path running = runningJavaHome();
+        if (required != null && required.hasRequirement()) {
+            // A requirement nothing installed meets is never settled by jk's own runtime.
+            Optional<JdkHit> own = LockPinMatch.hitFor(running, registry.listHits());
+            if (own.isEmpty() || !LockPinMatch.satisfies(own.get(), required)) {
+                throw new IllegalStateException("the project requires JDK " + LockPinMatch.requirementText(required)
+                        + " (jdk required = true) and no installed JDK meets it: jk jdk install "
+                        + LockPinMatch.installSpec(required));
+            }
+        }
+        return running;
     }
 
     private static @Nullable Lockfile readLockSoft(Path projectDir) {

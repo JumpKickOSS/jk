@@ -263,8 +263,8 @@ an `=` in `[native] graal`) writes one:
 | --- | --- |
 | `jdk = { vendor = "temurin", version = "25" }` | `suggested-vendor`, `suggested-version` |
 | `jdk = { vendor = "temurin", version = "25.0.4", required = true }` | `required-vendor`, `required-version` |
-| `jdk = { vendor = "corretto", version = "25", required = true }` | `required-vendor` + `suggested-version` (no patch to be exact about) |
-| `jdk = { version = ">=25.0.5", required = true }` | `suggested-version` (the major; the floor binds cached results) |
+| `jdk = { vendor = "corretto", version = "25", required = true }` | `required-vendor`, `required-version = "25"` (that major, any patch) |
+| `jdk = { version = ">=25.0.5", required = true }` | `required-version = ">=25.0.5"` (that patch or later within 25) |
 | `[native] graal = "=25.2.4-graalce"` | `required-vendor`, `required-version` (SDKMAN order) |
 
 The fields mix freely, and each axis is written on one side only — a required vendor makes the

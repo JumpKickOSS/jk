@@ -224,6 +224,41 @@ class JdkResolutionTest {
         assertThat(r.wouldInstall()).isFalse();
     }
 
+    /** jdk = { version = ">=25.0.5", required = true }: a CVE floor binds the JDK on every path (JK-74S9K). */
+    @Test
+    void a_required_patch_floor_never_settles_below_it(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        makeJdk(jdks, "temurin-25.0.4");
+        Files.writeString(tmp.resolve(".jdk-version"), "temurin-25");
+        JdkPin floor = new JdkPin("", "", "", ">=25.0.5");
+        var req = req(tmp).lockJdk(floor)
+                .projectJdkSpec("25")
+                .projectJavaRelease(21)
+                .build();
+
+        var built = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(built.jdkOpt()).as("the build does not run on 25.0.4").isEmpty();
+        assertThat(built.wouldInstall()).isTrue();
+        assertThat(built.installSpec()).as("the major's newest").isEqualTo("25");
+
+        var hook = JdkResolution.resolveForHook(req, reg(jdks), gdj(tmp));
+        assertThat(hook.jdkOpt())
+                .as("the shell hook exports nothing below the floor")
+                .isEmpty();
+
+        Path ok = makeJdk(jdks, "temurin-25.0.6");
+        var again = JdkResolution.resolve(req, reg(jdks), gdj(tmp), LATEST_LTS);
+        assertThat(again.jdkOpt().map(InstalledJdk::home)).contains(ok);
+        assertThat(JdkResolution.resolveForHook(req, reg(jdks), gdj(tmp))
+                        .jdkOpt()
+                        .map(InstalledJdk::home))
+                .contains(ok);
+        assertThat(LockPinMatch.installSpec(new JdkPin("", "", "corretto", ">=21.0.4")))
+                .isEqualTo("corretto-21");
+        assertThat(LockPinMatch.installSpec(new JdkPin("", "", "corretto", "21")))
+                .isEqualTo("corretto-21");
+    }
+
     @Test
     void build_would_install_when_a_required_version_is_unmet(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);

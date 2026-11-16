@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import cc.jumpkick.lock.GraalPin;
 import cc.jumpkick.lock.JdkPin;
 import cc.jumpkick.lock.ToolchainPin;
+import cc.jumpkick.model.JdkTable;
 import cc.jumpkick.model.ToolchainSpec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -110,7 +111,7 @@ public final class LockPinMatch {
         for (JdkHit h : installed) {
             if (h != null && satisfies(h, pin)) ok.add(h);
         }
-        return rank(ok, pin.vendor(), pin.version());
+        return rank(ok, pin.vendor(), pin.version().replace(">=", ""));
     }
 
     /** {@link #choose(List, ToolchainPin)} restricted to GraalVM hits. */
@@ -129,9 +130,7 @@ public final class LockPinMatch {
         if (!pin.requiredVendor().isEmpty() && !vendorMatches(hit.vendor(), pin.requiredVendor())) {
             return false;
         }
-        if (!pin.requiredVersion().isEmpty() && !versionEquals(hit.version(), pin.requiredVersion())) {
-            return false;
-        }
+        if (!JdkTable.admits(hit.version(), pin.requiredVersion())) return false;
         return pin.suggestedVersion().isEmpty() || meetsFloor(hit.version(), pin.suggestedVersion());
     }
 
@@ -228,11 +227,33 @@ public final class LockPinMatch {
 
     /** Catalog/install spec for an unsatisfied pin. */
     public static String installSpec(ToolchainPin pin) {
-        if (!pin.requiredVersion().isEmpty()) {
-            String v = pin.requiredVersion();
+        String v = pin.requiredVersion();
+        // An exact build installs that build; a required major or patch floor installs the major's
+        // newest, which the caller holds to the floor once it is on disk.
+        if (!v.isEmpty() && !v.startsWith(">=") && v.indexOf('.') >= 0) {
             return pin.vendor().isEmpty() ? v : pin.vendor() + "-" + v;
         }
-        return installSpec(pin.vendor(), pin.version());
+        return installSpec(pin.vendor(), pin.version().replace(">=", ""));
+    }
+
+    /**
+     * The pin resolution holds a project to: {@code lock}'s, with the manifest's requirement over it
+     * when the manifest states one ({@code jdk = { …, required = true }}). A lock written before the
+     * requirement, or none at all, must not let a build settle on a JDK the manifest refuses.
+     */
+    public static @Nullable JdkPin withRequirement(@Nullable JdkPin lock, @Nullable ToolchainSpec manifest) {
+        if (manifest == null
+                || (manifest.requiredVendor().isEmpty()
+                        && manifest.requiredVersion().isEmpty())) {
+            return lock;
+        }
+        return jdkPin(manifest, null, lock);
+    }
+
+    /** A sentence naming what {@code pin} requires, for messages: {@code temurin >=25.0.5}. */
+    public static String requirementText(ToolchainPin pin) {
+        String t = (pin.requiredVendor() + " " + pin.requiredVersion()).strip();
+        return t.isEmpty() ? "a JDK" : t;
     }
 
     /** Catalog/install spec for an unsatisfied lock pin ({@code temurin-25}, or {@code 25}). */
@@ -260,7 +281,7 @@ public final class LockPinMatch {
         return Optional.empty();
     }
 
-    private static boolean versionEquals(String hit, String locked) {
+    private static boolean versionEquals(@Nullable String hit, String locked) {
         return hit != null && hit.equals(locked);
     }
 

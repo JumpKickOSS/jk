@@ -201,9 +201,15 @@ final class KspArm {
 
         // Before the round reads a source: a source edited while it runs is stale next time.
         long readClock = FreshnessStamp.clockNow(outBase);
+        String keyDigest = roundKeyDigest(
+                project,
+                ctx.require(PARSED_BUILD).lockfile(),
+                in.dir(),
+                ctx.require(JAVA_HOME),
+                ctx.require(PARSED_BUILD).release());
         String key = roundKey(
                 outBase,
-                optionsDigest,
+                keyDigest,
                 round.stampInputs(),
                 round.classpath(),
                 round.processorCp(),
@@ -214,7 +220,7 @@ final class KspArm {
                 key,
                 () -> roundKey(
                         outBase,
-                        optionsDigest,
+                        keyDigest,
                         round.stampInputs(),
                         round.classpath(),
                         round.processorCp(),
@@ -223,6 +229,7 @@ final class KspArm {
         for (String sub : OUTPUT_DIRS) {
             PathUtil.deleteRecursively(outBase.resolve(sub));
         }
+        expectRound(key, ctx.require(JAVA_HOME), ctx.require(PARSED_BUILD).release(), in.dir());
         Optional<ActionCache.ActionRecord> recorded = rerun ? Optional.empty() : actionCache.lookup(key);
         RoundOutcome outcome = RoundOutcome.REPLACED;
         List<CompileWarnings.Kept> said = new ArrayList<>();

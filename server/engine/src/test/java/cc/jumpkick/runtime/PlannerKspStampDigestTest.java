@@ -75,4 +75,30 @@ class PlannerKspStampDigestTest {
                 .as("a KSP2 release change re-runs the round on an unchanged tree")
                 .isNotEqualTo(base);
     }
+
+    /**
+     * The round's key names the Java level as every compile key does; its stamp, which says whether
+     * this checkout's outputs are current, keeps the exact JDK (JK-74S9K).
+     */
+    @Test
+    void the_round_key_names_the_level_and_the_stamp_the_jdk(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Path patchA = fakeJdk(tmp.resolve("a"), "25.0.4.1+1-LTS");
+        Path patchB = fakeJdk(tmp.resolve("b"), "25.0.5+11-LTS");
+        var project = JkBuildParser.parse(PLAIN);
+        assertThat(PlannerKsp.roundKeyDigest(project, LOCK, module, patchA, 25))
+                .isEqualTo(PlannerKsp.roundKeyDigest(project, LOCK, module, patchB, 25));
+        assertThat(PlannerKsp.kspStampDigest(project, LOCK, module, "2.4.10", "2.3.12", patchA, 25))
+                .isNotEqualTo(PlannerKsp.kspStampDigest(project, LOCK, module, "2.4.10", "2.3.12", patchB, 25));
+    }
+
+    private static Path fakeJdk(Path home, String runtime) throws Exception {
+        Files.createDirectories(home.resolve("bin"));
+        String version = runtime.substring(0, runtime.indexOf('+'));
+        Files.writeString(
+                home.resolve("release"),
+                "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"" + version + "\"\nJAVA_RUNTIME_VERSION=\"" + runtime
+                        + "\"\n");
+        return home;
+    }
 }

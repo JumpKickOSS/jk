@@ -115,7 +115,19 @@ public final class RetiredKeys {
     /** Refuse the first retired key {@code root} carries, with its remedy. */
     public static void refuse(TomlTable root) {
         List<String> found = found(root);
-        if (!found.isEmpty()) throw new JkBuildParseException(found.getFirst());
+        if (found.isEmpty()) return;
+        // Located at the key, so the refusal names the file and line to change in one step.
+        for (Retired r : ALL) {
+            for (List<String> path : tables(root, r.table())) {
+                TomlTable at = path.isEmpty() ? root : root.getTable(path);
+                if (at != null && r.key() != null && at.contains(List.of(r.key()))) {
+                    throw JkBuildParseException.at(at, r.key(), found.getFirst());
+                }
+                if (at != null && r.key() == null) throw new JkBuildParseException(found.getFirst());
+            }
+        }
+        if (root.contains("jdk") && !root.isTable("jdk")) throw JkBuildParseException.at(root, "jdk", found.getFirst());
+        throw new JkBuildParseException(found.getFirst());
     }
 
     /** The refusal of every retired key {@code root} carries, in {@link #ALL} order; empty when none. */

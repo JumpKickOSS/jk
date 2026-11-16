@@ -128,20 +128,26 @@ public final class JdkResolution {
         Resolved r;
         if ((r = named(req.switchSpec(), Tier.SWITCH, reg, canInstall, null)) != null) return r;
         if ((r = named(req.envSpec(), Tier.JK_ENV, reg, canInstall, null)) != null) return r;
-        if ((r = jdkVersionFile(req.projectDir(), reg, canInstall)) != null) return r;
         JdkPin lockJdk = req.lockJdk();
         boolean lockRequires = lockJdk != null && lockJdk.hasRequirement();
-        if (lockRequires && (r = lockfile(lockJdk, reg, canInstall, 0)) != null) return r;
+        // A requirement binds every tier that chooses for the project: .jdk-version's JDK counts only
+        // when it meets it (the --jdk switch and JK_JDK, one run's explicit choice, stay above it).
+        if ((r = jdkVersionFile(req.projectDir(), reg, canInstall)) != null
+                && (lockJdk == null || !lockRequires || meets(r, lockJdk, reg))) return r;
+        if (lockJdk != null && lockRequires) {
+            if ((r = lockfile(lockJdk, reg, canInstall, 0)) != null) return r;
+            // Unmet and not installing (the shell hook): export nothing rather than a JDK the build refuses.
+            return Resolved.NONE;
+        }
         // An unsatisfied lock suggestion is a floor, not a skip — on the build path as much as the
         // hook. The tiers that choose for the user may only pick a JDK that still meets it.
         String lockFloor = lockJdk == null || lockJdk.suggestedVersion().isEmpty() ? null : lockJdk.suggestedVersion();
         // The manifest's jdk names the install the user chose; a suggestion only records what built
         // the lock (a workspace's, for a member), so it neither outranks nor floors that choice.
-        if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, lockRequires ? lockFloor : null))
-                != null) return r;
+        if ((r = named(req.projectJdkSpec(), Tier.PROJECT_TOML, reg, canInstall, null)) != null) return r;
         // A suggestion only records what built the lock, so it never picks a JDK too old to compile
         // the manifest's java level: a lock written on 25 must not hold a java = 26 build to 25.
-        if (!lockRequires && (r = lockfile(lockJdk, reg, canInstall, req.projectJavaRelease())) != null) return r;
+        if ((r = lockfile(lockJdk, reg, canInstall, req.projectJavaRelease())) != null) return r;
 
         // project.java floor: only when nothing is explicitly pinned and the
         // requested language level is newer than the latest LTS — then we need a
@@ -318,6 +324,14 @@ public final class JdkResolution {
             return Resolved.install(Tier.LOCKFILE, LockPinMatch.installSpec(pin));
         }
         return null;
+    }
+
+    /** Whether {@code r} found a JDK that meets {@code pin}'s requirement. */
+    private static boolean meets(Resolved r, JdkPin pin, JdkRegistry reg) {
+        Optional<InstalledJdk> jdk = r.jdkOpt();
+        if (jdk.isEmpty()) return false;
+        Optional<JdkHit> hit = LockPinMatch.hitFor(jdk.get().home(), reg.listHits());
+        return hit.isPresent() && LockPinMatch.satisfies(hit.get(), pin);
     }
 
     private static List<JdkHit> atRelease(List<JdkHit> hits, int javaRelease) {

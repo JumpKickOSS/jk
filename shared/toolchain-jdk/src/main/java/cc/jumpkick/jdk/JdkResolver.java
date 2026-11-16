@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.lock.JdkPin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
@@ -32,8 +34,18 @@ public final class JdkResolver {
         if (pin.isEmpty()) return Optional.empty();
         String spec = validatePin(pin.get());
         Optional<InstalledJdk> direct = registry.findBySpec(spec);
-        if (direct.isPresent()) return direct;
-        return new JdkProvisioning(registry).resolve(JdkSpec.parse(spec)).map(JdkProvisioning.Result::jdk);
+        if (direct.isEmpty()) {
+            direct = new JdkProvisioning(registry).resolve(JdkSpec.parse(spec)).map(JdkProvisioning.Result::jdk);
+        }
+        // The project's requirement binds this tier as it binds the build: a pinned JDK below it
+        // gives way to an installed one that meets it, else to none.
+        JdkPin required = LockPinMatch.withRequirement(null, JdkRequirementScan.of(projectDir));
+        if (required == null || direct.isEmpty()) return direct;
+        List<JdkHit> hits = registry.listHits();
+        Optional<JdkHit> pinned = LockPinMatch.hitFor(direct.get().home(), hits);
+        if (pinned.isPresent() && LockPinMatch.satisfies(pinned.get(), required)) return direct;
+        return LockPinMatch.choose(hits, required)
+                .map(h -> new InstalledJdk(JdkRegistry.identifierFor(h.home()), h.home()));
     }
 
     /**

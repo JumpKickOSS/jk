@@ -50,9 +50,14 @@ at or above a level is what `java = N` already says, and taking cached results a
 `java` is refused; a higher one builds that level on it.
 
 Without `required` the table is a suggestion: that JDK is preferred when it is installed, or when
-JumpKick has to install one, and never forced. With `required = true` it binds both which JDK builds
-the module (installed if absent; the build fails, naming the JDK, when it cannot be) and which cached
-results serve it. A workspace root's `jdk` applies to the members that write none
+JumpKick has to install one, and never forced; a patch floor is a requirement or nothing, so it needs
+`required = true`. With `required = true` it binds both which JDK builds the module and which cached
+results serve it, on every path that picks a JDK: build, test, run, the compilers JumpKick forks, the shell
+hook, the IDE model, `jk jdk home` and a `.jdk-version` pin. A JDK below it is never used; when none
+installed meets it, JumpKick installs the newest of that major (a floor) or the build named, and fails,
+naming the requirement, when that cannot be done or still falls short. The shell hook exports nothing
+rather than a JDK the build would refuse. Only `--jdk` and `JK_JDK`, one run's explicit choice, step
+outside it. A workspace root's `jdk` applies to the members that write none
 (`jdk = { workspace = true }` says so outright); a member's own table chooses its JDK, and a root's
 `required = true` still binds the member's cached results.
 
@@ -93,7 +98,8 @@ uses 27: jk jdk install temurin-25, or set [cache] jdk-match = "level"`. `jk exp
 the reason a step will run, and `jk doctor`'s `jdk-patch` row says which major a project builds on and
 which results serve it. Nothing is downloaded for it.
 
-AOT caches, `jlink` images and native images stay keyed on the exact JDK build.
+A KSP round's key names the level the same way. AOT caches, `jlink` images and native images stay
+keyed on the exact JDK build.
 
 Discovery looks at existing installs before downloading from the JetBrains JDK feed (or a mirror of
 it and its vendor hosts: [Config § Tool mirrors](config.md#tool-mirrors)). Each JDK `jk jdk list`
