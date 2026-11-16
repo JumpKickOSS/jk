@@ -41,6 +41,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
@@ -254,7 +255,7 @@ final class GuardKeys {
         List<String> tokens = new ArrayList<>();
         tokens.add("module:" + module);
         tokens.add("facts:" + factsDigest);
-        tokens.add("jdk:" + ActionKey.compileJdkToken(JavaHomes.runningJavaHome()));
+        tokens.add("jdk:" + JdkToolchain.token(JavaHomes.runningJavaHome()));
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
         for (Path classes : siblings.siblingClosureClasses()) tokens.add("sibling:" + ClasspathAbi.token(classes));

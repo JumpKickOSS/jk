@@ -37,7 +37,7 @@ import org.jspecify.annotations.Nullable;
  * <li>the task identifier ({@link #qualifiedTaskId}: the base name plus a location-free tag)
  * <li>jk version
  * <li>{@code --release}, the pinned source encoding, and any extra javac options
- * <li>the compiling JDK's identity ({@link #compileJdkToken})
+ * <li>the compiling JDK's toolchain token ({@link JdkToolchain#token}): vendor, version and build, never its OS or path
  * <li>each source file's module-relative path and SHA-256 (so editing a file invalidates the key,
  *     and two checkouts of the same module compute the same key)
  * <li>a constant {@code mirrored:excluded-unless-rewritten} line, so a record that captured
@@ -208,7 +208,7 @@ public final class ActionKey {
         // newer level (CompilerJdk), so it is that home, not the module's resolved JDK, the key
         // names: a level-only module whose JDK moves compiles the same bytes on the same runtime,
         // and pinning jdk = 21 moves the key because javac 21 is a different compiler.
-        sb.append("jdk:").append(compileJdkToken(request.compilerHome())).append('\n');
+        sb.append("jdk:").append(JdkToolchain.token(request.compilerHome())).append('\n');
         // In argv order, never sorted: options pair with the value that follows them, so
         // `--add-modules a --limit-modules b` and `--add-modules b --limit-modules a` hold the
         // same words and are different compiles.
@@ -305,7 +305,7 @@ public final class ActionKey {
         // it to kotlinc as -jdk-home, and that is where the platform classes a cross-compile links
         // against come from. Switching jdk = 17 to 21 leaves jvmTarget alone, so without this the
         // key never moves and the build restores bytecode linked against the old platform.
-        sb.append("jdk:").append(compileJdkToken(request.javaHome())).append('\n');
+        sb.append("jdk:").append(JdkToolchain.token(request.javaHome())).append('\n');
         // -module-name reshapes internal-member mangling in the output.
         if (request.moduleName() != null) {
             sb.append("moduleName:").append(request.moduleName()).append('\n');
@@ -366,7 +366,7 @@ public final class ActionKey {
                     "");
         }
         result.put("jvmTarget", Integer.toString(request.jvmTarget()));
-        result.put("jdk", compileJdkToken(request.javaHome()));
+        result.put("jdk", JdkToolchain.token(request.javaHome()));
         String moduleName = request.moduleName();
         result.put("moduleName", moduleName == null ? "" : moduleName);
         result.put("args", optionsToken(request.extraArgs()));
@@ -397,7 +397,9 @@ public final class ActionKey {
         sb.append("jk:").append(jkVersion).append('\n');
         sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
         // groovyc runs on, and links against the platform classes of, the engine's own JDK.
-        sb.append("jdk:").append(compileJdkToken(JavaHomes.runningJavaHome())).append('\n');
+        sb.append("jdk:")
+                .append(JdkToolchain.token(JavaHomes.runningJavaHome()))
+                .append('\n');
         sb.append("args:").append(optionsToken(request.extraArgs())).append('\n');
         for (String token : request.env()) sb.append(token).append('\n');
 
@@ -479,7 +481,7 @@ public final class ActionKey {
         result.put("options", optionsToken(request.extraOptions()));
         // The key hashes the compiling JDK, so the why-rebuilt diff has to be able to name it:
         // without this a JDK switch reads as "nothing changed, rebuilt anyway".
-        result.put("jdk", compileJdkToken(request.compilerHome()));
+        result.put("jdk", JdkToolchain.token(request.compilerHome()));
         // Every other line the key hashes, so the diff can name whatever moved it: jk's identity,
         // the compiler worker, the resources a processor reads, the [env] a processor sees.
         result.put(JK_INPUT, BuildIdentity.cacheKeyVersion());
@@ -525,7 +527,13 @@ public final class ActionKey {
         if (!api.isEmpty()) parts.add("dependency ABI changed (" + String.join(", ", api) + ")");
         if (!processors.isEmpty()) parts.add("processor changed (" + String.join(", ", processors) + ")");
         if (compiler) parts.add("compiler changed");
-        for (String setting : settings) parts.add(setting + " changed");
+        for (String setting : settings) {
+            // The JDK by name, so a miss across two hosts on two patches says which two.
+            if (setting.equals("jdk"))
+                parts.add("JDK changed (" + JdkToolchain.describe(prior.get(setting)) + " → "
+                        + JdkToolchain.describe(now.get(setting)) + ")");
+            else parts.add(setting + " changed");
+        }
         return String.join(" · ", parts);
     }
 
@@ -631,58 +639,6 @@ public final class ActionKey {
         } catch (InvalidPathException notAPath) {
             return piece;
         }
-    }
-
-    /**
-     * The JDK as a compiler's output sees it ({@link CompilerIdentity}): its full {@code
-     * JAVA_VERSION} and the content of its {@code jdk.compiler} module. javac, kotlinc, groovyc,
-     * KSP, javadoc and guard keys carry it, so two machines whose JDKs differ only in OS,
-     * architecture, libc, vendor or build host share those keys, and a patch release, which can
-     * change javac's code generator, does not. A home without a release version or a module image
-     * keys its {@link #platformJdkToken}. A null home keys the literal {@code none}, which no real
-     * home produces.
-     */
-    public static String compileJdkToken(@Nullable Path javaHome) throws IOException {
-        if (javaHome == null) return "none";
-        Path abs = javaHome.toAbsolutePath().normalize();
-        Path release = abs.resolve("release");
-        if (!Files.isRegularFile(release)) return installDirToken(abs);
-        String releaseHash = FileHashMemo.contentHash(release);
-        String compiler;
-        try {
-            compiler = CompilerIdentity.of(abs, release, releaseHash);
-        } catch (IOException unreadable) {
-            compiler = null;
-        }
-        return compiler != null ? "javac:" + compiler : releaseHash;
-    }
-
-    /**
-     * The JDK as code running on it sees it: the content of its whole {@code release} file (OS,
-     * architecture, libc, vendor, full version, build). Keys steps whose output embeds, links or
-     * comes from running the platform: jlink, native-image, plugin steps and packagers, test runs.
-     * Content, not path, so a patch upgraded in place still moves the key. A home with no readable
-     * release file keys its install ({@link #installDirToken}); a null home keys {@code none}.
-     */
-    public static String platformJdkToken(@Nullable Path javaHome) throws IOException {
-        if (javaHome == null) return "none";
-        Path abs = javaHome.toAbsolutePath().normalize();
-        Path release = abs.resolve("release");
-        return Files.isRegularFile(release) ? FileHashMemo.contentHash(release) : installDirToken(abs);
-    }
-
-    /**
-     * A release-less home by the content of its {@code lib/modules} image, which holds every
-     * platform class the JDK compiles against (through the hash memo, so it is read once per
-     * identity). A home with no image either is keyed by its whole tree: nothing cheaper names its
-     * content.
-     */
-    private static String installDirToken(Path home) throws IOException {
-        Path modules = home.resolve("lib").resolve("modules");
-        if (Files.isRegularFile(modules))
-            return "modules:"
-                    + FileHashMemo.contentHash(modules.toAbsolutePath().normalize());
-        return "home:" + ClasspathFingerprint.entry(home);
     }
 
     /**

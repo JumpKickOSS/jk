@@ -35,6 +35,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ProjectedFiles;
@@ -586,7 +587,7 @@ public final class PlannerKsp {
         parts.add("kotlin:" + kotlinVersion);
         parts.add("ksp:" + kspVersion);
         parts.add("jvmTarget:" + CompileSupport.kotlinJvmTarget(release, JvmOptions.hostFeature(javaHome)));
-        parts.add("jdk:" + ActionKey.compileJdkToken(javaHome));
+        parts.add("jdk:" + JdkToolchain.token(javaHome));
         parts.add("moduleName:" + project.project().name());
         for (String option : kspOptions(project, moduleDir, lock)) parts.add("option:" + option);
         // The round forks with the module's [env], and a KSP processor can read it.

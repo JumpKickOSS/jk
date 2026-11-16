@@ -6,12 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.JdkToolchain;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -53,6 +54,28 @@ class TestStampJdkTest {
         assertThat(extras(project, module, graal)).isNotEqualTo(extras(project, module, one));
     }
 
+    /**
+     * The stamp names the JDK the suite runs on by vendor, version and build, not by the {@code
+     * release} file, which also names the OS, architecture and libc it was built for: a green
+     * suite on one platform is the same result on another (its platform is the record's HOST), and
+     * a build of the same version is not.
+     */
+    @Test
+    void one_jdk_build_on_two_platforms_stamps_alike_and_another_build_does_not(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("m"));
+        JkBuild project = project(module);
+        Path linux = fakeJdk(tmp.resolve("linux"), "25.0.5", "Eclipse Adoptium", "25.0.5+11-LTS", "Linux", "x86_64");
+        Path mac = fakeJdk(tmp.resolve("mac"), "25.0.5", "Eclipse Adoptium", "25.0.5+11-LTS", "Darwin", "aarch64");
+        Path rebuilt =
+                fakeJdk(tmp.resolve("rebuilt"), "25.0.5", "Eclipse Adoptium", "25.0.5+12-LTS", "Linux", "x86_64");
+        assertThat(extras(project, module, mac))
+                .as("the same JDK build on macOS/aarch64 as on Linux/x86_64")
+                .isEqualTo(extras(project, module, linux));
+        assertThat(extras(project, module, rebuilt))
+                .as("build 12 of 25.0.5 is another runtime than build 11")
+                .isNotEqualTo(extras(project, module, linux));
+    }
+
     @Test
     void the_module_on_its_own_stamps_the_jdk_its_resolution_finds(@TempDir Path tmp) throws Exception {
         Path module = Files.createDirectories(tmp.resolve("m"));
@@ -60,7 +83,7 @@ class TestStampJdkTest {
         TestStampInputs.Facts facts = TestStampInputs.Facts.of(module, project);
         assertThat(facts.javaHome()).isEqualTo(JavaHomes.resolveJavaHome(module));
         assertThat(TestStampInputs.of(facts, ClasspathFingerprint.ON_DISK).extras())
-                .contains("test-jdk:" + ActionKey.platformJdkToken(facts.javaHome()));
+                .contains("test-jdk:" + JdkToolchain.token(facts.javaHome()));
     }
 
     /** The module's stamp extras with its tests run on {@code javaHome}, as the live run and the forecast hand it. */
@@ -87,6 +110,12 @@ class TestStampJdkTest {
     }
 
     private static Path fakeJdk(Path home, String version, String implementor) throws Exception {
+        return fakeJdk(home, version, implementor, null, "Linux", "x86_64");
+    }
+
+    private static Path fakeJdk(
+            Path home, String version, String implementor, @Nullable String runtimeVersion, String os, String arch)
+            throws Exception {
         Path bin = Files.createDirectories(home.resolve("bin"));
         for (String tool : List.of("java", "javac")) {
             Path exe = bin.resolve(tool);
@@ -96,8 +125,17 @@ class TestStampJdkTest {
         Files.writeString(home.resolve("release"), """
                 IMPLEMENTOR="%s"
                 JAVA_VERSION="%s"
-                OS_ARCH="x86_64"
-                """.formatted(implementor, version));
+                %s
+                OS_NAME="%s"
+                OS_ARCH="%s"
+                BUILD_INFO="OS: %s"
+                """.formatted(
+                        implementor,
+                        version,
+                        runtimeVersion == null ? "" : "JAVA_RUNTIME_VERSION=\"" + runtimeVersion + "\"",
+                        os,
+                        arch,
+                        os));
         return home;
     }
 

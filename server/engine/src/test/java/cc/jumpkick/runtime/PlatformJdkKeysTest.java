@@ -6,8 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.JlinkImage;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Jlink;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,9 +17,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Steps whose output embeds or links the runtime key the JDK's whole platform: two homes that
- * compile alike (one compiler, one version) but name another OS and architecture give a jlink image
- * and a native image two keys.
+ * Steps whose output embeds or links the runtime key the platform the JDK is for beside its
+ * toolchain: two homes of one JDK build (one toolchain token) that name another OS and architecture
+ * give a jlink image and a native image two keys.
  */
 class PlatformJdkKeysTest {
 
@@ -27,9 +27,11 @@ class PlatformJdkKeysTest {
     void jlink_and_native_image_keys_differ_across_os_and_arch(@TempDir Path tmp) throws Exception {
         Path linux = home(tmp.resolve("linux"), "Linux", "x86_64");
         Path mac = home(tmp.resolve("mac"), "Darwin", "aarch64");
-        assertThat(ActionKey.compileJdkToken(linux))
-                .as("the two homes compile alike")
-                .isEqualTo(ActionKey.compileJdkToken(mac));
+        assertThat(JdkToolchain.token(linux))
+                .as("the two homes are one toolchain")
+                .isEqualTo(JdkToolchain.token(mac));
+        assertThat(JdkToolchain.target(linux)).isEqualTo("linux-x86_64");
+        assertThat(JdkToolchain.target(mac)).isEqualTo("macos-aarch64");
 
         assertThat(jlinkTokens(linux)).isNotEqualTo(jlinkTokens(mac));
         assertThat(imageKey(tmp, linux)).isNotEqualTo(imageKey(tmp, mac));
@@ -61,7 +63,9 @@ class PlatformJdkKeysTest {
     private static Path home(Path home, String os, String arch) throws IOException {
         Files.createDirectories(home);
         Files.writeString(
-                home.resolve("release"), "JAVA_VERSION=\"25.0.5\"\nOS_NAME=\"" + os + "\"\nOS_ARCH=\"" + arch + "\"\n");
+                home.resolve("release"),
+                "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_RUNTIME_VERSION=\"25.0.5+11-LTS\"\nJAVA_VERSION=\"25.0.5\"\nOS_NAME=\""
+                        + os + "\"\nOS_ARCH=\"" + arch + "\"\n");
         Symlinks.create(
                 home.resolve("lib"),
                 JavaHomes.runningJavaHome().toAbsolutePath().resolve("lib"));

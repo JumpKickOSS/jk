@@ -33,6 +33,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.PortablePath;
 import java.io.IOException;
@@ -413,8 +414,9 @@ public final class PackagingKeys {
         // [manifest] attributes ride inside the facts token — they reach the packager, so they key it.
         tokens.add("facts:" + facts.token());
         // The JDK the packager runs against reaches the body as spec.javaHome and decides the
-        // bytecode it may rewrite or the launcher it embeds, so it keys the output.
-        tokens.add("jdk:" + ActionKey.platformJdkToken(p.javaHome()));
+        // bytecode it may rewrite, so it keys the output: by its toolchain, never its platform, as
+        // packaging is platform-free (architecture.md, the key table).
+        tokens.add("jdk:" + JdkToolchain.token(p.javaHome()));
         // The packager forks with the module's [env] and reads its plugin config, env:NAME values included.
         tokens.addAll(ModuleEnvKeys.plugin(p.project(), p.moduleDir()));
         // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
@@ -682,7 +684,7 @@ public final class PackagingKeys {
                 "sources:" + (readme ? "" : sourcesToken(moduleDir, documented)),
                 "classpath:" + (readme ? "" : classpathAbiToken(classpath, cp)),
                 "options:" + (readme ? "" : tool),
-                "jdk:" + (readme ? "" : ActionKey.compileJdkToken(javaHome)),
+                "jdk:" + (readme ? "" : JdkToolchain.token(javaHome)),
                 "packaging:" + (readme ? "javadoc-readme" : "javadoc"));
         String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAVADOC, javadocJar);
         String jdKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);

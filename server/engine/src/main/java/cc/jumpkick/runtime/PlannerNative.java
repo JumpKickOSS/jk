@@ -41,7 +41,9 @@ import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.RecordToolchain;
 import cc.jumpkick.tool.GraalHomeLookup;
 import cc.jumpkick.tool.NativeImageDriver;
 import java.io.IOException;
@@ -506,9 +508,9 @@ public final class PlannerNative {
             List<Path> metadataDirs,
             ClasspathFingerprint.EntryIdentity identity)
             throws Exception {
-        // The toolchain by its release file, as ActionKey.platformJdkToken spells a JDK; a home with no
-        // release file keys its portable spelling, never the machine's path.
-        String graalTok = ActionKey.platformJdkToken(javaHome);
+        // The toolchain and the platform the image is for: a native binary runs on one OS and
+        // architecture. A home with no release file keys its content, never the machine's path.
+        String graalTok = JdkToolchain.token(javaHome);
         List<String> nativeTokens = new ArrayList<>(List.of(
                 "cp:" + ClasspathFingerprint.of(classpath, identity),
                 "args:" + ActionKey.optionsToken(allArgs),
@@ -516,6 +518,7 @@ public final class PlannerNative {
                 "shared:" + shared,
                 "out:" + out.getFileName(),
                 "graal:" + graalTok,
+                RecordToolchain.TARGET_TOKEN + JdkToolchain.target(javaHome),
                 // Framework mode consumes the whole native-sources tree (computed args,
                 // runner jar) — a plugin-only change to it must miss the cache.
                 "framework:" + (frameworkSources == null ? "" : ClasspathFingerprint.entry(frameworkSources)),

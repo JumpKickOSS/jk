@@ -721,9 +721,10 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Compile classpath | ABI token (`abi:<sha256>` for javac/groovyc, `kt-abi:<sha256>` for kotlinc) | Content-derived; a body-only dependency change keeps the key |
 | Processors / runtime classpath | content identity (`file:<sha256>`, `dir:<sha256>`) | Hex identity, independent of on-disk path |
 | Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
-| Compiling JDK | `jdk:` is `ActionKey.compileJdkToken`: the full `JAVA_VERSION` and the content of the `jdk.compiler` module, its `module-info.class` and version resource left out. javac, kotlinc, groovyc, KSP, javadoc, guard and script keys | Two machines whose JDKs differ only in OS, arch, libc, vendor or build host share it. A patch release does not: an update can change javac's code generator and the `--release` API data in `ct.sym` |
+| JDK | `jdk:` (`test-jdk:` in a run-tests stamp, `graal:` in a native image) is `JdkToolchain.token`, `toolchain:jdk:<vendor>/<runtime version>/<jdk.compiler digest>`: `IMPLEMENTOR`, `JAVA_RUNTIME_VERSION` (version and build) and the content of the `jdk.compiler` module, its `module-info.class` and version resource left out. Every key that names a JDK carries this one token: javac, kotlinc, groovyc, KSP, javadoc, guard, script, plugin steps, packagers, run-tests | Two machines on one JDK build share it whatever their OS, arch, libc, build host or install path. A patch, a rebuild (`+11` to `+12`) or another vendor does not: an update can change javac's code generator, the `--release` API data in `ct.sym` and what a suite computes |
+| Target | `target:` is `JdkToolchain.target`, `<os>-<arch>[-<libc>]` from the `release` file. Only steps whose outputs are for one platform: jlink and native-image (trained caches included). The record names it as `TARGET` | Compile, resources, packaging and code generation are platform-free and carry none. A test result's platform is its record's `HOST`, recorded and not keyed |
+| Unpinned JDK | A module without an exact pin (`java = 25`, or `jdk` without `=` and a full version) compiles on JumpKick's runtime and runs its suites on the JDK the resolution finds, so its keys name this host's build | Hosts share those keys only on the same build. `jk doctor`'s `jdk-patch` row names the exact pin (`jdk = "=temurin-25.0.4.1"`) and `jk explain` names both builds when the JDK moves (`JDK changed (… 25.0.4.1+1-LTS → … 25.0.5+11-LTS)`) |
 | Build info | `[build-info]`'s `git.properties` and Boot's `META-INF/build-info.properties` by their stable entries (`BuildInfoKeys.stableDigest`: the commit, branch, dirty state and times left out) in the run-tests `main:` token and a compile's `res:` token; a suite whose sources name a volatile value keys the files whole (`BuildInfoKeys.namedBy`) | The rule `BuildIdentity.keyId` applies to the engine's `Build-Commit`/`Build-Time`; JK-M9055 |
-| Platform JDK | `ActionKey.platformJdkToken`: the content of the whole `release` file. jlink, native-image, plugin steps and packagers (trained caches included), run-tests stamps | OS, arch, libc and the full build all key it: these outputs embed, link or run the platform |
 
 **CAS addressing:** blobs are `sha256` content-addressed; a remote store can use the same hex
 keys. Local restore remains copy-not-link (see CAS invariant tests).
@@ -735,8 +736,10 @@ keys. Local restore remains copy-not-link (see CAS invariant tests).
 `StepKinds` names them from the task id), `WRITES <class>` (what the record holds, below),
 `CREATED <instant>`, `PRODUCER jk/<cache-key version>`, `HOST <os>-<arch>` (where the outputs
 were made), `TOOLCHAIN toolchain:<kind>:<identity>` and `TARGET <os>-<arch>[-<libc>]` (the platform
-the outputs are for; absent for outputs that run anywhere, so bytecode and jars name none; nothing
-writes either line yet), all statements and never key material, `DERIVED <role> <token>` (the
+the outputs are for; absent for outputs that run anywhere, so bytecode and jars name none; the
+action cache takes the first `toolchain:` token among a record's inputs as its `TOOLCHAIN` and a
+`target:` token as its `TARGET`, `RecordToolchain.withPlatform`), all statements and never key
+material, `DERIVED <role> <token>` (the
 tokens a record's consumers key on, by role: `interface`, the ABI token of a compile's classes or
 a jar; `payload`, a packaging step's one artifact; `content` is reserved for an output's content
 identity, which JumpKick computes from the record alone and so does not write), `WALL <millis>` (the storing step's own time, waits

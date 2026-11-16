@@ -395,14 +395,12 @@ class ActionKeyTest {
         Path modules25 = Files.createDirectories(jdk25.resolve("lib")).resolve("modules");
         Files.writeString(modules21, "image 21");
         Files.writeString(modules25, "image 25");
-        assertThat(ActionKey.compileJdkToken(jdk21)).isNotEqualTo(ActionKey.compileJdkToken(jdk25));
-        assertThat(ActionKey.compileJdkToken(jdk21)).doesNotContain(tempDir.toString());
+        assertThat(JdkToolchain.token(jdk21)).isNotEqualTo(JdkToolchain.token(jdk25));
+        assertThat(JdkToolchain.token(jdk21)).doesNotContain(tempDir.toString());
 
-        String before = ActionKey.compileJdkToken(jdk21);
+        String before = JdkToolchain.token(jdk21);
         Files.writeString(modules21, "image 2X");
-        assertThat(ActionKey.compileJdkToken(jdk21))
-                .as("same size, other content")
-                .isNotEqualTo(before);
+        assertThat(JdkToolchain.token(jdk21)).as("same size, other content").isNotEqualTo(before);
     }
 
     /** A project with a lock: every checkout of it carries the same {@code project-id}. */
@@ -668,7 +666,7 @@ class ActionKeyTest {
             worker.append("worker:").append(token).append('\n');
         assertThat(ActionKey.forJavac("compile-main", request, "0.1.0"))
                 .isEqualTo(Hashing.sha256Hex("task:compile-main\njk:0.1.0\nrelease:25\nencoding:UTF-8\njdk:"
-                        + ActionKey.compileJdkToken(JavaHomes.runningJavaHome()) + "\noptions:\n" + worker
+                        + JdkToolchain.token(JavaHomes.runningJavaHome()) + "\noptions:\n" + worker
                         + "mirrored:excluded-unless-rewritten\n"));
     }
 
@@ -854,7 +852,7 @@ class ActionKeyTest {
         // the same key.
         assertThat(ActionKey.forJavac("compile-main", unpinned(src, tempDir, jdk21), "0.1.0"))
                 .isEqualTo(ActionKey.forJavac("compile-main", unpinned(src, tempDir, jdk23), "0.1.0"));
-        assertThat(ActionKey.compileJdkToken(null)).isEqualTo("none");
+        assertThat(JdkToolchain.token(null)).isEqualTo("toolchain:jdk:none");
     }
 
     @Test
@@ -916,7 +914,7 @@ class ActionKeyTest {
     @Test
     void javac_jdk_identity_is_content_not_path(@TempDir Path tempDir) throws IOException {
         // A point release upgraded in place — same JAVA_HOME, different javac. One renderer
-        // (ActionKey.compileJdkToken) serves forJavac, forKotlinc and both PlannerPlugin arms, so this
+        // (JdkToolchain.token) serves forJavac, forKotlinc and both PlannerPlugin arms, so this
         // property holds for all four or none.
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
@@ -929,8 +927,7 @@ class ActionKeyTest {
         assertThat(after).isNotEqualTo(before);
         // why-rebuilt must be able to name the reason the key moved, or a JDK switch reads as
         // "nothing changed, rebuilt anyway".
-        assertThat(ActionKey.snapshotInputs(javac(src, tempDir, jdk)))
-                .containsEntry("jdk", ActionKey.compileJdkToken(jdk));
+        assertThat(ActionKey.snapshotInputs(javac(src, tempDir, jdk))).containsEntry("jdk", JdkToolchain.token(jdk));
     }
 
     @Test

@@ -18,8 +18,8 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -60,8 +60,8 @@ final class MemoInputs {
             Lockfile lock = Files.isRegularFile(lockPath) ? LockfileReader.read(lockPath) : Lockfile.empty("preflight");
             Path home = TaskForecaster.forecastJavaHome(root, build, lock);
             if (home == null) return null;
-            String token = ActionKey.platformJdkToken(home);
-            if (token == null || token.isBlank() || "none".equals(token)) return null;
+            String token = JdkToolchain.token(home);
+            if (token.isBlank() || token.equals(JdkToolchain.token(null))) return null;
             return token;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

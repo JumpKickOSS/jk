@@ -61,7 +61,17 @@ variables a key read leave the machine (`env:DB_PIN=-`): no value, and no digest
 digest of a short secret can be guessed; the key itself, hashed here from the values, is unchanged. Every record also says when it was made, by
 which JumpKick version, on which host (`linux-x86_64`, `macos-aarch64`, ...), how many bytes each
 output holds, and how long the step that made it worked. The host is a statement about the record,
-not part of its key: class files and jars are the same wherever they are made. A hit on a machine with no history of the step (a fresh checkout, a record
+not part of its key: class files and jars are the same wherever they are made.
+
+A key names a JDK by its build: vendor, version with build number and the content of its compiler
+(`toolchain:jdk:eclipse-adoptium/25.0.4.1+1-LTS/…`), never its OS, architecture or install path, so
+a Linux laptop and a macOS runner on the same Temurin build share compile, packaging, plugin and
+test keys. A jlink image and a native binary are for one platform: their keys and records also name
+it (`TARGET linux-x86_64-gnu`). A module without an exact JDK pin compiles and tests on this host's
+JDK build, so two hosts a patch apart (25.0.4.1 and 25.0.5) share none of its compile or test keys;
+`jk doctor` says so on its `jdk-patch` row and names the pin that fixes it (`jdk =
+"=temurin-25.0.4.1"` in `jk.toml`, which every host then installs), and `jk explain` names both
+builds when a compile reruns for it. A hit on a machine with no history of the step (a fresh checkout, a record
 another machine made) counts what it saved from that time, so `jk history show`'s saved figure and
 its coverage include it.
 

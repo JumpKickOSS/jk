@@ -111,6 +111,7 @@ public final class DoctorCommand implements CliCommand {
         Check cache = checkDirs();
         Check state = checkStateMode();
         Check jdk = checkJdk();
+        Check jdkPatch = check(DoctorChecks.jdkPatch(WorkingDirectory.current(), JkDirs.jdks()));
         Check lock = checkLock();
         Check pins = check(DoctorChecks.pins(WorkingDirectory.current(), JkVersion.VERSION));
         Check shell = checkShell();
@@ -165,6 +166,7 @@ public final class DoctorCommand implements CliCommand {
                             cache,
                             state,
                             jdk,
+                            jdkPatch,
                             lock,
                             pins,
                             shell,
@@ -195,6 +197,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(cache, t);
         printCheck(state, t);
         printCheck(jdk, t);
+        printCheck(jdkPatch, t);
         printCheck(lock, t);
         printCheck(pins, t);
         printCheck(shell, t);
@@ -860,6 +863,7 @@ public final class DoctorCommand implements CliCommand {
             Check cache,
             Check state,
             Check jdk,
+            Check jdkPatch,
             Check lock,
             Check pins,
             Check shell,
@@ -884,6 +888,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("cache", checkJson(cache))
                 .token("state", checkJson(state))
                 .token("jdk", checkJson(jdk))
+                .token("jdk-patch", checkJson(jdkPatch))
                 .token("lock", checkJson(lock))
                 .token("pins", checkJson(pins))
                 .token("shell", checkJson(shell))

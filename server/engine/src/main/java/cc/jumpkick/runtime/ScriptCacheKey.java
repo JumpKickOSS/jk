@@ -6,7 +6,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.script.ScriptHeader;
-import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.JdkToolchain;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -48,7 +48,7 @@ final class ScriptCacheKey {
         }
         // The JDK the compile forks on, and the release it compiles for.
         key.append("jdk:")
-                .append(ActionKey.compileJdkToken(JavaHomes.resolveJavaHome(dir)))
+                .append(JdkToolchain.token(JavaHomes.resolveJavaHome(dir)))
                 .append('\n');
         key.append("release:").append(release(header)).append('\n');
         return Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));

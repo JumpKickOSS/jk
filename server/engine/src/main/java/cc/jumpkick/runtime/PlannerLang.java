@@ -30,8 +30,8 @@ import cc.jumpkick.runtime.base.CompileToolchain;
 import cc.jumpkick.runtime.base.GroovyPluginSetup;
 import cc.jumpkick.runtime.base.KotlinPluginSetup;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.KotlinClasspathAbi;
 import cc.jumpkick.task.LangCompile;
@@ -182,7 +182,7 @@ public final class PlannerLang {
             parts.add("kotlin:" + (kotlinVersion == null ? "" : kotlinVersion));
             parts.add("jvmTarget:" + jvmTarget);
             parts.add("moduleName:" + moduleName);
-            parts.add("jdk:" + ActionKey.compileJdkToken(javaHome));
+            parts.add("jdk:" + JdkToolchain.token(javaHome));
             for (String arg : args) parts.add("arg:" + arg);
             for (KotlinPluginUse p : plugins) {
                 parts.add("plugin:" + p.id() + ":" + p.group() + ":" + p.artifact() + ":" + p.version() + ":"
@@ -419,7 +419,7 @@ public final class PlannerLang {
     /** The JDK groovyc runs on, as its action key spells it: the engine's own. */
     private static String groovyJdkToken() {
         try {
-            return ActionKey.compileJdkToken(JavaHomes.runningJavaHome());
+            return JdkToolchain.token(JavaHomes.runningJavaHome());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

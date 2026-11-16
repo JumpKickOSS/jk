@@ -21,16 +21,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * What a JDK contributes to a key, from two machines: the compile token names the compiler (full
- * version and {@code jdk.compiler} content) and nothing of the host; the platform token names the
- * whole {@code release} file. Each fake home is a {@code release} file beside a link to the running
- * JDK's {@code lib/}, so both read the same real compiler.
+ * What a JDK contributes to a key, from two machines: the toolchain token names the JDK build
+ * (vendor, full runtime version, {@code jdk.compiler} content) and nothing of the host; the target
+ * names the platform the build is for. Each fake home is a {@code release} file beside a link to the
+ * running JDK's {@code lib/}, so both read the same real compiler.
  */
 class JdkTokenPortabilityTest {
 
     private static final String LINUX = """
             IMPLEMENTOR="Eclipse Adoptium"
-            JAVA_VERSION="%s"
+            JAVA_VERSION="%1$s"
+            JAVA_RUNTIME_VERSION="%1$s+11-LTS"
             OS_NAME="Linux"
             OS_ARCH="x86_64"
             LIBC="gnu"
@@ -38,9 +39,11 @@ class JdkTokenPortabilityTest {
             BUILD_INFO="OS: Linux Version: 6.8.0-1064-azure"
             """;
 
+    /** The same Temurin build for another platform: another OS, architecture, libc and build host. */
     private static final String MAC = """
-            IMPLEMENTOR="Amazon.com Inc."
-            JAVA_VERSION="%s"
+            IMPLEMENTOR="Eclipse Adoptium"
+            JAVA_VERSION="%1$s"
+            JAVA_RUNTIME_VERSION="%1$s+11-LTS"
             OS_NAME="Darwin"
             OS_ARCH="aarch64"
             LIBC="default"
@@ -48,32 +51,68 @@ class JdkTokenPortabilityTest {
             BUILD_INFO="OS: Mac OS X Version: 14.7"
             """;
 
+    /** The same version from another vendor, for this platform. */
+    private static final String CORRETTO = """
+            IMPLEMENTOR="Amazon.com Inc."
+            JAVA_VERSION="%1$s"
+            JAVA_RUNTIME_VERSION="%1$s+11-LTS"
+            OS_NAME="Linux"
+            OS_ARCH="x86_64"
+            LIBC="gnu"
+            """;
+
+    /** The same version and vendor, another build of it. */
+    private static final String REBUILT = """
+            IMPLEMENTOR="Eclipse Adoptium"
+            JAVA_VERSION="%1$s"
+            JAVA_RUNTIME_VERSION="%1$s+12-LTS"
+            OS_NAME="Linux"
+            OS_ARCH="x86_64"
+            LIBC="gnu"
+            """;
+
     @Test
-    void two_hosts_on_one_java_version_share_the_compile_token_and_not_the_platform_token(@TempDir Path tmp)
-            throws IOException {
+    void one_jdk_build_on_two_platforms_is_one_toolchain_with_two_targets(@TempDir Path tmp) throws IOException {
         Path linux = home(tmp.resolve("linux"), LINUX, "25.0.5");
         Path mac = home(tmp.resolve("mac"), MAC, "25.0.5");
 
-        assertThat(ActionKey.compileJdkToken(linux))
-                .startsWith("javac:25.0.5:")
+        assertThat(JdkToolchain.token(linux))
+                .startsWith("toolchain:jdk:eclipse-adoptium/25.0.5+11-LTS/")
                 .as("the compiler module was read, not an empty walk")
-                .doesNotEndWith(Hashing.sha256Hex(new byte[0]))
-                .isEqualTo(ActionKey.compileJdkToken(mac));
-        assertThat(ActionKey.platformJdkToken(linux)).isNotEqualTo(ActionKey.platformJdkToken(mac));
+                .doesNotEndWith(Hashing.sha256Hex(new byte[0]).substring(0, 16))
+                .isEqualTo(JdkToolchain.token(mac));
+        assertThat(JdkToolchain.target(linux)).isEqualTo("linux-x86_64-gnu");
+        assertThat(JdkToolchain.target(mac)).isEqualTo("macos-aarch64");
+        assertThat(JdkToolchain.describe(JdkToolchain.token(linux))).isEqualTo("eclipse-adoptium 25.0.5+11-LTS");
     }
 
     @Test
-    void a_patch_release_moves_the_compile_token(@TempDir Path tmp) throws IOException {
-        Path older = home(tmp.resolve("older"), LINUX, "25.0.4");
-        Path newer = home(tmp.resolve("newer"), LINUX, "25.0.5");
+    void a_patch_a_build_and_a_vendor_each_move_the_toolchain(@TempDir Path tmp) throws IOException {
+        String newer = JdkToolchain.token(home(tmp.resolve("newer"), LINUX, "25.0.5"));
 
-        assertThat(ActionKey.compileJdkToken(older)).isNotEqualTo(ActionKey.compileJdkToken(newer));
+        assertThat(JdkToolchain.token(home(tmp.resolve("older"), LINUX, "25.0.4")))
+                .as("patch")
+                .isNotEqualTo(newer);
+        assertThat(JdkToolchain.token(home(tmp.resolve("rebuilt"), REBUILT, "25.0.5")))
+                .as("build")
+                .isNotEqualTo(newer);
+        assertThat(JdkToolchain.token(home(tmp.resolve("corretto"), CORRETTO, "25.0.5")))
+                .as("vendor")
+                .isNotEqualTo(newer);
+    }
+
+    /** The install path is not the JDK: the same build under two directories is one toolchain. */
+    @Test
+    void the_install_path_moves_nothing(@TempDir Path tmp) throws IOException {
+        assertThat(JdkToolchain.token(home(tmp.resolve("a/.jdks/temurin-25"), LINUX, "25.0.5")))
+                .isEqualTo(JdkToolchain.token(home(tmp.resolve("b/opt/java/jdk-25.0.5+11"), LINUX, "25.0.5")))
+                .doesNotContain(tmp.toString());
     }
 
     /**
      * One locked module under two checkout roots, two user homes (its classpath jar and kotlinc's
-     * worker in each home's store) and two JDK homes that differ in OS, architecture, libc, vendor
-     * and build host: javac, kotlinc and package-jar keys are equal. A patch apart, the compile keys
+     * worker in each home's store) and two JDK homes of one build that differ in OS, architecture,
+     * libc and build host: javac, kotlinc and package-jar keys are equal. A patch apart, the compile keys
      * differ and the package key, which names the classes, does not.
      */
     @Test
@@ -92,10 +131,10 @@ class JdkTokenPortabilityTest {
     }
 
     @Test
-    void a_home_without_a_module_image_keys_its_release_file(@TempDir Path tmp) throws IOException {
+    void a_home_without_a_module_image_keys_its_build_without_the_compiler(@TempDir Path tmp) throws IOException {
         Path bare = Files.createDirectories(tmp.resolve("bare"));
         Files.writeString(bare.resolve("release"), LINUX.formatted("25.0.5"));
-        assertThat(ActionKey.compileJdkToken(bare)).isEqualTo(ActionKey.platformJdkToken(bare));
+        assertThat(JdkToolchain.token(bare)).isEqualTo("toolchain:jdk:eclipse-adoptium/25.0.5+11-LTS");
     }
 
     private record Machine(Path module, Path javaHome, Path libJar, Path worker) {}

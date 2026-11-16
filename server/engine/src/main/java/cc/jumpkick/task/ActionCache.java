@@ -608,6 +608,7 @@ public final class ActionCache {
             noteStored(task, key, inputs, storedBytes);
         ActionRecordText.Meta meta = ActionRecordText.Meta.now(
                 StepKinds.of(task), kind, producer(), CachePlatform.current(), workedMillis(), sizes);
+        meta = RecordToolchain.withPlatform(meta, inputs);
         // Only a record that may leave the machine pays for its tokens: here the blobs are on disk.
         if (remote != null && remote.writes())
             meta = meta.withDerived(DerivedTokens.of(meta.kind(), outputs, cas, local::blobPath));

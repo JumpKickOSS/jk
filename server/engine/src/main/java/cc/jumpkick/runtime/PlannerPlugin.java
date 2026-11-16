@@ -44,6 +44,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileStamp;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.RunNotices;
@@ -642,8 +643,9 @@ public final class PlannerPlugin {
         // (d8, aapt2, a compiler plugin) run on and compile against — ProjectFacts
         // carries `release`, which is a different fact entirely. Without this,
         // switching jdk = 17 to 21 moves no plugin step key and every one of the SPI
-        // plugins restores output built against the old platform.
-        tokens.add("jdk:" + ActionKey.platformJdkToken(javaHome));
+        // plugins restores output built against the old platform. By its toolchain, not its OS:
+        // code generation is platform-free (architecture.md, the key table).
+        tokens.add("jdk:" + JdkToolchain.token(javaHome));
         // The step forks with the module's [env] and reads its plugin config, env:NAME values included.
         tokens.addAll(ModuleEnvKeys.plugin(project, in.dir()));
         // The step's CODE is an input: a changed plugin jar must re-run the

@@ -24,9 +24,9 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
-import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.BuildInfoKeys;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
@@ -267,7 +267,9 @@ public record TestStampInputs(
         if (node != null) extras.add(node);
         extras.addAll(SuiteEnvKeys.profileEnv(facts.project(), facts.profileName()));
         // The JDK the suite runs on decides what it computes; a patch update in place moves it too.
-        extras.add("test-jdk:" + ActionKey.platformJdkToken(facts.javaHome()));
+        // Its toolchain (vendor, version, build), never its OS or architecture: a test result's
+        // platform is its record's HOST, not an input (architecture.md, the key table).
+        extras.add("test-jdk:" + JdkToolchain.token(facts.javaHome()));
         return TestStamp.withCompileTest(extras, facts.compileTestKeys());
     }
 

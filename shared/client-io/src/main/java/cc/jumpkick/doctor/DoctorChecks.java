@@ -4,12 +4,14 @@ package cc.jumpkick.doctor;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.JumpKickPins;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.M2Integrity;
 import cc.jumpkick.winhost.HostRow;
@@ -142,6 +144,82 @@ public final class DoctorChecks {
                 "jdk",
                 Status.OK,
                 count[0] + " installs under " + jdksDir + (javaHome != null ? " · JAVA_HOME=" + javaHome : ""));
+    }
+
+    /**
+     * Whether the project that governs {@code project} names the JDK build it compiles and tests
+     * on. Unpinned ({@code java = 25}, or a {@code jdk} without {@code =} and a full version), a
+     * module compiles on this host's newest JDK of the major and its suites run on the JDK the
+     * resolution finds here, and every compile and run-tests key names that build: a host on another
+     * patch shares no key with this one. Not a fault, so never a warning; the row says so and names
+     * the exact pin, after the newest install of the major under {@code jdksDir}, that makes every
+     * host compile on one build.
+     */
+    public static HostRow jdkPatch(Path project, Path jdksDir) {
+        Path owner = LockPaths.lockOwnerDir(project);
+        Path manifest = ManifestPaths.manifestIn(owner);
+        if (!Files.isRegularFile(manifest)) return row("jdk-patch", Status.OK, "no jk.toml to check");
+        TomlScan scan = TomlScan.scan(manifest, "jdk", "jdk-version", "java");
+        String jdk = scan.get("jdk");
+        String version = scan.get("jdk-version");
+        String pin = exactBuild(jdk) ? jdk : exactBuild(version) ? version : null;
+        if (pin != null) {
+            return row(
+                    "jdk-patch",
+                    Status.OK,
+                    "pinned to " + pin.substring(1) + ": every host compiles and tests on that JDK build");
+        }
+        int major = scan.getInt("java", 25);
+        String newest = newestInstall(jdksDir, "temurin-" + major + ".");
+        return new HostRow(
+                "jdk-patch",
+                "jdk-patch",
+                Status.OK,
+                "not pinned to a JDK build: modules compile and test on this host's, and a host on another"
+                        + " patch shares no compile or test key with this one (jk explain names the JDK when it moves)",
+                "pin one in jk.toml for a shared cache: jdk = \"="
+                        + (newest != null ? newest : "temurin-" + major + ".0.N") + "\"");
+    }
+
+    /** {@code =<vendor>-<a>.<b>.<c>} or {@code =<a>.<b>.<c>}: an exact pin down to the patch. */
+    static boolean exactBuild(@Nullable String spec) {
+        if (spec == null || !spec.startsWith("=")) return false;
+        String v = spec.substring(spec.lastIndexOf('-') + 1);
+        return v.chars().filter(c -> c == '.').count() >= 2;
+    }
+
+    /** The newest install under {@code jdksDir} whose directory name starts with {@code prefix}, by version. */
+    private static @Nullable String newestInstall(Path jdksDir, String prefix) {
+        List<String> names = new ArrayList<>();
+        try {
+            PathUtil.forEachChild(jdksDir, (child, attrs) -> {
+                String name = child.getFileName().toString();
+                if (name.startsWith(prefix) && !Files.isSymbolicLink(child)) names.add(name);
+                return true;
+            });
+        } catch (IOException unreadable) {
+            return null;
+        }
+        return names.stream().max(DoctorChecks::compareVersions).orElse(null);
+    }
+
+    private static int compareVersions(String a, String b) {
+        String[] x = a.substring(a.indexOf('-') + 1).split("\\.");
+        String[] y = b.substring(b.indexOf('-') + 1).split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int c = Integer.compare(number(x, i), number(y, i));
+            if (c != 0) return c;
+        }
+        return 0;
+    }
+
+    private static int number(String[] parts, int i) {
+        if (i >= parts.length) return 0;
+        try {
+            return Integer.parseInt(parts[i].replaceAll("\\D.*", ""));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     /** The lock that governs {@code project}: present and of this format, with its artifact count. */

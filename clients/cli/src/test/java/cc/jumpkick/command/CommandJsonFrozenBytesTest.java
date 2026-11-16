@@ -176,6 +176,7 @@ class CommandJsonFrozenBytesTest {
                         ok,
                         fail,
                         ok,
+                        ok,
                         warn,
                         ok,
                         warn,
@@ -198,6 +199,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"cache\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"jdk\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
+                        + "\"jdk-patch\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"lock\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"pins\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
@@ -241,7 +243,7 @@ class CommandJsonFrozenBytesTest {
                 "secret-service",
                 null);
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings,
+                        ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings,
                         logins, List.of()))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
@@ -282,6 +284,7 @@ class CommandJsonFrozenBytesTest {
                         ok,
                         ok,
                         ok,
+                        ok,
                         0,
                         0,
                         0,
@@ -305,6 +308,7 @@ class CommandJsonFrozenBytesTest {
                 new HostRow("smart-app-control", "smart app control", HostRow.Status.WARN, "on", "turn it off"),
                 new HostRow("arch", "arch", HostRow.Status.OK, "AMD64, nothing emulated", null));
         String json = DoctorCommand.reportJson(
+                ok,
                 ok,
                 ok,
                 ok,

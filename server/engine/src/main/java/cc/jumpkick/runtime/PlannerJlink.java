@@ -24,8 +24,10 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ParsedBuild;
+import cc.jumpkick.task.RecordToolchain;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -146,7 +148,8 @@ final class PlannerJlink {
 
     /**
      * The key's inputs: the jars, the JDK and every key of the table. The image embeds the JDK's
-     * own runtime, so the JDK keys by its whole platform ({@link ActionKey#platformJdkToken}).
+     * own runtime, so the JDK keys by its toolchain and the platform it is for ({@link
+     * JdkToolchain#target}).
      */
     static List<String> tokens(
             String jarToken,
@@ -164,7 +167,8 @@ final class PlannerJlink {
                 "libs:" + libsToken,
                 "names:" + String.join(",", libNames),
                 "main:" + mainClass,
-                "jdk:" + ActionKey.platformJdkToken(javaHome),
+                "jdk:" + JdkToolchain.token(javaHome),
+                RecordToolchain.TARGET_TOKEN + JdkToolchain.target(javaHome),
                 "release:" + release,
                 "modules:" + String.join(",", config.modules()),
                 "strip-debug:" + config.stripDebug(),
