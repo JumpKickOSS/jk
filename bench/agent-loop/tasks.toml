@@ -251,3 +251,26 @@ answer = ["AndroidPlugin.register", "AndroidPlugin.run", "AntlrPreset.build", "A
           "QuarkusPlugin.runTestModel", "QuarkusPlugin.test", "R8Step.run", "SpringBootPlugin.build",
           "SpringBootPlugin.run", "SpringBootPlugin.runAot", "TaglibPreset.build", "TaglibPreset.run",
           "TaskExec.java", "TaskExec.tool", "TestConfigStep.run"]
+
+# Tier 2's rename traps (JK-N63YH), a sliver: run each with --arm jk --arm jk-nograph, never the whole
+# tier. The test runs name their classes: petclinic's Postgres and MySQL tests need Docker.
+[tasks.petclinic-rename-telephone]
+repo   = "spring-petclinic"
+kind   = "rename"
+tools  = ["jk"]
+prompt = """
+Rename the `telephone` property of `Owner` to `phone` everywhere it is used (the field, its getter
+and setter, the templates and the tests), but keep the existing `telephone` database column: the
+data already stored must still load.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "PhoneColumnTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
+
+[tasks.petclinic-rename-owner-customer]
+repo   = "spring-petclinic"
+kind   = "rename"
+tools  = ["jk"]
+prompt = """
+Rename the class `Owner` to `Customer`, its file too, and update every use, tests included. Keep the
+`owners` table and every URL as they are.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "CustomerRenameTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests", "-S", "PetControllerTests", "-S", "VisitControllerTests"]
