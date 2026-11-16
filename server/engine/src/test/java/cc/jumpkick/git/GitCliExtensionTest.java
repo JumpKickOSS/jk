@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.model.GitRefSpec;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Tag;
@@ -58,10 +60,16 @@ class GitCliExtensionTest {
         engine.put("GIT_CONFIG_GLOBAL", dir.resolve("gitconfig").toString());
 
         Set<String> allowed = new HashSet<>();
-        Set<String> seen = WorkerEnv.withEngineEnvironment(engine, () -> {
-            allowed.addAll(WorkerEnv.strict().environment().keySet());
-            return new HashSet<>(backend.listRefs(source()).tags());
-        });
+        // The caller's shell is named too, holding PATH alone: with none, a request falls back to the
+        // test JVM's own environment, whose GIT_CONFIG_GLOBAL is the sandbox's (TestEnv) and, as a
+        // caller's GIT_* setting, rightly reaches git; this case is about the engine's.
+        Map<String, String> caller = Map.of("PATH", Objects.requireNonNull(System.getenv("PATH")));
+        Set<String> seen = WorkerEnv.withEngineEnvironment(
+                engine,
+                () -> RequestShell.where(caller, () -> {
+                    allowed.addAll(WorkerEnv.strict().environment().keySet());
+                    return new HashSet<>(backend.listRefs(source()).tags());
+                }));
         allowed.addAll(Set.of("GIT_TERMINAL_PROMPT", "GIT_PAGER", "LC_ALL", "SSH_AUTH_SOCK"));
         seen.removeAll(SHELL_OWN);
 
