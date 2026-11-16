@@ -103,6 +103,9 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
 
     @Override
     public void testClass(String step, TestClassResult result) {
+        // A replayed class is history's row, not news: an up-to-date suite of hundreds of classes
+        // would otherwise print a line for each.
+        if (result.replayed()) return;
         line(JsonlShape.classFinish(step, result));
     }
 

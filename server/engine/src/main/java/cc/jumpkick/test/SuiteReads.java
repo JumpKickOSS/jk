@@ -94,12 +94,33 @@ public final class SuiteReads {
             </configuration>
             """;
 
-    /** Empty {@code dir} and write the recording settings into it; returns the flag every suite JVM takes. */
+    /** The events only the class telemetry reads ({@link TestTelemetry}). */
+    private static final String CLASS_EVENTS = """
+              <event name="jdk.NativeLibraryLoad">
+                <setting name="enabled">true</setting>
+                <setting name="stackTrace">false</setting>
+                <setting name="threshold">0 ms</setting>
+              </event>
+              <event name="jk.TestClass">
+                <setting name="enabled">true</setting>
+                <setting name="stackTrace">false</setting>
+                <setting name="threshold">0 ms</setting>
+              </event>
+            """;
+
+    /**
+     * Empty {@code dir} and write the recording settings into it; returns the flag every suite JVM
+     * takes. Besides what keys the suite, the recording carries each test class's window ({@code
+     * jk.TestClass}, from the test runner) and the native libraries loaded, which {@link ClassReads}
+     * attributes to the classes.
+     */
     public static String prepare(Path dir) throws IOException {
         PathUtil.deleteRecursively(dir);
         Files.createDirectories(dir);
         Path settings = dir.resolve("reads.jfc");
-        Files.writeString(settings, SETTINGS, StandardCharsets.UTF_8);
+        String settingsText =
+                TestTelemetry.on() ? SETTINGS.replace("</configuration>", CLASS_EVENTS + "</configuration>") : SETTINGS;
+        Files.writeString(settings, settingsText, StandardCharsets.UTF_8);
         return "-XX:StartFlightRecording=settings=" + jfrPath(settings) + ",filename=" + jfrPath(dir)
                 + ",dumponexit=true";
     }

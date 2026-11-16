@@ -15,6 +15,9 @@ import java.util.List;
  *     list), empty when unknown
  * @param slow the class's methods at or over {@link SlowestTests#SLOW_MS}, longest first, at most
  *     {@link SlowestTests#TOP}
+ * @param replayedFrom 0 for a class that ran in this run; for one whose last outcome was replayed
+ *     instead, when that outcome was recorded, in epoch millis ({@link #REPLAYED_UNDATED} when the
+ *     record does not say)
  */
 public record TestClassResult(
         String module,
@@ -24,10 +27,32 @@ public record TestClassResult(
         int skipped,
         long durationMs,
         String tier,
-        List<SlowMethod> slow) {
+        List<SlowMethod> slow,
+        long replayedFrom) {
+
+    /** {@link #replayedFrom} of a replayed class whose record does not say when it ran. */
+    public static final long REPLAYED_UNDATED = -1;
 
     public TestClassResult {
         slow = List.copyOf(slow);
+    }
+
+    /** A class that ran in this run. */
+    public TestClassResult(
+            String module,
+            String className,
+            int tests,
+            int failed,
+            int skipped,
+            long durationMs,
+            String tier,
+            List<SlowMethod> slow) {
+        this(module, className, tests, failed, skipped, durationMs, tier, slow, 0);
+    }
+
+    /** Whether this class's outcome was replayed rather than run. */
+    public boolean replayed() {
+        return replayedFrom != 0;
     }
 
     /** One test method and its wall in milliseconds. */

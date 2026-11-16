@@ -21,6 +21,14 @@ class SlowestTestsTest {
     }
 
     @Test
+    void a_replayed_class_ranks_nothing_since_another_run_spent_its_wall() {
+        SlowestTests slowest = new SlowestTests();
+        slowest.add(new TestClassResult(
+                "g:a", "demo.A", 1, 0, 0, 9_000, "fast", List.of(new TestClassResult.SlowMethod("a", 8_000)), 1L));
+        assertThat(slowest.ranking().isEmpty()).isTrue();
+    }
+
+    @Test
     void the_top_classes_and_methods_rank_longest_first_across_classes() {
         SlowestTests slowest = new SlowestTests();
         for (int i = 1; i <= 7; i++) {
