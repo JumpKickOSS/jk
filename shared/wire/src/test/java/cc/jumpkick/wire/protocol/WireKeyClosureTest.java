@@ -178,10 +178,30 @@ class WireKeyClosureTest {
 
     private static final Pattern MAP_PUT = Pattern.compile("\\.put\\(\\s*\"([^\"]+)\"\\s*,");
 
-    private static final Pattern REQUEST_FIELD = Pattern.compile(
-            "(?:\\.|\\b)(?:bool|number|string|array|map|token|optionalTrue|optionalString|optionalNonBlankString"
-                    + "|optionalNonEmptyString|optionalNumber|optionalArray|optionalMap|optionalToken)"
-                    + "\\(\\s*\"([^\"]+)\"\\s*,");
+    /**
+     * The typed field calls on {@link RequestJson}: {@code bool("key", …)}, {@code
+     * optionalString("key", …)} and the rest, each name a whole word followed at once by its paren.
+     * Found by name at each {@code (}, not by a regex alternation tried at every character: that
+     * alternation ran on every production file and was most of this test's time (JK-YFNCP).
+     */
+    private static final Set<String> REQUEST_FIELD_CALLS = Set.of(
+            "bool",
+            "number",
+            "string",
+            "array",
+            "map",
+            "token",
+            "optionalTrue",
+            "optionalString",
+            "optionalNonBlankString",
+            "optionalNonEmptyString",
+            "optionalNumber",
+            "optionalArray",
+            "optionalMap",
+            "optionalToken");
+
+    /** The first argument of a request field call, a string literal followed by a comma. */
+    private static final Pattern REQUEST_FIELD_KEY = Pattern.compile("\\s*\"([^\"]+)\"\\s*,");
 
     /** Every key read as a string literal — the second argument of a {@code Jsonl} reader call. */
     private static Set<String> readKeys(String body) {
@@ -208,9 +228,20 @@ class WireKeyClosureTest {
             Matcher put = MAP_PUT.matcher(body);
             while (put.find()) keys.add(put.group(1));
         }
-        Matcher requestField = REQUEST_FIELD.matcher(body);
-        while (requestField.find()) keys.add(requestField.group(1));
+        Matcher requestField = REQUEST_FIELD_KEY.matcher(body);
+        for (int paren = body.indexOf('('); paren >= 0; paren = body.indexOf('(', paren + 1)) {
+            int start = paren;
+            while (start > 0 && isWordChar(body.charAt(start - 1))) start--;
+            if (start == paren || !REQUEST_FIELD_CALLS.contains(body.substring(start, paren))) continue;
+            requestField.region(paren + 1, body.length());
+            if (requestField.lookingAt()) keys.add(requestField.group(1));
+        }
         return keys;
+    }
+
+    /** A regex word character ({@code \w}), so a call name starts where {@code \b} would put it. */
+    private static boolean isWordChar(char c) {
+        return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
     }
 
     /**
