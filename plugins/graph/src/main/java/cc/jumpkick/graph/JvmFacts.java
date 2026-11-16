@@ -11,6 +11,7 @@ import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
+import cc.jumpkick.codegraph.extract.EnvVars;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -322,6 +323,16 @@ final class JvmFacts {
         for (CallSite site : m.calls()) {
             for (String literal : site.literals()) configKeys(literal, from, site.line(), mentions);
             mentions.addAll(JvmRoutes.uses(from, site));
+            String variable =
+                    site.owner().equals("java/lang/System") && site.name().equals("getenv")
+                            ? site.literalBefore()
+                            : null;
+            if (variable != null && !variable.isEmpty()) {
+                GraphNode anchor = Anchors.node(Anchors.ENV, variable);
+                nodes.merge(anchor.id(), anchor, Anchors::preferred);
+                edges.add(Anchors.edge(
+                        from, Anchors.ENV, variable, Relations.USES, Confidence.DECLARED, rel, site.line()));
+            }
         }
         return from;
     }
@@ -439,10 +450,11 @@ final class JvmFacts {
                     }
                     Matcher p = PLACEHOLDER.matcher(value);
                     while (p.find()) {
-                        GraphNode anchor = Anchors.node(Anchors.CONFIG, p.group(1));
+                        // ${DATABASE_URL} names a variable; ${shop.currency} a key.
+                        String kind = EnvVars.isEnvName(p.group(1)) ? Anchors.ENV : Anchors.CONFIG;
+                        GraphNode anchor = Anchors.node(kind, p.group(1));
                         nodes.merge(anchor.id(), anchor, Anchors::preferred);
-                        edges.add(Anchors.edge(
-                                from, Anchors.CONFIG, p.group(1), Relations.USES, Confidence.DECLARED, rel, 0));
+                        edges.add(Anchors.edge(from, kind, p.group(1), Relations.USES, Confidence.DECLARED, rel, 0));
                     }
                 }
             }

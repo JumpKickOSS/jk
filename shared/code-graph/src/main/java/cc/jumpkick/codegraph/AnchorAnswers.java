@@ -154,8 +154,12 @@ final class AnchorAnswers {
             lines.add("dropped or renamed away:");
             for (GraphEdge e : drops) line(e, "  ", lines);
         }
+        bindings(id, lines);
         if (defs.isEmpty()) lines.add("No file defines it.");
-        if (uses.isEmpty()) lines.add("Nothing uses it.");
+        boolean binds = graph.incident(id).stream()
+                .anyMatch(
+                        e -> e.relation().equals(Relations.BINDS) && e.source().equals(id));
+        if (uses.isEmpty() && !binds) lines.add("Nothing uses it.");
         if (grades.containsKey("inferred")) {
             lines.add("An inferred use was matched by text and nothing checked it; declared ones are read from"
                     + " annotations and definition files.");
@@ -177,6 +181,25 @@ final class AnchorAnswers {
                 || lower.endsWith(".scala")
                 || lower.contains("/resources/");
         return set == Modules.SourceSet.TEST && jvm ? set : Modules.SourceSet.OTHER;
+    }
+
+    /**
+     * The anchors {@code id} binds to or is bound from ({@link Relations#BINDS}: a variable and the key
+     * it sets): for a variable, each key with its definitions and uses; for a key, each variable with
+     * the lines that set it.
+     */
+    private void bindings(String id, List<String> lines) {
+        for (GraphEdge b : graph.incident(id)) {
+            if (!b.relation().equals(Relations.BINDS)) continue;
+            boolean out = b.source().equals(id);
+            String other = out ? b.target() : b.source();
+            List<GraphEdge> defs = edges(other, Relations.DEFINES);
+            List<GraphEdge> uses = out ? edges(other, Relations.USES) : List.of();
+            lines.add((out ? "sets " : "set by ") + GraphQuery.clean(other) + GraphTools.confidence(b) + ": "
+                    + count(defs.size(), "definition") + (out ? ", " + count(uses.size(), "use") : "") + ":");
+            for (GraphEdge e : defs) line(e, "    ", lines);
+            for (GraphEdge e : uses) line(e, "    ", lines);
+        }
     }
 
     /** The edges {@code relation} into anchor {@code id} inside the scope, by file and line. */
@@ -206,7 +229,9 @@ final class AnchorAnswers {
                 ? ""
                 : context.startsWith("field ") ? "  " + GraphQuery.clean(context) : "  as " + GraphQuery.clean(context);
         lines.add(indent + who + at + written + GraphTools.confidence(e));
-        lines.addAll(tools.quotes(e).stream().limit(1).toList());
+        // The line that sets a variable holds its value, which may be a secret: name the place, quote nothing.
+        boolean setsVariable = e.relation().equals(Relations.DEFINES) && Anchors.ENV.equals(Anchors.kindOf(e.target()));
+        if (!setsVariable) lines.addAll(tools.quotes(e).stream().limit(1).toList());
     }
 
     private static String count(int n, String noun) {

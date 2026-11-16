@@ -24,6 +24,11 @@ public final class Relations {
     public static final String DEFINES = "defines";
     /** A file to the anchor it removes or renames away: a migration's {@code DROP} or {@code RENAME}. */
     public static final String DROPS = "drops";
+    /**
+     * An environment variable to the configuration key it sets under Spring's relaxed binding:
+     * {@code SPRING_DATASOURCE_URL} to {@code spring.datasource.url}.
+     */
+    public static final String BINDS = "binds";
 
     public static final String RATIONALE_FOR = "rationale_for";
     public static final String CONFIGURES = "configures";

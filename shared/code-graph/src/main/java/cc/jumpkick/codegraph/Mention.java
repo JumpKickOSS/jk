@@ -36,7 +36,7 @@ public record Mention(
         return switch (kind) {
             case MODULE -> Relations.IMPORTS_FROM;
             case MEMBER -> Relations.CALLS;
-            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN -> Relations.USES;
+            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN, ENV -> Relations.USES;
             default -> Relations.REFERENCES;
         };
     }
@@ -75,6 +75,8 @@ public record Mention(
          * A SQL column a query names: {@code orders.status} on its table, or {@code status@orders,items}
          * on whichever of the query's tables has it, inferred for one and ambiguous for several.
          */
-        COLUMN
+        COLUMN,
+        /** An environment variable a script or YAML value reads, {@code $DATABASE_URL}: linked only to one something sets or reads, inferred. */
+        ENV
     }
 }

@@ -35,7 +35,8 @@ class.
 | Markdown, AsciiDoc | pages, headings | `contains`, links to other files, `references` to the code a code span names |
 | Spring `application*`/`bootstrap*` YAML and properties | one [anchor](#anchors) per key, however many profile files set it | `defines` from each file that sets it; `uses` from code reading `${key}` in an annotation (`@Value`), `@ConfigurationProperties` and key-shaped string literals |
 | HTTP handlers (compiled classes): Spring `@RequestMapping` and its shortcuts, JAX-RS `@Path` with `@GET` and the rest, Micronaut `@Controller` with `@Get` and the rest; OpenAPI YAML `paths` | one [route anchor](#routes) per method and path | `defines` from the handler method or the document; `uses` from MockMvc and RestAssured calls, `@HttpExchange` clients, path literals in code, front-end `http.get`/`fetch` calls, and URLs to this service in scripts, workflows, config and Markdown |
-| Shell scripts (`.sh`, `.bash`) | | `uses` of routes their command lines request |
+| Shell scripts (`.sh`, `.bash`) | | `uses` of routes their command lines request; `defines` of the variables they `export`, `uses` of the ones they read |
+| `.env` files, Dockerfiles (`ENV`, `ARG`), compose `environment:`, workflow and Kubernetes `env:` | one [variable anchor](#environment-variables) each | `defines` from each file that sets it; `uses` from `${VAR}`/`$VAR`, Spring placeholders, `System.getenv` |
 | `jk.toml`, `pom.xml`, Gradle, version catalogs, `package.json` | dependencies | `depends_on`, workspace and Maven modules |
 | XML, `META-INF/services`, `*.imports`, JSON | | `references` to every class they name |
 | SQL migrations and schema files; Liquibase XML and YAML changelogs | one [table and column anchor](#tables-and-columns) each | `defines` from `CREATE TABLE`, `ALTER TABLE … ADD`/`RENAME`/`ALTER COLUMN` and Liquibase changes; `drops` from `DROP` and the old name of a rename; `uses` from indexes and foreign keys |
@@ -50,8 +51,8 @@ and an answer marks them `(inferred)`.
 ## Anchors
 
 An anchor is a node for something code and other files both name without a compiler between
-them: configuration keys, HTTP routes, and SQL tables and columns today; environment variables
-and CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
+them: configuration keys, environment variables, HTTP routes, and SQL tables and columns today;
+CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
 ```bash
@@ -127,6 +128,23 @@ answers `No file defines it.`. A column with no use answers `Nothing uses it.`, 
 promise: a name assembled at run time is not seen. Not read yet: JPQL and HQL (entity names, not
 tables), Spring Data's derived queries, a custom naming strategy, and SQL in Kotlin or Groovy
 string templates.
+
+### Environment variables
+
+A variable is `env:<NAME>`, case kept. Each file that sets it is a definition, declared: a `.env`
+file, a Dockerfile's `ENV` and `ARG`, a script's `export`, compose's `environment:` (map or list),
+a workflow's `env:` and a Kubernetes container's `env:` entries. Reads: `System.getenv("NAME")`, a
+`${NAME}` placeholder in a Spring config file or `@Value`, and `${NAME}`/`$NAME` in a Dockerfile are
+declared; `$NAME` in a script, a workflow step or another YAML value is inferred and links only to a
+variable something sets or reads. Variables every shell has (`HOME`, `PATH`, …) are left out.
+
+`jk graph callers env:FEATURE_X` on a variable only code reads answers `No file defines it.`; one a
+`.env` sets and nothing reads, `Nothing uses it.`. A variable named as a Spring key under relaxed
+binding (`SPRING_DATASOURCE_URL`) shows the key it sets and that key's definitions and uses (`sets
+config:spring.datasource.url (inferred)`), and the key's answer names the variables that set it;
+the binding is inferred because nothing says the program is a Spring one. Only names enter the
+graph: no value of any variable is read into it, so a `.env` holding secrets contributes their
+names alone, and an answer names the line that sets a variable without quoting it.
 
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the

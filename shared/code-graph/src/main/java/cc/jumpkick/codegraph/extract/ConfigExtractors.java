@@ -42,6 +42,7 @@ final class ConfigExtractors {
     private static final Pattern TOML_TABLE = Pattern.compile("^\\s*\\[\\[?\\s*([^\\]]+?)\\s*]]?\\s*(?:#.*)?$");
     private static final Pattern TOML_KEY = Pattern.compile("^\\s*([A-Za-z0-9_.\\-\"':]+)\\s*=\\s*(.*)$");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+    private static final Pattern ENV_ENTRY = Pattern.compile("^\\s*-\\s+[A-Z_][A-Z0-9_]*\\s*(?:=|$)");
     private static final Pattern OPENAPI = Pattern.compile("(?m)^(?:openapi|swagger)\\s*:");
     private static final Set<String> HTTP_METHODS =
             Set.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE");
@@ -64,6 +65,17 @@ final class ConfigExtractors {
                 continue;
             }
             Matcher m = YAML_KEY.matcher(line);
+            if (ENV_ENTRY.matcher(line).find()) {
+                // A compose environment list entry, - VAR=value: a variable set, never a key.
+                int indent = line.indexOf('-') + 2;
+                while (!indents.isEmpty() && indents.getLast()[0] >= indent) {
+                    indents.removeLast();
+                    path.removeLast();
+                }
+                if (!spring) EnvVars.yamlListEntry(b, path, line, i + 1);
+                values(b, line, i + 1, spring);
+                continue;
+            }
             if (m.matches()) {
                 int indent = m.group(1).length() + (line.stripLeading().startsWith("- ") ? 2 : 0);
                 while (!indents.isEmpty() && indents.getLast()[0] >= indent) {
@@ -77,8 +89,9 @@ final class ConfigExtractors {
                 if (spring && leaf && keys++ < MAX_KEYS) configKey(b, String.join(".", path), i + 1);
                 if (openApi) openApiOperation(b, path, i + 1);
                 if (changelog != null) changelog.key(path, value, i + 1);
+                if (!spring) EnvVars.yamlKey(b, path, value, i + 1);
             }
-            values(b, line, i + 1);
+            values(b, line, i + 1, spring);
         }
         if (changelog != null) changelog.flush();
         return b.build();
@@ -101,7 +114,7 @@ final class ConfigExtractors {
             int sep = separator(entry);
             String key = (sep < 0 ? entry : entry.substring(0, sep)).strip().replace("\\ ", " ");
             if (spring && !key.isEmpty() && keys++ < MAX_KEYS) configKey(b, key, start + 1);
-            values(b, sep < 0 ? "" : entry.substring(sep + 1), start + 1);
+            values(b, sep < 0 ? "" : entry.substring(sep + 1), start + 1, spring);
         }
         return b.build();
     }
@@ -143,7 +156,7 @@ final class ConfigExtractors {
                 }
                 if (line.contains("]")) modules = false;
             }
-            values(b, line, n);
+            values(b, line, n, false);
         }
         return b.build();
     }
@@ -278,12 +291,24 @@ final class ConfigExtractors {
     }
 
     /** Class names, {@code ${key}} placeholders and requests to this service in one value. */
-    private static void values(FragmentBuilder b, String value, int line) {
+    /**
+     * Class names, {@code ${key}} placeholders, variables and requests to this service in one value. In
+     * a Spring config file a placeholder named as a variable ({@code ${DATABASE_URL:…}}) is a declared
+     * read of that variable; elsewhere a {@code $VAR} is an inferred mention.
+     */
+    private static void values(FragmentBuilder b, String value, int line, boolean spring) {
         if (value.isEmpty()) return;
         Matcher m = Lines.FQCN.matcher(value);
         while (m.find()) b.mention(b.fileId(), Mention.Kind.CLASS, m.group(), line);
         Matcher p = PLACEHOLDER.matcher(value);
-        while (p.find()) b.mention(b.fileId(), Mention.Kind.CONFIG_KEY, p.group(1), line);
+        while (p.find()) {
+            if (spring && EnvVars.isEnvName(p.group(1))) {
+                b.anchor(b.fileId(), Anchors.ENV, p.group(1), Relations.USES, Confidence.DECLARED, line);
+            } else {
+                b.mention(b.fileId(), Mention.Kind.CONFIG_KEY, p.group(1), line);
+            }
+        }
+        if (!spring) EnvVars.references(b, value, line);
         Requests.urls(b, b.fileId(), value, line);
     }
 

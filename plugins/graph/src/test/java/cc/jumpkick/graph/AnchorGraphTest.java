@@ -65,6 +65,13 @@ class AnchorGraphTest {
                         String os(java.util.Properties p) {
                             return p.getProperty("os.name");
                         }
+
+                        @Value("${API_KEY}")
+                        String apiKey;
+
+                        String database() {
+                            return System.getenv("DATABASE_URL");
+                        }
                     }
                     """,
             "src/main/resources/application.yml", """
@@ -144,6 +151,15 @@ class AnchorGraphTest {
                 .extracting(GraphEdge::source, GraphEdge::confidence)
                 .containsExactly(tuple("src_main_java_com_acme_shop_shop_shop_currency", Confidence.INFERRED));
         assertThat(g.has("config:os.name")).isFalse();
+        assertThat(g.incident("env:DATABASE_URL"))
+                .as("System.getenv with a literal is a declared read, at its line")
+                .extracting(e -> g.display(e.source()), GraphEdge::confidence, GraphEdge::sourceLocation)
+                .containsExactly(tuple("Shop.database()", Confidence.DECLARED, "L24"));
+        assertThat(g.incident("env:API_KEY"))
+                .as("a placeholder named as a variable reads the variable")
+                .extracting(GraphEdge::relation, GraphEdge::confidence)
+                .containsExactly(tuple(Relations.USES, Confidence.DECLARED));
+        assertThat(g.has("config:apikey")).isFalse();
 
         String region = new GraphTools(g).callers("config:shop.region", 1, 2000);
         assertThat(region)

@@ -7,8 +7,8 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The extractor for each file kind a JVM or front-end project carries, and the shell scripts that
- * call it. Anything else (binaries, media, languages outside the JVM and the web) has none and
+ * The extractor for each file kind a JVM or front-end project carries, and the shell scripts,
+ * Dockerfiles and {@code .env} files around it. Anything else (binaries, media, languages outside the JVM and the web) has none and
  * stays out of the graph.
  */
 public final class Extractors {
@@ -72,6 +72,8 @@ public final class Extractors {
         if (relPath.contains("META-INF/services/") || relPath.endsWith(".imports") || CLASS_LISTS.contains(name)) {
             return ConfigExtractors::classList;
         }
+        if (EnvVars.isDotEnv(name)) return EnvVars::dotEnv;
+        if (EnvVars.isDockerfile(name)) return EnvVars::dockerfile;
         int dot = name.lastIndexOf('.');
         if (dot < 0) return null;
         return BY_EXTENSION.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));

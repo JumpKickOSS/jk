@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -75,6 +76,7 @@ public final class Linker {
         List<Fragment> all = new ArrayList<>(fragments);
         all.add(types);
         all.add(calls);
+        all.add(linker.bindings());
         CodeGraph graph = CodeGraph.merge(all);
         graph.stale(linker.stale);
         return graph;
@@ -165,10 +167,16 @@ public final class Linker {
                     case CONFIG_KEY -> configKeys(m.text());
                     case ROUTE, ROUTE_CALL -> routes(m.text());
                     case TABLE, COLUMN -> sqlNames(m);
+                    case ENV ->
+                        one(
+                                nodes.containsKey(Anchors.id(Anchors.ENV, m.text()))
+                                        ? Anchors.id(Anchors.ENV, m.text())
+                                        : null);
                 };
         if (m.kind() == Mention.Kind.TABLE || m.kind() == Mention.Kind.COLUMN) return sqlEdges(m, from, targets);
         if (m.kind() == Mention.Kind.ROUTE || m.kind() == Mention.Kind.ROUTE_CALL) return routeEdges(m, from, targets);
-        boolean inferred = m.kind() == Mention.Kind.SYMBOL || m.kind() == Mention.Kind.CONFIG_KEY;
+        boolean inferred =
+                m.kind() == Mention.Kind.SYMBOL || m.kind() == Mention.Kind.CONFIG_KEY || m.kind() == Mention.Kind.ENV;
         String context = m.context() != null
                 ? m.context()
                 : switch (m.kind()) {
@@ -252,6 +260,26 @@ public final class Linker {
             return Character.toLowerCase(accessor.charAt(3)) + accessor.substring(4);
         }
         return null;
+    }
+
+    /**
+     * Each environment variable to the configuration key Spring's relaxed binding sets from it, when
+     * that key is an anchor: {@code SPRING_DATASOURCE_URL} to {@code spring.datasource.url}, {@code _}
+     * read as {@code .} and case and dashes ignored. Inferred: nothing says the program is a Spring one.
+     */
+    private Fragment bindings() {
+        List<GraphEdge> out = new ArrayList<>();
+        for (GraphNode n : nodes.values()) {
+            if (!Anchors.is(n) || !Anchors.ENV.equals(Anchors.kindOf(n.id()))) continue;
+            String name = n.id().substring(Anchors.ENV.length() + 1);
+            if (!name.contains("_") || !name.equals(name.toUpperCase(Locale.ROOT))) continue;
+            String key =
+                    Anchors.id(Anchors.CONFIG, name.toLowerCase(Locale.ROOT).replace('_', '.'));
+            if (nodes.containsKey(key)) {
+                out.add(GraphEdge.of(n.id(), key, Relations.BINDS, Confidence.INFERRED, "", 0));
+            }
+        }
+        return new Fragment(List.of(), out);
     }
 
     /**

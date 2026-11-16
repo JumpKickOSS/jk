@@ -1061,7 +1061,8 @@ language, a class file, a descriptor or a package coordinate; `AnchorsTest` hold
 
 **Edges.** `defines` (a migration creating a table, a YAML key, a controller method's mapping)
 and `uses` (code reading the key, a script calling the route), always from the file or symbol to
-the anchor; `drops` from a migration that drops a table or column or renames it away, so the
+the anchor; `binds` from a variable to the key it sets under Spring's relaxed binding, made by the
+linker; `drops` from a migration that drops a table or column or renames it away, so the
 answer carries the schema's history. An edge's `context` holds the name as written when its key folds it (`{id}`,
 `maxItems`), so the answer shows what to search for and replace.
 
