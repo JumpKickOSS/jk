@@ -8,6 +8,8 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.lock.LockFreshness;
+import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.workspace.ForecastWalk;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
@@ -47,6 +49,7 @@ class ForecastRemoteRoundTripsTest {
     void a_cold_checkout_forecasts_a_chain_from_records_alone(@TempDir Path tmp) throws Exception {
         Path remote = Files.createDirectories(tmp.resolve("remote"));
         Path a = chain(tmp.resolve("a"));
+        Path lockA = Files.copy(a.resolve("jk-lock.toml"), tmp.resolve("lock-as-written.toml"));
         RemoteTier upload = new RemoteTier(new DirectoryCacheBackend(remote), true);
         Path cacheA = tmp.resolve("cache-a");
         // Each machine's memos live under its own cache, as an engine request binds them.
@@ -59,6 +62,12 @@ class ForecastRemoteRoundTripsTest {
         assertThat(upload.drain(Duration.ofMinutes(1))).isTrue();
 
         Path b = copy(a, tmp.resolve("b"));
+        assertThat(Files.readString(b.resolve("jk-lock.toml")))
+                .as("the build left the lock as written")
+                .isEqualTo(Files.readString(lockA));
+        assertThat(LockFreshness.isStale(b, b.resolve("jk-lock.toml")))
+                .as("the second checkout's lock is fresh")
+                .isFalse();
         Path cacheB = tmp.resolve("cache-b");
         Counting counting = new Counting(new DirectoryCacheBackend(remote));
         RemoteTier read = new RemoteTier(counting);
@@ -72,13 +81,14 @@ class ForecastRemoteRoundTripsTest {
 
         List<String> steps = new ArrayList<>();
         for (TaskForecast.Module m : forecast) {
-            for (TaskForecast.Task t : m.steps()) steps.add(m.dir().getFileName() + ":" + t.name() + "=" + t.status());
+            for (TaskForecast.Task t : m.steps())
+                steps.add(m.dir().getFileName() + ":" + t.name() + "=" + t.status() + " (" + t.text() + ")");
         }
         assertThat(steps)
                 .as("every step of the chain forecasts as a hit from the remote; lookups " + counting.lookups.get())
                 .filteredOn(s -> s.contains(":compile-java=") || s.contains(":package-jar="))
                 .hasSize(6)
-                .allMatch(s -> s.endsWith("=CACHED"));
+                .allMatch(s -> s.contains("=CACHED"));
         assertThat(counting.blobsOpened.get()).as("no blob fetched to forecast").isZero();
         // One question per key, never two: the walk prices a module's steps in order and a
         // consumer after its producer, so this chain asks its six keys in six round trips. Without
@@ -152,11 +162,6 @@ class ForecastRemoteRoundTripsTest {
                 [workspace]
                 modules = ["a", "b", "c"]
                 """);
-        Files.writeString(ws.resolve("jk-lock.toml"), """
-                version = 1
-                generated-by = "jk test"
-                resolution-algorithm = "pubgrub-v1"
-                """);
         String upstream = null;
         for (String m : List.of("a", "b", "c")) {
             Path dir = Files.createDirectories(ws.resolve(m + "/src/com/example/" + m));
@@ -186,6 +191,18 @@ class ForecastRemoteRoundTripsTest {
                     """.formatted(m, m.toUpperCase(), m.toUpperCase(), body));
             upstream = m;
         }
+        // The lock a committed project carries: stamped with its manifests' digest, so no build
+        // re-locks it, and naming the project, so both checkouts are one project and key alike.
+        // Unstamped, the first build would resolve the default test platform to write one, which
+        // needs those artifacts in the store or the network; without them it kept the stale lock,
+        // and the second checkout's forecast priced every step as waiting on a lock update.
+        Files.writeString(ws.resolve("jk-lock.toml"), """
+                version = 1
+                generated-by = "jk test"
+                resolution-algorithm = "pubgrub-v1"
+                manifests-sha256 = "%s"
+                project-id = "4f0c2a7e9b1d43c6a85e17f2d09b6c31"
+                """.formatted(LockManifestDigest.compute(ws)));
         return ws;
     }
 
