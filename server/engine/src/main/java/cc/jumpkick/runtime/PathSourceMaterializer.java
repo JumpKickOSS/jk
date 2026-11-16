@@ -9,8 +9,10 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PathSource;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
 import java.net.URI;
@@ -20,6 +22,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;
 import org.jspecify.annotations.Nullable;
@@ -83,7 +87,8 @@ final class PathSourceMaterializer {
         String artifact = null;
         String version = null;
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(ManifestPaths.manifestIn(projectDir)));
+            JkBuild project = SourceProjectBuilder.declared(projectDir);
+            refuseSiblingEdges(source, projectDir, project);
             group = project.project().group();
             artifact = project.project().name();
             version = project.project().version();
@@ -109,6 +114,27 @@ final class PathSourceMaterializer {
             GitSourceMaterializer.writeCoordinateMarker(marker, built);
         }
         return new Materialized(built.group(), built.artifact(), built.version(), repo.toUri());
+    }
+
+    /**
+     * A path dependency builds its target alone; a workspace module whose own edges name siblings
+     * would need them built and published first, so it is refused naming them and the fix.
+     */
+    private static void refuseSiblingEdges(PathSource source, Path projectDir, JkBuild project) throws IOException {
+        // The manifest as written: the resolved parse has already turned sibling edges into coordinates.
+        JkBuild written = JkBuildParser.parseLocal(ManifestPaths.manifestIn(projectDir));
+        Set<String> siblings = new TreeSet<>();
+        for (Scope scope : Scope.values()) {
+            for (Dependency d : written.dependencies().of(scope)) {
+                if (d.isWorkspace()) siblings.add(d.library());
+            }
+        }
+        if (siblings.isEmpty()) return;
+        throw new IOException("path dependency `" + source.rawPath() + "` is a workspace module that depends on "
+                + String.join(", ", siblings) + " of its own workspace, and a path dependency builds one module"
+                + " alone; run `jk install` in that workspace and depend on `"
+                + project.project().group() + ":"
+                + project.project().name() + ":" + project.project().version() + "` instead");
     }
 
     private static Path artifactPath(

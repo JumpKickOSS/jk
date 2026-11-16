@@ -14,6 +14,7 @@ import cc.jumpkick.runtime.base.TestStoreSeed;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.jar.JarFile;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -149,5 +150,69 @@ class PathSourceMaterializerTest {
                         () -> materializer(tmp, tmp.resolve("path-artifacts")).materialize(new PathSource("./nope")))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("does not resolve to a directory");
+    }
+
+    /**
+     * A path dependency onto a module of another workspace: the module names only itself and
+     * inherits group, version and java from its workspace root, so it publishes under the root's
+     * group and version with its classes in the jar, never as the unresolved {@code
+     * __jk.workspace__} placeholder a consumer's classpath cannot use.
+     */
+    @Test
+    void a_member_of_another_workspace_publishes_under_its_inherited_coordinate(@TempDir Path tmp) throws Exception {
+        Path libs = Files.createDirectories(tmp.resolve("libs"));
+        Files.writeString(libs.resolve("jk.toml"), """
+                group   = "com.acme.libs"
+                name    = "libs"
+                version = "2.3.0"
+                java    = 25
+
+                [workspace]
+                modules = ["core"]
+                """);
+        Path core = Files.createDirectories(libs.resolve("core/src/main/java/acme/core"));
+        Files.writeString(libs.resolve("core/jk.toml"), "name = \"core\"\n");
+        Files.writeString(core.resolve("Core.java"), "package acme.core;\npublic class Core {}\n");
+
+        var m = materializer(tmp, tmp.resolve("path-artifacts")).materialize(new PathSource("./libs/core"));
+
+        assertThat(m.group()).isEqualTo("com.acme.libs");
+        assertThat(m.artifact()).isEqualTo("core");
+        assertThat(m.version()).isEqualTo("2.3.0");
+        Path jar = Path.of(m.repoUrl()).resolve("com/acme/libs/core/2.3.0/core-2.3.0.jar");
+        try (JarFile file = new JarFile(jar.toFile())) {
+            assertThat(file.getEntry("acme/core/Core.class"))
+                    .as("the member's classes")
+                    .isNotNull();
+        }
+    }
+
+    /** A member whose own edges name a sibling cannot be built alone: refused, naming the sibling and the fix. */
+    @Test
+    void a_member_that_depends_on_a_sibling_is_refused_naming_it(@TempDir Path tmp) throws Exception {
+        Path libs = Files.createDirectories(tmp.resolve("libs"));
+        Files.writeString(libs.resolve("jk.toml"), """
+                group   = "com.acme.libs"
+                name    = "libs"
+                version = "2.3.0"
+                java    = 25
+
+                [workspace]
+                modules = ["api", "core"]
+                """);
+        Files.createDirectories(libs.resolve("api/src/main/java/acme/api"));
+        Files.writeString(libs.resolve("api/jk.toml"), "name = \"api\"\n");
+        Files.writeString(
+                libs.resolve("api/src/main/java/acme/api/Api.java"), "package acme.api;\npublic class Api {}\n");
+        Files.createDirectories(libs.resolve("core/src/main/java/acme/core"));
+        Files.writeString(libs.resolve("core/jk.toml"), "name = \"core\"\n\n[dependencies]\napi.workspace = true\n");
+        Files.writeString(
+                libs.resolve("core/src/main/java/acme/core/Core.java"), "package acme.core;\npublic class Core {}\n");
+
+        assertThatThrownBy(() ->
+                        materializer(tmp, tmp.resolve("path-artifacts")).materialize(new PathSource("./libs/core")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("depends on api of its own workspace")
+                .hasMessageContaining("`com.acme.libs:core:2.3.0`");
     }
 }

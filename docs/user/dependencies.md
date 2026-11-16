@@ -476,7 +476,11 @@ local = { path = "../sibling" }   # local project with its own jk.toml
 
 The lock pins the resolved git SHA. Tag moves fail loudly until `jk update -g`. A `path` is relative
 to the directory of the `jk.toml` that declares it, a workspace member's own included; `jk tree`
-draws it as the coordinate its target publishes.
+draws it as the coordinate its target publishes. The target may be a module of another workspace:
+it publishes under the group, version and `java` it inherits from that workspace's root, as its own
+builds read it. A module that depends on siblings of its own workspace cannot be built alone, so
+such a path dependency is refused naming them; run `jk install` in that workspace and depend on the
+module's coordinate instead.
 
 Workspace siblings: [Workspaces](workspaces.md).
 

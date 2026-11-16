@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.PassthroughEnv;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
@@ -60,7 +61,7 @@ final class SourceProjectBuilder {
             throws IOException, InterruptedException {
 
         if (Files.isRegularFile(projectDir.resolve(ManifestPaths.MANIFEST))) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
+            JkBuild project = declared(projectDir);
             String group = project.project().group();
             String artifact = project.project().name();
             String version = versionOverride != null
@@ -77,6 +78,23 @@ final class SourceProjectBuilder {
             return buildMaven(projectDir, javaHome);
         }
         throw new IOException(projectDir + ": no jk.toml, build.gradle, build.gradle.kts or pom.xml to build");
+    }
+
+    /**
+     * The jk project at {@code projectDir} as its own builds read it, at its declared version: parsed
+     * from its path, so a module of a workspace carries the group, version and java it inherits from
+     * its root (a text parse left them as the unresolved workspace placeholder), and read as
+     * declared, as a published coordinate is.
+     */
+    static JkBuild declared(Path projectDir) throws IOException {
+        Path manifest = projectDir.resolve(ManifestPaths.MANIFEST);
+        try {
+            return SnapshotQualifier.asDeclared(() -> JkBuildParser.parse(manifest));
+        } catch (IOException | RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException(manifest + ": " + e.getMessage(), e);
+        }
     }
 
     private static boolean isGradleProject(Path dir) {

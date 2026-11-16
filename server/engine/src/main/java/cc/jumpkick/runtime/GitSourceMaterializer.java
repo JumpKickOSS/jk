@@ -2,7 +2,6 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.forge.ForgeGitCredentials;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.CacheTree;
@@ -114,7 +113,7 @@ public final class GitSourceMaterializer {
         String versionOverride = null;
         Path marker = shaDir.resolve("coordinate.txt");
         if (isJk) {
-            JkBuild project = JkBuildParser.parse(Files.readString(projectDir.resolve(ManifestPaths.MANIFEST)));
+            JkBuild project = SourceProjectBuilder.declared(projectDir);
             group = project.project().group();
             artifact = project.project().name();
             version = deriveVersion(fetcher, source, sha);
