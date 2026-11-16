@@ -132,7 +132,8 @@ public final class JkDirs {
         if (property != null && !property.equals(startupProperty)) return property;
         if (!Os.isWindows(osName)) {
             String fromEnv = nonBlank(env.apply("HOME"));
-            if (fromEnv != null && Path.of(fromEnv).isAbsolute()) return fromEnv;
+            // Absolute as osName reads a path, not as this JVM's file system does.
+            if (fromEnv != null && fromEnv.startsWith("/")) return fromEnv;
         }
         return Objects.requireNonNull(property, "user.home");
     }
