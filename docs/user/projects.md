@@ -4,7 +4,8 @@ A JumpKick project is a directory with a **`jk.toml`**. TOML is data: no embedde
 `jk add` / `jk remove` edit this file for you.
 
 Create one: [Getting started](getting-started.md), [Templates](templates.md).
-Source trees: [Layout](layout.md). Multi-module: [Workspaces](workspaces.md).
+Source trees: [Layout](layout.md). Multi-module: [Workspaces](workspaces.md). Several workspaces in
+one repository: [Groups](groups.md).
 
 ## Minimal manifest
 

@@ -675,6 +675,21 @@ is unavailable"). No `maven-metadata-local.xml` is needed for a `-SNAPSHOT`: Mav
 (`mavenLocal()`) resolve the plain file. `LocalRepoConsumersTest` (slow tier) resolves a release and a
 snapshot through both.
 
+### Group roots
+
+A root `jk.toml` with `[workspaces] members` and nothing else (`WorkspaceGroup`) groups
+self-contained workspaces. It is a client-side construct: the engine never reads it to build a
+member, and the parser refuses it as a project, naming a member. At a group root `CommandDispatch`
+hands a build verb to `GroupRun`, which loads the group, selects members (`-m` names, a root
+profile's `include`, the closure over `path` dependencies between members from `PathEdges`) and
+runs the verb's own `run` once per member with that member as the working directory, in dependency
+order, against the one engine; then it prints a total (or a `group-finish` row). Each member's run is
+therefore the request `cd <member> && jk <verb>` sends, which is what keeps the self-containment
+rule true: same keys and outputs with or without the root (`GroupRootE2eTest`). MCP `run` at a group
+root fans out the same way in the engine (`McpJobRuns.runGroup`). The one effect the root has on a
+member is its default release tag, `<artifact>-v<version>` (`JkBuildParser.releaseTable`,
+`WorkspaceGroup.listing`), which `ReleaseSession` reads.
+
 ### Action keys and future remote cache (design)
 
 Local action keys already hash the ingredients a remote cache would need. **Do not rewrite

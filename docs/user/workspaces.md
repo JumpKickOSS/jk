@@ -458,4 +458,4 @@ workspace matched, it exits 0 with “nothing affected” / “nothing selected�
 
 ## Related
 
-[Projects](projects.md) · [Lockfile](lockfile.md) · [Build](build.md) · [Test](test.md)
+[Projects](projects.md) · [Groups of workspaces](groups.md) · [Lockfile](lockfile.md) · [Build](build.md) · [Test](test.md)

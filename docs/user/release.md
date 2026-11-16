@@ -13,7 +13,10 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 **The tree decides which a build is.** In a git checkout, every build verb (`jk build`, `jk test`,
 `jk run`, `jk install`, `jk explain`) builds the release of the version `jk.toml` declares exactly
 when the working tree is clean and HEAD carries the tag `jk release` writes for that version
-(`[release] tag`, `v1.4.7` by default; annotated or lightweight); anything else is a snapshot. At
+(`[release] tag`, `v1.4.7` by default; annotated or lightweight); anything else is a snapshot. A
+workspace a [group root](groups.md#release-tags) lists tags `<artifact>-v<version>` instead
+(`acme-cache-v1.4.7`), the artifact being its own `name`, so its siblings in the repository release
+on their own tags. At
 `version = "1.4.7"`:
 
 | The tree | A build writes | Stamped |

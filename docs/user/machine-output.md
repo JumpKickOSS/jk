@@ -267,6 +267,8 @@ These commands print their own rows, one envelope object each, and nothing else 
 | `format-file` | `format` | `path`, `status` (`formatted`, `unformatted` under `--check`, `error`), `message` on an error |
 | `format` | `format` | `check`, `files`, `changed`, `clean`, `errors` |
 | `deny-violation` | `deny` | `module`, `version`, `reason` |
+| `group-finish` | any build verb at a [group root](groups.md) | after every member's own rows: `success`, `exitCode`, `ok`, `upToDate`, `failed`, `notRun` (member paths), `skipped` (excluded member path → its reason), `millis` |
+| `doctor-group` | `doctor` at a group root | before the `doctor` row: `status`, `missing` (listed entries with no project), `unlisted` (projects no entry lists), `error` |
 | `deny` | `deny` | `checked`, `violations` |
 | `verify-artifact` | `verify` | `artifact`, `match`, `existing`, `rebuilt` (sha256, null when absent) |
 | `clean` | `clean` | `files`, `bytes`, `millis`, `keepArtifacts` |

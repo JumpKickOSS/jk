@@ -44,6 +44,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [What's new](whats-new.md) — each release's highlights
 - [Projects and `jk.toml`](projects.md)
 - [Workspaces](workspaces.md)
+- [Groups of workspaces](groups.md) — a root `jk.toml` listing self-contained workspaces
 - [Source layout](layout.md)
 
 ### Dependencies
