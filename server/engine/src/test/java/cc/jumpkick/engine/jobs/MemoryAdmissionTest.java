@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 import cc.jumpkick.engine.jobs.MemoryAdmission.Verdict;
+import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.testing.Await;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -129,7 +130,8 @@ class MemoryAdmissionTest {
         assertThat(gate.estimateFor("lock", "/huge")).isEqualTo(5_000 * MIB);
         assertThat(gate.heapMaxBytes()).isEqualTo(256 * MIB);
 
-        assertThat(gate(heap, (kind, dir) -> 200 * MIB).admit(2, "build", "/big", NEVER_QUEUED, () -> false))
+        assertThat(gate(heap, (kind, dir) -> 256 * MIB - MemoryAdmission.RESERVE_BYTES)
+                        .admit(2, "build", "/big", NEVER_QUEUED, () -> false))
                 .as("an empty engine admits a job the heap holds alone")
                 .isEqualTo(Verdict.ADMITTED);
     }
@@ -230,10 +232,16 @@ class MemoryAdmissionTest {
         }
     }
 
-    /** One long job holds a 256 MiB heap: 60 idle, 100 estimated, and 250 committed once it runs. */
+    /**
+     * One long job holds a 256 MiB heap: 60 idle, 100 estimated, and 250 committed once it runs. The
+     * heap is 256 MiB past the reserve for reading a test run's recordings, so the arithmetic below
+     * is the churn reserve's alone.
+     */
     private static FakeHeap heldByOneLongJob() {
-        return new FakeHeap(256, 60);
+        return new FakeHeap(256 + READ_MIB, 60);
     }
+
+    private static final int READ_MIB = (int) (SuiteReads.READ_PEAK_BYTES >> 20);
 
     @Test
     void a_brief_job_runs_beside_a_long_job_whose_committed_heap_would_refuse_it() throws Exception {

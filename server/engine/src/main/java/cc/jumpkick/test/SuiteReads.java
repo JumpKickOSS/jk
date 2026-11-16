@@ -15,7 +15,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,7 +23,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -32,9 +30,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import jdk.jfr.consumer.RecordedEvent;
-import jdk.jfr.consumer.RecordingFile;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -125,28 +122,47 @@ public final class SuiteReads {
         }
     }
 
-    /** The bytes every JFR recording begins with, and the size of its first chunk's header. */
-    private static final byte[] JFR_MAGIC = {'F', 'L', 'R', 0};
+    /** The events a suite's recordings are read for, and the fields of each. */
+    private static final Map<String, List<String>> WANTED = Map.of(
+            "jdk.FileRead", List.of("path"),
+            "jdk.FileWrite", List.of("path"),
+            "jdk.ProcessStart", List.of("command"),
+            "jdk.SocketRead", List.of("host", "address"),
+            "jdk.SocketWrite", List.of("host", "address"));
 
-    private static final int JFR_CHUNK_HEADER = 68;
+    /**
+     * The most distinct files one run's recordings may name, read and written together. Past it the
+     * run's reads are not kept (the suite is not replayed): jk's largest suites name about 8,000.
+     */
+    static final int MAX_PATHS = 32 * 1024;
 
-    /** Whether {@code jfr} begins as a recording does: the magic, and room for a chunk header. */
-    static boolean framed(Path jfr) {
-        try (InputStream in = Files.newInputStream(jfr)) {
-            byte[] head = in.readNBytes(JFR_CHUNK_HEADER);
-            return head.length == JFR_CHUNK_HEADER && Arrays.equals(Arrays.copyOf(head, 4), JFR_MAGIC);
-        } catch (IOException | RuntimeException unreadable) {
-            return false;
-        }
-    }
+    /**
+     * The heap a kept path is counted at: the path, its bytes and its set entry (8,264 paths held
+     * 4 MB, measured on jk-engine's suite).
+     */
+    static final long BYTES_PER_PATH = 512;
 
-    /** Every recording under {@code dir}, relative paths resolved against {@code cwd}. */
+    /**
+     * The most heap reading one run's recordings can hold: the reader's own peak and the paths it
+     * keeps. Memory admission keeps this much of the engine's heap free of jobs ({@code
+     * MemoryAdmission}), and {@link #READS} lets one read run at a time, so a job is never admitted
+     * into a read's peak.
+     */
+    public static final long READ_PEAK_BYTES = RecordingReader.PEAK_BYTES + MAX_PATHS * BYTES_PER_PATH;
+
+    /** One recording read at a time across the engine: {@link #READ_PEAK_BYTES} covers one. */
+    private static final Semaphore READS = new Semaphore(1, true);
+
+    /**
+     * Every recording under {@code dir}, relative paths resolved against {@code cwd}. The recordings
+     * are streamed by {@link RecordingReader}, one at a time across the engine; a recording past the
+     * reader's caps, or a run that names more than {@link #MAX_PATHS} files, is incomplete.
+     */
     public static Observed collect(Path dir, Path cwd) {
         Set<Path> files = new TreeSet<>();
         Set<Path> written = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
         Set<String> hosts = new TreeSet<>();
-        boolean complete = true;
         List<Path> recordings = new ArrayList<>();
         try {
             PathUtil.forEachChild(dir, (child, attrs) -> {
@@ -156,48 +172,64 @@ public final class SuiteReads {
         } catch (IOException none) {
             return new Observed(files, commands, hosts, false);
         }
-        for (Path jfr : recordings) {
-            if (!framed(jfr)) {
-                // Not a recording at all (torn, or something else under the name): RecordingFile's
-                // constructor would fail after opening it and leave it open, which on Windows keeps
-                // the file, and the directory holding it, from being deleted until a GC.
-                complete = false;
-                continue;
-            }
-            try (RecordingFile in = new RecordingFile(jfr)) {
-                while (in.hasMoreEvents()) {
-                    RecordedEvent e = in.readEvent();
-                    switch (e.getEventType().getName()) {
-                        case "jdk.FileRead" -> {
-                            String p = e.getString("path");
-                            if (p != null && !p.isBlank()) resolve(cwd, p, files);
+        if (recordings.isEmpty()) return new Observed(files, commands, hosts, true);
+        try {
+            READS.acquire();
+        } catch (InterruptedException stopped) {
+            Thread.currentThread().interrupt();
+            return new Observed(files, commands, hosts, false);
+        }
+        boolean complete = true;
+        try {
+            for (Path jfr : recordings) {
+                try {
+                    RecordingReader.read(jfr, WANTED, (name, at, v) -> {
+                        switch (name) {
+                            case "jdk.FileRead" -> {
+                                if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], files);
+                            }
+                            case "jdk.FileWrite" -> {
+                                if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], written);
+                            }
+                            case "jdk.ProcessStart" -> {
+                                // The program, not its arguments: a pid or a temp path in them would
+                                // make every run's command new.
+                                if (v[0] != null && !v[0].isBlank()) commands.add(executable(v[0]));
+                            }
+                            case "jdk.SocketRead", "jdk.SocketWrite" -> {
+                                if (!local(v[1])) hosts.add(hostName(v[0], v[1]));
+                            }
+                            default -> {}
                         }
-                        case "jdk.FileWrite" -> {
-                            String p = e.getString("path");
-                            if (p != null && !p.isBlank()) resolve(cwd, p, written);
-                        }
-                        case "jdk.ProcessStart" -> {
-                            // The program, not its arguments: a pid or a temp path in them would
-                            // make every run's command new.
-                            String c = e.getString("command");
-                            if (c != null && !c.isBlank()) commands.add(executable(c));
-                        }
-                        case "jdk.SocketRead", "jdk.SocketWrite" -> {
-                            String address = e.getString("address");
-                            if (!local(address)) hosts.add(hostName(e.getString("host"), address));
-                        }
-                        default -> {}
-                    }
+                        if (files.size() + written.size() > MAX_PATHS) throw new TooManyPaths();
+                    });
+                } catch (IOException | RuntimeException unreadable) {
+                    // A recording a JVM did not finish (killed, out of memory), or one past the
+                    // reader's caps, vouches for nothing.
+                    Log.debug("suite reads: recording unreadable at " + jfr, unreadable);
+                    complete = false;
+                    if (unreadable instanceof TooManyPaths) break;
                 }
-            } catch (IOException | RuntimeException unreadable) {
-                // A recording a JVM did not finish (killed, out of memory) vouches for nothing.
-                Log.debug("suite reads: recording unreadable at " + jfr, unreadable);
-                complete = false;
             }
+        } finally {
+            READS.release();
+        }
+        if (!complete) {
+            // Nothing of an incomplete run is used: let it go before the caller goes on.
+            files.clear();
+            written.clear();
+            return new Observed(files, commands, hosts, false);
         }
         // A file the run wrote is its own output: reading it back depends on nothing outside.
         files.removeAll(written);
         return new Observed(files, commands, hosts, complete);
+    }
+
+    /** A run that names more files than {@link #MAX_PATHS}. */
+    private static final class TooManyPaths extends RuntimeException {
+        TooManyPaths() {
+            super("a run named more than " + MAX_PATHS + " files", null, false, false);
+        }
     }
 
     /** The name a remote endpoint is shown by: the host name the socket was opened with, else its address. */
