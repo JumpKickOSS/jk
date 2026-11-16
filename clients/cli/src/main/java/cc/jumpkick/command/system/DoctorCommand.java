@@ -112,6 +112,7 @@ public final class DoctorCommand implements CliCommand {
         Check state = checkStateMode();
         Check jdk = checkJdk();
         Check lock = checkLock();
+        Check pins = check(DoctorChecks.pins(WorkingDirectory.current(), JkVersion.VERSION));
         Check shell = checkShell();
         Check mvn = checkMavenSpy(MavenSpyJar.current());
         Check m2 = checkM2();
@@ -160,6 +161,7 @@ public final class DoctorCommand implements CliCommand {
                             state,
                             jdk,
                             lock,
+                            pins,
                             shell,
                             mvn,
                             m2,
@@ -189,6 +191,7 @@ public final class DoctorCommand implements CliCommand {
         printCheck(state, t);
         printCheck(jdk, t);
         printCheck(lock, t);
+        printCheck(pins, t);
         printCheck(shell, t);
         printCheck(mvn, t);
         printCheck(m2, t);
@@ -843,6 +846,7 @@ public final class DoctorCommand implements CliCommand {
             Check state,
             Check jdk,
             Check lock,
+            Check pins,
             Check shell,
             Check mvn,
             Check m2,
@@ -866,6 +870,7 @@ public final class DoctorCommand implements CliCommand {
                 .token("state", checkJson(state))
                 .token("jdk", checkJson(jdk))
                 .token("lock", checkJson(lock))
+                .token("pins", checkJson(pins))
                 .token("shell", checkJson(shell))
                 .token("mvn", checkJson(mvn))
                 .token("m2", checkJson(m2))

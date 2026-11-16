@@ -31,7 +31,7 @@ public final class DoctorReport {
         } else {
             for (HostRow row : DoctorChecks.host(PathUtil.resolveUserPath("."), version)) {
                 rows.add(
-                        "lock".equals(row.id()) || "m2".equals(row.id())
+                        "lock".equals(row.id()) || "pins".equals(row.id()) || "m2".equals(row.id())
                                 ? new HostRow(
                                         row.id(), row.label(), HostRow.Status.UNAVAILABLE, "no project named", null)
                                 : row);

@@ -11,6 +11,7 @@ import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.lock.JumpKickPins;
 import cc.jumpkick.lock.LockNativePin;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
@@ -199,21 +200,26 @@ public final class OutdatedPlans {
                                 pin.version(),
                                 ManifestUpdates.published(pins, repos, versions))));
             }
+            for (JumpKickPins.Pin sdk : JumpKickPins.pluginManifest(moduleDir)) {
+                pending.add(new Pending(sdk.coordinate(), () -> {
+                    List<String> available = ManifestUpdates.available(sdk.coordinate(), repos, versions);
+                    return jumpKickRow(
+                            pinRow(moduleLabel, sdk.coordinate(), "", sdk.scope(), sdk.version(), available),
+                            available);
+                }));
+            }
             NodeSpec node = NodeUpdates.declaredMajor(own);
             if (node != null) {
                 pending.add(new Pending(NodeUpdates.MODULE, () -> nodeRow(moduleLabel, node, nodeReleases)));
             }
             if (moduleDir.equals(dir)) {
                 for (GuardPacks.Coordinate pack : GuardPackPins.of(dir)) {
-                    pending.add(new Pending(
-                            pack.ga(),
-                            () -> pinRow(
-                                    moduleLabel,
-                                    pack.ga(),
-                                    "",
-                                    GuardPackPins.TABLE,
-                                    pack.version(),
-                                    GuardPackPins.available(pack, cas.root(), repos, versions))));
+                    pending.add(new Pending(pack.ga(), () -> {
+                        List<String> available = GuardPackPins.available(pack, cas.root(), repos, versions);
+                        OutdatedReport.Row row =
+                                pinRow(moduleLabel, pack.ga(), "", GuardPackPins.TABLE, pack.version(), available);
+                        return pack.isFirstParty() ? jumpKickRow(row, available) : row;
+                    }));
                 }
             }
         }
@@ -231,6 +237,30 @@ public final class OutdatedPlans {
             rows.add(nativeMetadataRow(dir, repoUrl, scopes.values().iterator().next(), nativeDeclared.get()));
         }
         return OutdatedReport.of(workspace, rows);
+    }
+
+    /**
+     * One of JumpKick's own pins ({@link JumpKickPins}): Compatible is where {@code jk update} moves
+     * it without {@code --major}, the newest release not newer than the running jk.
+     */
+    private static OutdatedReport.Row jumpKickRow(OutdatedReport.Row row, List<String> available) {
+        String pinned = Objects.requireNonNull(row.current());
+        return new OutdatedReport.Row(
+                row.moduleLabel(),
+                row.coordinate(),
+                row.display(),
+                row.scope(),
+                pinned,
+                jumpKickCompatible(pinned, available),
+                row.latest(),
+                row.tip(),
+                row.relocated());
+    }
+
+    /** {@link ManifestUpdates#jumpKickStep}'s target for {@code pinned}, or the pin itself when it stays. */
+    private static String jumpKickCompatible(String pinned, List<String> available) {
+        String to = ManifestUpdates.jumpKickStep(pinned, available).to();
+        return to != null ? to : pinned;
     }
 
     /**
@@ -341,6 +371,9 @@ public final class OutdatedPlans {
                 .max(Versions::compare)
                 .or(() -> available.stream().filter(set::contains).max(Versions::compare))
                 .orElse("");
+        if (JumpKickPins.ownsCoordinate(dep.module()) && dep.version() instanceof VersionSelector.Exact exact) {
+            compatible = jumpKickCompatible(exact.version(), available);
+        }
         String relocated = MovedCoordinates.target(
                 dep.module(), available, repos, m -> ManifestUpdates.available(m, repos, versions));
         List<String> frontier = relocated == null ? available : ManifestUpdates.available(relocated, repos, versions);

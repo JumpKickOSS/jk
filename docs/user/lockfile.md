@@ -158,6 +158,18 @@ Every pin `jk update` moves gets a row, and only those: besides dependencies, th
 version the key pins, Latest the newest stable release (the newest LTS major for `node`). A
 floating language or tool selector is left to the relock and gets no row.
 
+JumpKick's own pins track the JumpKick that builds the project: a `cc.jumpkick.guards` rule pack, a
+`cc.jumpkick` coordinate in a dependency table (the plugin SDK) and a plugin's `[plugin] sdk` in
+`src/main/resources/jk-plugin.toml` (its own row, Scope `jk-plugin.toml sdk`). Their Compatible is
+the newest release not newer than the running JumpKick, and `jk update` moves them there without
+`--major` (a 0.50 → 0.51 step is not a major for them), never past it, since a newer release may
+need a newer JumpKick; a plugin's `jk-compat` floor below the new `sdk` rises with it. JumpKick removes
+older releases from its repository, so a pin behind the running JumpKick resolves today and fails later:
+every build names such pins in one warning before the lock (`warning: Lock in app: JumpKick's own
+pins are behind this jk (0.51.2): library 0.50.2 (jk-guards.toml), …; … run jk update`; code
+`pins-behind-jk` under `-O jsonl`, a line of the agent report), and `jk doctor` names them on
+its `pins` row.
+
 A dependency whose coordinate moved names where it went, and Latest is then the new coordinate's
 release. Two sources say so: a `<relocation>` in the POM of the old coordinate's newest release,
 the Maven way to rename an artifact; and, for publishers that renamed without one, a list JumpKick

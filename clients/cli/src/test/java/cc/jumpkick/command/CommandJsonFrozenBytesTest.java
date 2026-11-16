@@ -176,6 +176,7 @@ class CommandJsonFrozenBytesTest {
                         ok,
                         fail,
                         ok,
+                        warn,
                         ok,
                         warn,
                         fail,
@@ -198,6 +199,7 @@ class CommandJsonFrozenBytesTest {
                         + "\"state\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"jdk\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"lock\":{\"status\":\"ok\",\"detail\":\"running\"},"
+                        + "\"pins\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"shell\":{\"status\":\"ok\",\"detail\":\"running\"},"
                         + "\"mvn\":{\"status\":\"warn\",\"detail\":\"large\"},"
                         + "\"m2\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
@@ -239,8 +241,8 @@ class CommandJsonFrozenBytesTest {
                 "secret-service",
                 null);
         assertThat(DoctorCommand.reportJson(
-                        ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings, logins,
-                        List.of()))
+                        ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, ok, 0, 0, 0, 0, 0, 0, null, one, repos, settings,
+                        logins, List.of()))
                 .endsWith(
                         "\"workers\":[{\"artifact\":\"jk-image-builder\",\"version\":\"0.13.3\",\"source\":\"jk-local\","
                                 + "\"jar\":\"/s/w.jar\",\"pom\":\"/s/w.pom\",\"declared\":2,\"classpath\":[\"/s/w.jar\"],\"error\":null,\"refused\":null,\"packagedBy\":\"ab12cd34ef56"
@@ -279,6 +281,7 @@ class CommandJsonFrozenBytesTest {
                         ok,
                         ok,
                         ok,
+                        ok,
                         0,
                         0,
                         0,
@@ -302,6 +305,7 @@ class CommandJsonFrozenBytesTest {
                 new HostRow("smart-app-control", "smart app control", HostRow.Status.WARN, "on", "turn it off"),
                 new HostRow("arch", "arch", HostRow.Status.OK, "AMD64, nothing emulated", null));
         String json = DoctorCommand.reportJson(
+                ok,
                 ok,
                 ok,
                 ok,

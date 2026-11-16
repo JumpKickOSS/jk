@@ -8,9 +8,11 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.lock.JumpKickPins;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
@@ -111,6 +113,7 @@ public final class WorkspacePreflightPhase {
             return completed(false, 2, List.of(Errors.text(e)));
         }
 
+        warnPinsBehindClient(request, listener);
         Optional<Completed> lockFailure = freshenLock(request, entryBuild, listener, clock);
         if (lockFailure.isPresent()) return lockFailure.orElseThrow();
 
@@ -281,6 +284,33 @@ public final class WorkspacePreflightPhase {
             }
         }
         return Collections.unmodifiableSet(out);
+    }
+
+    /** The warning code of {@link #warnPinsBehindClient}. */
+    static final String PINS_BEHIND = JumpKickPins.BEHIND;
+
+    /**
+     * JumpKick's own pins behind the running jk ({@link JumpKickPins}) are named once per run,
+     * before the lock: the release they pin is removed from JumpKick's repository in time, and a
+     * build should say so while it still resolves, not only when the download fails. Every verb that
+     * builds runs this preflight, so the warning is one, whichever verb asked.
+     */
+    static void warnPinsBehindClient(WorkspaceRequest request, WorkspaceBuildListener listener) {
+        Path owner = LockPaths.lockOwnerDir(request.entryDir()).toAbsolutePath().normalize();
+        List<JumpKickPins.Pin> behind;
+        try {
+            behind = JumpKickPins.behind(owner, JkVersion.VERSION);
+        } catch (RuntimeException unreadable) {
+            return;
+        }
+        if (behind.isEmpty()) return;
+        Path name = owner.getFileName();
+        listener.onModuleWarning(
+                owner,
+                name == null ? owner.toString() : name.toString(),
+                "lock",
+                PINS_BEHIND,
+                JumpKickPins.describe(owner, behind, JkVersion.VERSION));
     }
 
     private static Optional<Completed> freshenLock(

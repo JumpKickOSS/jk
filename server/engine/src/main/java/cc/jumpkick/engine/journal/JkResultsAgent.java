@@ -4,6 +4,7 @@ package cc.jumpkick.engine.journal;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.guard.eval.GuardMessages;
+import cc.jumpkick.lock.JumpKickPins;
 import cc.jumpkick.runtime.EnvReadReport;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.RunNotices;
@@ -273,8 +274,8 @@ public final class JkResultsAgent {
 
     /**
      * A memory wait, a heap retry, a worker far over its lease, and a warning that says why the next
-     * build runs a step again (a suite that reached another host, an input written while it ran), one
-     * line each, including on a green run. A wait is once per module and step; a second note of the
+     * build runs a step again (a suite that reached another host, an input written while it ran, a
+     * JumpKick pin behind the running jk), one line each, including on a green run. A wait is once per module and step; a second note of the
      * same text on that step is dropped. A workspace names the module: {@code W jk-engine run-tests:
      * retried with …}.
      */
@@ -286,7 +287,7 @@ public final class JkResultsAgent {
         for (BuildRecord.Diag d : record.diagnostics()) {
             if (d == null || d.message() == null || d.message().isBlank()) continue;
             String code = d.code();
-            if (!RUN_NOTES.contains(code)) continue;
+            if (!RUN_NOTES.contains(code) && !JumpKickPins.BEHIND.equals(code)) continue;
             String line = d.message();
             int nl = line.indexOf('\n');
             if (nl >= 0) line = line.substring(0, nl);

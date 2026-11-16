@@ -131,7 +131,8 @@ Pin a hermetic module with `[test] workers = 1`. See [Test](test.md).
 ## Still stuck
 
 - `jk doctor` — host health (config, disk, current/login shell hooks, installed plugin workers and
-  the classpath each launches on; `-v` lists the entries)
+  the classpath each launches on; `-v` lists the entries), and the project's lock and JumpKick pins
+  (rule packs, plugin SDK) behind the running JumpKick, which `jk update` moves
 - `jk explain -v` — per-task forecast
 - [Config](config.md) — `NO_COLOR`, `--offline`, `JK_HOME` isolation
 - [Install](install.md) — layout and env

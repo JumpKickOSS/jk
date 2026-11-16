@@ -381,7 +381,9 @@ store jar of the same version with other bytes is refused with the fix named (`j
 jar you have, or put the pinned jar back), never read as the rules the lock says it is. Changing
 the version in `extends` makes the lock stale and the next build relocks; the rules of the version
 an earlier build unpacked are never read under another pin, and a version no repository serves
-fails naming the version this JumpKick publishes. The root file may `allow` against a pack rule or turn a ban into a
+fails naming the version this JumpKick publishes. A JumpKick pack behind the running JumpKick is named
+by every build's warning and by `jk doctor`, and `jk update` moves it to this JumpKick's release
+([Lockfile](lockfile.md)). The root file may `allow` against a pack rule or turn a ban into a
 baseline, unless the pack marked the rule `locked = true`. A workspace member's own
 `<module>/jk-guards.toml` may only tighten, and its rules default to that module's scope.
 A rule's `scope` is judged by module for every kind. A file belongs to the module whose directory

@@ -7,6 +7,7 @@ import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.lock.JumpKickPins;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.repo.M2Dirs;
@@ -44,6 +45,7 @@ public final class DoctorChecks {
                 stateMode(JkDirs.state()),
                 jdk(JkDirs.jdks(), ProcessEnv.get("JAVA_HOME")),
                 lock(project),
+                pins(project, version),
                 m2(project));
     }
 
@@ -158,6 +160,34 @@ public final class DoctorChecks {
             return row("lock", Status.OK, artifacts + " artifacts · " + lock);
         } catch (IOException e) {
             return row("lock", Status.WARN, "check failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * JumpKick's own pins in the project that governs {@code project} ({@link JumpKickPins}): rule
+     * packs, the plugin SDK, a plugin's {@code sdk} and {@code jk-compat}. {@code WARN} naming each
+     * one behind the running jk {@code version}, whose older releases JumpKick removes from its
+     * repository; the fix is {@code jk update}, which moves them to this jk's release.
+     */
+    public static HostRow pins(Path project, String version) {
+        try {
+            Path owner = LockPaths.lockOwnerDir(project);
+            List<JumpKickPins.Pin> declared = JumpKickPins.declared(owner);
+            List<JumpKickPins.Pin> behind = declared.stream()
+                    .filter(p -> JumpKickPins.behind(p.version(), version))
+                    .toList();
+            if (behind.isEmpty()) {
+                return row(
+                        "pins",
+                        Status.OK,
+                        declared.isEmpty()
+                                ? "no JumpKick pins"
+                                : declared.size() + " JumpKick " + (declared.size() == 1 ? "pin" : "pins")
+                                        + " at this jk's release or newer");
+            }
+            return row("pins", Status.WARN, JumpKickPins.describe(owner, behind, version));
+        } catch (RuntimeException e) {
+            return row("pins", Status.WARN, "check failed: " + e.getMessage());
         }
     }
 

@@ -10,11 +10,13 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.lock.JumpKickPins;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
@@ -224,8 +226,20 @@ public final class ManifestUpdates {
                 lockDir,
                 repoUrl,
                 selection,
-                (dir, module, current, available) -> step(current, available.get(), selection),
+                (dir, module, current, available) -> JumpKickPins.ownsCoordinate(module)
+                        ? jumpKickStep(current, available.get())
+                        : step(current, available.get(), selection),
                 new HashMap<>());
+    }
+
+    /**
+     * Where one of JumpKick's own pins goes ({@link JumpKickPins}): to the newest release not newer
+     * than the running jk, with or without {@code --major}. They track the jk that builds the project
+     * (a 0.50 → 0.51 step is not a major for them), and a release newer than the running jk may need
+     * a newer jk, so nothing past it is taken or offered.
+     */
+    static Step jumpKickStep(String current, List<String> available) {
+        return new Step(JumpKickPins.target(current, available, JkVersion.VERSION), null);
     }
 
     /**
@@ -380,11 +394,45 @@ public final class ManifestUpdates {
                 }
             }
             if (!text.equals(before)) contents.put(manifest, text);
+            if (toolPins) movePluginSdk(dir, moduleLabel, repos, selection, move, versions, moves, contents);
         }
         if (toolPins) {
             movePacks(lockDir, effective.get(lockDir), repoUrl, selection, move, versions, moves, contents);
         }
         return new Plan(moves.taken(), contents, moves.available());
+    }
+
+    /**
+     * Move the {@code [plugin] sdk} of the plugin manifest under {@code dir} the way the SDK
+     * dependency moves, and raise a {@code jk-compat} floor below the new SDK to it, as {@code jk new}
+     * writes the two; selected by {@code jk-plugin-sdk} or its coordinate.
+     */
+    private static void movePluginSdk(
+            Path dir,
+            String moduleLabel,
+            RepoGroup repos,
+            Selection selection,
+            Move move,
+            Map<String, List<String>> versions,
+            Moves moves,
+            Map<Path, String> contents)
+            throws IOException {
+        List<JumpKickPins.Pin> pins = JumpKickPins.pluginManifest(dir);
+        if (pins.isEmpty()) return;
+        JumpKickPins.Pin pin = pins.getFirst();
+        String artifact = pin.coordinate().substring(pin.coordinate().indexOf(':') + 1);
+        if (!selection.selects(artifact, pin.coordinate())) return;
+        Step step = move.to(dir, pin.coordinate(), pin.version(), () -> available(pin.coordinate(), repos, versions));
+        String text = Files.readString(pin.file(), StandardCharsets.UTF_8);
+        text = take(
+                text,
+                pin.version(),
+                step,
+                JumpKickPins::movePluginManifest,
+                (from, to) -> new Rewrite(
+                        pin.file(), dir, moduleLabel, JumpKickPins.PLUGIN_SDK, "sdk", pin.coordinate(), from, to),
+                moves);
+        if (step.to() != null) contents.put(pin.file(), text);
     }
 
     /**

@@ -4,9 +4,11 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.protocol.OutdatedReport;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,6 +91,51 @@ class OutdatedPlansPinsTest {
                         tuple("com.puppycrawl.tools:checkstyle", "lint.checkstyle-version", "13.0.0", "14.1.0"),
                         tuple("cc.jumpkick.guards:spring", "guards.extends", "0.13.2", "0.15.3"));
         assertThat(report.movable()).hasSize(6);
+    }
+
+    /**
+     * A plugin project's JumpKick pins, against a repository holding an old release, the running
+     * jk's and a newer one: the SDK dependency, the plugin manifest's {@code sdk} and the rule pack
+     * each get a row whose Compatible is the running jk's release (what {@code jk update} writes
+     * without {@code --major}); 0.51.1 left the manifest's {@code sdk} out and called the pack's
+     * Compatible its own pin.
+     */
+    @Test
+    void jumpkicks_own_pins_are_compatible_with_the_running_jk(@TempDir Path project) throws Exception {
+        String client = Versions.numericCore(JkVersion.VERSION);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "plug"
+                version = "0.1.0"
+                java = 25
+
+                [dependencies]
+                jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.20.0"
+                """);
+        Files.writeString(project.resolve("jk-guards.toml"), """
+                [guards]
+                extends = ["cc.jumpkick.guards:library:0.20.0"]
+                """);
+        Files.writeString(
+                Files.createDirectories(project.resolve("src/main/resources")).resolve("jk-plugin.toml"), """
+                [plugin]
+                id  = "plug"
+                sdk = "0.20.0"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "cc.jumpkick", "jk-plugin-sdk", "0.20.0", client, "99.0.0");
+        published(upstream, "cc.jumpkick.guards", "library", "0.20.0", client, "99.0.0");
+
+        OutdatedReport report = OutdatedPlans.compute(
+                project, project.resolve("cache"), http.base(), false, OutdatedPlans.Progress.NONE);
+
+        assertThat(report.error()).isNull();
+        assertThat(report.rows())
+                .extracting(r -> r.coordinate(), r -> r.scope(), r -> r.compatible(), r -> r.latest())
+                .containsExactlyInAnyOrder(
+                        tuple("cc.jumpkick:jk-plugin-sdk", "main", client, "99.0.0"),
+                        tuple("cc.jumpkick:jk-plugin-sdk", "jk-plugin.toml sdk", client, "99.0.0"),
+                        tuple("cc.jumpkick.guards:library", "guards.extends", client, "99.0.0"));
     }
 
     @Test

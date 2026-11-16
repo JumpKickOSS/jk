@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -329,6 +331,71 @@ class ManifestUpdatesTest {
         ManifestUpdates.Plan named =
                 ManifestUpdates.plan(project, http.base(), new ManifestUpdates.Selection(List.of("kotlin"), false));
         assertThat(named.rewrites()).extracting(r -> r.handle()).containsExactly("kotlin");
+    }
+
+    /**
+     * JumpKick's own pins — a rule pack, the plugin SDK dependency and a plugin manifest's {@code
+     * sdk} — move to the running jk's release without {@code --major}, never past it to a newer
+     * release the repository holds, and the manifest's {@code jk-compat} floor rises with its
+     * {@code sdk}. A third-party pin beside them keeps its major gate.
+     */
+    @Test
+    void jumpkicks_own_pins_move_to_the_running_jk_without_major(@TempDir Path project) throws Exception {
+        String client = Versions.numericCore(JkVersion.VERSION);
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "plug"
+                version = "0.1.0"
+                java = 25
+
+                [dependencies]
+                jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.20.0"
+                acme = "com.acme:lib:1.0.0"
+                """);
+        Files.writeString(project.resolve("jk-guards.toml"), """
+                [guards]
+                extends = ["cc.jumpkick.guards:library:0.20.0"]
+                """);
+        Path pluginManifest =
+                Files.createDirectories(project.resolve("src/main/resources")).resolve("jk-plugin.toml");
+        Files.writeString(pluginManifest, """
+                [plugin]
+                id        = "plug"
+                table     = "plug"
+                version   = "0.1.0"
+                sdk       = "0.20.0"
+                jk-compat = ">=0.13"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        published(upstream, "cc.jumpkick", "jk-plugin-sdk", "0.20.0", client, "99.0.0");
+        published(upstream, "cc.jumpkick.guards", "library", "0.20.0", client, "99.0.0");
+        published(upstream, "com.acme", "lib", "1.0.0", "2.0.0");
+
+        ManifestUpdates.Plan plan = ManifestUpdates.plan(project, http.base(), ManifestUpdates.Selection.ALL);
+
+        assertThat(plan.rewrites())
+                .extracting(r -> r.table(), r -> r.module(), r -> r.from(), r -> r.to())
+                .containsExactlyInAnyOrder(
+                        tuple("dependencies", "cc.jumpkick:jk-plugin-sdk", "0.20.0", client),
+                        tuple("jk-plugin.toml sdk", "cc.jumpkick:jk-plugin-sdk", "0.20.0", client),
+                        tuple("guards.extends", "cc.jumpkick.guards:library", "0.20.0", client));
+        assertThat(plan.available())
+                .as("only the third-party pin offers a newer major")
+                .extracting(r -> r.module())
+                .containsExactly("com.acme:lib");
+        assertThat(plan.contents().get(pluginManifest))
+                .contains("sdk       = \"" + client + "\"")
+                .contains("jk-compat = \">=" + client + "\"");
+        assertThat(plan.contents().get(project.resolve("jk-guards.toml")))
+                .contains("cc.jumpkick.guards:library:" + client);
+
+        ManifestUpdates.Plan major =
+                ManifestUpdates.plan(project, http.base(), new ManifestUpdates.Selection(List.of(), true));
+        assertThat(major.rewrites())
+                .filteredOn(r -> r.module().startsWith("cc.jumpkick"))
+                .extracting(r -> r.to())
+                .as("--major does not take JumpKick's pins past the running jk")
+                .containsOnly(client);
     }
 
     /** {@code [build] ksp-version} is a tool pin: {@code jk update ksp} moves it on its major, beside {@code ksp-options}. */
