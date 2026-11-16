@@ -143,20 +143,28 @@ public final class FrontDoor {
             out.add(m);
         }
         Map<String, GuestPairing.Pair> paired = paired();
-        List<CompletableFuture<@Nullable Map<String, Object>>> asked = new ArrayList<>();
+        Map<Integer, CompletableFuture<@Nullable Map<String, Object>>> asked = new LinkedHashMap<>();
         for (int port : ports) {
-            if (port != myPort) asked.add(identityAsync(port, PROBE));
+            if (port != myPort) asked.putIfAbsent(port, identityAsync(port, PROBE));
         }
         long deadline = clock.nanos() + PROBE.toNanos() + TimeUnit.MILLISECONDS.toNanos(200);
-        for (CompletableFuture<@Nullable Map<String, Object>> f : asked) {
-            Map<String, Object> id = await(f, deadline - clock.nanos());
+        // One row per engine: an engine answering on two ports (or a port listed twice) is listed once,
+        // at the port it says it serves on when one of them is that port.
+        Map<String, Map<String, Object>> found = new LinkedHashMap<>();
+        for (Map.Entry<Integer, CompletableFuture<@Nullable Map<String, Object>>> e : asked.entrySet()) {
+            Map<String, Object> id = await(e.getValue(), deadline - clock.nanos());
             if (id == null || (me != null && me.id().equals(id.get("id")))) continue;
-            GuestPairing.Pair pair = paired.get(String.valueOf(id.get("id")));
+            String engine = String.valueOf(id.get("id"));
+            Map<String, Object> earlier = found.get(engine);
+            boolean own = e.getKey().equals(id.get("port"));
+            if (earlier != null && (!own || e.getKey().equals(earlier.get("port")))) continue;
+            GuestPairing.Pair pair = paired.get(engine);
             Map<String, Object> m = new LinkedHashMap<>(id);
             m.put("self", false);
-            m.put("paired", pair != null && id.get("port") instanceof Number p && pair.port() == p.intValue());
-            out.add(m);
+            m.put("paired", pair != null && id.get("port") instanceof Integer p && pair.port() == p);
+            found.put(engine, m);
         }
+        out.addAll(found.values());
         return out;
     }
 
@@ -196,6 +204,8 @@ public final class FrontDoor {
         }
         Map<String, Object> out = new LinkedHashMap<>();
         m.forEach((k, v) -> out.put(String.valueOf(k), v));
+        // JSON numbers parse as doubles; a port is an integer, here and on the wire.
+        out.put("port", ((Number) m.get("port")).intValue());
         return out;
     }
 

@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,11 +61,35 @@ class FrontDoorTest {
         return port;
     }
 
-    /** A loopback port with nothing listening. */
-    private static int closedPort() throws IOException {
-        try (ServerSocket s = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
-            return s.getLocalPort();
-        }
+    private final List<Socket> held = new ArrayList<>();
+
+    @AfterEach
+    void releasePorts() throws IOException {
+        for (Socket s : held) s.close();
+    }
+
+    /**
+     * A loopback port with nothing listening, held bound (not listening) for the test, so a later
+     * ephemeral bind cannot be handed the same port: under load the OS reused a released one for an
+     * engine, and the band then named that engine's port twice.
+     */
+    private int closedPort() throws IOException {
+        Socket s = new Socket();
+        s.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+        held.add(s);
+        return s.getLocalPort();
+    }
+
+    /** A second listener answering as engine {@code id} that says it serves on {@code port}. */
+    private int alsoAnswering(String id, int port) throws IOException {
+        HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        s.createContext(
+                "/api/identity",
+                ex -> send(ex, "{\"id\":\"" + id + "\",\"label\":\"WSL Ubuntu on box\",\"port\":" + port + "}"));
+        s.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        s.start();
+        started.add(s);
+        return s.getAddress().getPort();
     }
 
     private static void send(HttpExchange ex, String body) throws IOException {
@@ -106,6 +130,22 @@ class FrontDoorTest {
                 .as("an engine off the band is not looked for, paired or not")
                 .extracting(m -> m.get("id"))
                 .containsExactly("90cec5c68a24");
+    }
+
+    @Test
+    void discovery_lists_each_engine_once_at_the_port_it_serves_on() throws Exception {
+        int guest = engineAnswering(GUEST_ID);
+        int second = alsoAnswering(GUEST_ID, guest);
+        for (List<Integer> band : List.of(List.of(guest, guest), List.of(second, guest), List.of(guest, second))) {
+            List<Map<String, Object>> engines = door(band).engines();
+            assertThat(engines)
+                    .as("band " + band)
+                    .extracting(m -> m.get("id"))
+                    .containsExactly("90cec5c68a24", GUEST_ID);
+            assertThat(engines.get(1).get("port"))
+                    .as("an integer port, at the one it serves on")
+                    .isEqualTo(guest);
+        }
     }
 
     @Test
