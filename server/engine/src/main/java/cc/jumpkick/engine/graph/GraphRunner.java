@@ -32,6 +32,7 @@ import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -571,6 +572,7 @@ public final class GraphRunner {
         SlotHold held = SLOTS.get(root);
         if (held == null || --held.refreshes > 0) return;
         SLOTS.remove(root);
+        GraphRunner.class.notifyAll();
         if (held.hold != null) {
             try {
                 held.hold.close();
@@ -578,6 +580,23 @@ public final class GraphRunner {
                 // the slot goes with the process at worst
             }
         }
+    }
+
+    /**
+     * Waits up to {@code timeoutMs} for the refreshes a build started on {@code root} ({@link
+     * #refreshAfterBuild}) to finish; true when none is left, so the graph is the tree that build
+     * compiled. A build holds the refresh slot before its job ends, so a caller that saw the job end
+     * never misses its refresh.
+     */
+    public static synchronized boolean awaitRefresh(Path root, long timeoutMs) throws InterruptedException {
+        Path key = rootOf(root);
+        long deadline = Clock.SYSTEM.nanos() + timeoutMs * 1_000_000L;
+        while (SLOTS.containsKey(key)) {
+            long left = (deadline - Clock.SYSTEM.nanos()) / 1_000_000L;
+            if (left <= 0) return false;
+            GraphRunner.class.wait(left);
+        }
+        return true;
     }
 
     /** What the lease ledger and {@code jk engine status} call the graph worker. */

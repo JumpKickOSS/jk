@@ -145,6 +145,7 @@ public final class GraphBuild {
         // A copy: the stats in memory change only once the graph they describe is written, so a
         // refresh that fails part-way never lets the next one serve the graph from before it.
         StatIndex stats = rebuild ? StatIndex.empty() : GraphMemory.stats(out).copy();
+        Set<String> vouched = stats.rels();
         long now = clock.millis();
         Map<String, String> shas = new ConcurrentHashMap<>();
         List<GraphSources.Source> stale = new ArrayList<>();
@@ -255,6 +256,7 @@ public final class GraphBuild {
         CodeGraph graph = Linker.link(all);
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
+        if (!rebuild) anchorEdits(base, out, extractors, vouched, sources, changed, unreadable, indexes, graph);
         progress.phase("write graph");
         write(out, graph, key);
         GraphMemory.sawGraph(out, graph, key);
@@ -262,6 +264,63 @@ public final class GraphBuild {
         GraphMemory.savedStats(out, stats);
         long millis = (clock.nanos() - start) / 1_000_000;
         return new Result(graph, sources.size(), extracted.get(), classes(indexes), out, millis, true, commit);
+    }
+
+    /**
+     * Brings the record of the anchors hand edits left stale ({@link AnchorEdits}) up to this
+     * refresh: the files whose content changed since the graph in memory (or {@code graph.bin}) was
+     * built, and the files deleted since, against that graph. Nothing is read or written when no
+     * file changed; a refresh with no stats to compare (the first, or a new extractor version) has no
+     * "before" and adds nothing. A source edited since its classes were compiled is left out of the
+     * edits: its compiled anchors are not known yet, and dropping them would read as a rename.
+     */
+    private static void anchorEdits(
+            Path base,
+            Path out,
+            String extractors,
+            Set<String> vouched,
+            List<GraphSources.Source> sources,
+            Map<String, byte[]> changed,
+            Set<String> unreadable,
+            List<ClassIndex> indexes,
+            CodeGraph after) {
+        Set<String> edited = new TreeSet<>(changed.keySet());
+        edited.addAll(unreadable);
+        Set<String> walked = new HashSet<>(sources.size());
+        for (GraphSources.Source s : sources) walked.add(s.rel());
+        for (String rel : vouched) if (!walked.contains(rel)) edited.add(rel);
+        edited.retainAll(vouched);
+        if (edited.isEmpty()) return;
+        Set<String> unknown = new HashSet<>();
+        for (ClassIndex c : indexes) unknown.addAll(c.stale());
+        try {
+            AnchorEdits.update(out, before(out, extractors), after, edited, unknown, walked, rel -> {
+                byte[] bytes = changed.get(rel);
+                if (bytes != null) return new String(bytes, StandardCharsets.UTF_8);
+                Path p = base.resolve(rel);
+                try {
+                    return Files.isRegularFile(p) ? Files.readString(p, StandardCharsets.UTF_8) : null;
+                } catch (IOException | RuntimeException unreadableNow) {
+                    return null;
+                }
+            });
+        } catch (IOException | RuntimeException failed) {
+            Log.debug("graph: stale anchors not recorded", failed);
+        }
+    }
+
+    /** The graph this refresh replaces, built by the same extractors; {@code null} when there is none. */
+    private static @Nullable CodeGraph before(Path out, String extractors) {
+        GraphMemory.Graph held = GraphMemory.graph(out);
+        if (held != null) return held.key().extractors().equals(extractors) ? held.graph() : null;
+        Path bin = out.resolve(GraphOutputs.SNAPSHOT);
+        if (!Files.isRegularFile(bin)) return null;
+        try (InputStream in = Files.newInputStream(bin)) {
+            GraphSnapshot.Loaded loaded = GraphSnapshot.read(in);
+            return loaded != null && loaded.key().extractors().equals(extractors) ? loaded.graph() : null;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
     }
 
     /**

@@ -18,7 +18,7 @@ final class ManifestGraph {
 
     static final String TABLE = "graph";
 
-    static final Set<String> KEYS = Set.of("aliases");
+    static final Set<String> KEYS = Set.of("aliases", "anchor-tail");
 
     private ManifestGraph() {}
 
@@ -28,7 +28,7 @@ final class ManifestGraph {
         TomlTable graph = Objects.requireNonNull(root.getTable(TABLE), TABLE);
         for (String k : graph.keySet()) {
             if (!KEYS.contains(k)) {
-                throw new JkBuildParseException("[graph] unknown key `" + k + "` — expected aliases");
+                throw new JkBuildParseException("[graph] unknown key `" + k + "` — expected aliases or anchor-tail");
             }
         }
         Map<String, List<String>> aliases = new LinkedHashMap<>();
@@ -52,6 +52,15 @@ final class ManifestGraph {
                 aliases.put(term, List.copyOf(out));
             }
         }
-        return new GraphConfig(aliases);
+        String tail = GraphConfig.TAIL_SILENT;
+        if (graph.contains("anchor-tail")) {
+            Object v = graph.get("anchor-tail");
+            if (!(v instanceof String t) || !GraphConfig.TAILS.contains(t)) {
+                throw new JkBuildParseException(
+                        "[graph] anchor-tail must be one of " + String.join(", ", GraphConfig.TAILS));
+            }
+            tail = t;
+        }
+        return new GraphConfig(aliases, tail);
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.WorkspaceGroup;
+import cc.jumpkick.engine.graph.AnchorsLeft;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobRequests;
@@ -100,7 +101,7 @@ public final class McpJobRuns {
         Map<String, Object> last = ctx.admissionYield().yielding(() -> finishedJob(ctx, jid, in.dir(), triggeredAt));
         String text = McpAgentText.of(ctx, last);
         if (text == null) text = "FAIL " + spec.kind() + " jid=" + jid + "\nno run record\n";
-        return in.text(text + McpHolds.totalLine(jid));
+        return in.text(text + AnchorsLeft.after(spec.dir(), text) + McpHolds.totalLine(jid));
     }
 
     /**
@@ -121,7 +122,12 @@ public final class McpJobRuns {
         Map<String, Object> last = ctx.admissionYield().yielding(() -> waitForJournal(ctx, jid));
         if (last == null) last = McpDiagnostics.findByRequestId(ctx.history(), jid);
         String text = McpAgentText.of(ctx, last);
-        return in.text((text != null ? text : "FAIL run jid=" + jid + "\nno run record\n") + McpHolds.totalLine(jid));
+        String dir = last == null || McpHistoryViews.str(last, "dir").isEmpty()
+                ? in.dir()
+                : McpHistoryViews.str(last, "dir");
+        String left = text == null || dir == null || dir.isEmpty() ? "" : AnchorsLeft.after(dir, text);
+        return in.text(
+                (text != null ? text : "FAIL run jid=" + jid + "\nno run record\n") + left + McpHolds.totalLine(jid));
     }
 
     /**

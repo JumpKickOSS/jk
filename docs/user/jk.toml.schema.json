@@ -593,6 +593,11 @@
         "aliases": {
           "type": "object",
           "additionalProperties": { "type": "array", "items": { "type": "string" } }
+        },
+        "anchor-tail": {
+          "type": "string",
+          "enum": ["silent", "count", "kinds"],
+          "description": "For the agent bench: what a build's MCP verdict says of prose that still names a name a hand edit changed. silent (default), count, kinds."
         }
       },
       "additionalProperties": false

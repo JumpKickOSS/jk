@@ -83,6 +83,11 @@ final class StatIndex {
         return stats.size();
     }
 
+    /** The files the index vouches for. */
+    Set<String> rels() {
+        return Set.copyOf(stats.keySet());
+    }
+
     void put(GraphSources.Source source, String sha) {
         stats.put(source.rel(), new Stat(source.identity(), sha));
     }

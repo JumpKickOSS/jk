@@ -181,6 +181,36 @@ with its counts, stale ones at 0 definitions. Only flag names enter the graph: t
 command line passes are dropped. Not read yet: JumpKick's own commands, JCommander, Spring Shell and
 commons-cli, picocli mixins, method subcommands, aliases, and abbreviated subcommands.
 
+### After a hand edit
+
+An edit that changes one side of an anchor by hand (a column renamed in one dialect's `schema.sql`,
+a key renamed in `application.properties`) leaves the other side under the old name, and no
+compiler, and often no test, checks it. Each refresh compares the anchors of the files whose content
+changed with the graph it replaces, the one the last refresh wrote (a graph question's, or the one
+after a build that succeeded). An anchor a changed file no longer names, renamed (the file now names
+another of its kind) or removed while nothing else defines it, is left stale wherever another file
+still carries the old name: a schema, a query, an entity's mapping, a key, the variable that sets the
+key, a route's client must change; a mention in prose (markdown, text), found by searching the docs
+for the old name only when a name changed, is a judgment call and only ever counted. A use a
+compiler or generator bound is the build's to check and is never listed, nor is a generated file,
+nor a file that merely shares an anchor with the edited one; an edit that changes no name finds
+nothing. The places are kept in `target/graph/anchors/stale`, each dropped once its file no longer
+carries the old name or the edit is undone, so a build after a graph question still names them.
+
+An MCP `run` that builds (`kind=build`, `test` or `gate`) and passes waits for that refresh (10
+seconds at most) and ends with the places that must change, a file's lines as one place, in five
+files at most, then `+N more:` and the call that lists the rest. It says nothing when none is left,
+and nothing after a run that failed. On spring-petclinic, with the column renamed in MySQL's schema
+alone (one line, wrapped here):
+
+```
+OK build spring-petclinic · 9.7s
+Your edit changed these names; these places still use the old one:
+  column:owners.telephone, now owners.phone: src/main/resources/db/h2/schema.sql:42,
+  src/main/resources/db/postgres/schema.sql:32, src/main/resources/db/postgres/data.sql:25 and 9 more
+  lines, src/main/java/org/springframework/samples/petclinic/owner/Owner.java:65
+```
+
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the
 first sentence of its doc comment. `read`, `find` and the search use them.
@@ -365,8 +395,9 @@ per line with its `file:line`. It follows edge direction; `-U` ignores it, and `
 ## Outputs
 
 The graph is build output: nothing of it is in the tree or committed. `target/graph/` holds this
-checkout's state, gone with `jk clean`: `graph.bin` (the linked graph) and `files.tsv` (each file's
-stat, so a refresh reads only what moved). The fragments it is linked from are action-cache entries,
+checkout's state, gone with `jk clean`: `graph.bin` (the linked graph), `files.tsv` (each file's
+stat, so a refresh reads only what moved) and `anchors/stale` (the places hand edits left under an
+old name, [After a hand edit](#after-a-hand-edit)). The fragments it is linked from are action-cache entries,
 one per file and one per compiled class set, shared by every checkout on the machine and reclaimed
 by `jk cache clean` like any other. None of it is an exchange format. A `.jk/graph/` directory left
 in a checkout is removed by the next refresh.
@@ -383,6 +414,11 @@ Tariff = ["price", "rate card"]          # a question saying "price" also starts
 An alias maps a name in the code to the words people use for it. A question holding one of the words
 also starts from the name. JumpKick's graph has no LLM pass: documents are read for their structure, links
 and code mentions only.
+
+`[graph] anchor-tail` is for the agent bench, which compares what a build's verdict says of the prose
+that still names a name a hand edit changed ([After a hand edit](#after-a-hand-edit)): `silent`, the
+default, nothing; `count`, how many places (`Docs use the old name too: 3 places.`); `kinds`, how many
+of each kind of file (`1 markdown, 2 text`).
 
 ## Callers
 

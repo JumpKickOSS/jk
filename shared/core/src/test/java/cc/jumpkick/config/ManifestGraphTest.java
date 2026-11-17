@@ -29,10 +29,18 @@ class ManifestGraphTest {
     }
 
     @Test
+    void readsWhatABuildsVerdictSaysOfProseLeftUnderAnOldName() {
+        assertThat(parse("name = \"a\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_SILENT);
+        assertThat(parse("[graph]\nanchor-tail = \"kinds\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_KINDS);
+        assertThatThrownBy(() -> parse("[graph]\nanchor-tail = \"loud\"\n"))
+                .hasMessageContaining("anchor-tail must be one of silent, count, kinds");
+    }
+
+    @Test
     void refusesWhatItDoesNotKnow() {
         assertThatThrownBy(() -> parse("[graph]\ngraphify = true\n"))
                 .hasMessageContaining("unknown key `graphify`")
-                .hasMessageEndingWith("expected aliases");
+                .hasMessageEndingWith("expected aliases or anchor-tail");
         assertThatThrownBy(() -> parse("[graph.aliases]\nTariff = \"price\"\n")).hasMessageContaining("list of words");
     }
 }
