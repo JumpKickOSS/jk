@@ -7,8 +7,8 @@
 # release-key signature, no upload anywhere (docs/contributors/releases.md, "Cutting a release by hand").
 #
 # Dispatch it on the release tag: gh workflow run sign-windows.yml --ref v<version>. A tag
-# v0.0.0-signtest.<n> on a -SNAPSHOT commit is the signing dry run: the declared snapshot is built and
-# signed, and its tree is never published. Any other ref is refused on Linux before a Windows runner
+# v0.0.0-signtest.<n> on a commit that is not a release is the signing dry run: jk builds it as
+# <version>-SNAPSHOT, which is signed the same way, and its tree is never published. Any other ref is refused on Linux before a Windows runner
 # starts (scripts/sign-windows-ref.sh).
 
 name: Sign Windows client

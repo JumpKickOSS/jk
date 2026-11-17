@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fixtures for scripts/sign-windows-ref.sh in a scratch repository: the release tag of the declared
-# version builds the release; a v0.0.0-signtest.<n> tag builds the declared -SNAPSHOT; a branch, a
-# tag of another version, a tag on another commit and a dry-run tag over a release version are refused.
+# version builds the release; a v0.0.0-signtest.<n> tag on an untagged commit builds <version>-SNAPSHOT;
+# a branch, a tag of another version, a tag on another commit and a dry-run tag on the release
+# commit are refused.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,11 +45,11 @@ refuses "$rel" tag release-1.2.3 "not a v* tag"
 refuses "$rel" tag v9.9.9 "a tag that does not exist"
 
 snap="$WORK/snapshot"
-repo "$snap" 1.2.4-SNAPSHOT
+repo "$snap" 1.2.4
 tag "$snap" v0.0.0-signtest.2
 tag "$snap" v1.2.4-SNAPSHOT
 expect "$snap" tag v0.0.0-signtest.2 false 1.2.4-SNAPSHOT
-refuses "$snap" tag v1.2.4-SNAPSHOT "a release is never a -SNAPSHOT"
+refuses "$snap" tag v1.2.4-SNAPSHOT "a tag of a version jk.toml does not declare"
 refuses "$snap" tag v0.0.0-signtest "a dry-run tag without its number"
 git -C "$snap" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m two
 refuses "$snap" tag v0.0.0-signtest.2 "the tag names another commit than the checkout"

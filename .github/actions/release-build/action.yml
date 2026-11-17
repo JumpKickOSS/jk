@@ -36,8 +36,9 @@ inputs:
   release:
     description: >-
       'true' (the default): the checkout must be the release its tag names, and the build is that
-      release. 'false': the checkout's declared version is built as the -SNAPSHOT it is, for
-      sign-windows.yml's signing dry run on a v0.0.0-signtest.<n> tag; such a tree is never published.
+      release. 'false': the checkout must not be a release, and jk builds it as <version>-SNAPSHOT,
+      for sign-windows.yml's signing dry run on a v0.0.0-signtest.<n> tag; such a tree is never
+      published.
     required: false
     default: 'true'
 runs:
@@ -74,8 +75,11 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        VER="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' jk.toml | head -1)"
-        [[ "$VER" == *-SNAPSHOT ]] || { echo "::error::a dry run builds a -SNAPSHOT; jk.toml declares $VER"; exit 1; }
+        if bash scripts/release-session.sh >/dev/null 2>&1; then
+          echo "::error::the checkout is a release (its version's tag is at HEAD); dispatch on that tag"
+          exit 1
+        fi
+        VER="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' jk.toml | head -1)-SNAPSHOT"
         echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
         echo "::notice::dry run: building $VER (${{ inputs.arch-label }}), not a release"
 

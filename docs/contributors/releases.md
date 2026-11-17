@@ -410,8 +410,9 @@ the GitHub **environment** `artifact-signing` (tags `v*` only, no required revie
   verifies, and uploads `release-<version>-windows-x86_64` (the tree `scripts/release-lane.sh`
   writes on Windows, `SHA256SUMS` included, also printed in the run's summary) as a workflow
   artifact. It does nothing else: no merge, no release-key signature, no upload anywhere. A tag
-  `v0.0.0-signtest.<n>` on a `-SNAPSHOT` commit is its dry run: the declared snapshot is built and
-  signed the same way, and that tree is never published; delete the tag afterwards.
+  `v0.0.0-signtest.<n>` on a commit that is not a release is its dry run: JumpKick builds it as
+  `<version>-SNAPSHOT`, which is signed the same way, and that tree is never published; delete the
+  tag afterwards.
 - **`release.yml`**'s `windows-x86_64` row, for the day CD publishes. Its `workflow_run` trigger runs
   on the default branch, and the environment admits `v*` tags only, so that row is refused until
   the environment also admits the branch the CD run is on (a dispatch on the tag is admitted).
