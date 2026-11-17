@@ -283,6 +283,15 @@ final class RenameText {
         return camel.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * The environment variable Spring's relaxed binding reads for a config key: {@code
+     * petclinic.visits.max-per-day} → {@code PETCLINIC_VISITS_MAXPERDAY} ({@code .} to {@code _}, dashes
+     * dropped, upper case).
+     */
+    static String envName(String key) {
+        return key.replace("-", "").replace('.', '_').toUpperCase(Locale.ROOT);
+    }
+
     /** {@code telephoneNumber} → {@code telephone_number}. */
     static String snake(String camel) {
         return camel.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);

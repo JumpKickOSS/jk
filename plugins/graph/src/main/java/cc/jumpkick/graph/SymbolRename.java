@@ -368,6 +368,12 @@ final class SymbolRename {
         String configPrefix = ownerText == null ? null : configPrefix(ownerText);
         Map<String, String> configWords = new LinkedHashMap<>(words);
         configWords.put(RenameText.kebab(name), RenameText.kebab(to));
+        // The environment variable Spring's relaxed binding reads for the key (PETCLINIC_VISITS_MAXPERDAY for
+        // petclinic.visits.max-per-day): a compose file or workflow that sets it stops setting it once the
+        // key is renamed, with no error anywhere.
+        String key = configPrefix == null ? null : configPrefix + "." + RenameText.kebab(name);
+        String envOld = key == null ? null : RenameText.envName(key);
+        if (envOld != null) configWords.put(envOld, RenameText.envName(configPrefix + "." + RenameText.kebab(to)));
         List<String> files = textFiles.stream()
                 .filter(rel -> !RenameText.doc(rel) && !RenameText.jvmSource(rel) || rel.endsWith(".java"))
                 .toList();
@@ -379,6 +385,10 @@ final class SymbolRename {
                 pattern,
                 RenameText.mapped(configWords),
                 (rel, line, at, inString, inComment) -> {
+                    if (envOld != null && line.startsWith(envOld, at) && !rel.endsWith(".java")) {
+                        return new RenameText.Verdict(
+                                true, RenamePlan.Grade.INFERRED, "environment variable for " + key);
+                    }
                     if (rel.endsWith(".java")) {
                         if (!indexed.contains(rel) || !inString) return null;
                         if (Pattern.compile(

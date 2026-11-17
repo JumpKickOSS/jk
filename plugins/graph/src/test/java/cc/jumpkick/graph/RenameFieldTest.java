@@ -246,6 +246,92 @@ class RenameFieldTest {
                 .contains("@Column(name = \"telephone\")\n    private String phone;");
     }
 
+    /**
+     * A {@code @ConfigurationProperties} field's key is set by environment variables too, under Spring's
+     * relaxed binding: the compose file and the workflow of the petclinic-anchor-relaxed-env task. Each
+     * must change with the key, or it silently stops setting it.
+     */
+    @Test
+    void theEnvironmentVariablesThatSetAConfigPropertiesFieldsKeyAreCandidatesThatMustChange(@TempDir Path dir)
+            throws IOException {
+        RenameFixture ws = new RenameFixture(
+                dir,
+                RenameFixture.files(
+                        "src/main/java/org/springframework/boot/context/properties/ConfigurationProperties.java",
+                        """
+                package org.springframework.boot.context.properties;
+
+                public @interface ConfigurationProperties {
+                    String value() default "";
+
+                    String prefix() default "";
+                }
+                """,
+                        "src/main/java/org/acme/petclinic/system/VisitLimits.java",
+                        """
+                package org.acme.petclinic.system;
+
+                import org.springframework.boot.context.properties.ConfigurationProperties;
+
+                /**
+                 * How many visits the clinic books per day.
+                 */
+                @ConfigurationProperties(prefix = "petclinic.visits")
+                public class VisitLimits {
+
+                    private int maxPerDay = 10;
+
+                    public int getMaxPerDay() {
+                        return this.maxPerDay;
+                    }
+
+                    public void setMaxPerDay(int maxPerDay) {
+                        this.maxPerDay = maxPerDay;
+                    }
+                }
+                """,
+                        "src/main/resources/application.properties",
+                        "spring.application.name=petclinic\npetclinic.visits.max-per-day=20\n",
+                        "docker-compose.yml",
+                        """
+                services:
+                  app:
+                    image: spring-petclinic:latest
+                    profiles: ["app"]
+                    ports:
+                      - "8080:8080"
+                    environment:
+                      - SPRING_PROFILES_ACTIVE=h2
+                      - PETCLINIC_VISITS_MAXPERDAY=40
+                """,
+                        ".github/workflows/load-test.yml",
+                        """
+                name: load test
+                on: [workflow_dispatch]
+                jobs:
+                  load:
+                    runs-on: ubuntu-latest
+                    env:
+                      PETCLINIC_VISITS_MAXPERDAY: 500
+                """));
+
+        String answer = ws.rename("org.acme.petclinic.system.VisitLimits.maxPerDay", "dailyLimit");
+
+        assertThat(answer)
+                .contains("Not applied, and should change too")
+                .containsPattern(
+                        "c\\d+ inferred, config key of petclinic.visits: src/main/resources/application.properties:2")
+                .containsPattern(
+                        "c\\d+ inferred, environment variable for petclinic.visits.max-per-day: docker-compose.yml:9")
+                .containsPattern("c\\d+ inferred, environment variable for petclinic.visits.max-per-day:"
+                        + " .github/workflows/load-test.yml:7");
+        assertThat(ws.rename("org.acme.petclinic.system.VisitLimits.maxPerDay", "dailyLimit", "also=all"))
+                .startsWith("Applied ");
+        assertThat(ws.read("docker-compose.yml")).contains("      - PETCLINIC_VISITS_DAILYLIMIT=40\n");
+        assertThat(ws.read(".github/workflows/load-test.yml")).contains("      PETCLINIC_VISITS_DAILYLIMIT: 500\n");
+        assertThat(ws.read("src/main/resources/application.properties")).contains("petclinic.visits.daily-limit=20");
+    }
+
     @Test
     void aRenameALocalVariableWouldShadowIsRolledBackByTheProof(@TempDir Path dir) throws IOException {
         RenameFixture ws = new RenameFixture(dir, RenameFixture.files("src/main/java/a/Counter.java", """
