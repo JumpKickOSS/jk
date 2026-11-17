@@ -3,7 +3,8 @@
 # client, Maven spy, a shelf) assembled into a release directory. jk-repo-<version>.sha256 lists the
 # shelf's jars and POMs at the version and SHA256SUMS lists it. With JK_REPO_STAGE_DIR, an artifact
 # staged for repo/ that the shelf lacks is listed from the stage, and one staged with bytes other
-# than the shelf's is refused.
+# than the shelf's is refused. A version with no what's-new entry is refused, and its -SNAPSHOT (the
+# signing dry run's build) assembles without the file.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -71,5 +72,30 @@ printf 'other runner jar\n' >"$WORK/stage/cc/jumpkick/jk-test-runner/$V/jk-test-
 if assemble "$WORK/out-diverged" JK_REPO_STAGE_DIR="$WORK/stage"; then fail "a stage that differs from the shelf was accepted"; fi
 grep -q "jk-test-runner-$V.jar differs between the dist's shelf and" "$WORK/out.log" || fail "the divergent artifact was not named"
 echo "ok   a stage that differs from the shelf is refused"
+
+# A release with no what's-new entry is refused; a snapshot of it (the signing dry run) assembles
+# without the file.
+mv "$WORK/whats-new.md" "$WORK/whats-new.full.md"
+printf '# What%ss new\n' "'" >"$WORK/whats-new.md"
+if assemble "$WORK/out-no-notes"; then fail "a release with no what's-new entry was assembled"; fi
+grep -q "has no '## $V' entry" "$WORK/out.log" || fail "the missing entry was not named"
+echo "ok   a release with no what's-new entry is refused"
+SV="$V-SNAPSHOT"
+mkdir -p "$WORK/snap"
+cp -R "$DIST" "$WORK/snap/dist"
+for f in "$WORK/snap/dist/lib/"*"-$V.jar"; do mv "$f" "${f%-"$V".jar}-$SV.jar"; done
+for d in "$WORK/snap/dist/repos/jk-local/cc/jumpkick/"*; do
+  a="$(basename "$d")"
+  mv "$d/$V" "$d/$SV"
+  mv "$d/$SV/$a-$V.jar" "$d/$SV/$a-$SV.jar"
+  mv "$d/$SV/$a-$V.pom" "$d/$SV/$a-$SV.pom"
+done
+env DIST_DIR="$WORK/snap/dist" JK_VERSION="$SV" RELEASE_NOTES_DOC="$WORK/whats-new.md" \
+  bash "$ROOT/scripts/assemble-release-dir.sh" "$WORK/out-snapshot" >"$WORK/out.log" 2>&1 \
+  || fail "a snapshot with no what's-new entry was not assembled"
+[[ ! -e "$WORK/out-snapshot/jk-whats-new-$SV.md" ]] || fail "a snapshot tree carries a what's-new file"
+grep -q "jk-whats-new-$SV.md not written" "$WORK/out.log" || fail "the snapshot's missing what's-new was not said"
+(cd "$WORK/out-snapshot" && check_sums SHA256SUMS) || fail "the snapshot's SHA256SUMS do not match its files"
+echo "ok   a snapshot assembles without a what's-new file"
 
 echo "test-assemble-release-dir: ok"

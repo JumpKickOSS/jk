@@ -17,7 +17,8 @@
 # jk-<version>.jar (the JVM client: every host a JDK 25 runs on and no native client is hosted for)
 # jk-maven-spy-<version>.jar (the Maven core extension `jk mvn` attaches; a client self-fetches it)
 # jk-whats-new-<version>.md (the release's highlights and the four before it, from
-#   docs/user/whats-new.md; a self-update downloads it and shows what is new since the version it replaced)
+#   docs/user/whats-new.md; a self-update downloads it and shows what is new since the version it replaced;
+#   a -SNAPSHOT tree has none)
 # jk-repo-<version>.sha256 (the digest of every first-party jar and POM published on repo/ at this
 #   version; the engine holds a worker it fetches to it). JK_REPO_STAGE_DIR, when set, names the
 #   staged repo/ and adds what it holds beyond the dist's shelf.
@@ -132,9 +133,15 @@ if [[ ! -f "$spy_jar" ]]; then
 fi
 cp "$spy_jar" "$OUT/jk-maven-spy-${VERSION}.jar"
 
-# The highlights a self-update shows. Required: release-notes.sh refuses a version with no entry,
-# or one that breaks the writing rules, so a release cannot ship without them.
-bash "$ROOT/scripts/release-notes.sh" --whats-new "$VERSION" >"$OUT/jk-whats-new-${VERSION}.md"
+# The highlights a self-update shows. Required of a release: release-notes.sh refuses a version with
+# no entry, or one that breaks the writing rules, so a release cannot ship without them. A -SNAPSHOT
+# is never a release (release-lane.sh refuses a tree that names one) and has no entry: its tree, such
+# as sign-windows.yml's signing dry run, carries no what's-new file.
+if [[ "$VERSION" == *-SNAPSHOT ]]; then
+  echo "assemble-release-dir: $VERSION is a snapshot, not a release — jk-whats-new-${VERSION}.md not written" >&2
+else
+  bash "$ROOT/scripts/release-notes.sh" --whats-new "$VERSION" >"$OUT/jk-whats-new-${VERSION}.md"
+fi
 
 # The digest of every first-party jar and POM on repo/ at this version, from the shelf the dist
 # carries (the jars the engine beside it was built with): `<sha256>  <Maven-layout path>`. The engine
