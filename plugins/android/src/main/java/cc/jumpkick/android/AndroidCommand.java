@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -30,9 +31,14 @@ final class AndroidCommand {
     private AndroidCommand() {}
 
     static int run(PluginCommandExec exec) throws Exception {
+        return run(exec, ProcessEnv.all().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL));
+    }
+
+    /** As {@link #run(PluginCommandExec)}, reading the licence texts from {@code feedUrl}. */
+    static int run(PluginCommandExec exec, String feedUrl) throws Exception {
         String sub = exec.args().isEmpty() ? "" : exec.args().get(0);
         return switch (sub) {
-            case "licenses" -> licenses(exec, exec.args().contains("--yes"));
+            case "licenses" -> licenses(exec, yes(exec.args()), feedUrl);
             case "sdk" -> sdkStatus(exec);
             default -> {
                 exec.out("usage: jk android <licenses [-y] | sdk>");
@@ -41,11 +47,15 @@ final class AndroidCommand {
         };
     }
 
-    private static int licenses(PluginCommandExec exec, boolean yes) throws Exception {
+    /** {@code -y} or {@code --yes} among the command's args: the usage line and every message say {@code -y}. */
+    static boolean yes(List<String> args) {
+        return args.contains("-y") || args.contains("--yes");
+    }
+
+    private static int licenses(PluginCommandExec exec, boolean yes, String feedUrl) throws Exception {
         Path root = exec.requireExtra("sdk-root");
         // The license texts come off Google's repository feed; there is no cached copy to accept
         // from, so an offline run refuses rather than reaching out behind the flag's back.
-        String feedUrl = ProcessEnv.all().getOrDefault("JK_ANDROID_FEED_URL", FEED_URL);
         if (exec.offline() && !feedUrl.startsWith("file:")) {
             throw new IOException(Errors.offlineRefusal(feedUrl));
         }
