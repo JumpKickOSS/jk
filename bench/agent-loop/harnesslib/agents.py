@@ -490,6 +490,17 @@ def jk_server_env() -> dict[str, str]:
     return env
 
 
+def jk_pinned(cfg: dict) -> dict:
+    """A jk server entry that carries its own JK_HOME and HTTP port, for a client that starts MCP servers
+    with an environment of its own (codex passes a fixed set of variables, muse likewise): `env JK_HOME=…
+    <jk> mcp`, the jk on the harness's PATH named in full. Without it codex's and muse's jk-before runs
+    asked the default home's engine (0.52) over MCP while their shell and the harness used 0.51.1's."""
+    if cfg.get("command") != "jk":
+        return cfg
+    pinned = [f"{k}={v}" for k, v in jk_server_env().items()]
+    return {**cfg, "command": "env", "args": [*pinned, shutil.which("jk") or "jk", *cfg.get("args", [])]}
+
+
 def _gradle_user_home() -> Path:
     """Gradle user home this process uses. Baselines use the same one, so the in-loop build stays warm."""
     raw = os.environ.get("GRADLE_USER_HOME")
@@ -1203,6 +1214,7 @@ def _muse_mcp_entry(cfg: dict) -> dict:
     """One registered MCP server, as muse's ``mcpServers`` spells it."""
     if cfg.get("type") == "http":
         return {"type": "streamable-http", "url": cfg["url"], "headers": cfg["headers"], "mode": "optional"}
+    cfg = jk_pinned(cfg)
     return {"type": "stdio", "command": cfg["command"], "args": list(cfg.get("args", [])), "mode": "optional"}
 
 
@@ -1716,6 +1728,7 @@ def codex(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int
         shutil.copy2(auth, home / "auth.json")
         lines = [f'model = "{model}"', f'model_reasoning_effort = "{effort}"', ""]
         for name, cfg in registered.items():
+            cfg = jk_pinned(cfg)
             args = ", ".join(json.dumps(a) for a in cfg.get("args") or [])
             lines += [f"[mcp_servers.{name}]", f'command = {json.dumps(cfg["command"])}', f"args = [{args}]",
                       # jk's run parks up to 240 s; codex's own default would cut it short.
