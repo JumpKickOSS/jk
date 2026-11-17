@@ -16,6 +16,7 @@ import cc.jumpkick.codegraph.ShopFixture;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 class ExtractorsTest {
@@ -106,7 +107,7 @@ class ExtractorsTest {
                 spring:
                   application:
                     name: shop
-                """);
+                """, Set.of());
         assertThat(yml.nodes())
                 .extracting(GraphNode::label)
                 .contains("server.port", "shop.currency", "shop.pricing.calculator", "spring.application.name");
@@ -122,8 +123,8 @@ class ExtractorsTest {
         assertThat(yml.mentions())
                 .contains(new Mention(
                         "src_main_resources_application_yml", Mention.Kind.CLASS, "com.acme.shop.PriceCalculator", 6));
-        Fragment props =
-                ConfigExtractors.properties("src/main/resources/messages.properties", "greeting=Hi ${user.name}\n");
+        Fragment props = ConfigExtractors.properties(
+                "src/main/resources/messages.properties", "greeting=Hi ${user.name}\n", Set.of());
         assertThat(props.nodes()).hasSize(1);
         assertThat(props.mentions())
                 .extracting(Mention::kind, Mention::text)
@@ -149,7 +150,7 @@ class ExtractorsTest {
                 [dependencies]
                 guava = { group = "com.google.guava", version = "33.5.0-jre" }
                 "org.slf4j:slf4j-api" = "2.0.17"
-                """);
+                """, Set.of());
         assertThat(pom.nodes()).extracting(GraphNode::id).contains("maven_com_google_guava_guava");
         assertThat(jk.nodes())
                 .extracting(GraphNode::id)

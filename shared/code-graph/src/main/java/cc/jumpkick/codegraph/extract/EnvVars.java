@@ -107,7 +107,7 @@ public final class EnvVars {
      * read them, declared; {@code EXPOSE} defines ports ({@link Ports}); command lines may request this
      * service's routes.
      */
-    static Fragment dockerfile(String relPath, String text) {
+    static Fragment dockerfile(String relPath, String text, Set<String> programs) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", "dockerfile");
         List<String> lines = Lines.split(text);
         for (int i = 0; i < lines.size(); i++) {
@@ -139,7 +139,7 @@ public final class EnvVars {
                 }
             }
             Requests.urls(b, b.fileId(), line, n);
-            CommandLines.mentions(b, b.fileId(), line, n);
+            CommandLines.mentions(b, programs, b.fileId(), line, n);
         }
         return b.build();
     }

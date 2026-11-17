@@ -9,6 +9,7 @@ import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,7 +36,7 @@ final class Makefiles {
                 || name.toLowerCase(Locale.ROOT).endsWith(".mk");
     }
 
-    static Fragment extract(String relPath, String text) {
+    static Fragment extract(String relPath, String text, Set<String> programs) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", "makefile");
         List<String> lines = Lines.split(text);
         for (int i = 0; i < lines.size(); i++) {
@@ -56,7 +57,7 @@ final class Makefiles {
                 String shell = REFERENCE.matcher(make).replaceAll("").replace('\u0000', '$');
                 Requests.urls(b, b.fileId(), shell, n);
                 EnvVars.shellLine(b, shell, n);
-                CommandLines.mentions(b, b.fileId(), shell, n);
+                CommandLines.mentions(b, programs, b.fileId(), shell, n);
                 continue;
             }
             Matcher e = EXPORT.matcher(line);

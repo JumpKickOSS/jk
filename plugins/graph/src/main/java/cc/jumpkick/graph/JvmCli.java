@@ -40,6 +40,14 @@ final class JvmCli {
     /** Where a compiled class sits in the graph: its node and source file. */
     record Placed(String id, String rel) {}
 
+    /** True when some class in {@code index} is a command: else nothing here has anything to read. */
+    static boolean any(FactsIndex index) {
+        for (ClassFacts c : index.classList()) {
+            if (command(c.annotations()) != null) return true;
+        }
+        return false;
+    }
+
     /** The command anchors of the classes in {@code index} that {@code placed} holds. */
     static void commands(
             FactsIndex index, Map<String, Placed> placed, Map<String, GraphNode> nodes, List<GraphEdge> edges) {

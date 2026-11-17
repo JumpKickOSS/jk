@@ -4,6 +4,7 @@ package cc.jumpkick.codegraph.extract;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.FragmentBuilder;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Shell scripts, as users of anchors: the requests to this service their command lines make
@@ -15,7 +16,7 @@ final class ShellScripts {
 
     private ShellScripts() {}
 
-    static Fragment extract(String relPath, String text) {
+    static Fragment extract(String relPath, String text, Set<String> programs) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", "shell");
         List<String> lines = Lines.split(text);
         for (int i = 0; i < lines.size(); i++) {
@@ -23,7 +24,7 @@ final class ShellScripts {
             if (line.stripLeading().startsWith("#")) continue;
             Requests.urls(b, b.fileId(), line, i + 1);
             EnvVars.shellLine(b, line, i + 1);
-            CommandLines.mentions(b, b.fileId(), line, i + 1);
+            CommandLines.mentions(b, programs, b.fileId(), line, i + 1);
         }
         return b.build();
     }

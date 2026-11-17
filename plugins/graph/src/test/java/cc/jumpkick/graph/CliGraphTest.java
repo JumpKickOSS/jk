@@ -85,6 +85,24 @@ class CliGraphTest {
         return f;
     }
 
+    /**
+     * A script's fragment is keyed by the programs the compiled classes define: one read while the
+     * project had no command, cached then with no command line in it, is read again once a command is
+     * compiled, and its use appears.
+     */
+    @Test
+    void aScriptReadBeforeAnyCommandWasCompiledIsReadAgainOnceOneIs(@TempDir Path dir) throws IOException {
+        Map<String, String> before = new TreeMap<>(files());
+        before.remove("src/main/java/com/acme/ShopCli.java");
+        CodeGraph none = AnchorGraphTest.graph(dir, before);
+        assertThat(none.nodes().stream().map(n -> n.id()).filter(id -> id.startsWith("cli:")))
+                .isEmpty();
+        CodeGraph g = AnchorGraphTest.graph(dir, files());
+        assertThat(g.incident("cli:shop serve --listen-port"))
+                .extracting(GraphEdge::sourceFile, GraphEdge::relation)
+                .contains(tuple("scripts/start.sh", Relations.USES));
+    }
+
     @Test
     void compiledCommandsDefineTheirFlagsAndAScriptPassingOneUsesIt(@TempDir Path dir) throws IOException {
         CodeGraph g = AnchorGraphTest.graph(dir, files());

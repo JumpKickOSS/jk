@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -95,9 +96,16 @@ class CliAnchorsTest {
         f.add(definitions());
         FILES.forEach((rel, text) -> {
             Extractor x = Objects.requireNonNull(Extractors.forPath(rel), rel);
-            f.add(x.extract(rel, text));
+            f.add(x.extract(rel, text, Set.of("shop")));
         });
         return f;
+    }
+
+    private static List<String> commandLines(Fragment f) {
+        return f.mentions().stream()
+                .filter(m -> m.kind() == Mention.Kind.CLI)
+                .map(Mention::text)
+                .toList();
     }
 
     private static CodeGraph graph() {
@@ -161,6 +169,27 @@ class CliAnchorsTest {
         assertThat(new GraphTools(g, Scope.ALL, FILES::get, true).callers("cli:shop serve --listen-port", 1, 2000))
                 .startsWith("cli:shop serve --listen-port: 1 definition, 3 uses (3 inferred).")
                 .contains("ShopCli.java", "  Dockerfile:2 (inferred)");
+    }
+
+    @Test
+    void aProjectThatDefinesNoProgramReadsNoCommandLineAndOneThatDoesReadsOnlyItsOwn() {
+        FILES.forEach((rel, text) -> {
+            Extractor x = Objects.requireNonNull(Extractors.forPath(rel), rel);
+            assertThat(Extractors.readsCommandLines(rel)).as(rel).isTrue();
+            assertThat(commandLines(x.extract(rel, text)))
+                    .as("%s with no program bound", rel)
+                    .isEmpty();
+            assertThat(commandLines(x.extract(rel, text, Set.of())))
+                    .as("%s in a project that defines no program", rel)
+                    .isEmpty();
+            assertThat(commandLines(x.extract(rel, text, Set.of("shop"))))
+                    .as("%s: only shop's command lines", rel)
+                    .isNotEmpty()
+                    .allMatch(t -> t.startsWith("shop "), "starts with shop");
+        });
+        assertThat(Extractors.readsCommandLines("src/main/java/com/acme/ShopCli.java"))
+                .isFalse();
+        assertThat(Extractors.readsCommandLines("pom.xml")).isFalse();
     }
 
     @Test

@@ -9,6 +9,7 @@ import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -30,16 +31,22 @@ final class DocExtractors {
     private static final Pattern CODE_SPAN = Pattern.compile("`+([^`\\n]+?)`+|\\+([^+\\n]+?)\\+");
     private static final Pattern SYMBOL = Pattern.compile("[A-Za-z_][\\w$]*(?:\\.[A-Za-z_][\\w$]*)*(?:\\(\\))?");
 
-    static Fragment markdown(String relPath, String text) {
-        return read(relPath, text, MD_HEADING, MD_LINK, "```", false);
+    static Fragment markdown(String relPath, String text, Set<String> programs) {
+        return read(relPath, text, MD_HEADING, MD_LINK, "```", false, programs);
     }
 
-    static Fragment asciidoc(String relPath, String text) {
-        return read(relPath, text, ADOC_HEADING, ADOC_LINK, "----", true);
+    static Fragment asciidoc(String relPath, String text, Set<String> programs) {
+        return read(relPath, text, ADOC_HEADING, ADOC_LINK, "----", true, programs);
     }
 
     private static Fragment read(
-            String relPath, String text, Pattern heading, Pattern link, String fence, boolean adoc) {
+            String relPath,
+            String text,
+            Pattern heading,
+            Pattern link,
+            String fence,
+            boolean adoc,
+            Set<String> programs) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "page");
         @Nullable String[] parents = new String[7];
         parents[0] = b.fileId();
@@ -55,7 +62,7 @@ final class DocExtractors {
             }
             Requests.urls(b, current, line, n);
             if (inBlock) {
-                CommandLines.mentions(b, current, line, n);
+                CommandLines.mentions(b, programs, current, line, n);
                 continue;
             }
             Matcher h = heading.matcher(line);
