@@ -1,19 +1,19 @@
 # Graph
 
-jk keeps a graph of the code, built from the compiled classes, so a question about a method is one
-call that answers it completely. Name a symbol `Type.method` (`pkg.Type.method` when two packages
-declare it, `Type.method(Param)` for one overload).
+jk keeps a graph of the code, built from the compiled classes, so one call answers a question about a
+symbol completely. Address: `Type.method` (`pkg.Type.method` when two packages declare it,
+`Type.method(Param)` for one overload), `Type.field`, `Type`, `a.pkg`; or an anchor, for uses no compiler
+checks: `route:GET /x/{}`, `table:t`, `column:t.c`, `env:NAME`, `config:key`.
 
 | | Shell | MCP |
 |---|---|---|
-| who calls it (`-t`: all that reach it) | `jk graph callers T.m` | `callers` |
-| rename it, its overrides, calls, doc links | `jk graph rename T.m new` | `rename` |
+| who calls or uses it (`-t`: all that reach it) | `jk graph callers X` | `callers(address=X)` |
+| rename a method, a field with get/set, a type, a package | `jk graph rename X new` | `rename(address=X, to=new)` |
 | one method's source, not the file | `jk graph read T.m` | `read`* |
-| a type without bodies | `jk graph read T -w structure` | `read`* |
-| declarations by kind, supertype, annotation | `jk graph find -t interface -I Repo` | `find`* |
 
 \* on the extended `tools/list`.
 
-The answer is final: do not grep or open files to check it. After `rename`, edit only the comment or
-doc lines it lists; MCP `rename` has already run the test classes it edited and guard, and says when the task is done. Grep stays right for text that is not a
-symbol: log messages, config values, TODOs.
+`rename` edits every use the compiler bound and lists the rest with ids: first those that should change
+too, then judgment calls (a SQL column, a message key). Apply the ones the task wants with `also=c1,c3`
+on the next call; leave unchosen what the task keeps (a column that must stay). It runs the tests and
+guard and says when the task is done. Its answer is final: do not grep or open files to check it.

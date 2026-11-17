@@ -553,7 +553,14 @@ class McpHandlerTest {
     void skill_topic_that_names_a_tool_points_at_the_tool() {
         String tool = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":35,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"callers\"}}}");
-        assertThat(tool).contains("`callers` is an MCP tool", "call it directly", "Topics: graph, dependencies");
+        assertThat(tool)
+                .as("a graph tool's name answers with the graph page, which has its address forms and also")
+                .contains(
+                        "`callers` is an MCP tool: call it directly. Its page, topic graph:",
+                        "`Type.field`",
+                        "column:t.c",
+                        "also=c1,c3",
+                        "Topics: graph, dependencies");
         assertThat(tool).doesNotContain("\"isError\":true", "\"error\"");
         String hidden = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":37,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"skill\",\"arguments\":{\"topic\":\"explain\"}}}");
