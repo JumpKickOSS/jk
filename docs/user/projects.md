@@ -245,9 +245,9 @@ it and what to write instead. `jk new`, `jk init` and `jk import` never write on
 | `[test] parallel` | 0.51.1 | `[test] workers = 1` |
 | `[build] test-workers` | 0.51.1 | `[test] workers` |
 | `[build] test-parallel` | 0.51.1 | `[test] workers = 1` |
-| `jdk-vendor` | 0.51.2 | `jdk = { vendor = "…" }` |
-| `jdk-version` | 0.51.2 | `jdk = { version = "…" }` |
-| `jdk = "…"` (a string or number) | 0.51.2 | `jdk = { vendor = "…", version = "…" }` |
+| `jdk-vendor` | 0.52.0 | `jdk = { vendor = "…" }` |
+| `jdk-version` | 0.52.0 | `jdk = { version = "…" }` |
+| `jdk = "…"` (a string or number) | 0.52.0 | `jdk = { vendor = "…", version = "…" }` |
 <!-- retired-keys:end -->
 
 ## Related

@@ -109,8 +109,8 @@ public final class RetiredKeys {
             new Retired("test", "parallel", "0.51.1", "`[test] workers = 1`", WORKERS),
             new Retired("build", "test-workers", "0.51.1", "`[test] workers`", WORKERS),
             new Retired("build", "test-parallel", "0.51.1", "`[test] workers = 1`", WORKERS),
-            new Retired("", "jdk-vendor", "0.51.2", "`jdk = { vendor = \"…\" }`", JDK_TABLE),
-            new Retired("", "jdk-version", "0.51.2", "`jdk = { version = \"…\" }`", JDK_TABLE));
+            new Retired("", "jdk-vendor", "0.52.0", "`jdk = { vendor = \"…\" }`", JDK_TABLE),
+            new Retired("", "jdk-version", "0.52.0", "`jdk = { version = \"…\" }`", JDK_TABLE));
 
     /** Refuse the first retired key {@code root} carries, with its remedy. */
     public static void refuse(TomlTable root) {
@@ -149,7 +149,7 @@ public final class RetiredKeys {
         return out;
     }
 
-    private static final String JDK_STRING_SINCE = "0.51.2";
+    private static final String JDK_STRING_SINCE = "0.52.0";
 
     private static final String JDK_STRING_RETIRED = "was retired in JumpKick " + JDK_STRING_SINCE + ": write ";
 
