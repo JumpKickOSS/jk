@@ -208,8 +208,12 @@ runs:
           elseif ($subject -notmatch ('(^|,\s*)CN=' + [regex]::Escape($env:SIGNER_CN) + '(,|$)')) { Write-Host "::error::$($f.Name) is signed by [$subject], not CN=$($env:SIGNER_CN)"; $bad++ }
           elseif (-not $sig.TimeStamperCertificate) { Write-Host "::error::$($f.Name) carries no timestamp"; $bad++ }
         }
-        $said = (& (Join-Path $PWD 'target/dist/jk.exe') --version --no-ansi | Select-Object -First 1)
-        if ($LASTEXITCODE -ne 0 -or "$said" -ne "jk $env:JK_VERSION") { Write-Host "::error::the signed jk.exe answered '$said' (exit $LASTEXITCODE), not 'jk $env:JK_VERSION'"; $bad++ }
+        # Every line first, then the exit code: a pipe into Select-Object -First 1 stops jk.exe after
+        # its first line, and PowerShell then records no exit code ($LASTEXITCODE stays $null).
+        $out = @(& (Join-Path $PWD 'target/dist/jk.exe') --version --no-ansi)
+        $code = $LASTEXITCODE
+        $said = $out | Select-Object -First 1
+        if ($code -ne 0 -or "$said" -ne "jk $env:JK_VERSION") { Write-Host "::error::the signed jk.exe answered '$said' (exit $code), not 'jk $env:JK_VERSION'"; $bad++ }
         if ($bad -gt 0) { exit 1 }
 
     # The bill of materials of the engine: the CycloneDX document the shipped engine jar embeds
