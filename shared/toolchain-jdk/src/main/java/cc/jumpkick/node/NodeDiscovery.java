@@ -36,6 +36,7 @@ public final class NodeDiscovery {
     private final Function<String, @Nullable String> env;
     private final Path userHome;
     private final List<Path> cellars;
+    private final VersionProbe probe;
 
     /** This machine's environment and home. */
     public NodeDiscovery() {
@@ -44,9 +45,25 @@ public final class NodeDiscovery {
 
     /** An explicit environment, home and Homebrew cellars: a test's fabricated machine. */
     public NodeDiscovery(Function<String, @Nullable String> env, Path userHome, List<Path> cellars) {
+        this(env, userHome, cellars, Processes::outputIfOk);
+    }
+
+    /** As above, with {@code probe} running {@code node --version}: a test's stand-in for the process. */
+    NodeDiscovery(Function<String, @Nullable String> env, Path userHome, List<Path> cellars, VersionProbe probe) {
         this.env = Objects.requireNonNull(env, "env");
         this.userHome = Objects.requireNonNull(userHome, "userHome");
         this.cellars = List.copyOf(cellars);
+        this.probe = Objects.requireNonNull(probe, "probe");
+    }
+
+    /**
+     * Runs a program and returns what it printed when it exited 0 within {@code deadline}, else null;
+     * {@link Processes#outputIfOk(List, Duration)} outside tests.
+     */
+    @FunctionalInterface
+    interface VersionProbe {
+        @Nullable
+        String outputIfOk(List<String> command, Duration deadline);
     }
 
     /** Every install found, managers before {@code PATH}, newest first within each. */
@@ -136,8 +153,8 @@ public final class NodeDiscovery {
     static final Duration VERSION_PROBE = Duration.ofSeconds(10);
 
     /** {@code node --version}, or null when it does not answer with a version within {@link #VERSION_PROBE}. */
-    static @Nullable String nodeVersion(Path node) {
-        String out = Processes.outputIfOk(List.of(node.toString(), "--version"), VERSION_PROBE);
+    private @Nullable String nodeVersion(Path node) {
+        String out = probe.outputIfOk(List.of(node.toString(), "--version"), VERSION_PROBE);
         if (out == null) return null;
         var m = VERSION.matcher(out.trim());
         return m.matches() ? m.group(1) : null;

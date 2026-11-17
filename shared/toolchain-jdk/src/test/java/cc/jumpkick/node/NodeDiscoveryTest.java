@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,15 +106,56 @@ class NodeDiscoveryTest {
     }
 
     @Test
-    void a_node_on_path_slow_to_answer_is_still_found(@TempDir Path home) throws IOException {
+    void a_node_on_path_answering_after_the_old_two_seconds_is_still_found(@TempDir Path home) throws IOException {
+        // A first start on a busy Windows machine takes seconds: an answer at three, past the two the
+        // probe once allowed, is kept. The probe is a stand-in, so no test waits on a real slow start.
         Path bin = Files.createDirectories(home.resolve("usr/bin"));
-        // About three seconds, as a first start on a busy Windows machine takes: past the two the
-        // probe once allowed, well inside the one it allows now.
         Path node = FakePrograms.executable(
-                bin.resolve(BuildTool.NODE.binaryName()),
-                new FakePrograms.Script("sleep 3; echo v22.1.0", "ping -n 4 127.0.0.1 >nul\necho v22.1.0"));
+                bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v0.0.0"));
+        List<Duration> deadlines = new ArrayList<>();
 
-        assertFoundOnPath(home, bin, node);
+        List<DiscoveredNode> found = new NodeDiscovery(
+                        Map.of("PATH", bin.toString())::get,
+                        home,
+                        List.of(),
+                        answeringAfter(Duration.ofSeconds(3), node, deadlines))
+                .discover();
+
+        assertThat(deadlines).containsExactly(NodeDiscovery.VERSION_PROBE);
+        assertThat(found)
+                .singleElement()
+                .extracting(DiscoveredNode::source, DiscoveredNode::version)
+                .containsExactly("system", "22.1.0");
+    }
+
+    @Test
+    void a_node_on_path_with_no_answer_by_the_deadline_is_left_out(@TempDir Path home) throws IOException {
+        Path bin = Files.createDirectories(home.resolve("usr/bin"));
+        Path node = FakePrograms.executable(
+                bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v0.0.0"));
+        List<Duration> deadlines = new ArrayList<>();
+
+        List<DiscoveredNode> found = new NodeDiscovery(
+                        Map.of("PATH", bin.toString())::get,
+                        home,
+                        List.of(),
+                        answeringAfter(NodeDiscovery.VERSION_PROBE.plusMillis(1), node, deadlines))
+                .discover();
+
+        assertThat(deadlines).containsExactly(NodeDiscovery.VERSION_PROBE);
+        assertThat(found).isEmpty();
+    }
+
+    /**
+     * A {@code node} that answers {@code --version} with {@code v22.1.0} after {@code delay} on a
+     * virtual clock: what {@link Processes#outputIfOk} returns given a deadline, without waiting.
+     */
+    private static NodeDiscovery.VersionProbe answeringAfter(Duration delay, Path node, List<Duration> deadlines) {
+        return (command, deadline) -> {
+            assertThat(command).containsExactly(node.toString(), "--version");
+            deadlines.add(deadline);
+            return delay.compareTo(deadline) <= 0 ? "v22.1.0\n" : null;
+        };
     }
 
     private static void assertFoundOnPath(Path home, Path bin, Path node) {
