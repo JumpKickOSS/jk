@@ -59,6 +59,13 @@ class AnnotateEvaluatorTest {
     /** Rule {@code id} of the rules file {@code rules}, evaluated over {@code idx}. */
     private static Evaluation evaluate(Path dir, String rules, String id, FactsIndex idx, FactsIndex... testIdx)
             throws Exception {
+        return evaluate(dir, rules, id, true, idx, testIdx);
+    }
+
+    /** As above; {@code jspecify} puts {@code @NullMarked} on the module's classpath. */
+    private static Evaluation evaluate(
+            Path dir, String rules, String id, boolean jspecify, FactsIndex idx, FactsIndex... testIdx)
+            throws Exception {
         Files.writeString(dir.resolve(GuardsPresence.RULES_FILE), rules);
         LoadResult load = GuardRules.load(dir, GuardsConfig.ABSENT);
         assertThat(load.hasErrors()).as(load.problems().toString()).isFalse();
@@ -73,7 +80,7 @@ class AnnotateEvaluatorTest {
                 List.of(dir.resolve("m")),
                 () -> idx,
                 () -> tests,
-                () -> List.of(classpath));
+                () -> jspecify ? List.of(classpath) : List.of());
         return Evaluators.forKind(rule.kind()).evaluate(rule, ctx);
     }
 
@@ -325,6 +332,72 @@ class AnnotateEvaluatorTest {
                 evaluate(dir, pack, id, index(scala, javaBeside, nullMarkedPackageInfo("com/acme/mixed")));
         assertThat(mixedMarked.outcome()).isEqualTo(Outcome.CLEAN);
         assertThat(mixedMarked.population()).containsEntry("elements", 1L);
+    }
+
+    /**
+     * A package a code generator writes (Avro, JAXB, jOOQ, DGS, protoc: a directory under the
+     * module's {@code target/generated-sources} and none of its source roots) is not the user's to
+     * mark, nor is one {@code [nullness] exclude} names; JAXB's own package-info does not bring it
+     * back.
+     */
+    @Test
+    void the_null_marked_rule_leaves_out_generated_and_nullness_excluded_packages(@TempDir Path dir) throws Exception {
+        String pack = Files.readString(RepoRoot.file(
+                AnnotateEvaluatorTest.class, "server/guard/packs/library/src/main/resources/jk-guards.toml"));
+        String id = "null-marked-packages";
+        Path module = dir.resolve("m");
+        Files.createDirectories(module.resolve("target/generated-sources/avro/com/acme/events"));
+        Files.createDirectories(module.resolve("target/generated-sources/jaxb/com/acme/order"));
+        Files.createDirectories(module.resolve("src/main/java/com/acme/app"));
+        Files.createDirectories(module.resolve("src/main/java/com/acme/legacy"));
+        FactsIndex idx = index(
+                compiledFrom("com/acme/events/Event", "Event.java"),
+                compiledFrom("com/acme/order/Order", "Order.java"),
+                compiledFrom("com/acme/order/package-info", "package-info.java"),
+                compiledFrom("com/acme/legacy/Old", "Old.java"),
+                compiledFrom("com/acme/app/App", "App.java"),
+                nullMarkedPackageInfo("com/acme/app"));
+
+        Evaluation before = evaluate(dir, pack, id, idx);
+        assertThat(before.observations())
+                .as("without [nullness] exclude, the hand-written package is judged")
+                .extracting(Observation::key)
+                .containsExactly("com.acme.legacy");
+
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "com.acme"
+                name = "m"
+                version = "0.1.0"
+
+                [nullness]
+                exclude = ["com.acme.legacy"]
+                """);
+        Evaluation after = evaluate(dir, pack, id, idx);
+        assertThat(after.outcome()).as(after.observations().toString()).isEqualTo(Outcome.CLEAN);
+        assertThat(after.population()).containsEntry("elements", 1L);
+    }
+
+    /**
+     * A Kotlin, Groovy or Scala app carries no JSpecify; a package of Java in it that an allow
+     * covers needs no annotation to resolve, and one that no allow covers names the fix.
+     */
+    @Test
+    void an_allowed_package_needs_no_jspecify_and_an_unallowed_one_names_the_fix(@TempDir Path dir) throws Exception {
+        String pack = Files.readString(RepoRoot.file(
+                AnnotateEvaluatorTest.class, "server/guard/packs/library/src/main/resources/jk-guards.toml"));
+        String id = "null-marked-packages";
+        Files.createDirectories(dir.resolve("m/src/main/java/com/acme/proto"));
+        FactsIndex idx = index(
+                compiledFrom("com/acme/app/Main", "Main.kt"), compiledFrom("com/acme/proto/Messages", "Messages.java"));
+        String allowed =
+                pack + "\n[[guards.null-marked-packages.allow]]\nin = \"com.acme.proto\"\nreason = \"protoc's\"\n";
+
+        Evaluation e = evaluate(dir, allowed, id, false, idx);
+        assertThat(e.outcome()).as(e.note()).isEqualTo(Outcome.CLEAN);
+
+        Evaluation unallowed = evaluate(dir, pack, id, false, idx);
+        assertThat(unallowed.outcome()).isEqualTo(Outcome.SCANNER_FAILED);
+        assertThat(unallowed.note()).contains("does not resolve", "[nullness]", "org.jspecify:jspecify");
     }
 
     @Test

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ManifestNullness;
+import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -10,6 +13,11 @@ import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.NullnessConfig;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,25 +71,31 @@ final class AnnotateEvaluator implements Evaluator {
         }
         // Nothing the predicate selects leaves nothing to judge, whether or not the annotation is
         // on the classpath: a library pack's Java-only rule passes a module of Scala classes alone.
-        if (matching.predicate() != null && facts.classList().stream().noneMatch(matching::test)) {
+        // So does a package scope of generated code alone: its sources are a generator's, not the user's.
+        Map<String, @Nullable ClassFacts> scope =
+                on.equals("package") ? packageScope(facts, matching, ctx, annotation) : Map.of();
+        if ((matching.predicate() != null && facts.classList().stream().noneMatch(matching::test))
+                || (on.equals("package") && scope.isEmpty())) {
             return Evaluation.of(
                     Map.of("elements", 0L, "classes", (long) facts.classes().size()), List.of());
         }
 
         String internal = Descriptors.internalName(annotation);
         var retention = types.retention(internal);
-        if (retention.isEmpty()) {
-            return Evaluation.failed(
-                    "annotation " + annotation + " does not resolve on this module's classpath or JDK");
+        // A package every allow covers needs no annotation to resolve: a required one is absent
+        // from all of them alike, and each is allowed.
+        if (retention.isEmpty()
+                && !(on.equals("package") && require && allAllowed(rule, scope.keySet(), ctx.module()))) {
+            return Evaluation.failed(unresolved(annotation));
         }
-        if (retention.get().equals("SOURCE")) {
+        if (retention.isPresent() && retention.get().equals("SOURCE")) {
             return Evaluation.failed("annotation " + annotation
                     + " has retention SOURCE: this fact is not in the class file, so no bytecode rule can see it");
         }
 
         Scan scan = new Scan(rule, ctx, require, annotation, withValue);
         if (on.equals("package")) {
-            scan.packages(facts, matching);
+            scan.packages(scope);
         } else {
             Evaluation unknownOn = scan.elements(facts, matching, on);
             if (unknownOn != null) return unknownOn;
@@ -115,15 +129,7 @@ final class AnnotateEvaluator implements Evaluator {
             this.simple = annotation.substring(Math.max(annotation.lastIndexOf('.'), annotation.lastIndexOf('$')) + 1);
         }
 
-        void packages(FactsIndex facts, ClassPredicates.Compiled matching) {
-            // A package is in scope when a class of it matches; its package-info carries the fact.
-            Map<String, @Nullable ClassFacts> infos = new TreeMap<>();
-            Map<String, ClassFacts> byPackage = new TreeMap<>();
-            for (ClassFacts c : facts.classList()) {
-                if (c.isPackageInfo()) byPackage.put(c.packageName(), c);
-                else if (matching.test(c)) infos.putIfAbsent(c.packageName(), null);
-            }
-            for (String pkg : infos.keySet()) infos.put(pkg, byPackage.get(pkg));
+        void packages(Map<String, @Nullable ClassFacts> infos) {
             for (var e : infos.entrySet()) {
                 String pkg = e.getKey();
                 ClassFacts info = e.getValue();
@@ -247,6 +253,80 @@ final class AnnotateEvaluator implements Evaluator {
             }
             return Evaluation.of(population, sites);
         }
+    }
+
+    /** The annotation the library pack's {@code null-marked-packages} requires, which {@code [nullness]} brings. */
+    static final String NULL_MARKED = "org.jspecify.annotations.NullMarked";
+
+    private static final Object NULLNESS_EXCLUDE = new Object();
+
+    /**
+     * The packages an {@code on = "package"} rule judges, each with its package-info (null when it
+     * has none): a package is in scope when a class of it matches, unless its directory is under
+     * the module's generated-source trees and none of its source roots, or, for {@link
+     * #NULL_MARKED}, {@code [nullness] exclude} names it. Avro, JAXB, jOOQ, DGS and protoc write
+     * whole packages the user does not own; JAXB writes their package-info too.
+     */
+    static Map<String, @Nullable ClassFacts> packageScope(
+            FactsIndex facts, ClassPredicates.Compiled matching, EvalContext ctx, String annotation) {
+        Map<String, @Nullable ClassFacts> infos = new TreeMap<>();
+        Map<String, ClassFacts> byPackage = new TreeMap<>();
+        for (ClassFacts c : facts.classList()) {
+            if (c.isPackageInfo()) byPackage.put(c.packageName(), c);
+            else if (matching.test(c)) infos.putIfAbsent(c.packageName(), null);
+        }
+        Path moduleDir = ctx.moduleDir();
+        List<String> excluded = annotation.equals(NULL_MARKED) ? nullnessExclude(ctx) : List.of();
+        Map<String, @Nullable ClassFacts> out = new TreeMap<>();
+        for (String pkg : infos.keySet()) {
+            if (moduleDir != null && SplitPackageEvaluator.generatedOnly(moduleDir, pkg)) continue;
+            if (underAny(pkg, excluded)) continue;
+            out.put(pkg, byPackage.get(pkg));
+        }
+        return out;
+    }
+
+    /** The module's {@code [nullness] exclude}, read once per lane run; empty without one or when the manifest does not parse. */
+    private static List<String> nullnessExclude(EvalContext ctx) {
+        return ctx.memo(NULLNESS_EXCLUDE, c -> {
+            Path dir = c.moduleDir();
+            if (dir == null) return List.<String>of();
+            Path manifest = ManifestPaths.manifestIn(dir);
+            if (!Files.isRegularFile(manifest)) return List.<String>of();
+            try {
+                NullnessConfig nullness = JkBuildParser.parse(manifest).build().nullness();
+                return nullness == null ? List.<String>of() : nullness.exclude();
+            } catch (UserConfigParseException unparsed) {
+                throw unparsed; // config.toml's own error, with its position — never this site's fallback
+            } catch (IOException | RuntimeException unreadable) {
+                // The manifest's own check reports it; this rule then judges every package.
+                return List.<String>of();
+            }
+        });
+    }
+
+    /** {@code pkg} is one of {@code roots} or a subpackage of one, as NullAway reads {@code exclude}. */
+    static boolean underAny(String pkg, List<String> roots) {
+        for (String root : roots) {
+            if (pkg.equals(root) || pkg.startsWith(root + ".")) return true;
+        }
+        return false;
+    }
+
+    private static boolean allAllowed(Rule rule, Iterable<String> packages, String module) {
+        for (String pkg : packages) {
+            if (allowingPackage(rule.allow(), pkg, module) == null) return false;
+        }
+        return true;
+    }
+
+    /** The failure for an annotation no classpath entry declares, naming what puts it there. */
+    static String unresolved(String annotation) {
+        String fix = annotation.startsWith("org.jspecify.")
+                ? "[nullness] in jk.toml brings it (" + ManifestNullness.JSPECIFY
+                        + "), or add org.jspecify:jspecify to [dependencies]"
+                : "add the library that declares it to [dependencies]";
+        return "annotation " + annotation + " does not resolve on this module's classpath or JDK; " + fix;
     }
 
     private static @Nullable Allow allowingPackage(List<Allow> allow, String pkg, String module) {
