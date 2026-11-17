@@ -5,6 +5,7 @@ import cc.jumpkick.codegraph.Modules;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -31,6 +32,9 @@ final class RenamePlan {
 
     /** Candidates quoted one per line before the rest are counted. */
     static final int SHOWN = 40;
+
+    /** Files named on a summarised line before the rest are counted. */
+    static final int SUMMARY_FILES = 3;
 
     /** The widest quoted line. */
     static final int QUOTE_WIDTH = 160;
@@ -187,11 +191,43 @@ final class RenamePlan {
         return out;
     }
 
-    /**
-     * The answer: what was renamed and where, the candidates by id, the hazards by id. {@code proof}
-     * is the line the check after the edit adds, when it ran ({@code null} before).
-     */
+    /** The budget's measure: about three characters per token, as every graph answer counts them. */
+    private static final int CHARS_PER_TOKEN = 3;
+
+    /** The answer in full: what was renamed and where, the candidates by id, the hazards by id. */
     List<String> render(Modules modules) {
+        List<String> out = head(true);
+        out.addAll(lists(false, true));
+        return out;
+    }
+
+    /**
+     * The answer in about {@code budget} tokens, never by hiding an id the agent may pass to {@code
+     * also}: over the budget the edited files' lines go first (the first line counts them), then each
+     * list is summarised by kind with its ids and files; a repeated call lists them all again.
+     */
+    List<String> render(Modules modules, int budget) {
+        List<String> full = render(modules);
+        if (fits(full, budget)) return full;
+        List<String> out = head(false);
+        out.addAll(lists(false, true));
+        if (fits(out, budget)) return out;
+        out = head(false);
+        out.addAll(lists(true, true));
+        return out;
+    }
+
+    /** The lists a repeated call shows again: candidates, hazards, what was not checked; no edits, no next step. */
+    List<String> lists() {
+        return lists(false, false);
+    }
+
+    private static boolean fits(List<String> lines, int budget) {
+        return String.join("\n", lines).length() <= (long) budget * CHARS_PER_TOKEN;
+    }
+
+    /** The first line, and with {@code files} each edited file's changed lines. */
+    private List<String> head(boolean files) {
         List<String> out = new ArrayList<>();
         int edits = edits();
         if (edits > 0 || !after.isEmpty()) {
@@ -201,15 +237,7 @@ final class RenamePlan {
             out.add("Renamed " + subject + " to " + to + ": " + what + "in " + files(after.size())
                     + (moves.isEmpty() ? "" : " (" + moved(moves.size()) + ")") + "; each one javac or the"
                     + " compiled classes bound.");
-            for (Map.Entry<String, Set<Integer>> e : lines.entrySet()) {
-                String from = moves.entrySet().stream()
-                        .filter(m -> m.getValue().equals(e.getKey()))
-                        .map(Map.Entry::getKey)
-                        .findFirst()
-                        .orElse(null);
-                out.add("  " + (from == null ? "" : from + " -> ") + e.getKey()
-                        + (e.getValue().isEmpty() ? "" : ":" + numbers(e.getValue())));
-            }
+            if (files) out.addAll(fileLines());
             if (!rawMoves.isEmpty()) {
                 out.add("  " + rawMoves.size() + " resource" + (rawMoves.size() == 1 ? "" : "s")
                         + " moved with the package, unedited");
@@ -217,7 +245,27 @@ final class RenamePlan {
         } else {
             out.add("Nothing renamed for " + subject + ": no use javac or the compiled classes bound.");
         }
-        out.addAll(notes);
+        return out;
+    }
+
+    /** Each edited file by its new path (and the old one when it moved), with its changed lines. */
+    private List<String> fileLines() {
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, Set<Integer>> e : lines.entrySet()) {
+            String from = moves.entrySet().stream()
+                    .filter(m -> m.getValue().equals(e.getKey()))
+                    .map(Map.Entry::getKey)
+                    .findFirst()
+                    .orElse(null);
+            out.add("  " + (from == null ? "" : from + " -> ") + e.getKey()
+                    + (e.getValue().isEmpty() ? "" : ":" + numbers(e.getValue())));
+        }
+        return out;
+    }
+
+    /** The notes, candidates and hazards; {@code summary} lists them by kind, {@code next} adds the next step. */
+    private List<String> lists(boolean summary, boolean withNext) {
+        List<String> out = new ArrayList<>(notes);
         List<Candidate> ordered = ordered();
         List<Candidate> must = ordered.stream().filter(Candidate::must).toList();
         List<Candidate> may = ordered.stream().filter(c -> !c.must()).toList();
@@ -225,7 +273,8 @@ final class RenamePlan {
         if (!must.isEmpty()) {
             out.add("Not applied, and should change too (" + grades(must) + "); apply with also=" + ids(1, must.size())
                     + ":");
-            id = list(out, must, id);
+            if (summary) id = summarised(out, must, id);
+            else id = list(out, must, id);
         }
         // Hazards and the next step before the judgment calls: a long list must not crowd them out.
         for (int i = 0; i < hazards.size(); i++) {
@@ -233,7 +282,7 @@ final class RenamePlan {
             out.add("h" + (i + 1) + " hazard: " + h.text()
                     + (h.pin().isEmpty() ? "" : " also=h" + (i + 1) + " pins it."));
         }
-        if (next != null) out.add(next);
+        if (withNext && next != null) out.add(next);
         if (!unseen.isEmpty() && (next == null || !next.contains("Not complete"))) {
             // Calls made where nothing compiled are not renamed or proven: the rename is not done.
             out.add("Not checked: these modules may call it but have no compiled classes. The rename is not done until"
@@ -242,9 +291,50 @@ final class RenamePlan {
         }
         if (!may.isEmpty()) {
             out.add("Judgment, left as they are unless chosen (also=c" + (id + 1) + ",…):");
-            grouped(out, may, id);
+            if (summary) summarised(out, may, id);
+            else grouped(out, may, id);
+        }
+        if (summary && !ordered.isEmpty()) {
+            out.add("Each one with its line: repeat this rename (same address and to).");
         }
         return out;
+    }
+
+    /**
+     * {@code set} by grade and reason, one line each: its ids, how many, and in which files ({@code
+     * c3-c9,c14 inferred, message key: 8 in messages.properties, messages_de.properties}).
+     */
+    private static int summarised(List<String> out, List<Candidate> set, int from) {
+        Map<String, Kind> kinds = new LinkedHashMap<>();
+        for (int i = 0; i < set.size(); i++) {
+            Candidate c = set.get(i);
+            Kind k = kinds.computeIfAbsent(
+                    c.grade().word() + ", " + c.reason(), x -> new Kind(new ArrayList<>(), new LinkedHashSet<>()));
+            k.ids().add(from + i + 1);
+            k.files().add(c.rel());
+        }
+        kinds.forEach((word, k) -> {
+            String shown =
+                    String.join(", ", k.files().stream().limit(SUMMARY_FILES).toList());
+            out.add("  " + ranges(k.ids()) + " " + word + ": " + k.ids().size() + " in " + shown
+                    + (k.files().size() > SUMMARY_FILES ? " +" + (k.files().size() - SUMMARY_FILES) + " files" : ""));
+        });
+        return from + set.size();
+    }
+
+    /** One summarised kind of candidate: its ids and the files they are in. */
+    private record Kind(List<Integer> ids, Set<String> files) {}
+
+    /** Ascending ids as {@code also} takes them: {@code c3-c5,c9}. */
+    static String ranges(List<Integer> ids) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < ids.size(); ) {
+            int j = i;
+            while (j + 1 < ids.size() && ids.get(j + 1) == ids.get(j) + 1) j++;
+            out.add(ids(ids.get(i), ids.get(j)));
+            i = j + 1;
+        }
+        return String.join(",", out);
     }
 
     /** Judgment candidates; three or more of one reason in one file share a line: {@code c9-c18 … :25,26,… (10)}. */

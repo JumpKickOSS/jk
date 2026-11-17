@@ -464,6 +464,11 @@ applies the services files with the rest; there a kind applies only the candidat
 (and the pins), never a judgment call, which no list has shown yet: those stay listed for a later
 `--also` by id.
 
+An answer over its budget (2,000 tokens over MCP) never hides an id: it drops the edited files' lines
+first, then lists the candidates by kind, each with its ids and files (`c8-c12,c15 inferred, message
+key: 6 in messages.properties, …`). The same rename called again after it was made changes nothing and
+lists every candidate and hazard with its line, and which ids were applied since.
+
 **Hazards.** A rename that changes behaviour with no compile error is flagged with the pin that keeps
 the old behaviour, applied with `also=h1`: a JPA entity field with no column name (`@Column(name =
 "telephone")`), a Jackson-serialized field (`@JsonProperty("telephone")`); a `Serializable` class's

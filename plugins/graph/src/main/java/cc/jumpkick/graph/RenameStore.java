@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -199,6 +200,22 @@ final class RenameStore {
     static void writePending(
             Path out, String address, String to, List<RenamePlan.Candidate> ordered, List<RenamePlan.Hazard> hazards)
             throws IOException {
+        writePending(out, address, to, ordered, hazards, List.of());
+    }
+
+    /**
+     * Stores {@code plan}'s candidates and hazards for a later {@code also}, and {@code said}, the lists
+     * as the answer gave them, for a repeated call to show again; kept with no candidates too, so a
+     * repeated call knows the rename was made.
+     */
+    static void writePending(
+            Path out,
+            String address,
+            String to,
+            List<RenamePlan.Candidate> ordered,
+            List<RenamePlan.Hazard> hazards,
+            List<String> said)
+            throws IOException {
         StringBuilder s = new StringBuilder("call\t")
                 .append(esc(address))
                 .append('\t')
@@ -221,8 +238,17 @@ final class RenameStore {
             s.append("grade\t").append(id).append("\thazard\tmay\n");
             for (RenamePlan.Change ch : hazards.get(i).pin()) s.append(change(id, ch));
         }
+        for (String line : said) s.append("say\t").append(esc(line)).append('\n');
         Path dir = Files.createDirectories(dir(out));
         AtomicWrites.replace(dir.resolve(PENDING), s.toString());
+    }
+
+    /** Records that {@code ids} of the pending rename were applied, for a repeated call to say so. */
+    static void markApplied(Path out, Set<String> ids) throws IOException {
+        Path file = dir(out).resolve(PENDING);
+        if (!Files.isRegularFile(file) || ids.isEmpty()) return;
+        AtomicWrites.replace(
+                file, Files.readString(file, StandardCharsets.UTF_8) + "applied\t" + String.join(",", ids) + "\n");
     }
 
     private static String change(String id, RenamePlan.Change ch) {
@@ -236,9 +262,22 @@ final class RenameStore {
         };
     }
 
-    /** The candidates a pending record holds: their call, and for each id its grade, tier and changes. */
+    /**
+     * The candidates a pending record holds: their call, and for each id its grade, tier and changes;
+     * the lists as the answer gave them, and the ids applied since.
+     */
     record Pending(
-            String address, String to, Map<String, String[]> grades, Map<String, List<RenamePlan.Change>> changes) {}
+            String address,
+            String to,
+            Map<String, String[]> grades,
+            Map<String, List<RenamePlan.Change>> changes,
+            List<String> said,
+            Set<String> applied) {
+
+        Pending(String address, String to, Map<String, String[]> grades, Map<String, List<RenamePlan.Change>> changes) {
+            this(address, to, grades, changes, List.of(), Set.of());
+        }
+    }
 
     static @Nullable Pending readPending(Path out) throws IOException {
         Path file = dir(out).resolve(PENDING);
@@ -247,6 +286,8 @@ final class RenameStore {
         String to = null;
         Map<String, String[]> grades = new LinkedHashMap<>();
         Map<String, List<RenamePlan.Change>> changes = new LinkedHashMap<>();
+        List<String> said = new ArrayList<>();
+        Set<String> applied = new LinkedHashSet<>();
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             String[] f = line.split("\t", -1);
             switch (f[0]) {
@@ -265,11 +306,13 @@ final class RenameStore {
                 case "M" ->
                     changes.computeIfAbsent(f[1], k -> new ArrayList<>())
                             .add(new RenamePlan.Move(unesc(f[2]), unesc(f[4])));
+                case "say" -> said.add(unesc(f[1]));
+                case "applied" -> applied.addAll(List.of(f[1].split(",")));
                 default -> {}
             }
         }
         if (address == null || to == null) return null;
-        return new Pending(address, to, grades, changes);
+        return new Pending(address, to, grades, changes, said, applied);
     }
 
     static void clearPending(Path out) throws IOException {

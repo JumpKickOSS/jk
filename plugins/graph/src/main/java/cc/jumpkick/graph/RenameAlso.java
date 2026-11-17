@@ -78,8 +78,11 @@ final class RenameAlso {
         }
         for (String id : out) {
             if (!p.grades().containsKey(id)) {
-                throw new IllegalArgumentException("also names " + id + ", which the last rename did not return; it"
-                        + " returned " + String.join(",", p.grades().keySet()));
+                throw new IllegalArgumentException(
+                        "also names " + id + ", which the last rename did not return; it" + " returned "
+                                + (p.grades().isEmpty()
+                                        ? "none"
+                                        : String.join(",", p.grades().keySet())));
             }
         }
         return out;

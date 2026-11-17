@@ -59,6 +59,7 @@ final class RenameOp {
             Set<String> modules = touched(graph, plan);
             RenameStore.write(root, out, plan);
             RenameStore.writeProof(out, modules, Map.of(), List.of());
+            RenameStore.markApplied(out, ids);
             return GraphService.Reply.of(
                     w, Budget.lines(RenameAlso.answer(graph.modules(), plan, ids), r.budget(), "Raise the budget"));
         }
@@ -68,19 +69,33 @@ final class RenameOp {
             plan = plan(w, graph, ctx, address, to, options);
             if (also != null && !also.isBlank()) RenameAlso.fold(root, plan, also);
         } catch (RenameRefusal refused) {
+            // The same call again after it was made: the old name is gone, so say what it left, not "No method".
+            if (pending != null
+                    && pending.address().equals(address)
+                    && pending.to().equals(to)) {
+                return GraphService.Reply.of(w, again(pending));
+            }
             return GraphService.Reply.of(w, String.valueOf(refused.getMessage()));
         }
         Set<String> modules = touched(graph, plan);
         List<String[]> refs = RenameProof.expected(root, graph.modules(), ctx.javaFiles, plan);
         List<RenamePlan.Candidate> ordered = plan.ordered();
         if (!plan.after.isEmpty() || !plan.rawMoves.isEmpty()) RenameStore.write(root, out, plan);
-        if (ordered.isEmpty() && plan.hazards.isEmpty()) RenameStore.clearPending(out);
-        else RenameStore.writePending(out, address, to, ordered, plan.hazards);
+        RenameStore.writePending(out, address, to, ordered, plan.hazards, plan.lists());
         if (!plan.after.isEmpty()) RenameStore.writeProof(out, modules, plan.symbols, refs, plan.unseen);
         // A method rename names the sets it could not see; every other kind lists their uses as candidates.
         List<String> unseen = plan.unseen;
-        return new GraphService.Reply(
-                Budget.lines(plan.render(graph.modules()), r.budget(), "Raise the budget for every line"), unseen);
+        return new GraphService.Reply(String.join("\n", plan.render(graph.modules(), r.budget())), unseen);
+    }
+
+    /** The answer to a rename repeated after it was made: what it left to apply, every id with its line. */
+    static String again(RenameStore.Pending p) {
+        List<String> out = new ArrayList<>();
+        out.add("Already renamed " + p.address() + " to " + p.to() + "; this call changed nothing."
+                + (p.applied().isEmpty() ? "" : " Applied since: " + String.join(",", p.applied()) + "."));
+        out.addAll(p.said());
+        if (p.grades().isEmpty()) out.add("It listed nothing to apply.");
+        return String.join("\n", out);
     }
 
     /** The modules a plan writes in: the ones the check compiles. */

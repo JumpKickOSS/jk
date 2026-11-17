@@ -106,6 +106,11 @@ final class RenameFixture {
 
     /** {@code rename address to} with {@code options} ({@code key=value}), as the engine asks for it. */
     String rename(String address, String to, String... options) throws IOException {
+        return rename(8000, address, to, options);
+    }
+
+    /** {@code rename address to} in a {@code budget} of tokens, as the engine asks for it (MCP's is 2,000). */
+    String rename(int budget, String address, String to, String... options) throws IOException {
         Map<String, String> opts = new LinkedHashMap<>();
         for (String o : options) opts.put(o.substring(0, o.indexOf('=')), o.substring(o.indexOf('=') + 1));
         GraphService.Request r = new GraphService.Request(
@@ -113,7 +118,7 @@ final class RenameFixture {
                 List.of(address, to),
                 "bfs",
                 3,
-                8000,
+                budget,
                 List.of(),
                 false,
                 8,
