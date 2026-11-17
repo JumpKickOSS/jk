@@ -1709,6 +1709,23 @@ def _codex_turns(events: list[dict]) -> int:
     return calls + 1
 
 
+def _keep_refreshed_login(copy: Path, original: Path) -> None:
+    """Put a login the CLI refreshed in its throwaway home back where it came from. Codex rotates its refresh
+    token when it renews an expired access token; the new one lived only in the copy, so the next run's copy
+    held a used refresh token and every later run failed at once ("your refresh token was already used")."""
+    try:
+        new = copy.read_bytes()
+        if new == original.read_bytes():
+            return
+        json.loads(new)
+    except (OSError, ValueError):
+        return
+    tmp = original.with_name(original.name + ".bench-tmp")
+    tmp.write_bytes(new)
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, original)
+
+
 def codex(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
           effort: str = "medium") -> AgentResult:
     """`codex exec --json` with the tool's MCP server. Codex works through its shell and apply_patch,
@@ -1750,6 +1767,7 @@ def codex(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int
 
         env = no_graph_path(home, {**os.environ, "CODEX_HOME": str(home)})
         events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
+        _keep_refreshed_login(home / "auth.json", auth)
     raw = {}
     for ev in events:
         if ev.get("type") == "turn.completed":
