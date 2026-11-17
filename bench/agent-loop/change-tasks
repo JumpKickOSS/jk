@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import functools
 import hashlib
 import json
 import os
@@ -36,7 +37,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import benchtools  # noqa: E402
-from harnesslib import agents  # noqa: E402
+from harnesslib import agents, cost  # noqa: E402
 from harnesslib.mcp import StdioMcp  # noqa: E402
 from harnesslib.session import mcp_server_config  # noqa: E402
 
@@ -553,11 +554,84 @@ class other_jk:
         return False
 
 
+JK_SHELL = re.compile(r"^\s*(?:\S*/)?jk\b")
+JK_SERVER_ARG = re.compile(r'"(?:ServerName|server_name|serverName|server)":\s*"jk"')
+
+
+def call_events(ev: dict) -> list[tuple[str, str, bool]]:
+    """The tool-call starts and ends one transcript event carries: (``start`` or ``end``, call id, whether the
+    call is jk's). Claude Code pairs a tool_use block with a tool_result block; codex an item.started with
+    the item.completed of the same id; cursor-agent a started tool_call with its completed one; muse a task
+    scheduled under ``tool:<call id>`` with that call's tool.result. agy's tool step carries its own duration:
+    (``span``, milliseconds, is jk)."""
+    out: list[tuple[str, str, bool]] = []
+    message = ev.get("message")
+    for block in (message.get("content") or []) if isinstance(message, dict) else []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "tool_use" and block.get("id"):
+            name = str(block.get("name") or "")
+            args = block.get("input") if isinstance(block.get("input"), dict) else {}
+            # grok calls an MCP tool through use_tool, naming it server__tool.
+            inner = str(args.get("tool_name") or "") if name == "use_tool" else name
+            out.append(("start", block["id"], inner.startswith(("mcp__jk__", "jk__"))
+                        or bool(JK_SHELL.match(str(args.get("command") or "")))))
+        elif block.get("type") == "tool_result" and block.get("tool_use_id"):
+            out.append(("end", block["tool_use_id"], False))
+    kind = ev.get("type")
+    item = ev.get("item") if isinstance(ev.get("item"), dict) else None
+    if item and item.get("id") and item.get("type") in ("command_execution", "mcp_tool_call"):
+        is_jk = item.get("server") == "jk" or bool(JK_SHELL.match(agents._codex_command(str(item.get("command") or ""))))
+        if kind == "item.started":
+            out.append(("start", item["id"], is_jk))
+        elif kind == "item.completed":
+            out.append(("end", item["id"], is_jk))
+    if kind == "tool_call" and ev.get("call_id") and ev.get("subtype") in ("started", "completed"):
+        name, args = agents._cursor_call(ev)
+        is_jk = name.startswith("mcp__jk__") or bool(JK_SHELL.match(str(args.get("command") or "")))
+        out.append(("start" if ev["subtype"] == "started" else "end", ev["call_id"], is_jk))
+    step = ev.get("step_update") if isinstance(ev.get("step_update"), dict) else {}
+    if step.get("step_type") == "tool" and step.get("state") in ("DONE", "ERROR") and step.get("duration_seconds"):
+        # agy writes a tool step's start and end in one batch, so its own duration is the span.
+        params = (step.get("tool_info") or {}).get("parameters") if isinstance(step.get("tool_info"), dict) else {}
+        is_jk = step.get("tool_name") == "call_mcp_tool" and bool(JK_SERVER_ARG.search(json.dumps(params or {})))
+        out.append(("span", str(int(float(step["duration_seconds"]) * 1000)), is_jk))
+    payload = ev.get("payload") if isinstance(ev.get("payload"), dict) else {}
+    key = str((payload.get("event") or {}).get("idempotency_key") or "") if isinstance(payload.get("event"), dict) else ""
+    if ev.get("payload_type") == "task.lifecycle.scheduled" and key.startswith("tool:"):
+        out.append(("start", key.removeprefix("tool:"), False))
+    elif ev.get("payload_type") == "tool.result" and payload.get("call_id"):
+        name = str((payload.get("correlation_facts") or {}).get("tool_name") or "")
+        out.append(("end", payload["call_id"], name.startswith("mcp__jk__")))
+    return out
+
+
+def jk_calls(summary: list[dict]) -> int:
+    """Calls of jk's MCP tools (``mcp__jk__x``; grok's ``jk__x`` through use_tool), and shell commands that
+    run jk, in a driver's transcript spine. A call the server refused (a tool the arm hides) counts too."""
+    n = 0
+    for entry in summary:
+        if "tool_use" not in entry:
+            continue
+        name = called(entry)
+        command = ""
+        if name.split("__")[-1] == "Bash":
+            try:
+                command = str(json.loads(entry.get("input") or "{}").get("command") or "")
+            except (json.JSONDecodeError, AttributeError):
+                command = str(entry.get("input") or "")
+        raw = str(entry.get("tool_use") or "")
+        # agy's call_mcp_tool names the server beside the tool; its input may be cut short, so read the text.
+        via_agy = raw == "call_mcp_tool" and bool(JK_SERVER_ARG.search(str(entry.get("input") or "")))
+        n += name.startswith(("mcp__jk__", "jk__")) or via_agy or bool(JK_SHELL.match(command))
+    return n
+
+
 def timing(transcript: Path, wall_s: float) -> dict:
-    """Wall time split from a stream-json transcript's ``_t_ms`` stamps: tool time is the union of the
-    intervals from each tool call's assistant event to its result's event, jk time the same over jk's MCP
-    tools and shell calls that run jk, model time the rest of the wall. None where the transcript carries
-    no matched call ids (a driver whose events do not pair calls with results)."""
+    """Wall time split from a transcript's ``_t_ms`` stamps: tool time is the union of the intervals from
+    each tool call's start event to its end event (call_events), jk time the same over jk's MCP tools and
+    shell calls that run jk, model time the rest of the wall. None where the transcript carries no matched
+    call ids (a driver whose events do not pair calls with results)."""
     calls: dict[str, tuple[int, bool]] = {}
     spans: list[tuple[int, int, bool]] = []
     try:
@@ -572,17 +646,14 @@ def timing(transcript: Path, wall_s: float) -> dict:
         t = ev.get("_t_ms") if isinstance(ev, dict) else None
         if t is None:
             continue
-        for block in ((ev.get("message") or {}).get("content") or []) if isinstance(ev.get("message"), dict) else []:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_use" and block.get("id"):
-                name = str(block.get("name") or "")
-                cmd = str((block.get("input") or {}).get("command") or "") if isinstance(block.get("input"), dict) else ""
-                is_jk = name.startswith("mcp__jk__") or bool(re.match(r"^\s*(?:\S*/)?jk\b", cmd))
-                calls[block["id"]] = (t, is_jk)
-            elif block.get("type") == "tool_result" and block.get("tool_use_id") in calls:
-                start, is_jk = calls.pop(block["tool_use_id"])
-                spans.append((start, t, is_jk))
+        for edge, call_id, is_jk in call_events(ev):
+            if edge == "span":  # a call that carries its own duration in ms, ending now
+                spans.append((t - int(call_id), t, is_jk))
+            elif edge == "start":
+                calls[call_id] = (t, is_jk)
+            elif call_id in calls:
+                start, started_jk = calls.pop(call_id)
+                spans.append((start, t, started_jk or is_jk))
     if not spans:
         return {"tool_s": None, "jk_s": None, "model_s": None}
 
@@ -600,6 +671,18 @@ def timing(transcript: Path, wall_s: float) -> dict:
     return {"tool_s": tool, "jk_s": jk, "model_s": round(max(0.0, wall_s - tool), 1)}
 
 
+@functools.cache
+def cli_version(driver: str) -> str | None:
+    """The first line of the driver's CLI's ``--version``, so a row says which release ran."""
+    try:
+        out = subprocess.run([agents.cli(driver), "--version"], capture_output=True, text=True, timeout=30,
+                             stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    lines = (out.stdout or out.stderr).strip().splitlines()
+    return lines[0][:80] if lines else None
+
+
 def run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -> dict:
     with other_jk(ARMS[arm]):
         return _run_one(name, task, arm, run_no, ns, run_root)
@@ -615,7 +698,9 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
         shutil.rmtree(run_dir)
     sandbox = run_dir / "sandbox"
     row = {"date": ns.date, "driver": ns.driver, "task": name, "kind": task["kind"], "repo": task["repo"],
-           "arm": arm, "run": run_no, "model": ns.model, "effort": ns.effort, "outcome": "error", "finding": "",
+           "arm": arm, "run": run_no, "model": ns.model, "effort": ns.effort,
+           "context": getattr(ns, "context", None), "cli": agents.cli(ns.driver),
+           "cli_version": cli_version(ns.driver), "outcome": "error", "finding": "",
            "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id()}
     try:
         # A question needs the classes (the graph's compiled facts), not a test run.
@@ -676,7 +761,8 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
             user=task["prompt"].strip(),
             servers=servers,
             shell=shell,
-            hide_graph=bool(spec.get("hide_graph")))
+            hide_graph=bool(spec.get("hide_graph")),
+            context=getattr(ns, "context", None))
         if tool == "jk":
             # Every jk arm starts timing with a warm engine and graph worker: a prepared sandbox copied
             # from the cache ran no jk, and a cold engine or worker would land in one arm's first call.
@@ -701,13 +787,14 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
             reasoning_tokens=agents.reasoning_count(usage, res.extra.get("model_usage")),
             cost_usd=None if res.cost_usd is None else round(res.cost_usd, 4),
             claimed=bool(re.search(r"(?m)^\s*DONE\b", reply)), reply=reply[:300],
-            agent_finding=res.finding, **navigation(res.transcript, sandbox))
+            agent_finding=res.finding, jk_calls=jk_calls(res.transcript), **navigation(res.transcript, sandbox))
         if res.extra.get("abort"):
             row["finding"] = f"the {ns.driver} CLI did not start: {res.finding}"[:300]
             return row
         if usage:
             row["tokens"] = (row["input_tokens"] + row["output_tokens"] + row["cache_read_tokens"]
                              + row["cache_write_tokens"])
+            row.update(cost.estimate(row))
         else:
             # The agent was stopped before it reported usage (cursor-agent killed at the turn budget):
             # its tokens are unknown, and a 0 would pull the cell's median down.
@@ -824,6 +911,7 @@ def main() -> int:
     ap.add_argument("--driver", default="claude-code", choices=sorted(DRIVERS))
     ap.add_argument("--model", help="default per driver")
     ap.add_argument("--effort", help="default per driver")
+    ap.add_argument("--context", type=int, help="context window in tokens, for a CLI that takes one (grok); recorded")
     ap.add_argument("--max-turns", type=int, default=60)
     ap.add_argument("--max-minutes", type=int, default=30)
     ap.add_argument("--shell", action="store_true",
@@ -848,8 +936,7 @@ def main() -> int:
         benchtools.resolve(allow_stale=True, need=("maven",))
         reverify(out_dir)
         return 0
-    cli = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse",
-           "codex": "codex"}[ns.driver]
+    cli = agents.cli(ns.driver)
     if not shutil.which(cli):
         print(f"the `{cli}` CLI is not on PATH", file=sys.stderr)
         return 2

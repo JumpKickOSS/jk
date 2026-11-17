@@ -12,7 +12,7 @@ Each line says PASS or FAIL, whether the first code-reading call was a jk graph 
 share of code-reading calls, the grep/read calls, and a plain diagnosis of a failure. Exit status
 is 0 only when every run passed. Arms, drivers and grading are change-tasks' own (this loads it);
 only the repository is replaced by smoke/fixture and the tasks by smoke/tasks.toml. Rows and
-sandboxes go under $AGENT_LOOP_HOME/smoke/<date>/, never into results/.
+sandboxes go under $AGENT_LOOP_HOME/smoke/<date>/ (sandboxes per model), never into results/.
 """
 
 from __future__ import annotations
@@ -99,8 +99,6 @@ ct.ARMS.update({
         ".cursor/rules/jk.mdc": CURSOR_RULES, ".cursor/cli.json": CURSOR_DENY_READ}),
 })
 
-CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse", "codex": "codex"}
-
 
 def materialise(task: dict, tool: str, sandbox: Path) -> None:
     """The fixture as a fresh git repository, in place of a corpus checkout."""
@@ -168,6 +166,7 @@ def main() -> int:
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--model", help="default per driver")
     ap.add_argument("--effort", help="default per driver")
+    ap.add_argument("--context", type=int, help="context window in tokens, for a CLI that takes one (grok); recorded")
     ap.add_argument("--max-turns", type=int, default=20)
     ap.add_argument("--max-minutes", type=int, default=4)
     ns = ap.parse_args()
@@ -194,13 +193,13 @@ def main() -> int:
     all_ok = True
     with rows_path.open("a") as rows:
         for driver in ns.driver or ["claude-code"]:
-            if not shutil.which(CLI[driver]):
-                print(f"SKIP {driver}: the `{CLI[driver]}` CLI is not on PATH")
+            if not shutil.which(ct.agents.cli(driver)):
+                print(f"SKIP {driver}: the `{ct.agents.cli(driver)}` CLI is not on PATH")
                 all_ok = False
                 continue
             run_ns = argparse.Namespace(date=date, driver=driver, shell=False, max_turns=ns.max_turns,
                                         max_minutes=ns.max_minutes, model=ns.model or ct.DEFAULT_MODEL[driver],
-                                        effort=ns.effort or ct.DEFAULT_EFFORT[driver])
+                                        effort=ns.effort or ct.DEFAULT_EFFORT[driver], context=ns.context)
             captured: list = []
             real = ct.DRIVERS[driver]
 
@@ -215,7 +214,8 @@ def main() -> int:
                     for name in names:
                         for arm in ns.arm or ["jk"]:
                             captured.clear()
-                            row = ct.run_one(name, smoke_tasks[name], arm, run_no, run_ns, run_root)
+                            # Per model: two models of one driver on one day would share a run directory.
+                            row = ct.run_one(name, smoke_tasks[name], arm, run_no, run_ns, run_root / run_ns.model)
                             row["tier"] = "smoke"
                             row.update(diagnose(captured[0] if captured else [], Path(row["sandbox"])))
                             ok = row["outcome"] == "green" and row["graph_first"]
@@ -235,7 +235,8 @@ def main() -> int:
                                   f"text={row['text_calls']} turns={row.get('turns', '-')} "
                                   f"tokens={row.get('tokens', '-')} wall={row.get('wall_s', '-')}s"
                                   f" (model {row.get('model_s', '-')}s, tools {row.get('tool_s', '-')}s,"
-                                  f" jk {row.get('jk_s', '-')}s)"
+                                  f" jk {row.get('jk_s', '-')}s) jk_calls={row.get('jk_calls', '-')}"
+                                  f" cost~{row.get('cost_est_usd', '-')}"
                                   + (f"  [{why}]" if why else ""), flush=True)
             finally:
                 ct.DRIVERS[driver] = real

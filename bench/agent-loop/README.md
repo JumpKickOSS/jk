@@ -285,7 +285,12 @@ bench/agent-loop/change-tasks --render
 
 `--driver` is `claude-code` (the default), `grok`, `agy`, `cursor`, `muse` or `codex` (shell only: it gets the shell
 prompts), each as in the driver table above;
-`--model` picks among a driver's models (`cursor`: `composer-2.5`, `claude-sonnet-5-5-medium`, …).
+`--model` picks among a driver's models (`cursor`: `composer-2.5`, `claude-sonnet-5-5-medium`, …);
+`--context` sets a context window in tokens where the CLI takes one (grok's per-model `context_window`,
+which sets when it compacts) and is recorded on every row with the model, the effort, the CLI and its
+`--version`. `$JK_BENCH_CLAUDE` names the Claude Code launcher (default `claude`), for a wrapper that signs
+in to another account; whichever it is runs in a throwaway config directory with a copy of the login, so
+the user's `CLAUDE.md`, auto memory, settings and plugins stay out and a run's memory never reaches the next.
 
 Tasks are in [`tasks.toml`](tasks.toml), on the repositories of the graph-retrieval corpus
 (`bench/graph-retrieval/bench setup`). A sandbox is the corpus tree's tracked files at its commit
@@ -321,6 +326,13 @@ Each row records tokens (input, output, cache read and write), turns, wall time,
 how the agent navigated: graph calls, `Grep`/`Glob`/`Read` calls, and the graph's share of the two.
 `results/<date>-change-tasks/TABLE.md` is the medians per task and arm, with the median F1 for
 questions. `--first-run N` numbers a day's further runs from N, so they do not replace its earlier ones.
+Every row also carries `jk_calls` (jk's MCP tools and shell `jk` calls), wall time split into model, tool
+and jk time (from the transcript's stamps: Claude Code, Codex and cursor-agent pair calls with results),
+and `cost_est_usd`, the API list price of its tokens from [`prices.toml`](prices.toml) (each row sourced
+and dated; a model without a row reports tokens only). For a subscription CLI that is an API-equivalent
+estimate, not a bill. `cost-report ROWS.jsonl…` gives the medians per driver, model, effort, task and arm,
+and what arm `--a` (default `jk`) saves against `--b` (`jk-before`) and `--c` (`jk-nograph`) in cost,
+tokens, turns and wall.
 
 `graph-counterfactual` prices a search hook offline from runs already made: it replays each search
 in the transcripts against the graph and counts the reads of never-edited files an earlier graph

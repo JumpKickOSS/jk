@@ -54,6 +54,7 @@ class Task:
     servers: dict
     shell: bool = False  # Bash beside the file tools (Claude Code only)
     hide_graph: bool = False  # the no-graph arm: a shell agent's `jk graph` is refused too
+    context: int | None = None  # context window in tokens, where the CLI takes one (grok); else the model's
 
 
 TASK: Task | None = None
@@ -252,6 +253,34 @@ def _run_streaming(cmd: list[str], cwd: Path, env: dict, max_seconds: int, trans
 
 # ------------------------------------------------------------------------- claude-code
 
+# Each driver's command, as `shutil.which` looks it up. Claude Code's is a setting: `$JK_BENCH_CLAUDE`
+# names another launcher (one that signs in to a second account, say) that passes its arguments through.
+CLI = {"claude-code": "claude", "grok": "grok", "agy": "agy", "cursor": "cursor-agent", "muse": "muse", "codex": "codex"}
+
+
+def cli(driver: str) -> str:
+    if driver == "claude-code":
+        return os.environ.get("JK_BENCH_CLAUDE") or "claude"
+    return CLI.get(driver, driver)
+
+
+def _claude_home(home: Path) -> dict[str, str]:
+    """A throwaway Claude Code config directory, so the user's CLAUDE.md, auto memory, settings and
+    plugins stay out of the run and the run's memory never reaches the next one. The login is a copy
+    of ``.credentials.json`` when the user's config directory has one; a launcher that brings its own
+    token (a second account's) gets the same empty directory through the variables it reads."""
+    source = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    home.mkdir(parents=True, exist_ok=True)
+    creds = source / ".credentials.json"
+    if creds.is_file():
+        dest = home / ".credentials.json"
+        shutil.copy2(creds, dest)
+        dest.chmod(0o600)
+    shared = home / "shared"
+    shared.mkdir(exist_ok=True)
+    return {"CLAUDE_CONFIG_DIR": str(home), "CLAUDE_CONFIG_DIR_OVERRIDE": str(home),
+            "CLAUDE_MAIN_CONFIG_DIR": str(shared)}
+
 
 def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
                 effort: str = "medium") -> AgentResult:
@@ -260,12 +289,13 @@ def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_second
     ``--effort`` is the CLI's reasoning-effort flag (low, medium, high, xhigh, max). The wall
     budget kills the process group.
     """
-    if not shutil.which("claude"):
-        raise RuntimeError("the `claude` CLI is not on PATH")
+    binary = cli("claude-code")
+    if not shutil.which(binary):
+        raise RuntimeError(f"the `{binary}` CLI is not on PATH")
     server, registered = servers(tool, sandbox)
     mcp_config = {"mcpServers": registered}
     cmd = [
-        "claude", "-p", user_prompt(),
+        binary, "-p", user_prompt(),
         # Project sources only: the sandbox has none, so the user's hooks, plugins and skills stay out
         # while their login (not a setting) still works. --bare would refuse a subscription login.
         "--setting-sources", "project", "--disable-slash-commands",
@@ -279,13 +309,16 @@ def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_second
         "--permission-mode", "bypassPermissions", "--dangerously-skip-permissions",
         "--no-session-persistence",
     ]
-    env = no_graph_path(Path.home() / ".cache" / "jk-bench" / "claude-shim",
-                        {**os.environ, "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"})
-    events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path)
+    homes = Path.home() / ".cache" / "jk-bench" / "claude-homes"
+    homes.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="run-", dir=homes, ignore_cleanup_errors=True) as tmp:
+        env = no_graph_path(Path.home() / ".cache" / "jk-bench" / "claude-shim",
+                            {**os.environ, **_claude_home(Path(tmp)), "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"})
+        events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path)
     result = next((ev for ev in reversed(events) if ev.get("type") == "result"), None)
     extra = {"effort": effort, "file_tools_only": True, "model_usage": (result or {}).get("modelUsage")}
     if result is None:
-        finding = "claude exited without a result event" + (f": {stderr[:300]}" if stderr else "")
+        finding = f"{binary} exited without a result event" + (f": {stderr[:300]}" if stderr else "")
         if stop == "wall":
             finding = f"time budget exhausted ({max_seconds}s)"
         if _startup_failure(finding):
@@ -337,8 +370,9 @@ def _toml_basic(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _write_grok_config(home: Path, tool: str, sandbox: Path) -> str:
-    """User-scope MCP config for this run. `home` is a throwaway GROK_HOME, not `~/.grok`."""
+def _write_grok_config(home: Path, tool: str, sandbox: Path, model: str = "") -> str:
+    """User-scope MCP config for this run. `home` is a throwaway GROK_HOME, not `~/.grok`. A task's
+    context window overrides the built-in model's, which sets when grok compacts."""
     server, registered = servers(tool, sandbox)
     cfg = registered[server]
     lines = [
@@ -410,6 +444,8 @@ def _write_grok_config(home: Path, tool: str, sandbox: Path) -> str:
         args = ", ".join(_toml_basic(a) for a in extra["args"])
         lines += ["", f"[mcp_servers.{name}]", f"command = {_toml_basic(extra['command'])}", f"args = [{args}]",
                   "enabled = true"]
+    if model and TASK and TASK.context:
+        lines += ["", f"[model.{_toml_basic(model)}]", f"context_window = {int(TASK.context)}"]
     path = home / "config.toml"
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     path.chmod(0o600)
@@ -438,6 +474,16 @@ def _grok_env(home: Path) -> dict[str, str]:
         shutil.copy2(auth, dest)
         dest.chmod(0o600)
         env["GROK_AUTH_PATH"] = str(dest)
+    return env
+
+
+def jk_server_env() -> dict[str, str]:
+    """The environment an MCP server needs when the agent runs under a throwaway HOME (agy, cursor-agent):
+    `jk mcp` finds its engine under JK_HOME, else ~/.jk, which would be the throwaway home's. The jk home the
+    harness runs (the jk-before arm's, or the user's) and the arm's HTTP port."""
+    env = {"JK_HOME": os.environ.get("JK_HOME") or str(Path.home() / ".jk")}
+    if os.environ.get("JK_HTTP_PORT"):
+        env["JK_HTTP_PORT"] = os.environ["JK_HTTP_PORT"]
     return env
 
 
@@ -588,7 +634,7 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
         raise RuntimeError("the `grok` CLI is not on PATH")
     with tempfile.TemporaryDirectory(prefix="jk-agent-loop-grok-") as tmp:
         home = Path(tmp)
-        server = _write_grok_config(home, tool, sandbox)
+        server = _write_grok_config(home, tool, sandbox, model)
         _write_sandbox_profile(home, sandbox)
         env = _grok_env(home)
         socket = home / "leader.sock"
@@ -643,10 +689,8 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
                 if line is None:
                     stdout_done = True
                     break
-                out.write(line)
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
+                ev = _record(out, line, started)
+                if not isinstance(ev, dict):
                     continue
                 events.append(ev)
                 if ev.get("type") == "system" and ev.get("subtype") == "init":
@@ -663,10 +707,8 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
                     break
                 if not line:
                     continue
-                out.write(line)
-                try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
+                ev = _record(out, line, started)
+                if not isinstance(ev, dict):
                     continue
                 events.append(ev)
                 if ev.get("type") == "result":
@@ -770,26 +812,27 @@ def _agy_agent_md(tool: str, sandbox: Path, server: str) -> str:
 def _write_agy_home(home: Path, tool: str, sandbox: Path) -> str:
     """MCP config, permissions, and the file-tool agent under a throwaway ``HOME``.
 
-    agy reads ``$HOME/.gemini``. The oauth token file is a copy. ``~/.m2`` is a symlink so a
+    agy reads ``$HOME/.gemini``. The oauth token file, where there is one, is a copy. ``~/.m2`` is a symlink so a
     Maven fix still uses the warm local repository; Gradle is pointed at the real user home
     with ``GRADLE_USER_HOME`` on the child environment.
     """
     real = Path.home()
     token = real / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
-    if not token.is_file():
-        raise RuntimeError("agy has no credentials: launch `agy` once to sign in")
     cli = home / ".gemini" / "antigravity-cli"
     cli.mkdir(parents=True)
-    dest = cli / "antigravity-oauth-token"
-    shutil.copy2(token, dest)
-    dest.chmod(0o600)
+    # agy before 1.5 kept its login in this file; later releases keep it in the user's keyring, which a
+    # throwaway HOME still reaches (it is the desktop session's, not a file under HOME).
+    if token.is_file():
+        dest = cli / "antigravity-oauth-token"
+        shutil.copy2(token, dest)
+        dest.chmod(0o600)
     server, registered = servers(tool, sandbox)
     entries = {}
     for name, cfg in registered.items():
         if cfg.get("type") == "http":
             entries[name] = {"disabled": False, "serverUrl": cfg["url"], "headers": cfg["headers"]}
         else:
-            entries[name] = {"disabled": False, "command": cfg["command"], "args": cfg["args"]}
+            entries[name] = {"disabled": False, "command": cfg["command"], "args": cfg["args"], "env": jk_server_env()}
     config_dir = home / ".gemini" / "config"
     config_dir.mkdir(parents=True)
     mcp_path = config_dir / "mcp_config.json"
@@ -997,7 +1040,8 @@ def _write_cursor_home(home: Path, tool: str, sandbox: Path) -> str:
     (home / ".cursor" / "cli-config.json").write_text(
         json.dumps({"version": 1, "permissions": {"allow": [], "deny": ["Shell(*)"]}}) + "\n", encoding="utf-8")
     server, registered = servers(tool, sandbox)
-    mcp = {name: {"command": cfg["command"], "args": list(cfg.get("args", []))} for name, cfg in registered.items()}
+    mcp = {name: {"command": cfg["command"], "args": list(cfg.get("args", [])), "env": jk_server_env()}
+           for name, cfg in registered.items()}
     (sandbox / ".cursor").mkdir(exist_ok=True)
     (sandbox / ".cursor" / "mcp.json").write_text(json.dumps({"mcpServers": mcp}, indent=2) + "\n", encoding="utf-8")
     exclude = sandbox / ".git" / "info" / "exclude"
@@ -1005,6 +1049,23 @@ def _write_cursor_home(home: Path, tool: str, sandbox: Path) -> str:
         with exclude.open("a", encoding="utf-8") as f:
             f.write("/.cursor/\n")
     return server
+
+
+def _reap_home(home: Path) -> None:
+    """Stop what a run left behind under its throwaway HOME: cursor-agent starts a `worker-server` in a
+    session of its own, which outlives the process group the harness kills. Linux only (/proc)."""
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return
+    want = f"HOME={home}".encode()
+    for pid_dir in proc.iterdir():
+        if not pid_dir.name.isdigit() or int(pid_dir.name) == os.getpid():
+            continue
+        try:
+            if want in (pid_dir / "environ").read_bytes().split(b"\0"):
+                os.kill(int(pid_dir.name), signal.SIGTERM)
+        except (OSError, ValueError):
+            continue
 
 
 def _cursor_call(ev: dict) -> tuple[str, dict]:
@@ -1057,6 +1118,12 @@ def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: in
         env["HOME"] = str(home)
         env["GRADLE_USER_HOME"] = str(_gradle_user_home())
         env.pop("CURSOR_API_KEY", None)
+        # cursor-agent loads a workspace's MCP server only once it is approved, and --approve-mcps no longer
+        # does that for a headless run (2026.11: "MCP server does not exist"). The approval is keyed by a
+        # hash of the server's config, so the CLI writes it.
+        for name in servers(tool, sandbox)[1]:
+            subprocess.run(["cursor-agent", "mcp", "enable", name], cwd=sandbox, env=env, stdin=subprocess.DEVNULL,
+                           capture_output=True, timeout=60)
         calls: set[str] = set()
 
         def on_event(ev: dict) -> str | None:
@@ -1077,6 +1144,7 @@ def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: in
             "--workspace", str(sandbox),
         ]
         events, stderr, stop = _run_streaming(cmd, sandbox, env, max_seconds, transcript_path, on_event)
+        _reap_home(home)
         result = next((ev for ev in reversed(events) if ev.get("type") == "result"), None)
         # cursor-agent reports usage only in its result event, which a run killed at the turn or time
         # budget never writes: no usage then, not zeros.
