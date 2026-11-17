@@ -20,13 +20,7 @@ import androidx.compose.ui.Modifier
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    CounterScreen()
-                }
-            }
-        }
+        setContent { MaterialTheme { Surface(modifier = Modifier.fillMaxSize()) { CounterScreen() } } }
     }
 }
 
@@ -40,8 +34,6 @@ fun CounterScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = counter.label(taps), style = MaterialTheme.typography.headlineMedium)
-        Button(onClick = { taps = counter.increment(taps) }) {
-            Text(text = "Tap")
-        }
+        Button(onClick = { taps = counter.increment(taps) }) { Text(text = "Tap") }
     }
 }
