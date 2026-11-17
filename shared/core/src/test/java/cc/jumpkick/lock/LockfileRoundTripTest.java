@@ -53,6 +53,24 @@ class LockfileRoundTripTest {
         assertThat(LockfileReader.parse(rewritten).jkMin()).isEqualTo(LockfileWriter.FORMAT_FLOOR);
     }
 
+    /**
+     * 0.52.0 broke compatibility (jdk is a table only; rule packs are locked with source and
+     * checksum), so a lock 0.51.1 wrote is rewritten at 0.52.0 and 0.51.1 refuses it.
+     */
+    @Test
+    void a_lock_the_last_breaking_line_wrote_is_raised_to_0_52_0() {
+        String old = """
+                version = 1
+                generated-by = "jk 0.51.1"
+                resolution-algorithm = "pubgrub-v1"
+                jk-min = "0.51.1"
+                """;
+
+        assertThat(LockfileReader.parse(LockfileWriter.render(LockfileReader.parse(old)))
+                        .jkMin())
+                .isEqualTo("0.52.0");
+    }
+
     @Test
     void jk_floor_round_trips_and_the_retired_artifact_pin_is_refused() {
         Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT").withJkMin("9.1.0");

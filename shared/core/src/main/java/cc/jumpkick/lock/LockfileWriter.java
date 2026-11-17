@@ -131,13 +131,13 @@ public final class LockfileWriter {
     /**
      * The lowest floor any written lock carries: the oldest jk that reads
      * this writer's output and the manifests it locks, so an older jk refuses the project with "run
-     * jk self update" instead of misreading it. 0.51.1: the 0.51 line broke manifest compatibility
-     * (test tiers became [test.suites.*] tables in 0.51.0; 0.51.1 refuses java-opts and the test
-     * parallelism keys), and a breaking line's latest release is the floor everywhere. Bumped by
-     * hand only when the format or the manifest shape needs a newer reader, never to the writing
-     * jk's own version.
+     * jk self update" instead of misreading it. 0.52.0: it broke manifest and lock compatibility
+     * ({@code jdk} is a table only, with {@code jdk-vendor}, {@code jdk-version} and the string forms
+     * refused; rule packs are locked with their source and checksum), and a breaking release is the
+     * floor everywhere. Bumped by hand only when the format or the manifest shape needs a newer
+     * reader, never to the writing jk's own version.
      */
-    static final String FORMAT_FLOOR = "0.51.1";
+    static final String FORMAT_FLOOR = "0.52.0";
 
     /**
      * The {@code jk-min} a written lock carries: the higher of the floor it holds (a plugin's compat

@@ -865,10 +865,11 @@ floor refuses a JumpKick too old to read it right.
 
 `jk-min` is the oldest JumpKick that reads the lock and the manifests it locks. Every write sets it
 to the highest of the floor the lock held, the floor of each first-party plugin the project
-configures, and the format floor of the JumpKick writing it (0.51.1, the release whose manifests
-carry `[test.suites.*]` and `jvm-args`, with `java-opts` and the test parallelism keys refused). A
-relock never lowers it, so a floor raised by hand stays, and never leaves it below the format floor,
-so a project whose lock says `0.10` reads `0.51.1` after its next `jk lock` or build.
+configures, and the format floor of the JumpKick writing it (0.52.0, the release whose manifests
+write `jdk` as a table only, with `jdk-vendor`, `jdk-version` and the string forms refused, and whose
+locks pin rule packs by source and checksum). A relock never lowers it, so a floor raised by hand
+stays, and never leaves it below the format floor, so a project whose lock says `0.10` reads `0.52.0`
+after its next `jk lock` or build.
 
 ## Related
 
