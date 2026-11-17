@@ -180,6 +180,62 @@ class ModuleOutputsTest {
                 .isTrue();
     }
 
+    /**
+     * JK-1N6CS: a Kotlin module with a KSP processor (Micronaut's) has the round's bytecode copied
+     * into its classes tree beside kotlinc's. The round's record owns it, so the tree is whole, and
+     * the second build of a fresh kotlin/micronaut/hello scaffold is not a restore of a tree it
+     * called incomplete.
+     */
+    @Test
+    void the_ksp_rounds_bytecode_in_the_tree_is_owned_by_its_record(@TempDir Path dir) throws Exception {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache ac = new ActionCache(cas, dir.resolve("actions"));
+        String sha = cas.hashFromPath(cas.put("bytes".getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow();
+        ac.storeWithOutputs("compile-kotlin@x", "key-k", Map.of(), Map.of("p/Hello.class", sha));
+        ac.storeWithOutputs(
+                "ksp@x", "key-ksp", Map.of(), Map.of("classes/p/$Hello$Definition.class", sha, "kotlin/p/Gen.kt", sha));
+        Path target = dir.resolve("target");
+        Path classes = target.resolve("classes");
+        Files.createDirectories(classes.resolve("p"));
+        Files.writeString(classes.resolve("p/Hello.class"), "bytes");
+        Files.writeString(classes.resolve("p/$Hello$Definition.class"), "bytes");
+        FreshnessStamp.write(
+                classes,
+                BuildStamps.KOTLIN,
+                "compile-kotlin",
+                "key-k",
+                List.of(),
+                FreshnessStamp.ClasspathTokens.of(List.of()),
+                25,
+                "");
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes))
+                .as("no round stamped: the generated class is no compile's")
+                .isFalse();
+
+        Path ksp = Files.createDirectories(target.resolve("ksp"));
+        FreshnessStamp.write(
+                ksp,
+                BuildStamps.KSP,
+                "ksp",
+                "key-ksp",
+                List.of(),
+                FreshnessStamp.ClasspathTokens.of(List.of()),
+                25,
+                "");
+
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes))
+                .as("the round's record owns its bytecode in the tree")
+                .isTrue();
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, Arrays.asList(null, "key-k", null), classes))
+                .as("the forecast's question, by the compile keys")
+                .isTrue();
+        Files.writeString(classes.resolve("p/Stray.class"), "bytes");
+        assertThat(ModuleOutputs.compileOutputsOnDisk(ac, classes))
+                .as("a class neither a compile nor the round wrote is still foreign")
+                .isFalse();
+    }
+
     @Test
     void a_whole_verdict_holds_for_the_request_and_a_missing_one_never_does(@TempDir Path dir) throws Exception {
         Cas cas = new Cas(dir.resolve("cas"));
