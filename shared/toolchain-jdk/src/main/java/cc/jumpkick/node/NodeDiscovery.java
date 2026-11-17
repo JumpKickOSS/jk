@@ -128,9 +128,16 @@ public final class NodeDiscovery {
         return out;
     }
 
-    /** {@code node --version}, or null when it does not answer with a version within two seconds. */
+    /**
+     * How long the {@code node} on {@code PATH} may take to answer {@code --version}. Its first start
+     * on Windows, a freshly installed or just-updated {@code node.exe} that the virus scanner reads
+     * whole, on a busy machine, takes seconds; past this it is left out as if it were not there.
+     */
+    static final Duration VERSION_PROBE = Duration.ofSeconds(10);
+
+    /** {@code node --version}, or null when it does not answer with a version within {@link #VERSION_PROBE}. */
     static @Nullable String nodeVersion(Path node) {
-        String out = Processes.outputIfOk(List.of(node.toString(), "--version"), Duration.ofSeconds(2));
+        String out = Processes.outputIfOk(List.of(node.toString(), "--version"), VERSION_PROBE);
         if (out == null) return null;
         var m = VERSION.matcher(out.trim());
         return m.matches() ? m.group(1) : null;

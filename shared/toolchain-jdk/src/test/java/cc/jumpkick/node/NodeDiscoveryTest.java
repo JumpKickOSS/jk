@@ -7,10 +7,13 @@ import static org.assertj.core.api.Assertions.tuple;
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.discovery.MiseProbe;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -95,15 +98,50 @@ class NodeDiscoveryTest {
     @Test
     void the_node_on_path_answers_its_own_version(@TempDir Path home) throws IOException {
         Path bin = Files.createDirectories(home.resolve("usr/bin"));
-        FakePrograms.executable(bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v22.1.0"));
+        Path node = FakePrograms.executable(
+                bin.resolve(BuildTool.NODE.binaryName()), FakePrograms.Script.printing("v22.1.0"));
 
+        assertFoundOnPath(home, bin, node);
+    }
+
+    @Test
+    void a_node_on_path_slow_to_answer_is_still_found(@TempDir Path home) throws IOException {
+        Path bin = Files.createDirectories(home.resolve("usr/bin"));
+        // About three seconds, as a first start on a busy Windows machine takes: past the two the
+        // probe once allowed, well inside the one it allows now.
+        Path node = FakePrograms.executable(
+                bin.resolve(BuildTool.NODE.binaryName()),
+                new FakePrograms.Script("sleep 3; echo v22.1.0", "ping -n 4 127.0.0.1 >nul\necho v22.1.0"));
+
+        assertFoundOnPath(home, bin, node);
+    }
+
+    private static void assertFoundOnPath(Path home, Path bin, Path node) {
         List<DiscoveredNode> found =
                 discovery(Map.of("PATH", bin.toString()), home, List.of()).discover();
 
-        assertThat(found).singleElement().satisfies(d -> {
+        assertThat(found).as(() -> answer(node)).singleElement().satisfies(d -> {
             assertThat(d.source()).isEqualTo("system");
             assertThat(d.version()).isEqualTo("22.1.0");
             assertThat(d.home()).isEqualTo(Os.isWindows() ? bin : home.resolve("usr"));
         });
+    }
+
+    /** What {@code node --version} does given a minute: why discovery, given far less, left it out. */
+    private static String answer(Path node) {
+        long start = System.nanoTime();
+        try {
+            Processes.Captured c = Processes.capture(List.of(node.toString(), "--version"), Duration.ofMinutes(1));
+            return "%s --version (runnable: %s) answered in %d ms, exit ok: %s, output: [%s]; discovery waits %s"
+                    .formatted(
+                            node,
+                            PathUtil.isRunnable(node),
+                            (System.nanoTime() - start) / 1_000_000,
+                            c.ok(),
+                            c.output().strip(),
+                            NodeDiscovery.VERSION_PROBE);
+        } catch (IOException e) {
+            return node + " --version could not start: " + e;
+        }
     }
 }
