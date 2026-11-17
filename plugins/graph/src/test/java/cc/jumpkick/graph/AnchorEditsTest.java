@@ -3,6 +3,7 @@ package cc.jumpkick.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.layout.AnchorWatch;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -247,5 +248,43 @@ class AnchorEditsTest {
                 .as("a variable no longer set: the key it set is still defined")
                 .isEmpty();
         assertThat(ws.exists("target/graph/anchors/stale")).isFalse();
+    }
+
+    /**
+     * Each refresh lists the files a build's verdict checks before it waits for the next one: those
+     * that define or use an anchor, and those the record names. An edit to any of them shows; an
+     * edit elsewhere does not, so that verdict waits for nothing.
+     */
+    @Test
+    void theRefreshListsTheAnchoredFilesAndTheRecordsSoAnEditElsewhereNeedsNoWait(@TempDir Path dir)
+            throws IOException {
+        RenameFixture ws = new RenameFixture(dir, petclinic());
+        refresh(ws);
+        Path graph = ws.root.resolve("target/graph");
+        assertThat(watched(graph))
+                .contains(H2, MYSQL, OWNER, PROPERTIES, "docker-compose.yml")
+                .anyMatch(r -> r.endsWith("system/VisitLimits.java"))
+                .doesNotContain("README.md");
+        assertThat(AnchorWatch.unchanged(ws.root, graph)).isTrue();
+
+        edit(ws, "README.md", "Each owner has", "Every owner has");
+        assertThat(AnchorWatch.unchanged(ws.root, graph))
+                .as("prose no record names")
+                .isTrue();
+        edit(ws, H2, "VARCHAR(255)", "VARCHAR(300)");
+        assertThat(AnchorWatch.unchanged(ws.root, graph)).as("a schema").isFalse();
+
+        refresh(ws);
+        assertThat(AnchorWatch.unchanged(ws.root, graph)).isTrue();
+        edit(ws, H2, "  telephone  VARCHAR(20)", "  phone      VARCHAR(20)");
+        refresh(ws);
+        assertThat(watched(graph)).as("the record's prose place").contains("README.md");
+    }
+
+    private static List<String> watched(Path graph) throws IOException {
+        return Files.readAllLines(AnchorWatch.file(graph)).stream()
+                .skip(1)
+                .map(l -> l.substring(l.lastIndexOf('\t') + 1))
+                .toList();
     }
 }

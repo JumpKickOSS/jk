@@ -21,6 +21,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.layout.AnchorWatch;
 import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,6 +41,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -191,6 +193,7 @@ public final class GraphBuild {
                     stats.save(out, sources);
                     GraphMemory.savedStats(out, stats);
                 }
+                if (!stale.isEmpty() || !Files.isRegularFile(AnchorWatch.file(out))) watch(out, stored, stats);
                 sources.forEach(s -> progress.file(s.rel(), false));
                 long millis = (clock.nanos() - start) / 1_000_000;
                 return new Result(stored, sources.size(), 0, classes(indexes), out, millis, false, commit);
@@ -258,12 +261,60 @@ public final class GraphBuild {
         graph.stale(stale(base, graph.stale()));
         if (!rebuild) anchorEdits(base, out, extractors, vouched, sources, changed, unreadable, indexes, graph);
         progress.phase("write graph");
+        publish(out, graph, key, stats, sources);
+        long millis = (clock.nanos() - start) / 1_000_000;
+        return new Result(graph, sources.size(), extracted.get(), classes(indexes), out, millis, true, commit);
+    }
+
+    /** Writes the graph and the stats that vouch for it, then the files a verdict checks before it waits. */
+    private static void publish(
+            Path out, CodeGraph graph, GraphSnapshot.Key key, StatIndex stats, List<GraphSources.Source> sources)
+            throws IOException {
         write(out, graph, key);
         GraphMemory.sawGraph(out, graph, key);
         stats.save(out, sources);
         GraphMemory.savedStats(out, stats);
-        long millis = (clock.nanos() - start) / 1_000_000;
-        return new Result(graph, sources.size(), extracted.get(), classes(indexes), out, millis, true, commit);
+        watch(out, graph, stats);
+    }
+
+    /** A file's text as it is now: the bytes this refresh read when it changed, else the file; null when gone. */
+    private static Function<String, @Nullable String> textNow(Path base, Map<String, byte[]> changed) {
+        return rel -> {
+            byte[] bytes = changed.get(rel);
+            if (bytes != null) return new String(bytes, StandardCharsets.UTF_8);
+            Path p = base.resolve(rel);
+            try {
+                return Files.isRegularFile(p) ? Files.readString(p, StandardCharsets.UTF_8) : null;
+            } catch (IOException | RuntimeException unreadableNow) {
+                return null;
+            }
+        };
+    }
+
+    /**
+     * Writes the files a build's verdict checks before it waits for the refresh that build started
+     * ({@link AnchorWatch}): those that define or use an anchor in {@code graph}, and those the stale
+     * record names, each with the hash and stat {@code stats} holds for it. Best-effort: with no list
+     * the verdict waits, as it did before there was one.
+     */
+    private static void watch(Path out, CodeGraph graph, StatIndex stats) {
+        try {
+            Set<String> rels = AnchorEdits.watched(graph, out);
+            List<AnchorWatch.Entry> entries = new ArrayList<>(rels.size());
+            for (String rel : rels) {
+                StatIndex.Stat st = stats.stat(rel);
+                if (st == null) continue;
+                entries.add(new AnchorWatch.Entry(st.sha(), st.identity(), rel));
+            }
+            AnchorWatch.write(out, entries);
+        } catch (IOException | RuntimeException failed) {
+            try {
+                Files.deleteIfExists(AnchorWatch.file(out));
+            } catch (IOException ignored) {
+                // a list that could not be replaced and not removed: the verdict re-checks every file
+            }
+            Log.debug("graph: anchor watch list not written", failed);
+        }
     }
 
     /**
@@ -294,16 +345,7 @@ public final class GraphBuild {
         Set<String> unknown = new HashSet<>();
         for (ClassIndex c : indexes) unknown.addAll(c.stale());
         try {
-            AnchorEdits.update(out, before(out, extractors), after, edited, unknown, walked, rel -> {
-                byte[] bytes = changed.get(rel);
-                if (bytes != null) return new String(bytes, StandardCharsets.UTF_8);
-                Path p = base.resolve(rel);
-                try {
-                    return Files.isRegularFile(p) ? Files.readString(p, StandardCharsets.UTF_8) : null;
-                } catch (IOException | RuntimeException unreadableNow) {
-                    return null;
-                }
-            });
+            AnchorEdits.update(out, before(out, extractors), after, edited, unknown, walked, textNow(base, changed));
         } catch (IOException | RuntimeException failed) {
             Log.debug("graph: stale anchors not recorded", failed);
         }

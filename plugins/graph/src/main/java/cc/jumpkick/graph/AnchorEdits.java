@@ -262,6 +262,26 @@ final class AnchorEdits {
         AtomicWrites.replace(file, s.toString());
     }
 
+    /**
+     * The files an edit could leave an anchor stale through, after a refresh that wrote {@code g}
+     * under {@code out}: each that defines or uses an anchor in {@code g} (a variable that sets a
+     * key too), and each the record names, as a place or as the edit that left it.
+     */
+    static Set<String> watched(CodeGraph g, Path out) {
+        Set<String> rels = new TreeSet<>();
+        for (GraphNode n : g.nodes()) {
+            if (!Anchors.is(n)) continue;
+            for (GraphEdge e : g.incident(n.id())) {
+                if (!e.sourceFile().isEmpty()) rels.add(e.sourceFile());
+            }
+        }
+        for (Row r : read(out.resolve(DIR).resolve(FILE))) {
+            rels.add(r.rel());
+            if (!r.edited().isEmpty()) rels.add(r.edited());
+        }
+        return rels;
+    }
+
     /** For each of {@code files}, the anchors it defines or uses, each with its edges, by anchor id. */
     static Map<String, Map<String, List<GraphEdge>>> byFile(CodeGraph g, Collection<String> files) {
         Map<String, Map<String, List<GraphEdge>>> out = new TreeMap<>();

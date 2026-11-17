@@ -197,10 +197,13 @@ nor a file that merely shares an anchor with the edited one; an edit that change
 nothing. The places are kept in `target/graph/anchors/stale`, each dropped once its file no longer
 carries the old name or the edit is undone, so a build after a graph question still names them.
 
-An MCP `run` that builds (`kind=build`, `test` or `gate`) and passes waits for that refresh (10
-seconds at most) and ends with the places that must change, a file's lines as one place, in five
+An MCP `run` that builds (`kind=build`, `test` or `gate`) and passes ends with the places that must change, a file's lines as one place, in five
 files at most, then `+N more:` and the call that lists the rest. It says nothing when none is left,
-and nothing after a run that failed. On spring-petclinic, with the column renamed in MySQL's schema
+and nothing after a run that failed. It waits for the refresh its build started (10 seconds at
+most) only when a file that defines or uses an anchor, or that the record names, changed since the
+last refresh (`target/graph/anchors/watch` lists them with their hashes); otherwise that refresh
+cannot change the record, which is read at once, so a run that is up to date, or whose edit touched
+no such file, takes no longer than without the graph. On spring-petclinic, with the column renamed in MySQL's schema
 alone (one line, wrapped here):
 
 ```
@@ -400,8 +403,9 @@ per line with its `file:line`. It follows edge direction; `-U` ignores it, and `
 
 The graph is build output: nothing of it is in the tree or committed. `target/graph/` holds this
 checkout's state, gone with `jk clean`: `graph.bin` (the linked graph), `files.tsv` (each file's
-stat, so a refresh reads only what moved) and `anchors/stale` (the places hand edits left under an
-old name, [After a hand edit](#after-a-hand-edit)). The fragments it is linked from are action-cache entries,
+stat, so a refresh reads only what moved), `anchors/stale` (the places hand edits left under an
+old name, [After a hand edit](#after-a-hand-edit)) and `anchors/watch` (the files whose edit could
+leave one, with their hashes). The fragments it is linked from are action-cache entries,
 one per file and one per compiled class set, shared by every checkout on the machine and reclaimed
 by `jk cache clean` like any other. None of it is an exchange format. A `.jk/graph/` directory left
 in a checkout is removed by the next refresh.

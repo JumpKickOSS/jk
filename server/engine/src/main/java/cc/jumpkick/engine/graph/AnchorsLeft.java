@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.config.GraphConfig;
+import cc.jumpkick.layout.AnchorWatch;
 import cc.jumpkick.layout.GraphLayout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -52,15 +53,18 @@ public final class AnchorsLeft {
 
     /**
      * The lines a {@code verdict} for the workspace holding {@code dir} ends with: empty unless it is
-     * a build's OK, after which it waits (a bounded while) for the graph refresh that build started.
+     * a build's OK. It waits (a bounded while) for the graph refresh that build started only when a
+     * file that held an anchor, or that the record names, changed since the last refresh ({@link
+     * AnchorWatch}): otherwise that refresh cannot change the record, which is read at once.
      */
     public static String after(String dir, String verdict) {
         if (!REFRESHED.matcher(verdict).find()) return "";
         try {
             Path root = GraphRunner.rootOf(Path.of(dir));
             if (!GraphRunner.hasGraph(root)) return "";
-            if (!GraphRunner.awaitRefresh(root, REFRESH_WAIT_MS)) return "";
-            List<Place> left = read(GraphLayout.dir(root).resolve("anchors").resolve("stale"));
+            Path graph = GraphLayout.dir(root);
+            if (!AnchorWatch.unchanged(root, graph) && !GraphRunner.awaitRefresh(root, REFRESH_WAIT_MS)) return "";
+            List<Place> left = read(graph.resolve("anchors").resolve("stale"));
             if (left.isEmpty()) return "";
             return tail(left, GraphRunner.graphConfig(root).anchorTail());
         } catch (IOException | RuntimeException unreadable) {

@@ -3,9 +3,13 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.layout.AnchorWatch;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -257,5 +261,71 @@ class AnchorsLeftTest {
         assertThat(AnchorsLeft.after(dir, OK)).isEmpty();
         Files.delete(root.resolve("target/graph/graph.bin"));
         assertThat(AnchorsLeft.after(dir, OK)).isEmpty();
+    }
+
+    /**
+     * An up-to-date run waits for no refresh when no file that held an anchor, or that the record
+     * names, changed since the last one: the refresh the build started is still running here (its
+     * slot held), and the record is read at once. A watched file edited since makes it wait, as does a
+     * graph with no list (an older jk's).
+     */
+    @Test
+    void theVerdictWaitsForTheRefreshOnlyWhenAWatchedFileChanged(@TempDir Path root) throws Exception {
+        String dir = workspace(root, MYSQL_ONLY, "").toString();
+        Path schema = Files.createDirectories(root.resolve(MYSQL).getParent()).resolve("schema.sql");
+        Files.writeString(schema, "CREATE TABLE owners (\n  phone VARCHAR(20)\n);\n");
+        Path graph = root.resolve("target/graph");
+        AnchorWatch.write(
+                graph, List.of(new AnchorWatch.Entry(Hashing.sha256Hex(schema), StatIdentity.of(schema), MYSQL)));
+        Path key = GraphRunner.rootOf(root);
+        GraphRunner.holdSlot(key);
+        try {
+            long start = System.nanoTime();
+            assertThat(AnchorsLeft.after(dir, OK)).startsWith("Your edit changed these names;");
+            assertThat((System.nanoTime() - start) / 1_000_000).as("no wait").isLessThan(2_000);
+
+            Files.writeString(schema, "CREATE TABLE owners (\n  telephone VARCHAR(20)\n);\n");
+            Thread release = releaseAfter(key, 400);
+            start = System.nanoTime();
+            AnchorsLeft.after(dir, OK);
+            assertThat((System.nanoTime() - start) / 1_000_000)
+                    .as("a watched file changed: waits for the refresh")
+                    .isGreaterThanOrEqualTo(350);
+            release.join();
+        } finally {
+            if (!GraphRunner.awaitRefresh(key, 0)) GraphRunner.releaseSlot(key);
+        }
+
+        AnchorWatch.write(graph, List.of());
+        GraphRunner.holdSlot(key);
+        try {
+            long start = System.nanoTime();
+            assertThat(AnchorsLeft.after(dir, OK)).startsWith("Your edit changed these names;");
+            assertThat((System.nanoTime() - start) / 1_000_000)
+                    .as("nothing anchored: no wait")
+                    .isLessThan(2_000);
+            Files.delete(AnchorWatch.file(graph));
+            Thread release = releaseAfter(key, 400);
+            start = System.nanoTime();
+            AnchorsLeft.after(dir, OK);
+            assertThat((System.nanoTime() - start) / 1_000_000)
+                    .as("no list: waits, as before there was one")
+                    .isGreaterThanOrEqualTo(350);
+            release.join();
+        } finally {
+            if (!GraphRunner.awaitRefresh(key, 0)) GraphRunner.releaseSlot(key);
+        }
+    }
+
+    /** The refresh in flight on {@code key} ends {@code ms} from now. */
+    private static Thread releaseAfter(Path key, long ms) {
+        return Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(ms);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            GraphRunner.releaseSlot(key);
+        });
     }
 }

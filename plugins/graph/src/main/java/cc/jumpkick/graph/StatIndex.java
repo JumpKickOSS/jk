@@ -73,6 +73,12 @@ final class StatIndex {
         stats.remove(rel);
     }
 
+    /** What the index holds for {@code rel}; {@code null} when it vouches for no such file. */
+    @Nullable
+    Stat stat(String rel) {
+        return stats.get(rel);
+    }
+
     @Nullable
     String sha(String rel) {
         Stat s = stats.get(rel);
