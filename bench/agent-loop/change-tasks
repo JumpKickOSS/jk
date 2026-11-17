@@ -195,6 +195,12 @@ def sh(cmd: list[str], cwd: Path, timeout: int = 1800) -> tuple[int, str, float]
         return 124, f"timeout after {timeout}s", time.monotonic() - start
 
 
+def test_excludes() -> list[str]:
+    """$AGENT_LOOP_TEST_EXCLUDE: comma-separated test class patterns written to a jk sandbox's `[test]
+    exclude-classes`, for a host where those tests cannot run; empty where unset."""
+    return [c.strip() for c in os.environ.get("AGENT_LOOP_TEST_EXCLUDE", "").split(",") if c.strip()]
+
+
 def materialise(task: dict, tool: str, sandbox: Path) -> None:
     """The repository at its corpus commit, as the tool builds it: tracked files only, plus jk's
     manifests for jk (and no Maven or Gradle build), so no agent reads another tool's build."""
@@ -230,6 +236,13 @@ def materialise(task: dict, tool: str, sandbox: Path) -> None:
         if text.count(edit["from"]) != 1:
             raise RuntimeError(f"inject: {edit['file']} holds `{edit['from']}` {text.count(edit['from'])} times")
         target.write_text(text.replace(edit["from"], edit["to"]), encoding="utf-8")
+    excluded = test_excludes()
+    if tool == "jk" and excluded:
+        # A host whose tests cannot run (petclinic's Postgres test on podman, which lacks `docker compose
+        # config`): left out of every suite in the baseline, so the agent's own gate runs what the verify runs
+        # instead of failing in every arm alike and sending the agent after Docker.
+        with open(sandbox / "jk.toml", "a", encoding="utf-8") as fh:
+            fh.write("\n[test]\nexclude-classes = [" + ", ".join(json.dumps(c) for c in excluded) + "]\n")
     subprocess.run(["git", "init", "-q"], cwd=sandbox, check=True)
     subprocess.run(["git", "add", "-A"], cwd=sandbox, check=True)
     subprocess.run(["git", "-c", "user.name=bench", "-c", "user.email=bench@localhost", "commit", "-q", "-m",
@@ -505,7 +518,7 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     # A task that plants files or edits has a sandbox of its own: shared by repository, the first task's
     # sandbox stood in for every later task of that repository, and a planted trap never reached the agent.
     planted = task["name"] if (TASK_FILES / task["name"] / "inject").exists() or task.get("inject") else ""
-    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted]).encode()).hexdigest()[:16]
+    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted, test_excludes()]).encode()).hexdigest()[:16]
     slot = PREPARED / f"{task['repo']}-{key}"
     if (slot / "meta.json").exists():
         sandbox.parent.mkdir(parents=True, exist_ok=True)
@@ -722,7 +735,8 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
            "arm": arm, "run": run_no, "model": ns.model, "effort": ns.effort,
            "context": getattr(ns, "context", None), "cli": agents.cli(ns.driver),
            "cli_version": cli_version(ns.driver), "outcome": "error", "finding": "",
-           "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id(), "jk_version": jk_version()}
+           "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id(), "jk_version": jk_version(),
+           "test_excluded": test_excludes() or None}
     try:
         # A question needs the classes (the graph's compiled facts), not a test run.
         prep = prepare(task, tool, question, sandbox)
