@@ -87,7 +87,8 @@ public final class CodeGraphTool implements McpTool {
                                         "also",
                                         McpSchemas.string(
                                                 "Apply uses it listed but did not edit: c1,c3 / c2-c5 / declared"
-                                                        + " / inferred / all; on the same call or the next."),
+                                                        + " / inferred / all; a judgment one (SQL column, message"
+                                                        + " key) only by its id."),
                                         "check",
                                         McpSchemas.bool())),
                                 List.of("address", "to"))),

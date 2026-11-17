@@ -460,7 +460,9 @@ Candidates that should change come first; judgment calls (a message key, a SQL c
 doc, a test class named after a type) after them. `--also c1,c3` (MCP `also`) applies chosen ones in a
 later call, each line only while it still reads as it did; `also` takes ids, ranges (`c2-c5`), or a
 kind: `declared`, `inferred`, `must`, `hazards`, `all`. On the rename's own call, `--also declared`
-applies the services files with the rest.
+applies the services files with the rest; there a kind applies only the candidates that should change
+(and the pins), never a judgment call, which no list has shown yet: those stay listed for a later
+`--also` by id.
 
 **Hazards.** A rename that changes behaviour with no compile error is flagged with the pin that keeps
 the old behaviour, applied with `also=h1`: a JPA entity field with no column name (`@Column(name =

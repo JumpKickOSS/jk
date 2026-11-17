@@ -247,6 +247,34 @@ class RenameFieldTest {
     }
 
     /**
+     * {@code also=all} sent with the rename, before the agent has seen a list, applies what must change
+     * and the pin, and leaves the judgment calls listed by id: a task that keeps the column keeps it.
+     */
+    @Test
+    void allOnTheRenamesOwnCallAppliesTheMustChangeUsesAndLeavesTheJudgmentCallsListed(@TempDir Path dir)
+            throws IOException {
+        RenameFixture ws = new RenameFixture(dir, petclinic());
+        String answer = ws.rename("Owner.telephone", "phone", "also=all");
+
+        assertThat(ws.read("src/main/resources/templates/owners/ownerDetails.html"))
+                .contains("*{phone}", "${owner.phone}", "#{telephone}");
+        assertThat(ws.read(OWNER_DIR + "Owner.java"))
+                .contains("    @Column(name = \"telephone\")\n    private String phone;");
+        assertThat(ws.read("src/main/resources/db/schema.sql")).contains("telephone VARCHAR(20)");
+        assertThat(ws.read("src/main/resources/messages/messages.properties")).startsWith("telephone=Telephone\n");
+        assertThat(answer)
+                .contains("Judgment, left as they are unless chosen")
+                .containsPattern("c\\d+ inferred, SQL column: src/main/resources/db/schema.sql:3")
+                .containsPattern("c\\d+ inferred, message key: src/main/resources/messages/messages.properties:1")
+                .doesNotContain("template bean path:");
+
+        String column = id(answer, "SQL column: src/main/resources/db/schema.sql:3");
+        assertThat(ws.rename("Owner.telephone", "phone", "also=" + column))
+                .startsWith("Applied " + column + ": 1 change");
+        assertThat(ws.read("src/main/resources/db/schema.sql")).contains("phone VARCHAR(20)");
+    }
+
+    /**
      * A {@code @ConfigurationProperties} field's key is set by environment variables too, under Spring's
      * relaxed binding: the compose file and the workflow of the petclinic-anchor-relaxed-env task. Each
      * must change with the key, or it silently stops setting it.

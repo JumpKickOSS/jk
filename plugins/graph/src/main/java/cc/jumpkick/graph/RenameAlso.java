@@ -27,14 +27,28 @@ final class RenameAlso {
 
     private RenameAlso() {}
 
-    /** The ids {@code spec} chooses among {@code p}'s; an unknown id is refused with the ids there are. */
+    /** The ids {@code spec} chooses among {@code p}'s, after the agent has seen them listed. */
     static Set<String> chosen(RenameStore.Pending p, String spec) {
+        return chosen(p, spec, false);
+    }
+
+    /**
+     * The ids {@code spec} chooses among {@code p}'s; an unknown id is refused with the ids there are.
+     * {@code unseen} (an {@code also} on the rename's own call, before any list was answered): a kind
+     * chooses only the candidates that must change, and the judgment calls (a SQL column, a message key)
+     * stay listed for a later call to choose by id. An agent that sends {@code also=all} before reading
+     * the list renamed the column the task said to keep.
+     */
+    static Set<String> chosen(RenameStore.Pending p, String spec, boolean unseen) {
         Set<String> out = new LinkedHashSet<>();
         for (String raw : spec.split(",")) {
             String word = raw.strip().toLowerCase(Locale.ROOT);
             if (word.isEmpty()) continue;
             switch (word) {
-                case "all" -> out.addAll(p.grades().keySet());
+                case "all" ->
+                    p.grades().forEach((id, g) -> {
+                        if (!unseen || !id.startsWith("c") || g[1].equals("must")) out.add(id);
+                    });
                 case "must" ->
                     p.grades().forEach((id, g) -> {
                         if (id.startsWith("c") && g[1].equals("must")) out.add(id);
@@ -45,7 +59,7 @@ final class RenameAlso {
                             .forEach(out::add);
                 case "bound", "declared", "inferred" ->
                     p.grades().forEach((id, g) -> {
-                        if (g[0].equals(word)) out.add(id);
+                        if (g[0].equals(word) && (!unseen || g[1].equals("must"))) out.add(id);
                     });
                 default -> {
                     int dash = word.indexOf('-');
@@ -146,7 +160,7 @@ final class RenameAlso {
     /**
      * Folds the candidates and pins {@code spec} chooses into {@code plan} before anything is written,
      * for {@code also} on the rename's own call ({@code also=declared}): the chosen ones are applied
-     * with the bound edits and leave the lists.
+     * with the bound edits and leave the lists. A kind chooses no judgment call here: none was listed yet.
      */
     static void fold(Path root, RenamePlan plan, String spec) throws IOException {
         List<RenamePlan.Candidate> ordered = plan.ordered();
@@ -162,7 +176,7 @@ final class RenameAlso {
             changes.put("h" + (i + 1), plan.hazards.get(i).pin());
         }
         RenameStore.Pending p = new RenameStore.Pending(plan.subject, plan.to, grades, changes);
-        Set<String> ids = chosen(p, spec);
+        Set<String> ids = chosen(p, spec, true);
         Map<String, List<RenamePlan.Change>> byFile = new TreeMap<>();
         List<RenamePlan.Move> moves = new ArrayList<>();
         for (String id : ids) {
