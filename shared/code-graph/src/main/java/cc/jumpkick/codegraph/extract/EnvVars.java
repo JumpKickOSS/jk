@@ -149,8 +149,10 @@ public final class EnvVars {
      * it; {@code $VAR} reads it, inferred.
      */
     static void shellLine(FragmentBuilder b, String line, int n) {
-        Matcher e = EXPORT.matcher(line);
-        while (e.find()) define(b, e.group(1), n);
+        if (line.contains("export")) {
+            Matcher e = EXPORT.matcher(line);
+            while (e.find()) define(b, e.group(1), n);
+        }
         if (line.contains("GITHUB_ENV")) {
             Matcher g = GITHUB_ENV.matcher(line);
             while (g.find()) define(b, g.group(1), n);

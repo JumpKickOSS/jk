@@ -43,6 +43,7 @@ final class ConfigExtractors {
     private static final Pattern TOML_KEY = Pattern.compile("^\\s*([A-Za-z0-9_.\\-\"':]+)\\s*=\\s*(.*)$");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
     private static final Pattern LIST_ENTRY = Pattern.compile("^\\s*-\\s+\\S");
+    private static final Pattern COMMENT = Pattern.compile("\\s+#.*$");
     private static final Pattern ENV_ENTRY = Pattern.compile("^\\s*-\\s+[A-Z_][A-Z0-9_]*\\s*(?:=|$)");
     private static final Pattern OPENAPI = Pattern.compile("(?m)^(?:openapi|swagger)\\s*:");
     private static final Set<String> HTTP_METHODS =
@@ -332,7 +333,7 @@ final class ConfigExtractors {
 
     /** A YAML value without its trailing {@code # comment}. */
     private static String uncommented(String value) {
-        return value.replaceFirst("\\s+#.*$", "");
+        return value.indexOf('#') < 0 ? value : COMMENT.matcher(value).replaceFirst("");
     }
 
     private static int lineOf(String text, Lines lines, String needle) {

@@ -167,6 +167,26 @@ class PortAndBuildFileAnchorsTest {
                 .isFalse();
     }
 
+    /**
+     * A line is matched for a port only once a colon on it follows a host of this machine: the host in
+     * any case and IPv6's loopback count, a colon after another host or after a space does not.
+     */
+    @Test
+    void onlyALineWithALocalHostBeforeAColonIsReadForAPort() {
+        String rel = "docs/run.md";
+        String text = """
+                # Run
+
+                Open http://LOCALHOST:8080/ in a browser, or curl -k https://[::1]:8443/health.
+                The default is localhost: 8080, and http://example.com:9090/ is another host.
+                key: value, then 0.0.0.0:7070 and 127.0.0.1:6060/tcp
+                """;
+        Fragment f = Objects.requireNonNull(Extractors.forPath(rel)).extract(rel, text);
+        assertThat(f.mentions().stream().filter(m -> m.kind() == Mention.Kind.PORT))
+                .extracting(Mention::text, Mention::line)
+                .containsExactly(tuple("8080", 3), tuple("8443", 3), tuple("7070", 5), tuple("6060", 5));
+    }
+
     @Test
     void aPortAnswerListsTheFilesAroundTheCodeWithTheirLines() {
         CodeGraph g = graph();

@@ -43,13 +43,30 @@ final class Ports {
         }
     }
 
+    /** The hosts {@link #LOCAL} names, each right before the colon of a port. */
+    private static final List<String> HOSTS = List.of("localhost", "127.0.0.1", "0.0.0.0", "[::1]");
+
     /** The ports URLs on {@code line} name on this machine, {@code http://localhost:8080/...}, as inferred mentions. */
     static void urls(FragmentBuilder b, String from, String line, int n) {
-        if (line.indexOf(':') < 0) return;
+        if (!namesLocalPort(line)) return;
         Matcher m = LOCAL.matcher(line);
         while (m.find()) {
             if (isPort(m.group(1))) b.mention(from, Mention.Kind.PORT, m.group(1), n);
         }
+    }
+
+    /**
+     * True when a colon on {@code line} follows a host {@link #LOCAL} names: the one test most lines
+     * (Markdown, YAML values, scripts) get, so the pattern runs only on a line that may match it.
+     */
+    private static boolean namesLocalPort(String line) {
+        for (int colon = line.indexOf(':'); colon >= 0; colon = line.indexOf(':', colon + 1)) {
+            for (String host : HOSTS) {
+                int at = colon - host.length();
+                if (at >= 0 && line.regionMatches(true, at, host, 0, host.length())) return true;
+            }
+        }
+        return false;
     }
 
     /**
