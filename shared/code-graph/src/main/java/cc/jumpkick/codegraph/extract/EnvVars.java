@@ -16,8 +16,9 @@ import java.util.regex.Pattern;
 
 /**
  * Environment variables: where files set them ({@code .env}, a Dockerfile's {@code ENV} and {@code
- * ARG}, an {@code export} in a script, compose {@code environment:}, workflow and Kubernetes {@code
- * env:}) and where they read them ({@code ${VAR}} and {@code $VAR}). A file that sets a variable is
+ * ARG}, an {@code export} in a script, a Makefile or a workflow step, a workflow step's {@code
+ * $GITHUB_ENV}, compose {@code environment:}, workflow and Kubernetes {@code env:}) and where they
+ * read them ({@code ${VAR}} and {@code $VAR}). A file that sets a variable is
  * a declared definition; an explicit {@code ${VAR}} in a Dockerfile or a Spring placeholder a
  * declared use; a {@code $VAR} in a script or a YAML value a mention the linker links only to a
  * variable something sets or reads, inferred. Only names are kept: no value is ever read into the
@@ -29,7 +30,11 @@ public final class EnvVars {
 
     private static final Pattern ENV_NAME = Pattern.compile("[A-Z_][A-Z0-9_]*");
     private static final Pattern DOT_ENV = Pattern.compile("^\\s*(?:export\\s+)?([A-Za-z_][A-Za-z0-9_]*)\\s*=");
-    private static final Pattern EXPORT = Pattern.compile("(?:^|[;&|]\\s*)export\\s+([A-Za-z_][A-Za-z0-9_]*)");
+    private static final Pattern EXPORT =
+            Pattern.compile("(?:^\\s*(?:-\\s+)?(?:run:\\s*)?|[;&|]\\s*)export\\s+([A-Za-z_][A-Za-z0-9_]*)");
+    private static final Pattern GITHUB_ENV =
+            Pattern.compile("\\b([A-Z_][A-Z0-9_]*)=[^>]*>>\\s*[\"']?\\$\\{?GITHUB_ENV\\b");
+    private static final Pattern EXPOSE = Pattern.compile("(?i)^\\s*EXPOSE\\s+(.*)$");
     private static final Pattern REFERENCE =
             Pattern.compile("\\$\\{([A-Za-z_][A-Za-z0-9_]*)(?:[:?+-][^}]*)?}|\\$([A-Za-z_][A-Za-z0-9_]*)");
     private static final Pattern WORKFLOW_ENV = Pattern.compile("\\$\\{\\{\\s*env\\.([A-Za-z_][A-Za-z0-9_]*)\\s*}}");
@@ -99,7 +104,8 @@ public final class EnvVars {
 
     /**
      * A Dockerfile: {@code ENV} and {@code ARG} set variables, declared; {@code ${VAR}} and {@code $VAR}
-     * read them, declared; command lines may request this service's routes.
+     * read them, declared; {@code EXPOSE} defines ports ({@link Ports}); command lines may request this
+     * service's routes.
      */
     static Fragment dockerfile(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", "dockerfile");
@@ -123,6 +129,8 @@ public final class EnvVars {
                 }
                 continue;
             }
+            Matcher expose = EXPOSE.matcher(line);
+            if (expose.matches()) Ports.expose(b, expose.group(1), n);
             Matcher r = REFERENCE.matcher(line);
             while (r.find()) {
                 String name = r.group(1) != null ? r.group(1) : r.group(2);
@@ -135,10 +143,17 @@ public final class EnvVars {
         return b.build();
     }
 
-    /** One script line: {@code export VAR} sets it; {@code $VAR} reads it, inferred. */
+    /**
+     * One script line: {@code export VAR} and a workflow step's {@code echo "VAR=…" >> $GITHUB_ENV} set
+     * it; {@code $VAR} reads it, inferred.
+     */
     static void shellLine(FragmentBuilder b, String line, int n) {
         Matcher e = EXPORT.matcher(line);
         while (e.find()) define(b, e.group(1), n);
+        if (line.contains("GITHUB_ENV")) {
+            Matcher g = GITHUB_ENV.matcher(line);
+            while (g.find()) define(b, g.group(1), n);
+        }
         references(b, line, n);
     }
 
@@ -181,7 +196,12 @@ public final class EnvVars {
         if (m.find()) define(b, m.group(1), n);
     }
 
-    private static void define(FragmentBuilder b, String name, int line) {
+    /** True for a variable every shell and image has, whose read says nothing about this project. */
+    static boolean isAmbient(String name) {
+        return AMBIENT.contains(name);
+    }
+
+    static void define(FragmentBuilder b, String name, int line) {
         b.anchor(b.fileId(), Anchors.ENV, name, Relations.DEFINES, Confidence.DECLARED, line);
     }
 

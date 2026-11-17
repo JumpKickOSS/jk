@@ -154,6 +154,12 @@ public final class Linker {
         return b.confidence().ordinal() < a.confidence().ordinal() ? b.withSitesOf(a) : a.withSitesOf(b);
     }
 
+    /** The id of anchor {@code name} of {@code kind} when some file or symbol made it; else null. */
+    private @Nullable String known(String kind, String name) {
+        String id = Anchors.id(kind, name);
+        return nodes.containsKey(id) ? id : null;
+    }
+
     private List<GraphEdge> resolve(Mention m) {
         GraphNode from = nodes.get(m.source());
         if (from == null) return List.of();
@@ -167,16 +173,16 @@ public final class Linker {
                     case CONFIG_KEY -> configKeys(m.text());
                     case ROUTE, ROUTE_CALL -> routes(m.text());
                     case TABLE, COLUMN -> sqlNames(m);
-                    case ENV ->
-                        one(
-                                nodes.containsKey(Anchors.id(Anchors.ENV, m.text()))
-                                        ? Anchors.id(Anchors.ENV, m.text())
-                                        : null);
+                    case ENV -> one(known(Anchors.ENV, m.text()));
+                    case PORT -> one(known(Anchors.PORT, m.text()));
                 };
         if (m.kind() == Mention.Kind.TABLE || m.kind() == Mention.Kind.COLUMN) return sqlEdges(m, from, targets);
         if (m.kind() == Mention.Kind.ROUTE || m.kind() == Mention.Kind.ROUTE_CALL) return routeEdges(m, from, targets);
         boolean inferred =
-                m.kind() == Mention.Kind.SYMBOL || m.kind() == Mention.Kind.CONFIG_KEY || m.kind() == Mention.Kind.ENV;
+                m.kind() == Mention.Kind.SYMBOL
+                        || m.kind() == Mention.Kind.CONFIG_KEY
+                        || m.kind() == Mention.Kind.ENV
+                        || m.kind() == Mention.Kind.PORT;
         String context = m.context() != null
                 ? m.context()
                 : switch (m.kind()) {

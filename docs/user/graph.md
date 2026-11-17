@@ -35,8 +35,10 @@ class.
 | Markdown, AsciiDoc | pages, headings | `contains`, links to other files, `references` to the code a code span names |
 | Spring `application*`/`bootstrap*` YAML and properties | one [anchor](#anchors) per key, however many profile files set it | `defines` from each file that sets it; `uses` from code reading `${key}` in an annotation (`@Value`), `@ConfigurationProperties` and key-shaped string literals |
 | HTTP handlers (compiled classes): Spring `@RequestMapping` and its shortcuts, JAX-RS `@Path` with `@GET` and the rest, Micronaut `@Controller` with `@Get` and the rest; OpenAPI YAML `paths` | one [route anchor](#routes) per method and path | `defines` from the handler method or the document; `uses` from MockMvc and RestAssured calls, `@HttpExchange` clients, path literals in code, front-end `http.get`/`fetch` calls, and URLs to this service in scripts, workflows, config and Markdown |
-| Shell scripts (`.sh`, `.bash`) | | `uses` of routes their command lines request; `defines` of the variables they `export`, `uses` of the ones they read |
+| Shell scripts (`.sh`, `.bash`) and workflow `run:` steps | | `uses` of routes their command lines request; `defines` of the variables they `export` or append to `$GITHUB_ENV`, `uses` of the ones they read |
 | `.env` files, Dockerfiles (`ENV`, `ARG`), compose `environment:`, workflow and Kubernetes `env:` | one [variable anchor](#environment-variables) each | `defines` from each file that sets it; `uses` from `${VAR}`/`$VAR`, Spring placeholders, `System.getenv` |
+| Makefiles (`Makefile`, `GNUmakefile`, `*.mk`) | | `defines` of the variables they `export`; `uses` of `VAR ?= default`, `$(VAR)`, recipe lines as shell lines |
+| Spring `server.port`, Dockerfile `EXPOSE`, compose `ports:`, Kubernetes `containerPort` | one [port anchor](#ports) each | `defines` from the file that says a service listens on it; `uses` from a compose mapping's container side and URLs to `localhost:<port>` anywhere |
 | `jk.toml`, `pom.xml`, Gradle, version catalogs, `package.json` | dependencies | `depends_on`, workspace and Maven modules |
 | XML, `META-INF/services`, `*.imports`, JSON | | `references` to every class they name |
 | SQL migrations and schema files; Liquibase XML and YAML changelogs | one [table and column anchor](#tables-and-columns) each | `defines` from `CREATE TABLE`, `ALTER TABLE … ADD`/`RENAME`/`ALTER COLUMN` and Liquibase changes; `drops` from `DROP` and the old name of a rename; `uses` from indexes and foreign keys |
@@ -51,7 +53,7 @@ and an answer marks them `(inferred)`.
 ## Anchors
 
 An anchor is a node for something code and other files both name without a compiler between
-them: configuration keys, environment variables, HTTP routes, and SQL tables and columns today;
+them: configuration keys, environment variables, HTTP routes, ports, and SQL tables and columns today;
 CLI flags are on the way. Every file or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
@@ -135,7 +137,8 @@ string templates.
 
 A variable is `env:<NAME>`, case kept. Each file that sets it is a definition, declared: a `.env`
 file, a Dockerfile's `ENV` and `ARG`, a script's `export`, compose's `environment:` (map or list),
-a workflow's `env:` and a Kubernetes container's `env:` entries. Reads: `System.getenv("NAME")`, a
+a workflow's `env:`, a workflow step's `echo "NAME=…" >> $GITHUB_ENV`, a Makefile's `export` and a
+Kubernetes container's `env:` entries. Reads: `System.getenv("NAME")`, a
 `${NAME}` placeholder in a Spring config file or `@Value`, and `${NAME}`/`$NAME` in a Dockerfile are
 declared; `$NAME` in a script, a workflow step or another YAML value is inferred and links only to a
 variable something sets or reads. Variables every shell has (`HOME`, `PATH`, …) are left out.
@@ -147,6 +150,17 @@ config:spring.datasource.url (inferred)`), and the key's answer names the variab
 the binding is inferred because nothing says the program is a Spring one. Only names enter the
 graph: no value of any variable is read into it, so a `.env` holding secrets contributes their
 names alone, and an answer names the line that sets a variable without quoting it.
+
+### Ports
+
+A port is `port:<number>`. Where a service is told to listen is a definition, declared:
+`server.port` in a Spring config file (a `${PORT:8080}` default counts), a Dockerfile's `EXPOSE`,
+the published side of a compose `ports:` entry (`"8081:8080"` defines 8081) and its long form's
+`published:`, a Kubernetes `containerPort`. The container side of a compose mapping (8080) is a
+declared use; the long form's container side is not read yet. A URL to this machine
+(`localhost:8080`, `127.0.0.1:8080`) in a script, a workflow, a config value, a doc or code is an
+inferred use and links only to a port something defines or uses. So `jk graph callers port:8080` before moving a service lists the
+Dockerfile, the compose file and every script and test that calls it there.
 
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the

@@ -42,6 +42,7 @@ final class ConfigExtractors {
     private static final Pattern TOML_TABLE = Pattern.compile("^\\s*\\[\\[?\\s*([^\\]]+?)\\s*]]?\\s*(?:#.*)?$");
     private static final Pattern TOML_KEY = Pattern.compile("^\\s*([A-Za-z0-9_.\\-\"':]+)\\s*=\\s*(.*)$");
     private static final Pattern QUOTED = Pattern.compile("\"([^\"]*)\"");
+    private static final Pattern LIST_ENTRY = Pattern.compile("^\\s*-\\s+\\S");
     private static final Pattern ENV_ENTRY = Pattern.compile("^\\s*-\\s+[A-Z_][A-Z0-9_]*\\s*(?:=|$)");
     private static final Pattern OPENAPI = Pattern.compile("(?m)^(?:openapi|swagger)\\s*:");
     private static final Set<String> HTTP_METHODS =
@@ -76,6 +77,15 @@ final class ConfigExtractors {
                 values(b, line, i + 1, spring);
                 continue;
             }
+            if (!m.matches() && LIST_ENTRY.matcher(line).find()) {
+                // A scalar list entry, - "8081:8080": it belongs to the key above it.
+                int indent = line.indexOf('-') + 2;
+                while (!indents.isEmpty() && indents.getLast()[0] >= indent) {
+                    indents.removeLast();
+                    path.removeLast();
+                }
+                if (!spring) Ports.yamlListEntry(b, path, line, i + 1);
+            }
             if (m.matches()) {
                 int indent = m.group(1).length() + (line.stripLeading().startsWith("- ") ? 2 : 0);
                 while (!indents.isEmpty() && indents.getLast()[0] >= indent) {
@@ -89,7 +99,9 @@ final class ConfigExtractors {
                 if (spring && leaf && keys++ < MAX_KEYS) configKey(b, String.join(".", path), i + 1);
                 if (openApi) openApiOperation(b, path, i + 1);
                 if (changelog != null) changelog.key(path, value, i + 1);
+                if (spring && leaf) Ports.springKey(b, String.join(".", path), uncommented(value), i + 1);
                 if (!spring) EnvVars.yamlKey(b, path, value, i + 1);
+                if (!spring) Ports.yamlKey(b, path, uncommented(value), i + 1);
             }
             values(b, line, i + 1, spring);
         }
@@ -114,6 +126,7 @@ final class ConfigExtractors {
             int sep = separator(entry);
             String key = (sep < 0 ? entry : entry.substring(0, sep)).strip().replace("\\ ", " ");
             if (spring && !key.isEmpty() && keys++ < MAX_KEYS) configKey(b, key, start + 1);
+            if (spring && sep >= 0) Ports.springKey(b, key, entry.substring(sep + 1), start + 1);
             values(b, sep < 0 ? "" : entry.substring(sep + 1), start + 1, spring);
         }
         return b.build();
@@ -290,11 +303,11 @@ final class ConfigExtractors {
         b.anchor(b.fileId(), Anchors.CONFIG, key, Relations.DEFINES, Confidence.DECLARED, line);
     }
 
-    /** Class names, {@code ${key}} placeholders and requests to this service in one value. */
     /**
      * Class names, {@code ${key}} placeholders, variables and requests to this service in one value. In
      * a Spring config file a placeholder named as a variable ({@code ${DATABASE_URL:…}}) is a declared
-     * read of that variable; elsewhere a {@code $VAR} is an inferred mention.
+     * read of that variable; elsewhere a {@code $VAR} is an inferred mention and a value read as a
+     * shell line (a workflow's {@code run:}) sets the variables it exports.
      */
     private static void values(FragmentBuilder b, String value, int line, boolean spring) {
         if (value.isEmpty()) return;
@@ -308,8 +321,13 @@ final class ConfigExtractors {
                 b.mention(b.fileId(), Mention.Kind.CONFIG_KEY, p.group(1), line);
             }
         }
-        if (!spring) EnvVars.references(b, value, line);
+        if (!spring) EnvVars.shellLine(b, value, line);
         Requests.urls(b, b.fileId(), value, line);
+    }
+
+    /** A YAML value without its trailing {@code # comment}. */
+    private static String uncommented(String value) {
+        return value.replaceFirst("\\s+#.*$", "");
     }
 
     private static int lineOf(String text, Lines lines, String needle) {

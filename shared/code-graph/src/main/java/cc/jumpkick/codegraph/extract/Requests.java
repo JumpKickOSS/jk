@@ -31,8 +31,12 @@ final class Requests {
     private static final Pattern FETCH = Pattern.compile("\\bfetch\\s*\\(\\s*(['\"`])(/[^'\"`\\n]*)\\1");
     private static final Pattern VARIABLE = Pattern.compile("\\$\\{[^}]*}|\\$\\w+");
 
-    /** The URLs to this service on one line of a command, a workflow, a config value or a code block. */
+    /**
+     * The URLs to this service on one line of a command, a workflow, a config value or a code block,
+     * and the ports on this machine they name ({@link Ports#urls}).
+     */
     static void urls(FragmentBuilder b, String from, String line, int n) {
+        Ports.urls(b, from, line, n);
         if (!line.contains("://")) return;
         Matcher u = URL.matcher(line);
         while (u.find()) {

@@ -1061,8 +1061,8 @@ have) are open.
 
 The code graph (`shared/code-graph`, built in `plugins/graph`) links symbols through the
 compiler. An **anchor** is a node for a surface that code and files no compiler checks both
-name: a configuration key, an environment variable, an HTTP route, a SQL table or column, a CLI
-command or flag. Every file or symbol that defines or uses the surface gets an edge to the
+name: a configuration key, an environment variable, an HTTP route, a network port, a SQL table or
+column, a CLI command or flag. Every file or symbol that defines or uses the surface gets an edge to the
 anchor, in whatever language it is written, so N languages need N extractors, not N² pairwise
 ones.
 
@@ -1076,6 +1076,7 @@ the two namespaces apart.
 | `config` | `config:server.port` | lower-cased with `-` and `_` dropped, dots kept: Spring's relaxed binding, so `maxItems`, `max-items` and `max_items` are one key; the label is the kebab spelling |
 | `env` | `env:DATABASE_URL` | exact: variables are case-sensitive |
 | `route` | `route:GET /orders/{}` | method upper-cased (`*` for any); path with one leading `/`, no trailing `/`, no query, `//` collapsed, every variable (`{id}`, `{id:\d+}`, `:id`, `<id>`) as `{}` |
+| `port` | `port:8080` | the number without leading zeros, a `/tcp` or `/udp` dropped |
 | `table` | `table:orders` | lower-cased unless quoted, quotes, backticks and brackets dropped; a schema stays when written, but for the default `public` and `dbo` |
 | `column` | `column:orders.status` | table key, `.`, column key |
 | `cli` | `cli:jk build --skip-tests` | program, subcommand path, then one flag, whitespace collapsed, `=value` dropped |

@@ -36,7 +36,7 @@ public record Mention(
         return switch (kind) {
             case MODULE -> Relations.IMPORTS_FROM;
             case MEMBER -> Relations.CALLS;
-            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN, ENV -> Relations.USES;
+            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN, ENV, PORT -> Relations.USES;
             default -> Relations.REFERENCES;
         };
     }
@@ -77,6 +77,8 @@ public record Mention(
          */
         COLUMN,
         /** An environment variable a script or YAML value reads, {@code $DATABASE_URL}: linked only to one something sets or reads, inferred. */
-        ENV
+        ENV,
+        /** A port a URL names, {@code localhost:8080}: linked only to a port something defines or uses, inferred. */
+        PORT
     }
 }
