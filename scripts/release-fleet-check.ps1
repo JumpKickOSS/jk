@@ -6,8 +6,10 @@
 # Usage:
 #   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -Version <version> [-Checkout <dir>]
 #   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -RemoveOnly <dir>
+#   powershell -NoProfile -ExecutionPolicy Bypass -File release-fleet-check.ps1 -Version <version> -CheckoutOnly <dir>
 # -RemoveOnly runs the home's delete step alone against <dir> (what scripts/test-release-fleet-check.ps1
-# drives) and exits 0 when <dir> is gone.
+# drives) and exits 0 when <dir> is gone. -CheckoutOnly runs the checkout step alone against <dir>:
+# prints "usable" and exits 0 when <dir> was brought to tag v<version>, else prints why not.
 #
 # The home goes in an order that never leaves a home with no jk in it: every process running from
 # it or naming it on its command line is stopped and waited for (a worker JVM, a git a test left
@@ -25,7 +27,8 @@
 param(
     [string] $Version,
     [string] $Checkout = (Join-Path $env:USERPROFILE "src\oss\jk"),
-    [string] $RemoveOnly
+    [string] $RemoveOnly,
+    [string] $CheckoutOnly
 )
 $ErrorActionPreference = "Continue"
 
@@ -144,12 +147,33 @@ function Remove-JkHome([string] $dir) {
     return ""
 }
 
+# Whether $dir can be brought to tag v$Version: on main, clean, nothing origin lacks; then
+# fast-forwarded. Only main and the release tag are fetched: a local tag that origin moved or dropped
+# is no reason to pass over the checkout (a plain fetch --tags fails on it with "would clobber
+# existing tag").
+function Usable([string] $dir) {
+    if (-not (Test-Path (Join-Path $dir ".git"))) { return "absent" }
+    git -C $dir fetch -q --no-tags origin "+refs/heads/main:refs/remotes/origin/main" "+refs/tags/v${Version}:refs/tags/v$Version"
+    if ($LASTEXITCODE -ne 0) { return "fetch-failed" }
+    $branch = (git -C $dir symbolic-ref --short -q HEAD); if (-not $branch) { $branch = "detached" }
+    if ($branch -ne "main") { return "on-$branch" }
+    if (git -C $dir status --porcelain) { return "dirty" }
+    if (git -C $dir log --oneline origin/main..main) { return "unpushed-commits" }
+    git -C $dir merge -q --ff-only "v$Version"; if ($LASTEXITCODE -ne 0) { return "not-fast-forward" }
+    return ""
+}
+
 if ($RemoveOnly) {
     $why = Remove-JkHome $RemoveOnly
     if ($why) { Write-Host "fleet-check: $why"; exit 1 }
     exit 0
 }
 if (-not $Version) { Write-Host "fleet-check: -Version <version> is required"; exit 2 }
+if ($CheckoutOnly) {
+    $why = Usable $CheckoutOnly
+    if ($why) { Write-Host $why; exit 1 }
+    Write-Host "usable"; exit 0
+}
 $Site = if ($env:JK_FLEET_SITE) { $env:JK_FLEET_SITE } else { "https://jumpkick.build" }
 $HomeDir = Join-Path $env:USERPROFILE ".jk"
 $Jk = Join-Path $HomeDir "bin\jk.exe"
@@ -194,16 +218,6 @@ if ($vv -match 'client .* commit ([0-9a-f]+)') { $r.commit = $Matches[1] }
 if ($r.jk -ne $Version) { Fail "the installed jk reports '$($r.jk)', not $Version" }
 
 # 3. the checkout at the released commit, or the fleet checkout when the usual one is someone's work
-function Usable([string] $dir) {
-    if (-not (Test-Path (Join-Path $dir ".git"))) { return "absent" }
-    git -C $dir fetch -q --tags origin; if ($LASTEXITCODE -ne 0) { return "fetch-failed" }
-    $branch = (git -C $dir symbolic-ref --short -q HEAD); if (-not $branch) { $branch = "detached" }
-    if ($branch -ne "main") { return "on-$branch" }
-    if (git -C $dir status --porcelain) { return "dirty" }
-    if (git -C $dir log --oneline origin/main..main) { return "unpushed-commits" }
-    git -C $dir merge -q --ff-only "v$Version"; if ($LASTEXITCODE -ne 0) { return "not-fast-forward" }
-    return ""
-}
 $why = Usable $Checkout
 if ($why -eq "") { $r.checkout = $Checkout } else {
     $r.note = "${Checkout}:$why" -replace '\s', '_'

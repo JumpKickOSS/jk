@@ -44,6 +44,10 @@ runs:
       shell: bash
       run: bash scripts/test-release-session.sh
 
+    - name: Release fleet-check fixtures
+      shell: bash
+      run: bash scripts/test-release-fleet-check.sh
+
     - name: Manual release merge and publish fixtures
       shell: bash
       run: bash scripts/test-release-publish.sh

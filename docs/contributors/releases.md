@@ -601,7 +601,9 @@ checkout to the tag and times a cold and a warm `jk build`, printing one `RESULT
 appends to a Markdown table. Both refuse unless jumpkick.build serves the version they are given.
 On Windows the home goes with `bin` last, after every process running from it or naming it has
 stopped; a file that still will not go leaves `bin` (and so `jk`) in place and the failure names the
-process holding it (`scripts/test-release-fleet-check.ps1` holds this).
+process holding it (`scripts/test-release-fleet-check.ps1` holds this). A checkout fetches only
+`main` and the release tag, so a local tag that origin has since moved does not set it aside
+(`scripts/test-release-fleet-check.sh` and the `.ps1` hold this).
 Finally bump `.jk/ci/ci-bootstrap-version` to the release, and with it raise this tree's
 `jk-lock.toml` `jk-min` to the release (never above the pin: G105).
 

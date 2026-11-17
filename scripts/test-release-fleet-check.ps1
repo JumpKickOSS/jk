@@ -4,7 +4,9 @@
 #  2. a home whose store nests past MAX_PATH (as the template store's g8 trees do) goes;
 #  3. a process that holds a file under the home without naming it is not stopped: the delete
 #     fails naming that process and the file, everything but bin is gone, and bin is still there;
-#     once that process exits, the next run deletes the home.
+#     once that process exits, the next run deletes the home;
+#  4. the checkout step (-CheckoutOnly) brings a clean checkout on main to the release tag even when
+#     it holds a local tag origin moved, which a plain `git fetch --tags` refuses.
 # Windows PowerShell 5.1 or later. Usage: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\test-release-fleet-check.ps1
 $ErrorActionPreference = "Stop"
 $script = Join-Path $PSScriptRoot "release-fleet-check.ps1"
@@ -34,6 +36,17 @@ function Remove-Only([string] $dir) {
     $ErrorActionPreference = "Continue"
     $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -RemoveOnly $dir 2>&1 | Out-String
     return @{ code = $LASTEXITCODE; out = $out }
+}
+function Checkout-Only([string] $version, [string] $dir) {
+    $ErrorActionPreference = "Continue"
+    $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -Version $version -CheckoutOnly $dir 2>&1 | Out-String
+    return @{ code = $LASTEXITCODE; out = $out.Trim() }
+}
+# git with a fixed identity, its output dropped.
+function G {
+    $ErrorActionPreference = "Continue"
+    & git -c user.name=fixture -c user.email=fixture@example.invalid -c init.defaultBranch=main @args 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "git $args failed" }
 }
 
 $holders = @()
@@ -73,6 +86,23 @@ try {
     $r = Remove-Only $h2
     Check ($r.code -eq 0) "once the holder exits the home goes (exit $($r.code))"
     Check (-not (Test-Path -LiteralPath $h2)) "the hidden home is gone"
+
+    # 4. a stale local tag: origin holds A, B with v0.9.0 at A; the clone moves v0.9.0 to B; then
+    #    origin gains C tagged v1.0.0, the release.
+    $seed = Join-Path $root "seed"; $origin = Join-Path $root "origin.git"; $usual = Join-Path $root "usual"
+    G init -q $seed
+    G -C $seed commit -q --allow-empty -m A
+    G -C $seed tag v0.9.0
+    G -C $seed commit -q --allow-empty -m B
+    G clone -q --bare $seed $origin
+    G clone -q $origin $usual
+    G -C $usual tag -f v0.9.0 HEAD
+    G -C $seed commit -q --allow-empty -m C
+    G -C $seed tag v1.0.0
+    G -C $seed push -q $origin main v1.0.0
+    $r = Checkout-Only "1.0.0" $usual
+    Check (($r.code -eq 0) -and ($r.out -eq "usable")) "a checkout holding a stale local tag is usable (exit $($r.code)): $($r.out)"
+    Check ((git -C $usual rev-parse HEAD) -eq (git -C $origin rev-parse v1.0.0)) "it is fast-forwarded to the release tag"
 } finally {
     foreach ($p in $holders) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
     foreach ($p in $holders) { Wait-Process -Id $p.Id -Timeout 15 -ErrorAction SilentlyContinue }

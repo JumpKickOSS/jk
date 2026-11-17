@@ -5,6 +5,9 @@
 #
 # Usage:
 #   bash release-fleet-check.sh <version> [checkout]
+#   bash release-fleet-check.sh --checkout-only <version> <checkout>
+# --checkout-only runs the checkout step alone (what scripts/test-release-fleet-check.sh drives):
+# prints "usable" and exits 0 when <checkout> was brought to tag v<version>, else prints why not.
 # <checkout> defaults to ~/src/oss/jk. It is fast-forwarded to tag v<version> only when it is on
 # main, clean, and holds no commit origin lacks; otherwise it is left alone, reported, and
 # ~/src/oss/jk-fleet is used instead (under the same rule).
@@ -16,6 +19,31 @@
 #   RESULT host=… os=… cores=… ram_gb=… jk=… commit=… install_s=… build1_s=… build2_s=… checkout=… note=… success=true|false
 set -uo pipefail
 
+# Whether <dir> can be brought to tag v$VER: on main, clean, nothing origin lacks; then fast-forwarded.
+# Only main and the release tag are fetched: a local tag that origin moved or dropped is no reason to
+# pass over the checkout (a plain fetch --tags fails on it with "would clobber existing tag").
+usable() {
+  local dir="$1" branch
+  [[ -d "$dir/.git" ]] || { echo "absent"; return 1; }
+  git -C "$dir" fetch -q --no-tags origin "+refs/heads/main:refs/remotes/origin/main" \
+    "+refs/tags/v$VER:refs/tags/v$VER" || { echo "fetch-failed"; return 1; }
+  branch="$(git -C "$dir" symbolic-ref --short -q HEAD || echo detached)"
+  [[ "$branch" == main ]] || { echo "on-$branch"; return 1; }
+  [[ -z "$(git -C "$dir" status --porcelain)" ]] || { echo "dirty"; return 1; }
+  [[ -z "$(git -C "$dir" log --oneline origin/main..main)" ]] || { echo "unpushed-commits"; return 1; }
+  git -C "$dir" merge -q --ff-only "v$VER" || { echo "not-fast-forward"; return 1; }
+  return 0
+}
+
+if [[ "${1:-}" == --checkout-only ]]; then
+  VER="${2:?usage: release-fleet-check.sh --checkout-only <version> <checkout>}"
+  if why="$(usable "${3:?usage: release-fleet-check.sh --checkout-only <version> <checkout>}")"; then
+    echo usable
+    exit 0
+  fi
+  echo "$why"
+  exit 1
+fi
 VER="${1:?usage: release-fleet-check.sh <version> [checkout]}"
 CHECKOUT="${2:-$HOME/src/oss/jk}"
 SITE="${JK_FLEET_SITE:-https://jumpkick.build}"
@@ -65,17 +93,6 @@ commit="$(printf '%s\n' "$version_v" | sed -n 's/.*client .* commit \([0-9a-f]*\
 [[ "$jk_ver" == "$VER" ]] || fail "the installed jk reports '$jk_ver', not $VER"
 
 # 3. the checkout at the released commit, or the fleet checkout when the usual one is someone's work
-usable() {
-  local dir="$1" branch
-  [[ -d "$dir/.git" ]] || { echo "absent"; return 1; }
-  git -C "$dir" fetch -q --tags origin || { echo "fetch-failed"; return 1; }
-  branch="$(git -C "$dir" symbolic-ref --short -q HEAD || echo detached)"
-  [[ "$branch" == main ]] || { echo "on-$branch"; return 1; }
-  [[ -z "$(git -C "$dir" status --porcelain)" ]] || { echo "dirty"; return 1; }
-  [[ -z "$(git -C "$dir" log --oneline origin/main..main)" ]] || { echo "unpushed-commits"; return 1; }
-  git -C "$dir" merge -q --ff-only "v$VER" || { echo "not-fast-forward"; return 1; }
-  return 0
-}
 if why="$(usable "$CHECKOUT")"; then
   used="$CHECKOUT"
 else
