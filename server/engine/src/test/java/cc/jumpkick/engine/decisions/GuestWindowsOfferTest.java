@@ -17,6 +17,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -44,6 +46,24 @@ class GuestWindowsOfferTest {
     @TempDir
     Path tmp;
 
+    private @Nullable GuestWindowsOffer made;
+
+    /**
+     * An install outlives the latch: after the installer returns it remembers the answer in the memo
+     * under {@link #tmp}, so a test that ended at the latch had JUnit deleting the dir while it wrote
+     * (JK-VT1QM). Every test waits its install out before the dir goes.
+     */
+    @AfterEach
+    void noInstallOutlivesTheTest() throws InterruptedException {
+        GuestWindowsOffer offer = made;
+        if (offer == null) return;
+        long until = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (offer.installing() && System.nanoTime() < until) Thread.sleep(10);
+        assertThat(offer.installing())
+                .as("an install still writing under the test's temp dir")
+                .isFalse();
+    }
+
     private GuestWindowsOffer offer() throws InterruptedException {
         GuestWindowsOffer offer = new GuestWindowsOffer(
                 tmp.resolve("state").resolve(SetupMemo.FILE),
@@ -55,14 +75,25 @@ class GuestWindowsOfferTest {
                     installs.incrementAndGet();
                     progress.accept("installing");
                     installed.countDown();
+                    linger();
                     return new MachineSetup.Result(WindowsFromGuest.ROW, true, "installed JumpKick for Windows 0.52.1");
                 },
                 clock);
+        made = offer;
         offer.watch(queue);
         offer.refresh();
         long until = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (offer.missing() == null && System.nanoTime() < until) Thread.sleep(10);
         return offer;
+    }
+
+    /** A real install logs and returns a moment after its last step: the test's ends here a little later. */
+    private static void linger() {
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private Path memo() {

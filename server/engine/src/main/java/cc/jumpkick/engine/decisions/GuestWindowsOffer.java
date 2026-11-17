@@ -175,6 +175,11 @@ public final class GuestWindowsOffer {
         SessionContext.startVirtual("windows-jumpkick-install", this::installNow);
     }
 
+    /** Whether an install is under way: it ends after the answer is remembered in the memo. */
+    boolean installing() {
+        return installing.get();
+    }
+
     private void installNow() {
         if (!installing.compareAndSet(false, true)) return;
         try {
