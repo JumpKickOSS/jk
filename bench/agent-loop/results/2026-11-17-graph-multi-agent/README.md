@@ -1,9 +1,16 @@
-# Graph bench across agents, 2026-11-17 (bocabox, Fedora)
+# Graph bench across agents, 2026-11-17 (daybreak WSL; tier 0 also on bocabox)
 
 Does jk 0.52.0's code graph save tokens, turns, wall time and money for each agent, against jk 0.51.1's graph
 and against no graph tools? Ten agent/model configs, three arms, three tiers of tasks. TABLE.md has the numbers;
-`rows-tier*.jsonl` are the raw rows (one per run, change-tasks' row format); `runner.py`, `plan.py` and
-`tabulate.py` are what ran the matrix and built the table.
+`rows-tier*-<host>.jsonl` are the raw rows (one per run, change-tasks' row format); `runner.py`, `plan.py` and
+`tabulate.py` are what ran the matrix and built the table, `build-table.sh` writes TABLE.md from the rows, and
+`runlog-*.txt` are the runner's logs (per run: load average, wall and monotonic seconds, least free memory).
+
+**Hosts.** The bench started on bocabox (Fedora) and moved to **daybreak** (Windows 11, WSL Ubuntu 26.04 capped
+at 12 GB) after bocabox's tier 0 and 55 of its 180 tier-1 runs, at the owner's word: daybreak is the quieter
+host, where the earlier benches ran, and wall time is now one of the measures. So every tier's numbers come
+from daybreak: tier 0 was rerun there, tier 1 run there from the start, then the sliver. bocabox's tier 0 is
+kept as a second host's table and bocabox's 55 tier-1 rows as raw rows; neither is pooled with daybreak's.
 
 ## Arms
 
@@ -30,7 +37,7 @@ count in `jk_calls`.
 | grok / 4.5 | same | grok-4.5 | effort high |
 | cursor / composer | cursor-agent 2026.11.13-eacade1 | composer-2.5 (never a `-fast` id) | effort is part of the id ("default") |
 | cursor / grok-4.7-high | same | grok-4.7-high (never `-fast`) | high, in the id |
-| agy / hydrogen | agy 1.5.10 | gemini-4-hydrogen-medium | effort medium |
+| agy / hydrogen | agy 1.5.10 (daybreak: 1.5.9 for its first run, see below) | gemini-4-hydrogen-medium | effort medium |
 | muse / spark | Muse Code 1.4.23 (1.4.23-R8977.1) | muse-spark-1.3-contributor | effort high (the model profile's default) |
 
 Auto-updates were off for the matrix: `MUSE_NO_AUTO_UPDATE=1` (the muse launcher) and `AGY_CLI_DISABLE_AUTO_UPDATE=1`
@@ -87,10 +94,36 @@ grok-4.7.
   no grading. Four tier-0 Claude rows hit it; the check now applies only when the run never got past its
   first turn, and the four cells were rerun (both rows are in `rows-tier0.jsonl`; the table keeps the rerun).
 
-## Host
+## Hosts and run conditions
 
-Sequential, one agent run at a time. The host is also the release-gate host: before every run the runner waits
-while `/var/tmp/jk-review2/GATE_RUNNING` exists, so no run overlaps a gate. Pauses: tier 0, 29 min before run 100.
+**daybreak (the measurement).** Windows 11 Home with WSL Ubuntu 26.04.1 (12 GB, 24 CPUs), jk 0.52.0 in `~/.jk`
+and jk 0.51.1 installed by the installer (`JK_VERSION=0.51.1`) into its own home under the bench's scratch.
+The repository checkout ran detached at this branch's tip; the corpus (spring-petclinic, gs-multi-module,
+gs-uploading-files) was set up there with `bench setup`. Sequential, one agent run at a time; no gate host.
+- **Arm B needs no network for jk.** 0.51.1 will be deleted from the download site after this bench, so
+  before tier 0 every task was prepared once in each arm (a two-turn Sonnet run per task and arm), and then
+  arm B again for all eleven tasks with `JK_OFFLINE=1` in fresh scratch: every baseline, graph build, MCP
+  start and verification ran from 0.51.1's store with no error.
+- **Awake.** daybreak's power plan never sleeps on AC (standby and hibernate 0). The batch also held a Windows
+  keep-awake for its whole length (a PowerShell `SetThreadExecutionState(ES_CONTINUOUS|ES_SYSTEM_REQUIRED)`
+  started through WMI so it outlives the ssh session; `powercfg /requests` lists it). A process started from
+  WSL does not do: a Windows program launched through WSL interop from a detached shell dies with the ssh
+  session that started it, and `systemd-inhibit` in WSL is refused without polkit (and would not hold
+  Windows anyway).
+- **No suspend.** The runner logs each run's wall-clock and monotonic seconds and marks a run whose wall clock
+  ran more than 5 s past the monotonic one; none was marked, and Windows' System log has no sleep or resume
+  event (Kernel-Power 42/107/506/507, Power-Troubleshooter 1) during any batch.
+- **Memory.** The least MemAvailable seen during any tier-0 run was 7.9 GB of 12; no build was killed.
+- **Other load.** Another session's `jk new … android/compose` processes sat stopped (state T, no CPU) on the
+  host throughout; the runner's per-run load average stayed low (see `runlog-*`).
+- **CLI updates.** `AGY_CLI_DISABLE_AUTO_UPDATE=1` did not stop agy 1.5.9 from replacing itself with 1.5.10 during
+  its first tier-0 run, so that one row (smoke-callers, arm A) is on 1.5.9 and every later agy row on 1.5.10
+  (bocabox's version). Muse updated itself to 1.4.23 (bocabox's version) before tier 0 began. Every other CLI is
+  at the version in the configs table on both hosts.
+
+**bocabox (tier 0 and part of tier 1).** Fedora, sequential. The host is also the release-gate host: before
+every run the runner waited while `/var/tmp/jk-review2/GATE_RUNNING` existed, so no run overlapped a gate.
+Pauses: tier 0, 29 min before run 100.
 
 ## Reading the numbers
 
@@ -98,7 +131,26 @@ See TABLE.md's notes; the honest reading per tier is in the next section.
 
 ## Findings
 
-### Tier 0 (one run per cell)
+### Tier 0 on daybreak (one run per cell)
+
+All 120 green (three grok-4.7 runs hit the 8-minute cap and were green on their one retry; see below).
+- **A against C:** A uses fewer tokens for all ten configs, from 31% (Opus) to 91% (grok-4.7), and fewer turns,
+  less wall time and lower cost for all ten (muse's cost by 4%: at contributor prices tokens hardly cost).
+- **A against B: no difference shown.** Single runs, and the per-task cells swing both ways between hosts. On
+  bocabox, Sonnet and Opus used 18% and 33% fewer tokens in A, nearly all on smoke-rename-field (B 40.3k and
+  59.4k); on daybreak their B runs of that task took 20.6k and 20.8k, and A used 24% (Sonnet) and 11% (Opus)
+  *more* tokens than B over the four tasks. Muse is 50% lower in A here (18% on bocabox), from two B runs of
+  590k and 418k against A's 224k and 186k; agy 16%, grok-4.5 14%; codex, grok-4.7 and cursor within ±5%
+  except cursor composer, 18% more in A. With one run per cell none of this is a result: tier 1's three
+  repeats are the first numbers with a noise estimate.
+- **grok-4.7's slow window.** Between 06:12 and 06:49 grok-4.7's tool calls took minutes: one `jk__rename`
+  never returned before the cap, another run's shell tool took 340 s, and one run never produced a turn.
+  The three capped runs (smoke-rename-field A and C, smoke-rename-class C) were green on their one retry
+  (26 to 247 s; the table keeps the retry). Two runs from the window finished under the cap and stand as
+  recorded: smoke-rename A (302.6 s, 293 s of it in jk) and smoke-rename-field B (371.4 s). They make
+  grok-4.7's A-against-B wall (A 18% lower than B) unreliable. No other config was slow then.
+
+### Tier 0 on bocabox (one run per cell)
 
 Every one of the 120 runs is green, so tier 0 says nothing about success; it says whether and how cheaply each
 agent reaches the answer. One run per cell is a smoke, not a measurement: no noise estimate is possible.

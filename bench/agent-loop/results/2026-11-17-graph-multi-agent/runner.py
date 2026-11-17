@@ -7,6 +7,11 @@ PLAN.json: {"tier": "t0", "rows_globs": [...], "runs": [{"cfg": "...", "env": {.
 Each run's new rows (lines appended to any file matching rows_globs) are logged. A config whose first two
 rows in this tier are both `error` is skipped for the rest of the tier. While GATE exists, wait (polls of
 60 s, 5 min per logged pause, up to 2 h; then stop). Ends with a `DONE` line.
+
+Each END line carries the run's wall-clock and monotonic seconds and the least MemAvailable seen while it ran;
+a run whose wall clock moved more than 5 s beyond the monotonic clock (the host slept) is marked SUSPEND.
+Keeping the host awake is the caller's job (on daybreak: awake-start.ps1, a Windows process started through WMI).
+$BENCH_GATE and $BENCH_AGENT_LOOP default to the first host's (bocabox) paths.
 """
 import glob
 import json
@@ -17,8 +22,14 @@ import sys
 import time
 from pathlib import Path
 
-GATE = Path("/var/tmp/jk-review2/GATE_RUNNING")
-AGENT_LOOP = "/var/tmp/jk-review2/wt/bench-multi-agent/bench/agent-loop"
+GATE = Path(os.environ.get("BENCH_GATE", "/var/tmp/jk-review2/GATE_RUNNING"))
+AGENT_LOOP = os.environ.get("BENCH_AGENT_LOOP", "/var/tmp/jk-review2/wt/bench-multi-agent/bench/agent-loop")
+def mem_available_mb():
+    with open("/proc/meminfo") as fh:
+        for line in fh:
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) // 1024
+    return -1
 
 
 def log(f, msg):
@@ -48,7 +59,11 @@ def new_rows(globs, before):
 def main():
     plan = json.loads(Path(sys.argv[1]).read_text())
     logf = open(sys.argv[2], "a")
-    log(logf, f"START tier={plan['tier']} runs={len(plan['runs'])} pid={os.getpid()}")
+    log(logf, f"START tier={plan['tier']} runs={len(plan['runs'])} pid={os.getpid()} mem_avail_mb={mem_available_mb()}")
+    return run_all(plan, logf)
+
+
+def run_all(plan, logf):
     first = {}   # cfg -> outcomes of its first rows this tier
     skipped = set()
     for i, run in enumerate(plan["runs"], 1):
@@ -70,13 +85,24 @@ def main():
             log(logf, f"RESUME after gate pause of {waited}s")
         before = counts(plan["rows_globs"])
         env = {**os.environ, **run.get("env", {})}
-        log(logf, f"RUN {i}/{len(plan['runs'])} {cfg} :: {' '.join(run['cmd'][1:])}")
+        with open("/proc/loadavg") as fh:
+            load = fh.read().split()[0]
+        log(logf, f"RUN {i}/{len(plan['runs'])} {cfg} load={load} :: {' '.join(run['cmd'][1:])}")
         t0 = time.time()
+        m0 = time.monotonic()
+        mem_min = mem_available_mb()
         with open(sys.argv[2] + ".out", "a") as out:
             p = subprocess.Popen(run["cmd"], cwd=AGENT_LOOP, env=env, stdout=out, stderr=subprocess.STDOUT,
                                  start_new_session=True)
             try:
-                rc = p.wait(timeout=run["cap_s"])
+                rc = None
+                while rc is None:
+                    try:
+                        rc = p.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        mem_min = min(mem_min, mem_available_mb())
+                        if time.monotonic() - m0 > run["cap_s"]:
+                            raise
             except subprocess.TimeoutExpired:
                 os.killpg(p.pid, signal.SIGTERM)
                 time.sleep(10)
@@ -91,7 +117,9 @@ def main():
                       f"{r.get('outcome')} tokens={r.get('tokens')} turns={r.get('turns')} wall={r.get('wall_s')} "
                       f"cost={r.get('cost_est_usd')} {str(r.get('finding') or '')[:160]}")
         outcomes = [r.get("outcome") for r in rows] or [f"norow rc={rc}"]
-        log(logf, f"END {i} rc={rc} {time.time() - t0:.0f}s")
+        wall, mono = time.time() - t0, time.monotonic() - m0
+        mark = " SUSPEND" if wall - mono > 5 else ""
+        log(logf, f"END {i} rc={rc} {wall:.0f}s wall={wall:.1f} mono={mono:.1f} mem_min_avail_mb={mem_min}{mark}")
         seen = first.setdefault(cfg, [])
         if len(seen) < 2:
             seen += outcomes

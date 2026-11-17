@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""Write a tier's plan for runner.py.   plan.py t0|t1|t2 [--cfg NAME ...] [--arms A,B,C] > plan.json"""
+"""Write a tier's plan for runner.py.   plan.py t0|t1|t2 [--cfg NAME ...] [--arms A,B,C] > plan.json
+
+$BENCH_RUN (the run directory), $BENCH_JK_BEFORE_HOME (jk 0.51.1's home) and $BENCH_JK_BENCH_HOME (harness
+scratch) default to the first host's (bocabox) paths."""
 import argparse
 import json
 
-RUN = "/var/tmp/jk-review2/bench-run"
+import os
+
+RUN = os.environ.get("BENCH_RUN", "/var/tmp/jk-review2/bench-run")
 COMMON_ENV = {
-    "JK_BEFORE_HOME": "/var/tmp/jk-review2/bench-smoke/jk-0.51.1-home/.jk",
+    "JK_BEFORE_HOME": os.environ.get("BENCH_JK_BEFORE_HOME", "/var/tmp/jk-review2/bench-smoke/jk-0.51.1-home/.jk"),
     "MUSE_NO_AUTO_UPDATE": "1",
     "AGY_CLI_DISABLE_AUTO_UPDATE": "1",
     "JK_BENCH_CLAUDE": "claude2",
 }
+if os.environ.get("BENCH_JK_BENCH_HOME"):
+    # The corpus (graph-retrieval) and every other harness scratch under the bench's own directory.
+    COMMON_ENV["JK_BENCH_HOME"] = os.environ["BENCH_JK_BENCH_HOME"]
 # name: (driver, model, effort, context)
 CONFIGS = {
     "sonnet-5-5": ("claude-code", "claude-sonnet-5-5", "medium", None),
