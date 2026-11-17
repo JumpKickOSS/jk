@@ -1101,6 +1101,10 @@ def _cursor_turns(events: list[dict]) -> int:
     return len(calls) or sum(1 for ev in events if ev.get("type") == "assistant")
 
 
+# MCP servers a cursor account brings to every home, disabled for a run.
+ACCOUNT_MCP_SERVERS = ("plugin-github-github",)
+
+
 def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int, transcript_path: Path,
            effort: str = "medium") -> AgentResult:
     """`cursor-agent -p` with a throwaway ``HOME``, no shell, the run's MCP servers, and the same prompt.
@@ -1123,6 +1127,10 @@ def cursor(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: in
         # hash of the server's config, so the CLI writes it.
         for name in servers(tool, sandbox)[1]:
             subprocess.run(["cursor-agent", "mcp", "enable", name], cwd=sandbox, env=env, stdin=subprocess.DEVNULL,
+                           capture_output=True, timeout=60)
+        # The account's own plugin servers (plugin-github-github) reach a throwaway home too; keep them out.
+        for name in ACCOUNT_MCP_SERVERS:
+            subprocess.run(["cursor-agent", "mcp", "disable", name], cwd=sandbox, env=env, stdin=subprocess.DEVNULL,
                            capture_output=True, timeout=60)
         calls: set[str] = set()
 

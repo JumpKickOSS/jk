@@ -317,6 +317,9 @@ Rename the configuration property `petclinic.visits.max-per-day` to `petclinic.v
 and its Java property `maxPerDay` on `VisitLimits` to `dailyLimit`. Everything in the repository that
 sets or reads it must use the new name.
 """
+# Every test class but the Docker ones (PostgresIntegrationTests, MySqlIntegrationTests), as the tier's
+# comment above says: on a host whose Docker is podman, Spring's compose support fails before a test runs.
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "VisitLimitRenameAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
 
 [tasks.petclinic-anchor-composed-route]
 repo   = "spring-petclinic"
@@ -327,6 +330,9 @@ In `OwnerApiController`, rename the pets endpoint to animals: the method `pets` 
 its path segment `pets` becomes `animals`. Everything in the repository that requests the endpoint
 must use the new address; the old one need not keep working.
 """
+# Every test class but the Docker ones (PostgresIntegrationTests, MySqlIntegrationTests), as the tier's
+# comment above says: on a host whose Docker is podman, Spring's compose support fails before a test runs.
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "AnimalsRouteAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
 
 [tasks.petclinic-anchor-column-case]
 repo   = "spring-petclinic"
@@ -337,3 +343,6 @@ The pets table's `birth_date` column is renamed to `date_of_birth`. Rename it in
 schema, keep the Java property `birthDate` (mapped to the new column), and update everything else in
 the repository that names the column.
 """
+# Every test class but the Docker ones (PostgresIntegrationTests, MySqlIntegrationTests), as the tier's
+# comment above says: on a host whose Docker is podman, Spring's compose support fails before a test runs.
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "DateOfBirthColumnAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
