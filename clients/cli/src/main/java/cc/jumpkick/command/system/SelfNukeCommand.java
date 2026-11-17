@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
+import cc.jumpkick.cache.StoreWipe;
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.cli.api.CliOutput;
@@ -61,6 +62,10 @@ import org.jspecify.annotations.Nullable;
  * {@code --store} cannot log the user out because the tokens are not in the tree it deletes.
  * {@link Guards} exists for the remaining way to aim a delete somewhere it does not belong — a
  * {@code JK_STORE_DIR} / {@code JK_CACHE_DIR} / {@code JK_STATE_DIR} pointed at a protected tree.
+ *
+ * <p>The one carve-out is inside the store: the running jk's own shelf, {@code
+ * repos/jk-local/cc/jumpkick/<artifact>/<version>/}, stays ({@link StoreWipe}). A jk built from a
+ * checkout runs its workers and built-in plugins from there, and no repository can give them back.
  */
 public final class SelfNukeCommand implements CliCommand {
 
@@ -87,7 +92,9 @@ public final class SelfNukeCommand implements CliCommand {
      * <p>Delegated or not, every row prints under <strong>Path to Delete</strong> and every row's
      * path is <em>gone as a directory</em> when the command finishes. The two shared nukes each
      * spent a release emptying their root instead of removing it (for the cache
-     * for the store), which is the same table saying "delete" and meaning "empty".
+     * for the store), which is the same table saying "delete" and meaning "empty". The store is
+     * the one exception, and the confirm names it: when the running jk has a shelf of its own,
+     * the store directory stays to hold it ({@link StoreWipe}).
      */
     record PurgeRow(Path path, String what, Target target, boolean delegated, Kind kind) {
         PurgeRow(Path path, String what, Target target, boolean delegated) {
@@ -392,14 +399,15 @@ public final class SelfNukeCommand implements CliCommand {
     }
 
     /**
-     * Delete the store root once more after the fleet is down. {@code jk storage nuke} deletes it
+     * Wipe the store once more after the fleet is down. {@code jk storage nuke} deletes it
      * engine-side while that engine is still running, so a write landing between the wipe and the
-     * stop stands the store back up; the row cleared the guards, and nothing is left to write.
+     * stop stands the store back up; the row cleared the guards, and nothing is left to write. The
+     * running jk's own shelf stays, as it did engine-side ({@link StoreWipe}).
      */
     private static void sweepStore(Path store, List<String> failures) {
         if (!Files.exists(store, LinkOption.NOFOLLOW_LINKS)) return;
         try {
-            PathUtil.deleteRecursivelyOrThrow(store);
+            StoreWipe.wipe(store);
         } catch (IOException e) {
             failures.add(pathStyled(store) + " (" + e.getMessage() + ")");
         }
@@ -616,7 +624,25 @@ public final class SelfNukeCommand implements CliCommand {
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory())
                 + (launchersGo ? "  (PATH binaries, except the tool launchers listed above)" : "  (PATH binaries)"));
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
+        if (wantStore) {
+            int shelf = keptShelf(dirs.storeDir());
+            if (shelf > 0) {
+                CliOutput.out("  Kept:  "
+                        + pathStyled(StoreWipe.shelfPattern(dirs.storeDir(), JkVersion.VERSION))
+                        + "  (this jk's own " + shelf + " shelved artifact" + (shelf == 1 ? "" : "s")
+                        + "; no repository has them)");
+            }
+        }
         CliOutput.out();
+    }
+
+    /** How many first-party artifacts of this version the store wipe keeps; 0 when unreadable. */
+    private static int keptShelf(Path store) {
+        try {
+            return StoreWipe.kept(store).size();
+        } catch (IOException unreadable) {
+            return 0;
+        }
     }
 
     private static boolean confirmPrompt() {

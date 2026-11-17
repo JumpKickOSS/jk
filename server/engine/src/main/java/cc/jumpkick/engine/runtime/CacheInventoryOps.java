@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.StoreCasGc;
+import cc.jumpkick.cache.StoreWipe;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
@@ -577,12 +578,15 @@ public final class CacheInventoryOps {
         return CacheInventoryAck.droppedWorkers(lines, files, bytes);
     }
 
-    /** Delete the store root; its writers recreate their own subtrees on demand. */
+    /**
+     * Delete the store root but this jk's own shelf ({@link StoreWipe}); its writers recreate
+     * their own subtrees on demand.
+     */
     private static CacheInventoryAck wipeStore(Path storeRoot, boolean dryRun) throws IOException {
         if (storeRoot == null || !Files.isDirectory(storeRoot)) return CacheInventoryAck.wipe(0, 0);
         // Unique-inode bytes (POSIX ino/dev or Windows fileKey) so leftover hard links under
-        // sha256/ and repos/ are not counted twice.
-        DiskUsage.Stats stats = DiskUsage.of(storeRoot);
+        // sha256/ and repos/ are not counted twice; the kept shelf is not counted at all.
+        DiskUsage.Stats stats = StoreWipe.measure(storeRoot);
         if (!dryRun) {
             // Exclusive against store writers: the boot-time warmup clones templates and fetches
             // plugin jars into this very store — on Windows a concurrent writer's open .put- temp
@@ -597,7 +601,7 @@ public final class CacheInventoryOps {
                 for (int attempt = 0; attempt < WIPE_ATTEMPTS; attempt++) {
                     killed.addAll(WorkerAotCache.stopTrainers());
                     try {
-                        PathUtil.deleteRecursivelyOrThrow(storeRoot);
+                        StoreWipe.wipe(storeRoot);
                         last = null;
                         break;
                     } catch (IOException stillHeld) {
