@@ -242,6 +242,14 @@ final class RenameAlso {
 
     /** The answer for an {@code also} call: what it applied, in the shape a rename answers. */
     static List<String> answer(Modules modules, RenamePlan plan, Set<String> ids) {
+        return answer(modules, plan, ids, List.of());
+    }
+
+    /**
+     * The answer for an {@code also} call, and the ids the rename listed that are still not applied
+     * ({@code left}): the task is said to be done after the test only when none of them must change.
+     */
+    static List<String> answer(Modules modules, RenamePlan plan, Set<String> ids, List<RenameStore.Use> left) {
         List<String> out = new ArrayList<>();
         out.add("Applied " + String.join(",", ids) + ": " + plan.edits() + " change" + (plan.edits() == 1 ? "" : "s")
                 + " in " + plan.after.size() + (plan.after.size() == 1 ? " file." : " files."));
@@ -249,7 +257,22 @@ final class RenameAlso {
             out.add("  " + e.getKey() + (e.getValue().isEmpty() ? "" : ":" + RenamePlan.numbers(e.getValue())));
         }
         out.addAll(plan.notes);
-        out.add(EditedTests.next(modules, plan.after.keySet(), true));
+        List<Integer> must = new ArrayList<>();
+        List<Integer> may = new ArrayList<>();
+        List<String> hazards = new ArrayList<>();
+        for (RenameStore.Use u : left) {
+            if (u.id().startsWith("h")) hazards.add(u.id());
+            else (u.must() ? must : may).add(Integer.parseInt(u.id().substring(1)));
+        }
+        List<String> parts = new ArrayList<>();
+        if (!must.isEmpty()) parts.add(RenamePlan.ranges(must) + " should change too");
+        if (!may.isEmpty()) parts.add(RenamePlan.ranges(may) + " left as they are (judgment)");
+        if (!hazards.isEmpty()) parts.add(String.join(",", hazards) + " not pinned");
+        if (!parts.isEmpty()) {
+            out.add("Still listed, not applied: " + String.join("; ", parts)
+                    + ". Repeat the rename to see each with its line.");
+        }
+        out.add(EditedTests.next(modules, plan.after.keySet(), must.isEmpty()));
         return out;
     }
 

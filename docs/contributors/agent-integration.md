@@ -28,6 +28,13 @@ every agent's rename to a single tool call, so it is said only when it is true: 
 test set that can call the method has no compiled classes, the last sentence names them to search
 instead. One that cannot (it sees no module declaring the method or one it overrides, by the
 engine's build graph) is not named: sending an agent to search it costs turns and finds nothing.
+Nor is it said while a use the rename listed and nobody applied is left (the worker's
+`rename/unchecked` rows: id, must or may, what it is, file and line): one that should change makes
+the sentence `Not done: no compile or test reads these uses, which should change too: environment
+variable for … at docker-compose.yml:29 (c3). Apply them with also=c3, or edit them.`, and judgment
+calls left as they were are named by kind (`SQL column at db/schema.sql:3 (c9)`) after `Done where a
+compile or test reads it.` On petclinic-anchor-relaxed-env codex trusted the done sentence and left
+the compose file's variable stale; named, it needs no grep.
 
 **Name the exact scope.** `rename` names the test classes it edited (`classes=`), not the modules'
 whole suites: a rename changes no behaviour, every test source still compiles, and the tests that call

@@ -87,6 +87,17 @@ class McpRenameCheckTest {
                         + " them for calls too.");
     }
 
+    @Test
+    void usesTheRenameLeftReplaceTheDoneSentence() {
+        String left = "Not done: no compile or test reads these uses, which should change too: …";
+        assertThat(McpRenameCheck.done(List.of(), left)).isEqualTo(left);
+        assertThat(McpRenameCheck.done(List.of("core"), left))
+                .startsWith("core has no compiled classes")
+                .endsWith(" " + left);
+        assertThat(McpRenameCheck.done(List.of(), ""))
+                .isEqualTo("The task is done: no other build, test or search is needed.");
+    }
+
     private static final String PASSED = "{\"id\":\"r3\",\"buildNumber\":69,\"kind\":\"test\",\"dir\":\"/w\","
             + "\"projectId\":\"q\",\"success\":true,\"exitCode\":0,\"millis\":5,\"coord\":\"g:b\","
             + "\"modules\":[],\"diagnostics\":[]}";

@@ -61,8 +61,13 @@ final class RenameOp {
             RenameStore.write(root, out, plan);
             RenameStore.writeProof(out, modules, Map.of(), List.of());
             RenameStore.markApplied(out, ids);
+            List<RenameStore.Use> left = RenameStore.readUnchecked(out).stream()
+                    .filter(u -> !ids.contains(u.id()))
+                    .toList();
+            RenameStore.writeUnchecked(out, left);
             return GraphService.Reply.of(
-                    w, Budget.lines(RenameAlso.answer(graph.modules(), plan, ids), r.budget(), "Raise the budget"));
+                    w,
+                    Budget.lines(RenameAlso.answer(graph.modules(), plan, ids, left), r.budget(), "Raise the budget"));
         }
         RenamePlan plan;
         SymbolRename.Ctx ctx = new SymbolRename.Ctx(w, graph);
@@ -83,6 +88,7 @@ final class RenameOp {
         List<RenamePlan.Candidate> ordered = plan.ordered();
         if (!plan.after.isEmpty() || !plan.rawMoves.isEmpty()) RenameStore.write(root, out, plan);
         RenameStore.writePending(out, address, to, ordered, plan.hazards, plan.lists());
+        RenameStore.writeUnchecked(out, RenameStore.uses(ordered, plan.hazards));
         if (!plan.after.isEmpty()) RenameStore.writeProof(out, modules, plan.symbols, refs, plan.unseen);
         // A method rename names the sets it could not see; every other kind lists their uses as candidates.
         List<String> unseen = plan.unseen;

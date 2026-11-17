@@ -97,6 +97,41 @@ class RenameAnswerTest {
                 .startsWith("No type, package, method or field 'Ownr'. Pass Type.method, Type.field");
     }
 
+    /**
+     * The uses no compile or test reads, left for the engine's verdict after the check: every listed
+     * one after the rename, then what each {@code also} did not apply; the also answer says the task
+     * is done after its test only once nothing that must change is left.
+     */
+    @Test
+    void theUsesLeftUncheckedFollowTheRenameAndEachAlso(@TempDir Path dir) throws IOException {
+        RenameFixture ws = new RenameFixture(dir, RenameFieldTest.petclinic());
+        Path out = ws.root.resolve("target/graph");
+        ws.rename("Owner.telephone", "phone");
+        assertThat(RenameStore.readUnchecked(out))
+                .extracting(
+                        u -> u.id() + " " + (u.must() ? "must " : "may ") + u.what() + " " + u.rel() + ":" + u.line())
+                .contains(
+                        "c5 must template bean path src/main/resources/templates/owners/ownerDetails.html:2",
+                        "c9 may SQL column src/main/resources/db/schema.sql:3",
+                        "h1 may hazard :0");
+        ws.check();
+
+        String first = ws.rename("Owner.telephone", "phone", "also=c5");
+        assertThat(first)
+                .contains("Still listed, not applied: c1-c4,c6,c7 should change too; c8-c10 left as they are"
+                        + " (judgment); h1 not pinned. Repeat the rename to see each with its line.")
+                .doesNotContain("the task is done");
+        ws.check();
+
+        String rest = ws.rename("Owner.telephone", "phone", "also=c1-c4,c6,c7");
+        assertThat(rest)
+                .contains("Still listed, not applied: c8-c10 left as they are (judgment); h1 not pinned.")
+                .contains("the task is done");
+        assertThat(RenameStore.readUnchecked(out))
+                .extracting(RenameStore.Use::id)
+                .containsExactly("c8", "c9", "c10", "h1");
+    }
+
     /** The ids an answer names, ranges expanded: {@code c3-c5} is c3, c4, c5. */
     static Set<Integer> ids(String answer) {
         Set<Integer> out = new TreeSet<>();

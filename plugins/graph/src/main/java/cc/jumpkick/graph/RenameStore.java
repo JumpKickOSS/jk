@@ -31,6 +31,7 @@ final class RenameStore {
     static final String DIR = "rename";
     static final String PROOF = "proof";
     static final String PENDING = "pending";
+    static final String UNCHECKED = "unchecked";
     static final String UNDO = "undo";
 
     static Path dir(Path out) {
@@ -119,6 +120,7 @@ final class RenameStore {
         Files.deleteIfExists(dir(out).resolve(PROOF));
         // The candidates were for the edit just undone: also=<id> now plans the rename again with them.
         Files.deleteIfExists(dir(out).resolve(PENDING));
+        Files.deleteIfExists(dir(out).resolve(UNCHECKED));
         return done;
     }
 
@@ -241,6 +243,59 @@ final class RenameStore {
         for (String line : said) s.append("say\t").append(esc(line)).append('\n');
         Path dir = Files.createDirectories(dir(out));
         AtomicWrites.replace(dir.resolve(PENDING), s.toString());
+    }
+
+    /**
+     * A use the rename listed and did not apply, which no compile or test reads: its id, whether it
+     * must change, what it is (a reason, as the answer gives it: "SQL column", "environment variable
+     * for a.b"; a hazard is "hazard"), and where ({@code rel} empty and {@code line} 0 for a hazard).
+     */
+    record Use(String id, boolean must, String what, String rel, int line) {}
+
+    /** The uses {@code ordered} and {@code hazards} leave unchecked, by the ids the answer gives them. */
+    static List<Use> uses(List<RenamePlan.Candidate> ordered, List<RenamePlan.Hazard> hazards) {
+        List<Use> out = new ArrayList<>();
+        for (int i = 0; i < ordered.size(); i++) {
+            RenamePlan.Candidate c = ordered.get(i);
+            out.add(new Use("c" + (i + 1), c.must(), c.reason(), c.rel(), c.line()));
+        }
+        for (int i = 0; i < hazards.size(); i++) out.add(new Use("h" + (i + 1), false, "hazard", "", 0));
+        return out;
+    }
+
+    /**
+     * Writes the uses the last rename left unchecked, for the verdict after the engine's check:
+     * {@code id \t must|may \t what \t rel \t line}, one per row; an empty file when none is left.
+     */
+    static void writeUnchecked(Path out, List<Use> uses) throws IOException {
+        StringBuilder s = new StringBuilder();
+        for (Use u : uses) {
+            s.append(u.id())
+                    .append('\t')
+                    .append(u.must() ? "must" : "may")
+                    .append('\t')
+                    .append(esc(u.what()))
+                    .append('\t')
+                    .append(esc(u.rel()))
+                    .append('\t')
+                    .append(u.line())
+                    .append('\n');
+        }
+        Path dir = Files.createDirectories(dir(out));
+        AtomicWrites.replace(dir.resolve(UNCHECKED), s.toString());
+    }
+
+    /** The uses the last rename left unchecked; none when it wrote no record. */
+    static List<Use> readUnchecked(Path out) throws IOException {
+        Path file = dir(out).resolve(UNCHECKED);
+        if (!Files.isRegularFile(file)) return List.of();
+        List<Use> uses = new ArrayList<>();
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            String[] f = line.split("\t", -1);
+            if (f.length != 5) continue;
+            uses.add(new Use(f[0], f[1].equals("must"), unesc(f[2]), unesc(f[3]), Integer.parseInt(f[4])));
+        }
+        return uses;
     }
 
     /** Records that {@code ids} of the pending rename were applied, for a repeated call to say so. */

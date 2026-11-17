@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.graph.GraphRunner;
+import cc.jumpkick.engine.graph.RenameLeft;
 import cc.jumpkick.host.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -61,8 +62,11 @@ public final class McpRenameCheck {
         }
         left = budget - elapsedS(startedNanos);
         if (left < GUARD_FLOOR_S) {
+            String unchecked = RenameLeft.after(in.requiredDir());
             return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Then run(kind=guard)"
-                    + (uncompiled.isEmpty() ? "; when it says OK the task is done." : ". " + unseen(uncompiled)));
+                    + (uncompiled.isEmpty() && unchecked.isEmpty()
+                            ? "; when it says OK the task is done."
+                            : ". " + done(uncompiled, unchecked)));
         }
         // Guard the modules the rename edited, as the tests ran: a workspace's whole guard can take minutes.
         Map<String, Object> guardArgs = new LinkedHashMap<>(Map.of("dir", in.requiredDir(), "kind", "guard"));
@@ -71,15 +75,22 @@ public final class McpRenameCheck {
         if (!guard.startsWith("OK")) {
             return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + ". Guard: " + guard.strip());
         }
-        return in.text(
-                body + "\nChecked by JumpKick: " + firstLine(test) + "; " + firstLine(guard) + ". " + done(uncompiled));
+        return in.text(body + "\nChecked by JumpKick: " + firstLine(test) + "; " + firstLine(guard) + ". "
+                + done(uncompiled, RenameLeft.after(in.requiredDir())));
     }
 
     /** The answer's last sentence after a check that passed. */
     static String done(List<String> uncompiled) {
-        return uncompiled.isEmpty()
-                ? "The task is done: no other build, test or search is needed."
-                : unseen(uncompiled);
+        return done(uncompiled, "");
+    }
+
+    /**
+     * The answer's last sentence after a check that passed; {@code left} names the uses the rename
+     * listed and nobody applied, which no compile or test reads: never "done" past one that must change.
+     */
+    static String done(List<String> uncompiled, String left) {
+        if (!uncompiled.isEmpty()) return unseen(uncompiled) + (left.isEmpty() ? "" : " " + left);
+        return left.isEmpty() ? "The task is done: no other build, test or search is needed." : left;
     }
 
     private static String unseen(List<String> uncompiled) {
