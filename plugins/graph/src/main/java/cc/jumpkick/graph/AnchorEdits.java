@@ -34,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * name or the edit is undone, so a build that follows a graph question still names them.
  *
  * <p>A place is listed as one that must change when the old name sits in a structured position the
- * anchor links (a SQL column, a config key, an environment variable, a route's path, a CLI flag),
+ * anchor links (a SQL column, a config key, an environment variable, a route's path, a CLI flag, a
+ * JSON property a client tied to the route or class reads),
  * and as a judgment one when it sits in prose (markdown, text). A use a compiler or generator bound
  * ({@link Confidence#EXTRACTED}) is the build's to check and a generated file is nobody's to edit:
  * neither is ever listed. A file merely sharing an anchor with the edited one is never listed, and
@@ -329,9 +330,10 @@ final class AnchorEdits {
         return best;
     }
 
-    /** {@code owners} for {@code column:owners.telephone}; empty for a kind with no parent. */
+    /** {@code owners} for {@code column:owners.telephone}, {@code OwnerDto} for {@code json:OwnerDto.birthDate}; empty for a kind with no parent. */
     private static String parentOf(String id) {
-        if (!Anchors.COLUMN.equals(Anchors.kindOf(id))) return "";
+        String kind = Anchors.kindOf(id);
+        if (!Anchors.COLUMN.equals(kind) && !Anchors.JSON.equals(kind)) return "";
         int dot = id.lastIndexOf('.');
         return dot < 0 ? "" : id.substring(0, dot);
     }
@@ -522,7 +524,7 @@ final class AnchorEdits {
         String w = written;
         if (w.isEmpty()) {
             w = switch (kind) {
-                case Anchors.COLUMN, Anchors.TABLE -> old.substring(old.lastIndexOf('.') + 1);
+                case Anchors.COLUMN, Anchors.TABLE, Anchors.JSON -> old.substring(old.lastIndexOf('.') + 1);
                 case Anchors.ROUTE -> lastLiteral(old);
                 default -> old;
             };

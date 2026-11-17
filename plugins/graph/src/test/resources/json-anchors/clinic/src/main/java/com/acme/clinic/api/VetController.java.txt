@@ -1,0 +1,16 @@
+package com.acme.clinic.api;
+
+import java.util.List;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class VetController {
+
+    public record VetDto(int id, String name, List<String> specialties) {}
+
+    @GetMapping("/api/vets")
+    public List<VetDto> vets() {
+        return List.of();
+    }
+}

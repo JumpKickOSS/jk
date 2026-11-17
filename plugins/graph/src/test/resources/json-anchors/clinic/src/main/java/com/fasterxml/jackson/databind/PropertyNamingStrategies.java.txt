@@ -1,0 +1,5 @@
+package com.fasterxml.jackson.databind;
+
+public class PropertyNamingStrategies {
+    public static class SnakeCaseStrategy {}
+}

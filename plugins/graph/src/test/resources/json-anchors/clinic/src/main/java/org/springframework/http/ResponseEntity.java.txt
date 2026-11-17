@@ -1,0 +1,7 @@
+package org.springframework.http;
+
+public class ResponseEntity<T> {
+    public static <T> ResponseEntity<T> ok(T body) {
+        return new ResponseEntity<>();
+    }
+}

@@ -1,0 +1,14 @@
+<project>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springdoc</groupId>
+        <artifactId>springdoc-openapi-maven-plugin</artifactId>
+        <configuration>
+          <outputDir>${project.basedir}/api</outputDir>
+          <outputFileName>openapi.json</outputFileName>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

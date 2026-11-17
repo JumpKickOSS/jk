@@ -1,0 +1,16 @@
+package com.acme.clinic.api;
+
+class OwnerApiTests {
+
+    void readsAnOwner() {
+        expect("/api/owners/1", "$.birth_date", "$.pets[0].name");
+    }
+
+    void createsAnOwner() {
+        post("/api/owners", "new-owner.json", "$.id");
+    }
+
+    void expect(String url, String... paths) {}
+
+    void post(String url, String body, String path) {}
+}

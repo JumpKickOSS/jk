@@ -1,0 +1,34 @@
+openapi: 3.0.1
+info:
+  title: Clinic
+servers:
+  - url: http://localhost:8080/api
+paths:
+  /owners/{id}:
+    get:
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Owner'
+  /owners:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:
+                  type: string
+components:
+  schemas:
+    Owner:
+      type: object
+      properties:
+        id:
+          type: integer
+        birth_date:
+          type: string
+          format: date

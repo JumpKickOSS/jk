@@ -1,0 +1,12 @@
+{
+  "openapi": "3.0.1",
+  "components": {
+    "schemas": {
+      "OwnerDto": {
+        "properties": {
+          "birth_date": { "type": "string" }
+        }
+      }
+    }
+  }
+}

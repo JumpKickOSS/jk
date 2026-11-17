@@ -62,6 +62,6 @@ public final class GraphSources {
 
     static boolean skipFile(String rel) {
         String name = rel.substring(rel.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT);
-        return SKIP_FILES.contains(name) || name.contains(".min.") || name.endsWith(".map") || name.endsWith(".d.ts");
+        return SKIP_FILES.contains(name) || name.contains(".min.") || name.endsWith(".map");
     }
 }

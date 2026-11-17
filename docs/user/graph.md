@@ -54,8 +54,8 @@ and an answer marks them `(inferred)`.
 ## Anchors
 
 An anchor is a node for something code and other files both name without a compiler between
-them: configuration keys, environment variables, HTTP routes, ports, SQL tables and columns, and a
-program's commands and flags. Every file or symbol that defines or uses it has an edge to it, so one
+them: configuration keys, environment variables, HTTP routes, ports, SQL tables and columns, a
+program's commands and flags, and the JSON properties of a route's body. Every file or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
 ```bash
@@ -181,6 +181,38 @@ with its counts, stale ones at 0 definitions. Only flag names enter the graph: t
 command line passes are dropped. Not read yet: JumpKick's own commands, JCommander, Spring Shell and
 commons-cli, picocli mixins, method subcommands, aliases, and abbreviated subcommands.
 
+### JSON properties
+
+A property of a route's JSON body is `json:<Class>.<property>`: the class a Java handler returns or
+reads as its request body (through `ResponseEntity`, `List`, `Optional` and other library wrappers),
+or one reachable from it through properties and supertypes, and the name Jackson writes: a record
+component, a public field, a public getter (`isX` for a `boolean`), a setter, any member with
+`@JsonProperty`, Lombok's `@Data`/`@Value`/`@Getter` fields, a class-level `@JsonNaming`; `@JsonIgnore`
+and `@JsonIgnoreProperties` drop one. A Spring MVC `@Controller`'s return counts only with
+`@ResponseBody`. The definition is the member that declares it, bound.
+
+A bare name such as `id` or `name` says nothing about whose it is, so a client's mention links only
+where something ties it to a route or a class:
+
+| Mention | Grade |
+|---|---|
+| a TypeScript or JavaScript read (`.birthDate`, `['birthDate']`, a destructured name, an object literal's key) in the function that requests the route | inferred: must change |
+| a member of a TypeScript interface, type or class named for the class (`Owner`, `IOwner` and `OwnerDto` are one name) | inferred: must change |
+| a jq field on the pipeline that requests the route; a JSONPath literal (`"$.pets[0].name"`) in the test method that requests it | inferred: must change |
+| a property of an OpenAPI schema named for the class, or under the route's path and method | inferred: must change |
+| a key of a JSON fixture (a `.json` under a test or fixtures directory) that a file requesting the route names | inferred: must change |
+| any of these elsewhere in a file that requests the route, or a name several of the route's classes carry | ambiguous: a judgment call |
+
+Anything else links nowhere: a `.name` in a file that requests no route is not a use. A file a tool
+writes is never read: under a `generated` directory, headed as generated, or named as an output by
+a build file (a springdoc or openapi-generator plugin in `pom.xml` or `build.gradle`, an
+`openapi-typescript`, `orval` or `openapi-generator-cli` script in `package.json`). An OpenAPI file
+is one whose name or directory says `openapi`, `swagger` or `api-docs`. A workspace with no route
+whose body is one of its own classes, or no client tied to one, has no anchor of this kind. Not
+read: Kotlin and Groovy classes, mix-ins, a naming strategy set in configuration or on an
+`ObjectMapper`, custom serializers, `@JsonView`, polymorphic type ids, and a request whose path is
+built at run time (`this.resourceUrl + '/' + id`), which ties nothing but a typed member.
+
 ### After a hand edit
 
 An edit that changes one side of an anchor by hand (a column renamed in one dialect's `schema.sql`,
@@ -190,8 +222,9 @@ changed with the graph it replaces, the one the last refresh wrote (a graph ques
 after a build that succeeded). An anchor a changed file no longer names, renamed (the file now names
 another of its kind) or removed while nothing else defines it, is left stale wherever another file
 still carries the old name: a schema, a query, an entity's mapping, a key, the variable that sets the
-key, a route's client must change; a mention in prose (markdown, text), found by searching the docs
-for the old name only when a name changed, is a judgment call and only ever counted. A use a
+key, a route's client, a tied read of a JSON property must change; a mention in prose (markdown,
+text), found by searching the docs for the old name only when a name changed, or a JSON property's
+untied or shared use is a judgment call and only ever counted. A use a
 compiler or generator bound is the build's to check and is never listed, nor is a generated file,
 nor a file that merely shares an anchor with the edited one; an edit that changes no name finds
 nothing. The places are kept in `target/graph/anchors/stale`, each dropped once its file no longer

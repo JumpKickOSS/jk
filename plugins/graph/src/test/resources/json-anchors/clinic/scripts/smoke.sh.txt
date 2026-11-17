@@ -1,0 +1,5 @@
+#!/bin/sh
+set -e
+curl -s http://localhost:8080/api/owners/1 | jq -r '.birth_date'
+curl -s http://localhost:8080/api/vets | jq '.[].name'
+curl -s -X POST http://localhost:8080/api/owners -d @src/test/resources/new-owner.json | jq .id
