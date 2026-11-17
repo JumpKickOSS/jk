@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Tokens, turns, wall, jk time and estimated cost per cell, and what one arm saves against two others.
+
+    bench/agent-loop/cost-report ROWS.jsonl [ROWS.jsonl ...]
+    bench/agent-loop/cost-report --a jk --b jk-before --c jk-nograph results/*-change-tasks/rows.jsonl
+    bench/agent-loop/cost-report --out TABLE.md $AGENT_LOOP_HOME/smoke/2026-11-17/rows.jsonl
+
+A cell is driver, model, effort, task and arm; its numbers are medians over the runs that reported tokens.
+Cost is the API list price of the reported tokens (harnesslib/cost.py, prices.toml): for a CLI on a
+subscription it is an API-equivalent estimate, not a bill. A model without a price row reports tokens
+only. Savings compare arm A with arms B and C cell by cell, then summed over the tasks every arm ran:
+a positive saving is A cheaper, faster or shorter.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import statistics
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from harnesslib import cost  # noqa: E402
+
+MEASURES = ("tokens", "turns", "wall_s", "jk_s", "cost_est_usd")
+
+
+def load(paths: list[Path]) -> list[dict]:
+    rows = []
+    for path in paths:
+        for line in path.read_text().splitlines():
+            if line.strip():
+                r = json.loads(line)
+                if "cost_est_usd" not in r:
+                    r.update(cost.estimate(r))
+                rows.append(r)
+    return rows
+
+
+def med(rs: list[dict], key: str) -> float | None:
+    vals = [r[key] for r in rs if r.get(key) is not None]
+    return statistics.median(vals) if vals else None
+
+
+def cells(rows: list[dict]) -> dict:
+    out: dict = {}
+    for r in rows:
+        if r.get("outcome") == "error":
+            continue
+        key = (r.get("driver"), r.get("model"), r.get("effort"), r.get("task"), r.get("arm"))
+        out.setdefault(key, []).append(r)
+    return out
+
+
+def fmt(v: float | None, key: str) -> str:
+    if v is None:
+        return "-"
+    if key == "cost_est_usd":
+        return f"${v:.4f}"
+    if key == "tokens":
+        return f"{v / 1000:.1f}k"
+    return f"{v:.1f}" if key in ("wall_s", "jk_s") else f"{v:.0f}"
+
+
+def saving(a: float | None, other: float | None) -> str:
+    if a is None or not other:
+        return "-"
+    return f"{(other - a) / other * 100:+.0f}%"
+
+
+def report(rows: list[dict], a: str, b: str, c: str) -> str:
+    cs = cells(rows)
+    lines = ["# Cost report", "",
+             "Medians per cell over runs that reported tokens. Cost is the API list price of the reported tokens "
+             "(prices.toml); for a subscription CLI it is an API-equivalent estimate. jk s is the time inside jk's "
+             "MCP tools and shell jk calls, where the driver's transcript pairs calls with results.", "",
+             "| Driver | Model | Effort | Task | Arm | Runs | Green | Tokens | Turns | Wall s | jk s | jk calls "
+             "| Graph calls | Est. cost |",
+             "|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    for (driver, model, effort, task, arm), rs in sorted(cs.items(), key=lambda kv: tuple(map(str, kv[0]))):
+        lines.append(f"| {driver} | {model} | {effort} | {task} | {arm} | {len(rs)} "
+                     f"| {sum(r.get('outcome') == 'green' for r in rs)} "
+                     + " ".join(f"| {fmt(med(rs, k), k)}" for k in ("tokens", "turns", "wall_s", "jk_s"))
+                     + f" | {fmt(med(rs, 'jk_calls'), 'turns')} | {fmt(med(rs, 'graph'), 'turns')} "
+                     f"| {fmt(med(rs, 'cost_est_usd'), 'cost_est_usd')} |")
+    lines += ["", f"## Savings of {a} against {b} and {c}", "",
+              "Per agent and model, summed over the tasks all three arms ran (sum of cell medians); "
+              "positive is the first arm lower.", "",
+              f"| Driver | Model | Effort | Tasks | Cost {a} | vs {b} | vs {c} | Tokens vs {b} | vs {c} "
+              f"| Turns vs {b} | vs {c} | Wall vs {b} | vs {c} |",
+              "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    agents = sorted({k[:3] for k in cs}, key=lambda t: tuple(map(str, t)))
+    for agent in agents:
+        tasks = sorted({k[3] for k in cs if k[:3] == agent and all((*agent, k[3], arm) in cs for arm in (a, b, c))})
+        if not tasks:
+            # Two arms are still a comparison: A against whichever of B and C ran.
+            tasks = sorted({k[3] for k in cs if k[:3] == agent and (*agent, k[3], a) in cs})
+        if not tasks:
+            continue
+
+        def total(arm: str, key: str) -> float | None:
+            vals = [med(cs[(*agent, t, arm)], key) if (*agent, t, arm) in cs else None for t in tasks]
+            return None if any(v is None for v in vals) else sum(vals)
+
+        cells_ = [f"| {agent[0]} | {agent[1]} | {agent[2]} | {len(tasks)} | {fmt(total(a, 'cost_est_usd'), 'cost_est_usd')}"]
+        for key in ("cost_est_usd", "tokens", "turns", "wall_s"):
+            cells_.append(f"| {saving(total(a, key), total(b, key))} | {saving(total(a, key), total(c, key))}")
+        lines.append(" ".join(cells_) + " |")
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("rows", nargs="+", type=Path)
+    ap.add_argument("--a", default="jk", help="the arm under test")
+    ap.add_argument("--b", default="jk-before", help="the graph as it was")
+    ap.add_argument("--c", default="jk-nograph", help="no graph")
+    ap.add_argument("--out", type=Path)
+    ns = ap.parse_args()
+    text = report(load(ns.rows), ns.a, ns.b, ns.c)
+    if ns.out:
+        ns.out.write_text(text)
+    print(text, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
