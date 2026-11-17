@@ -16,7 +16,7 @@ class RenameHintsTest {
                 "between",
                 List.of("cc/jumpkick/codegraph/CodeGraph", "cc/jumpkick/other/Range", "a/Outer$CodeGraph"));
         assertThat(reply)
-                .isEqualTo("No method 'org.acme.graph.CodeGraph.between' in the compiled classes. Did you mean"
+                .isEqualTo("No method or field 'org.acme.graph.CodeGraph.between' in the compiled classes. Did you mean"
                         + " a.Outer.CodeGraph.between or cc.jumpkick.codegraph.CodeGraph.between? Pass that.");
         assertThat(RenameHints.withUnbuilt(reply, List.of("plugins/android")))
                 .as("a reply that names the method meant does not send the agent to build")
@@ -26,7 +26,9 @@ class RenameHintsTest {
     @Test
     void withNoTypeOfThatNameTheUnbuiltModulesAreCountedNotListed() {
         String reply = RenameHints.noMethod("Nope.go", "Nope", "go", List.of("a/Other"));
-        assertThat(reply).isEqualTo("No method 'Nope.go' in the compiled classes. Pass Type.method.");
+        assertThat(reply)
+                .isEqualTo("No method or field 'Nope.go' in the compiled classes. Pass Type.method, Type.field (or"
+                        + " Type#field), Type or a.pkg.");
         assertThat(RenameHints.withUnbuilt(reply, List.of("m1", "m2", "m3", "m4", "m5", "m6", "m7")))
                 .isEqualTo(reply + " 7 modules have no compiled classes (m1, m2, m3, m4, m5 and 2 more): build"
                         + " them first (run kind=build, or jk build).");

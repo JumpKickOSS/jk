@@ -42,7 +42,8 @@ final class RenameOp {
         if (a.size() < 2 || a.get(0).isBlank() || a.get(1).isBlank()) {
             throw new IllegalArgumentException("needs what to rename and the new name");
         }
-        String address = a.get(0).strip();
+        // Type#member, as javadoc writes it, is Type.member.
+        String address = a.get(0).strip().replace('#', '.');
         String to = a.get(1).strip();
         String also = options.get("also");
         RenameStore.Pending pending = RenameStore.readPending(out);

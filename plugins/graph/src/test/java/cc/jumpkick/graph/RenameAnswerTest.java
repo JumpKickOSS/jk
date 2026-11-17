@@ -80,6 +80,23 @@ class RenameAnswerTest {
                 .doesNotContain("No method");
     }
 
+    /** A field written as javadoc writes it (cursor's composer did) is the field; an unknown member says what is taken. */
+    @Test
+    void aFieldWrittenTypeHashFieldIsRenamedAndAnUnknownMemberSaysWhatARenameTakes(@TempDir Path dir)
+            throws IOException {
+        RenameFixture ws = new RenameFixture(dir, RenameFieldTest.petclinic());
+        assertThat(ws.rename("org.acme.petclinic.owner.Owner#telephone", "phone"))
+                .startsWith("Renamed Owner.telephone (field, with getTelephone, setTelephone) to phone:");
+        assertThat(ws.read(RenameFieldTest.OWNER_DIR + "Owner.java")).contains("private String phone;");
+        assertThat(ws.check()).startsWith("Proven");
+
+        assertThat(ws.rename("Owner.mobile", "cell"))
+                .startsWith("No method or field 'Owner.mobile' in the compiled classes.")
+                .contains("Pass Type.method, Type.field (or Type#field), Type or a.pkg.");
+        assertThat(ws.rename("Ownr", "Person"))
+                .startsWith("No type, package, method or field 'Ownr'. Pass Type.method, Type.field");
+    }
+
     /** The ids an answer names, ranges expanded: {@code c3-c5} is c3, c4, c5. */
     static Set<Integer> ids(String answer) {
         Set<Integer> out = new TreeSet<>();

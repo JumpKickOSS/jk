@@ -12,10 +12,13 @@ final class RenameHints {
 
     private static final String SUGGESTION = " Did you mean ";
 
+    /** What a rename's address may name. */
+    static final String FORMS = "Pass Type.method, Type.field (or Type#field), Type or a.pkg.";
+
     private RenameHints() {}
 
     /**
-     * Why {@code wanted} names no method, with the compiled types of the same simple name that declare
+     * Why {@code wanted} names no method or field, with the compiled types of the same simple name that declare
      * {@code name}. {@code declaring} holds internal names ({@code a/b/Outer$Inner}) of every class
      * that declares a method called {@code name}.
      */
@@ -27,8 +30,8 @@ final class RenameHints {
                 .map(c -> c.replace('/', '.').replace('$', '.') + "." + name)
                 .sorted()
                 .toList();
-        String miss = "No method '" + wanted + "' in the compiled classes.";
-        if (close.isEmpty()) return miss + " Pass Type.method.";
+        String miss = "No method or field '" + wanted + "' in the compiled classes.";
+        if (close.isEmpty()) return miss + " " + FORMS;
         return miss + SUGGESTION + String.join(" or ", close) + "? Pass that.";
     }
 

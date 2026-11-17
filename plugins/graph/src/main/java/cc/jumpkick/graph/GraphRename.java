@@ -656,7 +656,12 @@ final class GraphRename {
         }
         int dot = wanted.lastIndexOf('.');
         if (dot <= 0 || dot == wanted.length() - 1) {
-            return new Target("", "", Set.of(), "Pass Type.method, or Type.method(int,String) for one overload.");
+            return new Target(
+                    "",
+                    "",
+                    Set.of(),
+                    "No type, package, method or field '" + wanted + "'. " + RenameHints.FORMS
+                            + " Type.method(int,String) names one overload.");
         }
         String owner = wanted.substring(0, dot);
         String name = wanted.substring(dot + 1);
