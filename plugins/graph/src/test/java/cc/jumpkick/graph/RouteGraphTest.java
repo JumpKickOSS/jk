@@ -19,7 +19,8 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Compiled handlers define routes from their framework's annotations, a type's paths prefixing its
  * methods' (Spring, JAX-RS, Micronaut); a Spring {@code @HttpExchange} interface and a MockMvc call
- * use them; a path built at run time and a JAX-RS sub-resource locator define nothing.
+ * use them, the latter also where the path is a constant loaded before another call of the
+ * statement; a path built at run time and a JAX-RS sub-resource locator define nothing.
  */
 class RouteGraphTest {
 
@@ -122,6 +123,12 @@ class RouteGraphTest {
                     public String ok() { return "ok"; }
                 }
                 """);
+        clients(f);
+        return f;
+    }
+
+    /** The callers of the routes: an {@code @HttpExchange} interface and MockMvc calls in jhipster's shapes. */
+    private static void clients(Map<String, String> f) {
         f.put("src/main/java/com/acme/OrderClient.java", """
                 package com.acme;
 
@@ -139,8 +146,23 @@ class RouteGraphTest {
                 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
                 public class OrderCheck {
+                    private static final String ENTITY_API_URL = "/api/orders";
+                    private static final String ENTITY_API_URL_ID = ENTITY_API_URL + "/{id}";
+
                     Object one() {
                         return get("/api/orders/{id}", 7);
+                    }
+
+                    // jhipster's shape: the folded path is loaded before getId(), whose call takes it as its own literal.
+                    Object byConstant(Order order) {
+                        return get(ENTITY_API_URL_ID, order.getId());
+                    }
+
+                    private Order order = new Order();
+
+                    // jhipster's own: the entity is a field, read between the path and the call.
+                    Object byConstantOfAField() {
+                        return get(ENTITY_API_URL_ID, order.getId());
                     }
 
                     Object other() {
@@ -148,7 +170,13 @@ class RouteGraphTest {
                     }
                 }
                 """);
-        return f;
+        f.put("src/main/java/com/acme/Order.java", """
+                package com.acme;
+
+                public class Order {
+                    public Long getId() { return 1L; }
+                }
+                """);
     }
 
     private static Map<String, String> definers(CodeGraph g) {
@@ -180,6 +208,8 @@ class RouteGraphTest {
                 .containsExactlyInAnyOrder(
                         tuple("OrderClient.fetch()", Confidence.DECLARED, "/api/orders/{orderId}"),
                         tuple("OrderCheck.one()", Confidence.DECLARED, "/api/orders/{id}"),
+                        tuple("OrderCheck.byConstant()", Confidence.DECLARED, "/api/orders/{id}"),
+                        tuple("OrderCheck.byConstantOfAField()", Confidence.DECLARED, "/api/orders/{id}"),
                         tuple("OrderCheck.other()", Confidence.INFERRED, "/api/orders/42"));
     }
 }

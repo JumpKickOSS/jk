@@ -104,9 +104,16 @@ none when no route has a literal segment in common (`/{}` would fit everything).
 when a client call names the route's own method and template (`get("/api/hotels/{slug}")` in
 MockMvc or RestAssured, an `@HttpExchange` method); a concrete path (`/api/hotels/harborview`), a
 path literal anywhere else in code, a front-end call and a URL in a script or document are
-inferred. A URL counts only when its host is this machine, a variable or a one-label name such as
-a compose service, and a command line's method is its `-X`, POST for `curl` with a body, GET for
-`curl` or `wget`, any otherwise. Not read yet: a context path (`server.servlet.context-path`), Helidon
+inferred. A MockMvc call whose path is a constant loaded ahead of another call of the statement
+(`get(ENTITY_API_URL_ID, label.getId())`) is that call's. A front-end request is `http.get(...)`
+and the other methods, `fetch(...)`, `cy.request` and `cy.intercept` (with or without a method; a
+glob's `+(?*|)` tail dropped, a `*` segment a variable), or an options object's `url` with its
+`method`; its path is a literal or template, or is built (`${this.resourceUrl}/${id}`,
+`this.resourceUrl + '/' + id`) from a string constant the same file assigns once, a literal or a
+helper given one (`getEndpointFor('api/labels')`), or follows a variable named as a base URL
+(`` `${serverApiUrl}api/account` ``). A URL counts only when its host is this machine,
+a variable or a one-label name such as a compose service, and a command line's method is its `-X`,
+POST for `curl` with a body, GET for `curl` or `wget`, any otherwise. Not read yet: a context path (`server.servlet.context-path`), Helidon
 SE and other routing written as calls, Kotlin and Groovy route DSLs, and JSON OpenAPI documents.
 
 ### Tables and columns

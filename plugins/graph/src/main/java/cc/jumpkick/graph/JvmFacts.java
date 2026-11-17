@@ -325,9 +325,9 @@ final class JvmFacts {
                         caller + ">" + called));
             }
         }
+        mentions.addAll(JvmRoutes.uses(from, m.calls()));
         for (CallSite site : m.calls()) {
             for (String literal : site.literals()) configKeys(literal, from, site.line(), mentions);
-            mentions.addAll(JvmRoutes.uses(from, site));
             String variable =
                     site.owner().equals("java/lang/System") && site.name().equals("getenv")
                             ? site.literalBefore()

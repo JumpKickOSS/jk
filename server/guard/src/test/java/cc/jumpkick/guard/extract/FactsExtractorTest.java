@@ -131,6 +131,28 @@ class FactsExtractorTest {
     }
 
     @Test
+    void a_field_read_between_a_literal_and_its_invoke_keeps_it_in_the_window_and_a_write_ends_it() throws IOException {
+        ClassFacts c = FactsExtractor.extract(classBytes(Varargs.class));
+        CallSite read = c.methods().stream()
+                .filter(m -> m.name().equals("callWithAField"))
+                .flatMap(m -> m.calls().stream())
+                .filter(s -> s.name().equals("id"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(read.literals()).containsExactly("/orders/{id}");
+        assertThat(read.literalBefore())
+                .as("the peephole still wants the literal right before")
+                .isNull();
+        CallSite written = c.methods().stream()
+                .filter(m -> m.name().equals("afterAWrite"))
+                .flatMap(m -> m.calls().stream())
+                .filter(s -> s.name().equals("request"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(written.literals()).isEmpty();
+    }
+
+    @Test
     void branches_count_conditions_switch_arms_and_handlers() throws IOException {
         MethodFacts m = sample().methods().stream()
                 .filter(x -> x.name().equals("branches"))

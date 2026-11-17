@@ -6,7 +6,11 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.codegraph.extract.Extractor;
 import cc.jumpkick.codegraph.extract.Extractors;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -237,5 +241,137 @@ class RouteAnchorsTest {
         assertThat(new GraphTools(g).callers("HotelController.hotels", 1, 2000))
                 .contains("It defines route:GET /api/hotels, 3 uses no compiler checks:"
                         + " callers 'route:GET /api/hotels' lists them.");
+    }
+
+    /**
+     * Requests the front end and the end-to-end tests of jhipster/jhipster-sample-app (at
+     * 6b000b5d23a36c45e01472471b84a44fa2464044, Apache-2.0; the files verbatim under
+     * src/test/resources/jhipster): Cypress's {@code cy.intercept} with a method and a glob, a custom
+     * command's {@code {method, url}} options, and an Angular service whose every path is built from
+     * {@code resourceUrl = `${serverApiUrl}api/labels`}, assigned once in the file. Each links to the
+     * route it fits; nothing in them did before.
+     */
+    @Test
+    void requestsThroughCypressOptionsObjectsAndAFilesPathConstantLinkToTheirRoutes() throws IOException {
+        String cy = "src/test/javascript/cypress/e2e/entity/bank-account.cy.ts";
+        String service = "src/main/webapp/app/entities/label/service/label.service.ts";
+        String res = "src/main/java/io/github/jhipster/sample/web/rest/";
+        List<Fragment> fragments = new ArrayList<>();
+        List<GraphNode> nodes = new ArrayList<>();
+        List<GraphEdge> edges = new ArrayList<>();
+        for (String[] r : List.of(
+                new String[] {"BankAccountResource", "GET /api/bank-accounts"},
+                new String[] {"BankAccountResource", "POST /api/bank-accounts"},
+                new String[] {"BankAccountResource", "DELETE /api/bank-accounts/{id}"},
+                new String[] {"LabelResource", "GET /api/labels"},
+                new String[] {"LabelResource", "POST /api/labels"},
+                new String[] {"LabelResource", "GET /api/labels/{id}"},
+                new String[] {"LabelResource", "PUT /api/labels/{id}"},
+                new String[] {"LabelResource", "PATCH /api/labels/{id}"},
+                new String[] {"LabelResource", "DELETE /api/labels/{id}"})) {
+            String type = GraphIds.declared(res + r[0] + ".java", r[0]);
+            nodes.add(new GraphNode(type, r[0], "code", res + r[0] + ".java", "L10"));
+            nodes.add(Anchors.node("route", r[1]));
+            edges.add(
+                    Anchors.edge(type, "route", r[1], Relations.DEFINES, Confidence.DECLARED, res + r[0] + ".java", 0));
+        }
+        fragments.add(new Fragment(nodes, edges));
+        fragments.add(extract(cy, Files.readString(Path.of("src/test/resources/jhipster/bank-account.cy.ts.txt"))));
+        fragments.add(extract(service, Files.readString(Path.of("src/test/resources/jhipster/label.service.ts.txt"))));
+        CodeGraph g = Linker.link(fragments);
+
+        assertThat(places(g, "route:GET /api/bank-accounts"))
+                .as("cy.intercept('GET', '/api/bank-accounts+(?*|)') and an intercept's {method, url}")
+                .containsExactly(cy + ":32", cy + ":99");
+        assertThat(places(g, "route:POST /api/bank-accounts"))
+                .as("cy.intercept('POST', ...) and cy.authenticatedRequest({method: 'POST', url, body})")
+                .containsExactly(cy + ":33", cy + ":91");
+        assertThat(places(g, "route:DELETE /api/bank-accounts/{}"))
+                .as("a glob's * segment and a template's ${...} are the path variable")
+                .containsExactly(cy + ":34", cy + ":41");
+        assertThat(places(g, "route:POST /api/labels")).contains(service + ":35");
+        assertThat(places(g, "route:PUT /api/labels/{}")).containsExactly(service + ":39");
+        assertThat(places(g, "route:PATCH /api/labels/{}")).containsExactly(service + ":43");
+        assertThat(places(g, "route:GET /api/labels/{}")).containsExactly(service + ":47");
+        assertThat(places(g, "route:DELETE /api/labels/{}")).containsExactly(service + ":56");
+        assertThat(places(g, "route:GET /api/labels"))
+                .as("this.http.get<ILabel[]>(this.resourceUrl, ...) and httpResource's {url: this.resourceUrl}")
+                .contains(service + ":52", service + ":20");
+    }
+
+    /**
+     * jhipster-sample-app's PasswordService (verbatim, same commit): its path follows {@code
+     * ${serverApiUrl}}, a base URL another module exports, so it is the path; a template whose head is
+     * any other unknown variable ({@code ${owner}}) builds none.
+     */
+    @Test
+    void aPathAfterABaseUrlVariableIsTheRequestsPath() throws IOException {
+        String service = "src/main/webapp/app/account/password/password.service.ts";
+        String other = "src/main/webapp/app/other.ts";
+        String res = "src/main/java/io/github/jhipster/sample/web/rest/AccountResource.java";
+        String type = GraphIds.declared(res, "AccountResource");
+        Fragment handler = new Fragment(
+                List.of(
+                        new GraphNode(type, "AccountResource", "code", res, "L10"),
+                        Anchors.node("route", "POST /api/account/change-password")),
+                List.of(Anchors.edge(
+                        type,
+                        "route",
+                        "POST /api/account/change-password",
+                        Relations.DEFINES,
+                        Confidence.DECLARED,
+                        res,
+                        0)));
+        CodeGraph g = Linker.link(
+                List.of(
+                        handler,
+                        extract(
+                                service,
+                                Files.readString(Path.of("src/test/resources/jhipster/password.service.ts.txt"))),
+                        extract(
+                                other,
+                                "export const f = (owner: string) => http.post(`${owner}api/account/change-password`, {});\n")));
+        assertThat(places(g, "route:POST /api/account/change-password")).containsExactly(service + ":13");
+    }
+
+    /** Each use of {@code route} as {@code file:line}, every site of an edge, in line order. */
+    private static List<String> places(CodeGraph g, String route) {
+        List<String> out = new ArrayList<>();
+        for (GraphEdge e : uses(g, route)) {
+            List<String> sites = e.sites().isEmpty() ? List.of(e.sourceLocation()) : e.sites();
+            for (String site : sites)
+                out.add(e.sourceFile() + ":" + site.substring(1).replaceFirst("-.*$", ""));
+        }
+        out.sort(Comparator.comparing((String x) -> x.substring(0, x.lastIndexOf(':')))
+                .thenComparingInt(x -> Integer.parseInt(x.substring(x.lastIndexOf(':') + 1))));
+        return out;
+    }
+
+    /** A name assigned twice, or to something that is not a path, is no constant; a path built from one is not read. */
+    @Test
+    void onlyAPathConstantAssignedOnceInTheFileBuildsARequestsPath() {
+        String ts = "frontend/src/app/api.ts";
+        String text = """
+                let base = '/api/hotels';
+                base = '/api/old';
+                const name = 'hotels';
+                export class Api {
+                  hotels() { return this.http.get(base); }
+                  byName() { return this.http.get(`${name}/x`); }
+                  other() { return this.http.get(this.unknown + '/api/hotels'); }
+                }
+                """;
+        String ctrl = GraphIds.declared(CTRL, "HotelController");
+        Fragment handler = new Fragment(
+                List.of(
+                        new GraphNode(ctrl, "HotelController", "code", CTRL, "L10"),
+                        Anchors.node("route", "GET /api/hotels"),
+                        Anchors.node("route", "GET /api/old")),
+                List.of(
+                        Anchors.edge(ctrl, "route", "GET /api/hotels", Relations.DEFINES, Confidence.DECLARED, CTRL, 0),
+                        Anchors.edge(ctrl, "route", "GET /api/old", Relations.DEFINES, Confidence.DECLARED, CTRL, 0)));
+        CodeGraph g = Linker.link(List.of(handler, extract(ts, text)));
+        assertThat(uses(g, "route:GET /api/hotels")).isEmpty();
+        assertThat(uses(g, "route:GET /api/old")).isEmpty();
     }
 }

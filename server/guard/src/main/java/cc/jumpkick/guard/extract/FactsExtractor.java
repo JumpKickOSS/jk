@@ -217,7 +217,7 @@ public final class FactsExtractor {
             String lastCall;
 
             /**
-             * String constants loaded since the last invoke, field access or allocation other than a
+             * String constants loaded since the last invoke, field write or allocation other than a
              * varargs array's: the argument window.
              */
             final List<String> window = new ArrayList<>();
@@ -300,7 +300,9 @@ public final class FactsExtractor {
                                 : new FieldRef(
                                         owner, name, fdesc, Math.min(prior.line(), line), write, prior.count() + 1));
                 lastLdc = null;
-                window.clear();
+                // Reading a field evaluates an argument (get(URL, this.owner.getId())): the window stays. A write
+                // ends a statement.
+                if (write) window.clear();
             }
 
             @Override

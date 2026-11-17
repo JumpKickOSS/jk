@@ -5,10 +5,12 @@ import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.CallSite;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * HTTP routes in compiled classes. A handler's route is declared by its framework's annotations
@@ -140,23 +142,40 @@ final class JvmRoutes {
     }
 
     /**
-     * The route uses one call site makes: a literal path passed to a client or test call whose name is
-     * the HTTP method ({@link Mention.Kind#ROUTE_CALL}), else every literal that is a path ({@link
-     * Mention.Kind#ROUTE}).
+     * The route uses one method's call sites make: a literal path passed to a client or test call
+     * whose name is the HTTP method ({@link Mention.Kind#ROUTE_CALL}), else every literal that is a
+     * path ({@link Mention.Kind#ROUTE}). A site's literals are those loaded since the invoke before it,
+     * so in {@code get(ENTITY_API_URL_ID, label.getId())} the path is {@code getId}'s: a path on
+     * another call at the line of such a client call that carries none of its own is that call's.
      */
-    static List<Mention> uses(String from, CallSite site) {
+    static List<Mention> uses(String from, List<CallSite> sites) {
+        Map<Integer, String> bare = new HashMap<>();
+        for (CallSite site : sites) {
+            String method = clientMethod(site);
+            if (method != null && site.literals().stream().noneMatch(JvmRoutes::path)) {
+                bare.putIfAbsent(site.line(), method);
+            }
+        }
         List<Mention> out = new ArrayList<>();
-        String method = site.name().toUpperCase(Locale.ROOT);
-        boolean call = CLIENT_OWNERS.contains(site.owner()) && METHODS.contains(method);
-        for (String literal : site.literals()) {
-            if (!path(literal)) continue;
-            out.add(new Mention(
-                    from,
-                    call ? Mention.Kind.ROUTE_CALL : Mention.Kind.ROUTE,
-                    (call ? method : "*") + " " + literal,
-                    site.line()));
+        for (CallSite site : sites) {
+            String method = clientMethod(site);
+            if (method == null && site.line() > 0) method = bare.get(site.line());
+            for (String literal : site.literals()) {
+                if (!path(literal)) continue;
+                out.add(new Mention(
+                        from,
+                        method != null ? Mention.Kind.ROUTE_CALL : Mention.Kind.ROUTE,
+                        (method != null ? method : "*") + " " + literal,
+                        site.line()));
+            }
         }
         return out;
+    }
+
+    /** The HTTP method a client or test call names ({@code MockMvcRequestBuilders.get}); null for any other call. */
+    private static @Nullable String clientMethod(CallSite site) {
+        String method = site.name().toUpperCase(Locale.ROOT);
+        return CLIENT_OWNERS.contains(site.owner()) && METHODS.contains(method) ? method : null;
     }
 
     /**
