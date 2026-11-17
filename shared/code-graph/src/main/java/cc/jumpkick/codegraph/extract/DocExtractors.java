@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * Markdown and AsciiDoc: the page, its headings nested by level, links
  * to other files, and code spans naming a symbol — which the linker ties to the code they name.
  * Fenced and delimited code blocks are skipped, but for the requests to this service their URLs
- * make ({@link Requests}).
+ * make ({@link Requests}) and the command lines that pass flags ({@link CommandLines}).
  */
 final class DocExtractors {
 
@@ -54,7 +54,10 @@ final class DocExtractors {
                 continue;
             }
             Requests.urls(b, current, line, n);
-            if (inBlock) continue;
+            if (inBlock) {
+                CommandLines.mentions(b, current, line, n);
+                continue;
+            }
             Matcher h = heading.matcher(line);
             if (h.matches()) {
                 int level = h.group(1).length();

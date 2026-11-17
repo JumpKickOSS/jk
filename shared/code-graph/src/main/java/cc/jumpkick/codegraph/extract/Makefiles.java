@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
  * {@code $(VAR)} and {@code ${VAR}} named as a variable are inferred mentions of it, linked only to
  * one something else sets or reads; {@code VAR ?= default} reads it, declared; {@code export VAR}
  * sets it for the recipes, declared. A recipe line is a shell line ({@code $$VAR} read, URLs to this
- * service requested). Comments are skipped; targets and prerequisites are not read yet.
+ * service requested, flags passed). Comments are skipped; targets and prerequisites are not read yet.
  */
 final class Makefiles {
 
@@ -56,6 +56,7 @@ final class Makefiles {
                 String shell = REFERENCE.matcher(make).replaceAll("").replace('\u0000', '$');
                 Requests.urls(b, b.fileId(), shell, n);
                 EnvVars.shellLine(b, shell, n);
+                CommandLines.mentions(b, b.fileId(), shell, n);
                 continue;
             }
             Matcher e = EXPORT.matcher(line);

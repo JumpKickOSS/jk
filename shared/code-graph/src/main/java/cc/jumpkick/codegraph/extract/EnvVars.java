@@ -139,6 +139,7 @@ public final class EnvVars {
                 }
             }
             Requests.urls(b, b.fileId(), line, n);
+            CommandLines.mentions(b, b.fileId(), line, n);
         }
         return b.build();
     }

@@ -239,6 +239,7 @@ final class ConfigExtractors {
                 int line = lineOf(text, lines, "\"" + s + "\"");
                 String id = b.declared("script " + s, s, "code", line, Map.of("node_kind", "script"));
                 b.edge(b.fileId(), id, Relations.CONTAINS, Confidence.EXTRACTED, line);
+                if (scripts.get(script) instanceof String command) CommandLines.mentions(b, id, command, line);
             }
         }
     }
@@ -321,7 +322,10 @@ final class ConfigExtractors {
                 b.mention(b.fileId(), Mention.Kind.CONFIG_KEY, p.group(1), line);
             }
         }
-        if (!spring) EnvVars.shellLine(b, value, line);
+        if (!spring) {
+            EnvVars.shellLine(b, value, line);
+            CommandLines.mentions(b, b.fileId(), value, line);
+        }
         Requests.urls(b, b.fileId(), value, line);
     }
 

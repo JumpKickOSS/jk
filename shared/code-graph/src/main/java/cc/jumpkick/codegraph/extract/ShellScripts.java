@@ -7,8 +7,9 @@ import java.util.List;
 
 /**
  * Shell scripts, as users of anchors: the requests to this service their command lines make
- * ({@code curl http://localhost:8080/api/orders}), the variables they export and read. Comments are
- * skipped. What a script runs and sources is not read yet.
+ * ({@code curl http://localhost:8080/api/orders}), the variables they export and read, and the
+ * command lines that pass flags ({@link CommandLines}). Comments are skipped. What a script sources
+ * is not read yet.
  */
 final class ShellScripts {
 
@@ -22,6 +23,7 @@ final class ShellScripts {
             if (line.stripLeading().startsWith("#")) continue;
             Requests.urls(b, b.fileId(), line, i + 1);
             EnvVars.shellLine(b, line, i + 1);
+            CommandLines.mentions(b, b.fileId(), line, i + 1);
         }
         return b.build();
     }
