@@ -1,0 +1,23 @@
+# Every jk-lock.toml this repository ships, one workspace-relative path per line: the locks
+# LockRowParserTest reads through both grammars. The guard lock-list-complete holds this list
+# to the tree, so a lock added or removed changes this file in the same commit.
+bench/jar-size/kotlin-cli/jk-lock.toml
+bench/jar-size/micronaut-http/jk-lock.toml
+bench/jar-size/plain-cli/jk-lock.toml
+bench/jar-size/spring-boot-web/jk-lock.toml
+bench/wall/spring-petclinic/jk-lock.toml
+clients/cli/fixtures/projects/vite-sidecar/jk-lock.toml
+docs/user/examples/third-party-plugin/jk-lock.toml
+jk-lock.toml
+server/engine/fixtures/projects/lint-checkstyle/jk-lock.toml
+server/engine/fixtures/projects/openapi-spring/jk-lock.toml
+server/guard/fixtures/bootstrap-pin-reads-tree/Bad-floor-above-pin-by-patch/jk-lock.toml
+server/guard/fixtures/bootstrap-pin-reads-tree/Bad-floor-above-pin/jk-lock.toml
+server/guard/fixtures/bootstrap-pin-reads-tree/Ok-live/jk-lock.toml
+server/guard/fixtures/bootstrap-pin-reads-tree/Ok-no-floor/jk-lock.toml
+server/guard/fixtures/bootstrap-reads-lock/Bad-missing-reads/jk-lock.toml
+server/guard/fixtures/bootstrap-reads-lock/Bad-reads-not-the-bridge/jk-lock.toml
+server/guard/fixtures/bootstrap-reads-lock/Bad-table-the-pin-cannot-read/jk-lock.toml
+server/guard/fixtures/bootstrap-reads-lock/Ok-bridge-reads/jk-lock.toml
+server/guard/fixtures/bootstrap-reads-lock/Ok-live/jk-lock.toml
+server/guard/fixtures/junit-pin-parity/jk-lock.toml

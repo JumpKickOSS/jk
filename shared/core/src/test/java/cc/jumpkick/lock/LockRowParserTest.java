@@ -4,12 +4,13 @@ package cc.jumpkick.lock;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The lock's row grammar reads straight into tables, and reads exactly what tomlj reads: every
- * lock the writer renders, every lock in this checkout, and any corpus lock named by {@code
+ * lock the writer renders, every lock the repository ships, and any corpus lock named by {@code
  * JK_LOCK_CORPUS} (a path-separator list) parse to equal lockfiles through both, without the row
  * reader handing off. Text outside the grammar hands off to tomlj, whose diagnostics stand.
  */
@@ -201,19 +202,21 @@ class LockRowParserTest {
                 .hasMessageContaining("unknown-key");
     }
 
+    /**
+     * The repository's locks are the ones {@code repository-locks.txt} names, not a walk of the
+     * checkout: a walk from a test JVM takes the filesystem's time under the build running it, over
+     * 100,000 entries, and timed out at the fast tier's 20 s in gate 94's merge gate (JK-SQMRZ). The
+     * workspace guard {@code lock-list-complete} holds the list to the tree.
+     */
     @Test
-    void every_lock_in_the_checkout_and_the_corpus_reads_identically_through_both_grammars() throws IOException {
+    void every_lock_in_the_repository_and_the_corpus_reads_identically_through_both_grammars() throws IOException {
         List<Path> locks = new ArrayList<>();
         Path repo = RepoRoot.find(LockRowParserTest.class);
-        PathUtil.forEachRegularFile(
-                repo,
-                dir -> {
-                    String name = dir.getFileName().toString();
-                    return name.equals("target") || name.equals("node_modules") || RepoRoot.otherCheckout(dir, repo);
-                },
-                (file, attrs) -> {
-                    if (file.getFileName().toString().equals("jk-lock.toml")) locks.add(file);
-                });
+        for (String rel : repositoryLocks()) {
+            Path lock = repo.resolve(rel);
+            assertThat(lock).as("repository-locks.txt names " + rel).isRegularFile();
+            locks.add(lock);
+        }
         String corpus = System.getenv("JK_LOCK_CORPUS");
         if (corpus != null && !corpus.isBlank()) {
             for (String p : corpus.split(File.pathSeparator)) locks.add(Path.of(p));
@@ -243,5 +246,17 @@ class LockRowParserTest {
         }
         System.out.println(locks.size() + " locks (" + refused + " refused by both), " + artifacts
                 + " artifact rows read identically through both grammars");
+    }
+
+    /** The workspace-relative paths {@code repository-locks.txt} lists, comments and blanks left out. */
+    private static List<String> repositoryLocks() throws IOException {
+        try (InputStream in = LockRowParserTest.class.getResourceAsStream("repository-locks.txt")) {
+            assertThat(in).as("repository-locks.txt on the test classpath").isNotNull();
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8)
+                    .lines()
+                    .map(String::strip)
+                    .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                    .toList();
+        }
     }
 }

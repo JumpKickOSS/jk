@@ -1,0 +1,2 @@
+# The fixture tree's locks.
+a/jk-lock.toml
