@@ -76,12 +76,7 @@ final class KotlinTypes {
             if (set == null || !built.contains(prefix + " " + set)) return null;
             String owner = owner(w.root(), g, n);
             if (owner == null) return null;
-            String dir =
-                    switch (set) {
-                        case "main" -> "target/classes";
-                        case "guard" -> "target/guard/classes";
-                        default -> "target/test-classes";
-                    };
+            String dir = ClassSources.classDir(set);
             Path file = w.root().resolve(prefix).resolve(dir).resolve(owner + ".class");
             ClassModel cm = classes.computeIfAbsent(file, KotlinTypes::parse);
             return cm == null ? null : type(cm, n.label());

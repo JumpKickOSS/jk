@@ -11,6 +11,10 @@ import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.ClassTransform;
+import java.lang.classfile.attribute.SourceFileAttribute;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -215,5 +219,172 @@ class JsonAnchorsTest {
         AnchorEditsTest.refresh(ws);
 
         assertThat(jsonEdges(ws)).isEmpty();
+    }
+
+    /**
+     * Two classes of one simple name, each a route's body: each property is keyed by its class's
+     * qualified name, and a member of the client type named for both links to each as a judgment
+     * call unless only one of them carries it.
+     */
+    @Test
+    void twoBodyClassesOfOneSimpleNameAreKeptApartByTheirPackages(@TempDir Path dir) throws IOException {
+        Map<String, String> files = clinic();
+        files.put("src/main/java/com/acme/clinic/admin/OwnerDto.java", """
+                package com.acme.clinic.admin;
+
+                public record OwnerDto(int id, String email) {}
+                """);
+        files.put("src/main/java/com/acme/clinic/admin/AdminController.java", """
+                package com.acme.clinic.admin;
+
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                public class AdminController {
+
+                    @GetMapping("/api/admin/owners/{id}")
+                    public OwnerDto owner() {
+                        return null;
+                    }
+                }
+                """);
+        files.put("client/src/admin.ts", """
+                export async function ownerEmail(id: number): Promise<string> {
+                  const res = await fetch(`/api/admin/owners/${id}`);
+                  const owner = await res.json();
+                  return owner.email;
+                }
+                """);
+        RenameFixture ws = new RenameFixture(dir, files);
+        AnchorEditsTest.refresh(ws);
+
+        List<String> edges = jsonEdges(ws);
+        assertThat(edges)
+                .contains(
+                        "uses json:com.acme.clinic.admin.OwnerDto.email client/src/admin.ts:4 inferred",
+                        "uses json:com.acme.clinic.admin.OwnerDto.id client/src/api.ts:2 ambiguous",
+                        "uses json:com.acme.clinic.api.OwnerDto.id client/src/api.ts:2 ambiguous",
+                        "uses json:com.acme.clinic.api.OwnerDto.name client/src/api.ts:3 inferred",
+                        "defines json:com.acme.clinic.admin.OwnerDto.email src/main/java/com/acme/clinic/admin/OwnerDto.java:3"
+                                + " extracted")
+                .noneMatch(e -> e.contains(" json:OwnerDto."))
+                .as("a class of a name no other body class has keeps its simple name")
+                .contains("uses json:PetDto.type client/src/api.ts:11 inferred");
+    }
+
+    /**
+     * A Kotlin controller and data class: the route and the properties come from the class files
+     * kotlinc wrote (here javac's, in kotlinc's shape: private fields, getters, the annotation on the
+     * constructor parameter, {@code isActive}, its {@code SourceFile} the Kotlin file), the
+     * definition's line from the Kotlin source.
+     */
+    @Test
+    void aKotlinControllersDataClassIsReadFromItsClassFiles(@TempDir Path dir) throws IOException {
+        Map<String, String> files = clinic();
+        String kt = "src/main/java/com/acme/clinic/kt/";
+        files.put("src/main/java/kotlin/Metadata.java", "package kotlin;\n\npublic @interface Metadata {}\n");
+        files.put(kt + "OwnerCard.java", """
+                package com.acme.clinic.kt;
+
+                import com.fasterxml.jackson.annotation.JsonProperty;
+
+                @kotlin.Metadata
+                public final class OwnerCard {
+                    private final String firstName;
+                    private final String telephone;
+                    private final boolean isActive;
+
+                    public OwnerCard(String firstName, @JsonProperty("tel") String telephone, boolean isActive) {
+                        this.firstName = firstName;
+                        this.telephone = telephone;
+                        this.isActive = isActive;
+                    }
+
+                    public final String getFirstName() { return firstName; }
+                    public final String getTelephone() { return telephone; }
+                    public final boolean isActive() { return isActive; }
+                    public final String component1() { return firstName; }
+                }
+                """);
+        files.put(kt + "CardController.java", """
+                package com.acme.clinic.kt;
+
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.PathVariable;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @kotlin.Metadata
+                @RestController
+                @RequestMapping("/api/kt")
+                public final class CardController {
+                    @GetMapping("/cards/{id}")
+                    public final OwnerCard card(@PathVariable int id) { return null; }
+                }
+                """);
+        files.put("client/src/cards.ts", """
+                export interface OwnerCard {
+                  firstName: string;
+                  tel: string;
+                  isActive: boolean;
+                }
+
+                export async function phone(id: number): Promise<string> {
+                  const res = await fetch(`/api/kt/cards/${id}`);
+                  const card = await res.json();
+                  return card.tel;
+                }
+                """);
+        RenameFixture ws = new RenameFixture(dir, files);
+        // What kotlinc writes: the classes name Cards.kt as their source, and the tree holds the Kotlin file.
+        Path classes = ws.root.resolve("target/classes/com/acme/clinic/kt");
+        for (String c : List.of("OwnerCard", "CardController")) {
+            Path f = classes.resolve(c + ".class");
+            ClassModel cm = ClassFile.of().parse(Files.readAllBytes(f));
+            Files.write(
+                    f,
+                    ClassFile.of()
+                            .transformClass(
+                                    cm,
+                                    ClassTransform.dropping(e -> e instanceof SourceFileAttribute)
+                                            .andThen(ClassTransform.endHandler(
+                                                    b -> b.with(SourceFileAttribute.of("Cards.kt"))))));
+            Files.delete(ws.root.resolve(kt + c + ".java"));
+        }
+        String kotlin = "src/main/kotlin/com/acme/clinic/kt/Cards.kt";
+        Files.createDirectories(ws.root.resolve(kotlin).getParent());
+        Files.writeString(ws.root.resolve(kotlin), """
+                package com.acme.clinic.kt
+
+                import com.fasterxml.jackson.annotation.JsonProperty
+                import org.springframework.web.bind.annotation.GetMapping
+                import org.springframework.web.bind.annotation.PathVariable
+                import org.springframework.web.bind.annotation.RequestMapping
+                import org.springframework.web.bind.annotation.RestController
+
+                data class OwnerCard(
+                    val firstName: String,
+                    @JsonProperty("tel") val telephone: String,
+                    val isActive: Boolean,
+                )
+
+                @RestController
+                @RequestMapping("/api/kt")
+                class CardController {
+                    @GetMapping("/cards/{id}")
+                    fun card(@PathVariable id: Int): OwnerCard = OwnerCard("a", "b", true)
+                }
+                """);
+        AnchorEditsTest.refresh(ws);
+
+        assertThat(jsonEdges(ws).stream().filter(e -> e.contains("OwnerCard")).toList())
+                .containsExactlyInAnyOrder(
+                        "defines json:OwnerCard.firstName " + kotlin + ":10 extracted",
+                        "defines json:OwnerCard.tel " + kotlin + ":11 extracted",
+                        "defines json:OwnerCard.isActive " + kotlin + ":12 extracted",
+                        "uses json:OwnerCard.firstName client/src/cards.ts:2 inferred",
+                        "uses json:OwnerCard.tel client/src/cards.ts:3,10 inferred",
+                        "uses json:OwnerCard.isActive client/src/cards.ts:4 inferred");
     }
 }

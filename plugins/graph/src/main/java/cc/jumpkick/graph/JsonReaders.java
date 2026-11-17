@@ -77,7 +77,7 @@ final class JsonReaders {
         List<int[]> found = new ArrayList<>();
         for (int o = masked.indexOf('{'); o >= 0; o = masked.indexOf('{', o + 1)) {
             if (!functionBrace(masked, o)) continue;
-            int close = JsonDtos.closing(masked, o, '{', '}');
+            int close = closing(masked, o, '{', '}');
             int c = close < 0 ? masked.length() : close;
             boolean inside = false;
             for (int[] f : found) {
@@ -249,7 +249,7 @@ final class JsonReaders {
         Matcher t = TYPE_DECL.matcher(masked);
         while (t.find()) {
             int open = t.end() - 1;
-            int close = JsonDtos.closing(masked, open, '{', '}');
+            int close = closing(masked, open, '{', '}');
             if (close < 0) continue;
             String body = depthOne(masked, open, close);
             Matcher m = TYPE_MEMBER.matcher(body);
@@ -609,5 +609,17 @@ final class JsonReaders {
             }
         }
         return false;
+    }
+
+    /** The offset of the bracket closing the one at {@code open}; -1 when it is not closed. */
+    static int closing(String masked, int open, char o, char c) {
+        if (open < 0) return -1;
+        int depth = 0;
+        for (int i = open; i < masked.length(); i++) {
+            char ch = masked.charAt(i);
+            if (ch == o) depth++;
+            else if (ch == c && --depth == 0) return i;
+        }
+        return -1;
     }
 }

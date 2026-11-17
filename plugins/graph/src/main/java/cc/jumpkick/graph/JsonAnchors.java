@@ -11,6 +11,12 @@ import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.host.CodeText;
+import cc.jumpkick.host.Log;
+import java.io.IOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.ClassModel;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -22,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -56,8 +63,6 @@ final class JsonAnchors {
     /** Most classes followed from one workspace's routes: a body graph past this is a data model, not a DTO. */
     static final int MAX_CLASSES = 400;
 
-    private static final Pattern IMPORT = Pattern.compile("(?m)^\\s*import\\s+(?!static)([\\w.]+?)(\\.\\*)?\\s*;");
-    private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
     private static final Pattern GENERATED_PATH =
             Pattern.compile("(^|/)(generated|generated-sources|gen|__generated__)/");
     private static final Pattern SCRIPT = Pattern.compile(".*\\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|vue|svelte)$");
@@ -83,67 +88,84 @@ final class JsonAnchors {
             "Entity");
     private static final Set<String> HTTP_METHODS = Set.of("get", "put", "post", "delete", "patch", "head", "options");
 
-    /** One class a route's body reaches: where it is declared and the properties it adds. */
-    private record Body(String nodeId, String simple, String rel, JsonDtos.Dto dto) {}
+    /**
+     * One class a route's body reaches: its internal and dotted names, its anchor key (its simple name,
+     * or its dotted name where two classes the bodies reach share the simple one), the node and file
+     * that declare it, and the properties it adds.
+     */
+    private record Body(
+            String internal, String dotted, String key, String nodeId, String rel, int line, JsonDtos.Dto dto) {
+
+        String simple() {
+            return dotted.substring(dotted.lastIndexOf('.') + 1);
+        }
+    }
+
+    /** A source with its comments and literals blanked, and its line starts. */
+    private record Masked(String masked, int[] starts) {
+        static Masked of(@Nullable String source) {
+            String s = source == null ? "" : source;
+            return new Masked(CodeText.blank(s, CodeText.Blank.COMMENTS_AND_STRINGS), JsonReaders.lineStarts(s));
+        }
+    }
 
     /** What one client place names, before it is graded. */
     private record Tie(String rel, int line, String name, Set<String> routes, boolean close) {}
 
     /**
      * {@code g} with the JSON property anchors its routes' bodies and their tied clients make; {@code
-     * g} itself when there are none. {@code files} is every file of the tree and {@code text} reads one
-     * as it is now ({@code null} when it is gone).
+     * g} itself when there are none. {@code files} is every file of the tree, {@code text} reads one
+     * as it is now ({@code null} when it is gone) and {@code compiled} reads the workspace's classes.
      */
-    static CodeGraph add(CodeGraph g, Collection<String> files, Function<String, @Nullable String> text) {
+    static CodeGraph add(
+            CodeGraph g, Collection<String> files, Function<String, @Nullable String> text, Classfiles compiled) {
         Map<String, List<GraphEdge>> handlers = handlers(g);
         if (handlers.isEmpty()) return g;
-        Classes classes = new Classes(g, text);
-        // Route -> property name -> the anchors of that name its body carries.
-        Map<String, Map<String, Set<String>>> routeProps = new TreeMap<>();
-        Map<String, Body> bodies = new LinkedHashMap<>();
-        Map<String, JsonDtos.Property> defined = new LinkedHashMap<>();
-        Map<String, String> definedBy = new HashMap<>();
+        Classes classes = new Classes(g, compiled);
+        // Route -> the classes its bodies reach, then each class as Jackson writes it.
+        Map<String, Set<String>> routeClasses = new TreeMap<>();
+        Map<String, JsonDtos.Dto> dtos = new LinkedHashMap<>();
         for (Map.Entry<String, List<GraphEdge>> h : handlers.entrySet()) {
             Set<String> roots = new LinkedHashSet<>();
             for (GraphEdge e : h.getValue()) {
+                GraphNode type = g.owner(e.source());
                 GraphNode method = g.node(e.source());
-                if (method == null) continue;
-                JsonDtos.Source src = classes.source(e.sourceFile());
-                if (src == null) continue;
-                for (String t : JsonDtos.bodyTypes(src, methodName(method.label()))) {
-                    String q = classes.resolve(t, e.sourceFile());
-                    if (q != null) roots.add(q);
+                ClassModel owner = type == null ? null : classes.model(type);
+                if (owner == null || method == null) continue;
+                for (String t : JsonDtos.bodyTypes(owner, methodName(method.label()))) {
+                    if (classes.declared(t)) roots.add(t);
                 }
             }
             if (roots.isEmpty()) continue;
-            Map<String, Set<String>> props = new TreeMap<>();
             Deque<String> todo = new ArrayDeque<>(roots);
             Set<String> seen = new LinkedHashSet<>();
-            while (!todo.isEmpty() && bodies.size() <= MAX_CLASSES) {
+            while (!todo.isEmpty() && dtos.size() <= MAX_CLASSES) {
                 String q = todo.poll();
                 if (!seen.add(q)) continue;
-                Body b = bodies.get(q);
-                if (b == null) {
-                    b = classes.body(q);
-                    if (b == null) continue;
-                    bodies.put(q, b);
+                JsonDtos.Dto dto = dtos.containsKey(q) ? dtos.get(q) : classes.dto(q);
+                if (dto == null) continue;
+                dtos.put(q, dto);
+                for (JsonDtos.Property p : dto.properties()) {
+                    for (String t : p.types()) if (classes.declared(t) && !seen.contains(t)) todo.add(t);
                 }
-                for (JsonDtos.Property p : b.dto().properties()) {
-                    String id = Anchors.id(Anchors.JSON, b.simple() + "." + p.name());
-                    props.computeIfAbsent(p.name(), k -> new TreeSet<>()).add(id);
-                    defined.putIfAbsent(id, p);
-                    definedBy.putIfAbsent(id, q);
-                    for (String t : p.types()) {
-                        String r = classes.resolve(t, b.rel());
-                        if (r != null && !seen.contains(r)) todo.add(r);
-                    }
-                }
-                String sup = b.dto().supertype();
-                String r = sup == null ? null : classes.resolve(sup, b.rel());
-                if (r != null && !seen.contains(r)) todo.add(r);
+                for (String t : dto.supertypes()) if (classes.declared(t) && !seen.contains(t)) todo.add(t);
             }
-            if (!props.isEmpty()) routeProps.put(h.getKey(), props);
+            seen.retainAll(dtos.keySet());
+            if (!seen.isEmpty()) routeClasses.put(h.getKey(), seen);
         }
+        if (routeClasses.isEmpty()) return g;
+        Map<String, Body> bodies = classes.bodies(dtos);
+        Map<String, Map<String, Set<String>>> routeProps = new TreeMap<>();
+        routeClasses.forEach((route, reached) -> {
+            Map<String, Set<String>> props = new TreeMap<>();
+            for (String q : reached) {
+                Body b = bodies.get(q);
+                if (b == null) continue;
+                for (JsonDtos.Property p : b.dto().properties())
+                    props.computeIfAbsent(p.name(), k -> new TreeSet<>()).add(id(b, p));
+            }
+            if (!props.isEmpty()) routeProps.put(route, props);
+        });
         if (routeProps.isEmpty()) return g;
 
         Generated generated = new Generated(files, text);
@@ -161,18 +183,21 @@ final class JsonAnchors {
 
         List<GraphNode> nodes = new ArrayList<>();
         List<GraphEdge> edges = new ArrayList<>();
-        for (Map.Entry<String, JsonDtos.Property> d : defined.entrySet()) {
-            Body b = bodies.get(definedBy.get(d.getKey()));
-            if (b == null) continue;
-            String name = d.getKey().substring(Anchors.JSON.length() + 1);
-            nodes.add(Anchors.node(Anchors.JSON, name));
-            edges.add(GraphEdge.of(
-                    b.nodeId(),
-                    d.getKey(),
-                    Relations.DEFINES,
-                    Confidence.EXTRACTED,
-                    b.rel(),
-                    d.getValue().line()));
+        Map<String, Masked> sources = new HashMap<>();
+        for (Body b : bodies.values()) {
+            Masked src = sources.computeIfAbsent(b.rel(), rel -> Masked.of(text.apply(rel)));
+            for (JsonDtos.Property p : b.dto().properties()) {
+                String name = b.key() + "." + p.name();
+                nodes.add(Anchors.node(Anchors.JSON, name));
+                int line = declarationLine(src.masked(), src.starts(), p.member(), !p.field(), b.line());
+                edges.add(GraphEdge.of(
+                        b.nodeId(),
+                        Anchors.id(Anchors.JSON, name),
+                        Relations.DEFINES,
+                        Confidence.EXTRACTED,
+                        b.rel(),
+                        line));
+            }
         }
         for (Map.Entry<String, Map<String, GraphEdge>> f : uses.entrySet()) {
             String fileId = GraphIds.file(f.getKey());
@@ -187,6 +212,80 @@ final class JsonAnchors {
         out.modules(g.modules());
         out.stale(g.stale());
         return out;
+    }
+
+    private static String id(Body b, JsonDtos.Property p) {
+        return Anchors.id(Anchors.JSON, b.key() + "." + p.name());
+    }
+
+    private static final Pattern DECLARATION = Pattern.compile("(?:class|record|interface|enum|object|trait)\\s+\\w");
+    private static final Pattern MEMBER_END = Pattern.compile("[ \\t]*(?:[;=,:)}]|\\r?\\n|$)");
+
+    /**
+     * The line declaring {@code member} in a class's source: the first place at or after the class's
+     * line {@code from} where it stands as a declaration directly in the class's body ({@code
+     * telephone;}, {@code val telephone =}, or a {@code method}'s {@code getTelephone(}) or in the parentheses of
+     * its header (a record's components, a Kotlin or Scala primary constructor), comments and
+     * literals aside; {@code from} when there is none. Only the line is read from source; what the
+     * property is comes from the class file.
+     */
+    static int declarationLine(String source, String member, boolean method, int from) {
+        return declarationLine(
+                CodeText.blank(source, CodeText.Blank.COMMENTS_AND_STRINGS),
+                JsonReaders.lineStarts(source),
+                member,
+                method,
+                from);
+    }
+
+    /** {@link #declarationLine(String, String, boolean, int)} on a source already {@code masked}, its line starts {@code starts}. */
+    static int declarationLine(String masked, int[] starts, String member, boolean method, int from) {
+        int start = from >= 1 && from <= starts.length ? starts[from - 1] : 0;
+        Matcher m = Pattern.compile("(?<![\\w$.])" + Pattern.quote(member) + "(?![\\w$])")
+                .matcher(masked);
+        m.region(start, masked.length());
+        int at = start;
+        int parens = 0;
+        int braces = 0;
+        boolean opened = false;
+        boolean own = false;
+        while (m.find()) {
+            for (; at < m.start(); at++) {
+                char c = masked.charAt(at);
+                // The next declaration outside this class's braces ends the search: its members are not this class's.
+                if (braces == 0 && parens == 0 && (at == 0 || !Character.isJavaIdentifierPart(masked.charAt(at - 1)))) {
+                    Matcher d = DECLARATION.matcher(masked);
+                    d.region(at, masked.length());
+                    if (d.lookingAt()) {
+                        if (own) return Math.max(1, from);
+                        own = true;
+                    }
+                }
+                if (c == '(') parens++;
+                else if (c == ')') parens = Math.max(0, parens - 1);
+                else if (c == '{') {
+                    braces++;
+                    opened = true;
+                } else if (c == '}') {
+                    if (--braces <= 0 && opened) return Math.max(1, from);
+                }
+            }
+            boolean body = braces == 1 && parens == 0;
+            boolean header = braces == 0 && parens == 1 && !opened;
+            if (!body && !(header && !method)) continue;
+            boolean ok;
+            if (method) {
+                int i = m.end();
+                while (i < masked.length() && Character.isWhitespace(masked.charAt(i))) i++;
+                ok = i < masked.length() && masked.charAt(i) == '(';
+            } else {
+                Matcher end = MEMBER_END.matcher(masked);
+                end.region(m.end(), masked.length());
+                ok = end.lookingAt();
+            }
+            if (ok) return JsonReaders.line(starts, m.start());
+        }
+        return Math.max(1, from);
     }
 
     /** {@code get} for a method node's label {@code .get()}. */
@@ -204,7 +303,7 @@ final class JsonAnchors {
             for (GraphEdge e : g.incident(n.id())) {
                 if (e.target().equals(n.id())
                         && e.relation().equals(Relations.DEFINES)
-                        && e.sourceFile().endsWith(".java")) {
+                        && JVM.matcher(e.sourceFile()).matches()) {
                     out.computeIfAbsent(n.id(), k -> new ArrayList<>()).add(e);
                 }
             }
@@ -386,7 +485,7 @@ final class JsonAnchors {
         List<String> ids = new ArrayList<>();
         for (Body b : named) {
             for (JsonDtos.Property p : b.dto().properties()) {
-                if (p.name().equals(m.name())) ids.add(Anchors.id(Anchors.JSON, b.simple() + "." + p.name()));
+                if (p.name().equals(m.name())) ids.add(id(b, p));
             }
         }
         for (String id : ids) use(uses, g, rel, id, m.line(), ids.size() == 1);
@@ -436,7 +535,7 @@ final class JsonAnchors {
             if (schema != null) {
                 for (Body b : byName.getOrDefault(stem(schema), List.of())) {
                     for (JsonDtos.Property pr : b.dto().properties()) {
-                        if (pr.name().equals(k.name())) ids.add(Anchors.id(Anchors.JSON, b.simple() + "." + pr.name()));
+                        if (pr.name().equals(k.name())) ids.add(id(b, pr));
                     }
                 }
                 sure = ids.size() == 1;
@@ -515,93 +614,120 @@ final class JsonAnchors {
         }
     }
 
-    /** The workspace's Java classes by name, and their sources read once. */
-    private static final class Classes {
-        final Map<String, GraphNode> byQualified = new HashMap<>();
-        final Map<String, List<String>> bySimple = new HashMap<>();
-        final Map<String, JsonDtos.Source> sources = new HashMap<>();
-        final Set<String> unreadable = new HashSet<>();
-        final Function<String, @Nullable String> text;
+    /**
+     * The compiled classes of a workspace, read from its class directories ({@code target/classes},
+     * {@code target/test-classes}, {@code target/guard/classes} of each module) once each; a class
+     * whose source was edited since it was compiled is not read, since its file no longer says what
+     * the source does.
+     */
+    static final class Classfiles {
+        private final List<Path> dirs;
+        private final Set<String> stale;
+        private final Map<String, Optional<ClassModel>> read = new HashMap<>();
 
-        Classes(CodeGraph g, Function<String, @Nullable String> text) {
-            this.text = text;
+        Classfiles(List<Path> dirs, Set<String> stale) {
+            this.dirs = List.copyOf(dirs);
+            this.stale = Set.copyOf(stale);
+        }
+
+        /** The class directories of {@code indexes} under {@code root}, and the sources edited since. */
+        static Classfiles of(Path root, List<GraphBuild.ClassIndex> indexes) {
+            List<Path> dirs = new ArrayList<>();
+            Set<String> stale = new HashSet<>();
+            for (GraphBuild.ClassIndex c : indexes) {
+                Path d = root.resolve(c.modulePrefix()).resolve(ClassSources.classDir(c.sourceSet()));
+                if (!dirs.contains(d)) dirs.add(d);
+                stale.addAll(c.stale());
+            }
+            return new Classfiles(dirs, stale);
+        }
+
+        boolean stale(String rel) {
+            return stale.contains(rel);
+        }
+
+        /** The class {@code internal} names, from the first directory holding it; null for none or an unreadable one. */
+        @Nullable
+        ClassModel model(String internal) {
+            return read.computeIfAbsent(internal, k -> {
+                        for (Path d : dirs) {
+                            Path f = d.resolve(k + ".class");
+                            if (!Files.isRegularFile(f)) continue;
+                            try {
+                                return Optional.of(ClassFile.of().parse(Files.readAllBytes(f)));
+                            } catch (IOException | RuntimeException unreadable) {
+                                Log.debug("graph: class unreadable at " + f, unreadable);
+                                return Optional.empty();
+                            }
+                        }
+                        return Optional.empty();
+                    })
+                    .orElse(null);
+        }
+    }
+
+    /** The workspace's JVM classes by name, as the graph declares them and as their class files read. */
+    private static final class Classes {
+        final Map<String, GraphNode> byDotted = new HashMap<>();
+        final Classfiles compiled;
+
+        Classes(CodeGraph g, Classfiles compiled) {
+            this.compiled = compiled;
             for (GraphNode n : g.nodes()) {
                 if (!(n.extra().get(Linker.QUALIFIED_NAME) instanceof String q)
-                        || !n.sourceFile().endsWith(".java")) continue;
-                String dotted = q.replace('$', '.');
-                byQualified.putIfAbsent(dotted, n);
-                bySimple.computeIfAbsent(dotted.substring(dotted.lastIndexOf('.') + 1), k -> new ArrayList<>())
-                        .add(dotted);
+                        || !JVM.matcher(n.sourceFile()).matches()) continue;
+                byDotted.putIfAbsent(q.replace('$', '.'), n);
             }
         }
 
-        JsonDtos.@Nullable Source source(String rel) {
-            JsonDtos.Source had = sources.get(rel);
-            if (had != null || unreadable.contains(rel)) return had;
-            String t = text.apply(rel);
-            if (t == null) {
-                unreadable.add(rel);
-                return null;
-            }
-            JsonDtos.Source s = JsonDtos.Source.of(t);
-            sources.put(rel, s);
-            return s;
+        private static String dotted(String internal) {
+            return internal.replace('/', '.').replace('$', '.');
         }
 
-        /** The workspace class {@code name} means in {@code rel}; null for a library's, or one it cannot place. */
+        /** Whether {@code internal} is a class the workspace declares (a library's is not followed). */
+        boolean declared(String internal) {
+            return byDotted.containsKey(dotted(internal));
+        }
+
+        /** The class file of the graph's type node {@code type}; null for a stale or missing one. */
         @Nullable
-        String resolve(String name, String rel) {
-            if (byQualified.containsKey(name)) return name;
-            JsonDtos.Source src = source(rel);
-            String code = src == null ? "" : src.code();
-            String first = name.contains(".") ? name.substring(0, name.indexOf('.')) : name;
-            String rest = name.contains(".") ? name.substring(name.indexOf('.')) : "";
-            Matcher imp = IMPORT.matcher(code);
-            List<String> wildcards = new ArrayList<>();
-            while (imp.find()) {
-                if (imp.group(2) != null) wildcards.add(imp.group(1));
-                else if (imp.group(1).endsWith("." + first)) {
-                    String q = imp.group(1) + rest;
-                    return byQualified.containsKey(q) ? q : null;
-                }
+        ClassModel model(GraphNode type) {
+            if (compiled.stale(type.sourceFile())) return null;
+            if (!(type.extra().get(Linker.QUALIFIED_NAME) instanceof String q)) return null;
+            String internal = q.replace('.', '/');
+            ClassModel cm = compiled.model(internal);
+            // A nested class's qualified name may be dotted all the way: try each split from the right.
+            for (int i = internal.lastIndexOf('/'); cm == null && i > 0; i = internal.lastIndexOf('/', i - 1)) {
+                internal = internal.substring(0, i) + "$" + internal.substring(i + 1);
+                cm = compiled.model(internal);
             }
-            Matcher pkg = PACKAGE.matcher(code);
-            String p = pkg.find() ? pkg.group(1) + "." : "";
-            if (byQualified.containsKey(p + name)) return p + name;
-            // A class nested in one this file declares.
-            for (String q : bySimple.getOrDefault(name.substring(name.lastIndexOf('.') + 1), List.of())) {
-                GraphNode n = byQualified.get(q);
-                if (n != null && n.sourceFile().equals(rel) && q.endsWith("." + name)) return q;
-            }
-            for (String w : wildcards) if (byQualified.containsKey(w + "." + name)) return w + "." + name;
-            List<String> same = bySimple.getOrDefault(name, List.of());
-            return same.size() == 1 && !name.contains(".") && !isJavaLang(name) ? same.getFirst() : null;
+            return cm;
         }
 
-        private static boolean isJavaLang(String name) {
-            return Set.of(
-                            "String",
-                            "Object",
-                            "Integer",
-                            "Long",
-                            "Boolean",
-                            "Double",
-                            "Float",
-                            "Short",
-                            "Byte",
-                            "Character")
-                    .contains(name);
+        JsonDtos.@Nullable Dto dto(String internal) {
+            GraphNode n = byDotted.get(dotted(internal));
+            if (n == null || compiled.stale(n.sourceFile())) return null;
+            ClassModel cm = compiled.model(internal);
+            return cm == null ? null : JsonDtos.dto(cm);
         }
 
-        @Nullable
-        Body body(String qualified) {
-            GraphNode n = byQualified.get(qualified);
-            if (n == null) return null;
-            JsonDtos.Source src = source(n.sourceFile());
-            if (src == null) return null;
-            String simple = qualified.substring(qualified.lastIndexOf('.') + 1);
-            JsonDtos.Dto dto = JsonDtos.dto(src, simple);
-            return dto == null ? null : new Body(n.id(), simple, n.sourceFile(), dto);
+        /** Each class read, keyed by its simple name unless another class read shares it. */
+        Map<String, Body> bodies(Map<String, JsonDtos.Dto> dtos) {
+            Map<String, Integer> simples = new HashMap<>();
+            for (String q : dtos.keySet()) simples.merge(simple(dotted(q)), 1, Integer::sum);
+            Map<String, Body> out = new LinkedHashMap<>();
+            dtos.forEach((q, dto) -> {
+                String dotted = dotted(q);
+                GraphNode n = byDotted.get(dotted);
+                if (n == null) return;
+                String key = simples.getOrDefault(simple(dotted), 1) > 1 ? dotted : simple(dotted);
+                out.put(q, new Body(q, dotted, key, n.id(), n.sourceFile(), line(n.sourceLocation()), dto));
+            });
+            return out;
+        }
+
+        private static String simple(String dotted) {
+            return dotted.substring(dotted.lastIndexOf('.') + 1);
         }
     }
 

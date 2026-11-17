@@ -1,481 +1,487 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
-import cc.jumpkick.host.CodeText;
+import java.lang.classfile.Annotation;
+import java.lang.classfile.AnnotationElement;
+import java.lang.classfile.AnnotationValue;
+import java.lang.classfile.Attributes;
+import java.lang.classfile.ClassModel;
+import java.lang.classfile.FieldModel;
+import java.lang.classfile.MethodModel;
+import java.lang.classfile.MethodSignature;
+import java.lang.classfile.Signature;
+import java.lang.classfile.attribute.MethodParameterInfo;
+import java.lang.classfile.attribute.MethodParametersAttribute;
+import java.lang.classfile.attribute.RecordAttribute;
+import java.lang.classfile.attribute.RecordComponentInfo;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.MethodTypeDesc;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The JSON a Java route handler reads and writes, read from source as Jackson's defaults see it. A
- * handler's body types are its return type and its request-body parameter ({@code @RequestBody},
- * Micronaut's {@code @Body}, or JAX-RS's one unannotated parameter); every type name in them is a
- * candidate, so {@code ResponseEntity<List<OwnerDto>>} names {@code OwnerDto} and the library
- * wrappers drop out when they are resolved against the workspace.
+ * The JSON a route handler reads and writes, read from its compiled classes as Jackson's defaults
+ * see them, so a class javac, kotlinc, scalac or groovyc wrote reads alike. A handler's body types
+ * are the classes named anywhere in its generic return type and its request-body parameter's
+ * ({@code @RequestBody}, Micronaut's {@code @Body}, JAX-RS's one parameter no binding annotation
+ * claims): {@code ResponseEntity<Page<OwnerDto>>} names {@code OwnerDto}, and the library wrappers
+ * drop out when no class of the workspace answers for them. A Kotlin {@code suspend} handler's
+ * result is its continuation's type argument.
  *
  * <p>A class's properties are its record components, public fields, public getters ({@code getX},
- * {@code isX} for a {@code boolean}), setters, and any field or accessor carrying {@code
- * @JsonProperty}; a Lombok {@code @Data}, {@code @Value} or {@code @Getter} class, or one with {@code
- * @JsonAutoDetect(fieldVisibility = ANY)}, exposes its fields. {@code @JsonProperty("name")} renames
- * a property on any of its members; {@code @JsonIgnore} and {@code @JsonIgnoreProperties} drop one;
- * a class-level {@code @JsonNaming} translates every name not given explicitly. Not read: Kotlin and
- * Groovy classes, mix-ins, a global naming strategy set in configuration or on an {@code
- * ObjectMapper}, custom serializers, {@code @JsonView}, {@code @JsonUnwrapped} prefixes and
- * polymorphic type ids.
+ * {@code isX} returning {@code boolean}), setters, and any field or method carrying {@code
+ * @JsonProperty}; {@code @JsonProperty("name")} on any of them, or on the constructor parameter of
+ * that name (where kotlinc puts an annotation written on a {@code val}), renames the property, and
+ * {@code @JsonIgnore} or the class's {@code @JsonIgnoreProperties} drops it. A class-level {@code
+ * @JsonNaming} translates every name not given explicitly, and {@code @JsonAutoDetect(fieldVisibility
+ * = ANY)} shows private fields. A Kotlin property {@code isActive} keeps its name, as
+ * jackson-module-kotlin writes it; a Scala case class's fields with their same-named accessors are
+ * its properties, as jackson-module-scala writes them; Groovy's {@code metaClass} is not one.
+ * Lombok's getters are read where it compiled them.
+ *
+ * <p>What a class file cannot tell is left out: a naming strategy or visibility set on an {@code
+ * ObjectMapper} or in configuration, mix-ins, custom serializers, {@code @JsonView}, {@code
+ * @JsonUnwrapped} prefixes and polymorphic type ids.
  */
 final class JsonDtos {
 
     private JsonDtos() {}
 
-    /** One property: its JSON name, the line of the member that declares it, the type names of its value. */
-    record Property(String name, int line, List<String> types) {}
+    /**
+     * One property: its JSON name, the member of the class whose declaration stands for it (the
+     * field behind it, else its getter or setter), and the internal names of the classes its value's
+     * type names.
+     */
+    record Property(String name, String member, boolean field, List<String> types) {}
 
-    /** One class as Jackson writes it: its properties and the supertype it extends. */
-    record Dto(
-            String simple,
-            List<Property> properties,
-            @Nullable String supertype) {}
+    /** One class as Jackson writes it: its properties and the supertypes whose properties it carries. */
+    record Dto(List<Property> properties, List<String> supertypes) {}
 
-    /** A Java source as the readers below take it: comments blanked, and literals blanked too. */
-    record Source(String code, String masked, int[] lineStarts) {
+    private static final int STATIC = 0x0008;
+    private static final int PUBLIC = 0x0001;
+    private static final int PRIVATE = 0x0002;
+    private static final int TRANSIENT = 0x0080;
+    private static final int SYNTHETIC = 0x1000;
+    private static final int BRIDGE = 0x0040;
+    private static final int INTERFACE = 0x0200;
+    private static final int ENUM = 0x4000;
+    private static final int ANNOTATION = 0x2000;
 
-        static Source of(String text) {
-            String code = CodeText.blank(text, CodeText.Blank.COMMENTS);
-            String masked = CodeText.blank(text, CodeText.Blank.COMMENTS_AND_STRINGS);
-            List<Integer> starts = new ArrayList<>();
-            starts.add(0);
-            for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') starts.add(i + 1);
-            int[] s = new int[starts.size()];
-            for (int i = 0; i < s.length; i++) s[i] = starts.get(i);
-            return new Source(code, masked, s);
-        }
-
-        int line(int offset) {
-            int lo = 0;
-            int hi = lineStarts.length - 1;
-            while (lo < hi) {
-                int mid = (lo + hi + 1) >>> 1;
-                if (lineStarts[mid] <= offset) lo = mid;
-                else hi = mid - 1;
-            }
-            return lo + 1;
-        }
-    }
-
-    private static final Pattern MODIFIERS = Pattern.compile(
-            "\\b(?:public|protected|private|static|final|abstract|synchronized|native|default|transient|volatile|strictfp)\\b");
-    private static final Pattern TYPE_NAME = Pattern.compile("[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*");
-    private static final Pattern IDENT = Pattern.compile("[A-Za-z_$][\\w$]*");
-    private static final Pattern HANDLER = Pattern.compile(
-            "@(?:\\w+\\.)*(?:Get|Post|Put|Delete|Patch|Request)Mapping\\b|@(?:\\w+\\.)*(?:GET|POST|PUT|DELETE|PATCH|Path)\\b"
-                    + "|@(?:\\w+\\.)*(?:Get|Post|Put|Delete|Patch)\\b");
-    private static final Pattern BODY_PARAM = Pattern.compile("@(?:\\w+\\.)*(?:RequestBody|Body)\\b");
-    private static final Pattern JAX_RS_PARAM = Pattern.compile(
-            "@(?:\\w+\\.)*(?:PathParam|QueryParam|HeaderParam|CookieParam|FormParam|MatrixParam|BeanParam|Context|Suspended)\\b");
-    private static final Pattern JSON_PROPERTY = Pattern.compile("@(?:\\w+\\.)*JsonProperty\\s*(\\(([^)]*)\\))?");
-    private static final Pattern JSON_IGNORE =
-            Pattern.compile("@(?:\\w+\\.)*JsonIgnore\\b(?!Properties)(\\s*\\(\\s*false\\s*\\))?");
-    private static final Pattern QUOTED = Pattern.compile("\"((?:[^\"\\\\]|\\\\.)*)\"");
-    private static final Pattern IGNORE_PROPERTIES =
-            Pattern.compile("@(?:\\w+\\.)*JsonIgnoreProperties\\s*\\(([^)]*)\\)");
-    private static final Pattern NAMING =
-            Pattern.compile("@(?:\\w+\\.)*JsonNaming\\s*\\(\\s*(?:value\\s*=\\s*)?([\\w.$]+)\\.class");
-    private static final Pattern LOMBOK_GETTERS = Pattern.compile("@(?:lombok\\.)?(?:Data|Value|Getter)\\b");
-    private static final Pattern FIELDS_ANY = Pattern.compile("fieldVisibility\\s*=\\s*(?:\\w+\\.)*ANY\\b");
+    private static final String SPRING = "Lorg/springframework/web/bind/annotation/";
+    private static final Pattern HANDLER = Pattern.compile("L(?:org/springframework/web/bind/annotation/"
+            + "(?:Get|Post|Put|Delete|Patch|Request)Mapping"
+            + "|(?:jakarta|javax)/ws/rs/(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|Path)"
+            + "|io/micronaut/http/annotation/(?:Get|Post|Put|Delete|Patch));");
+    private static final Pattern JAX_RS = Pattern.compile("L(?:jakarta|javax)/ws/rs/");
+    private static final Pattern VALIDATION =
+            Pattern.compile("L(?:jakarta/validation|javax/validation|org/springframework/validation)/");
+    private static final Set<String> BODY_PARAMS =
+            Set.of(SPRING + "RequestBody;", "Lio/micronaut/http/annotation/Body;");
+    private static final String CONTINUATION = "kotlin/coroutines/Continuation";
 
     /**
-     * The type names (as written) of the bodies the handler {@code method} declared in {@code src}
-     * reads and writes: those of every declaration of that name carrying a mapping annotation.
+     * The internal names of the classes the bodies of handler {@code method} of {@code owner} name:
+     * those of every method of that name carrying a mapping annotation. A Spring MVC {@code
+     * @Controller}'s return is a view unless {@code @ResponseBody} (on the method or the class) or a
+     * {@code ResponseEntity} makes it the body.
      */
-    static List<String> bodyTypes(Source src, String method) {
+    static List<String> bodyTypes(ClassModel owner, String method) {
         Set<String> out = new LinkedHashSet<>();
-        boolean jaxRs = src.code().contains("jakarta.ws.rs") || src.code().contains("javax.ws.rs");
-        // A Spring MVC @Controller's return is a view name or model unless @ResponseBody says otherwise.
-        boolean views = src.code().contains("@Controller")
-                && !src.code().contains("@RestController")
-                && !src.code().contains("io.micronaut")
-                && !classResponseBody(src.code());
-        Matcher m = Pattern.compile("\\b" + Pattern.quote(method) + "\\s*\\(").matcher(src.masked());
-        while (m.find()) {
-            int start = statementStart(src.masked(), m.start());
-            String header = src.code().substring(start, m.start());
-            if (!HANDLER.matcher(header).find()) continue;
-            int open = src.masked().indexOf('(', m.start());
-            int close = closing(src.masked(), open, '(', ')');
-            if (close < 0) continue;
-            String after = src.masked()
-                    .substring(close + 1, Math.min(src.masked().length(), close + 200))
-                    .strip();
-            if (!after.startsWith("{") && !after.startsWith("throws") && !after.startsWith(";")) continue;
-            if (!views || header.contains("@ResponseBody")) out.addAll(typeNames(returnType(header)));
-            for (String p : topLevel(src.code().substring(open + 1, close), ',')) {
-                boolean body = BODY_PARAM.matcher(p).find() || jaxRs && jaxRsEntity(p);
-                if (body) out.addAll(typeNames(paramType(p)));
+        List<Annotation> classAnnotations = annotations(owner);
+        boolean views = has(classAnnotations, "Lorg/springframework/stereotype/Controller;")
+                && !has(classAnnotations, SPRING + "RestController;")
+                && !has(classAnnotations, SPRING + "ResponseBody;");
+        for (MethodModel m : owner.methods()) {
+            if (!m.methodName().equalsString(method) || (m.flags().flagsMask() & (SYNTHETIC | BRIDGE)) != 0) continue;
+            List<Annotation> own = annotations(m);
+            if (own.stream()
+                    .noneMatch(a -> HANDLER.matcher(a.className().stringValue()).matches())) continue;
+            boolean jaxRs = own.stream()
+                    .anyMatch(a -> JAX_RS.matcher(a.className().stringValue()).lookingAt());
+            MethodTypeDesc desc = m.methodTypeSymbol();
+            MethodSignature sig = m.findAttribute(Attributes.signature())
+                    .map(s -> MethodSignature.parseFrom(s.signature().stringValue()))
+                    .orElse(null);
+            List<Signature> params = new ArrayList<>();
+            if (sig != null && sig.arguments().size() == desc.parameterCount()) params.addAll(sig.arguments());
+            else for (ClassDesc p : desc.parameterList()) params.add(Signature.of(p));
+            Signature result = sig != null ? sig.result() : Signature.of(desc.returnType());
+            // A suspend function returns Object and hands its result to its last parameter.
+            if (!params.isEmpty()
+                    && params.getLast() instanceof Signature.ClassTypeSig c
+                    && CONTINUATION.equals(internalName(c))) {
+                params.removeLast();
+                if (!c.typeArgs().isEmpty() && c.typeArgs().getFirst() instanceof Signature.TypeArg.Bounded b)
+                    result = b.boundType();
+            }
+            boolean entity = has(own, SPRING + "ResponseBody;")
+                    || names(result).contains("org/springframework/http/ResponseEntity");
+            if (!views || entity) out.addAll(names(result));
+            List<List<Annotation>> byParam = parameterAnnotations(m);
+            for (int i = 0; i < params.size(); i++) {
+                List<Annotation> pa = i < byParam.size() ? byParam.get(i) : List.of();
+                boolean body = pa.stream()
+                                .anyMatch(
+                                        a -> BODY_PARAMS.contains(a.className().stringValue()))
+                        || jaxRs
+                                && pa.stream().allMatch(a -> VALIDATION
+                                        .matcher(a.className().stringValue())
+                                        .lookingAt());
+                if (body) out.addAll(names(params.get(i)));
             }
         }
         return List.copyOf(out);
     }
 
-    /** Whether {@code @ResponseBody} annotates the class itself: it comes before the class keyword. */
-    private static boolean classResponseBody(String code) {
-        Matcher c = Pattern.compile("\\bclass\\s").matcher(code);
-        int at = c.find() ? c.start() : code.length();
-        return code.substring(0, at).contains("@ResponseBody");
-    }
-
-    /** A JAX-RS parameter with no annotation but validation's: the request entity. */
-    private static boolean jaxRsEntity(String param) {
-        return !param.replaceAll("@(?:\\w+\\.)*(?:Valid|NotNull|NonNull|Validated)\\b", "")
-                .contains("@");
-    }
-
     /**
-     * The class {@code simple} declared in {@code src} as Jackson writes it; {@code null} when the
-     * file declares no class, record or interface of that name, or it is an enum (written as a string).
+     * {@code cm} as Jackson writes it; {@code null} for an enum (written as a string), an annotation
+     * or a synthetic class.
      */
-    static @Nullable Dto dto(Source src, String simple) {
-        Matcher m = Pattern.compile("\\b(class|record|interface|enum)\\s+" + Pattern.quote(simple) + "\\b")
-                .matcher(src.masked());
-        if (!m.find()) return null;
-        if (m.group(1).equals("enum")) return null;
-        int start = statementStart(src.masked(), m.start());
-        String annotations = src.code().substring(start, m.start());
-        int open = src.masked().indexOf('{', m.end());
-        if (open < 0) return null;
-        int close = closing(src.masked(), open, '{', '}');
-        if (close < 0) close = src.masked().length();
-        String head = src.masked().substring(m.end(), open);
-        String supertype = null;
-        Matcher ext = Pattern.compile("\\bextends\\s+([\\w.$]+)").matcher(head);
-        if (ext.find() && !m.group(1).equals("interface")) supertype = ext.group(1);
-        Model model = new Model(annotations);
-        if (m.group(1).equals("record")) {
-            int p = src.masked().indexOf('(', m.end());
-            int q = p < 0 || p > open ? -1 : closing(src.masked(), p, '(', ')');
-            if (q > 0) {
-                int at = p + 1;
-                for (String c : topLevel(src.code().substring(p + 1, q), ',')) {
-                    String name = lastIdent(stripAnnotations(c));
-                    if (name != null) {
-                        model.member(name, Kind.COMPONENT, c, src.line(at + leading(c)), typeNames(paramType(c)));
-                    }
-                    at += c.length() + 1;
-                }
+    static @Nullable Dto dto(ClassModel cm) {
+        int flags = cm.flags().flagsMask();
+        if ((flags & (ENUM | ANNOTATION | SYNTHETIC)) != 0) return null;
+        List<Annotation> classAnnotations = annotations(cm);
+        boolean kotlin = has(classAnnotations, "Lkotlin/Metadata;");
+        boolean scala = has(classAnnotations, "Lscala/reflect/ScalaSignature;")
+                || cm.attributes().stream().anyMatch(a -> a.attributeName().equalsString("TASTY"));
+        Model model = new Model(classAnnotations);
+        Map<String, String> renamedParams = constructorNames(cm);
+
+        Set<String> accessors = new LinkedHashSet<>();
+        for (MethodModel m : cm.methods()) {
+            int f = m.flags().flagsMask();
+            if ((f & (STATIC | SYNTHETIC | BRIDGE)) == 0 && m.methodTypeSymbol().parameterCount() == 0)
+                accessors.add(m.methodName().stringValue());
+        }
+        Optional<RecordAttribute> record = cm.findAttribute(Attributes.record());
+        if (record.isPresent()) {
+            for (RecordComponentInfo c : record.get().components()) {
+                List<Annotation> a = new ArrayList<>();
+                c.findAttribute(Attributes.runtimeVisibleAnnotations()).ifPresent(x -> a.addAll(x.annotations()));
+                c.findAttribute(Attributes.runtimeInvisibleAnnotations()).ifPresent(x -> a.addAll(x.annotations()));
+                Signature s = c.findAttribute(Attributes.signature())
+                        .map(x -> Signature.parseFrom(x.signature().stringValue()))
+                        .orElseGet(() -> Signature.of(
+                                ClassDesc.ofDescriptor(c.descriptor().stringValue())));
+                String name = c.name().stringValue();
+                model.add(name, name, true, a, names(s));
             }
         }
-        members(src, open + 1, close, m.group(1).equals("interface"), model);
-        return new Dto(simple, model.properties(), supertype);
+        for (FieldModel fm : cm.fields()) {
+            int f = fm.flags().flagsMask();
+            if ((f & (STATIC | SYNTHETIC)) != 0) continue;
+            String name = fm.fieldName().stringValue();
+            List<Annotation> a = annotations(fm);
+            Signature s = fm.findAttribute(Attributes.signature())
+                    .map(x -> Signature.parseFrom(x.signature().stringValue()))
+                    .orElseGet(() -> Signature.of(fm.fieldTypeSymbol()));
+            if ((f & TRANSIENT) != 0 && explicit(a) == null) {
+                model.field(name);
+                continue;
+            }
+            boolean scalaField = scala && accessors.contains(name);
+            boolean visible = (f & PUBLIC) != 0 || scalaField || model.fieldsVisible(f);
+            model.add(name, name, visible, a, names(s));
+            model.field(name);
+        }
+        boolean iface = (flags & INTERFACE) != 0;
+        for (MethodModel m : cm.methods()) {
+            int f = m.flags().flagsMask();
+            if ((f & (STATIC | SYNTHETIC | BRIDGE)) != 0) continue;
+            String name = m.methodName().stringValue();
+            if (name.startsWith("<") || name.contains("$")) continue;
+            MethodTypeDesc desc = m.methodTypeSymbol();
+            List<Annotation> a = annotations(m);
+            boolean isPublic = iface || (f & PUBLIC) != 0;
+            MethodSignature sig = m.findAttribute(Attributes.signature())
+                    .map(s -> MethodSignature.parseFrom(s.signature().stringValue()))
+                    .orElse(null);
+            String ret = desc.returnType().descriptorString();
+            if (desc.parameterCount() == 0 && !ret.equals("V")) {
+                if (ret.equals("Lgroovy/lang/MetaClass;")) continue;
+                List<String> types = names(sig != null ? sig.result() : Signature.of(desc.returnType()));
+                if (name.length() > 3 && name.startsWith("get") && !name.equals("getClass")) {
+                    model.add(mangle(name.substring(3)), name, isPublic, a, types);
+                } else if (name.length() > 2 && name.startsWith("is") && ret.equals("Z")) {
+                    // kotlinc names the getter of `val isActive` isActive(), and jackson-module-kotlin keeps the name.
+                    String internal = kotlin && model.hasField(name) ? name : mangle(name.substring(2));
+                    model.add(internal, name, isPublic, a, types);
+                } else if (record.isPresent() && model.has(name)) {
+                    model.add(name, name, isPublic, a, types);
+                } else if (scala && model.hasField(name)) {
+                    model.add(name, name, isPublic, a, types);
+                } else if (explicit(a) != null) {
+                    model.add(name, name, true, a, types);
+                }
+            } else if (desc.parameterCount() == 1
+                    && name.length() > 3
+                    && name.startsWith("set")
+                    && !desc.parameterType(0).descriptorString().equals("Lgroovy/lang/MetaClass;")) {
+                Signature p = sig != null && sig.arguments().size() == 1
+                        ? sig.arguments().getFirst()
+                        : Signature.of(desc.parameterType(0));
+                model.add(mangle(name.substring(3)), name, true, a, names(p));
+            }
+        }
+        renamedParams.forEach(model::renameFromParameter);
+        List<String> supers = new ArrayList<>();
+        cm.superclass().ifPresent(s -> {
+            String n = s.asInternalName();
+            if (!n.equals("java/lang/Object") && !n.equals("java/lang/Record")) supers.add(n);
+        });
+        if (iface) for (var i : cm.interfaces()) supers.add(i.asInternalName());
+        return new Dto(model.properties(), List.copyOf(supers));
     }
 
-    private enum Kind {
-        COMPONENT,
-        FIELD,
-        GETTER,
-        SETTER
+    /** {@code @JsonProperty("x")} on a constructor parameter, by the parameter's name, where the class file names it. */
+    private static Map<String, String> constructorNames(ClassModel cm) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (MethodModel m : cm.methods()) {
+            if (!m.methodName().equalsString("<init>") || (m.flags().flagsMask() & SYNTHETIC) != 0) continue;
+            List<List<Annotation>> byParam = parameterAnnotations(m);
+            if (byParam.stream().allMatch(List::isEmpty)) continue;
+            List<String> names = parameterNames(m);
+            int offset = names.size() - byParam.size();
+            for (int i = 0; i < byParam.size(); i++) {
+                String explicit = explicit(byParam.get(i));
+                int at = i + Math.max(0, offset);
+                if (explicit != null
+                        && !explicit.isEmpty()
+                        && at < names.size()
+                        && !names.get(at).isEmpty()) out.putIfAbsent(names.get(at), explicit);
+            }
+        }
+        return out;
+    }
+
+    /** A method's parameter names: its {@code MethodParameters}, else its local variable table; empty where neither names one. */
+    private static List<String> parameterNames(MethodModel m) {
+        int count = m.methodTypeSymbol().parameterCount();
+        Optional<MethodParametersAttribute> mp = m.findAttribute(Attributes.methodParameters());
+        if (mp.isPresent() && mp.get().parameters().size() == count) {
+            List<String> out = new ArrayList<>();
+            for (MethodParameterInfo p : mp.get().parameters())
+                out.add(p.name().map(n -> n.stringValue()).orElse(""));
+            return out;
+        }
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < count; i++) out.add("");
+        m.code().flatMap(c -> c.findAttribute(Attributes.localVariableTable())).ifPresent(t -> {
+            int slot = (m.flags().flagsMask() & STATIC) != 0 ? 0 : 1;
+            List<ClassDesc> params = m.methodTypeSymbol().parameterList();
+            int[] slots = new int[params.size()];
+            for (int i = 0; i < params.size(); i++) {
+                slots[i] = slot;
+                String d = params.get(i).descriptorString();
+                slot += d.equals("J") || d.equals("D") ? 2 : 1;
+            }
+            for (var v : t.localVariables()) {
+                if (v.startPc() != 0) continue;
+                for (int i = 0; i < slots.length; i++)
+                    if (slots[i] == v.slot()) out.set(i, v.name().stringValue());
+            }
+        });
+        return out;
     }
 
     /** The members of one class by the property they belong to (their internal name). */
     private static final class Model {
         final Map<String, List<Member>> byName = new LinkedHashMap<>();
+        final Set<String> fields = new LinkedHashSet<>();
         final Set<String> ignored = new LinkedHashSet<>();
         final @Nullable String naming;
-        final boolean fieldsVisible;
+        final String fieldVisibility;
 
         record Member(
-                Kind kind, boolean visible, @Nullable String explicit, boolean ignore, int line, List<String> types) {}
+                String member, boolean visible, @Nullable String explicit, boolean ignore, List<String> types) {}
 
-        Model(String classAnnotations) {
-            Matcher n = NAMING.matcher(classAnnotations);
-            naming = n.find() ? n.group(1) : null;
-            fieldsVisible = LOMBOK_GETTERS.matcher(classAnnotations).find()
-                    || FIELDS_ANY.matcher(classAnnotations).find();
-            Matcher ip = IGNORE_PROPERTIES.matcher(classAnnotations);
-            if (ip.find()) {
-                Matcher q = QUOTED.matcher(ip.group(1));
-                while (q.find()) ignored.add(q.group(1));
+        Model(List<Annotation> classAnnotations) {
+            String strategy = null;
+            String visibility = "";
+            for (Annotation a : classAnnotations) {
+                String d = a.className().stringValue();
+                if (d.endsWith("/JsonNaming;")) {
+                    for (String v : values(a, "value")) strategy = v;
+                } else if (d.endsWith("/JsonIgnoreProperties;")) {
+                    ignored.addAll(values(a, "value"));
+                } else if (d.endsWith("/JsonAutoDetect;")) {
+                    for (String v : values(a, "fieldVisibility")) visibility = v;
+                }
             }
+            naming = strategy;
+            fieldVisibility = visibility;
         }
 
-        void member(String name, Kind kind, String text, int line, List<String> types) {
-            add(name, kind, kind == Kind.COMPONENT || kind == Kind.SETTER, text, line, types);
+        boolean fieldsVisible(int flags) {
+            return switch (fieldVisibility) {
+                case "ANY" -> true;
+                case "NON_PRIVATE", "PROTECTED_AND_PUBLIC" -> (flags & PRIVATE) == 0;
+                default -> false;
+            };
         }
 
-        void add(String name, Kind kind, boolean visible, String text, int line, List<String> types) {
-            String explicit = null;
-            Matcher p = JSON_PROPERTY.matcher(text);
-            if (p.find()) {
-                Matcher q = p.group(2) == null ? null : QUOTED.matcher(p.group(2));
-                explicit = q != null && q.find() && !q.group(1).isEmpty() ? q.group(1) : "";
+        void field(String name) {
+            fields.add(name);
+        }
+
+        boolean hasField(String name) {
+            return fields.contains(name);
+        }
+
+        boolean has(String name) {
+            return byName.containsKey(name);
+        }
+
+        void add(String name, String member, boolean visible, List<Annotation> annotations, List<String> types) {
+            String explicit = explicit(annotations);
+            boolean ignore = false;
+            for (Annotation a : annotations) {
+                if (a.className().stringValue().endsWith("/JsonIgnore;"))
+                    ignore = !values(a, "value").contains("false");
             }
-            Matcher ig = JSON_IGNORE.matcher(text);
-            boolean ignore = ig.find() && ig.group(1) == null;
             byName.computeIfAbsent(name, k -> new ArrayList<>())
-                    .add(new Member(kind, visible || explicit != null, explicit, ignore, line, types));
+                    .add(new Member(member, visible || explicit != null, explicit, ignore, types));
+        }
+
+        void renameFromParameter(String name, String explicit) {
+            List<Member> ms = byName.get(name);
+            if (ms != null) ms.add(new Member(name, false, explicit, false, List.of()));
         }
 
         List<Property> properties() {
             List<Property> out = new ArrayList<>();
             for (Map.Entry<String, List<Member>> e : byName.entrySet()) {
-                List<Member> ms = e.getValue();
                 boolean visible = false;
                 boolean ignore = false;
                 String explicit = null;
-                int line = Integer.MAX_VALUE;
-                int fieldLine = Integer.MAX_VALUE;
+                String member = null;
                 List<String> types = new ArrayList<>();
-                for (Member m : ms) {
-                    boolean shown = m.visible() || m.kind() == Kind.FIELD && fieldsVisible;
-                    visible |= shown;
+                for (Member m : e.getValue()) {
+                    visible |= m.visible();
                     ignore |= m.ignore();
                     if (m.explicit() != null && !m.explicit().isEmpty()) explicit = m.explicit();
-                    if (m.kind() == Kind.FIELD || m.kind() == Kind.COMPONENT) fieldLine = Math.min(fieldLine, m.line());
-                    if (shown) line = Math.min(line, m.line());
                     for (String t : m.types()) if (!types.contains(t)) types.add(t);
                 }
                 if (!visible || ignore) continue;
+                // The field behind a property is its declaration; a getter or setter stands in where there is none.
+                boolean field = fields.contains(e.getKey())
+                        || e.getValue().getFirst().member().equals(e.getKey());
+                member = fields.contains(e.getKey())
+                        ? e.getKey()
+                        : e.getValue().getFirst().member();
                 String name = explicit != null ? explicit : translate(e.getKey(), naming);
                 if (ignored.contains(name)) continue;
-                out.add(new Property(name, fieldLine != Integer.MAX_VALUE ? fieldLine : line, List.copyOf(types)));
+                out.add(new Property(name, member, field, List.copyOf(types)));
             }
             return out;
         }
     }
 
-    /** The direct members of the class body between {@code from} and {@code to}, nested types and bodies skipped. */
-    private static void members(Source src, int from, int to, boolean iface, Model model) {
-        String masked = src.masked();
-        int i = from;
-        while (i < to) {
-            int start = i;
-            int end = i;
-            int depth = 0;
-            boolean init = false;
-            int block = -1;
-            while (end < to) {
-                char c = masked.charAt(end);
-                if (c == '(' || c == '[') {
-                    depth++;
-                } else if ((c == ')' || c == ']') && depth > 0) {
-                    depth--;
-                } else if (depth == 0 && c == '=') {
-                    init = true;
-                } else if (depth == 0 && (c == ';' || c == '}')) {
-                    break;
-                } else if (depth == 0 && c == '{') {
-                    int close = closing(masked, end, '{', '}');
-                    if (close < 0 || close >= to) {
-                        end = to;
-                        break;
-                    }
-                    // An initialiser's braces (an array, a lambda, an anonymous class) end at the ';' after them.
-                    if (init) {
-                        end = close + 1;
-                        continue;
-                    }
-                    block = end;
-                    break;
-                }
-                end++;
-            }
-            if (end >= to) break;
-            String text = src.code().substring(start, block >= 0 ? block : end);
-            if (!text.isBlank()) member(src, text, start, iface, model);
-            i = block >= 0 ? closing(masked, block, '{', '}') + 1 : end + 1;
+    /** The name a {@code @JsonProperty} among {@code annotations} gives: empty for one with none, {@code null} for no such annotation. */
+    private static @Nullable String explicit(List<Annotation> annotations) {
+        for (Annotation a : annotations) {
+            if (!a.className().stringValue().endsWith("/JsonProperty;")) continue;
+            List<String> v = values(a, "value");
+            return v.isEmpty() ? "" : v.getFirst();
         }
+        return null;
     }
 
-    private static final Pattern NESTED = Pattern.compile("\\b(?:class|interface|enum|record)\\s+\\w");
-    private static final Pattern STATIC = Pattern.compile("\\bstatic\\b");
-    private static final Pattern PUBLIC = Pattern.compile("\\bpublic\\b");
-    private static final Pattern TRANSIENT = Pattern.compile("\\btransient\\b");
-
-    /** One member's declaration ({@code text}, up to its body or {@code ;}) into {@code model}. */
-    private static void member(Source src, String text, int at, boolean iface, Model model) {
-        String bare = stripAnnotations(CodeText.blank(text, CodeText.Blank.COMMENTS_AND_STRINGS));
-        if (NESTED.matcher(bare).find() || STATIC.matcher(bare).find()) return;
-        boolean isPublic = iface || PUBLIC.matcher(bare).find();
-        int eq = bare.indexOf('=');
-        int paren = bare.indexOf('(');
-        if (paren >= 0 && (eq < 0 || paren < eq)) {
-            String head = bare.substring(0, paren);
-            String name = lastIdent(head);
-            if (name == null) return;
-            int close = closing(bare, paren, '(', ')');
-            String params = close < 0
-                    ? ""
-                    : stripAnnotations(text)
-                            .substring(
-                                    paren + 1,
-                                    Math.min(close, stripAnnotations(text).length()))
-                            .strip();
-            String ret = returnType(head.substring(0, head.length() - name.length()));
-            int line = src.line(
-                    at + Math.max(0, text.indexOf(name + "(") >= 0 ? text.indexOf(name + "(") : text.indexOf(name)));
-            if (params.isEmpty()
-                    && name.length() > 3
-                    && name.startsWith("get")
-                    && !name.equals("getClass")
-                    && !ret.equals("void")
-                    && !ret.isEmpty()) {
-                model.add(mangle(name.substring(3)), Kind.GETTER, isPublic, text, line, typeNames(ret));
-            } else if (params.isEmpty() && name.length() > 2 && name.startsWith("is") && ret.equals("boolean")) {
-                model.add(mangle(name.substring(2)), Kind.GETTER, isPublic, text, line, List.of());
-            } else if (name.length() > 3
-                    && name.startsWith("set")
-                    && !params.isEmpty()
-                    && topLevel(params, ',').size() == 1) {
-                model.add(mangle(name.substring(3)), Kind.SETTER, true, text, line, typeNames(paramType(params)));
-            } else if (params.isEmpty()
-                    && !ret.equals("void")
-                    && !ret.isEmpty()
-                    && JSON_PROPERTY.matcher(text).find()) {
-                model.add(name, Kind.GETTER, true, text, line, typeNames(ret));
-            }
-            return;
-        }
-        if (TRANSIENT.matcher(bare).find()) return;
-        String decl = eq < 0 ? bare : bare.substring(0, eq);
-        List<String> parts = topLevel(decl, ',');
-        String type = null;
-        for (String part : parts) {
-            String n = lastIdent(part);
-            if (n == null) continue;
-            if (type == null)
-                type = MODIFIERS
-                        .matcher(part.substring(0, part.lastIndexOf(n)))
-                        .replaceAll(" ")
-                        .strip();
-            if (type.isEmpty()) return;
-            Matcher declared = Pattern.compile("(?<![\\w$])" + Pattern.quote(n) + "(?![\\w$])(?=\\s*(?:=|;|,|$))")
-                    .matcher(text);
-            int off = declared.find() ? declared.start() : 0;
-            model.add(n, Kind.FIELD, isPublic, text, src.line(at + off), typeNames(type));
-        }
-    }
-
-    /** Where the declaration holding {@code at} starts: after the last {@code ;}, {@code {} or {@code }} before it. */
-    static int statementStart(String masked, int at) {
-        int depth = 0;
-        for (int i = at - 1; i >= 0; i--) {
-            char c = masked.charAt(i);
-            if (c == ')') depth++;
-            else if (c == '(') depth--;
-            else if (depth == 0 && (c == ';' || c == '{' || c == '}')) return i + 1;
-        }
-        return 0;
-    }
-
-    /** The offset of the bracket closing the one at {@code open}; -1 when it is not closed. */
-    static int closing(String masked, int open, char o, char c) {
-        if (open < 0) return -1;
-        int depth = 0;
-        for (int i = open; i < masked.length(); i++) {
-            char ch = masked.charAt(i);
-            if (ch == o) depth++;
-            else if (ch == c && --depth == 0) return i;
-        }
-        return -1;
-    }
-
-    /** {@code text} split at {@code sep} outside brackets and angle brackets. */
-    static List<String> topLevel(String text, char sep) {
+    /** An annotation element's values as strings: a string's text, an enum constant's name, a class's internal name, a boolean. */
+    static List<String> values(Annotation a, String element) {
         List<String> out = new ArrayList<>();
-        int depth = 0;
-        int from = 0;
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c == '(' || c == '<' || c == '[' || c == '{') depth++;
-            else if (c == ')' || c == '>' || c == ']' || c == '}') depth = Math.max(0, depth - 1);
-            else if (c == sep && depth == 0) {
-                out.add(text.substring(from, i));
-                from = i + 1;
-            }
-        }
-        if (from < text.length() && !text.substring(from).isBlank()) out.add(text.substring(from));
+        for (AnnotationElement e : a.elements()) if (e.name().equalsString(element)) value(e.value(), out);
         return out;
     }
 
-    /** {@code text} without its annotations ({@code @JsonProperty("x")}, {@code @Valid}). */
-    static String stripAnnotations(String text) {
-        StringBuilder out = new StringBuilder();
-        int i = 0;
-        while (i < text.length()) {
-            char c = text.charAt(i);
-            if (c == '@' && i + 1 < text.length() && Character.isJavaIdentifierStart(text.charAt(i + 1))) {
-                int j = i + 1;
-                while (j < text.length() && (Character.isJavaIdentifierPart(text.charAt(j)) || text.charAt(j) == '.'))
-                    j++;
-                int k = j;
-                while (k < text.length() && Character.isWhitespace(text.charAt(k))) k++;
-                if (k < text.length() && text.charAt(k) == '(') {
-                    int depth = 0;
-                    for (; k < text.length(); k++) {
-                        if (text.charAt(k) == '(') depth++;
-                        else if (text.charAt(k) == ')' && --depth == 0) break;
-                    }
-                    j = Math.min(text.length(), k + 1);
-                }
-                i = j;
-                continue;
+    private static void value(AnnotationValue v, List<String> out) {
+        switch (v) {
+            case AnnotationValue.OfString s -> out.add(s.stringValue());
+            case AnnotationValue.OfEnum e -> out.add(e.constantName().stringValue());
+            case AnnotationValue.OfClass c -> {
+                String d = c.className().stringValue();
+                out.add(d.startsWith("L") && d.endsWith(";") ? d.substring(1, d.length() - 1) : d);
             }
-            out.append(c);
-            i++;
+            case AnnotationValue.OfBoolean b -> out.add(String.valueOf(b.booleanValue()));
+            case AnnotationValue.OfArray arr -> {
+                for (AnnotationValue x : arr.values()) value(x, out);
+            }
+            default -> {}
         }
-        return out.toString();
     }
 
-    /** The return type in a method's header (annotations, modifiers, type parameters and the type). */
-    static String returnType(String header) {
-        String t = MODIFIERS.matcher(stripAnnotations(header)).replaceAll(" ").strip();
-        if (t.startsWith("<")) {
-            int close = closing(t, 0, '<', '>');
-            t = close < 0 ? t : t.substring(close + 1).strip();
-        }
-        return t;
+    static boolean has(List<Annotation> annotations, String desc) {
+        for (Annotation a : annotations) if (a.className().equalsString(desc)) return true;
+        return false;
     }
 
-    /** The type of one parameter: annotations, {@code final} and its name removed. */
-    static String paramType(String param) {
-        String p = MODIFIERS.matcher(stripAnnotations(param)).replaceAll(" ").strip();
-        String name = lastIdent(p);
-        return name == null
-                ? p
-                : p.substring(0, p.length() - name.length())
-                        .replace("...", "[]")
-                        .strip();
-    }
-
-    /** The type names {@code type} is written with: {@code ResponseEntity<List<OwnerDto>>} names three. */
-    static List<String> typeNames(String type) {
-        List<String> out = new ArrayList<>();
-        Matcher m = TYPE_NAME.matcher(type.replace('?', ' '));
-        while (m.find()) {
-            String n = m.group();
-            if (n.equals("extends") || n.equals("super")) continue;
-            String last = n.substring(n.lastIndexOf('.') + 1);
-            if (!last.isEmpty() && Character.isUpperCase(last.charAt(0)) && !out.contains(n)) out.add(n);
-        }
+    /** Every annotation a class carries, retained at run time or not. */
+    static List<Annotation> annotations(ClassModel cm) {
+        List<Annotation> out = new ArrayList<>();
+        cm.findAttribute(Attributes.runtimeVisibleAnnotations()).ifPresent(a -> out.addAll(a.annotations()));
+        cm.findAttribute(Attributes.runtimeInvisibleAnnotations()).ifPresent(a -> out.addAll(a.annotations()));
         return out;
     }
 
-    private static @Nullable String lastIdent(String text) {
-        Matcher m = IDENT.matcher(text);
-        String last = null;
-        while (m.find()) last = m.group();
-        return last;
+    private static List<Annotation> annotations(MethodModel m) {
+        List<Annotation> out = new ArrayList<>();
+        m.findAttribute(Attributes.runtimeVisibleAnnotations()).ifPresent(a -> out.addAll(a.annotations()));
+        m.findAttribute(Attributes.runtimeInvisibleAnnotations()).ifPresent(a -> out.addAll(a.annotations()));
+        return out;
     }
 
-    private static int leading(String s) {
-        int i = 0;
-        while (i < s.length() && Character.isWhitespace(s.charAt(i))) i++;
-        return i;
+    private static List<Annotation> annotations(FieldModel f) {
+        List<Annotation> out = new ArrayList<>();
+        f.findAttribute(Attributes.runtimeVisibleAnnotations()).ifPresent(a -> out.addAll(a.annotations()));
+        f.findAttribute(Attributes.runtimeInvisibleAnnotations()).ifPresent(a -> out.addAll(a.annotations()));
+        return out;
+    }
+
+    private static List<List<Annotation>> parameterAnnotations(MethodModel m) {
+        List<List<Annotation>> out = new ArrayList<>();
+        m.findAttribute(Attributes.runtimeVisibleParameterAnnotations())
+                .ifPresent(a -> a.parameterAnnotations().forEach(p -> out.add(new ArrayList<>(p))));
+        m.findAttribute(Attributes.runtimeInvisibleParameterAnnotations()).ifPresent(a -> {
+            List<List<Annotation>> inv = a.parameterAnnotations();
+            for (int i = 0; i < inv.size(); i++) {
+                if (i < out.size()) out.get(i).addAll(inv.get(i));
+                else out.add(new ArrayList<>(inv.get(i)));
+            }
+        });
+        return out;
+    }
+
+    /** The internal names of every class {@code sig} names, type arguments and array components included. */
+    static List<String> names(Signature sig) {
+        Set<String> out = new LinkedHashSet<>();
+        collect(sig, out);
+        return List.copyOf(out);
+    }
+
+    private static void collect(Signature sig, Set<String> out) {
+        switch (sig) {
+            case Signature.ClassTypeSig c -> {
+                out.add(internalName(c));
+                for (Signature.TypeArg t : c.typeArgs()) {
+                    if (t instanceof Signature.TypeArg.Bounded b) collect(b.boundType(), out);
+                }
+            }
+            case Signature.ArrayTypeSig a -> collect(a.componentSignature(), out);
+            default -> {}
+        }
+    }
+
+    /** {@code com/acme/Outer$Inner} for a class type, its outer types' names joined as the class file names it. */
+    private static String internalName(Signature.ClassTypeSig c) {
+        return c.outerType().map(o -> internalName(o) + "$" + c.className()).orElse(c.className());
     }
 
     /** Jackson's default bean name: {@code BirthDate} as {@code birthDate}, {@code URL} as {@code url}. */
@@ -490,7 +496,9 @@ final class JsonDtos {
     /** {@code name} as {@code @JsonNaming(strategy)} writes it; unchanged for a strategy not listed. */
     static String translate(String name, @Nullable String strategy) {
         if (strategy == null) return name;
-        String s = strategy.substring(strategy.lastIndexOf('.') + 1);
+        String s = strategy.substring(
+                Math.max(strategy.lastIndexOf('.'), Math.max(strategy.lastIndexOf('$'), strategy.lastIndexOf('/')))
+                        + 1);
         return switch (s) {
             case "SnakeCaseStrategy", "SNAKE_CASE" -> separated(name, '_', false);
             case "UpperSnakeCaseStrategy", "UPPER_SNAKE_CASE" -> separated(name, '_', true);

@@ -257,7 +257,8 @@ public final class GraphBuild {
         fragmentCache.retain(declarationKeys, classKeys);
         progress.phase("link");
         CodeGraph graph = Linker.link(all);
-        graph = JsonAnchors.add(graph, new TreeSet<>(shas.keySet()), textNow(base, changed));
+        graph = JsonAnchors.add(
+                graph, new TreeSet<>(shas.keySet()), textNow(base, changed), JsonAnchors.Classfiles.of(base, indexes));
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
         if (!rebuild) anchorEdits(base, out, extractors, vouched, sources, changed, unreadable, indexes, graph);

@@ -128,6 +128,15 @@ final class ClassSources {
         return inside.startsWith(compact ? "guard/src/" : "src/guard/") ? "guard" : "test";
     }
 
+    /** Where a module's class set {@code set} ({@code main}, {@code test}, {@code guard}) is compiled to, under the module. */
+    static String classDir(String set) {
+        return switch (set) {
+            case "main" -> "target/classes";
+            case "guard" -> "target/guard/classes";
+            default -> "target/test-classes";
+        };
+    }
+
     /**
      * The source a class came from, among those {@code own} accepts (its module's, of its source
      * set): in its package directory. A Java source must sit there; a Kotlin or Groovy one may sit

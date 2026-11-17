@@ -7,88 +7,10 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The readers under JSON property anchors on real shapes of text: the properties Jackson writes for
- * a class (records, getters, Lombok, naming strategies, ignored members), the handler's body types,
- * jq programs, the keys of JSON and YAML documents, and the files a build's generators write.
+ * The readers under JSON property anchors on real shapes of text (the classes themselves are read
+ * from their class files, {@link JsonDtosTest}): jq programs, the keys of JSON and YAML documents, and the files a build's generators write.
  */
 class JsonReadersTest {
-
-    private static List<String> props(String source, String simple) {
-        JsonDtos.Dto dto = JsonDtos.dto(JsonDtos.Source.of(source), simple);
-        if (dto == null) throw new AssertionError(simple + " is not read as a class");
-        return dto.properties().stream().map(p -> p.name() + ":" + p.line()).toList();
-    }
-
-    @Test
-    void jacksonWritesGettersPublicFieldsAndRenamedOrNamedMembersOnly() {
-        assertThat(props("""
-                @JsonIgnoreProperties({"internal"})
-                public class Visit {
-                    public static final String KIND = "visit";
-                    private transient String cache;
-                    private int id;
-                    public String description;
-                    private String internal;
-                    @JsonProperty("visit_date")
-                    private LocalDate date;
-                    private String hidden;
-
-                    public int getId() { return id; }
-                    public LocalDate getDate() { return date; }
-                    public String getInternal() { return internal; }
-                    public boolean isUrgent() { return false; }
-                    public Boolean isBoxed() { return null; }
-                    @JsonIgnore
-                    public String getAudit() { return ""; }
-                    String getPackagePrivate() { return ""; }
-                    public void setNotes(String notes) {}
-                    public String getURL() { return ""; }
-                }
-                """, "Visit"))
-                .containsExactly("id:5", "description:6", "visit_date:9", "urgent:15", "notes:20", "url:21");
-    }
-
-    @Test
-    void lombokAndTheNamingStrategyApplyToEveryNameNotGivenExplicitly() {
-        assertThat(props("""
-                @Data
-                @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-                public class OwnerForm {
-                    private String firstName;
-                    @JsonProperty("tel")
-                    private String telephoneNumber;
-                    private List<PetForm> pets = new ArrayList<>() {{ add(new PetForm()); }};
-                }
-                """, "OwnerForm")).containsExactly("first_name:4", "tel:6", "pets:7");
-        assertThat(JsonDtos.translate("homeAddressLine", "KebabCaseStrategy")).isEqualTo("home-address-line");
-        assertThat(JsonDtos.translate("id", "UpperCamelCaseStrategy")).isEqualTo("Id");
-    }
-
-    @Test
-    void aHandlersBodyTypesAreItsReturnAndItsRequestBodyThroughLibraryWrappers() {
-        JsonDtos.Source src = JsonDtos.Source.of("""
-                @RestController
-                class OwnerApi {
-                    @GetMapping("/owners")
-                    public ResponseEntity<List<OwnerDto>> list(@RequestParam String q) { return null; }
-
-                    @PutMapping("/owners/{id}")
-                    public void update(@PathVariable int id, @Valid @RequestBody final OwnerForm form) {}
-
-                    private OwnerDto list(int notAHandler) { return null; }
-                }
-                """);
-        assertThat(JsonDtos.bodyTypes(src, "list")).containsExactly("ResponseEntity", "List", "OwnerDto");
-        assertThat(JsonDtos.bodyTypes(src, "update")).containsExactly("OwnerForm");
-        JsonDtos.Source jaxRs = JsonDtos.Source.of("""
-                import jakarta.ws.rs.POST;
-                class Visits {
-                    @POST
-                    public Response add(@PathParam("id") int id, @Valid NewVisit visit) { return null; }
-                }
-                """);
-        assertThat(JsonDtos.bodyTypes(jaxRs, "add")).containsExactly("Response", "NewVisit");
-    }
 
     @Test
     void jqProgramsYieldTheFieldsTheyReadOnTheirLogicalLine() {

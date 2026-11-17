@@ -183,13 +183,19 @@ commons-cli, picocli mixins, method subcommands, aliases, and abbreviated subcom
 
 ### JSON properties
 
-A property of a route's JSON body is `json:<Class>.<property>`: the class a Java handler returns or
-reads as its request body (through `ResponseEntity`, `List`, `Optional` and other library wrappers),
-or one reachable from it through properties and supertypes, and the name Jackson writes: a record
-component, a public field, a public getter (`isX` for a `boolean`), a setter, any member with
-`@JsonProperty`, Lombok's `@Data`/`@Value`/`@Getter` fields, a class-level `@JsonNaming`; `@JsonIgnore`
-and `@JsonIgnoreProperties` drop one. A Spring MVC `@Controller`'s return counts only with
-`@ResponseBody`. The definition is the member that declares it, bound.
+A property of a route's JSON body is `json:<Class>.<property>`: the class a handler returns or reads
+as its request body (any class named in the generic type, so `ResponseEntity<Page<OwnerDto>>` names
+`OwnerDto`; a Kotlin `suspend` handler's result), or one reachable from it through properties and
+supertypes, and the name Jackson writes. Both are read from the compiled classes, so a Kotlin data
+class or a Groovy class reads as a Java one: a record component, a public field, a public getter
+(`isX` for a `boolean`; a Kotlin `isActive` keeps its name), a setter, any member with
+`@JsonProperty`, the `@JsonProperty` kotlinc or scalac puts on a constructor parameter, a
+class-level `@JsonNaming` or `@JsonAutoDetect(fieldVisibility = ...)`; `@JsonIgnore` and
+`@JsonIgnoreProperties` drop one. A Spring MVC `@Controller`'s return counts only with
+`@ResponseBody` or as a `ResponseEntity`. `<Class>` is the simple name, or the qualified one where
+two classes the bodies reach share it. The definition is the line declaring the member in its
+source (the field, component or `val`, else the getter), bound. A class whose source changed since
+it was compiled is not read until the next build.
 
 A bare name such as `id` or `name` says nothing about whose it is, so a client's mention links only
 where something ties it to a route or a class:
@@ -209,9 +215,10 @@ a build file (a springdoc or openapi-generator plugin in `pom.xml` or `build.gra
 `openapi-typescript`, `orval` or `openapi-generator-cli` script in `package.json`). An OpenAPI file
 is one whose name or directory says `openapi`, `swagger` or `api-docs`. A workspace with no route
 whose body is one of its own classes, or no client tied to one, has no anchor of this kind. Not
-read: Kotlin and Groovy classes, mix-ins, a naming strategy set in configuration or on an
-`ObjectMapper`, custom serializers, `@JsonView`, polymorphic type ids, and a request whose path is
-built at run time (`this.resourceUrl + '/' + id`), which ties nothing but a typed member.
+read, since a class file does not say it: a naming strategy or visibility set in configuration or
+on an `ObjectMapper`, mix-ins, custom serializers, `@JsonView`, `@JsonUnwrapped` prefixes,
+polymorphic type ids; nor a request whose path is built at run time (`this.resourceUrl + '/' + id`),
+which ties nothing but a typed member.
 
 ### After a hand edit
 
