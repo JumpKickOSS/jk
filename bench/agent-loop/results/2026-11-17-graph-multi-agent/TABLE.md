@@ -10,6 +10,11 @@ was first run on **bocabox** (Fedora) and is kept below as a second host's table
 
 Status: tier 0 complete on daybreak (120 runs, 3 grok-4.7 runs retried once after their time cap); tier 1 running.
 
+**Warning, tier 0's B on daybreak:** bocabox's jk-before home updated itself from 0.51.1 to 0.52.0 two
+minutes into its tier 0 (below), and daybreak's tier 0 ran before that fix (JK_SELF_UPDATE=never, JK-FT5CK).
+Until the engine version of daybreak's B rows is re-checked, read its A-vs-B differences as possibly run-to-run
+noise between identical builds (README.md, Findings).
+
 ## Tier 0 on daybreak (smoke fixture, 1 run per cell)
 
 | Config | Arm | Runs | Green | Errors | Median tokens | Turns | Wall s | jk s | Est. cost | CLI versions |
@@ -211,6 +216,10 @@ The same 120 cells on bocabox, run before the bench moved. Not pooled with daybr
 wrote before the move (of 180) are kept raw in rows-tier1-bocabox-partial.jsonl and are not used in any table.
 
 ### Tier 0 on bocabox (smoke fixture, 1 run per cell)
+
+**Tier 0's B on bocabox is not 0.51.1:** the jk-before home updated itself to 0.52.0 two minutes in. 38 of its 42 rows ran
+0.52.0; only Sonnet's callers, rename and rename-field ran 0.51.1. So the A-vs-B rows below are run-to-run noise
+between identical builds (README.md, Findings).
 
 | Config | Arm | Runs | Green | Errors | Median tokens | Turns | Wall s | jk s | Est. cost | CLI versions |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|

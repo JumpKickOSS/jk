@@ -470,6 +470,16 @@ def grade(task: dict, sandbox: Path) -> dict:
 PREPARED = HOME.parent / "prepared"
 
 
+def jk_version(home: Path | None = None) -> str | None:
+    """The engine version a jk home runs (`version` in lib/jk-engine/jk-engine.toml), or None. The build id
+    says a file changed; this says which release answered, so an arm that moved shows in its rows."""
+    path = (home or benchtools.jk_home()) / "lib" / "jk-engine" / "jk-engine.toml"
+    try:
+        return str(tomllib.loads(path.read_text()).get("version") or "") or None
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+
+
 def jk_build_id() -> str:
     """The jk this run uses (`$JK_HOME`, else ~/.jk), client and engine, as file stats: a new install
     is a new build, and a side run against a scratch home is its own build."""
@@ -523,19 +533,30 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
 
 
 class other_jk:
-    """For the jk-before arm: $JK_BEFORE_HOME as JK_HOME, its bin/ first on PATH and a free HTTP port for the run's prepare,
-    agent (whose MCP server inherits the environment) and verification; a no-op for every other arm."""
+    """Every arm: JK_SELF_UPDATE=never, so no jk installs a release mid-matrix (where no one answers a terminal
+    the default is auto: a jk-before home moved from 0.51.1 to 0.52.0 two minutes into a tier-0 run, and 38 of
+    its 42 rows measured the new graph). For the jk-before arm also: $JK_BEFORE_HOME as JK_HOME, its bin/ first
+    on PATH and a free HTTP port for the run's prepare, agent (whose MCP server inherits the environment) and
+    verification; refused when that home's engine is the same version as the default home's."""
 
     def __init__(self, spec: dict):
         self.on = bool(spec.get("before"))
         self.saved: dict[str, str | None] = {}
 
     def __enter__(self):
+        self.saved["JK_SELF_UPDATE"] = os.environ.get("JK_SELF_UPDATE")
+        os.environ["JK_SELF_UPDATE"] = "never"
         if not self.on:
             return self
         home = os.environ.get("JK_BEFORE_HOME")
         if not home or not (Path(home) / "bin" / "jk").exists():
+            self.__exit__()
             raise RuntimeError("the jk-before arm needs $JK_BEFORE_HOME, a jk home whose bin/jk is the client")
+        before, current = jk_version(Path(home)), jk_version()
+        if before is None or before == current:
+            self.__exit__()
+            raise RuntimeError(f"the jk-before arm's home runs jk {before}, the same as jk's ({current}): "
+                               "it updated itself or was replaced; `jk self rollback` in that home puts it back")
         for k in ("JK_HOME", "PATH", "JK_HTTP_PORT"):
             self.saved[k] = os.environ.get(k)
         os.environ["JK_HOME"] = home
@@ -701,7 +722,7 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
            "arm": arm, "run": run_no, "model": ns.model, "effort": ns.effort,
            "context": getattr(ns, "context", None), "cli": agents.cli(ns.driver),
            "cli_version": cli_version(ns.driver), "outcome": "error", "finding": "",
-           "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id()}
+           "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id(), "jk_version": jk_version()}
     try:
         # A question needs the classes (the graph's compiled facts), not a test run.
         prep = prepare(task, tool, question, sandbox)

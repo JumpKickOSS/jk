@@ -94,6 +94,10 @@ grok-4.7.
   no grading. Four tier-0 Claude rows hit it; the check now applies only when the run never got past its
   first turn, and the four cells were rerun (both rows are in `rows-tier0.jsonl`; the table keeps the rerun).
 
+- **jk-before ran 0.52.0** (fixed on the branch, JK-FT5CK). See the correction under Findings. It is established for bocabox's
+  tier 0; daybreak's tier 0 also ran before the fix, so its B rows carry the same warning until their engine
+  version is re-checked.
+
 ## Hosts and run conditions
 
 **daybreak (the measurement).** Windows 11 Home with WSL Ubuntu 26.04.1 (12 GB, 24 CPUs), jk 0.52.0 in `~/.jk`
@@ -143,6 +147,9 @@ All 120 green (three grok-4.7 runs hit the 8-minute cap and were green on their 
   590k and 418k against A's 224k and 186k; agy 16%, grok-4.5 14%; codex, grok-4.7 and cursor within ±5%
   except cursor composer, 18% more in A. With one run per cell none of this is a result: tier 1's three
   repeats are the first numbers with a noise estimate.
+  **Warning:** bocabox's B column turned out to be mostly 0.52.0 (the correction under bocabox below), so its
+  B figures quoted here are not 0.51.1's, and daybreak's tier 0 ran before the self-update fix too: until the
+  engine version of daybreak's B rows is re-checked, read these A-vs-B figures as possibly same-build noise.
 - **grok-4.7's slow window.** Between 06:12 and 06:49 grok-4.7's tool calls took minutes: one `jk__rename`
   never returned before the cap, another run's shell tool took 340 s, and one run never produced a turn.
   The three capped runs (smoke-rename-field A and C, smoke-rename-class C) were green on their one retry
@@ -158,7 +165,16 @@ agent reaches the answer. One run per cell is a smoke, not a measurement: no noi
 - **A against C (graph tools against none):** A uses fewer tokens for all ten configs, from 33% (codex terra)
   to 88% (grok-4.7), and fewer turns and less wall time for all ten. In cost A is lower for all ten, from 30% to
   87% (muse 33%, at contributor prices that is fractions of a cent).
-- **A against B (0.52.0 against 0.51.1):** these tasks (a callers question, a method rename, a field and a class
+- **Correction: tier 0's B column is not 0.51.1.** The jk-before home updated itself to 0.52.0 at 05:07, two
+  minutes into the run (`self-update` is `auto` where no one answers a terminal). Only Sonnet's B callers, rename
+  and rename-field (jk_build `007329b86362`) ran 0.51.1. The other 38 B rows (`5aa756fa03a6`) ran 0.52.0, which
+  their transcripts show: every B smoke-rename-field after 05:07 got 0.52's field rename. So the B column is a
+  second run of A, and the A-vs-B differences below are run-to-run noise between identical builds: −33% to +8%
+  per config, up to ±65% per task. Sonnet's smoke-rename-field (20.6k tokens and 4 turns on 0.52.0 against 40.3k
+  and 9 on 0.51.1) is the one real 0.51.1 comparison. The harness now runs every arm with
+  `JK_SELF_UPDATE=never`, records `jk_version`, and refuses a jk-before home on jk's own version. The paragraph
+  below is kept as it was written.
+- **A against B (0.52.0 against 0.51.1), as first read:** these tasks (a callers question, a method rename, a field and a class
   rename on a small fixture) are mostly ones 0.51.1's graph already answered. For six configs A is *not*
   better than B in tokens: codex terra (−6%), codex sol (−5%), grok-4.7 (−1%), grok-4.5 (−7%), cursor composer
   (−6%), cursor grok-4.7-high (−8%) all used slightly more tokens in A. Single runs, so read these as "no
