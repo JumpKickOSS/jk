@@ -12,6 +12,44 @@ host, where the earlier benches ran, and wall time is now one of the measures. S
 from daybreak: tier 0 was rerun there, tier 1 run there from the start, then the sliver. bocabox's tier 0 is
 kept as a second host's table and bocabox's 55 tier-1 rows as raw rows; neither is pooled with daybreak's.
 
+## Defects found after tier 0, and the rows they void
+
+Found by a separate investigation (JK-CQ5PD) and checked on daybreak; rows that a defect voids are kept raw in
+files named `*-VOID-*.jsonl` and are in no table.
+
+1. **Arm B did not run 0.51.1.** A jk home updates itself where no one answers a terminal (`self-update` is
+   `auto`), and the jk-before home did. On **daybreak** it moved to 0.52.0 at 05:40:59 MST, during the warm-up
+   and 15 minutes before tier 0 began (its `state/self-update.log`; `lib/jk-engine/jk-engine.toml` read version
+   0.52.0, previous-version 0.51.1). **All 40 daybreak tier-0 B rows ran 0.52.0** (jk_build `d9ce8552f822`;
+   A's 0.52.0 is `383cb0fc6891` only because the build id hashes the home's files): they are in
+   `rows-tier0-daybreak-VOID-B-ran-0.52.0.jsonl`. Only five warm-up rows ran 0.51.1, so the "B needs no
+   network" check below was made on 0.52.0 too and was repeated after the rollback. On **bocabox** the home
+   moved at 05:07, two minutes into tier 0: 38 of its 42 B rows ran 0.52.0, and only Sonnet's callers, rename and
+   rename-field B (jk_build `007329b86362`) ran 0.51.1. bocabox's tier-0 B column is left in its table as
+   recorded, read as a second run of A. Fixed in the harness: every arm runs with `JK_SELF_UPDATE=never`,
+   rows carry `jk_version`, and a jk-before home on jk's own version is refused; daybreak's B home was put
+   back with `jk self rollback` (engine sha256 b99b29…, the installed 0.51.1's) and pinned with
+   `self-update = "never"`.
+2. **Codex's and muse's MCP server ignored the arm's jk home.** Both CLIs start MCP servers with an environment
+   of their own, so their B runs' `jk mcp` reached the host's 0.52.x engine even where the home was still
+   0.51.1 (their shell, prepare and verify used 0.51.1). Void anyway under 1; fixed (the server is
+   `env JK_HOME=… JK_HTTP_PORT=… <jk> mcp`).
+3. **petclinic's Docker tests in an agent's own gate.** The verify leaves PostgresIntegrationTests and
+   MySqlIntegrationTests out; an agent's `run(kind=gate)` did not. Where those classes fail, the agent chases
+   Docker. `$AGENT_LOOP_TEST_EXCLUDE` now writes them to the sandbox's `[test] exclude-classes`. Tiers 0 and 1
+   have no task whose gate runs them except petclinic-callers-addpet, a question task (no gate run by any
+   agent in tier 1's transcripts). Daybreak's check of those classes is under "Hosts and run conditions".
+4. **Codex lost its login on daybreak during tier 1.** The codex driver copied `~/.codex/auth.json` into a
+   throwaway home per run; when the access token expired codex renewed it there, its refresh token rotated, and
+   the new one was deleted with the throwaway home. Every later run stopped in about 2.5 s, red, with no tokens:
+   "Your access token could not be refreshed because your refresh token was already used". **All 36 codex
+   tier-1 rows (terra and sol) are void** (`rows-tier1-daybreak-VOID-codex-login.jsonl`); the runner's
+   fail-fast missed them because they graded red, not error. Fixed: the driver writes a refreshed login back,
+   and the runner counts a row with no tokens and an agent error as an error.
+
+Redone with the fixed harness: daybreak's tier-0 B for all ten configs, and codex's tier 1 (after a new codex
+login); see Findings.
+
 ## Arms
 
 | Arm | jk | What it is |
@@ -94,9 +132,7 @@ grok-4.7.
   no grading. Four tier-0 Claude rows hit it; the check now applies only when the run never got past its
   first turn, and the four cells were rerun (both rows are in `rows-tier0.jsonl`; the table keeps the rerun).
 
-- **jk-before ran 0.52.0** (fixed on the branch, JK-FT5CK). See the correction under Findings. It is established for bocabox's
-  tier 0; daybreak's tier 0 also ran before the fix, so its B rows carry the same warning until their engine
-  version is re-checked.
+- **jk-before ran 0.52.0** (fixed, JK-FT5CK), on both hosts: see "Defects found after tier 0" above.
 
 ## Hosts and run conditions
 
@@ -118,6 +154,11 @@ gs-uploading-files) was set up there with `bench setup`. Sequential, one agent r
   ran more than 5 s past the monotonic one; none was marked, and Windows' System log has no sleep or resume
   event (Kernel-Power 42/107/506/507, Power-Troubleshooter 1) during any batch.
 - **Memory.** The least MemAvailable seen during any tier-0 run was 7.9 GB of 12; no build was killed.
+- **Docker tests pass on daybreak.** petclinic's PostgresIntegrationTests and MySqlIntegrationTests (Spring's
+  compose support on Docker Desktop 29.1.5, compose v5.0.1) passed in 3 of 3 forced reruns (`jk test -r -S …`
+  in a prepared petclinic sandbox, 38–54 s each) after an uncached first run that passed too. So on daybreak
+  `$AGENT_LOOP_TEST_EXCLUDE` is left unset: an agent's own gate runs those classes in every arm, as the product
+  would, and they pass. (bocabox's podman cannot run them; the investigation there excluded them.)
 - **Other load.** Another session's `jk new … android/compose` processes sat stopped (state T, no CPU) on the
   host throughout; the runner's per-run load average stayed low (see `runlog-*`).
 - **CLI updates.** `AGY_CLI_DISABLE_AUTO_UPDATE=1` did not stop agy 1.5.9 from replacing itself with 1.5.10 during
@@ -135,6 +176,17 @@ See TABLE.md's notes; the honest reading per tier is in the next section.
 
 ## Findings
 
+### Tier 1 on daybreak (3 interleaved runs per cell, arms A and C)
+
+144 of 144 green for the eight configs codex aside (codex's 36 rows are void, defect 4). No run was capped, none
+spans a suspend, and the least free memory in any run was 7.5 GB of 12.
+- **A against C:** A uses fewer tokens for all eight, from 34% (cursor composer) to 91% (cursor grok-4.7-high),
+  and fewer turns; the summed per-task token ranges are **separate for seven** and **overlap for cursor
+  composer** (160.8k against 242.7k), which is therefore inside run-to-run noise. Wall: A lower for all but
+  composer (0%) and muse (9%); cost: A lower for all but muse (−10%; muse's costs are
+  fractions of a cent at contributor prices).
+- Per task, A's runs are tight (Sonnet's three A runs of each task within 0.1k tokens); C spreads more.
+
 ### Tier 0 on daybreak (one run per cell)
 
 All 120 green (three grok-4.7 runs hit the 8-minute cap and were green on their one retry; see below).
@@ -147,9 +199,8 @@ All 120 green (three grok-4.7 runs hit the 8-minute cap and were green on their 
   590k and 418k against A's 224k and 186k; agy 16%, grok-4.5 14%; codex, grok-4.7 and cursor within ±5%
   except cursor composer, 18% more in A. With one run per cell none of this is a result: tier 1's three
   repeats are the first numbers with a noise estimate.
-  **Warning:** bocabox's B column turned out to be mostly 0.52.0 (the correction under bocabox below), so its
-  B figures quoted here are not 0.51.1's, and daybreak's tier 0 ran before the self-update fix too: until the
-  engine version of daybreak's B rows is re-checked, read these A-vs-B figures as possibly same-build noise.
+  **Void:** re-checked, every daybreak B row ran 0.52.0 (defect 1 above), so this paragraph compares two runs
+  of 0.52.0; it is kept as first written, and the redo with 0.51.1 is reported separately.
 - **grok-4.7's slow window.** Between 06:12 and 06:49 grok-4.7's tool calls took minutes: one `jk__rename`
   never returned before the cap, another run's shell tool took 340 s, and one run never produced a turn.
   The three capped runs (smoke-rename-field A and C, smoke-rename-class C) were green on their one retry

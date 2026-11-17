@@ -116,7 +116,10 @@ def run_all(plan, logf):
             log(logf, f"  ROW {r.get('driver')}/{r.get('model')} {r.get('task')} {r.get('arm')} #{r.get('run')}: "
                       f"{r.get('outcome')} tokens={r.get('tokens')} turns={r.get('turns')} wall={r.get('wall_s')} "
                       f"cost={r.get('cost_est_usd')} {str(r.get('finding') or '')[:160]}")
-        outcomes = [r.get("outcome") for r in rows] or [f"norow rc={rc}"]
+        # A row whose agent never answered (no tokens, an error event: a lost login, a refused model) is a
+        # driver failure even when the verify grades it red, not error.
+        outcomes = [("error" if r.get("tokens") is None and r.get("agent_finding") else r.get("outcome"))
+                    for r in rows] or [f"norow rc={rc}"]
         wall, mono = time.time() - t0, time.monotonic() - m0
         mark = " SUSPEND" if wall - mono > 5 else ""
         log(logf, f"END {i} rc={rc} {wall:.0f}s wall={wall:.1f} mono={mono:.1f} mem_min_avail_mb={mem_min}{mark}")

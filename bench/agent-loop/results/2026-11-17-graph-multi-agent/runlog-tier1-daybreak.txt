@@ -1,0 +1,542 @@
+2026-11-17T07:53:43 START tier=t1 runs=180 pid=2017231 mem_avail_mb=9222
+2026-11-17T07:53:43 RUN 1/180 sonnet-5-5 load=0.32 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:54:02   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk-nograph #1: green tokens=35562 turns=5 wall=16.6 cost=0.04274 
+2026-11-17T07:54:02 END 1 rc=0 19s wall=19.4 mono=19.4 mem_min_avail_mb=9066
+2026-11-17T07:54:02 RUN 2/180 sonnet-5-5 load=0.50 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:54:14   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk #1: green tokens=20655 turns=3 wall=11.2 cost=0.0151 
+2026-11-17T07:54:14 END 2 rc=0 12s wall=11.6 mono=11.6 mem_min_avail_mb=9083
+2026-11-17T07:54:14 RUN 3/180 sonnet-5-5 load=0.58 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:54:33   ROW claude-code/claude-sonnet-5-5 gs-multi-module-rename-message jk-nograph #1: green tokens=20401 turns=7 wall=17.7 cost=0.02669 
+2026-11-17T07:54:33 END 3 rc=0 19s wall=18.9 mono=18.9 mem_min_avail_mb=8698
+2026-11-17T07:54:33 RUN 4/180 sonnet-5-5 load=0.75 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:54:43   ROW claude-code/claude-sonnet-5-5 gs-multi-module-rename-message jk #1: green tokens=12896 turns=2 wall=9.4 cost=0.01075 
+2026-11-17T07:54:43 END 4 rc=0 10s wall=9.8 mono=9.8 mem_min_avail_mb=9133
+2026-11-17T07:54:43 RUN 5/180 sonnet-5-5 load=0.63 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:55:04   ROW claude-code/claude-sonnet-5-5 gs-uploading-rename-loadasresource jk-nograph #1: green tokens=30258 turns=8 wall=20.0 cost=0.03304 
+2026-11-17T07:55:04 END 5 rc=0 21s wall=21.1 mono=21.1 mem_min_avail_mb=9047
+2026-11-17T07:55:04 RUN 6/180 sonnet-5-5 load=0.77 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:55:14   ROW claude-code/claude-sonnet-5-5 gs-uploading-rename-loadasresource jk #1: green tokens=13017 turns=2 wall=9.8 cost=0.01116 
+2026-11-17T07:55:14 END 6 rc=0 10s wall=10.2 mono=10.2 mem_min_avail_mb=9067
+2026-11-17T07:55:14 RUN 7/180 opus-5-5 load=0.65 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:55:27   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk #1: green tokens=20727 turns=3 wall=10.7 cost=0.06641 
+2026-11-17T07:55:27 END 7 rc=0 13s wall=12.7 mono=12.7 mem_min_avail_mb=9074
+2026-11-17T07:55:27 RUN 8/180 opus-5-5 load=0.71 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:55:40   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk-nograph #1: green tokens=28858 turns=4 wall=12.8 cost=0.08084 
+2026-11-17T07:55:40 END 8 rc=0 13s wall=13.2 mono=13.2 mem_min_avail_mb=9073
+2026-11-17T07:55:40 RUN 9/180 opus-5-5 load=0.71 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:55:49   ROW claude-code/claude-opus-5-5 gs-multi-module-rename-message jk #1: green tokens=12899 turns=2 wall=8.4 cost=0.02189 
+2026-11-17T07:55:49 END 9 rc=0 9s wall=9.4 mono=9.4 mem_min_avail_mb=9122
+2026-11-17T07:55:49 RUN 10/180 opus-5-5 load=0.66 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:56:16   ROW claude-code/claude-opus-5-5 gs-multi-module-rename-message jk-nograph #1: green tokens=62946 turns=14 wall=26.4 cost=0.10738 
+2026-11-17T07:56:16 END 10 rc=0 27s wall=26.9 mono=26.9 mem_min_avail_mb=9035
+2026-11-17T07:56:16 RUN 11/180 opus-5-5 load=0.50 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:56:26   ROW claude-code/claude-opus-5-5 gs-uploading-rename-loadasresource jk #1: green tokens=13001 turns=2 wall=8.9 cost=0.02234 
+2026-11-17T07:56:26 END 11 rc=0 10s wall=9.9 mono=9.9 mem_min_avail_mb=9124
+2026-11-17T07:56:26 RUN 12/180 opus-5-5 load=0.51 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:02   ROW claude-code/claude-opus-5-5 gs-uploading-rename-loadasresource jk-nograph #1: green tokens=87083 turns=17 wall=35.8 cost=0.13078 
+2026-11-17T07:57:02 END 12 rc=0 36s wall=36.2 mono=36.2 mem_min_avail_mb=9046
+2026-11-17T07:57:02 RUN 13/180 codex-terra load=0.43 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:07   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk-nograph #1: red tokens=None turns=1 wall=2.9 cost=None 
+2026-11-17T07:57:07 END 13 rc=0 5s wall=5.0 mono=5.0 mem_min_avail_mb=9204
+2026-11-17T07:57:07 RUN 14/180 codex-terra load=0.55 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:10   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #1: red tokens=None turns=1 wall=2.5 cost=None 
+2026-11-17T07:57:10 END 14 rc=0 3s wall=2.8 mono=2.8 mem_min_avail_mb=9191
+2026-11-17T07:57:10 RUN 15/180 codex-terra load=0.51 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:13   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk-nograph #1: red tokens=None turns=1 wall=2.2 cost=None 
+2026-11-17T07:57:13 END 15 rc=0 3s wall=3.4 mono=3.4 mem_min_avail_mb=9195
+2026-11-17T07:57:13 RUN 16/180 codex-terra load=0.51 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:16   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk #1: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T07:57:16 END 16 rc=0 3s wall=3.0 mono=3.0 mem_min_avail_mb=9078
+2026-11-17T07:57:16 RUN 17/180 codex-terra load=0.47 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:20   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk-nograph #1: red tokens=None turns=1 wall=2.3 cost=None 
+2026-11-17T07:57:20 END 17 rc=0 3s wall=3.5 mono=3.5 mem_min_avail_mb=9070
+2026-11-17T07:57:20 RUN 18/180 codex-terra load=0.59 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:23   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk #1: red tokens=None turns=1 wall=2.5 cost=None 
+2026-11-17T07:57:23 END 18 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9022
+2026-11-17T07:57:23 RUN 19/180 codex-sol load=0.59 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:28   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #1: red tokens=None turns=1 wall=2.7 cost=None 
+2026-11-17T07:57:28 END 19 rc=0 5s wall=4.7 mono=4.7 mem_min_avail_mb=9030
+2026-11-17T07:57:28 RUN 20/180 codex-sol load=0.62 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:30   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk-nograph #1: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T07:57:30 END 20 rc=0 3s wall=2.7 mono=2.7 mem_min_avail_mb=9038
+2026-11-17T07:57:30 RUN 21/180 codex-sol load=0.65 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:34   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk #1: red tokens=None turns=1 wall=2.2 cost=None 
+2026-11-17T07:57:34 END 21 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9077
+2026-11-17T07:57:34 RUN 22/180 codex-sol load=0.65 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:37   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk-nograph #1: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T07:57:37 END 22 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=9014
+2026-11-17T07:57:37 RUN 23/180 codex-sol load=0.60 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:40   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk #1: red tokens=None turns=1 wall=2.2 cost=None 
+2026-11-17T07:57:40 END 23 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=8960
+2026-11-17T07:57:40 RUN 24/180 codex-sol load=0.55 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:57:43   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk-nograph #1: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T07:57:43 END 24 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=8969
+2026-11-17T07:57:43 RUN 25/180 grok-4.7 load=0.55 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:58:57   ROW grok/grok-4.7 petclinic-callers-addpet jk-nograph #1: green tokens=200051 turns=14 wall=71.5 cost=0.15377 
+2026-11-17T07:58:57 END 25 rc=0 73s wall=73.5 mono=73.5 mem_min_avail_mb=8891
+2026-11-17T07:58:57 RUN 26/180 grok-4.7 load=0.29 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T07:59:11   ROW grok/grok-4.7 petclinic-callers-addpet jk #1: green tokens=32789 turns=4 wall=13.4 cost=0.03935 
+2026-11-17T07:59:11 END 26 rc=0 14s wall=13.9 mono=13.9 mem_min_avail_mb=9303
+2026-11-17T07:59:11 RUN 27/180 grok-4.7 load=0.22 :: --driver grok --model grok-4.7 --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:03:23   ROW grok/grok-4.7 gs-multi-module-rename-message jk-nograph #1: green tokens=614518 turns=27 wall=251.3 cost=0.55015 
+2026-11-17T08:03:23 END 27 rc=0 253s wall=252.6 mono=252.6 mem_min_avail_mb=9265
+2026-11-17T08:03:23 RUN 28/180 grok-4.7 load=0.03 :: --driver grok --model grok-4.7 --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:03:39   ROW grok/grok-4.7 gs-multi-module-rename-message jk #1: green tokens=26137 turns=3 wall=14.8 cost=0.04659 
+2026-11-17T08:03:39 END 28 rc=0 15s wall=15.3 mono=15.3 mem_min_avail_mb=9272
+2026-11-17T08:03:39 RUN 29/180 grok-4.7 load=0.02 :: --driver grok --model grok-4.7 --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:06:02   ROW grok/grok-4.7 gs-uploading-rename-loadasresource jk-nograph #1: green tokens=380310 turns=21 wall=141.8 cost=0.3606 
+2026-11-17T08:06:02 END 29 rc=0 143s wall=143.5 mono=143.5 mem_min_avail_mb=9278
+2026-11-17T08:06:02 RUN 30/180 grok-4.7 load=0.23 :: --driver grok --model grok-4.7 --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:06:17   ROW grok/grok-4.7 gs-uploading-rename-loadasresource jk #1: green tokens=23660 turns=3 wall=13.8 cost=0.02291 
+2026-11-17T08:06:17 END 30 rc=0 14s wall=14.4 mono=14.4 mem_min_avail_mb=9294
+2026-11-17T08:06:17 RUN 31/180 grok-4.5 load=0.25 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:06:27   ROW grok/grok-4.5 petclinic-callers-addpet jk #1: green tokens=27800 turns=4 wall=7.8 cost=0.03264 
+2026-11-17T08:06:27 END 31 rc=0 11s wall=10.6 mono=10.6 mem_min_avail_mb=9276
+2026-11-17T08:06:27 RUN 32/180 grok-4.5 load=0.50 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:07:11   ROW grok/grok-4.5 petclinic-callers-addpet jk-nograph #1: green tokens=185606 turns=19 wall=43.7 cost=0.11996 
+2026-11-17T08:07:11 END 32 rc=0 44s wall=44.2 mono=44.2 mem_min_avail_mb=9284
+2026-11-17T08:07:11 RUN 33/180 grok-4.5 load=0.24 :: --driver grok --model grok-4.5 --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:07:21   ROW grok/grok-4.5 gs-multi-module-rename-message jk #1: green tokens=31546 turns=4 wall=8.5 cost=0.02539 
+2026-11-17T08:07:21 END 33 rc=0 10s wall=9.9 mono=9.9 mem_min_avail_mb=9301
+2026-11-17T08:07:21 RUN 34/180 grok-4.5 load=0.27 :: --driver grok --model grok-4.5 --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:08:09   ROW grok/grok-4.5 gs-multi-module-rename-message jk-nograph #1: green tokens=191946 turns=15 wall=47.6 cost=0.16064 
+2026-11-17T08:08:09 END 34 rc=0 48s wall=48.0 mono=48.0 mem_min_avail_mb=9262
+2026-11-17T08:08:09 RUN 35/180 grok-4.5 load=0.43 :: --driver grok --model grok-4.5 --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:08:18   ROW grok/grok-4.5 gs-uploading-rename-loadasresource jk #1: green tokens=22844 turns=3 wall=7.6 cost=0.03249 
+2026-11-17T08:08:18 END 35 rc=0 9s wall=8.7 mono=8.7 mem_min_avail_mb=9626
+2026-11-17T08:08:18 RUN 36/180 grok-4.5 load=0.44 :: --driver grok --model grok-4.5 --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:09:10   ROW grok/grok-4.5 gs-uploading-rename-loadasresource jk-nograph #1: green tokens=229395 turns=17 wall=51.4 cost=0.13626 
+2026-11-17T08:09:10 END 36 rc=0 52s wall=51.8 mono=51.8 mem_min_avail_mb=9609
+2026-11-17T08:09:10 RUN 37/180 cursor-composer load=0.28 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:09:48   ROW cursor/composer-2.5 petclinic-callers-addpet jk-nograph #1: green tokens=132783 turns=9 wall=35.1 cost=0.0354 
+2026-11-17T08:09:48 END 37 rc=0 39s wall=38.5 mono=38.5 mem_min_avail_mb=9285
+2026-11-17T08:09:48 RUN 38/180 cursor-composer load=0.30 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:10:11   ROW cursor/composer-2.5 petclinic-callers-addpet jk #1: green tokens=46284 turns=3 wall=21.4 cost=0.01247 
+2026-11-17T08:10:11 END 38 rc=0 22s wall=22.3 mono=22.3 mem_min_avail_mb=9328
+2026-11-17T08:10:11 RUN 39/180 cursor-composer load=0.32 :: --driver cursor --model composer-2.5 --effort default --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:10:43   ROW cursor/composer-2.5 gs-multi-module-rename-message jk-nograph #1: green tokens=69590 turns=4 wall=30.6 cost=0.0202 
+2026-11-17T08:10:43 END 39 rc=0 32s wall=32.1 mono=32.1 mem_min_avail_mb=9304
+2026-11-17T08:10:43 RUN 40/180 cursor-composer load=0.19 :: --driver cursor --model composer-2.5 --effort default --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:11:12   ROW cursor/composer-2.5 gs-multi-module-rename-message jk #1: green tokens=64673 turns=4 wall=28.4 cost=0.01747 
+2026-11-17T08:11:12 END 40 rc=0 29s wall=29.1 mono=29.1 mem_min_avail_mb=9298
+2026-11-17T08:11:12 RUN 41/180 cursor-composer load=0.12 :: --driver cursor --model composer-2.5 --effort default --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:11:51   ROW cursor/composer-2.5 gs-uploading-rename-loadasresource jk-nograph #1: green tokens=71215 turns=4 wall=37.9 cost=0.02074 
+2026-11-17T08:11:51 END 41 rc=0 39s wall=39.3 mono=39.3 mem_min_avail_mb=9293
+2026-11-17T08:11:51 RUN 42/180 cursor-composer load=0.13 :: --driver cursor --model composer-2.5 --effort default --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:12:15   ROW cursor/composer-2.5 gs-uploading-rename-loadasresource jk #1: green tokens=49523 turns=3 wall=22.8 cost=0.01377 
+2026-11-17T08:12:15 END 42 rc=0 23s wall=23.5 mono=23.5 mem_min_avail_mb=9287
+2026-11-17T08:12:15 RUN 43/180 cursor-grok-4.7 load=0.16 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:12:44   ROW cursor/grok-4.7-high petclinic-callers-addpet jk #1: green tokens=53129 turns=3 wall=26.6 cost=0.06663 
+2026-11-17T08:12:44 END 43 rc=0 29s wall=28.9 mono=28.9 mem_min_avail_mb=9303
+2026-11-17T08:12:44 RUN 44/180 cursor-grok-4.7 load=0.15 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:14:03   ROW cursor/grok-4.7-high petclinic-callers-addpet jk-nograph #1: green tokens=150406 turns=8 wall=78.4 cost=0.16597 
+2026-11-17T08:14:03 END 44 rc=0 79s wall=79.0 mono=79.0 mem_min_avail_mb=9307
+2026-11-17T08:14:03 RUN 45/180 cursor-grok-4.7 load=0.06 :: --driver cursor --model grok-4.7-high --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:14:29   ROW cursor/grok-4.7-high gs-multi-module-rename-message jk #1: green tokens=40674 turns=2 wall=25.6 cost=0.03679 
+2026-11-17T08:14:29 END 45 rc=0 27s wall=26.9 mono=26.9 mem_min_avail_mb=9297
+2026-11-17T08:14:29 RUN 46/180 cursor-grok-4.7 load=0.12 :: --driver cursor --model grok-4.7-high --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:18:53   ROW cursor/grok-4.7-high gs-multi-module-rename-message jk-nograph #1: green tokens=662644 turns=23 wall=263.1 cost=0.80632 
+2026-11-17T08:18:53 END 46 rc=0 264s wall=263.9 mono=263.9 mem_min_avail_mb=9018
+2026-11-17T08:18:53 RUN 47/180 cursor-grok-4.7 load=0.24 :: --driver cursor --model grok-4.7-high --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:19:27   ROW cursor/grok-4.7-high gs-uploading-rename-loadasresource jk #1: green tokens=40722 turns=2 wall=32.4 cost=0.05264 
+2026-11-17T08:19:27 END 47 rc=0 34s wall=34.0 mono=34.0 mem_min_avail_mb=9299
+2026-11-17T08:19:27 RUN 48/180 cursor-grok-4.7 load=0.25 :: --driver cursor --model grok-4.7-high --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:23:03   ROW cursor/grok-4.7-high gs-uploading-rename-loadasresource jk-nograph #1: green tokens=588882 turns=23 wall=214.2 cost=0.69548 
+2026-11-17T08:23:03 END 48 rc=0 215s wall=215.4 mono=215.4 mem_min_avail_mb=9291
+2026-11-17T08:23:03 RUN 49/180 agy-hydrogen load=0.07 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:23:36   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk-nograph #1: green tokens=110758 turns=7 wall=30.1 cost=0.09541 
+2026-11-17T08:23:36 END 49 rc=0 33s wall=33.4 mono=33.4 mem_min_avail_mb=9523
+2026-11-17T08:23:36 RUN 50/180 agy-hydrogen load=0.13 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:23:58   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk #1: green tokens=26363 turns=4 wall=20.9 cost=0.02973 
+2026-11-17T08:23:58 END 50 rc=0 22s wall=21.6 mono=21.6 mem_min_avail_mb=9552
+2026-11-17T08:23:58 RUN 51/180 agy-hydrogen load=0.17 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:25:08   ROW agy/gemini-4-hydrogen-medium gs-multi-module-rename-message jk-nograph #1: green tokens=125805 turns=11 wall=68.3 cost=0.08559 
+2026-11-17T08:25:08 END 51 rc=0 70s wall=69.8 mono=69.8 mem_min_avail_mb=9494
+2026-11-17T08:25:08 RUN 52/180 agy-hydrogen load=0.09 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:25:26   ROW agy/gemini-4-hydrogen-medium gs-multi-module-rename-message jk #1: green tokens=19765 turns=3 wall=18.3 cost=0.02497 
+2026-11-17T08:25:26 END 52 rc=0 19s wall=18.9 mono=18.9 mem_min_avail_mb=9550
+2026-11-17T08:25:26 RUN 53/180 agy-hydrogen load=0.06 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:26:09   ROW agy/gemini-4-hydrogen-medium gs-uploading-rename-loadasresource jk-nograph #1: green tokens=73519 turns=6 wall=41.1 cost=0.06082 
+2026-11-17T08:26:09 END 53 rc=0 42s wall=42.4 mono=42.4 mem_min_avail_mb=9513
+2026-11-17T08:26:09 RUN 54/180 agy-hydrogen load=0.03 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:26:23   ROW agy/gemini-4-hydrogen-medium gs-uploading-rename-loadasresource jk #1: green tokens=18834 turns=3 wall=13.9 cost=0.02384 
+2026-11-17T08:26:23 END 54 rc=0 14s wall=14.5 mono=14.5 mem_min_avail_mb=9553
+2026-11-17T08:26:23 RUN 55/180 muse-spark load=0.10 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:27:13   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk #1: green tokens=178384 turns=8 wall=47.3 cost=0.00368 
+2026-11-17T08:27:13 END 55 rc=0 50s wall=50.1 mono=50.1 mem_min_avail_mb=9600
+2026-11-17T08:27:13 RUN 56/180 muse-spark load=0.32 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:28:04   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk-nograph #1: green tokens=79056 turns=4 wall=49.6 cost=0.0024 
+2026-11-17T08:28:04 END 56 rc=0 50s wall=50.3 mono=50.3 mem_min_avail_mb=9596
+2026-11-17T08:28:04 RUN 57/180 muse-spark load=0.22 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:28:46   ROW muse/muse-spark-1.3-contributor gs-multi-module-rename-message jk #1: green tokens=79139 turns=4 wall=41.4 cost=0.00614 
+2026-11-17T08:28:46 END 57 rc=0 43s wall=42.7 mono=42.7 mem_min_avail_mb=9558
+2026-11-17T08:28:46 RUN 58/180 muse-spark load=0.14 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:29:52   ROW muse/muse-spark-1.3-contributor gs-multi-module-rename-message jk-nograph #1: green tokens=392673 turns=19 wall=65.3 cost=0.0037 
+2026-11-17T08:29:52 END 58 rc=0 66s wall=65.7 mono=65.7 mem_min_avail_mb=9584
+2026-11-17T08:29:52 RUN 59/180 muse-spark load=0.42 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:30:23   ROW muse/muse-spark-1.3-contributor gs-uploading-rename-loadasresource jk #1: green tokens=56717 turns=3 wall=29.9 cost=0.00393 
+2026-11-17T08:30:23 END 59 rc=0 31s wall=31.0 mono=31.0 mem_min_avail_mb=9167
+2026-11-17T08:30:23 RUN 60/180 muse-spark load=0.25 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:31:10   ROW muse/muse-spark-1.3-contributor gs-uploading-rename-loadasresource jk-nograph #1: green tokens=297194 turns=13 wall=46.4 cost=0.00353 
+2026-11-17T08:31:10 END 60 rc=0 47s wall=46.8 mono=46.8 mem_min_avail_mb=9590
+2026-11-17T08:31:10 RUN 61/180 sonnet-5-5 load=0.12 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:31:22   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk #2: green tokens=20655 turns=3 wall=11.4 cost=0.0151 
+2026-11-17T08:31:22 END 61 rc=0 12s wall=12.1 mono=12.1 mem_min_avail_mb=9550
+2026-11-17T08:31:22 RUN 62/180 sonnet-5-5 load=0.09 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:31:36   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk-nograph #2: green tokens=34988 turns=5 wall=13.8 cost=0.02659 
+2026-11-17T08:31:36 END 62 rc=0 14s wall=14.2 mono=14.2 mem_min_avail_mb=9555
+2026-11-17T08:31:36 RUN 63/180 sonnet-5-5 load=0.23 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:31:46   ROW claude-code/claude-sonnet-5-5 gs-multi-module-rename-message jk #2: green tokens=12896 turns=2 wall=9.3 cost=0.01075 
+2026-11-17T08:31:46 END 63 rc=0 10s wall=9.7 mono=9.7 mem_min_avail_mb=9618
+2026-11-17T08:31:46 RUN 64/180 sonnet-5-5 load=0.37 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:32:06   ROW claude-code/claude-sonnet-5-5 gs-multi-module-rename-message jk-nograph #2: green tokens=33868 turns=8 wall=19.2 cost=0.02876 
+2026-11-17T08:32:06 END 64 rc=0 20s wall=19.6 mono=19.6 mem_min_avail_mb=9565
+2026-11-17T08:32:06 RUN 65/180 sonnet-5-5 load=0.45 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:32:17   ROW claude-code/claude-sonnet-5-5 gs-uploading-rename-loadasresource jk #2: green tokens=13017 turns=2 wall=10.9 cost=0.01116 
+2026-11-17T08:32:17 END 65 rc=0 11s wall=11.3 mono=11.3 mem_min_avail_mb=9586
+2026-11-17T08:32:17 RUN 66/180 sonnet-5-5 load=0.94 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:32:34   ROW claude-code/claude-sonnet-5-5 gs-uploading-rename-loadasresource jk-nograph #2: green tokens=30245 turns=8 wall=16.3 cost=0.03298 
+2026-11-17T08:32:34 END 66 rc=0 17s wall=16.8 mono=16.8 mem_min_avail_mb=9558
+2026-11-17T08:32:34 RUN 67/180 opus-5-5 load=1.02 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:32:49   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk-nograph #2: green tokens=37643 turns=5 wall=14.9 cost=0.05673 
+2026-11-17T08:32:49 END 67 rc=0 16s wall=15.5 mono=15.5 mem_min_avail_mb=9561
+2026-11-17T08:32:49 RUN 68/180 opus-5-5 load=0.79 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:33:01   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk #2: green tokens=20745 turns=3 wall=11.3 cost=0.03171 
+2026-11-17T08:33:01 END 68 rc=0 12s wall=11.6 mono=11.6 mem_min_avail_mb=9577
+2026-11-17T08:33:01 RUN 69/180 opus-5-5 load=0.67 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:33:23   ROW claude-code/claude-opus-5-5 gs-multi-module-rename-message jk-nograph #2: green tokens=49825 turns=12 wall=21.4 cost=0.08877 
+2026-11-17T08:33:23 END 69 rc=0 22s wall=22.0 mono=22.0 mem_min_avail_mb=9546
+2026-11-17T08:33:23 RUN 70/180 opus-5-5 load=0.52 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:33:33   ROW claude-code/claude-opus-5-5 gs-multi-module-rename-message jk #2: green tokens=19689 turns=3 wall=9.9 cost=0.02545 
+2026-11-17T08:33:33 END 70 rc=0 10s wall=10.5 mono=10.5 mem_min_avail_mb=9581
+2026-11-17T08:33:33 RUN 71/180 opus-5-5 load=0.44 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:02   ROW claude-code/claude-opus-5-5 gs-uploading-rename-loadasresource jk-nograph #2: green tokens=52174 turns=14 wall=28.1 cost=0.10334 
+2026-11-17T08:34:02 END 71 rc=0 29s wall=28.5 mono=28.5 mem_min_avail_mb=9559
+2026-11-17T08:34:02 RUN 72/180 opus-5-5 load=0.27 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:11   ROW claude-code/claude-opus-5-5 gs-uploading-rename-loadasresource jk #2: green tokens=13001 turns=2 wall=9.0 cost=0.02234 
+2026-11-17T08:34:11 END 72 rc=0 9s wall=9.4 mono=9.4 mem_min_avail_mb=9651
+2026-11-17T08:34:11 RUN 73/180 codex-terra load=0.24 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:15   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #2: red tokens=None turns=1 wall=3.1 cost=None 
+2026-11-17T08:34:15 END 73 rc=0 4s wall=3.6 mono=3.6 mem_min_avail_mb=9711
+2026-11-17T08:34:15 RUN 74/180 codex-terra load=0.54 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:17   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk-nograph #2: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T08:34:17 END 74 rc=0 3s wall=2.7 mono=2.7 mem_min_avail_mb=9715
+2026-11-17T08:34:17 RUN 75/180 codex-terra load=0.66 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:26   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk #2: red tokens=None turns=1 wall=7.6 cost=None 
+2026-11-17T08:34:26 END 75 rc=0 9s wall=9.0 mono=9.0 mem_min_avail_mb=9675
+2026-11-17T08:34:26 RUN 76/180 codex-terra load=1.04 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:30   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk-nograph #2: red tokens=None turns=1 wall=2.8 cost=None 
+2026-11-17T08:34:30 END 76 rc=0 3s wall=3.5 mono=3.5 mem_min_avail_mb=9464
+2026-11-17T08:34:30 RUN 77/180 codex-terra load=1.04 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:33   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk #2: red tokens=None turns=1 wall=2.2 cost=None 
+2026-11-17T08:34:33 END 77 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9424
+2026-11-17T08:34:33 RUN 78/180 codex-terra load=0.96 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:36   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk-nograph #2: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T08:34:36 END 78 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=9330
+2026-11-17T08:34:36 RUN 79/180 codex-sol load=0.96 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:40   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk-nograph #2: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T08:34:40 END 79 rc=0 3s wall=3.1 mono=3.1 mem_min_avail_mb=9241
+2026-11-17T08:34:40 RUN 80/180 codex-sol load=0.96 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:42   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #2: red tokens=None turns=1 wall=2.3 cost=None 
+2026-11-17T08:34:42 END 80 rc=0 3s wall=2.6 mono=2.6 mem_min_avail_mb=9257
+2026-11-17T08:34:42 RUN 81/180 codex-sol load=0.88 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:45   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk-nograph #2: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T08:34:45 END 81 rc=0 3s wall=3.1 mono=3.1 mem_min_avail_mb=9366
+2026-11-17T08:34:45 RUN 82/180 codex-sol load=0.88 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:48   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk #2: red tokens=None turns=1 wall=2.2 cost=None 
+2026-11-17T08:34:48 END 82 rc=0 3s wall=2.9 mono=2.9 mem_min_avail_mb=9338
+2026-11-17T08:34:48 RUN 83/180 codex-sol load=0.81 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:51   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk-nograph #2: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T08:34:51 END 83 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9331
+2026-11-17T08:34:51 RUN 84/180 codex-sol load=0.81 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:34:55   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk #2: red tokens=None turns=1 wall=2.5 cost=None 
+2026-11-17T08:34:55 END 84 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9257
+2026-11-17T08:34:55 RUN 85/180 grok-4.7 load=0.83 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:35:09   ROW grok/grok-4.7 petclinic-callers-addpet jk #2: green tokens=33620 turns=4 wall=13.4 cost=0.05354 
+2026-11-17T08:35:09 END 85 rc=0 14s wall=14.0 mono=14.0 mem_min_avail_mb=9179
+2026-11-17T08:35:09 RUN 86/180 grok-4.7 load=0.72 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:36:21   ROW grok/grok-4.7 petclinic-callers-addpet jk-nograph #2: green tokens=173431 turns=14 wall=72.4 cost=0.18484 
+2026-11-17T08:36:21 END 86 rc=0 73s wall=72.8 mono=72.8 mem_min_avail_mb=9264
+2026-11-17T08:36:21 RUN 87/180 grok-4.7 load=0.36 :: --driver grok --model grok-4.7 --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:37:06   ROW grok/grok-4.7 gs-multi-module-rename-message jk #2: green tokens=35754 turns=4 wall=44.6 cost=0.0546 
+2026-11-17T08:37:06 END 87 rc=0 45s wall=45.2 mono=45.2 mem_min_avail_mb=9403
+2026-11-17T08:37:06 RUN 88/180 grok-4.7 load=0.38 :: --driver grok --model grok-4.7 --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:40:20   ROW grok/grok-4.7 gs-multi-module-rename-message jk-nograph #2: green tokens=429143 turns=21 wall=192.8 cost=0.39217 
+2026-11-17T08:40:20 END 88 rc=0 193s wall=193.4 mono=193.4 mem_min_avail_mb=9382
+2026-11-17T08:40:20 RUN 89/180 grok-4.7 load=0.07 :: --driver grok --model grok-4.7 --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:40:58   ROW grok/grok-4.7 gs-uploading-rename-loadasresource jk #2: green tokens=32716 turns=4 wall=38.0 cost=0.03871 
+2026-11-17T08:40:58 END 89 rc=0 38s wall=38.4 mono=38.4 mem_min_avail_mb=9400
+2026-11-17T08:40:58 RUN 90/180 grok-4.7 load=0.12 :: --driver grok --model grok-4.7 --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:42:16   ROW grok/grok-4.7 gs-uploading-rename-loadasresource jk-nograph #2: green tokens=184363 turns=15 wall=76.9 cost=0.20674 
+2026-11-17T08:42:16 END 90 rc=0 77s wall=77.4 mono=77.4 mem_min_avail_mb=9381
+2026-11-17T08:42:16 RUN 91/180 grok-4.5 load=0.09 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:44:00   ROW grok/grok-4.5 petclinic-callers-addpet jk-nograph #2: green tokens=191648 turns=19 wall=103.6 cost=0.11938 
+2026-11-17T08:44:00 END 91 rc=0 104s wall=104.2 mono=104.2 mem_min_avail_mb=7490
+2026-11-17T08:44:00 RUN 92/180 grok-4.5 load=3.84 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:44:09   ROW grok/grok-4.5 petclinic-callers-addpet jk #2: green tokens=28511 turns=4 wall=9.2 cost=0.02359 
+2026-11-17T08:44:09 END 92 rc=0 10s wall=9.5 mono=9.5 mem_min_avail_mb=9406
+2026-11-17T08:44:09 RUN 93/180 grok-4.5 load=3.25 :: --driver grok --model grok-4.5 --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:45:08   ROW grok/grok-4.5 gs-multi-module-rename-message jk-nograph #2: green tokens=213793 turns=17 wall=58.2 cost=0.15756 
+2026-11-17T08:45:08 END 93 rc=0 59s wall=58.6 mono=58.6 mem_min_avail_mb=9376
+2026-11-17T08:45:08 RUN 94/180 grok-4.5 load=1.23 :: --driver grok --model grok-4.5 --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:45:18   ROW grok/grok-4.5 gs-multi-module-rename-message jk #2: green tokens=22809 turns=3 wall=9.7 cost=0.02399 
+2026-11-17T08:45:18 END 94 rc=0 10s wall=10.1 mono=10.1 mem_min_avail_mb=9636
+2026-11-17T08:45:18 RUN 95/180 grok-4.5 load=1.04 :: --driver grok --model grok-4.5 --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:46:03   ROW grok/grok-4.5 gs-uploading-rename-loadasresource jk-nograph #2: green tokens=170727 turns=14 wall=44.2 cost=0.13143 
+2026-11-17T08:46:03 END 95 rc=0 45s wall=44.6 mono=44.6 mem_min_avail_mb=9610
+2026-11-17T08:46:03 RUN 96/180 grok-4.5 load=0.49 :: --driver grok --model grok-4.5 --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:46:10   ROW grok/grok-4.5 gs-uploading-rename-loadasresource jk #2: green tokens=20657 turns=3 wall=7.0 cost=0.03919 
+2026-11-17T08:46:10 END 96 rc=0 7s wall=7.3 mono=7.3 mem_min_avail_mb=9639
+2026-11-17T08:46:10 RUN 97/180 cursor-composer load=0.45 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:46:30   ROW cursor/composer-2.5 petclinic-callers-addpet jk #2: green tokens=46268 turns=3 wall=18.7 cost=0.01716 
+2026-11-17T08:46:30 END 97 rc=0 20s wall=19.6 mono=19.6 mem_min_avail_mb=9284
+2026-11-17T08:46:30 RUN 98/180 cursor-composer load=0.46 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:46:53   ROW cursor/composer-2.5 petclinic-callers-addpet jk-nograph #2: green tokens=101853 turns=7 wall=22.3 cost=0.02597 
+2026-11-17T08:46:53 END 98 rc=0 23s wall=23.0 mono=23.0 mem_min_avail_mb=9310
+2026-11-17T08:46:53 RUN 99/180 cursor-composer load=0.30 :: --driver cursor --model composer-2.5 --effort default --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:47:14   ROW cursor/composer-2.5 gs-multi-module-rename-message jk #2: green tokens=96139 turns=6 wall=20.9 cost=0.02454 
+2026-11-17T08:47:14 END 99 rc=0 22s wall=21.6 mono=21.6 mem_min_avail_mb=9327
+2026-11-17T08:47:14 RUN 100/180 cursor-composer load=0.22 :: --driver cursor --model composer-2.5 --effort default --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:47:40   ROW cursor/composer-2.5 gs-multi-module-rename-message jk-nograph #2: green tokens=68422 turns=4 wall=24.7 cost=0.02345 
+2026-11-17T08:47:40 END 100 rc=0 25s wall=25.4 mono=25.4 mem_min_avail_mb=9289
+2026-11-17T08:47:40 RUN 101/180 cursor-composer load=0.14 :: --driver cursor --model composer-2.5 --effort default --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:48:04   ROW cursor/composer-2.5 gs-uploading-rename-loadasresource jk #2: green tokens=112434 turns=7 wall=23.2 cost=0.02924 
+2026-11-17T08:48:04 END 101 rc=0 24s wall=23.8 mono=23.8 mem_min_avail_mb=9312
+2026-11-17T08:48:04 RUN 102/180 cursor-composer load=0.09 :: --driver cursor --model composer-2.5 --effort default --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:48:24   ROW cursor/composer-2.5 gs-uploading-rename-loadasresource jk-nograph #2: green tokens=65993 turns=4 wall=19.8 cost=0.01869 
+2026-11-17T08:48:24 END 102 rc=0 20s wall=20.5 mono=20.5 mem_min_avail_mb=9316
+2026-11-17T08:48:24 RUN 103/180 cursor-grok-4.7 load=0.29 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:49:30   ROW cursor/grok-4.7-high petclinic-callers-addpet jk-nograph #2: green tokens=188145 turns=10 wall=65.6 cost=0.22167 
+2026-11-17T08:49:30 END 103 rc=0 66s wall=66.2 mono=66.2 mem_min_avail_mb=9318
+2026-11-17T08:49:30 RUN 104/180 cursor-grok-4.7 load=0.18 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:49:53   ROW cursor/grok-4.7-high petclinic-callers-addpet jk #2: green tokens=52562 turns=3 wall=22.0 cost=0.05015 
+2026-11-17T08:49:53 END 104 rc=0 23s wall=22.8 mono=22.8 mem_min_avail_mb=9328
+2026-11-17T08:49:53 RUN 105/180 cursor-grok-4.7 load=0.17 :: --driver cursor --model grok-4.7-high --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:53:59   ROW cursor/grok-4.7-high gs-multi-module-rename-message jk-nograph #2: green tokens=717150 turns=26 wall=245.2 cost=0.79028 
+2026-11-17T08:53:59 END 105 rc=0 246s wall=245.9 mono=245.9 mem_min_avail_mb=9322
+2026-11-17T08:53:59 RUN 106/180 cursor-grok-4.7 load=0.27 :: --driver cursor --model grok-4.7-high --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:54:25   ROW cursor/grok-4.7-high gs-multi-module-rename-message jk #2: green tokens=54879 turns=3 wall=25.4 cost=0.04441 
+2026-11-17T08:54:25 END 106 rc=0 26s wall=26.1 mono=26.1 mem_min_avail_mb=9330
+2026-11-17T08:54:25 RUN 107/180 cursor-grok-4.7 load=0.25 :: --driver cursor --model grok-4.7-high --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:59:18   ROW cursor/grok-4.7-high gs-uploading-rename-loadasresource jk-nograph #2: green tokens=847327 turns=28 wall=292.1 cost=0.78103 
+2026-11-17T08:59:18 END 107 rc=0 293s wall=292.9 mono=292.9 mem_min_avail_mb=9123
+2026-11-17T08:59:18 RUN 108/180 cursor-grok-4.7 load=0.13 :: --driver cursor --model grok-4.7-high --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T08:59:48   ROW cursor/grok-4.7-high gs-uploading-rename-loadasresource jk #2: green tokens=40486 turns=2 wall=28.9 cost=0.0355 
+2026-11-17T08:59:48 END 108 rc=0 30s wall=29.7 mono=29.7 mem_min_avail_mb=9069
+2026-11-17T08:59:48 RUN 109/180 agy-hydrogen load=0.08 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:00:06   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk #2: green tokens=24813 turns=4 wall=17.1 cost=0.02724 
+2026-11-17T09:00:06 END 109 rc=0 18s wall=18.3 mono=18.3 mem_min_avail_mb=9391
+2026-11-17T09:00:06 RUN 110/180 agy-hydrogen load=0.14 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:00:34   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk-nograph #2: green tokens=116542 turns=7 wall=27.2 cost=0.07275 
+2026-11-17T09:00:34 END 110 rc=0 28s wall=27.8 mono=27.8 mem_min_avail_mb=9366
+2026-11-17T09:00:34 RUN 111/180 agy-hydrogen load=0.19 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:00:49   ROW agy/gemini-4-hydrogen-medium gs-multi-module-rename-message jk #2: green tokens=18653 turns=3 wall=14.0 cost=0.02227 
+2026-11-17T09:00:49 END 111 rc=0 15s wall=14.9 mono=14.9 mem_min_avail_mb=9406
+2026-11-17T09:00:49 RUN 112/180 agy-hydrogen load=0.23 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:01:45   ROW agy/gemini-4-hydrogen-medium gs-multi-module-rename-message jk-nograph #2: green tokens=61901 turns=7 wall=55.3 cost=0.0632 
+2026-11-17T09:01:45 END 112 rc=0 56s wall=56.2 mono=56.2 mem_min_avail_mb=9350
+2026-11-17T09:01:45 RUN 113/180 agy-hydrogen load=0.21 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:02:03   ROW agy/gemini-4-hydrogen-medium gs-uploading-rename-loadasresource jk #2: green tokens=19401 turns=3 wall=17.7 cost=0.02509 
+2026-11-17T09:02:03 END 113 rc=0 19s wall=18.5 mono=18.5 mem_min_avail_mb=9379
+2026-11-17T09:02:03 RUN 114/180 agy-hydrogen load=0.30 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:02:53   ROW agy/gemini-4-hydrogen-medium gs-uploading-rename-loadasresource jk-nograph #2: green tokens=116425 turns=9 wall=48.5 cost=0.07651 
+2026-11-17T09:02:53 END 114 rc=0 49s wall=49.2 mono=49.2 mem_min_avail_mb=9336
+2026-11-17T09:02:53 RUN 115/180 muse-spark load=0.22 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:04:57   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk-nograph #2: green tokens=149308 turns=7 wall=123.4 cost=0.00308 
+2026-11-17T09:04:57 END 115 rc=0 124s wall=124.1 mono=124.1 mem_min_avail_mb=9434
+2026-11-17T09:04:57 RUN 116/180 muse-spark load=0.17 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:06:26   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk #2: green tokens=78180 turns=4 wall=88.7 cost=0.00253 
+2026-11-17T09:06:26 END 116 rc=0 89s wall=89.2 mono=89.2 mem_min_avail_mb=9448
+2026-11-17T09:06:26 RUN 117/180 muse-spark load=0.16 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:08:10   ROW muse/muse-spark-1.3-contributor gs-multi-module-rename-message jk-nograph #2: green tokens=495528 turns=23 wall=103.3 cost=0.00423 
+2026-11-17T09:08:10 END 117 rc=0 104s wall=103.9 mono=103.9 mem_min_avail_mb=9410
+2026-11-17T09:08:10 RUN 118/180 muse-spark load=0.31 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:08:47   ROW muse/muse-spark-1.3-contributor gs-multi-module-rename-message jk #2: green tokens=75215 turns=4 wall=36.4 cost=0.00401 
+2026-11-17T09:08:47 END 118 rc=0 37s wall=37.0 mono=37.0 mem_min_avail_mb=9432
+2026-11-17T09:08:47 RUN 119/180 muse-spark load=0.23 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:10:09   ROW muse/muse-spark-1.3-contributor gs-uploading-rename-loadasresource jk-nograph #2: green tokens=342656 turns=15 wall=81.7 cost=0.00368 
+2026-11-17T09:10:09 END 119 rc=0 83s wall=82.6 mono=82.6 mem_min_avail_mb=9444
+2026-11-17T09:10:09 RUN 120/180 muse-spark load=0.09 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:10:40   ROW muse/muse-spark-1.3-contributor gs-uploading-rename-loadasresource jk #2: green tokens=57219 turns=3 wall=30.2 cost=0.00221 
+2026-11-17T09:10:40 END 120 rc=0 31s wall=30.6 mono=30.6 mem_min_avail_mb=9620
+2026-11-17T09:10:40 RUN 121/180 sonnet-5-5 load=0.14 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:10:58   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk-nograph #3: green tokens=35822 turns=6 wall=17.5 cost=0.0296 
+2026-11-17T09:10:58 END 121 rc=0 18s wall=18.2 mono=18.2 mem_min_avail_mb=9585
+2026-11-17T09:10:58 RUN 122/180 sonnet-5-5 load=0.10 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:11:10   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk #3: green tokens=20586 turns=3 wall=11.5 cost=0.01478 
+2026-11-17T09:11:10 END 122 rc=0 12s wall=11.9 mono=11.9 mem_min_avail_mb=9604
+2026-11-17T09:11:10 RUN 123/180 sonnet-5-5 load=0.08 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:11:26   ROW claude-code/claude-sonnet-5-5 gs-multi-module-rename-message jk-nograph #3: green tokens=20404 turns=7 wall=15.4 cost=0.0267 
+2026-11-17T09:11:26 END 123 rc=0 16s wall=15.9 mono=15.9 mem_min_avail_mb=9561
+2026-11-17T09:11:26 RUN 124/180 sonnet-5-5 load=0.06 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:11:36   ROW claude-code/claude-sonnet-5-5 gs-multi-module-rename-message jk #3: green tokens=12896 turns=2 wall=9.4 cost=0.01075 
+2026-11-17T09:11:36 END 124 rc=0 10s wall=9.8 mono=9.8 mem_min_avail_mb=9650
+2026-11-17T09:11:36 RUN 125/180 sonnet-5-5 load=0.05 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:11:52   ROW claude-code/claude-sonnet-5-5 gs-uploading-rename-loadasresource jk-nograph #3: green tokens=21805 turns=8 wall=16.3 cost=0.03184 
+2026-11-17T09:11:52 END 125 rc=0 17s wall=16.7 mono=16.7 mem_min_avail_mb=9562
+2026-11-17T09:11:52 RUN 126/180 sonnet-5-5 load=0.04 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:12:03   ROW claude-code/claude-sonnet-5-5 gs-uploading-rename-loadasresource jk #3: green tokens=13017 turns=2 wall=10.1 cost=0.01116 
+2026-11-17T09:12:03 END 126 rc=0 10s wall=10.5 mono=10.5 mem_min_avail_mb=9571
+2026-11-17T09:12:03 RUN 127/180 opus-5-5 load=0.27 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:12:16   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk #3: green tokens=28323 turns=4 wall=12.7 cost=0.03747 
+2026-11-17T09:12:16 END 127 rc=0 13s wall=13.3 mono=13.3 mem_min_avail_mb=9596
+2026-11-17T09:12:16 RUN 128/180 opus-5-5 load=0.35 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:12:30   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk-nograph #3: green tokens=29300 turns=5 wall=13.6 cost=0.0553 
+2026-11-17T09:12:30 END 128 rc=0 14s wall=14.0 mono=14.0 mem_min_avail_mb=9588
+2026-11-17T09:12:30 RUN 129/180 opus-5-5 load=0.27 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:12:42   ROW claude-code/claude-opus-5-5 gs-multi-module-rename-message jk #3: green tokens=13136 turns=2 wall=10.8 cost=0.02663 
+2026-11-17T09:12:42 END 129 rc=0 11s wall=11.5 mono=11.5 mem_min_avail_mb=9586
+2026-11-17T09:12:42 RUN 130/180 opus-5-5 load=0.39 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:03   ROW claude-code/claude-opus-5-5 gs-multi-module-rename-message jk-nograph #3: green tokens=49897 turns=12 wall=21.2 cost=0.08906 
+2026-11-17T09:13:03 END 130 rc=0 22s wall=21.7 mono=21.7 mem_min_avail_mb=9558
+2026-11-17T09:13:03 RUN 131/180 opus-5-5 load=0.26 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:13   ROW claude-code/claude-opus-5-5 gs-uploading-rename-loadasresource jk #3: green tokens=13001 turns=2 wall=9.3 cost=0.02234 
+2026-11-17T09:13:13 END 131 rc=0 10s wall=9.7 mono=9.7 mem_min_avail_mb=9643
+2026-11-17T09:13:13 RUN 132/180 opus-5-5 load=0.24 :: --driver claude-code --model claude-opus-5-5 --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:41   ROW claude-code/claude-opus-5-5 gs-uploading-rename-loadasresource jk-nograph #3: green tokens=52459 turns=14 wall=28.0 cost=0.10531 
+2026-11-17T09:13:41 END 132 rc=0 28s wall=28.4 mono=28.4 mem_min_avail_mb=9560
+2026-11-17T09:13:41 RUN 133/180 codex-terra load=0.25 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:46   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk-nograph #3: red tokens=None turns=1 wall=3.4 cost=None 
+2026-11-17T09:13:46 END 133 rc=0 4s wall=4.2 mono=4.2 mem_min_avail_mb=9716
+2026-11-17T09:13:46 RUN 134/180 codex-terra load=0.39 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:48   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #3: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T09:13:48 END 134 rc=0 3s wall=2.8 mono=2.8 mem_min_avail_mb=9725
+2026-11-17T09:13:48 RUN 135/180 codex-terra load=0.44 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:53   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk-nograph #3: red tokens=None turns=1 wall=3.1 cost=None 
+2026-11-17T09:13:53 END 135 rc=0 5s wall=4.6 mono=4.6 mem_min_avail_mb=9735
+2026-11-17T09:13:53 RUN 136/180 codex-terra load=0.44 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:13:56   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk #3: red tokens=None turns=1 wall=2.5 cost=None 
+2026-11-17T09:13:56 END 136 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=9470
+2026-11-17T09:13:56 RUN 137/180 codex-terra load=0.96 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:00   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk-nograph #3: red tokens=None turns=1 wall=2.5 cost=None 
+2026-11-17T09:14:00 END 137 rc=0 4s wall=3.6 mono=3.6 mem_min_avail_mb=9463
+2026-11-17T09:14:00 RUN 138/180 codex-terra load=0.97 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:03   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk #3: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T09:14:03 END 138 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=9348
+2026-11-17T09:14:03 RUN 139/180 codex-sol load=1.05 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:07   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #3: red tokens=None turns=1 wall=3.4 cost=None 
+2026-11-17T09:14:07 END 139 rc=0 4s wall=4.0 mono=4.0 mem_min_avail_mb=9280
+2026-11-17T09:14:07 RUN 140/180 codex-sol load=1.05 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:10   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk-nograph #3: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T09:14:10 END 140 rc=0 3s wall=2.9 mono=2.9 mem_min_avail_mb=9282
+2026-11-17T09:14:10 RUN 141/180 codex-sol load=1.13 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:13   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk #3: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T09:14:13 END 141 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9400
+2026-11-17T09:14:13 RUN 142/180 codex-sol load=1.12 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:16   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk-nograph #3: red tokens=None turns=1 wall=2.4 cost=None 
+2026-11-17T09:14:16 END 142 rc=0 3s wall=3.2 mono=3.2 mem_min_avail_mb=9346
+2026-11-17T09:14:16 RUN 143/180 codex-sol load=1.12 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:20   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk #3: red tokens=None turns=1 wall=2.6 cost=None 
+2026-11-17T09:14:20 END 143 rc=0 3s wall=3.3 mono=3.3 mem_min_avail_mb=9363
+2026-11-17T09:14:20 RUN 144/180 codex-sol load=1.03 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:14:23   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk-nograph #3: red tokens=None turns=1 wall=2.7 cost=None 
+2026-11-17T09:14:23 END 144 rc=0 4s wall=3.6 mono=3.6 mem_min_avail_mb=9275
+2026-11-17T09:14:23 RUN 145/180 grok-4.7 load=1.02 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:15:33   ROW grok/grok-4.7 petclinic-callers-addpet jk-nograph #3: green tokens=182567 turns=14 wall=69.3 cost=0.24918 
+2026-11-17T09:15:33 END 145 rc=0 70s wall=70.1 mono=70.1 mem_min_avail_mb=9210
+2026-11-17T09:15:33 RUN 146/180 grok-4.7 load=0.32 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:15:48   ROW grok/grok-4.7 petclinic-callers-addpet jk #3: green tokens=32867 turns=4 wall=14.0 cost=0.05733 
+2026-11-17T09:15:48 END 146 rc=0 15s wall=14.5 mono=14.5 mem_min_avail_mb=9419
+2026-11-17T09:15:48 RUN 147/180 grok-4.7 load=0.27 :: --driver grok --model grok-4.7 --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:19:07   ROW grok/grok-4.7 gs-multi-module-rename-message jk-nograph #3: green tokens=498406 turns=24 wall=198.4 cost=0.53322 
+2026-11-17T09:19:07 END 147 rc=0 199s wall=199.1 mono=199.1 mem_min_avail_mb=9391
+2026-11-17T09:19:07 RUN 148/180 grok-4.7 load=0.14 :: --driver grok --model grok-4.7 --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:19:20   ROW grok/grok-4.7 gs-multi-module-rename-message jk #3: green tokens=34736 turns=4 wall=12.8 cost=0.0507 
+2026-11-17T09:19:20 END 148 rc=0 13s wall=13.2 mono=13.2 mem_min_avail_mb=9406
+2026-11-17T09:19:20 RUN 149/180 grok-4.7 load=0.34 :: --driver grok --model grok-4.7 --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:20:41   ROW grok/grok-4.7 gs-uploading-rename-loadasresource jk-nograph #3: green tokens=202541 turns=13 wall=80.6 cost=0.22351 
+2026-11-17T09:20:41 END 149 rc=0 81s wall=81.1 mono=81.1 mem_min_avail_mb=9366
+2026-11-17T09:20:41 RUN 150/180 grok-4.7 load=0.33 :: --driver grok --model grok-4.7 --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:20:54   ROW grok/grok-4.7 gs-uploading-rename-loadasresource jk #3: green tokens=31932 turns=4 wall=12.3 cost=0.03538 
+2026-11-17T09:20:54 END 150 rc=0 13s wall=12.6 mono=12.6 mem_min_avail_mb=9386
+2026-11-17T09:20:54 RUN 151/180 grok-4.5 load=0.26 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:21:05   ROW grok/grok-4.5 petclinic-callers-addpet jk #3: green tokens=29528 turns=4 wall=10.1 cost=0.03788 
+2026-11-17T09:21:05 END 151 rc=0 11s wall=10.7 mono=10.7 mem_min_avail_mb=9390
+2026-11-17T09:21:05 RUN 152/180 grok-4.5 load=0.22 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:21:41   ROW grok/grok-4.5 petclinic-callers-addpet jk-nograph #3: green tokens=140025 turns=15 wall=35.6 cost=0.09176 
+2026-11-17T09:21:41 END 152 rc=0 36s wall=36.0 mono=36.0 mem_min_avail_mb=9387
+2026-11-17T09:21:41 RUN 153/180 grok-4.5 load=0.12 :: --driver grok --model grok-4.5 --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:21:49   ROW grok/grok-4.5 gs-multi-module-rename-message jk #3: green tokens=21937 turns=3 wall=8.1 cost=0.0226 
+2026-11-17T09:21:49 END 153 rc=0 9s wall=8.7 mono=8.7 mem_min_avail_mb=9422
+2026-11-17T09:21:49 RUN 154/180 grok-4.5 load=0.10 :: --driver grok --model grok-4.5 --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:23:24   ROW grok/grok-4.5 gs-multi-module-rename-message jk-nograph #3: green tokens=338074 turns=23 wall=93.7 cost=0.21582 
+2026-11-17T09:23:24 END 154 rc=0 94s wall=94.2 mono=94.2 mem_min_avail_mb=9145
+2026-11-17T09:23:24 RUN 155/180 grok-4.5 load=0.46 :: --driver grok --model grok-4.5 --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:23:32   ROW grok/grok-4.5 gs-uploading-rename-loadasresource jk #3: green tokens=22975 turns=3 wall=8.2 cost=0.0308 
+2026-11-17T09:23:32 END 155 rc=0 9s wall=8.7 mono=8.7 mem_min_avail_mb=9153
+2026-11-17T09:23:32 RUN 156/180 grok-4.5 load=0.58 :: --driver grok --model grok-4.5 --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:24:19   ROW grok/grok-4.5 gs-uploading-rename-loadasresource jk-nograph #3: green tokens=164056 turns=14 wall=46.2 cost=0.10341 
+2026-11-17T09:24:19 END 156 rc=0 47s wall=46.6 mono=46.6 mem_min_avail_mb=8700
+2026-11-17T09:24:19 RUN 157/180 cursor-composer load=0.57 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:24:43   ROW cursor/composer-2.5 petclinic-callers-addpet jk-nograph #3: green tokens=89435 turns=6 wall=22.7 cost=0.0228 
+2026-11-17T09:24:43 END 157 rc=0 24s wall=23.8 mono=23.8 mem_min_avail_mb=9115
+2026-11-17T09:24:43 RUN 158/180 cursor-composer load=0.48 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:25:01   ROW cursor/composer-2.5 petclinic-callers-addpet jk #3: green tokens=46336 turns=3 wall=17.8 cost=0.0125 
+2026-11-17T09:25:01 END 158 rc=0 18s wall=18.4 mono=18.4 mem_min_avail_mb=9169
+2026-11-17T09:25:01 RUN 159/180 cursor-composer load=0.49 :: --driver cursor --model composer-2.5 --effort default --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:25:25   ROW cursor/composer-2.5 gs-multi-module-rename-message jk-nograph #3: green tokens=76832 turns=5 wall=23.3 cost=0.02102 
+2026-11-17T09:25:25 END 159 rc=0 24s wall=24.0 mono=24.0 mem_min_avail_mb=9144
+2026-11-17T09:25:25 RUN 160/180 cursor-composer load=0.56 :: --driver cursor --model composer-2.5 --effort default --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:26:13   ROW cursor/composer-2.5 gs-multi-module-rename-message jk #3: green tokens=64994 turns=4 wall=47.2 cost=0.02006 
+2026-11-17T09:26:13 END 160 rc=0 48s wall=47.9 mono=47.9 mem_min_avail_mb=9134
+2026-11-17T09:26:13 RUN 161/180 cursor-composer load=0.30 :: --driver cursor --model composer-2.5 --effort default --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:26:37   ROW cursor/composer-2.5 gs-uploading-rename-loadasresource jk-nograph #3: green tokens=87067 turns=5 wall=22.8 cost=0.02752 
+2026-11-17T09:26:37 END 161 rc=0 24s wall=23.6 mono=23.6 mem_min_avail_mb=9137
+2026-11-17T09:26:37 RUN 162/180 cursor-composer load=0.26 :: --driver cursor --model composer-2.5 --effort default --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:26:59   ROW cursor/composer-2.5 gs-uploading-rename-loadasresource jk #3: green tokens=34383 turns=2 wall=21.5 cost=0.00989 
+2026-11-17T09:26:59 END 162 rc=0 22s wall=22.1 mono=22.1 mem_min_avail_mb=9144
+2026-11-17T09:26:59 RUN 163/180 cursor-grok-4.7 load=0.29 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:27:25   ROW cursor/grok-4.7-high petclinic-callers-addpet jk #3: green tokens=53179 turns=3 wall=25.2 cost=0.06139 
+2026-11-17T09:27:25 END 163 rc=0 26s wall=26.1 mono=26.1 mem_min_avail_mb=9129
+2026-11-17T09:27:25 RUN 164/180 cursor-grok-4.7 load=0.19 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:28:23   ROW cursor/grok-4.7-high petclinic-callers-addpet jk-nograph #3: green tokens=150097 turns=8 wall=57.5 cost=0.13255 
+2026-11-17T09:28:23 END 164 rc=0 58s wall=58.2 mono=58.2 mem_min_avail_mb=9123
+2026-11-17T09:28:23 RUN 165/180 cursor-grok-4.7 load=0.08 :: --driver cursor --model grok-4.7-high --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:28:51   ROW cursor/grok-4.7-high gs-multi-module-rename-message jk #3: green tokens=55113 turns=3 wall=27.0 cost=0.04488 
+2026-11-17T09:28:51 END 165 rc=0 28s wall=27.8 mono=27.8 mem_min_avail_mb=9157
+2026-11-17T09:28:51 RUN 166/180 cursor-grok-4.7 load=0.26 :: --driver cursor --model grok-4.7-high --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:29:35   ROW cursor/grok-4.7-high gs-multi-module-rename-message jk-nograph #3: green tokens=108997 turns=6 wall=43.6 cost=0.12589 
+2026-11-17T09:29:35 END 166 rc=0 44s wall=44.3 mono=44.3 mem_min_avail_mb=9111
+2026-11-17T09:29:35 RUN 167/180 cursor-grok-4.7 load=0.24 :: --driver cursor --model grok-4.7-high --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:30:00   ROW cursor/grok-4.7-high gs-uploading-rename-loadasresource jk #3: green tokens=39254 turns=2 wall=24.1 cost=0.03442 
+2026-11-17T09:30:00 END 167 rc=0 25s wall=24.8 mono=24.8 mem_min_avail_mb=9155
+2026-11-17T09:30:00 RUN 168/180 cursor-grok-4.7 load=0.15 :: --driver cursor --model grok-4.7-high --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:33:37   ROW cursor/grok-4.7-high gs-uploading-rename-loadasresource jk-nograph #3: green tokens=814184 turns=29 wall=215.6 cost=0.67796 
+2026-11-17T09:33:37 END 168 rc=0 217s wall=216.6 mono=216.6 mem_min_avail_mb=9124
+2026-11-17T09:33:37 RUN 169/180 agy-hydrogen load=0.37 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:34:05   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk-nograph #3: green tokens=101351 turns=6 wall=27.5 cost=0.06453 
+2026-11-17T09:34:05 END 169 rc=0 29s wall=28.7 mono=28.7 mem_min_avail_mb=9530
+2026-11-17T09:34:05 RUN 170/180 agy-hydrogen load=0.27 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:34:22   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk #3: green tokens=24528 turns=4 wall=16.2 cost=0.02555 
+2026-11-17T09:34:22 END 170 rc=0 17s wall=16.8 mono=16.8 mem_min_avail_mb=9542
+2026-11-17T09:34:22 RUN 171/180 agy-hydrogen load=0.28 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:35:06   ROW agy/gemini-4-hydrogen-medium gs-multi-module-rename-message jk-nograph #3: green tokens=72916 turns=8 wall=43.3 cost=0.05816 
+2026-11-17T09:35:06 END 171 rc=0 44s wall=44.0 mono=44.0 mem_min_avail_mb=9495
+2026-11-17T09:35:06 RUN 172/180 agy-hydrogen load=0.18 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:35:21   ROW agy/gemini-4-hydrogen-medium gs-multi-module-rename-message jk #3: green tokens=19558 turns=3 wall=14.8 cost=0.02423 
+2026-11-17T09:35:21 END 172 rc=0 15s wall=15.4 mono=15.4 mem_min_avail_mb=9517
+2026-11-17T09:35:21 RUN 173/180 agy-hydrogen load=0.14 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:36:26   ROW agy/gemini-4-hydrogen-medium gs-uploading-rename-loadasresource jk-nograph #3: green tokens=149624 turns=11 wall=63.5 cost=0.0838 
+2026-11-17T09:36:26 END 173 rc=0 64s wall=64.1 mono=64.1 mem_min_avail_mb=9367
+2026-11-17T09:36:26 RUN 174/180 agy-hydrogen load=0.69 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:36:46   ROW agy/gemini-4-hydrogen-medium gs-uploading-rename-loadasresource jk #3: green tokens=26515 turns=4 wall=20.3 cost=0.02872 
+2026-11-17T09:36:46 END 174 rc=0 21s wall=20.9 mono=20.9 mem_min_avail_mb=9533
+2026-11-17T09:36:46 RUN 175/180 muse-spark load=0.49 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:38:58   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk #3: green tokens=128259 turns=6 wall=131.3 cost=0.00343 
+2026-11-17T09:38:58 END 175 rc=0 132s wall=131.9 mono=131.9 mem_min_avail_mb=9642
+2026-11-17T09:38:58 RUN 176/180 muse-spark load=0.21 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:39:43   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk-nograph #3: green tokens=80394 turns=4 wall=43.9 cost=0.00254 
+2026-11-17T09:39:43 END 176 rc=0 44s wall=44.4 mono=44.4 mem_min_avail_mb=9638
+2026-11-17T09:39:43 RUN 177/180 muse-spark load=0.14 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:40:13   ROW muse/muse-spark-1.3-contributor gs-multi-module-rename-message jk #3: green tokens=74878 turns=4 wall=29.6 cost=0.00394 
+2026-11-17T09:40:13 END 177 rc=0 30s wall=30.4 mono=30.4 mem_min_avail_mb=9505
+2026-11-17T09:40:13 RUN 178/180 muse-spark load=0.14 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:41:29   ROW muse/muse-spark-1.3-contributor gs-multi-module-rename-message jk-nograph #3: green tokens=458313 turns=21 wall=74.9 cost=0.0041 
+2026-11-17T09:41:29 END 178 rc=0 75s wall=75.4 mono=75.4 mem_min_avail_mb=9352
+2026-11-17T09:41:29 RUN 179/180 muse-spark load=0.48 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:42:16   ROW muse/muse-spark-1.3-contributor gs-uploading-rename-loadasresource jk #3: green tokens=77359 turns=4 wall=46.8 cost=0.00412 
+2026-11-17T09:42:16 END 179 rc=0 48s wall=47.6 mono=47.6 mem_min_avail_mb=9599
+2026-11-17T09:42:16 RUN 180/180 muse-spark load=0.24 :: --driver muse --model muse-spark-1.3-contributor --effort high --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1/out
+2026-11-17T09:42:58   ROW muse/muse-spark-1.3-contributor gs-uploading-rename-loadasresource jk-nograph #3: green tokens=321754 turns=14 wall=41.3 cost=0.00367 
+2026-11-17T09:42:58 END 180 rc=0 42s wall=41.7 mono=41.7 mem_min_avail_mb=9615
+2026-11-17T09:42:58 DONE
