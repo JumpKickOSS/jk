@@ -4,6 +4,24 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
+## 0.52.0
+
+- **Breaking: tests run in en-US and UTC wherever they run.** Your shell's locale and time zone no
+  longer change a test's result. Name others with `[test] locale` and `[test] timezone`, or set
+  either to `"inherit"` to run in the caller's.
+- **Breaking: `jdk` is a table, and cached results follow the Java level.** Write
+  `jdk = { vendor, version, required }`; `jdk-vendor`, `jdk-version` and the string forms are refused
+  with the table to write. `[cache] jdk-match` takes `level`, `major` (the default) or `build`.
+- **Breaking: a stale lock that cannot be refreshed stops the build**, naming why; run `jk lock`
+  where your repositories are reachable. Rule packs are locked with source and checksum, and
+  `jk image` refuses a base older than your `java` (new templates write none).
+- **One root builds every workspace in a repository, and renames go further.** List them in
+  `[workspaces] members`. `jk graph rename` renames fields, classes and packages, and the graph links
+  routes, SQL columns, config keys and environment variables to the code that uses them.
+- **JumpKick for Windows is signed and works with WSL.** `jk.exe` is Authenticode-signed, so Smart
+  App Control runs it. Its dashboard reaches every WSL engine, `jk self setup-wsl` installs JumpKick
+  in the distros you pick, and `jk self setup-windows` installs it on Windows from a distro.
+
 ## 0.51.1
 
 - **The second build after a fresh checkout does nothing.** Cache keys no longer move under the
