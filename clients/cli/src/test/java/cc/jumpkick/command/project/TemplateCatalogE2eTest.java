@@ -36,17 +36,18 @@ import org.junit.jupiter.api.io.TempDir;
  * scaffolded with {@code jk new -t <path>}, and every template a first-party plugin jar bundles (the
  * trees under {@code plugins/<plugin>/src/main/resources/templates/}) with {@code jk new -t <id>}
  * through the jar this build produced, once per answer vector of the new-project corpus, and the
- * project it writes passes {@code jk build}, {@code jk test} and {@code jk guard} with no edits — the
- * contract the catalog's README promises. The vectors are the corpus's ({@link AnswerVectors}, the
- * ones {@code NewProjectCorpusTest} snapshots): the defaults, then a pairwise set in which every
+ * project it writes passes {@code jk format -c}, {@code jk build}, {@code jk test} and {@code jk
+ * guard} with no edits — the contract the catalog's README promises. The vectors are the corpus's
+ * ({@link AnswerVectors}, the ones {@code NewProjectCorpusTest} snapshots): the defaults, then a
+ * pairwise set in which every
  * layout the template declares and every option it asks appears, so a binding only a non-default
  * answer reaches is built too, and an option added to a template is built as soon as it is asked.
  * A plugin template builds against the SDK this checkout publishes, and its jar is checked for a
  * plugin's shape. A template that asks for a native binary is also linked with {@code jk native},
  * once, where a GraalVM is available ({@code GRAALVM_HOME} with {@code native-image}); elsewhere
- * that test is skipped by assumption. An Android template is scaffolded everywhere but built only
- * where an Android SDK with accepted licenses is installed: the test never accepts them for the
- * machine ({@code jk android licenses --yes} is the user's call), so elsewhere it is skipped by
+ * that test is skipped by assumption. An Android template is scaffolded and format-checked
+ * everywhere, built only where an Android SDK with accepted licenses is installed: the test never
+ * accepts them for the machine ({@code jk android licenses --yes} is the user's call), so elsewhere it is skipped by
  * assumption. A template that stops compiling, fails NullAway or its own rule pack, or ships a red
  * sample test fails here under its own id and vector, with the command's console.
  *
@@ -74,6 +75,21 @@ class TemplateCatalogE2eTest {
      * silently. Delete an entry when its defect is fixed, and the template's vectors build again.
      */
     private static final Map<String, String> KNOWN_DEFECTS = Map.of();
+
+    /** The Helidon templates' format defect. */
+    private static final String HELIDON_FORMAT = "JK-SEWYW: Giter8 conditionals leave Main.java,"
+            + " MainTest.java or GreetEndpoint.java unformatted for some answers";
+
+    /**
+     * Templates some of whose non-default answer vectors generate sources jk format would rewrite,
+     * by id, each with its ticket: their defaults vector is format-checked like every template's,
+     * the others are built, tested and guarded but not format-checked. Delete an entry when its
+     * ticket is fixed.
+     */
+    private static final Map<String, String> FORMAT_DEFECTS = Map.of(
+            "java/helidon/database", HELIDON_FORMAT,
+            "java/helidon/declarative", HELIDON_FORMAT,
+            "java/helidon/quickstart", HELIDON_FORMAT);
 
     /**
      * Rows a template's lock holds though its manifest declares none of them, by id, each with the
@@ -223,6 +239,12 @@ class TemplateCatalogE2eTest {
     private void scaffoldAndCheck(String id, String ref, String name, String dir, List<String> flags)
             throws IOException {
         Path project = scaffold(ref, name, dir, flags);
+        // As generated, every source is what the template's own formatter writes. jk guard outside
+        // CI formats an unformatted file in place and passes, so only a check sees it, as CI=1 jk
+        // guard does on the user's first push. Before the Android assumption: no SDK is needed.
+        if (flags.isEmpty() || !FORMAT_DEFECTS.containsKey(id)) {
+            jk(name, "-C", project.toString(), "format", "-c");
+        }
         String defect = KNOWN_DEFECTS.get(id);
         assumeTrue(defect == null, () -> name + " is scaffolded but not built: " + defect);
         String manifest = Files.readString(project.resolve("jk.toml"));

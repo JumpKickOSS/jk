@@ -59,7 +59,8 @@ class $name;format="Camel"$PluginTest {
             }
         });
 
-        assertEquals(List.of("$name$"), commands.stream().map(PluginCommandSpec::name).toList());
+        List<String> names = commands.stream().map(PluginCommandSpec::name).toList();
+        assertEquals(List.of("$name$"), names);
         PluginConfig config = new PluginConfig("$name$", Map.of("greeting", "hi"));
         assertEquals("hi from the $name$ plugin", $name;format="Camel"$Plugin.greeting(config));
     }
