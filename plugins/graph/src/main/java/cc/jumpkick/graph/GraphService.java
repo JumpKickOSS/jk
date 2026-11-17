@@ -218,6 +218,9 @@ public final class GraphService {
             GraphTools tools = tools(w, g, scope);
             // An address written <kind>:<name> is an anchor's, never a symbol's: answered before the symbol readers.
             String address = arg(r.args(), 0, "a method");
+            if (FileAnchors.asks(address)) {
+                return Reply.of(w, FileAnchors.answer(w.root(), w.out(), g, address, r.budget()));
+            }
             if (Anchors.parse(address) != null || Anchors.listing(address) != null) {
                 return Reply.of(w, String.valueOf(tools.anchorUses(arg(r.args(), 0, "a method"), r.budget())));
             }

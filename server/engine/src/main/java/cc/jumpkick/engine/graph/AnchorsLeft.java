@@ -161,12 +161,23 @@ public final class AnchorsLeft {
         return p.written().isEmpty() ? at : at + " as " + p.written();
     }
 
-    /** The call that lists {@code rest}: callers on each anchor they are places of. */
+    /**
+     * The call that lists {@code rest}: callers on the one anchor they share, else on each file whose
+     * edit left them, which answers with the places its old names are still used.
+     */
     static String more(List<Place> rest) {
         Set<String> anchors = new LinkedHashSet<>();
-        for (Place p : rest) anchors.add(p.kind() + ":" + p.old());
+        Set<String> edited = new LinkedHashSet<>();
+        for (Place p : rest) {
+            anchors.add(p.kind() + ":" + p.old());
+            edited.add(p.edited());
+        }
         List<String> calls = new ArrayList<>();
-        for (String a : anchors) calls.add(call(a));
+        if (anchors.size() == 1) {
+            calls.add(call(anchors.iterator().next()));
+        } else {
+            for (String f : edited) calls.add(call("file:" + f));
+        }
         return String.join(", ", calls);
     }
 

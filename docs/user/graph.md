@@ -211,6 +211,10 @@ Your edit changed these names; these places still use the old one:
   lines, src/main/java/org/springframework/samples/petclinic/owner/Owner.java:65
 ```
 
+`callers` with `file:<path>` (or `file:<path>:<line>`) answers for a file: first the places its
+last edit left under an old name, then each anchor it defines or uses with the other places that
+name it, a use a compiler bound counted, not listed.
+
 Every JVM declaration also carries its kind (class, interface, enum, record, annotation, object,
 method, constructor, function, property), visibility, last line, annotations, supertypes and the
 first sentence of its doc comment. `read`, `find` and the search use them.

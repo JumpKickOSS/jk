@@ -212,9 +212,9 @@ class AnchorsLeftTest {
                           +2 more: callers(address="config:petclinic.visits.max-per-day")
                         """);
         assertThat(AnchorsLeft.more(AnchorsLeft.read(root.resolve("target/graph/anchors/stale"))))
-                .as("places of two anchors: callers on each")
-                .isEqualTo("callers(address=\"column:owners.telephone\"),"
-                        + " callers(address=\"config:petclinic.visits.max-per-day\")");
+                .as("places of two anchors: each edited file, whose answer lists them")
+                .isEqualTo("callers(address=\"file:src/main/resources/db/h2/schema.sql\"),"
+                        + " callers(address=\"file:src/main/resources/application.properties\")");
     }
 
     @Test
