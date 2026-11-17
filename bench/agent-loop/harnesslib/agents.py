@@ -331,7 +331,10 @@ def claude_code(tool: str, sandbox: Path, model: str, max_turns: int, max_second
     if stop == "wall" and not claimed:
         finding = f"time budget exhausted ({max_seconds}s)"
     extra.update(session_id=result.get("session_id"), subtype=result.get("subtype"))
-    if _startup_failure(finding) or _startup_failure(text):
+    # A login or model rejection ends the run before the agent's first tool call; a reply that merely says
+    # "does not exist" (a file it removed, a method it renamed) is the agent's answer, not a startup failure.
+    turns = int(result.get("num_turns") or count_assistant_turns(events))
+    if (result.get("is_error") or turns <= 1) and (_startup_failure(finding) or _startup_failure(text)):
         extra["abort"] = True
     return AgentResult(
         claimed, int(result.get("num_turns") or count_assistant_turns(events)), usage,
