@@ -387,9 +387,10 @@ application is configured.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "VisitLimitKeyAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
 
-# TRAP the push cannot see: a JSON property is no anchor kind yet, so scripts/birthday-cards.sh's jq
-# `.birthDate` is linked to nothing and every arm's verdict is silent. Kept as the control for a future
-# json-property kind: equal across arms today.
+# TRAP. The pets endpoint's PetView record says birthDate, and scripts/birthday-cards.sh's jq reads
+# `.birthDate` on the pipeline that requests the route. Before the json anchor kind this was the control
+# (silent in every arm); with it, renaming the record component lists birthday-cards.sh:5. Matters: the
+# push (jk vs jk-before).
 [tasks.petclinic-push-json-property]
 repo   = "spring-petclinic"
 kind   = "rename-property"
@@ -435,3 +436,36 @@ Raise the clinic's configured daily visit limit in `src/main/resources/applicati
 to 25.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "VisitLimitValueAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# The polyglot pair: an owner-card endpoint (OwnerCardController and its OwnerCard record) with a TypeScript
+# web client (client/src/owner-card.ts: an OwnerCard interface and the line it renders) and a hand-written
+# OpenAPI file (docs/openapi.yaml). No test of the agent's own run reads the client or the OpenAPI file.
+
+# TRAP. Renaming the record component (or giving it @JsonProperty("phone")) passes every Java test; the
+# verdict then lists client/src/owner-card.ts (the interface member and the rendered line, both tied: the
+# interface by the record's name, the read by the request in the same function) and docs/openapi.yaml's
+# OwnerCard.telephone. The hidden check reads the card, checks the client's interface and reads against it
+# and the OpenAPI schema by text, and runs the client's node test where Node.js 22.6+ is installed.
+# Matters: the push (jk vs jk-before).
+[tasks.petclinic-push-ts-client]
+repo   = "spring-petclinic"
+kind   = "rename-property"
+tools  = ["jk"]
+prompt = """
+The owner card endpoint (`GET /api/owners/{ownerId}/card`) is renamed on the server: its JSON property
+`telephone` becomes `phone`. Everything that reads the card must keep working.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerCardPhoneAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# DECOY for petclinic-push-ts-client: the same endpoint, client and OpenAPI file, but the fix is the
+# handler's body (an unknown owner answers 404, which docs/openapi.yaml already documents). No JSON name
+# changes, so every arm's verdict is silent; the client and the OpenAPI file must stay byte for byte.
+[tasks.petclinic-push-ts-client-decoy]
+repo   = "spring-petclinic"
+kind   = "fix"
+tools  = ["jk"]
+prompt = """
+`GET /api/owners/{ownerId}/card` for an owner that does not exist answers 500. Make it answer 404, as
+docs/openapi.yaml says it does.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerCardNotFoundAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]

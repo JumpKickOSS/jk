@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Petclinic owner cards
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/owners/{ownerId}/card:
+    get:
+      summary: The card the front desk shows for one owner
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The owner's card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnerCard'
+        '404':
+          description: No owner has that id
+components:
+  schemas:
+    OwnerCard:
+      type: object
+      properties:
+        id:
+          type: integer
+        firstName:
+          type: string
+        lastName:
+          type: string
+        telephone:
+          type: string
+          description: Digits only, as the owner form takes them
+        pets:
+          type: integer
+          description: How many pets the owner has
