@@ -98,11 +98,37 @@ public final class PosixTty implements AutoCloseable {
                 int ignored = (int) close.invokeExact(fd);
                 return null;
             }
+            if (!foreground(fd)) {
+                // A background job of this terminal (under timeout, nohup, `&`, or an ssh session's
+                // pipeline): tcsetattr from it stops the whole process with SIGTTOU, as `jk new`
+                // and `jk jdk list` did after finishing their work. Such a process has no right to
+                // the terminal's modes, so it gets no live session, as with no terminal at all.
+                int ignored = (int) close.invokeExact(fd);
+                return null;
+            }
             byte[] original = term.toArray(ValueLayout.JAVA_BYTE);
             return new PosixTty(fd, original, darwin);
         } catch (Throwable t) {
             return null;
         }
+    }
+
+    /**
+     * Whether this process's group is {@code fd}'s foreground process group: the only one a
+     * terminal lets set its modes without stopping it. {@code false} when either is unknown.
+     */
+    private static boolean foreground(int fd) throws Throwable {
+        MethodHandle tcgetpgrp = tcgetpgrpMh;
+        MethodHandle getpgrp = getpgrpMh;
+        if (tcgetpgrp == null || getpgrp == null) {
+            return false;
+        }
+        return foreground((int) tcgetpgrp.invokeExact(fd), (int) getpgrp.invokeExact());
+    }
+
+    /** {@code terminalGroup} is the terminal's foreground group ({@code -1}: unknown); {@code ownGroup} this process's. */
+    static boolean foreground(int terminalGroup, int ownGroup) {
+        return terminalGroup > 0 && terminalGroup == ownGroup;
     }
 
     public void apply(InputMode mode) {
@@ -422,6 +448,8 @@ public final class PosixTty implements AutoCloseable {
     private static volatile @Nullable MethodHandle fcntlMh;
     private static volatile @Nullable MethodHandle tcgetattrMh;
     private static volatile @Nullable MethodHandle tcsetattrMh;
+    private static volatile @Nullable MethodHandle tcgetpgrpMh;
+    private static volatile @Nullable MethodHandle getpgrpMh;
     private static volatile @Nullable MethodHandle pollMh;
     private static volatile @Nullable MethodHandle selectMh;
     private static volatile @Nullable MethodHandle readMh;
@@ -510,6 +538,9 @@ public final class PosixTty implements AutoCloseable {
                         FunctionDescriptor.of(
                                 ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
                         cap);
+                tcgetpgrpMh = bind(
+                        linker, lookup, "tcgetpgrp", FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+                getpgrpMh = bind(linker, lookup, "getpgrp", FunctionDescriptor.of(ValueLayout.JAVA_INT));
             } finally {
                 initAttempted = true;
             }
