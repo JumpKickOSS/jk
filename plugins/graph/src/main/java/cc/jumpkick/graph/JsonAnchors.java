@@ -65,8 +65,8 @@ final class JsonAnchors {
 
     private static final Pattern GENERATED_PATH =
             Pattern.compile("(^|/)(generated|generated-sources|gen|__generated__)/");
-    private static final Pattern SCRIPT = Pattern.compile(".*\\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|vue|svelte)$");
-    private static final Pattern SHELL =
+    static final Pattern SCRIPT = Pattern.compile(".*\\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|vue|svelte)$");
+    static final Pattern SHELL =
             Pattern.compile(".*(\\.(sh|bash|zsh|ya?ml|mk)|/Makefile|^Makefile|Justfile|justfile)$");
     static final Pattern JVM = Pattern.compile(".*\\.(java|kt|groovy|scala)$");
     private static final Pattern OPENAPI_NAME = Pattern.compile(
@@ -118,7 +118,11 @@ final class JsonAnchors {
      * as it is now ({@code null} when it is gone) and {@code compiled} reads the workspace's classes.
      */
     static CodeGraph add(
-            CodeGraph g, Collection<String> files, Function<String, @Nullable String> text, Classfiles compiled) {
+            CodeGraph g,
+            Collection<String> files,
+            Function<String, @Nullable String> text,
+            Classfiles compiled,
+            JsonScriptMemo scripts) {
         Map<String, List<GraphEdge>> handlers = handlers(g);
         if (handlers.isEmpty()) return g;
         Classes classes = new Classes(g, compiled);
@@ -170,7 +174,7 @@ final class JsonAnchors {
 
         Generated generated = new Generated(files, text);
         Map<String, Map<String, GraphEdge>> uses = new TreeMap<>();
-        for (Tie t : routeTies(g, routeProps.keySet(), files, text, generated)) {
+        for (Tie t : routeTies(g, routeProps.keySet(), files, text, generated, scripts)) {
             Set<String> ids = new TreeSet<>();
             for (String route : t.routes())
                 ids.addAll(routeProps.getOrDefault(route, Map.of()).getOrDefault(t.name(), Set.of()));
@@ -178,7 +182,7 @@ final class JsonAnchors {
             boolean sure = t.close() && ids.size() == 1;
             for (String id : ids) use(uses, g, t.rel(), id, t.line(), sure);
         }
-        typed(g, files, text, generated, bodies, routeProps, uses);
+        typed(g, files, text, generated, scripts, bodies, routeProps, uses);
         if (uses.isEmpty()) return g;
 
         List<GraphNode> nodes = new ArrayList<>();
@@ -207,11 +211,7 @@ final class JsonAnchors {
             }
             edges.addAll(f.getValue().values());
         }
-        Fragment linked = new Fragment(new ArrayList<>(g.nodes()), g.edges());
-        CodeGraph out = CodeGraph.merge(List.of(linked, new Fragment(nodes, edges)));
-        out.modules(g.modules());
-        out.stale(g.stale());
-        return out;
+        return CodeGraph.plus(g, new Fragment(nodes, edges));
     }
 
     private static String id(Body b, JsonDtos.Property p) {
@@ -332,7 +332,8 @@ final class JsonAnchors {
             Set<String> routes,
             Collection<String> files,
             Function<String, @Nullable String> text,
-            Generated generated) {
+            Generated generated,
+            JsonScriptMemo scripts) {
         Map<String, Map<String, List<Integer>>> byFile = new TreeMap<>();
         for (String route : routes) {
             for (GraphEdge e : g.incident(route)) {
@@ -351,20 +352,13 @@ final class JsonAnchors {
         for (Map.Entry<String, Map<String, List<Integer>>> f : byFile.entrySet()) {
             String rel = f.getKey();
             if (generated.is(rel)) continue;
-            String body = text.apply(rel);
-            if (body == null) continue;
+            JsonScriptMemo.Reads r = scripts.reads(rel, text, JsonScriptMemo::read);
+            if (r == null) continue;
             Map<String, List<Integer>> requested = f.getValue();
-            if (SCRIPT.matcher(rel).matches()) {
-                JsonReaders.Blocks blocks =
-                        JsonReaders.functions(CodeText.blank(body, CodeText.Blank.COMMENTS_AND_STRINGS, true));
-                ties(rel, JsonReaders.scriptUses(body), requested, blocks, JsonReaders.lineStarts(body), body, out);
-            } else if (JVM.matcher(rel).matches()) {
-                JsonReaders.Blocks blocks =
-                        JsonReaders.functions(CodeText.blank(body, CodeText.Blank.COMMENTS_AND_STRINGS));
-                ties(rel, JsonReaders.jsonPathUses(body), requested, blocks, JsonReaders.lineStarts(body), body, out);
-            }
-            if (SHELL.matcher(rel).matches() || SCRIPT.matcher(rel).matches()) {
-                for (JsonReaders.Use u : JsonReaders.jqUses(body)) {
+            JsonReaders.Blocks blocks = r.blocks();
+            if (blocks != null) ties(rel, r.uses(), requested, blocks, r.starts(), r.body(), out);
+            if (!r.jq().isEmpty()) {
+                for (JsonReaders.Use u : r.jq()) {
                     Set<String> close = new TreeSet<>();
                     requested.forEach((route, lines) -> {
                         for (int l : lines) if (l >= u.block() && l <= u.line()) close.add(route);
@@ -467,6 +461,7 @@ final class JsonAnchors {
             Collection<String> files,
             Function<String, @Nullable String> text,
             Generated generated,
+            JsonScriptMemo scripts,
             Map<String, Body> bodies,
             Map<String, Map<String, Set<String>>> routeProps,
             Map<String, Map<String, GraphEdge>> uses) {
@@ -476,14 +471,15 @@ final class JsonAnchors {
         for (String rel : files) {
             boolean script = SCRIPT.matcher(rel).matches() || rel.endsWith(".d.ts");
             boolean openapi = !script && OPENAPI_NAME.matcher(rel).find();
-            if (!script && !openapi || generated.is(rel)) continue;
+            if (!script && !openapi || generated.byPath(rel)) continue;
+            if (script) {
+                JsonScriptMemo.Facts f = scripts.of(rel, text);
+                if (f != null) for (JsonReaders.Member m : f.types()) member(g, rel, m, byName, uses);
+                continue;
+            }
             String body = text.apply(rel);
             if (body == null || generated.header(body)) continue;
-            if (script) {
-                for (JsonReaders.Member m : JsonReaders.scriptTypes(body)) member(g, rel, m, byName, uses);
-            } else {
-                openApi(g, rel, body, byName, routeProps, uses);
-            }
+            openApi(g, rel, body, byName, routeProps, uses);
         }
     }
 
@@ -767,8 +763,13 @@ final class JsonAnchors {
             }
         }
 
+        /** Whether {@code rel}'s path says a tool writes it, its text unread. */
+        boolean byPath(String rel) {
+            return GENERATED_PATH.matcher(rel).find() || JsonReaders.generatedBy(rel, outputs);
+        }
+
         boolean is(String rel) {
-            if (GENERATED_PATH.matcher(rel).find() || JsonReaders.generatedBy(rel, outputs)) return true;
+            if (byPath(rel)) return true;
             Boolean had = headers.get(rel);
             if (had != null) return had;
             String body = text.apply(rel);

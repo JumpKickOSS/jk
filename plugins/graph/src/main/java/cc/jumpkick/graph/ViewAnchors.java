@@ -194,11 +194,7 @@ final class ViewAnchors {
             }
             edges.addAll(kept);
         }
-        Fragment linked = new Fragment(new ArrayList<>(g.nodes()), g.edges());
-        CodeGraph out = CodeGraph.merge(List.of(linked, new Fragment(nodes, edges)));
-        out.modules(g.modules());
-        out.stale(g.stale());
-        return out;
+        return CodeGraph.plus(g, new Fragment(nodes, edges));
     }
 
     static String dotted(String internal) {

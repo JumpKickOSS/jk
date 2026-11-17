@@ -198,4 +198,57 @@ class AnchorsTest {
             assertThat(kind).isNotIn("java", "jvm", "class", "maven", "kotlin", "groovy");
         }
     }
+
+    /**
+     * A pass after linking adds its anchors with {@link CodeGraph#plus}: the graph is the one {@link
+     * CodeGraph#merge} of the two would give (nodes, edges and their sites, each node's incident
+     * edges), modules and the stale record carried over, and the linked graph left as it was.
+     */
+    @Test
+    void anAnchorPassAddsToTheLinkedGraphAsAMergeWould() {
+        String dto = "src/main/java/com/acme/OwnerDto.java";
+        String ts = "client/src/owner.ts";
+        String type = GraphIds.declared(dto, "OwnerDto");
+        Fragment linked = new Fragment(
+                List.of(
+                        new GraphNode(type, "OwnerDto", "code", dto, "L3"),
+                        new GraphNode(GraphIds.file(ts), "owner.ts", "code", ts, "")),
+                List.of(GraphEdge.of(GraphIds.file(ts), type, Relations.USES, Confidence.INFERRED, ts, 2)));
+        CodeGraph g = CodeGraph.merge(List.of(linked));
+        g.stale(List.of());
+        Fragment json = new Fragment(
+                List.of(Anchors.node("json", "OwnerDto.telephone")),
+                List.of(
+                        GraphEdge.of(type, "json:OwnerDto.telephone", Relations.DEFINES, Confidence.EXTRACTED, dto, 9),
+                        GraphEdge.of(
+                                GraphIds.file(ts),
+                                "json:OwnerDto.telephone",
+                                Relations.USES,
+                                Confidence.INFERRED,
+                                ts,
+                                4),
+                        GraphEdge.of(
+                                GraphIds.file(ts),
+                                "json:OwnerDto.telephone",
+                                Relations.USES,
+                                Confidence.INFERRED,
+                                ts,
+                                7),
+                        GraphEdge.of(GraphIds.file(ts), "json:nowhere", Relations.USES, Confidence.INFERRED, ts, 8)));
+
+        CodeGraph plus = CodeGraph.plus(g, json);
+        CodeGraph merged = CodeGraph.merge(List.of(linked, json));
+        assertThat(plus.nodes()).containsExactlyInAnyOrderElementsOf(merged.nodes());
+        assertThat(plus.edges()).containsExactlyInAnyOrderElementsOf(merged.edges());
+        assertThat(plus.incident(GraphIds.file(ts)))
+                .containsExactlyInAnyOrderElementsOf(merged.incident(GraphIds.file(ts)));
+        assertThat(plus.edges())
+                .filteredOn(
+                        e -> e.source().equals(GraphIds.file(ts)) && e.target().startsWith("json:"))
+                .singleElement()
+                .satisfies(e -> assertThat(e.sites()).containsExactlyInAnyOrder("L4", "L7"));
+        assertThat(g.has("json:OwnerDto.telephone"))
+                .as("the linked graph is left as it was")
+                .isFalse();
+    }
 }

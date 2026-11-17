@@ -570,7 +570,8 @@ class JsonAnchorsTest {
                     read.add(rel);
                     return "";
                 },
-                new JsonAnchors.Classfiles(List.of(dir.resolve("absent")), Set.of()));
+                new JsonAnchors.Classfiles(List.of(dir.resolve("absent")), Set.of()),
+                JsonScriptMemo.NONE);
         assertThat(out).isSameAs(g);
         assertThat(read).isEmpty();
         assertThat(dir.resolve("absent")).doesNotExist();

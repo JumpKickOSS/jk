@@ -62,6 +62,33 @@ public final class CodeGraph {
         return new CodeGraph(nodes, new ArrayList<>(edges.values()));
     }
 
+    /**
+     * {@code g} with {@code extra} added, as {@link #merge} of the two combines them, without keying
+     * {@code g}'s own edges again: for a pass after linking that adds nodes and edges into them (an
+     * anchor kind read off the linked graph), whose edges no edge of {@code g} repeats; {@code extra}'s
+     * duplicates are combined among themselves. Modules and the stale record carry over; {@code g}
+     * is left as it was.
+     */
+    public static CodeGraph plus(CodeGraph g, Fragment extra) {
+        Map<String, GraphNode> nodes = new LinkedHashMap<>(g.nodes);
+        for (GraphNode n : extra.nodes()) {
+            GraphNode had = nodes.get(n.id());
+            nodes.put(n.id(), had == null ? n : combine(had, n));
+        }
+        Map<String, GraphEdge> added = new LinkedHashMap<>();
+        for (GraphEdge e : extra.edges()) {
+            if (!nodes.containsKey(e.source()) || !nodes.containsKey(e.target())) continue;
+            added.merge(e.source() + '\u0000' + e.target() + '\u0000' + e.relation(), e, GraphEdge::withSitesOf);
+        }
+        List<GraphEdge> edges = new ArrayList<>(g.edges.size() + added.size());
+        edges.addAll(g.edges);
+        edges.addAll(added.values());
+        CodeGraph out = new CodeGraph(nodes, edges);
+        out.modules(g.modules());
+        out.stale(g.stale());
+        return out;
+    }
+
     /** Every fragment's nodes by id, duplicates combined as {@link #merge} combines them. */
     static Map<String, GraphNode> mergeNodes(Collection<Fragment> fragments) {
         Map<String, GraphNode> nodes = new LinkedHashMap<>();

@@ -256,7 +256,7 @@ public final class GraphBuild {
         fragmentCache.retain(declarationKeys, classKeys);
         progress.phase("link");
         CodeGraph graph = Linker.link(all);
-        graph = classAnchors(graph, base, indexes, shas.keySet(), textNow(base, changed));
+        graph = classAnchors(graph, base, indexes, shas, textNow(base, changed));
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
         if (!rebuild) anchorEdits(base, out, extractors, vouched, sources, changed, unreadable, indexes, graph);
@@ -284,10 +284,17 @@ public final class GraphBuild {
 
     /** {@code graph} with the anchors read off compiled classes: a route body's JSON properties, a template's bean paths. */
     private static CodeGraph classAnchors(
-            CodeGraph graph, Path base, List<ClassIndex> indexes, Set<String> rels, Function<String, @Nullable String> now) {
+            CodeGraph graph,
+            Path base,
+            List<ClassIndex> indexes,
+            Map<String, String> shas,
+            Function<String, @Nullable String> now) {
         JsonAnchors.Classfiles compiled = JsonAnchors.Classfiles.of(base, indexes);
-        Set<String> files = new TreeSet<>(rels);
-        return ViewAnchors.add(JsonAnchors.add(graph, files, now, compiled), files, now, compiled);
+        Set<String> files = new TreeSet<>(shas.keySet());
+        JsonScriptMemo scripts = new JsonScriptMemo(base.toString(), shas);
+        CodeGraph out = ViewAnchors.add(JsonAnchors.add(graph, files, now, compiled, scripts), files, now, compiled);
+        scripts.retain();
+        return out;
     }
 
     /** A file's text as it is now: the bytes this refresh read when it changed, else the file; null when gone. */
