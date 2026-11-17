@@ -68,7 +68,7 @@ final class JsonAnchors {
     private static final Pattern SCRIPT = Pattern.compile(".*\\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|vue|svelte)$");
     private static final Pattern SHELL =
             Pattern.compile(".*(\\.(sh|bash|zsh|ya?ml|mk)|/Makefile|^Makefile|Justfile|justfile)$");
-    private static final Pattern JVM = Pattern.compile(".*\\.(java|kt|groovy|scala)$");
+    static final Pattern JVM = Pattern.compile(".*\\.(java|kt|groovy|scala)$");
     private static final Pattern OPENAPI_NAME = Pattern.compile(
             "(?i)(^|/)(openapi|swagger|api-docs?)(/|[^/]*\\.(ya?ml|json)$)|(^|/)[^/]*(openapi|swagger)[^/]*\\.(ya?ml|json)$");
     private static final Pattern FIXTURE_DIR =
@@ -296,7 +296,7 @@ final class JsonAnchors {
     }
 
     /** Each route anchor a Java handler defines, with its defining edges. */
-    private static Map<String, List<GraphEdge>> handlers(CodeGraph g) {
+    static Map<String, List<GraphEdge>> handlers(CodeGraph g) {
         Map<String, List<GraphEdge>> out = new TreeMap<>();
         for (GraphNode n : g.nodes()) {
             if (!Anchors.is(n) || !Anchors.ROUTE.equals(Anchors.kindOf(n.id()))) continue;
@@ -619,7 +619,8 @@ final class JsonAnchors {
         return n;
     }
 
-    private static int line(String site) {
+    /** The first line of a node's or edge's location ({@code L12} or {@code L12-30}); 0 for none. */
+    static int line(String site) {
         try {
             return site.startsWith("L") ? Integer.parseInt(site.substring(1).replaceFirst("-.*$", "")) : 0;
         } catch (NumberFormatException none) {

@@ -35,7 +35,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A place is listed as one that must change when the old name sits in a structured position the
  * anchor links (a SQL column, a config key, an environment variable, a route's path, a CLI flag, a
- * JSON property a client tied to the route or class reads),
+ * JSON property a client tied to the route or class reads, a bean property a template reads off
+ * its controller's model),
  * and as a judgment one when it sits in prose (markdown, text). A use a compiler or generator bound
  * ({@link Confidence#EXTRACTED}) is the build's to check and a generated file is nobody's to edit:
  * neither is ever listed. A file merely sharing an anchor with the edited one is never listed, and
@@ -333,7 +334,7 @@ final class AnchorEdits {
     /** {@code owners} for {@code column:owners.telephone}, {@code OwnerDto} for {@code json:OwnerDto.birthDate}; empty for a kind with no parent. */
     private static String parentOf(String id) {
         String kind = Anchors.kindOf(id);
-        if (!Anchors.COLUMN.equals(kind) && !Anchors.JSON.equals(kind)) return "";
+        if (!Anchors.COLUMN.equals(kind) && !Anchors.JSON.equals(kind) && !Anchors.BEAN.equals(kind)) return "";
         int dot = id.lastIndexOf('.');
         return dot < 0 ? "" : id.substring(0, dot);
     }
@@ -524,7 +525,8 @@ final class AnchorEdits {
         String w = written;
         if (w.isEmpty()) {
             w = switch (kind) {
-                case Anchors.COLUMN, Anchors.TABLE, Anchors.JSON -> old.substring(old.lastIndexOf('.') + 1);
+                case Anchors.COLUMN, Anchors.TABLE, Anchors.JSON, Anchors.BEAN ->
+                    old.substring(old.lastIndexOf('.') + 1);
                 case Anchors.ROUTE -> lastLiteral(old);
                 default -> old;
             };

@@ -1,0 +1,21 @@
+package org.springframework.samples.petclinic.owner;
+
+import java.time.LocalDate;
+import java.util.Collection;
+import java.util.List;
+import org.springframework.samples.petclinic.model.NamedEntity;
+
+public class Pet extends NamedEntity {
+
+    private LocalDate birthDate;
+
+    private PetType type;
+
+    private final List<Visit> visits = List.of();
+
+    public LocalDate getBirthDate() { return this.birthDate; }
+
+    public PetType getType() { return this.type; }
+
+    public Collection<Visit> getVisits() { return this.visits; }
+}

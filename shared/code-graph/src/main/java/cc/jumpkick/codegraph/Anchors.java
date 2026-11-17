@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Anchor nodes: one node per surface that code and files no compiler checks both name (a
  * configuration key, an environment variable, an HTTP route, a network port, a SQL table or column, a
- * CLI command or flag, a JSON property of a route's body), with a {@link Relations#DEFINES} or {@link Relations#USES} edge from every file or
+ * CLI command or flag, a JSON property of a route's body, a bean property a template reads), with a {@link Relations#DEFINES} or {@link Relations#USES} edge from every file or
  * symbol that names it, graded by its {@link Confidence}. An anchor's id is {@code <kind>:<key>}:
  * the key is the name folded so that every spelling the surface itself treats as one is one id,
  * and depends on nothing but that name, so a file's fragment carries its anchors and is cached
@@ -38,8 +38,14 @@ public final class Anchors {
     /** A JSON property of a route's body, {@code json:<Class>.<property>}: the class a Java DTO declares, the name Jackson writes. */
     public static final String JSON = "json";
 
+    /**
+     * A bean property a server-side template reads off a model attribute, {@code bean:<Class>.<property>}:
+     * the class that declares the getter or field, the property's bean name.
+     */
+    public static final String BEAN = "bean";
+
     /** The kinds whose key is written down here; any other kind is keyed by its name trimmed. */
-    public static final Set<String> KINDS = Set.of(CONFIG, ENV, ROUTE, PORT, TABLE, COLUMN, CLI, JSON);
+    public static final Set<String> KINDS = Set.of(CONFIG, ENV, ROUTE, PORT, TABLE, COLUMN, CLI, JSON, BEAN);
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9.-]*");
     private static final Pattern CAMEL = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])");

@@ -1,0 +1,10 @@
+package org.springframework.samples.petclinic.owner;
+
+import java.util.Optional;
+import org.springframework.data.domain.Page;
+
+public interface OwnerRepository {
+    Page<Owner> findByLastNameStartingWith(String lastName, int page);
+    Optional<Owner> findById(Integer id);
+    void save(Owner owner);
+}

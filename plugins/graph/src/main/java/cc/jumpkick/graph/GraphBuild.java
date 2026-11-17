@@ -195,8 +195,7 @@ public final class GraphBuild {
                 }
                 if (!stale.isEmpty() || !Files.isRegularFile(AnchorWatch.file(out))) watch(out, stored, stats);
                 sources.forEach(s -> progress.file(s.rel(), false));
-                long millis = (clock.nanos() - start) / 1_000_000;
-                return new Result(stored, sources.size(), 0, classes(indexes), out, millis, false, commit);
+                return new Result(stored, sources.size(), 0, classes(indexes), out, since(clock, start), false, commit);
             }
         }
         FragmentCache fragmentCache = GraphMemory.fragments(out, cache);
@@ -257,8 +256,7 @@ public final class GraphBuild {
         fragmentCache.retain(declarationKeys, classKeys);
         progress.phase("link");
         CodeGraph graph = Linker.link(all);
-        graph = JsonAnchors.add(
-                graph, new TreeSet<>(shas.keySet()), textNow(base, changed), JsonAnchors.Classfiles.of(base, indexes));
+        graph = classAnchors(graph, base, indexes, shas.keySet(), textNow(base, changed));
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
         if (!rebuild) anchorEdits(base, out, extractors, vouched, sources, changed, unreadable, indexes, graph);
@@ -277,6 +275,19 @@ public final class GraphBuild {
         stats.save(out, sources);
         GraphMemory.savedStats(out, stats);
         watch(out, graph, stats);
+    }
+
+    /** Milliseconds since {@code start}, a {@link Clock#nanos()} reading. */
+    private static long since(Clock clock, long start) {
+        return (clock.nanos() - start) / 1_000_000;
+    }
+
+    /** {@code graph} with the anchors read off compiled classes: a route body's JSON properties, a template's bean paths. */
+    private static CodeGraph classAnchors(
+            CodeGraph graph, Path base, List<ClassIndex> indexes, Set<String> rels, Function<String, @Nullable String> now) {
+        JsonAnchors.Classfiles compiled = JsonAnchors.Classfiles.of(base, indexes);
+        Set<String> files = new TreeSet<>(rels);
+        return ViewAnchors.add(JsonAnchors.add(graph, files, now, compiled), files, now, compiled);
     }
 
     /** A file's text as it is now: the bytes this refresh read when it changed, else the file; null when gone. */

@@ -1,0 +1,75 @@
+package org.springframework.samples.petclinic.owner;
+
+import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.ModelAndView;
+
+@Controller
+class OwnerController {
+
+    private static final String VIEWS_OWNER_CREATE_OR_UPDATE_FORM = "owners/createOrUpdateOwnerForm";
+
+    private final OwnerRepository owners;
+
+    OwnerController(OwnerRepository owners) {
+        this.owners = owners;
+    }
+
+    @ModelAttribute("owner")
+    public Owner findOwner(@PathVariable(required = false) Integer ownerId) {
+        return ownerId == null ? new Owner() : this.owners.findById(ownerId).orElseThrow();
+    }
+
+    @GetMapping("/owners/new")
+    public String initCreationForm() {
+        return VIEWS_OWNER_CREATE_OR_UPDATE_FORM;
+    }
+
+    @PostMapping("/owners/new")
+    public String processCreationForm(Owner owner, BindingResult result) {
+        if (result.hasErrors()) {
+            return VIEWS_OWNER_CREATE_OR_UPDATE_FORM;
+        }
+        this.owners.save(owner);
+        return "redirect:/owners/" + owner.getId();
+    }
+
+    @GetMapping("/owners/find")
+    public String initFindForm() {
+        return "owners/findOwners";
+    }
+
+    @GetMapping("/owners")
+    public String processFindForm(@RequestParam(defaultValue = "1") int page, Owner owner, BindingResult result,
+            Model model) {
+        Page<Owner> ownersResults = this.owners.findByLastNameStartingWith(owner.getLastName(), page);
+        if (ownersResults.isEmpty()) {
+            return "owners/findOwners";
+        }
+        return addPaginationModel(page, model, ownersResults);
+    }
+
+    private String addPaginationModel(int page, Model model, Page<Owner> paginated) {
+        List<Owner> listOwners = paginated.getContent();
+        model.addAttribute("currentPage", page);
+        model.addAttribute("totalPages", paginated.getTotalPages());
+        model.addAttribute("listOwners", listOwners);
+        return "owners/ownersList";
+    }
+
+    @GetMapping("/owners/{ownerId}")
+    public ModelAndView showOwner(@PathVariable("ownerId") int ownerId) {
+        ModelAndView mav = new ModelAndView("owners/ownerDetails");
+        Owner owner = this.owners.findById(ownerId).orElseThrow();
+        mav.addObject(owner);
+        return mav;
+    }
+}

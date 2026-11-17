@@ -55,7 +55,8 @@ and an answer marks them `(inferred)`.
 
 An anchor is a node for something code and other files both name without a compiler between
 them: configuration keys, environment variables, HTTP routes, ports, SQL tables and columns, a
-program's commands and flags, and the JSON properties of a route's body. Every file or symbol that defines or uses it has an edge to it, so one
+program's commands and flags, the JSON properties of a route's body and the bean properties a
+server-side template reads. Every file or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
 ```bash
@@ -227,6 +228,28 @@ read, since a class file does not say it: a naming strategy or visibility set in
 on an `ObjectMapper`, mix-ins, custom serializers, `@JsonView`, `@JsonUnwrapped` prefixes,
 polymorphic type ids; nor a request whose path is built at run time from anything but a constant of
 its own file, which ties nothing but a typed member.
+
+### Template bean properties
+
+A property a Thymeleaf template reads off its model is `bean:<Class>.<property>`: renaming
+`Owner.getTelephone()` compiles, and `${owner.telephone}` fails only when the page renders. The
+template is tied to its model through the Spring MVC `@Controller` that renders it, read from the
+compiled classes: a handler (or a method of its class it calls) renders the template whose name it
+loads (`"owners/ownerDetails"`, a constant, a `ModelAndView`'s), and its model holds what it puts
+with `Model.addAttribute`, `ModelMap`, `Map.put` or `ModelAndView.addObject` (the value's type from
+the local variable's generic signature, the call that made it or the class it constructs; with no
+name, Spring's `owner` or `ownerList`), the class's `@ModelAttribute` methods and its form-backing
+parameters. Each segment of `${owner.pets}`, `*{telephone}` under `th:object`, `th:field`, a
+`th:each` variable and a fragment called with `'telephone'` as the field it binds is a use of the
+property of the type before it (a getter, `isX` for a `boolean`, a public field, a record
+component), defined at the member's declaration, bound. A use is inferred (must change) when one type
+answers for its root; ambiguous (a judgment call) when the handlers rendering the template give that
+root different types that both carry the name; a root nothing types links nowhere. Read: Thymeleaf
+templates under `src/main/resources/templates`. Not read: JSP, FreeMarker, Mustache and other
+engines, a view name built at run time, a model filled outside the controller's class (an
+interceptor, a `@ControllerAdvice`), and a path built by preprocessing (`__${...}__`) other than a
+fragment's `*{__${name}__}` field. A workspace with no template, or no `@Controller` route, reads
+nothing.
 
 ### After a hand edit
 
