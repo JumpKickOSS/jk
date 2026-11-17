@@ -8,7 +8,6 @@ import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
-import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLeases;
@@ -62,8 +61,10 @@ final class SuiteRetry {
         if (override == null && ceiling > 0 && chosen > ceiling) {
             // A learned heap past what a test JVM is ever given would wait for memory that never
             // frees; run at the ceiling and say which record to forget.
-            HeapNotes.note(
-                    module + " learned a test heap of " + WorkerLeases.format(chosen) + ", past the most a test JVM"
+            String said = module + " learned a test heap of ";
+            HeapNotes.noteOnce(
+                    said,
+                    said + WorkerLeases.format(chosen) + ", past the most a test JVM"
                             + " is given (" + WorkerLeases.format(ceiling)
                             + ", a quarter of RAM); ran at that. Forget it: delete"
                             + " the '" + module + "\ttest' row of " + heaps.file(project));
@@ -95,20 +96,11 @@ final class SuiteRetry {
         return cause == WorkerFate.Cause.HEAP_EXHAUSTED && !ranOut ? WorkerFate.Cause.OTHER : cause;
     }
 
-    /** The share of the host's RAM a test JVM's heap may ever reach: a quarter. */
-    static final int CEILING_RAM_DIVISOR = 4;
-
     /**
-     * The largest heap a test JVM is given, learned or climbed to: a quarter of the host's RAM and
-     * never more than the worker budget can lease; {@code 0} when neither is known.
+     * The largest heap a test JVM is given, learned or climbed to: {@link LearnedHeaps#testCeiling}.
      */
     static long ceiling() {
-        long ram = MemoryProbe.current().totalBytes() / CEILING_RAM_DIVISOR;
-        long budget = WorkerLeases.engine().capacityBytes();
-        long byBudget = budget > 0 ? WorkerLeases.clampXmx(budget, budget) : 0;
-        if (ram <= 0) return byBudget;
-        if (byBudget <= 0) return ram;
-        return Math.min(ram, byBudget);
+        return LearnedHeaps.testCeiling();
     }
 
     /**

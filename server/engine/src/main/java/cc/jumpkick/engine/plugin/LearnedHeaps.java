@@ -121,6 +121,39 @@ public final class LearnedHeaps {
         this(() -> Objects.requireNonNull(stateDir, "stateDir"), forcedBytes, false);
     }
 
+    /** The share of the host's RAM a test JVM's heap may ever reach: a quarter. */
+    static final int TEST_CEILING_RAM_DIVISOR = 4;
+
+    /**
+     * The largest heap a test JVM is given, learned or climbed to: a quarter of the host's RAM and
+     * never more than the worker budget can lease; {@code 0} when neither is known. A test row's
+     * stored peaks and known-good heap never exceed it either, so what a run learns at the ceiling
+     * (a resident-set peak a little past {@code -Xmx}, say) cannot raise the next plan past it.
+     */
+    public static long testCeiling() {
+        long ram = MemoryProbe.current().totalBytes() / TEST_CEILING_RAM_DIVISOR;
+        long budget = budget();
+        long byBudget = budget > 0 ? WorkerLeases.clampXmx(budget, budget) : 0;
+        if (ram <= 0) return byBudget;
+        if (byBudget <= 0) return ram;
+        return Math.min(ram, byBudget);
+    }
+
+    /** {@code bytes}, no more than {@link #testCeiling} for a test row. */
+    private static long capped(String kind, long bytes) {
+        if (!HeapScope.TEST.equals(kind)) return bytes;
+        long ceiling = testCeiling();
+        return ceiling > 0 ? Math.min(bytes, ceiling) : bytes;
+    }
+
+    /** {@code row} with every peak and its known-good heap at most {@code ceiling}; itself when none is past it. */
+    private static Row capped(Row row, long ceiling) {
+        if (ceiling <= 0 || (max(row.peaks()) <= ceiling && row.good() <= ceiling)) return row;
+        long[] peaks = row.peaks().clone();
+        for (int i = 0; i < peaks.length; i++) peaks[i] = Math.min(peaks[i], ceiling);
+        return new Row(peaks, Math.min(row.good(), ceiling), row.inputs(), row.resident());
+    }
+
     /** {@link #size(long, long, boolean)} with the headroom of this process's host. */
     public static long size(long peakBytes, long budgetBytes) {
         return size(peakBytes, budgetBytes, CI);
@@ -161,6 +194,14 @@ public final class LearnedHeaps {
         if (forcedBytes != null) return fit(forcedBytes, budget);
         Row row = stored(project, module, kind, jdk);
         if (row == null) return generousFirst(kind) ? firstHeap(fallback, budget) : fallback;
+        if (HeapScope.TEST.equals(kind)) {
+            // A row written before the cap held on what is stored: bring it under, once.
+            long ceiling = testCeiling();
+            if (capped(row, ceiling) != row) {
+                update(project, row(module, kind, jdk), stored -> capped(stored, ceiling));
+                row = capped(row, ceiling);
+            }
+        }
         long sized = row.peaks().length == 0 ? 0L : size(max(row.peaks()), budget);
         return fit(Math.max(sized, row.good()), budget);
     }
@@ -210,11 +251,11 @@ public final class LearnedHeaps {
     /** As {@link #note(HeapScope.Key, long)}. */
     public void note(Path project, String module, String kind, int jdk, long peakBytes) {
         if (project == null || module == null || module.isBlank() || peakBytes <= 0) return;
+        long peak = capped(kind, peakBytes);
         update(
                 project,
                 row(module, kind, jdk),
-                stored ->
-                        new Row(prepend(stored.peaks(), peakBytes), stored.good(), stored.inputs(), stored.resident()));
+                stored -> new Row(prepend(stored.peaks(), peak), stored.good(), stored.inputs(), stored.resident()));
     }
 
     /**
@@ -258,11 +299,11 @@ public final class LearnedHeaps {
      */
     public void good(HeapScope.@Nullable Key key, long heapBytes) {
         if (key == null || heapBytes <= 0 || key.module().isBlank()) return;
+        long heap = capped(key.kind(), heapBytes);
         update(
                 key.project(),
                 row(key.module(), key.kind(), key.jdk()),
-                stored -> new Row(
-                        stored.peaks(), Math.max(stored.good(), heapBytes), stored.inputs(), stored.resident()));
+                stored -> new Row(stored.peaks(), Math.max(stored.good(), heap), stored.inputs(), stored.resident()));
     }
 
     /**

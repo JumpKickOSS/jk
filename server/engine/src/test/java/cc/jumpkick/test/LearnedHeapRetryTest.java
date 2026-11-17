@@ -149,19 +149,29 @@ class LearnedHeapRetryTest {
         }
     }
 
-    /** A learned heap past a quarter of RAM is never asked for: the run takes the ceiling and says so. */
+    /** A learned heap past a quarter of RAM is never asked for: the run takes the ceiling and says so, once. */
     @Test
     void a_learned_heap_past_the_ceiling_runs_at_the_ceiling(@TempDir Path dir) throws Exception {
         long ceiling = SuiteRetry.ceiling();
         assumeTrue(ceiling > 0, "host memory known");
+        LearnedHeaps heaps = new LearnedHeaps(dir.resolve("state"), 1L << 42);
         List<String> flags = SuiteRetry.tune(
                 new ArrayList<>(List.of("-Xmx256m")),
                 dir,
                 "g:app",
                 Runtime.version().feature(),
                 null,
-                new LearnedHeaps(dir.resolve("state"), 1L << 42));
+                heaps);
         assertThat(HeapFlags.parseXmx(flags)).isLessThanOrEqualTo(ceiling);
+        // Every fork of the step plans again, on what the forks before it learned: the note is the
+        // step's, said once.
+        SuiteRetry.tune(
+                new ArrayList<>(List.of("-Xmx256m")),
+                dir,
+                "g:app",
+                Runtime.version().feature(),
+                null,
+                new LearnedHeaps(dir.resolve("state"), 1L << 43));
         assertThat(HeapNotes.drain())
                 .singleElement()
                 .asString()

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,45 @@ class LearnedHeapsTest {
                 .as("never more than the budget can lease")
                 .isLessThanOrEqualTo(512L << 20);
         assertThat(LearnedHeaps.firstHeap(128L << 20, 0)).isEqualTo(128L << 20);
+    }
+
+    /**
+     * A test row never stores a heap past the test ceiling: a run at the ceiling whose resident
+     * peak lands a little above its {@code -Xmx} (seen on Windows) cannot raise the next plan, and a
+     * row written before the cap is brought under it the next time it is read for a plan.
+     */
+    @Test
+    void a_test_row_never_stores_past_the_ceiling(@TempDir Path dir) throws Exception {
+        long ceiling = LearnedHeaps.testCeiling();
+        assumeTrue(ceiling > 0, "host memory known");
+        LearnedHeaps heaps = new LearnedHeaps(dir);
+        Path project = dir.resolve("p");
+        HeapScope.Key key = new HeapScope.Key(project, "g:app", HeapScope.TEST, 25);
+        heaps.note(key, ceiling + (1L << 30));
+        heaps.good(key, ceiling + (2L << 30));
+        assertThat(heaps.peak(key)).isEqualTo(ceiling);
+        assertThat(heaps.good(key)).isEqualTo(ceiling);
+        long first = heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20);
+        heaps.note(key, ceiling + (3L << 30));
+        assertThat(heaps.choose(project, "g:app", HeapScope.TEST, 25, 128L << 20))
+                .as("a second run at the ceiling asks for no more")
+                .isEqualTo(first);
+        HeapScope.Key compile = new HeapScope.Key(project, "g:app", HeapScope.KOTLIN_COMPILE, 25);
+        heaps.note(compile, ceiling + (1L << 30));
+        assertThat(heaps.peak(compile)).as("only a test row").isEqualTo(ceiling + (1L << 30));
+
+        Path old = dir.resolve("old");
+        Path file = heaps.file(old);
+        long over = ceiling * 2;
+        Files.writeString(
+                file,
+                "# module\tkind\tjdk\tpeaks\tgood\tinputs\tresident\n" + "g:app\ttest\t25\t" + over + ",1024\t" + over
+                        + "\t\t\n");
+        heaps.choose(old, "g:app", HeapScope.TEST, 25, 128L << 20);
+        assertThat(Files.readString(file))
+                .as("the stored row is brought under the ceiling")
+                .contains("g:app\ttest\t25\t" + ceiling + ",1024\t" + ceiling + "\t")
+                .doesNotContain(Long.toString(over));
     }
 
     @Test

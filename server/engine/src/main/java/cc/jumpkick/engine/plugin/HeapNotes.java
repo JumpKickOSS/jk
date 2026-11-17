@@ -47,6 +47,26 @@ public final class HeapNotes {
         }
     }
 
+    /**
+     * As {@link #note}, unless this step already holds a line starting with {@code prefix}: a note
+     * about the plan, which every fork of the step makes again (with a size that may have moved
+     * since), is said once.
+     */
+    public static void noteOnce(String prefix, String text) {
+        if (text == null || text.isBlank()) return;
+        List<String> notes = StepScope.local(NOTES);
+        if (notes == null) {
+            Log.info("jk engine: " + text);
+            return;
+        }
+        synchronized (notes) {
+            for (String had : notes) {
+                if (had.startsWith(prefix)) return;
+            }
+            notes.add(text);
+        }
+    }
+
     /** The lines noted for this thread's step since the last drain, in order; none outside a step. */
     public static List<String> drain() {
         List<String> notes = StepScope.local(NOTES);
