@@ -201,6 +201,15 @@ def test_excludes() -> list[str]:
     return [c.strip() for c in os.environ.get("AGENT_LOOP_TEST_EXCLUDE", "").split(",") if c.strip()]
 
 
+def anchor_tail() -> str:
+    """$AGENT_LOOP_ANCHOR_TAIL: what a jk sandbox's build verdicts say of prose a hand edit left under an
+    old name, written to its `[graph] anchor-tail` (silent, count or kinds); empty where unset (silent)."""
+    tail = os.environ.get("AGENT_LOOP_ANCHOR_TAIL", "").strip()
+    if tail and tail not in ("silent", "count", "kinds"):
+        raise SystemExit(f"AGENT_LOOP_ANCHOR_TAIL={tail}: expected silent, count or kinds")
+    return tail
+
+
 def materialise(task: dict, tool: str, sandbox: Path) -> None:
     """The repository at its corpus commit, as the tool builds it: tracked files only, plus jk's
     manifests for jk (and no Maven or Gradle build), so no agent reads another tool's build."""
@@ -243,6 +252,18 @@ def materialise(task: dict, tool: str, sandbox: Path) -> None:
         # instead of failing in every arm alike and sending the agent after Docker.
         with open(sandbox / "jk.toml", "a", encoding="utf-8") as fh:
             fh.write("\n[test]\nexclude-classes = [" + ", ".join(json.dumps(c) for c in excluded) + "]\n")
+    tail = anchor_tail()
+    if tool == "jk" and tail:
+        # The push variant the bench compares (docs/user/graph.md, Settings): in the baseline, so the agent's
+        # diff never shows it.
+        manifest = sandbox / "jk.toml"
+        text = manifest.read_text(encoding="utf-8")
+        line = f'anchor-tail = "{tail}"\n'
+        if re.search(r"(?m)^\[graph\]\s*$", text):
+            text = re.sub(r"(?m)^\[graph\]\s*$", "[graph]\n" + line.rstrip("\n"), text, count=1)
+        else:
+            text = text.rstrip("\n") + "\n\n[graph]\n" + line
+        manifest.write_text(text, encoding="utf-8")
     subprocess.run(["git", "init", "-q"], cwd=sandbox, check=True)
     subprocess.run(["git", "add", "-A"], cwd=sandbox, check=True)
     subprocess.run(["git", "-c", "user.name=bench", "-c", "user.email=bench@localhost", "commit", "-q", "-m",
@@ -518,7 +539,7 @@ def prepare(task: dict, tool: str, question: bool, sandbox: Path) -> dict:
     # A task that plants files or edits has a sandbox of its own: shared by repository, the first task's
     # sandbox stood in for every later task of that repository, and a planted trap never reached the agent.
     planted = task["name"] if (TASK_FILES / task["name"] / "inject").exists() or task.get("inject") else ""
-    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted, test_excludes()]).encode()).hexdigest()[:16]
+    key = hashlib.sha1(json.dumps([task["repo"], rev, tool, cmd, build, planted, test_excludes(), anchor_tail()]).encode()).hexdigest()[:16]
     slot = PREPARED / f"{task['repo']}-{key}"
     if (slot / "meta.json").exists():
         sandbox.parent.mkdir(parents=True, exist_ok=True)
@@ -736,7 +757,7 @@ def _run_one(name: str, task: dict, arm: str, run_no: int, ns, run_root: Path) -
            "context": getattr(ns, "context", None), "cli": agents.cli(ns.driver),
            "cli_version": cli_version(ns.driver), "outcome": "error", "finding": "",
            "sandbox": str(sandbox), "host": benchtools.host_id(), "jk_build": jk_build_id(), "jk_version": jk_version(),
-           "test_excluded": test_excludes() or None}
+           "test_excluded": test_excludes() or None, "anchor_tail": anchor_tail() or None}
     try:
         # A question needs the classes (the graph's compiled facts), not a test run.
         prep = prepare(task, tool, question, sandbox)

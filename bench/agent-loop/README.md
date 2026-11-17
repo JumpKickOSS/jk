@@ -322,6 +322,13 @@ starts, not tested.
 | `jk-graphify` | jk | `jk mcp` plus graphify's own install (`graphify claude install`: its CLAUDE.md block and hooks) and MCP server | jk's graph against graphify's, the build tool equal |
 | `mvn-graphify` | Maven | the wrapper plus graphify's MCP server, over a `graphify update .` index | a code graph added by hand |
 
+`$AGENT_LOOP_ANCHOR_TAIL` (`silent`, `count` or `kinds`) writes `[graph] anchor-tail` into a jk
+sandbox's `jk.toml` before the baseline commit: what a passing build's verdict says of the prose a hand
+edit left under an old name ([graph.md](../../docs/user/graph.md#after-a-hand-edit)); unset is `silent`,
+the default. It is part of the prepared sandbox's key and of each row (`anchor_tail`). The
+`petclinic-push-*` tasks are built for it, traps and decoys in pairs, each commented in `tasks.toml`
+with the variant that should matter.
+
 Each row records tokens (input, output, cache read and write), turns, wall time, the outcome, and
 how the agent navigated: graph calls, `Grep`/`Glob`/`Read` calls, and the graph's share of the two.
 `results/<date>-change-tasks/TABLE.md` is the medians per task and arm, with the median F1 for

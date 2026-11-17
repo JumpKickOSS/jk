@@ -1,0 +1,11 @@
+name: load test
+on: [workflow_dispatch]
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    env:
+      PETCLINIC_VISITS_MAXPERDAY: 500
+    steps:
+      - uses: actions/checkout@v4
+      - run: java -jar target/spring-petclinic.jar &
+      - run: curl --retry 20 --retry-all-errors -fsS http://localhost:8080/ > /dev/null

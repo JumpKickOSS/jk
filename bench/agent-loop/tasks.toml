@@ -346,3 +346,92 @@ the repository that names the column.
 # Every test class but the Docker ones (PostgresIntegrationTests, MySqlIntegrationTests), as the tier's
 # comment above says: on a host whose Docker is podman, Spring's compose support fails before a test runs.
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "DateOfBirthColumnAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# The push slice (JK-BHW43): paired tasks for the stale-anchor push in a build's verdict (docs/user/graph.md,
+# "After a hand edit"). A TRAP asks for one side of an anchor by hand, and the hidden check fails unless the
+# other side changes too, where no test of the agent's own run looks; a DECOY edits a file full of anchors and
+# the right change touches nothing else. Compare arm jk (the push; prose silent, AGENT_LOOP_ANCHOR_TAIL unset)
+# with jk-before on 0.52.0 (no push), and the prose variants with AGENT_LOOP_ANCHOR_TAIL=count and =kinds.
+# A push that adds reads, turns or tokens on the decoys for an agent is off for that agent; reads of pushed
+# files that lead to no edit are the noise metric. Every test class but the Docker ones runs, as above.
+
+# TRAP. Only H2's schema is named; MySQL's (db/mysql/schema.sql:34) and Postgres' (db/postgres/schema.sql:32)
+# still say telephone, and so do Postgres' seed INSERTs (db/postgres/data.sql:25-34); the agent's own tests run
+# on H2 alone. Once the entity maps the new column (its tests fail until it does), the verdict lists them.
+# docs/CHANGELOG.md names the old column as history and must stay: the variants count it (1 markdown), and a
+# count that talks an agent into rewriting it fails the task. Matters: the push (jk vs jk-before) and
+# count/kinds against silent.
+[tasks.petclinic-push-column-h2]
+repo   = "spring-petclinic"
+kind   = "rename-column"
+tools  = ["jk"]
+prompt = """
+We develop on H2: in `src/main/resources/db/h2/schema.sql`, rename the owners table's `telephone` column
+to `phone`. The Java property stays `telephone`. The application must keep running on every database it
+supports.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "PhoneColumnEverySchemaAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# TRAP. The key is renamed in application.properties only; VisitLimits' maxPerDay (bound by relaxed name)
+# and the two variables that set it (docker-compose.yml, the load-test workflow) still say max-per-day. No
+# test of the agent's reads the configured value, so its run passes with the default; the verdict lists
+# VisitLimits.java and both variables. Matters: the push. No prose names the key, so the variants are equal.
+[tasks.petclinic-push-config-key]
+repo   = "spring-petclinic"
+kind   = "rename-property"
+tools  = ["jk"]
+prompt = """
+In `src/main/resources/application.properties`, the visit limit's key `petclinic.visits.max-per-day` is
+renamed to `petclinic.visits.daily-limit`. The configured limit must keep taking effect, however the
+application is configured.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "VisitLimitKeyAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# TRAP the push cannot see: a JSON property is no anchor kind yet, so scripts/birthday-cards.sh's jq
+# `.birthDate` is linked to nothing and every arm's verdict is silent. Kept as the control for a future
+# json-property kind: equal across arms today.
+[tasks.petclinic-push-json-property]
+repo   = "spring-petclinic"
+kind   = "rename-property"
+tools  = ["jk"]
+prompt = """
+In the owners API (`OwnerApiController`), the pets endpoint's JSON property `birthDate` is renamed to
+`born`.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "BornPropertyAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# DECOY for petclinic-push-column-h2: Owner maps the owners table and its columns, and the fix is a method
+# body. No name changes, so every arm's verdict is silent; any extra read of a schema is noise.
+[tasks.petclinic-push-decoy-getpet]
+repo   = "spring-petclinic"
+kind   = "fix"
+tools  = ["jk"]
+prompt = """
+A front-desk clerk typed " leo" and `Owner.getPet` found no pet. Make it match a pet's name while
+ignoring spaces around either name, as it already ignores case.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "GetPetIgnoresSpacesAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# DECOY for petclinic-push-json-property: the edits are in two controllers that define routes, and change
+# only exception text. No name changes; every arm's verdict is silent.
+[tasks.petclinic-push-decoy-not-found]
+repo   = "spring-petclinic"
+kind   = "fix"
+tools  = ["jk"]
+prompt = """
+The "owner not found" errors read differently in each controller, and one stops mid-sentence. Make every
+one of them say exactly `Owner <id> not found.` (for example `Owner 42 not found.`).
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerNotFoundMessageAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
+
+# DECOY for petclinic-push-config-key: the same key, compose file and workflow, but only its value
+# changes. No name changes; every arm's verdict is silent, and the overrides must stay as they are.
+[tasks.petclinic-push-decoy-limit-value]
+repo   = "spring-petclinic"
+kind   = "config"
+tools  = ["jk"]
+prompt = """
+Raise the clinic's configured daily visit limit in `src/main/resources/application.properties` from 20
+to 25.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "VisitLimitValueAcceptanceTests", "-S", "ValidatorTests", "-S", "OwnerControllerTests", "-S", "OwnerTests", "-S", "PetControllerTests", "-S", "PetTypeFormatterTests", "-S", "PetValidatorTests", "-S", "VisitControllerTests", "-S", "ClinicServiceTests", "-S", "CrashControllerIntegrationTests", "-S", "CrashControllerTests", "-S", "I18nPropertiesSyncTest", "-S", "WelcomeControllerTests", "-S", "VetControllerTests", "-S", "VetTests", "-S", "PetClinicIntegrationTests", "-S", "PetClinicConcurrencyTests"]
