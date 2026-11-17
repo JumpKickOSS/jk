@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -44,16 +45,29 @@ class HostLeasesTest {
     void a_draining_engine_and_its_successor_never_lease_past_twice_the_budget_together() throws Exception {
         WorkerLeases.Ledger draining = engine(1001, ROOMY);
         WorkerLeases.Ledger successor = engine(1002, ROOMY);
+        int threadCount = 12;
         AtomicLong held = new AtomicLong();
         AtomicLong peak = new AtomicLong();
+        AtomicInteger holding = new AtomicInteger();
+        CountDownLatch letGo = new CountDownLatch(1);
         AtomicReference<@Nullable Throwable> failed = new AtomicReference<>();
         List<Thread> threads = new ArrayList<>();
-        for (int t = 0; t < 12; t++) {
+        for (int t = 0; t < threadCount; t++) {
             WorkerLeases.Ledger ledger = t % 2 == 0 ? draining : successor;
             long requestId = t;
             threads.add(Thread.ofVirtual().start(() -> {
                 ThreadLocalRandom random = ThreadLocalRandom.current();
                 try {
+                    // First every thread asks for 1 GiB, 12 GiB together, and holds what it gets until
+                    // the test has looked: the two engines' leases overlap by construction, not by
+                    // scheduling luck.
+                    try (WorkerLeases.Grant grant = ledger.acquireBytes(GIB, false, requestId)) {
+                        peak.accumulateAndGet(held.addAndGet(grant.bytes()), Math::max);
+                        holding.incrementAndGet();
+                        if (!letGo.await(60, TimeUnit.SECONDS)) throw new AssertionError("never let go");
+                        held.addAndGet(-grant.bytes());
+                    }
+                    // Then churn: random grants taken and dropped at once, the cap held under contention.
                     for (int i = 0; i < 25; i++) {
                         long bytes = (256 + random.nextLong(1280)) * MIB;
                         try (WorkerLeases.Grant grant = ledger.acquireBytes(bytes, false, requestId)) {
@@ -67,9 +81,30 @@ class HostLeasesTest {
                 }
             }));
         }
+        // Every thread holds its gigabyte or waits in a ledger: nothing more can be granted until one lets go.
+        long together;
+        int waiting;
+        try {
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+            while (failed.get() == null && holding.get() + draining.queued() + successor.queued() < threadCount) {
+                if (System.nanoTime() > deadline)
+                    throw new AssertionError("holding " + holding.get() + ", queued " + draining.queued() + " + "
+                            + successor.queued() + " of " + threadCount);
+                Thread.sleep(5);
+            }
+            together = held.get();
+            waiting = draining.queued() + successor.queued();
+        } finally {
+            letGo.countDown();
+        }
         for (Thread thread : threads) thread.join(TimeUnit.SECONDS.toMillis(60));
         assertThat(failed.get()).isNull();
-        assertThat(peak.get()).isGreaterThan(BUDGET).isLessThanOrEqualTo(2 * BUDGET);
+        assertThat(together)
+                .as("held together while %d waited", waiting)
+                .isGreaterThan(BUDGET)
+                .isLessThanOrEqualTo(2 * BUDGET);
+        assertThat(waiting).as("leases the cap held back").isPositive();
+        assertThat(peak.get()).isLessThanOrEqualTo(2 * BUDGET);
         assertThat(draining.snapshot().leasedBytes()).isZero();
         assertThat(successor.snapshot().leasedBytes()).isZero();
     }
