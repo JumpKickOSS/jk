@@ -209,12 +209,13 @@ where something ties it to a route or a class:
 
 | Mention | Grade |
 |---|---|
-| a TypeScript or JavaScript read (`.birthDate`, `['birthDate']`, a destructured name, an object literal's key) in the function that requests the route | inferred: must change |
+| a TypeScript or JavaScript read (`.birthDate`, `['birthDate']`, a destructured name) in the innermost function that requests the route (a `describe` or `it` callback is one), or a function nested in it | inferred: must change |
+| a key of an object literal the request sends as its body (a shorthand `{ newPassword }` too; an options object's `body`, `data` or `json`, through `JSON.stringify` too; the body argument of `post`, `put` or `patch`; a constant of the file sent so, wherever it is declared), or compares with a value (`toEqual({...})`, `deep.equal`) in the request's function | inferred: must change |
 | a member of a TypeScript interface, type or class named for the class (`Owner`, `IOwner` and `OwnerDto` are one name) | inferred: must change |
 | a jq field on the pipeline that requests the route; a JSONPath literal (`"$.pets[0].name"`) in the test method that requests it | inferred: must change |
 | a property of an OpenAPI schema named for the class, or under the route's path and method | inferred: must change |
 | a key of a JSON fixture (a `.json` under a test or fixtures directory) that a file requesting the route names | inferred: must change |
-| any of these elsewhere in a file that requests the route, or a name several of the route's classes carry | ambiguous: a judgment call |
+| any of these elsewhere in a file that requests the route, a key of any other object literal there (an options object's `id:`), or a name several of the route's classes carry | ambiguous: a judgment call |
 
 Anything else links nowhere: a `.name` in a file that requests no route is not a use. A file a tool
 writes is never read: under a `generated` directory, headed as generated, or named as an output by
@@ -224,8 +225,8 @@ is one whose name or directory says `openapi`, `swagger` or `api-docs`. A worksp
 whose body is one of its own classes, or no client tied to one, has no anchor of this kind. Not
 read, since a class file does not say it: a naming strategy or visibility set in configuration or
 on an `ObjectMapper`, mix-ins, custom serializers, `@JsonView`, `@JsonUnwrapped` prefixes,
-polymorphic type ids; nor a request whose path is built at run time (`this.resourceUrl + '/' + id`),
-which ties nothing but a typed member.
+polymorphic type ids; nor a request whose path is built at run time from anything but a constant of
+its own file, which ties nothing but a typed member.
 
 ### After a hand edit
 

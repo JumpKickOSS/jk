@@ -378,7 +378,11 @@ final class JsonAnchors {
         return out;
     }
 
-    /** The uses of one C-family file, each close when a request of the route sits in its function. */
+    /**
+     * The uses of one C-family file, each close when it sits in the innermost function holding a
+     * request of the route (or a function nested in it), or, for a key of a body, when it is sent
+     * with that request; any other literal's key is never close.
+     */
     private static void ties(
             String rel,
             List<JsonReaders.Use> uses,
@@ -398,9 +402,18 @@ final class JsonAnchors {
         });
         for (JsonReaders.Use u : uses) {
             Set<String> close = new TreeSet<>();
-            if (u.block() >= 0)
-                blocksOf.forEach((route, b) -> {
-                    if (b.contains(u.block())) close.add(route);
+            // A literal's key is JSON only as the body a request sends or a value compared with one.
+            if (u.role() == JsonReaders.Role.OTHER) {
+                out.add(new Tie(rel, u.line(), u.name(), requested.keySet(), false));
+                continue;
+            }
+            if (u.role() == JsonReaders.Role.BODY && u.tie() > 0)
+                requested.forEach((route, lines) -> {
+                    if (lines.contains(u.tie())) close.add(route);
+                });
+            if (close.isEmpty())
+                blocksOf.forEach((route, bs) -> {
+                    for (int b : bs) if (blocks.within(u.block(), b)) close.add(route);
                 });
             out.add(new Tie(rel, u.line(), u.name(), close.isEmpty() ? requested.keySet() : close, !close.isEmpty()));
         }

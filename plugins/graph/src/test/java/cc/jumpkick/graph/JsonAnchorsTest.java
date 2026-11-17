@@ -5,9 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.Confidence;
+import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphEdge;
+import cc.jumpkick.codegraph.GraphIds;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.GraphSnapshot;
+import cc.jumpkick.codegraph.Linker;
+import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,6 +27,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -386,5 +392,187 @@ class JsonAnchorsTest {
                         "uses json:OwnerCard.firstName client/src/cards.ts:2 inferred",
                         "uses json:OwnerCard.tel client/src/cards.ts:3,10 inferred",
                         "uses json:OwnerCard.isActive client/src/cards.ts:4 inferred");
+    }
+
+    /**
+     * jhipster-sample-app's Cypress spec for bank accounts (at 6b000b5d23a36c45e01472471b84a44fa2464044,
+     * Apache-2.0, verbatim): one {@code describe} holds every request, through {@code cy.intercept} and
+     * a custom command's {@code {method, url, body}}. The sample it posts, {@code { name, balance }}
+     * at line 17, is tied to the POST it is sent with though it sits outside that function; the
+     * options objects' keys and the reads in other {@code it} blocks are not. The keys of an object that is
+     * neither sent nor compared (an analytics call's) are judgment calls, never places that must change.
+     */
+    @Test
+    void aSpecsPostedSampleIsTiedToItsRequestAndAnOptionsKeyIsAJudgmentCall(@TempDir Path dir) throws IOException {
+        Map<String, String> files = clinic();
+        files.put("src/main/java/org/springframework/web/bind/annotation/DeleteMapping.java", """
+                package org.springframework.web.bind.annotation;
+
+                public @interface DeleteMapping {
+                    String[] value() default {};
+                }
+                """);
+        String jh = "src/main/java/io/github/jhipster/sample/";
+        files.put(jh + "domain/BankAccount.java", """
+                package io.github.jhipster.sample.domain;
+
+                import java.math.BigDecimal;
+
+                public class BankAccount {
+                    private Long id;
+                    private String name;
+                    private BigDecimal balance;
+
+                    public Long getId() { return id; }
+                    public String getName() { return name; }
+                    public BigDecimal getBalance() { return balance; }
+                }
+                """);
+        files.put(jh + "web/rest/BankAccountResource.java", """
+                package io.github.jhipster.sample.web.rest;
+
+                import io.github.jhipster.sample.domain.BankAccount;
+                import java.util.List;
+                import org.springframework.http.ResponseEntity;
+                import org.springframework.web.bind.annotation.DeleteMapping;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.PathVariable;
+                import org.springframework.web.bind.annotation.PostMapping;
+                import org.springframework.web.bind.annotation.RequestBody;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                @RequestMapping("/api/bank-accounts")
+                public class BankAccountResource {
+                    @PostMapping("")
+                    public ResponseEntity<BankAccount> createBankAccount(@RequestBody BankAccount bankAccount) { return null; }
+
+                    @GetMapping("")
+                    public List<BankAccount> getAllBankAccounts() { return List.of(); }
+
+                    @DeleteMapping("/{id}")
+                    public ResponseEntity<Void> deleteBankAccount(@PathVariable Long id) { return null; }
+                }
+                """);
+        String cy = "src/test/javascript/cypress/e2e/entity/bank-account.cy.ts";
+        files.put(cy, Files.readString(Path.of("src/test/resources/json-anchors/jhipster/bank-account.cy.ts.txt")));
+        files.put("client/src/accounts.ts", """
+                export async function search(q: string) {
+                  const res = await api.get('/api/bank-accounts', { params: { q } });
+                  analytics.track({ name: 'search', id: q });
+                  return res.data.map((a: { balance: number }) => a.balance);
+                }
+                """);
+        RenameFixture ws = new RenameFixture(dir, files);
+        AnchorEditsTest.refresh(ws);
+
+        assertThat(jsonEdges(ws).stream()
+                        .filter(e -> e.contains(cy) || e.contains("accounts.ts"))
+                        .toList())
+                .containsExactlyInAnyOrder(
+                        "uses json:BankAccount.name " + cy + ":17 inferred",
+                        "uses json:BankAccount.balance " + cy + ":17 inferred",
+                        // bankAccount is the POST's response, read in a function that requests only DELETE.
+                        "uses json:BankAccount.id " + cy + ":41 ambiguous",
+                        "uses json:BankAccount.name client/src/accounts.ts:3 ambiguous",
+                        "uses json:BankAccount.id client/src/accounts.ts:3 ambiguous",
+                        "uses json:BankAccount.balance client/src/accounts.ts:4 inferred");
+    }
+
+    /**
+     * jhipster-sample-app's PasswordService (verbatim, at the same commit) posts {@code {
+     * currentPassword, newPassword }}, shorthand keys, behind its {@code ${serverApiUrl}} base URL:
+     * both are places that must change. Shorthand keys of a literal that is not sent (an analytics
+     * call's, a returned value) are not uses at all.
+     */
+    @Test
+    void aShorthandBodyIsTiedToTheRequestThatSendsIt(@TempDir Path dir) throws IOException {
+        Map<String, String> files = clinic();
+        String jh = "src/main/java/io/github/jhipster/sample/";
+        files.put(jh + "service/dto/PasswordChangeDTO.java", """
+                package io.github.jhipster.sample.service.dto;
+
+                public class PasswordChangeDTO {
+                    private String currentPassword;
+                    private String newPassword;
+
+                    public String getCurrentPassword() { return currentPassword; }
+                    public void setCurrentPassword(String currentPassword) { this.currentPassword = currentPassword; }
+                    public String getNewPassword() { return newPassword; }
+                    public void setNewPassword(String newPassword) { this.newPassword = newPassword; }
+                }
+                """);
+        files.put(jh + "web/rest/AccountResource.java", """
+                package io.github.jhipster.sample.web.rest;
+
+                import io.github.jhipster.sample.service.dto.PasswordChangeDTO;
+                import org.springframework.web.bind.annotation.PostMapping;
+                import org.springframework.web.bind.annotation.RequestBody;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RestController;
+
+                @RestController
+                @RequestMapping("/api")
+                public class AccountResource {
+                    @PostMapping(path = "/account/change-password")
+                    public void changePassword(@RequestBody PasswordChangeDTO passwordChangeDto) {}
+                }
+                """);
+        String service = "src/main/webapp/app/account/password/password.service.ts";
+        files.put(
+                service, Files.readString(Path.of("src/test/resources/json-anchors/jhipster/password.service.ts.txt")));
+        files.put("src/main/webapp/app/account/password/audit.ts", """
+                export function change(currentPassword: string, newPassword: string) {
+                  analytics.track({ currentPassword, newPassword });
+                  http.post(`${serverApiUrl}api/account/change-password`, { currentPassword: currentPassword, newPassword });
+                  return { currentPassword, newPassword };
+                }
+                """);
+        RenameFixture ws = new RenameFixture(dir, files);
+        AnchorEditsTest.refresh(ws);
+
+        assertThat(jsonEdges(ws).stream()
+                        .filter(e -> e.startsWith("uses ") && e.contains("app/account/password/"))
+                        .toList())
+                .containsExactlyInAnyOrder(
+                        "uses json:PasswordChangeDTO.currentPassword " + service + ":13 inferred",
+                        "uses json:PasswordChangeDTO.newPassword " + service + ":13 inferred",
+                        "uses json:PasswordChangeDTO.currentPassword src/main/webapp/app/account/password/audit.ts:3 inferred",
+                        "uses json:PasswordChangeDTO.newPassword src/main/webapp/app/account/password/audit.ts:3 inferred");
+    }
+
+    /**
+     * jk's own tree has routes only in documents (the bench's OpenAPI files), no handler: the pass
+     * stops at finding no route a JVM handler defines, reading no file and no class, and the graph
+     * is the one it was given.
+     */
+    @Test
+    void aGraphWhoseRoutesNoHandlerDefinesReadsNothing(@TempDir Path dir) {
+        String doc = "bench/tasks/openapi.yaml";
+        CodeGraph g = Linker.link(List.of(new Fragment(
+                List.of(
+                        new GraphNode(GraphIds.file(doc), "openapi.yaml", "code", doc, ""),
+                        Anchors.node(Anchors.ROUTE, "GET /api/owners/{id}/card")),
+                List.of(Anchors.edge(
+                        GraphIds.file(doc),
+                        Anchors.ROUTE,
+                        "GET /api/owners/{id}/card",
+                        Relations.DEFINES,
+                        Confidence.DECLARED,
+                        doc,
+                        9)))));
+        List<String> read = new ArrayList<>();
+        CodeGraph out = JsonAnchors.add(
+                g,
+                List.of(doc, "client/src/card.ts"),
+                rel -> {
+                    read.add(rel);
+                    return "";
+                },
+                new JsonAnchors.Classfiles(List.of(dir.resolve("absent")), Set.of()));
+        assertThat(out).isSameAs(g);
+        assertThat(read).isEmpty();
+        assertThat(dir.resolve("absent")).doesNotExist();
     }
 }

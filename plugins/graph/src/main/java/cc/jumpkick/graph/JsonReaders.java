@@ -6,6 +6,7 @@ import cc.jumpkick.host.OutputDirs;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,21 +24,50 @@ final class JsonReaders {
 
     private JsonReaders() {}
 
-    /** One name read or written at {@code line}; {@code block} is the function holding it, -1 for none. */
-    record Use(String name, int line, int block) {}
+    /**
+     * One name read or written at {@code line}; {@code block} is the innermost function holding it,
+     * -1 for none. An object literal's key carries its {@code role}, and for a request's body the
+     * line {@code tie} of the request it is sent with (-1 when that is not known).
+     */
+    record Use(String name, int line, int block, Role role, int tie) {
+
+        Use(String name, int line, int block) {
+            this(name, line, block, Role.READ, -1);
+        }
+    }
+
+    /**
+     * What a name is to the JSON a request sends or receives: read off a value ({@code .name}, a
+     * destructured name, a JSONPath, a jq field), a key of the literal sent as a request's body, a
+     * key of a literal compared with a value ({@code toEqual({...})}), or a key of any other literal,
+     * which nothing says is JSON.
+     */
+    enum Role {
+        READ,
+        BODY,
+        COMPARED,
+        OTHER
+    }
 
     /** One member {@code name} of the type {@code type} declared at {@code line} (a TS interface, an OpenAPI schema). */
     record Member(String type, String name, int line) {}
 
-    /** The text's code blocks a function owns: each the offsets of its braces. */
+    /** The text's code blocks a function owns, nested ones too: each the offsets of its braces, in text order. */
     record Blocks(int[] open, int[] close) {
 
-        /** The outermost function block holding {@code offset}; -1 for none. */
+        /** The innermost function block holding {@code offset}; -1 for none. */
         int at(int offset) {
-            for (int i = 0; i < open.length; i++) {
-                if (open[i] < offset && offset < close[i]) return i;
+            int found = -1;
+            for (int i = 0; i < open.length && open[i] < offset; i++) {
+                if (offset < close[i]) found = i;
             }
-            return -1;
+            return found;
+        }
+
+        /** Whether block {@code inner} is block {@code outer} or nested in it; never for -1. */
+        boolean within(int inner, int outer) {
+            if (inner < 0 || outer < 0) return false;
+            return inner == outer || open[outer] < open[inner] && close[inner] <= close[outer];
         }
     }
 
@@ -69,24 +99,18 @@ final class JsonReaders {
     }
 
     /**
-     * The function bodies of a C-family text ({@code masked}: comments and literals blanked), outermost
-     * first: a block opened after {@code =>}, or after a parameter list (and a return type) that is not
-     * an {@code if}, {@code for}, {@code while}, {@code switch} or {@code catch}.
+     * The function bodies of a C-family text ({@code masked}: comments and literals blanked), nested
+     * ones too, in text order: a block opened after {@code =>}, or after a parameter list (and a return
+     * type) that is not an {@code if}, {@code for}, {@code while}, {@code switch} or {@code catch}. A
+     * test framework's {@code describe(() => {...})} and {@code it(...)} are functions like any other,
+     * so a request in one {@code it} is not close to the names of another.
      */
     static Blocks functions(String masked) {
         List<int[]> found = new ArrayList<>();
         for (int o = masked.indexOf('{'); o >= 0; o = masked.indexOf('{', o + 1)) {
             if (!functionBrace(masked, o)) continue;
             int close = closing(masked, o, '{', '}');
-            int c = close < 0 ? masked.length() : close;
-            boolean inside = false;
-            for (int[] f : found) {
-                if (f[0] < o && o < f[1]) {
-                    inside = true;
-                    break;
-                }
-            }
-            if (!inside) found.add(new int[] {o, c});
+            found.add(new int[] {o, close < 0 ? masked.length() : close});
         }
         int[] open = new int[found.size()];
         int[] close = new int[found.size()];
@@ -97,7 +121,7 @@ final class JsonReaders {
         return new Blocks(open, close);
     }
 
-    private static boolean functionBrace(String masked, int brace) {
+    static boolean functionBrace(String masked, int brace) {
         int i = brace - 1;
         while (i >= 0 && Character.isWhitespace(masked.charAt(i))) i--;
         if (i >= 1 && masked.charAt(i) == '>' && masked.charAt(i - 1) == '=') return true;
@@ -188,16 +212,34 @@ final class JsonReaders {
             }
         }
         Matcher k = OBJECT_KEY.matcher(code);
+        Map<String, Integer> sent = JsonKeyRoles.sentNames(masked);
         while (k.find()) {
             int at = k.start(1);
             char opener = masked.charAt(k.start());
             if (opener != '{' && opener != ',') continue;
             if (!inBraces(masked, at) || typeContext(masked, at)) continue;
             String name = unquote(k.group(1));
-            out.add(new Use(name, line(starts, at), blocks.at(at)));
+            int[] tie = {-1};
+            Role role = JsonKeyRoles.role(masked, at, sent, tie);
+            out.add(new Use(name, line(starts, at), blocks.at(at), role, tie[0] < 0 ? -1 : line(starts, tie[0])));
+        }
+        // Shorthand keys ({ currentPassword, newPassword }) only where the literal is sent or compared:
+        // anywhere else the braces may be a destructuring, a block or a value never serialised.
+        Matcher sh = SHORTHAND.matcher(masked);
+        while (sh.find()) {
+            int at = sh.start(1);
+            if (!inBraces(masked, at) || typeContext(masked, at)) continue;
+            int[] tie = {-1};
+            Role role = JsonKeyRoles.role(masked, at, sent, tie);
+            if (role != Role.BODY && role != Role.COMPARED) continue;
+            out.add(new Use(
+                    sh.group(1), line(starts, at), blocks.at(at), role, tie[0] < 0 ? -1 : line(starts, tie[0])));
         }
         return out;
     }
+
+    /** A shorthand entry of an object literal: {@code newPassword} in {@code { currentPassword: c, newPassword }}. */
+    private static final Pattern SHORTHAND = Pattern.compile("[{,]\\s*([A-Za-z_$][\\w$]*)\\s*(?=[,}])");
 
     /** Whether the bracket nearest before {@code at} still open is a brace (an object, not a parameter list). */
     private static boolean inBraces(String masked, int at) {
@@ -263,7 +305,7 @@ final class JsonReaders {
     }
 
     /** The text between {@code open} and {@code close} with every nested bracket's content blanked. */
-    private static String depthOne(String masked, int open, int close) {
+    static String depthOne(String masked, int open, int close) {
         StringBuilder s = new StringBuilder(masked.substring(open + 1, close));
         int depth = 0;
         for (int i = 0; i < s.length(); i++) {
