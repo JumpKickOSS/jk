@@ -108,7 +108,7 @@ final class PackageSteps {
                     if (pluginDecls != null && pluginDecls.packager() != null) {
                         // The packager's declared artifact extension replaces .jar (an APK, …).
                         ActivePlugin owner = Objects.requireNonNull(pluginActive, "packager plugin");
-                        jarPath = PluginBuild.mainArtifactPath(layout, owner);
+                        jarPath = ActivePlugins.mainArtifactPath(layout, owner);
                         Files.createDirectories(jarPath.getParent());
                         packagePlugin(
                                 ctx,

@@ -2421,7 +2421,7 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.PluginBuild"
-value  = 25
+value  = 24
 reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"

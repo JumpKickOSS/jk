@@ -722,9 +722,10 @@ public final class ForecastScope implements StepForecast.Scope {
         // a test run that packages nothing (a sibling reads none of its jar) never brings them back.
         boolean packages = knobs.target().packages() || verdicts.containsKey(TaskNames.PACKAGE_JAR);
         // The jar and every tail packaged beside it, as the build's preflight judges them.
-        boolean packagedAbsent =
-                (packages && (!Files.isRegularFile(layout.mainJar()) || ModuleOutputs.tailsMissing(project, layout)))
-                        || nativeBinaryToRestore;
+        boolean packagedAbsent = (packages
+                        && (!Files.isRegularFile(ActivePlugins.mainArtifact(project, dir, layout))
+                                || ModuleOutputs.tailsMissing(project, layout)))
+                || nativeBinaryToRestore;
         if (!p.parsed().noSources()) {
             boolean present = classesTreePresent(layout);
             incomplete = present && !compileOutputsOnDisk(layout.classesDir());

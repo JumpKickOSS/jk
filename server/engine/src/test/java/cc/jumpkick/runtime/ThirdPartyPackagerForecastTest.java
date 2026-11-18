@@ -204,7 +204,7 @@ class ThirdPartyPackagerForecastTest {
         // type. A forecast over the parsed manifest keyed a config the build never packs with.
         JkBuild planned = VariantApply.applyDefaults(project, proj);
         var plannedOwner = requireNonNull(PackagingKeys.pluginFor(planned, layout, cache));
-        Path artifact = PluginBuild.mainArtifactPath(layout, requireNonNull(plannedOwner.packager()));
+        Path artifact = ActivePlugins.mainArtifactPath(layout, requireNonNull(plannedOwner.packager()));
         assertThat(artifact.getFileName().toString()).endsWith(".hlo");
         var keyed = PackagingKeys.pluginPackager(new PackagingKeys.Packager(
                         planned,

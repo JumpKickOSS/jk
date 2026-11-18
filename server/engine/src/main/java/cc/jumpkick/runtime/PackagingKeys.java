@@ -571,7 +571,7 @@ public final class PackagingKeys {
             ActionCache actionCache) {
         ActivePlugins.Declared owner = Objects.requireNonNull(plugin, "plugin owner");
         ActivePlugin packagerPlugin = Objects.requireNonNull(owner.packager(), "packager plugin");
-        Path artifact = PluginBuild.mainArtifactPath(layout, packagerPlugin);
+        Path artifact = ActivePlugins.mainArtifactPath(layout, packagerPlugin);
         String packager =
                 Objects.requireNonNull(owner.decls().packager(), "packager").name();
         try {

@@ -820,22 +820,6 @@ public final class PluginBuild {
         return out;
     }
 
-    /**
-     * The main artifact's path under the packager's declared extension ({@code
-     * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
-     */
-    public static Path mainArtifactPath(BuildLayout layout, ActivePlugin active) {
-        Path jarPath = layout.mainJar();
-        var packaging = active.manifest().packaging();
-        if (packaging != null) packaging = packaging.resolve(active.config());
-        String ext = packaging == null ? "jar" : packaging.artifactExtension();
-        if (!"jar".equals(ext)) {
-            String fileName = jarPath.getFileName().toString();
-            jarPath = jarPath.resolveSibling(fileName.substring(0, fileName.length() - ".jar".length()) + "." + ext);
-        }
-        return jarPath;
-    }
-
     /** The fact set a plugin body sees; {@link ProjectFacts#token()} is the same set as a key. */
     public static ProjectFacts facts(JkBuild project, @Nullable String resolvedMain) {
         return new ProjectFacts(

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.host.Log;
+import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
@@ -58,6 +60,41 @@ public final class ActivePlugins {
     /** The active plugin whose packager replaces the module's main artifact, or empty. */
     public static Optional<ActivePlugin> packager(JkBuild project, Path moduleDir) {
         return packager(of(project, moduleDir));
+    }
+
+    /**
+     * The main artifact the build's package step writes: the jar, or the packager plugin's own
+     * artifact when its {@code [packaging]} replaces the jar (an Android module's APK, which leaves
+     * no jar). One answer for the build's preflight and {@code jk explain}'s forecast; asking for the
+     * jar read every build of such a module as a restore nothing performs.
+     */
+    static Path mainArtifact(JkBuild build, Path moduleDir, BuildLayout layout) {
+        try {
+            return packager(build, moduleDir)
+                    .map(active -> mainArtifactPath(layout, active))
+                    .orElse(layout.mainJar());
+        } catch (RuntimeException e) {
+            // Two packagers or an unreadable table: the build refuses it with the reason; here the jar
+            // is the question, as before.
+            Log.debug("mainArtifact: no packager answer", e);
+            return layout.mainJar();
+        }
+    }
+
+    /**
+     * The main artifact's path under the packager's declared extension ({@code
+     * target/lib/<name>-<version>.apk}) — the one place the extension swap lives.
+     */
+    public static Path mainArtifactPath(BuildLayout layout, ActivePlugin active) {
+        Path jarPath = layout.mainJar();
+        var packaging = active.manifest().packaging();
+        if (packaging != null) packaging = packaging.resolve(active.config());
+        String ext = packaging == null ? "jar" : packaging.artifactExtension();
+        if (!"jar".equals(ext)) {
+            String fileName = jarPath.getFileName().toString();
+            jarPath = jarPath.resolveSibling(fileName.substring(0, fileName.length() - ".jar".length()) + "." + ext);
+        }
+        return jarPath;
     }
 
     /** As {@link #packager(JkBuild, Path)} over an already selected set. */

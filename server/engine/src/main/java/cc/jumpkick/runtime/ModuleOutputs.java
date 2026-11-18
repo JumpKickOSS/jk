@@ -65,7 +65,7 @@ public final class ModuleOutputs {
             return nodeOutputsMissing(moduleDir, build, actionCache);
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         if (hasMainSources(moduleDir, build)) {
-            if (!Files.isRegularFile(layout.mainJar())) return true;
+            if (!Files.isRegularFile(ActivePlugins.mainArtifact(build, moduleDir, layout))) return true;
             if (!classesTreePresent(actionCache, layout.classesDir(), stampedKeys(layout.classesDir()))) return true;
             if (actionCache != null && !compileOutputsOnDisk(actionCache, layout.classesDir())) return true;
         } else if (resourcesOnlyOutputsMissing(moduleDir, build, layout)) {

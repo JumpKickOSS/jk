@@ -347,6 +347,47 @@ class ModuleOutputsTest {
     }
 
     /**
+     * An Android module's package step writes its APK and no jar: with the classes tree and the
+     * APK in place nothing is missing, so the build's preflight (and the forecast, which asks the
+     * same) never reads a second build as a restore. Without the APK it is missing.
+     */
+    @Test
+    void an_android_modules_main_artifact_is_its_apk_not_a_jar(@TempDir Path root) throws Exception {
+        Path app = Files.createDirectories(root.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "demo"
+                version = "0.1.0"
+                java    = 21
+                kotlin  = "2.4.21"
+
+                [android]
+                namespace   = "com.example"
+                compile-sdk = 36
+                min-sdk     = 24
+                """);
+        Path src = Files.createDirectories(app.resolve("src/main/kotlin/com/example"));
+        Files.writeString(src.resolve("MainActivity.kt"), "package com.example\nclass MainActivity\n");
+        JkBuild build = JkBuildParser.parse(app.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(root, app, build);
+        Path classes = Files.createDirectories(layout.classesDir().resolve("com/example"));
+        Files.write(classes.resolve("MainActivity.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
+        Path apk = layout.mainJar()
+                .resolveSibling(layout.mainJar().getFileName().toString().replace(".jar", ".apk"));
+
+        Files.writeString(apk, "apk");
+        assertThat(ModuleOutputs.packageOutputsMissing(root, app, build))
+                .as("classes and the APK present, no jar: the package step wrote everything it writes")
+                .isFalse();
+        assertThat(layout.mainJar()).doesNotExist();
+
+        Files.delete(apk);
+        assertThat(ModuleOutputs.packageOutputsMissing(root, app, build))
+                .as("the APK gone")
+                .isTrue();
+    }
+
+    /**
      * The test view a tests-enabled build leaves: absent test classes for a module with tests, or
      * an absent fixtures tree for a module whose fixtures root holds sources, each read as a
      * missing output; a module with neither asks for nothing.

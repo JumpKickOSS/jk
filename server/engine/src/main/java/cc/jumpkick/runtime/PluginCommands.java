@@ -75,7 +75,7 @@ public final class PluginCommands {
                     .configValues(active.config().values())
                     .project(PluginBuild.facts(project, project.mainClass()))
                     .layout(layout.classesDir(), dir, scratch)
-                    .artifact(PluginBuild.mainArtifactPath(layout, active))
+                    .artifact(ActivePlugins.mainArtifactPath(layout, active))
                     // The project's pinned JDK, so `PluginCommandExec.tool("keytool")` forks the
                     // same JDK the build compiles with. Non-installing: a command must run before
                     // provisioning (`jk android licenses`), so this locates a pin or falls back to
