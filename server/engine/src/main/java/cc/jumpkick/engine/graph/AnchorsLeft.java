@@ -4,6 +4,7 @@ package cc.jumpkick.engine.graph;
 import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.layout.AnchorWatch;
 import cc.jumpkick.layout.GraphLayout;
+import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,7 +25,8 @@ import java.util.regex.Pattern;
  * per place: {@code must|may \t place \t kind \t old \t now \t rel \t line \t written \t edited}. A
  * verdict names the places that must change in at most {@link #CAP} files, then how many more and the call
  * that lists them; it says nothing when none is left, and nothing of the judgment calls (prose) unless
- * {@code [graph] anchor-tail} asks for a count, which the agent bench compares.
+ * {@code [graph] anchor-tail} asks for a count, which the agent bench compares. All of it is experimental and
+ * off unless {@code anchor-tail} names a variant: by default a verdict gains nothing and costs nothing.
  */
 public final class AnchorsLeft {
 
@@ -61,18 +63,34 @@ public final class AnchorsLeft {
         if (!REFRESHED.matcher(verdict).find()) return "";
         try {
             Path root = GraphRunner.rootOf(Path.of(dir));
-            if (!GraphRunner.hasGraph(root)) return "";
+            String mode = mode(root);
+            if (mode.equals(GraphConfig.TAIL_OFF) || !GraphRunner.hasGraph(root)) return "";
             Path graph = GraphLayout.dir(root);
             if (!AnchorWatch.unchanged(root, graph) && !GraphRunner.awaitRefresh(root, REFRESH_WAIT_MS)) return "";
             List<Place> left = read(graph.resolve("anchors").resolve("stale"));
             if (left.isEmpty()) return "";
-            return tail(left, GraphRunner.graphConfig(root).anchorTail());
+            return tail(left, mode);
         } catch (IOException | RuntimeException unreadable) {
             return "";
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return "";
         }
+    }
+
+    /**
+     * The root manifest's {@code [graph] anchor-tail}: {@link GraphConfig#TAIL_OFF} without parsing it when
+     * the root's manifest does not name the key, so a default verdict pays one small read; a root built from
+     * its pom.xml (whose shadow manifest has no {@code [graph]}) is not rendered for it.
+     */
+    static String mode(Path root) throws IOException {
+        if (ManifestPaths.isShadowed(root)) return GraphConfig.TAIL_OFF;
+        Path manifest = ManifestPaths.manifestIn(root);
+        if (!Files.isRegularFile(manifest)
+                || !Files.readString(manifest, StandardCharsets.UTF_8).contains("anchor-tail")) {
+            return GraphConfig.TAIL_OFF;
+        }
+        return GraphRunner.graphConfig(root).anchorTail();
     }
 
     /** The rows of {@code file}; none when there is no record. */

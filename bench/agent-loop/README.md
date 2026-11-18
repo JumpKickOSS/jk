@@ -324,8 +324,9 @@ starts, not tested.
 
 `$AGENT_LOOP_ANCHOR_TAIL` (`silent`, `count` or `kinds`) writes `[graph] anchor-tail` into a jk
 sandbox's `jk.toml` before the baseline commit: what a passing build's verdict says of the prose a hand
-edit left under an old name ([graph.md](../../docs/user/graph.md#after-a-hand-edit)); unset is `silent`,
-the default. It is part of the prepared sandbox's key and of each row (`anchor_tail`). The
+edit left under an old name ([graph.md](../../docs/user/graph.md#after-a-hand-edit)). Unset writes
+nothing, and jk's default (`off`) pushes nothing: no verdict names a place, so the push arm must set
+`silent` (the places that must change) or a prose variant. It is part of the prepared sandbox's key and of each row (`anchor_tail`). The
 `petclinic-push-*` tasks are built for it, traps and decoys in pairs, each commented in `tasks.toml`
 with the variant that should matter.
 

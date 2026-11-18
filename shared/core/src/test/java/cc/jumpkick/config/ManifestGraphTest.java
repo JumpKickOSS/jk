@@ -30,10 +30,11 @@ class ManifestGraphTest {
 
     @Test
     void readsWhatABuildsVerdictSaysOfProseLeftUnderAnOldName() {
-        assertThat(parse("name = \"a\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_SILENT);
+        assertThat(parse("name = \"a\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_OFF);
+        assertThat(parse("[graph]\nanchor-tail = \"silent\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_SILENT);
         assertThat(parse("[graph]\nanchor-tail = \"kinds\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_KINDS);
         assertThatThrownBy(() -> parse("[graph]\nanchor-tail = \"loud\"\n"))
-                .hasMessageContaining("anchor-tail must be one of silent, count, kinds");
+                .hasMessageContaining("anchor-tail must be one of off, silent, count, kinds");
     }
 
     @Test

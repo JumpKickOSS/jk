@@ -9,6 +9,7 @@ import cc.jumpkick.layout.AnchorWatch;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,14 +17,17 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The lines a build's OK verdict ends with after a hand edit, from the rows the graph worker leaves:
  * petclinic's telephone column renamed in the H2 schema alone, and its visit limit key renamed in
- * application.properties alone, as the worker wrote them. Silent with nothing left, after a failed
- * run, and of prose unless {@code [graph] anchor-tail} asks for a count.
+ * application.properties alone, as the worker wrote them. Nothing at all unless {@code [graph] anchor-tail}
+ * names a variant; then silent with nothing left, after a failed run, and of prose unless it asks for a count.
  */
 class AnchorsLeftTest {
 
     static final String OWNER = "src/main/java/org/springframework/samples/petclinic/owner/Owner.java";
     static final String H2 = "src/main/resources/db/h2/schema.sql";
     static final String MYSQL = "src/main/resources/db/mysql/schema.sql";
+
+    /** The push's lines, which a workspace gets only when its root's jk.toml asks for them. */
+    static final String SILENT = "\n[graph]\nanchor-tail = \"silent\"\n";
 
     /** The telephone column renamed to phone in the H2 schema only. */
     static final String COLUMN = String.join(
@@ -183,7 +187,7 @@ class AnchorsLeftTest {
     @Test
     void aColumnRenamedInOneSchemaNamesThePlacesThatMustChangeAndNothingOfTheProse(@TempDir Path root)
             throws IOException {
-        assertThat(AnchorsLeft.after(workspace(root, COLUMN, "").toString(), OK))
+        assertThat(AnchorsLeft.after(workspace(root, COLUMN, SILENT).toString(), OK))
                 .isEqualTo("""
                         Your edit changed these names; these places still use the old one:
                           column:owners.telephone, now owners.phone: src/main/resources/db/hsqldb/schema.sql:34,\
@@ -194,7 +198,8 @@ class AnchorsLeftTest {
 
     @Test
     void aFilesManyLinesAreOnePlace(@TempDir Path root) throws IOException {
-        assertThat(AnchorsLeft.after(workspace(root, MYSQL_ONLY, "").toString(), "OK build spring-petclinic · 9.7s\n"))
+        assertThat(AnchorsLeft.after(
+                        workspace(root, MYSQL_ONLY, SILENT).toString(), "OK build spring-petclinic · 9.7s\n"))
                 .isEqualTo("""
                         Your edit changed these names; these places still use the old one:
                           column:owners.telephone, now owners.phone: src/main/resources/db/h2/schema.sql:42,\
@@ -205,7 +210,7 @@ class AnchorsLeftTest {
 
     @Test
     void pastTheCapTheRestIsCountedWithTheCallThatListsThem(@TempDir Path root) throws IOException {
-        assertThat(AnchorsLeft.after(workspace(root, COLUMN + KEY, "").toString(), OK))
+        assertThat(AnchorsLeft.after(workspace(root, COLUMN + KEY, SILENT).toString(), OK))
                 .isEqualTo("""
                         Your edit changed these names; these places still use the old one:
                           column:owners.telephone, now owners.phone: src/main/resources/db/hsqldb/schema.sql:34,\
@@ -243,17 +248,18 @@ class AnchorsLeftTest {
                 .filter(l -> l.startsWith("may"))
                 .map(l -> l + "\n")
                 .reduce("", String::concat);
-        assertThat(AnchorsLeft.after(workspace(root, prose, "").toString(), OK)).isEmpty();
+        assertThat(AnchorsLeft.after(workspace(root, prose, SILENT).toString(), OK))
+                .isEmpty();
         Files.writeString(
                 root.resolve("jk.toml"),
-                Files.readString(root.resolve("jk.toml")) + "\n[graph]\nanchor-tail = \"count\"\n");
+                Files.readString(root.resolve("jk.toml")).replace("silent", "count"));
         assertThat(AnchorsLeft.after(root.toString(), OK))
                 .isEqualTo("Your edit changed a name the docs still use: 1 place.\n");
     }
 
     @Test
     void aFailedRunAGuardNoGraphOrNoRecordSaysNothing(@TempDir Path root) throws IOException {
-        String dir = workspace(root, COLUMN, "").toString();
+        String dir = workspace(root, COLUMN, SILENT).toString();
         assertThat(AnchorsLeft.after(dir, "FAIL test spring-petclinic · 1 failed\n"))
                 .isEmpty();
         assertThat(AnchorsLeft.after(dir, "OK guard spring-petclinic · 8.3s\n")).isEmpty();
@@ -264,6 +270,32 @@ class AnchorsLeftTest {
     }
 
     /**
+     * By default the push is off: the trap's hasty edit (the column renamed in MySQL's schema alone) gets
+     * the plain verdict, and the verdict does none of the push's work: here the refresh the build started
+     * is still running and the graph has no watch list, which with the push on waits for that refresh.
+     */
+    @Test
+    void byDefaultTheVerdictIsThePlainOneAndWaitsForNothing(@TempDir Path root) throws Exception {
+        String dir = workspace(root, MYSQL_ONLY, "").toString();
+        String verdict = "OK build spring-petclinic · 9.7s\n";
+        Path key = GraphRunner.rootOf(root);
+        GraphRunner.holdSlot(key);
+        try {
+            long start = System.nanoTime();
+            assertThat(verdict + AnchorsLeft.after(dir, verdict)).isEqualTo(verdict);
+            assertThat((System.nanoTime() - start) / 1_000_000).as("no wait").isLessThan(2_000);
+            Files.writeString(root.resolve("jk.toml"), "\n[graph]\nanchor-tail = \"off\"\n", StandardOpenOption.APPEND);
+            assertThat(AnchorsLeft.after(dir, verdict)).as("off, said").isEmpty();
+        } finally {
+            GraphRunner.releaseSlot(key);
+        }
+        Files.writeString(
+                root.resolve("jk.toml"),
+                Files.readString(root.resolve("jk.toml")).replace("\"off\"", "\"silent\""));
+        assertThat(AnchorsLeft.after(dir, verdict)).startsWith("Your edit changed these names;");
+    }
+
+    /**
      * An up-to-date run waits for no refresh when no file that held an anchor, or that the record
      * names, changed since the last one: the refresh the build started is still running here (its
      * slot held), and the record is read at once. A watched file edited since makes it wait, as does a
@@ -271,7 +303,7 @@ class AnchorsLeftTest {
      */
     @Test
     void theVerdictWaitsForTheRefreshOnlyWhenAWatchedFileChanged(@TempDir Path root) throws Exception {
-        String dir = workspace(root, MYSQL_ONLY, "").toString();
+        String dir = workspace(root, MYSQL_ONLY, SILENT).toString();
         Path schema = Files.createDirectories(root.resolve(MYSQL).getParent()).resolve("schema.sql");
         Files.writeString(schema, "CREATE TABLE owners (\n  phone VARCHAR(20)\n);\n");
         Path graph = root.resolve("target/graph");

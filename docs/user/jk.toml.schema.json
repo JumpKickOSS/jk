@@ -596,8 +596,8 @@
         },
         "anchor-tail": {
           "type": "string",
-          "enum": ["silent", "count", "kinds"],
-          "description": "For the agent bench: what a build's MCP verdict says of prose that still names a name a hand edit changed. silent (default), count, kinds."
+          "enum": ["off", "silent", "count", "kinds"],
+          "description": "Experimental, for the agent bench: what a build's MCP verdict says of the places a hand edit left under an old name. off (default): nothing; silent: the places that must change; count, kinds: those and a count of the prose."
         }
       },
       "additionalProperties": false
