@@ -30,6 +30,7 @@ import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
+import cc.jumpkick.test.SuiteEnvReads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -515,7 +516,11 @@ public record TestStampInputs(
             }
             extras.add("worker:" + e.getKey() + "=" + fp);
         }
-        extras.addAll(SuiteEnvKeys.tokens(build, moduleDir, selection == null ? TestSelection.DEFAULT : selection));
+        extras.addAll(SuiteEnvKeys.tokens(
+                build,
+                moduleDir,
+                selection == null ? TestSelection.DEFAULT : selection,
+                SuiteEnvReads.Policy.of(project)));
         return extras;
     }
 }

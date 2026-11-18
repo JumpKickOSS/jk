@@ -98,7 +98,7 @@ final class NodeTomlRenderer {
         }
     }
 
-    /** {@code [env]}: the declared names, the literal values and {@code inherit}. */
+    /** {@code [env]}: the declared names, the literal values, {@code inherit} (false when strict) and {@code scope}. */
     static void renderEnv(StringBuilder sb, EnvConfig env) {
         if (env.isEmpty()) return;
         sb.append("\n[env]\n");
@@ -112,6 +112,8 @@ final class NodeTomlRenderer {
             sb.append("vars = [").append(String.join(", ", parts)).append("]\n");
         }
         if (env.inherit()) sb.append("inherit = true\n");
+        if (env.strict()) sb.append("inherit = false\n");
+        names(sb, "scope", env.scope());
     }
 
     private static void names(StringBuilder sb, String key, List<String> names) {

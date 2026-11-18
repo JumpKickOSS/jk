@@ -41,6 +41,11 @@ import org.jspecify.annotations.Nullable;
  * release a build of it ships (a clean checkout at the declared version's tag), and {@code
  * releaseLine} is the line that says so, or why a tagged tree builds a snapshot; empty otherwise.
  *
+ * <p>{@code envReads} names the environment variables the workspace's suites were found to read
+ * (names only, never values; {@code SuiteEnvReads}): the client ships their values with the next
+ * request, so a suite's key needs no question back. {@link #ENV_READS_NAMES} among them asks for
+ * the names the shell sets, {@link #ENV_READS_ALL} for the whole environment.
+ *
  * <p>{@code upstreams} is, for each selected module when a selector ({@code -m}, {@code
  * --affected-since}) was given, every workspace sibling it depends on through any scope,
  * transitively: {@code dir → } the siblings' absolute directories joined by {@code \n}. Empty
@@ -109,7 +114,8 @@ public record ProjectInfo(
         Map<String, String> releaseFiles,
         Map<String, String> upstreams,
         boolean releaseBuild,
-        String releaseLine) {
+        String releaseLine,
+        List<String> envReads) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -208,7 +214,76 @@ public record ProjectInfo(
                 releaseFiles,
                 upstreams,
                 releaseBuild,
-                line);
+                line,
+                envReads);
+    }
+
+    /** This summary with {@link #envReads} set. */
+    public ProjectInfo withEnvReads(List<String> reads) {
+        return new ProjectInfo(
+                error,
+                group,
+                name,
+                version,
+                jdk,
+                javaRelease,
+                kotlin,
+                kotlinVersion,
+                groovy,
+                groovyVersion,
+                layoutSimple,
+                workspaceRoot,
+                workspaceRootDir,
+                moduleDirs,
+                application,
+                mainClass,
+                assembly,
+                applicationConfig,
+                nativeMode,
+                graal,
+                springBoot,
+                springBootVersion,
+                formatStyle,
+                formatJava,
+                formatKotlin,
+                formatOptimizeImports,
+                formatImportOrder,
+                formatRemoveUnusedImports,
+                hasLock,
+                lockJdk,
+                mainJarPath,
+                assemblyJarPath,
+                nativeBinPath,
+                nativeLibPath,
+                pathDeps,
+                sourcesJarPath,
+                javadocJarPath,
+                envRefs,
+                moduleNames,
+                sourceCount,
+                testCount,
+                nativeExplicitlyDisabled,
+                classesDir,
+                testClassesDir,
+                kotlinClassesDir,
+                groovyClassesDir,
+                testResultsDir,
+                lockStale,
+                scala,
+                scalaVersion,
+                coordinatorOnly,
+                productLib,
+                productBin,
+                toolchains,
+                publishRepository,
+                publishSign,
+                publishKeyFile,
+                releaseTag,
+                releaseFiles,
+                upstreams,
+                releaseBuild,
+                releaseLine,
+                List.copyOf(reads));
     }
 
     /** The siblings {@code dir} depends on ({@link #upstreams}), as absolute directories; empty for none. */
@@ -216,6 +291,12 @@ public record ProjectInfo(
         String joined = upstreams.get(dir);
         return joined == null || joined.isEmpty() ? List.of() : List.of(joined.split("\n"));
     }
+
+    /** The {@link #envReads} entry that asks for the names the caller's shell sets (a suite listed them). */
+    public static final String ENV_READS_NAMES = "#names";
+
+    /** The {@link #envReads} entry that asks for the caller's whole environment (a suite started a program). */
+    public static final String ENV_READS_ALL = "#all";
 
     /** The {@code group:name} display coordinate. */
     public String coord() {
@@ -285,7 +366,8 @@ public record ProjectInfo(
                 Map.of(),
                 Map.of(),
                 false,
-                "");
+                "",
+                List.of());
     }
 
     public String encode() {
@@ -351,6 +433,8 @@ public record ProjectInfo(
                 .map("upstreams", upstreams)
                 .bool("releaseBuild", releaseBuild)
                 .string("releaseLine", releaseLine)
+                // Absent when empty: a summary of a tree whose suites read nothing is the line it always was.
+                .optionalArray("envReads", envReads.isEmpty() ? null : envReads)
                 .finish();
     }
 
@@ -418,7 +502,8 @@ public record ProjectInfo(
                 Jsonl.strMap(line, "releaseFiles"),
                 Jsonl.strMap(line, "upstreams"),
                 Jsonl.bool(line, "releaseBuild", false),
-                orEmpty(Jsonl.str(line, "releaseLine")));
+                orEmpty(Jsonl.str(line, "releaseLine")),
+                Jsonl.strArray(line, "envReads"));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

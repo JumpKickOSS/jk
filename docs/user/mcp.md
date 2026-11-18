@@ -125,9 +125,9 @@ answer.
 ## Verdict
 
 An OK run is one line, plus a `W` line for each notice the run gave: a login whose secret the keychain
-did not give up, so a request went without it, is a `W` line on a green run as on a red one. So is
-a variable a test read that its module does not declare, with a `FIX` line under it naming the
-`[env]` declaration ([Test](test.md#environment-variables-a-suite-reads)). A failure adds one line per problem, capped at five, then
+did not give up, so a request went without it, is a `W` line on a green run as on a red one. So is,
+in a strict module (`[env] inherit = false`), a variable a test looked up that the shell sets, with
+a `FIX` line under it naming the `[env]` declaration ([Test](test.md#keeping-a-module-strict)). A failure adds one line per problem, capped at five, then
 `+K more: jk results -A | diagnostics(file=<path>)`: the shell command, then this tool. With no
 `file`, `diagnostics` returns every problem with its source lines (the same text as `jk results
 --all`); with `file`, that file's.

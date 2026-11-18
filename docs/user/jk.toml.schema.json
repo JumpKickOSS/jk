@@ -527,7 +527,7 @@
     },
     "env": {
       "type": "object",
-      "description": "[env] table: what this module's workers (the compiler, each test JVM, plugin steps) take from the environment beyond jk's allow-list. Per module; not inherited from a workspace root. The declared names' values key the module's suite.",
+      "description": "[env] table: what this module's workers (the compiler, each test JVM, plugin steps) take from the environment beyond jk's allow-list. A test JVM also reads any other variable of the shell running jk when it looks it up, and the suite is keyed on what it read. Per module; inherit = false and scope set at a workspace root apply to every member. The declared names' values key the module's suite.",
       "properties": {
         "require": {
           "type": "array",
@@ -551,7 +551,12 @@
         },
         "inherit": {
           "type": "boolean",
-          "description": "true hands the module's workers the whole environment of the shell running jk, secrets included, and keys its suite on all of it less what a shell changes per command. Default false. Costs cache hits; write the reason beside it."
+          "description": "true hands every worker of the module, the compiler included, the whole environment of the shell running jk, secrets included, and keys its suite on all of it less what a shell changes per command; costs cache hits, so write the reason beside it. false, written, is strict: test JVMs get the allow-list and the declared names alone, as before 0.53, and a run names each variable a test looked up that the shell sets; at a workspace root it holds for every member. Unwritten (the default), a test JVM reads any variable of the shell running jk when it looks it up, and the suite is keyed on what it read."
+        },
+        "scope": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Name patterns (a name, or a prefix ending in *: \"SPRING_*\") that narrow what a test JVM sees of the caller's undeclared variables: only matching names, besides the allow-list and the declared names. A suite that lists the environment's names then keys on the matching names alone, so its result holds on another host. A member's own scope wins over the workspace root's."
         }
       },
       "additionalProperties": false

@@ -7,9 +7,12 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.test.SuiteEnvDelivery;
+import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -58,7 +61,8 @@ final class SuiteDiscovery {
             TestSelection selection,
             Collection<Path> keyed,
             boolean networkAllowed,
-            boolean whole) {
+            boolean whole,
+            SuiteEnvReads.Policy envPolicy) {
 
         /**
          * As {@link SuiteDiscovery#settle}, for this run; a writing remote tier is told the read list
@@ -66,7 +70,17 @@ final class SuiteDiscovery {
          */
         @Nullable
         String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey) throws Exception {
-            String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey);
+            return settle(ctx, stampKey, rekey, SuiteEnvDelivery.Seen.NONE);
+        }
+
+        /**
+         * As {@link SuiteDiscovery#settle}, for this run, which read {@code env} of the caller's
+         * environment; a writing remote tier is told the read list of the key it settles.
+         */
+        @Nullable
+        String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey, SuiteEnvDelivery.Seen env)
+                throws Exception {
+            String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey, env);
             RemoteSuiteReads.offer(moduleDir, selection, settled, rekey::key);
             return settled;
         }
@@ -94,11 +108,21 @@ final class SuiteDiscovery {
             TestSelection selection,
             Collection<Path> keyed,
             boolean networkAllowed,
-            boolean whole)
+            boolean whole,
+            JkBuild project)
             throws IOException {
         long now = Clock.SYSTEM.millis();
         String flag = SuiteReads.prepare(SuiteReads.recordingDir(layout.moduleTargetDir()));
-        return new Run(flag, now, moduleDir, layout, selection, List.copyOf(keyed), networkAllowed, whole);
+        return new Run(
+                flag,
+                now,
+                moduleDir,
+                layout,
+                selection,
+                List.copyOf(keyed),
+                networkAllowed,
+                whole,
+                SuiteEnvReads.Policy.of(project));
     }
 
     /**
@@ -110,7 +134,9 @@ final class SuiteDiscovery {
      * and warns {@link InputGuard#MOVED}: the suite read it at an unknown moment, so neither the key
      * before nor the key after names what it read. A suite that reached past this host is never stored.
      */
-    static @Nullable String settle(TaskContext ctx, Run run, @Nullable String stampKey, Rekey rekey) throws Exception {
+    static @Nullable String settle(
+            TaskContext ctx, Run run, @Nullable String stampKey, Rekey rekey, SuiteEnvDelivery.Seen env)
+            throws Exception {
         Path moduleDir = run.moduleDir();
         Path target = run.layout().moduleTargetDir();
         List<Path> roots = new ArrayList<>(run.keyed());
@@ -143,8 +169,23 @@ final class SuiteDiscovery {
         SuiteReads.Discovered before = SuiteReads.load(moduleDir, run.selection());
         // A whole run's reads are all the suite reads now: what it no longer reads drops out. A run
         // of only the affected classes adds to what the whole suite was found to read.
-        SuiteReads.Discovered after =
-                run.whole() ? SuiteReads.Discovered.NONE.with(read, started, hosts) : before.with(read, started, hosts);
+        // What a suite read of the environment only grows: a whole run under another shell reads
+        // other names, and dropping the ones it did not read this time would move the key back and
+        // forth as the user alternates terminals, so no result ever held.
+        SuiteReads.Discovered after = run.whole()
+                ? SuiteReads.Discovered.NONE.with(
+                        read, started, hosts, before.env().with(env.record()))
+                : before.with(read, started, hosts, env.record());
+        // Said once, on the run that first keys the suite broadly, with how to narrow it.
+        // A build with no terminal (web UI, MCP) has nothing to narrow: its reads key as unknown.
+        String broad = env.attached() ? broadKeying(before.env(), after.env(), run.envPolicy()) : null;
+        if (broad != null) ctx.warn(ENV_BROAD, broad);
+        if (env.lost()) {
+            // The client went away while a test was reading its shell: keep what was read, store nothing.
+            if (!after.equals(before)) SuiteReads.save(moduleDir, run.selection(), after);
+            ctx.warn(ENV_LOST, ENV_LOST_MESSAGE);
+            return null;
+        }
         // Every run that stores no marker for it says so, not only the one that first found it.
         if (reached) {
             ctx.warn(SuiteReads.NETWORK_WARNING, networkWarning(hosts));
@@ -182,10 +223,10 @@ final class SuiteDiscovery {
         // run began, so what the first key hashed of it is what the suite read.
         SuiteReads.save(moduleDir, run.selection(), after);
         String key = stampKey == null ? null : rekey.key();
-        String readsAfter = SuiteReads.digest(moduleDir, run.selection(), workspace);
+        String readsAfter = SuiteReads.digest(moduleDir, run.selection(), workspace, run.envPolicy());
         SuiteReads.save(moduleDir, run.selection(), before);
         boolean held = stampKey != null && key != null && stampKey.equals(rekey.key());
-        String readsBefore = SuiteReads.digest(moduleDir, run.selection(), workspace);
+        String readsBefore = SuiteReads.digest(moduleDir, run.selection(), workspace, run.envPolicy());
         SuiteReads.save(moduleDir, run.selection(), after);
         Path moved = null;
         if (held) {
@@ -231,6 +272,35 @@ final class SuiteDiscovery {
         String shown = p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : p.toString();
         String more = read.size() > 1 ? " (+" + (read.size() - 1) + ")" : "";
         return "tests read jk's own state, not keyed: " + shown + more;
+    }
+
+    /** The warning code of a run whose client went away while its tests read the caller's environment. */
+    static final String ENV_LOST = "suite-env-lost";
+
+    /** What such a run says: it is not stored, and why. */
+    static final String ENV_LOST_MESSAGE =
+            "the terminal that ran jk went away while the tests read its environment; the next build runs them again";
+
+    /** The warning code of a run that first keys its suite on the environment's names or all of it. */
+    static final String ENV_BROAD = "suite-env-broad";
+
+    /**
+     * What a run says when its suite's record first takes a broad keying under no {@code [env]
+     * scope} ({@code before} lacked it, {@code after} has it): why, and how to narrow it; null when
+     * nothing new is broad.
+     */
+    static @Nullable String broadKeying(
+            SuiteEnvReads.Record before, SuiteEnvReads.Record after, SuiteEnvReads.Policy policy) {
+        if (!policy.scope().isEmpty() || policy.strict()) return null;
+        if (after.whole() && !before.whole()) {
+            return "a test starts a program, which sees your whole environment, so the suite is keyed on all of it"
+                    + " but the terminal and session variables; [env] scope = [\"APP_*\"] narrows what it sees";
+        }
+        if (after.listed() && !before.listed()) {
+            return "the suite lists the environment's names, so a new variable runs it again;"
+                    + " [env] scope = [\"APP_*\"] narrows what it sees";
+        }
+        return null;
     }
 
     /** The warning code of {@link #jkStateWarning}. */

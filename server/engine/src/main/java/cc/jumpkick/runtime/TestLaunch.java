@@ -48,7 +48,6 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.CoverageResults;
-import cc.jumpkick.test.EnvProbeJar;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.TestLauncherFailure;
@@ -457,7 +456,8 @@ final class TestLaunch {
      * the module's {@code [test] exclude-classes} and the classes already {@code settled} under this
      * stamp ({@link TestClassLedger}), its {@code [test] serial-tags} (those classes run
      * on one trailing worker while the rest shard) and assertions, the fork's JVM args then {@code suite}'s own, the debug port, the coverage agent when the run
-     * measures coverage, and the affected class names when the session ranked them.
+     * measures coverage, and the affected class names when the session ranked them. The caller adds
+     * the environment probe ({@code SuiteEnvDelivery#probe}).
      */
     static JUnitLauncher launcher(
             BuildPlanner.Inputs in,
@@ -483,11 +483,7 @@ final class TestLaunch {
                 .withClassPatterns(effectiveSel.classes())
                 .withExcludedClasses(projectUnderTest.build().testExcludeClasses(), settled)
                 .withDebug(in.session().debugJvm())
-                .withKeepOutput(in.verbose())
-                .withRecording(EnvProbeJar.prepare(
-                        in.cache(),
-                        EnvReadReport.recordDir(in.dir()),
-                        BuildLayout.of(in.dir(), projectUnderTest).classesDir()));
+                .withKeepOutput(in.verbose());
         if (jacoco != null && coverageExec != null) {
             launcher.withCoverage(new CoverageAgent(jacoco.agentJar(), coverageExec));
         }

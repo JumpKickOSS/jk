@@ -3,6 +3,7 @@ package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -86,6 +87,25 @@ class WorkerEnvTest {
             assertThat(worker.values()).noneMatch(v -> v.startsWith("canary-"));
             assertThat(worker).doesNotContainKey("GIT_ASKPASS");
         }
+    }
+
+    /**
+     * A module that says nothing of [env] lets its test JVMs read the caller's shell (through the
+     * environment broker, a variable at a time), never its compiler or any other worker: their
+     * environment is the allow-list, as before (JK-ZENNA).
+     */
+    @Test
+    void a_default_module_hands_its_compiler_no_undeclared_variable(@TempDir Path dir) throws Exception {
+        Map<String, String> shell = Map.of("PATH", "/req/bin", "UNDECLARED_FOR_TESTS", "canary-compile");
+        EnvConfig config = JkBuildParser.parse("group = \"ex\"\nname = \"m\"\nversion = \"1.0.0\"\n")
+                .build()
+                .env();
+        assertThat(config.strict()).isFalse();
+        Map<String, String> compiler = RequestShell.where(
+                shell,
+                () -> WorkerEnv.withEngineEnvironment(
+                        ENGINE, WorkerEnv.forModule(config, dir, null)::compilerEnvironment));
+        assertThat(compiler).doesNotContainKey("UNDECLARED_FOR_TESTS");
     }
 
     @Test

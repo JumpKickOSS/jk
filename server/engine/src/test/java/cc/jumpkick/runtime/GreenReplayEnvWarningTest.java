@@ -25,12 +25,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A suite served from its green marker says again the undeclared variables its run named, while
- * the module still does not declare them.
+ * A strict module's suite served from its green marker says again the undeclared variables its run
+ * named, while the module still does not declare them; a module that is not strict says nothing.
  */
 class GreenReplayEnvWarningTest {
 
     private static final String MANIFEST = "group = \"ex\"\nname = \"m\"\nversion = \"1.0.0\"\n";
+
+    /** A strict module: its test JVMs keep to the allow-list, so a run names what the shell set and they lacked. */
+    private static final String STRICT = MANIFEST + "\n[env]\ninherit = false\n";
 
     @TempDir
     Path tmp;
@@ -58,14 +61,21 @@ class GreenReplayEnvWarningTest {
         boolean hit = RequestShell.where(
                 Map.of("FOO", "bar"),
                 () -> TestLaunch.replayGreenRun(
-                        replay, in, cache, "stamp", JkBuildParser.parse(MANIFEST), WorkerEnv.strict()));
+                        replay, in, cache, "stamp", JkBuildParser.parse(STRICT), WorkerEnv.strict()));
 
         assertThat(hit).isTrue();
         assertThat(replay.replayed)
-                .containsExactly("env-undeclared FOO: EnvTest read FOO, which jk.toml does not declare;"
-                        + " it saw no value. Add to [env] require: \"FOO\"");
+                .containsExactly("env-undeclared FOO: EnvTest read FOO, which your shell sets; jk.toml is strict,"
+                        + " so the test saw no value. Add to [env] optional: \"FOO\" to pass it"
+                        + " (the name only; the value stays in your shell), or leave it out");
 
-        JkBuild declares = JkBuildParser.parse(MANIFEST + "\n[env]\noptional = [\"FOO\"]\n");
+        Recording passes = new Recording();
+        TestLaunch.replayGreenRun(passes, in, cache, "stamp", JkBuildParser.parse(MANIFEST), WorkerEnv.strict());
+        assertThat(passes.replayed)
+                .as("a module that is not strict read the variable from the shell: nothing to say")
+                .isEmpty();
+
+        JkBuild declares = JkBuildParser.parse(STRICT + "optional = [\"FOO\"]\n");
         Recording declared = new Recording();
         TestLaunch.replayGreenRun(declared, in, cache, "stamp", declares, WorkerEnv.strict());
         assertThat(declared.replayed).as("a variable the module now declares").isEmpty();
@@ -81,14 +91,17 @@ class GreenReplayEnvWarningTest {
                 dir, tmp.resolve("cache"), Session.defaults().withWorkingDir(dir));
 
         Recording replay = new Recording();
-        EnvReadReport.replay(replay, in, JkBuildParser.parse(MANIFEST), WorkerEnv.strict(), EnvReadReport.said(told));
+        EnvReadReport.replay(replay, in, JkBuildParser.parse(STRICT), WorkerEnv.strict(), EnvReadReport.said(told));
 
         assertThat(replay.replayed).hasSize(EnvReadReport.MAX_TOLD + 1);
         assertThat(replay.replayed.getLast())
                 .isEqualTo("env-undeclared : 2 more undeclared variables read; jk results lists the first 8");
         assertThat(EnvReadReport.split(replay.replayed.getFirst().substring("env-undeclared V0: ".length())))
                 .isEqualTo(new EnvReadReport.Said(
-                        "T reads V0, which jk.toml does not declare", "add to [env] optional: \"V0\"", 1));
+                        "T reads V0, which your shell sets; jk.toml is strict, so its tests run without it",
+                        "add to [env] optional: \"V0\" to pass it (the name only; the value stays in your shell),"
+                                + " or leave it out",
+                        1));
     }
 
     /** A step context that keeps what it was told to say again. */

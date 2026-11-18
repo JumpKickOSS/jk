@@ -40,6 +40,7 @@ import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.StampTokens;
+import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.test.TestLauncherFailure;
@@ -91,19 +92,25 @@ final class TestSteps {
                 .build();
     }
 
-    /** Run one module's suite, or replay its last green run when nothing it reads has changed. */
-    private void runSuite(TaskContext ctx) throws Exception {
+    /** Whether the module has no suite to run: tests not selected for it, or no test sources; labelled so. */
+    private boolean nothingToRun(TaskContext ctx) {
         if (!SuiteRunRules.selectedForTests(in.session().testSelection(), in.dir())) {
             ctx.label(TaskNames.TESTS_NOT_SELECTED);
             ctx.cached();
-            return;
+            return true;
         }
         if (ctx.get(COMPILED_TESTS).map(CompiledTests::noSources).orElse(false)) {
             // Nothing to run is nothing done: the module is checked, not built.
             ctx.label("no tests to run");
             ctx.cached();
-            return;
+            return true;
         }
+        return false;
+    }
+
+    /** Run one module's suite, or replay its last green run when nothing it reads has changed. */
+    private void runSuite(TaskContext ctx) throws Exception {
+        if (nothingToRun(ctx)) return;
         Path testClasses = ctx.require(PARSED_BUILD).testClassesDir();
         List<Path> testSrcs =
                 ctx.get(COMPILED_TESTS).map(CompiledTests::sources).orElse(List.of());
@@ -168,11 +175,20 @@ final class TestSteps {
         // Discovery writes under target/ and reads sibling manifests, so it can throw: it runs
         // before the gate too, never between the acquire and the try that releases it.
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
+        // What the suite's JVMs read of the caller's environment is fetched and recorded as they run.
+        SuiteEnvDelivery env = SuiteEnvDelivery.prepare(
+                in.cache(),
+                EnvReadReport.recordDir(in.dir()),
+                ctx.require(MODULE).layout().classesDir(),
+                projectUnderTest,
+                testEnv);
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
                 () -> gate[0] =
                         TestGates.acquire(ctx.require(MODULE).layout().workspaceRoot(), SessionCancel::cancelled));
+        // Started last before the launch, closed in its finally: nothing between can leave it listening.
+        env.start();
         // Null until the launch returns: a run stopped part way leaves it so.
         TestSummary result = null;
         boolean launcherFailed = false;
@@ -191,6 +207,7 @@ final class TestSteps {
             forkJvmArgs.addAll(JvmModulePath.args(projectUnderTest, in.dir(), runtimeCp));
             SuiteResources.Launcher launcher = ledger.launching((settled, s) -> TestLaunch.launcher(
                             in, projectUnderTest, effectiveSel, forkJvmArgs, s, affected, jacoco, coverageExec, settled)
+                    .withRecording(env.probe())
                     .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
                     .withRecording(reads.flag()));
@@ -209,13 +226,14 @@ final class TestSteps {
                                 launcher,
                                 runtimeCp,
                                 (one, cp, l) -> TestLaunch.launch(
-                                        ctx, in, one, cp, testWorkers, workerJars, testEnv, l, tagExcluded));
+                                        ctx, in, one, cp, testWorkers, workerJars, env.launchEnv(), l, tagExcluded));
             } catch (TestLauncherFailure e) {
                 launcherFailed = true;
                 TestLaunch.reportLauncherFailure(ctx, in, projectUnderTest, actionCache, testTaskId, stampKey, e);
                 throw e;
             }
         } finally {
+            env.close();
             HeapNotes.flush(ctx);
             if (gate[0] != null) gate[0].close();
             if (result == null)
@@ -225,7 +243,7 @@ final class TestSteps {
         if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         String startedKey = stampKey;
-        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey);
+        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey, env.seen());
         // The marker is stored under the key that folds in what the suite was found to read.
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         result = ledger.finish(ctx, actionCache, testTaskId, startedKey, stampKey, result);
@@ -392,7 +410,8 @@ final class TestSteps {
                 selection,
                 keyed,
                 project.build().testNetworkAllowed(),
-                affected == null);
+                affected == null,
+                project);
     }
 
     /** Everything the run-tests stamp already hashes, as roots: what a suite reads there is no discovery. */

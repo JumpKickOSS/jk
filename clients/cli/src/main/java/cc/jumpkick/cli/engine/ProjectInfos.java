@@ -108,6 +108,25 @@ public final class ProjectInfos {
         return false;
     }
 
+    /**
+     * What the suites of a project this command described were found to read of the environment
+     * ({@link ProjectInfo#envReads}): names, and the markers that ask for the shell's names or
+     * all of it.
+     */
+    public static Set<String> envReads() {
+        Set<String> out = new HashSet<>();
+        for (ProjectInfo info : MEMO.values()) out.addAll(info.envReads());
+        return out;
+    }
+
+    /** {@link #envReads} less its markers: the variables whose values the next request carries. */
+    public static Set<String> envReadNames() {
+        Set<String> out = envReads();
+        out.remove(ProjectInfo.ENV_READS_NAMES);
+        out.remove(ProjectInfo.ENV_READS_ALL);
+        return out;
+    }
+
     /** The engine's own answer for a directory with no manifest, given without asking it. */
     private static String noManifest(Path dir) {
         return "no jk.toml in " + dir;

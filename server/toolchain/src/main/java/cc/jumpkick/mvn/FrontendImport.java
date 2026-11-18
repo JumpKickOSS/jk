@@ -299,7 +299,9 @@ final class FrontendImport {
                     block.env().require(),
                     block.env().optional(),
                     vars,
-                    block.env().lines()));
+                    block.env().lines(),
+                    block.env().strict(),
+                    block.env().scope()));
         }
         return build.withProject(project.withNodeSpec(spec)).withBuild(block);
     }

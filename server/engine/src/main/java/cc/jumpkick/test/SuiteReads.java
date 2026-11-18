@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.AtomicWrites;
@@ -455,18 +456,28 @@ public final class SuiteReads {
      * The inputs a suite was found to read, kept beside its outputs, and the hosts past this one it
      * reached, by name; any host at all keeps the suite from replaying unless the network is allowed.
      */
-    public record Discovered(Set<Path> files, Set<String> commands, Set<String> hosts) {
+    public record Discovered(Set<Path> files, Set<String> commands, Set<String> hosts, SuiteEnvReads.Record env) {
         public static final Discovered NONE = new Discovered(Set.of(), Set.of(), Set.of());
+
+        public Discovered(Set<Path> files, Set<String> commands, Set<String> hosts) {
+            this(files, commands, hosts, SuiteEnvReads.Record.NONE);
+        }
 
         /** This set with {@code more} added: discovered inputs only ever grow until the target dir goes. */
         public Discovered with(Set<Path> moreFiles, Set<String> moreCommands, Set<String> moreHosts) {
+            return with(moreFiles, moreCommands, moreHosts, SuiteEnvReads.Record.NONE);
+        }
+
+        /** {@link #with(Set, Set, Set)}, adding what was read of the caller's environment too. */
+        public Discovered with(
+                Set<Path> moreFiles, Set<String> moreCommands, Set<String> moreHosts, SuiteEnvReads.Record moreEnv) {
             Set<Path> f = new TreeSet<>(files);
             f.addAll(moreFiles);
             Set<String> c = new TreeSet<>(commands);
             c.addAll(moreCommands);
             Set<String> h = new TreeSet<>(hosts);
             h.addAll(moreHosts);
-            return new Discovered(f, c, h);
+            return new Discovered(f, c, h, env.with(moreEnv));
         }
 
         /** Whether the suite was found to reach past this host. */
@@ -506,18 +517,23 @@ public final class SuiteReads {
         Set<Path> files = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
         Set<String> hosts = new TreeSet<>();
+        Set<String> env = new TreeSet<>();
+        boolean[] envFlags = new boolean[2];
         try {
             Path workspace = workspaceOf(moduleDir);
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("file ")) files.add(unspell(workspace, line.substring(5)));
                 else if (line.startsWith("command ")) commands.add(line.substring(8));
                 else if (line.startsWith(NETWORK_LINE)) hosts.add(line.substring(NETWORK_LINE.length()));
+                else SuiteEnvReads.Record.read(line, env, envFlags);
             }
         } catch (IOException | RuntimeException unreadable) {
-            // Unknown is not "none": key the suite as one that reaches past the host.
-            return new Discovered(Set.of(), Set.of(), Set.of(UNKNOWN_HOST));
+            // Unknown is not "none": key the suite as one that reaches past the host, and that
+            // takes the whole environment.
+            return new Discovered(
+                    Set.of(), Set.of(), Set.of(UNKNOWN_HOST), new SuiteEnvReads.Record(Set.of(), true, true));
         }
-        return new Discovered(files, commands, hosts);
+        return new Discovered(files, commands, hosts, new SuiteEnvReads.Record(env, envFlags[0], envFlags[1]));
     }
 
     /** The warning code of a run that stores no marker because its tests reached another host. */
@@ -604,6 +620,7 @@ public final class SuiteReads {
         for (String c : d.commands())
             sb.append("command ").append(c.replace('\n', ' ')).append('\n');
         for (String h : d.hosts()) sb.append(NETWORK_LINE).append(h).append('\n');
+        for (String e : d.env().lines()) sb.append(e).append('\n');
         try {
             Path file = discoveredFile(moduleDir, selection);
             Files.createDirectories(file.getParent());
@@ -620,8 +637,18 @@ public final class SuiteReads {
      * inside {@code workspaceRoot} is spelled relative to it, so checkouts share the key.
      */
     public static List<String> tokens(Path moduleDir, TestSelection selection, Path workspaceRoot) {
+        return tokens(moduleDir, selection, workspaceRoot, SuiteEnvReads.Policy.NONE);
+    }
+
+    /**
+     * {@link #tokens(Path, TestSelection, Path)} with what the suites read of the caller's
+     * environment, under the module's {@code policy}, after the files ({@link SuiteEnvReads#tokens}).
+     */
+    public static List<String> tokens(
+            Path moduleDir, TestSelection selection, Path workspaceRoot, SuiteEnvReads.Policy policy) {
         Discovered d = load(moduleDir, selection);
-        if (d.files().isEmpty() && d.commands().isEmpty() && !d.network()) return List.of();
+        List<String> env = SuiteEnvReads.tokens(d.env(), policy, CallerEnv.current());
+        if (d.files().isEmpty() && d.commands().isEmpty() && !d.network()) return env;
         Path root = workspaceRoot.toAbsolutePath().normalize();
         List<String> out = new ArrayList<>();
         Set<Path> dirs = new TreeSet<>();
@@ -641,6 +668,7 @@ public final class SuiteReads {
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
         for (String c : d.commands()) out.add("proc:" + c + "=" + programIdentity(c, moduleDir));
         if (d.network()) out.add("network");
+        out.addAll(env);
         return out;
     }
 
@@ -649,12 +677,19 @@ public final class SuiteReads {
         return token.startsWith("read:")
                 || token.startsWith("list:")
                 || token.startsWith("proc:")
-                || token.equals("network");
+                || token.equals("network")
+                || SuiteEnvReads.isToken(token);
     }
 
     /** {@link #tokens} as {@link #memoDigest}. */
     public static String digest(Path moduleDir, TestSelection selection, Path workspaceRoot) {
-        return memoDigest(tokens(moduleDir, selection, workspaceRoot), workspaceRoot);
+        return digest(moduleDir, selection, workspaceRoot, SuiteEnvReads.Policy.NONE);
+    }
+
+    /** {@link #tokens(Path, TestSelection, Path, SuiteEnvReads.Policy)} as {@link #memoDigest}. */
+    public static String digest(
+            Path moduleDir, TestSelection selection, Path workspaceRoot, SuiteEnvReads.Policy policy) {
+        return memoDigest(tokens(moduleDir, selection, workspaceRoot, policy), workspaceRoot);
     }
 
     /**

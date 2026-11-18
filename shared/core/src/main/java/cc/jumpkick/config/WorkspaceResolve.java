@@ -92,6 +92,7 @@ public final class WorkspaceResolve {
             module = WorkspaceLoader.inheritProfiles(module, root);
             module = WorkspaceLoader.inheritSuites(module, root);
             module = WorkspaceLoader.inheritPublish(module, root);
+            module = WorkspaceLoader.inheritTestEnvPolicy(module, root);
             module = WorkspaceLoader.inheritImage(module, root, moduleDir);
             // Conditioned plugin contributions (kotlin-project, …) were folded pre-inheritance;
             // re-evaluate them now that the project is concrete (idempotent).

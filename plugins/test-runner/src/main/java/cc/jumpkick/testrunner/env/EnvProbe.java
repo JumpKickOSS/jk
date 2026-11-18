@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -25,25 +26,68 @@ import org.jspecify.annotations.Nullable;
  * path and leaves a class without such a call untouched.
  *
  * <p>The agent argument is the directory the recorder writes to when the JVM exits, one file per
- * JVM.
+ * JVM. When the engine set up a broker for the caller's environment there ({@link BrokerLink}),
+ * the recorder fetches what this JVM's own environment lacks through it, and {@code
+ * java.lang.ProcessBuilder} is repointed the same way at {@link EnvLookups#start}, so a program a
+ * test starts sees the caller's environment too. For that the agent lets {@code java.base} read
+ * the recorder and opens {@code java.lang} to it ({@link Instrumentation#redefineModule}).
  */
 public final class EnvProbe {
 
     private static final String SYSTEM = "java/lang/System";
     private static final String RECORDER = "cc/jumpkick/testrunner/env/EnvLookups";
     private static final String OWN_PACKAGE = "cc/jumpkick/testrunner/";
+    private static final String PROCESS_BUILDER = "java/lang/ProcessBuilder";
+    static final String PROCESS_IMPL = "java/lang/ProcessImpl";
+    static final String START_DESC =
+            "([Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;[Ljava/lang/ProcessBuilder$Redirect;Z)Ljava/lang/Process;";
 
     private EnvProbe() {}
 
     /** The agent entry point. */
     public static void premain(@Nullable String args, Instrumentation inst) {
         if (args == null || args.isBlank()) return;
-        Path out = Path.of(args).resolve(ProcessHandle.current().pid() + ".lookups");
-        inst.addTransformer(new Transformer());
+        Path dir = Path.of(args);
+        Path out = dir.resolve(ProcessHandle.current().pid() + ".lookups");
+        BrokerLink link = BrokerLink.in(dir);
+        EnvLookups.deliverThrough(link);
+        boolean programs = link != null && openToRecorder(inst) && EnvLookups.prepareStart();
+        inst.addTransformer(new Transformer(programs), programs);
+        if (programs) {
+            for (Class<?> loaded : inst.getAllLoadedClasses()) {
+                if (loaded == ProcessBuilder.class) {
+                    try {
+                        inst.retransformClasses(ProcessBuilder.class);
+                    } catch (Exception | LinkageError refused) {
+                        // the programs this JVM starts see its own environment, as before
+                    }
+                }
+            }
+        }
         Runtime.getRuntime().addShutdownHook(new Thread(() -> EnvLookups.writeTo(out), "jk-env-probe"));
     }
 
+    /** Let {@code java.base} reach the recorder, and the recorder reach the JDK's process launch. */
+    private static boolean openToRecorder(Instrumentation inst) {
+        try {
+            Module recorder = EnvLookups.class.getModule();
+            Module base = Object.class.getModule();
+            if (!inst.isModifiableModule(base)) return false;
+            inst.redefineModule(
+                    base, Set.of(recorder), Map.of(), Map.of("java.lang", Set.of(recorder)), Set.of(), Map.of());
+            return true;
+        } catch (RuntimeException refused) {
+            return false;
+        }
+    }
+
     private static final class Transformer implements ClassFileTransformer {
+        private final boolean programs;
+
+        Transformer(boolean programs) {
+            this.programs = programs;
+        }
+
         @Override
         public byte @Nullable [] transform(
                 @Nullable ClassLoader loader,
@@ -51,6 +95,13 @@ public final class EnvProbe {
                 @Nullable Class<?> redefined,
                 @Nullable ProtectionDomain domain,
                 byte[] bytes) {
+            if (programs && loader == null && PROCESS_BUILDER.equals(className)) {
+                try {
+                    return repoint(bytes, PROCESS_IMPL, "start", Set.of(START_DESC));
+                } catch (RuntimeException malformed) {
+                    return null;
+                }
+            }
             if (loader == null || loader == ClassLoader.getPlatformClassLoader()) return null;
             if (className != null && className.startsWith(OWN_PACKAGE)) return null;
             if (fromJdk(domain)) return null;
@@ -74,6 +125,14 @@ public final class EnvProbe {
      * {@code null} when the class makes no such reference.
      */
     static byte @Nullable [] repoint(byte[] bytes) {
+        return repoint(bytes, SYSTEM, "getenv", Set.of("(Ljava/lang/String;)Ljava/lang/String;", "()Ljava/util/Map;"));
+    }
+
+    /**
+     * {@code bytes} with each reference to the method {@code owner.name} of one of {@code descs}
+     * naming {@link EnvLookups} instead, or {@code null} when the class makes no such reference.
+     */
+    static byte @Nullable [] repoint(byte[] bytes, String owner, String method, Set<String> descs) {
         int count = u2(bytes, 8);
         Map<Integer, String> utf8 = new HashMap<>();
         Map<Integer, Integer> classNames = new HashMap<>();
@@ -114,12 +173,9 @@ public final class EnvProbe {
         for (int[] ref : methodRefs) {
             Integer nameIndex = classNames.get(ref[1]);
             int[] nat = nameAndTypes.get(ref[2]);
-            if (nameIndex == null || nat == null || !SYSTEM.equals(utf8.get(nameIndex))) continue;
+            if (nameIndex == null || nat == null || !owner.equals(utf8.get(nameIndex))) continue;
             String desc = utf8.get(nat[1]);
-            if ("getenv".equals(utf8.get(nat[0]))
-                    && ("(Ljava/lang/String;)Ljava/lang/String;".equals(desc) || "()Ljava/util/Map;".equals(desc))) {
-                patch.add(ref[0]);
-            }
+            if (method.equals(utf8.get(nat[0])) && desc != null && descs.contains(desc)) patch.add(ref[0]);
         }
         if (patch.isEmpty() || count + 2 > 0xffff) return null;
         int recorderName = count;

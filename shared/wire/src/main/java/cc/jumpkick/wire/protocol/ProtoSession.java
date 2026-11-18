@@ -409,12 +409,66 @@ public final class ProtoSession {
 
     /** Decode side of {@link #withShell}: the caller's environment, or empty when it sent none. */
     public static Map<String, String> shellOf(String request) {
+        return pairsOf(Jsonl.strArray(request, SHELL));
+    }
+
+    /** {@code NAME=VALUE} strings as a map, in order. */
+    static Map<String, String> pairsOf(List<String> pairs) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (String pair : Jsonl.strArray(request, SHELL)) {
+        for (String pair : pairs) {
             int eq = pair.indexOf('=', 1); // Windows keeps per-drive names such as `=C:`
             if (eq > 0) out.put(pair.substring(0, eq), pair.substring(eq + 1));
         }
         return out;
+    }
+
+    /** The request field naming every variable the client looked up for {@link #SHELL}, set or not. */
+    public static final String SHELL_ASKED = "shellAsked";
+
+    /** The request field that says {@link #SHELL} is the caller's whole environment. */
+    public static final String SHELL_WHOLE = "shellWhole";
+
+    /** The request field carrying the names, without values, of every variable the caller's shell sets. */
+    public static final String SHELL_NAMES = "shellNames";
+
+    /** The request field that says the client answers {@link EngineProtocol#ENV_ASK} on this connection. */
+    public static final String ENV_ASK = "envAsk";
+
+    /**
+     * What a request says about the shell it carries, beyond its values: which names the client
+     * looked up ({@code asked}: a name among them that {@link #SHELL} lacks is unset in the caller's
+     * shell, not merely unsent), whether {@link #SHELL} is the whole environment, the names the shell
+     * sets ({@code names}, or null when not sent), and whether the client answers questions about
+     * the rest on the job's connection ({@code answers}).
+     */
+    public record ShellFacts(
+            List<String> asked, boolean whole, @Nullable List<String> names, boolean answers) {
+        public static final ShellFacts NONE = new ShellFacts(List.of(), false, null, false);
+
+        public ShellFacts {
+            asked = List.copyOf(asked);
+            names = names == null ? null : List.copyOf(names);
+        }
+    }
+
+    /** {@code request} carrying {@code facts}; {@link ShellFacts#NONE} leaves the line byte-identical. */
+    public static String withShellFacts(String request, ShellFacts facts) {
+        if (facts.equals(ShellFacts.NONE)) return request;
+        RequestJson fields = RequestJson.fields()
+                .optionalArray(SHELL_ASKED, facts.asked().isEmpty() ? null : facts.asked())
+                .optionalArray(SHELL_NAMES, facts.names());
+        if (facts.whole()) fields.bool(SHELL_WHOLE, true);
+        if (facts.answers()) fields.bool(ENV_ASK, true);
+        return Jsonl.append(request, fields.body());
+    }
+
+    /** Decode side of {@link #withShellFacts}. */
+    public static ShellFacts shellFactsOf(String request) {
+        return new ShellFacts(
+                Jsonl.strArray(request, SHELL_ASKED),
+                Jsonl.bool(request, SHELL_WHOLE, false),
+                Jsonl.has(request, SHELL_NAMES) ? Jsonl.strArray(request, SHELL_NAMES) : null,
+                Jsonl.bool(request, ENV_ASK, false));
     }
 
     /**

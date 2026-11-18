@@ -375,7 +375,8 @@ public final class ProjectInfoPlans {
                 release.files(),
                 upstreams,
                 SessionContext.current().release(),
-                "");
+                "",
+                List.of());
     }
 
     private static String sanitizeIdentity(String value) {

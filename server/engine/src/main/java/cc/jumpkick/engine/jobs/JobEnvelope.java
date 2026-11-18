@@ -3,6 +3,7 @@ package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.compile.JavaCompilerHost;
+import cc.jumpkick.config.CallerAsker;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
@@ -321,7 +322,8 @@ public final class JobEnvelope {
                 watch,
                 deadline,
                 actor,
-                new AtomicBoolean());
+                new AtomicBoolean(),
+                writer != null && ProtoSession.shellFactsOf(requestLine).answers() ? new ClientAsk(writer) : null);
         // The runner binds the job's request; the body binds its own session inside the verb
         // (SessionContext.where). Unstarted so runnerRef is set first.
         Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
@@ -503,15 +505,19 @@ public final class JobEnvelope {
              * teardown remains — so the connection thread reads a client's EOF after that as the
              * end of the request rather than a disconnect to cancel.
              */
-            AtomicBoolean bodyDone) {}
+            AtomicBoolean bodyDone,
+            /** The client, asked about its shell on this connection; null when it does not answer. */
+            @Nullable ClientAsk ask) {}
 
     /**
      * The request {@code requestLine} sends: its shell and keychain answers, under {@code id} with
      * {@code io}, recorded as {@code actor}. A synchronous read binds one too, under id {@code 0}.
      */
     public static Request requestOf(long id, IoLedger io, @Nullable ChangeActor actor, String requestLine) {
+        ProtoSession.ShellFacts facts = ProtoSession.shellFactsOf(requestLine);
         return Request.of(id, io)
-                .withShell(RequestShell.of(ProtoSession.shellOf(requestLine)))
+                .withShell(
+                        RequestShell.of(ProtoSession.shellOf(requestLine), facts.asked(), facts.whole(), facts.names()))
                 .withActor(actor)
                 .with(
                         RequestKeychain.SLOT,
@@ -542,6 +548,7 @@ public final class JobEnvelope {
             // Test runs and coverage published anywhere under it land on its record.
             BuildAccumulator acc = host.accumulatorOf(eventRequestId);
             Request request = requestOf(eventRequestId, io, a.actor(), a.requestLine())
+                    .with(CallerAsker.SLOT, a.ask())
                     .with(WorkerScope.SLOT, host.workers().open(eventRequestId))
                     .with(RunResults.SLOT, acc != null ? acc.results() : new RunResults())
                     .with(RunMeasures.SLOT, acc != null ? acc.measures() : new RunMeasures())
@@ -657,8 +664,11 @@ public final class JobEnvelope {
         ConnectionWatch watch = a.watch();
         long cancelGraceMs = limits.cancelGraceMs();
         try {
+            ClientAsk ask = a.ask();
             watch.watchForEof(
                     reader,
+                    ask == null ? line -> {} : ask::deliver,
+                    ask == null ? () -> {} : ask::gone,
                     done,
                     a.bodyDone()::get,
                     () -> live.beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs, false));

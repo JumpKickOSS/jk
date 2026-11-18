@@ -8,6 +8,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.base.ProjectInfoPlans;
+import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProjectInfoRequest;
@@ -57,8 +58,12 @@ public final class ProjectInfoVerb implements HostedVerb {
                         session,
                         () -> ProjectInfoPlans.projectInfo(
                                 Path.of(req.dir()), req.modules(), req.affectedSince(), req.affected(), req.counts()));
-                if (info.error() == null)
-                    info = info.withReleaseLine(ReleaseSession.verdict(session).line());
+                if (info.error() == null) {
+                    // What the suites were found to read of the caller's environment, by name: the
+                    // client ships those values with its next request (SuiteEnvReads).
+                    info = info.withReleaseLine(ReleaseSession.verdict(session).line())
+                            .withEnvReads(SuiteEnvReads.wanted(info.moduleDirs()));
+                }
             } catch (Exception e) {
                 info = ProjectInfo.error(Errors.text(e));
             }

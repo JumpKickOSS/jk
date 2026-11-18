@@ -18,6 +18,13 @@ files = [
     { path = "hosting/public/install.ps1", pattern = '\$ReleaseFloor = "([^"]+)"' },
 ]
 
+# jk's own suites keep to the allow-list and the names each module declares, as every suite did before
+# 0.53: they must not reach the developer's real shell (tokens, JK_* overrides of the real home), and the
+# hermeticity guards (TestEnvRules, HermeticReads, the sandboxed homes) assume it. Written false, inherit is
+# that strict switch; set here, it holds for every member.
+[env]
+inherit = false
+
 # jk's own modules install to jk's private repository: the engine launches its workers from there.
 [install]
 destination = "jk"

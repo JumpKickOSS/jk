@@ -457,6 +457,8 @@ public final class EventCatalog {
                 EngineProtocol.STOP_SESSIONS)) {
             out.put(request, "client to engine: a request of the connection");
         }
+        out.put(EngineProtocol.ENV_ASK, "engine to client on a job's connection: a question its test JVM asked");
+        out.put(EngineProtocol.ENV_ANSWER, "client to engine on a job's connection: the answer to an env-ask");
         for (String reply : List.of(
                 EngineProtocol.AUTH_ACK,
                 EngineProtocol.HELLO_ACK,

@@ -15,6 +15,7 @@ import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -294,6 +295,7 @@ class InstallProductBinTest {
                 base.releaseFiles(),
                 base.upstreams(),
                 base.releaseBuild(),
-                base.releaseLine());
+                base.releaseLine(),
+                List.of());
     }
 }

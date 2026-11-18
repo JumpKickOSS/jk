@@ -10,6 +10,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.task.WorkerClosure;
+import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -23,13 +24,22 @@ import org.jspecify.annotations.Nullable;
 /**
  * What reaches a suite besides its declared inputs, as run-tests stamp tokens: the locale every
  * test JVM runs in, jk's test runner by content, and the inputs its runs were found to read
- * ({@link SuiteReads}). What the manifest hands it of the environment is {@link ModuleEnvKeys}'s.
+ * ({@link SuiteReads}), the caller's variables among them ({@link SuiteEnvReads}). What the manifest
+ * hands it of the environment is {@link ModuleEnvKeys}'s.
  */
 final class SuiteEnvKeys {
 
     private SuiteEnvKeys() {}
 
     static List<String> tokens(BuildBlock build, Path moduleDir, TestSelection selection) {
+        return tokens(build, moduleDir, selection, SuiteEnvReads.Policy.NONE);
+    }
+
+    /**
+     * The tokens, with what the suites read of the caller's environment keyed under the module's
+     * {@code policy} ({@link SuiteEnvReads}).
+     */
+    static List<String> tokens(BuildBlock build, Path moduleDir, TestSelection selection, SuiteEnvReads.Policy policy) {
         List<String> out = new ArrayList<>();
         // The locale the test JVM runs in (TestEnv.localeEnv): the module's fixed tag, which also
         // rides its -Duser.* flags, or under "inherit" the caller's variables, over the engine's.
@@ -53,7 +63,11 @@ final class SuiteEnvKeys {
             out.add("runner:unlocated");
         }
         Path root = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
-        out.addAll(SuiteReads.tokens(moduleDir, selection, root));
+        // How much of the caller's environment the test JVMs may read: turning strict on or off, or
+        // narrowing the scope, changes what a test sees, so it retests the suite.
+        if (policy.strict()) out.add("env-policy:strict");
+        if (!policy.scope().isEmpty()) out.add("env-policy:scope=" + String.join(",", policy.scope()));
+        out.addAll(SuiteReads.tokens(moduleDir, selection, root, policy));
         return out;
     }
 

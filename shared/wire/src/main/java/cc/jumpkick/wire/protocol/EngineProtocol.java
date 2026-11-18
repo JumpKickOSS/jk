@@ -116,6 +116,22 @@ public final class EngineProtocol {
     public static final String JOB_CONTROL_ACK = "job-control-ack";
 
     /**
+     * Server → client, on a job's own connection, when the request said it answers ({@code
+     * envAsk}): a test JVM of the job looked up variables the request did not carry. Carries {@code
+     * id} and either {@code names} (the variables wanted, by name) or {@code what}: {@code "names"}
+     * for the names the shell sets, {@code "all"} for every variable with its value. Answered by
+     * {@link #ENV_ANSWER} on the same connection ({@code EnvAskFrame}).
+     */
+    public static final String ENV_ASK = "env-ask";
+
+    /**
+     * Client → server, on the job's connection: the answer to {@link #ENV_ASK} {@code id}: {@code
+     * vars} as {@code NAME=VALUE} for the variables the shell sets, {@code names} for a names ask.
+     * A name asked for and not answered is unset.
+     */
+    public static final String ENV_ANSWER = "env-answer";
+
+    /**
      * Server → client: the job is waiting for coordinator memory behind {@code ahead} others;
      * carries {@code jid} (already the cancel handle), {@code ahead}, {@code reason}, {@code
      * waitedMs} and the {@code live} jobs holding the heap. Sent when the job first queues and

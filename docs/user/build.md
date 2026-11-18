@@ -406,7 +406,10 @@ debug = "lines"                # drop LocalVariableTable; keep line numbers
 
 Every worker JumpKick forks for a module — the compiler, each test JVM, a plugin step — starts from
 an allow-list, not from a shell. A token exported in the shell that started the engine does
-not reach a compiler worker or your test code by accident. Workers inherit only:
+not reach a compiler worker or your test code by accident. A test JVM then reads any other
+variable of the shell running `jk` when it looks it up, and its suite is keyed on what it read
+([Test § Environment variables a suite reads](test.md#environment-variables-a-suite-reads));
+`inherit = false` keeps it to the allow-list too. Workers start with only:
 
 - `PATH`, `HOME`, `JAVA_HOME`, `TMPDIR` / `TMP` / `TEMP`, `LANG` / `LANGUAGE` / `LC_*`. Every
   worker, the guard suite's JVM included, gets the `PATH` of the shell running `jk` over the
@@ -442,8 +445,9 @@ not reach a compiler worker or your test code by accident. Workers inherit only:
   tuning (`JK_COMPILE_PHASES`, `JK_FILE_OPS`,
   `JK_ANDROID_FEED_URL`)
 
-Everything else — `SSH_AUTH_SOCK`, `GITHUB_TOKEN`, a repository's `JK_REPO_*_TOKEN` — is
-dropped unless the module declares it:
+Everything else — `SSH_AUTH_SOCK`, `GITHUB_TOKEN`, a repository's `JK_REPO_*_TOKEN` — reaches a
+compiler, a plugin step or a code generator only when the module declares it, and a test JVM only
+when a test looks it up (or, in a strict module, only when declared):
 
 ```toml
 [env]
@@ -476,13 +480,13 @@ a `[jlink]` image that trains a startup cache, and the run-tests key; `[test] en
 key alone, so a variable declared for the tests never rebuilds a compile. A plugin table's
 `env:NAME` value (`store-file = "env:KEYSTORE_FILE"`) keys that plugin's steps and packager
 the same way, from the shell or the module's `.env`. A declared variable that
-changes between two builds reruns that work, `jk build -S` included, and one nothing declares
-cannot — [Test](test.md). A value taken from the environment enters a key as its SHA-256, never as text,
+changes between two builds reruns that work, `jk build -S` included; one nothing declares
+reruns a suite that read it, and nothing else — [Test](test.md#environment-variables-a-suite-reads). A value taken from the environment enters a key as its SHA-256, never as text,
 so the key can travel to another machine. A declared name that reads as
 a credential — its name says `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
 `CREDENTIAL` — has its value masked as `***` in test output, errors and `jk results`, as a
-repository credential is. `jk run` launches the app from the shell itself and caches nothing, so
-there is no run key; it does check `require`.
+repository credential is. `jk run` launches the app from the shell itself, with all of its
+environment, and caches nothing, so there is no run key; it does check `require`.
 
 ```toml
 [env]
@@ -494,10 +498,24 @@ secrets included, less what a shell changes per command (`PWD`, `_`, `SHLVL`, th
 session). Its suite is keyed on a digest of all the rest, less what differs between two terminals
 of one machine (window size, terminal, multiplexer and login session ids, the SSH connection), so
 it reruns whenever any other variable changes: an escape hatch that costs cache hits. Write the
-reason beside it. `[env]` is per module and is not inherited from a workspace root.
+reason beside it. A test JVM does not need it to read a variable: it already reads any it looks up.
+
+```toml
+[env]
+inherit = false   # strict: test JVMs get the allow-list and the declared names alone
+scope = ["SPRING_*", "MYAPP_*"]   # test JVMs see only these of the shell's other variables
+```
+
+`inherit = false`, written, keeps the module's test JVMs to the allow-list and the declared names,
+as before 0.53, and a run names each variable a test looked up that your shell sets ([Test §
+Keeping a module strict](test.md#keeping-a-module-strict)). `scope` narrows what a test JVM sees of
+the shell's other variables to the names its patterns match (a name, or a prefix ending in `*`),
+so a suite that lists the environment keys alike on another machine ([Test § Scoping what a suite
+may see](test.md#scoping-what-a-suite-may-see)). `[env]` is per module; `inherit = false` and
+`scope` written at a workspace root hold for every member (a member's own `scope` wins).
 The engine's own environment is the shell that started it, not the one running `jk` — apart
 from the proxy and display variables above, a variable set for one command reaches a worker only
-through `[env]` or `[test] env`. What JumpKick itself decides reads the shell running `jk`: `CI`,
+through `[env]` or `[test] env`, or a test JVM that looks it up. What JumpKick itself decides reads the shell running `jk`: `CI`,
 repository credentials, the git agent, colour. So `CI=true jk guard` checks rather
 than writes, whichever shell started the engine. The client sends the engine only what it reads
 and what is declared, not the whole shell ([Engine § Process environment](engine.md#process-environment)). A

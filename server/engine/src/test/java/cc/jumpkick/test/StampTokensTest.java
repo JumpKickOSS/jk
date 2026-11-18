@@ -106,4 +106,15 @@ class StampTokensTest {
                 }))
                 .isEqualTo(StampTokens.KEY_UNREAD);
     }
+
+    @Test
+    void a_variable_a_suite_read_is_named_never_its_value() {
+        Map<String, String> was = Map.of("x:env-read:MUST_BE_TRUE", "1111111111111111111111111111111111111111");
+        Map<String, String> now = Map.of("x:env-read:MUST_BE_TRUE", "2222222222222222222222222222222222222222");
+        assertThat(StampTokens.reason(was, now)).isEqualTo("MUST_BE_TRUE changed");
+        assertThat(StampTokens.reason(Map.of("x:env-names", "a"), Map.of("x:env-names", "b")))
+                .isEqualTo("the environment's variable names changed");
+        assertThat(StampTokens.reason(Map.of("x:env-all", "a"), Map.of("x:env-all", "b")))
+                .isEqualTo("the environment changed (a test starts programs)");
+    }
 }

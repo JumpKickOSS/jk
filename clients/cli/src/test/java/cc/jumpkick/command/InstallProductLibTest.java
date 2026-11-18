@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -83,7 +84,8 @@ class InstallProductLibTest {
                 base.releaseFiles(),
                 base.upstreams(),
                 base.releaseBuild(),
-                base.releaseLine());
+                base.releaseLine(),
+                List.of());
     }
 
     @Test

@@ -8,8 +8,8 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The agent report names, on every verdict, each variable a suite read that its module does not
- * declare, with the {@code [env]} line that declares it.
+ * The agent report names, on every verdict of a strict module, each variable a suite read that the
+ * shell sets and the module does not pass, with the {@code [env]} line that passes it.
  */
 class JkResultsAgentEnvTest {
 
@@ -17,17 +17,22 @@ class JkResultsAgentEnvTest {
     void an_ok_run_says_which_variable_never_reached_the_suite_and_the_line_that_declares_it() {
         BuildRecord.Diag foo = envUndeclared(
                 "FOO",
-                "EnvTest read FOO, which jk.toml does not declare; it saw no value. Add to [env] require: \"FOO\"");
+                "EnvTest read FOO, which your shell sets; jk.toml is strict, so the test saw no value."
+                        + " Add to [env] optional: \"FOO\" to pass it (the name only; the value stays in your shell),"
+                        + " or leave it out");
         BuildRecord.Diag bar = envUndeclared(
-                "BAR", "EnvTest reads BAR, which jk.toml does not declare. Add to [env] optional: \"BAR\"");
+                "BAR",
+                "EnvTest reads BAR, which your shell sets; jk.toml is strict, so its tests run without it."
+                        + " Add to [env] optional: \"BAR\" to pass it (the name only; the value stays in your shell),"
+                        + " or leave it out");
 
         assertThat(JkResultsAgent.render(record(true, new BuildRecord.Tests(1, 1, 0, 0), List.of(foo, bar))))
                 .isEqualTo("""
                         OK test rest-service · 1 test · 500ms
-                        W EnvTest read FOO, which jk.toml does not declare; it saw no value
-                        FIX add to [env] require: "FOO"
-                        W EnvTest reads BAR, which jk.toml does not declare
-                        FIX add to [env] optional: "BAR"
+                        W EnvTest read FOO, which your shell sets; jk.toml is strict, so the test saw no value
+                        FIX add to [env] optional: "FOO" to pass it (the name only; the value stays in your shell), or leave it out
+                        W EnvTest reads BAR, which your shell sets; jk.toml is strict, so its tests run without it
+                        FIX add to [env] optional: "BAR" to pass it (the name only; the value stays in your shell), or leave it out
                         """);
     }
 

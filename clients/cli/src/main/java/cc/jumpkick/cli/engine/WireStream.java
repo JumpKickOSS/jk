@@ -205,6 +205,12 @@ public final class WireStream {
                     SuspendedEvent e = SuspendedEvent.decode(line);
                     RunSuspensions.note(e.suspendedMs(), e.monoMs());
                 }
+                if (EngineProtocol.ENV_ASK.equals(type)) {
+                    // A test JVM of the job looked up a variable the request did not carry: this
+                    // shell answers it on the job's own connection (EnvAnswers).
+                    if (ch != null) EnvAnswers.answer(ch, line);
+                    continue;
+                }
                 if (EngineProtocol.DOWNLOADS.equals(type)) {
                     // Any job may download, whatever its verb, so the run's download frames are read
                     // here for every stream, never by a verb's decoder, and shown by the region on

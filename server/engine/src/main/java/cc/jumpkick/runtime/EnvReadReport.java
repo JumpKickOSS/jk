@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Os;
@@ -25,12 +26,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.function.Predicate;
+import org.jspecify.annotations.Nullable;
 
 /**
- * Tells a run which environment variables its suite reads that the module never declares, and the
- * {@code [env]} line that would declare each. A test JVM gets only what the module declares, so
- * such a read sees nothing: the token a test needs, the switch a test checks.
+ * Tells a run of a strict module ({@code [env] strict = true}) which environment variables its
+ * suite looked up that the shell running {@code jk} sets and the module does not pass, and the
+ * {@code [env]} line that would pass each. A strict module's test JVMs get only what it declares,
+ * so such a read saw nothing. A module that is not strict reads any variable of the caller's when
+ * it looks it up, and is keyed on what it read ({@code SuiteEnvReads}): there is nothing to tell.
+ *
+ * <p>Names only, never a value. A variable the shell does not set is no news on a green run: a
+ * failed run lists those its tests looked up, once, as a hint.
  *
  * <p>Diagnostics only, never part of a key. Two signals. What each test JVM looked up as it ran
  * (the test runner's probe, {@code EnvProbeJar}) names the variable and the test class exactly: a
@@ -78,10 +86,14 @@ public final class EnvReadReport {
         boolean probed = probed(records);
         List<Lookup> lookups = lookups(records);
         PathUtil.deleteRecursively(records); // the next run records afresh
-        if (testEnv.inherit()) return List.of(); // every variable reaches the suite
+        // A suite that reads the caller's shell saw every variable it looked up; inherit hands it all.
+        if (testEnv.inherit() || !project.build().env().strict()) return List.of();
         boolean failed = result.failed() > 0 || !result.failures().isEmpty();
         Path mainClasses = ctx.require(BuildPlanner.MODULE).layout().classesDir();
         Map<String, String> looked = lookedUp(lookups, declared(project), testEnv, compiledInto(testClasses), failed);
+        Set<String> shellSets = CallerEnv.current().names();
+        if (failed) hintUnset(ctx, looked.keySet(), shellSets);
+        looked.keySet().removeIf(name -> !setInShell(name, shellSets));
         // What the suite looked up as it ran is the exact answer; the bytecode stands in without it.
         Findings f = probed && !failed
                 ? new Findings(Map.of(), Set.of())
@@ -89,7 +101,7 @@ public final class EnvReadReport {
         List<Told> told = new ArrayList<>();
         looked.forEach((name, owner) -> told.add(new Told(name, owner, true)));
         f.undeclared().forEach((name, owner) -> {
-            if (!looked.containsKey(name)) told.add(new Told(name, owner, false));
+            if (!looked.containsKey(name) && setInShell(name, shellSets)) told.add(new Told(name, owner, false));
         });
         tell(ctx, told, manifest(in.session().workingDir(), in.dir()), false);
         if (!f.opaque().isEmpty()) {
@@ -107,7 +119,7 @@ public final class EnvReadReport {
      * each one {@code project} still does not give its suite.
      */
     static void replay(TaskContext ctx, BuildPlanner.Inputs in, JkBuild project, WorkerEnv testEnv, List<String> said) {
-        if (testEnv.inherit()) return;
+        if (testEnv.inherit() || !project.build().env().strict()) return;
         Set<String> declared = declared(project);
         List<Told> told = new ArrayList<>();
         for (Told t : fromSaid(said)) {
@@ -326,17 +338,50 @@ public final class EnvReadReport {
     /** The name the probe records a whole-map read under. */
     private static final String WHOLE_MAP = "*";
 
-    /** The line a looked-up, undeclared variable is reported as: the test saw nothing, so it is required. */
+    /**
+     * The line a looked-up variable the shell sets is reported as: what jk did (ran the test without
+     * it, as the strict module asks), and both choices — pass it, or leave it out. Names only.
+     */
     static String lookedUp(String owner, String name, String manifest) {
-        return simple(owner) + " read " + name + ", which " + manifest + " does not declare; it saw no value" + FIX
-                + "require: \"" + name + "\"";
+        return simple(owner) + " read " + name + ", which your shell sets; " + manifest
+                + " is strict, so the test saw no value" + FIX + "optional: \"" + name + "\"" + CHOICE;
     }
 
-    /** The one line an undeclared read is reported as, ending with the exact declaration. */
+    /** The one line a read the bytecode shows is reported as, with the same two choices. */
     static String undeclared(String owner, String name, String manifest) {
-        return simple(owner) + " reads " + name + ", which " + manifest + " does not declare" + FIX + "optional: \""
-                + name + "\"";
+        return simple(owner) + " reads " + name + ", which your shell sets; " + manifest
+                + " is strict, so its tests run without it" + FIX + "optional: \"" + name + "\"" + CHOICE;
     }
+
+    /** After the declaration: what it passes, and the other choice. */
+    private static final String CHOICE = " to pass it (the name only; the value stays in your shell), or leave it out";
+
+    /** Whether {@code shellSets} (the names the caller's shell sets, or null when no one can say) holds {@code name}. */
+    static boolean setInShell(String name, @Nullable Set<String> shellSets) {
+        if (shellSets == null) return false;
+        if (shellSets.contains(name)) return true;
+        if (!Os.isWindows()) return false;
+        for (String n : shellSets) {
+            if (n.equalsIgnoreCase(name)) return true;
+        }
+        return false;
+    }
+
+    /** The hint a failed strict suite gets: the variables its tests looked up that the shell does not set either. */
+    private static void hintUnset(TaskContext ctx, Set<String> looked, @Nullable Set<String> shellSets) {
+        List<String> unset = new ArrayList<>();
+        for (String name : new TreeSet<>(looked)) {
+            if (shellSets != null && !setInShell(name, shellSets)) unset.add(name);
+        }
+        if (unset.isEmpty()) return;
+        ctx.warn(
+                UNSET_HINT,
+                "the suite failed; its tests looked up " + String.join(", ", unset)
+                        + (unset.size() == 1 ? ", which is" : ", which are") + " not set in your shell either");
+    }
+
+    /** The warning code of a failed strict suite's hint. */
+    public static final String UNSET_HINT = "env-unset";
 
     /** The manifest of {@code moduleDir} spelled from {@code entryDir}, where the build was entered. */
     public static String manifest(Path entryDir, Path moduleDir) {

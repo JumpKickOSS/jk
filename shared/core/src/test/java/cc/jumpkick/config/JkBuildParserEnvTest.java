@@ -124,4 +124,56 @@ class JkBuildParserEnvTest {
                 .hasMessageContaining("[env].optional[0]")
                 .hasMessageContaining("is not a name; to set a value write { TZ = \"UTC\" }");
     }
+
+    @Test
+    void inherit_written_false_is_strict_and_unwritten_is_not() {
+        EnvConfig strict = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\ninherit = false\n")
+                .build()
+                .env();
+        assertThat(strict.strict()).isTrue();
+        assertThat(strict.inherit()).isFalse();
+        assertThat(JkBuildParser.parse(JkBuildParserFixtures.PROJECT)
+                        .build()
+                        .env()
+                        .strict())
+                .as("the default: a test JVM reads the caller's shell")
+                .isFalse();
+        assertThat(JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\ninherit = true\n")
+                        .build()
+                        .env()
+                        .strict())
+                .isFalse();
+    }
+
+    @Test
+    void scope_takes_names_and_prefixes_ending_in_a_star() {
+        EnvConfig env = JkBuildParser.parse(
+                        JkBuildParserFixtures.PROJECT + "\n[env]\nscope = [\"SPRING_*\", \"MYAPP_URL\"]\n")
+                .build()
+                .env();
+        assertThat(env.scope()).containsExactly("SPRING_*", "MYAPP_URL");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nscope = [\"S*X\"]\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[env].scope[0]")
+                .hasMessageContaining("a prefix ending in *");
+        assertThatThrownBy(() -> JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nscope = \"S*\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[env] scope must be an array");
+    }
+
+    @Test
+    void a_workspace_roots_strict_switch_and_scope_hold_for_its_members() {
+        JkBuild root =
+                JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\ninherit = false\nscope = [\"APP_*\"]\n");
+        JkBuild member = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\noptional = [\"X\"]\n");
+        EnvConfig inherited =
+                WorkspaceLoader.inheritTestEnvPolicy(member, root).build().env();
+        assertThat(inherited.strict()).isTrue();
+        assertThat(inherited.scope()).containsExactly("APP_*");
+        assertThat(inherited.optional()).containsExactly("X");
+        JkBuild own = JkBuildParser.parse(JkBuildParserFixtures.PROJECT + "\n[env]\nscope = [\"MINE_*\"]\n");
+        assertThat(WorkspaceLoader.inheritTestEnvPolicy(own, root).build().env().scope())
+                .as("a member's own scope wins")
+                .containsExactly("MINE_*");
+    }
 }

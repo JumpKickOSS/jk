@@ -52,8 +52,8 @@ final class ConnectionWatch {
     }
 
     /**
-     * Wait until the job ends or the client goes away. The client never writes on this socket
-     * mid-job, so its EOF is read on a watcher thread that outlives this call when the job ends
+     * Wait until the job ends or the client goes away. The client writes on this socket mid-job
+     * only to answer the job's questions, so its EOF is read on a watcher thread that outlives this call when the job ends
      * first; the connection closes after the job and ends that read. EOF or a read error while the
      * job's body is still running is a disconnect, and runs {@code onDisconnect} once. Once {@code
      * bodyFinished} holds, the body has sent its terminal and only its teardown remains, so the EOF
@@ -64,16 +64,33 @@ final class ConnectionWatch {
      */
     void watchForEof(
             @Nullable BufferedReader reader, CountDownLatch done, BooleanSupplier bodyFinished, Runnable onDisconnect) {
+        watchForEof(reader, line -> {}, () -> {}, done, bodyFinished, onDisconnect);
+    }
+
+    /**
+     * {@link #watchForEof(BufferedReader, CountDownLatch, BooleanSupplier, Runnable)}, handing each
+     * line the client writes mid-job to {@code onLine} — its answers about its shell ({@code
+     * ClientAsk}) — and running {@code onGone} once it is gone, whatever the job is doing.
+     */
+    void watchForEof(
+            @Nullable BufferedReader reader,
+            Consumer<String> onLine,
+            Runnable onGone,
+            CountDownLatch done,
+            BooleanSupplier bodyFinished,
+            Runnable onDisconnect) {
         if (reader == null) return;
         CountDownLatch gone = new CountDownLatch(1);
         SessionContext.startVirtual("jk-conn-eof-watch", () -> {
             try {
-                // Any in-band line while a job runs is noise: cancellation arrives out-of-band
-                // as CANCEL_REQUEST on its own connection, or as EOF here.
-                while (reader.readLine() != null) {}
+                // Cancellation arrives out-of-band as CANCEL_REQUEST on its own connection, or as
+                // EOF here; the only line a client writes mid-job answers the job's question.
+                String line;
+                while ((line = reader.readLine()) != null) onLine.accept(line);
             } catch (IOException | RuntimeException e) {
                 // A read error is the client gone, the same as EOF.
             }
+            onGone.run();
             gone.countDown();
         });
         try {

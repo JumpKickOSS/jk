@@ -29,8 +29,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class AgentReportParityTest {
 
-    private static final String ENV_UNDECLARED =
-            "EnvTest read FOO, which jk.toml does not declare; it saw no value. Add to [env] require: \"FOO\"";
+    private static final String ENV_UNDECLARED = "EnvTest read FOO, which your shell sets; jk.toml is strict, so the"
+            + " test saw no value. Add to [env] optional: \"FOO\" to pass it (the name only; the value stays in your"
+            + " shell), or leave it out";
 
     @TempDir
     Path tmp;
@@ -38,7 +39,7 @@ class AgentReportParityTest {
     @Test
     void agent_cli_and_mcp_print_the_same_text() throws Exception {
         String expected = JkResultsAgent.render(record());
-        assertThat(expected).contains("W EnvTest read FOO", "FIX add to [env] require: \"FOO\"");
+        assertThat(expected).contains("W EnvTest read FOO", "FIX add to [env] optional: \"FOO\" to pass it");
         Path target = Files.createDirectories(tmp.resolve(BuildLayout.TARGET));
         Files.writeString(target.resolve(ProjectBuilds.AGENT), expected, StandardCharsets.UTF_8);
         Path run = Files.createDirectories(tmp.resolve("run"));

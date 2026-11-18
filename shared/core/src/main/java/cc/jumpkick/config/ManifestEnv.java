@@ -50,7 +50,7 @@ final class ManifestEnv {
     }
 
     /** The keys {@code [env]} may carry. */
-    public static final List<String> ENV_KEYS = List.of("require", "optional", "vars", "inherit");
+    public static final List<String> ENV_KEYS = List.of("require", "optional", "vars", "inherit", "scope");
 
     /**
      * {@code [env]} — what this module's workers may take from the environment beyond jk's
@@ -62,7 +62,9 @@ final class ManifestEnv {
      * require = ["MY_TOKEN"]      # from the shell running jk; unset fails the module before it compiles
      * optional = ["FEATURE_X"]    # from the shell when it sets it
      * vars = [{ TZ = "UTC" }]     # literal values
-     * inherit = true              # the caller's whole environment; say why beside it
+     * inherit = true              # the caller's whole environment, to every worker; say why beside it
+     * inherit = false             # strict: test JVMs get the allow-list and the declared names alone
+     * scope = ["SPRING_*"]        # test JVMs see only these of the caller's other variables
      * </pre>
      */
     static EnvConfig parseEnv(TomlTable root) {
@@ -78,13 +80,19 @@ final class ManifestEnv {
             }
         }
         boolean inherit = false;
+        // Written false, inherit is strict: the test JVMs keep to the allow-list and the declared
+        // names, as every worker did before 0.53. Unwritten, a test JVM reads any variable of the
+        // caller's when it looks it up. A JumpKick before 0.53 reads false as its default.
+        boolean strict = false;
         Object rawInherit = env.get(List.of("inherit"));
         if (rawInherit != null) {
             if (!(rawInherit instanceof Boolean b)) {
                 throw new JkBuildParseException("[env] inherit must be true or false");
             }
             inherit = b;
+            strict = !b;
         }
+        List<String> scope = scope(env.get(List.of("scope")));
         Map<String, Integer> lines = new LinkedHashMap<>();
         List<String> require = envNames(env, "require", lines);
         List<String> optional = envNames(env, "optional", lines);
@@ -104,7 +112,35 @@ final class ManifestEnv {
                             + "\"] (or require)");
             }
         }
-        return new EnvConfig(inherit, require, optional, vars, lines);
+        return new EnvConfig(inherit, require, optional, vars, lines, strict, scope);
+    }
+
+    /**
+     * {@code [env] scope}: name patterns, each a name or a prefix ending in {@code *}. Under a scope
+     * a test JVM sees only the caller's variables a pattern matches, besides the allow-list and the
+     * declared names.
+     */
+    private static List<String> scope(@Nullable Object raw) {
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlArray arr)) {
+            throw new JkBuildParseException(
+                    "[env] scope must be an array of name patterns, e.g. scope = [\"SPRING_*\"]");
+        }
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < arr.size(); i++) {
+            String where = "[env].scope[" + i + "]";
+            if (!(arr.get(i) instanceof String pattern) || pattern.isBlank()) {
+                throw new JkBuildParseException(where + " must be a variable name or a prefix ending in *");
+            }
+            String p = pattern.trim();
+            int star = p.indexOf('*');
+            if ((star >= 0 && star != p.length() - 1) || p.indexOf('=') >= 0 || p.indexOf('$') >= 0) {
+                throw new JkBuildParseException(where + ": \"" + pattern
+                        + "\" is not a name pattern; write a name or a prefix ending in *, e.g. \"SPRING_*\"");
+            }
+            out.add(p);
+        }
+        return List.copyOf(out);
     }
 
     /**

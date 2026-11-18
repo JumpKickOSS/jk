@@ -150,6 +150,10 @@ public final class StampTokens {
         if (name.startsWith("x:read:")) return "read file " + path(name.substring(7)) + " changed";
         if (name.startsWith("x:list:")) return "the listing of read dir " + path(name.substring(7)) + " changed";
         if (name.startsWith("x:proc:")) return "program " + tail(name.substring(7)) + " changed";
+        // The caller's environment: a variable by name, never its value (SuiteEnvReads).
+        if (name.startsWith("x:env-read:")) return path(name.substring(11)) + " changed";
+        if (name.startsWith("x:env-names")) return "the environment's variable names changed";
+        if (name.startsWith("x:env-all")) return "the environment changed (a test starts programs)";
         if (name.startsWith("x:worker:")) return workerChanged(upTo(name.substring(9), '='));
         if (name.startsWith("x:test-jdk")) return "test JDK changed";
         if (name.startsWith("x:compile-test")) return "test compile changed";

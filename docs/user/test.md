@@ -1016,57 +1016,85 @@ Failure lines include **module** (and **worker** when `W > 1`).
 
 ## Environment variables a suite reads
 
-A test JVM gets the machine's allow-list, what JumpKick sets and what the module declares in
-`[env]` and `[test] env` ([Build § Worker environment](build.md#worker-environment-env)) — never
-the rest of your shell. So `MY_TOKEN_VALUE=… jk test` does nothing for a suite whose module does
-not declare it, and the test reads `null`. JumpKick says so, from two signals.
+A test JVM sees your shell: `FOO=bar jk test` reaches a test that calls `System.getenv("FOO")`,
+the libraries it calls, and a script, `psql`, `docker` or `git` it starts. The result is cached
+only for the values the suite actually read, so it is never taken where they differ.
 
-Every JVM that runs tests starts with a small agent from JumpKick's test runner. It points each
-`System.getenv` call a loaded class makes — the tests', the libraries', JUnit's conditions — at a
-recorder that notes the variable's name, whether it had a value and the test class running, never
-the value itself, and writes the list when the JVM exits. The rewrite touches only the class
-file's constant pool, so it works on any suite JDK and adds nothing to the test classpath. After
-the run, each variable a test class looked up — or JUnit, for its `@EnabledIfEnvironmentVariable`
-/ `@DisabledIfEnvironmentVariable` — that the module neither declares nor gets anyway is a warning
-(a name in the suite's own `[test.suites.<name>] env` counts as declared, and every test JVM gets
-`JAVA_HOME`, set to the JDK it runs on):
+**How a variable gets there.** Each test JVM starts from the machine's allow-list, what JumpKick
+sets and what the module declares in `[env]` and `[test] env` ([Build § Worker
+environment](build.md#worker-environment-env)), as every worker does. Every other variable is
+fetched the first time something looks it up: a small agent from JumpKick's test runner points
+each `System.getenv` call a loaded class makes at a recorder (it touches only the class file's
+constant pool, so it works on any suite JDK and adds nothing to the test classpath), which asks
+the engine, which takes the value from what `jk` sent with the request or asks your `jk` for it on
+the same connection. The engine notes each name it hands over, so what the suite read is known
+exactly, and the next `jk` sends those values with the request, with no question back. Your
+shell is never copied into the engine or into the test JVM's process environment whole: a JVM
+gets the variables it reads.
+
+**How the result is keyed.** Each variable a suite read keys its green result by its value, or by
+being unset: a test that passes with `MUST_BE_TRUE=true` replays where it is `true`, and runs
+again (and fails) where it is unset, `false` or `banana`. A variable it never read changing moves
+nothing. Two kinds of read cannot name one variable, and are keyed more broadly:
+
+- *Listing the names* (`System.getenv().keySet()`, iterating the map; Spring Boot does this to bind
+  `MY_APP_FOO` to `my.app.foo`) keys the suite on the names present, never on the values it did
+  not read. A new `MY_APP_BAR` runs the suite again. `System.getenv()` answers a view whose values
+  are fetched only as they are read, so `get` and `containsKey` key one name each.
+- *Starting a program* (`ProcessBuilder`, `Runtime.exec`): the program gets your whole environment
+  beneath what the test set for it, and reads it unseen, so the suite is keyed on every value.
+
+Both leave out the names that change between two terminals of one user (the session, window and
+login ids, `TERM`, `SSH_*`, the desktop session), so a second terminal still replays a Spring Boot
+suite. Those names never key a suite even when a test reads one: Micronaut and Flyway list the
+environment and read every value, and keying the terminal's own variables would rerun them in every
+new tab. The cost: a test whose outcome depends on `TERM`, `PWD` or `SHLVL` can replay from another
+terminal. What a suite read only grows, so switching between two shells settles after one run in
+each. `jk explain` forecasts the rerun and never shows a value.
+
+**What never leaves your machine.** Values are HMAC'd under a secret of your JumpKick home before they
+enter a key, so a key that travels gives no way to test guesses at a short secret. They are held
+in the engine's and the test JVM's memory for the run, and are never written to the build's
+history, `jk results`, the logs, the dashboard or an MCP answer. A result that read a variable the
+module neither declares nor [scopes](#scoping-what-a-suite-may-see) stays on this host: only
+declared and allow-listed values are keyed alike everywhere.
+
+**A build with no terminal.** A build started by the web UI, an agent over MCP, `jk watch` or an IDE
+has no shell to ask: its test JVMs get the allow-list and the declared names from the engine, as
+before, and read every other variable as unset. Their results are keyed as run with no caller, so
+a build from a terminal does not take one that read a variable it could not have seen.
+
+### Scoping what a suite may see
+
+`[env] scope = ["SPRING_*", "MYAPP_*"]` narrows what a test JVM sees of your other variables to the
+names the patterns match (a name, or a prefix ending in `*`), beside the allow-list and the
+declared names. A suite that lists the environment then keys on a small, stable set of names, so
+its result holds on another machine and may be shared. For a Spring Boot module, scope it to your
+application's prefixes. Set at a workspace root, it holds for every member that sets none of its
+own.
+
+### Keeping a module strict
+
+`[env] inherit = false` keeps a module's test JVMs to the allow-list and the declared names, as
+every suite was before 0.53. A variable it does not declare reads as unset, and a run names each
+one a test looked up that your shell sets, with both choices:
 
 ```text
-AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it saw no value. Add to [env] require: "MY_TOKEN_VALUE"
+AccessSomeApiTest read MY_TOKEN_VALUE, which your shell sets; core/jk.toml is strict, so the test saw no value. Add to [env] optional: "MY_TOKEN_VALUE" to pass it (the name only; the value stays in your shell), or leave it out
 ```
 
-When the suite fails, what the code under test and its libraries looked up counts too, since an
-undeclared variable may be why. The report then gives the failure first and these warnings after
-it; when there are more than five (a library that scans the whole environment, as Testcontainers
-and Flyway do, reads hundreds of names), they are one line, `W 1300 undeclared variables read by
-StoreTest, DriverDataSource, FileUtils, …: jk results`, and `jk results` lists them. A suite whose JVMs ran without the probe (the test runner's own)
-is judged from its test classes' bytecode instead, for `System.getenv("NAME")` and the two JUnit
-conditions:
+A variable your shell does not set is not news on a green run; a failed run lists the ones its
+tests looked up, once, after the failure. Set at a workspace root, `inherit = false` holds for every
+member: JumpKick's own tree does this, so its suites cannot reach a developer's tokens or real home.
+The agent report (`jk -a`, MCP `run`) gives each such variable as a `W` line with the declaration
+as its `FIX`; a strict module's suite served from its green marker says them again.
 
-```text
-AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare. Add to [env] optional: "MY_TOKEN_VALUE"
-```
+### What is still unseen
 
-A run names at most eight such variables and counts the rest. The warning's key is the variable's
-name, so `jk results -O jsonl` and an MCP answer carry it as data, with the exact `[env]` line to
-add. A module that says `[env] inherit = true` gets every variable and is not checked. A failed
-suite's bytecode is read as well: the test and main classes and every jar on the test classpath
-(each jar once per content, kept in `$JK_CACHE_DIR/env-reads/`), and a class that reads a name
-computed at run time or the whole `System.getenv()` map is named under `env-computed`, because
-no check can see which variable it wants. None of this is part of the suite's key: only what
-`[env]` declares is.
-
-The agent report (`jk -a`, MCP `run`) gives each variable on every verdict, green included, as a
-`W` line with the declaration as its `FIX`, for the first five variables:
-
-```text
-OK test core · 1 test · 680ms
-W AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare; it saw no value
-FIX add to [env] require: "MY_TOKEN_VALUE"
-```
-
-A suite served from its green marker says the same warnings again, marked replayed in `-O jsonl`,
-for every variable the module still does not declare.
+A read the probe cannot see is not keyed: native code calling `getenv(3)` through JNI or the FFM
+API, a JVM the suite starts itself (`java -jar …` from a test: it gets your environment like any
+program, and the suite is keyed on all of it), and code that runs in the test runner's discovery
+JVM before the tests (a static initializer that reads a variable while JUnit lists the tests).
 
 ## What a suite read: discovered inputs
 

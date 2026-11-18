@@ -11,13 +11,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A suite's reads of variables its module never declares are reported with the declaration that
- * would give them; what the module declares, or every test JVM gets, is not.
+ * A strict module's suite reads of variables it never declares, and the shell sets, are reported
+ * with both choices (pass it, or leave it out); what the module declares, or every test JVM gets,
+ * is not.
  */
 class EnvReadReportTest {
 
@@ -48,8 +50,9 @@ class EnvReadReportTest {
                 .containsEntry("APP_DATABASE_URL", "ex.Config");
         assertThat(failed.opaque()).contains("ex.Config", "ex.AccessSomeApiTest");
         assertThat(EnvReadReport.undeclared("ex.AccessSomeApiTest", "MY_TOKEN_VALUE", "core/jk.toml"))
-                .isEqualTo("AccessSomeApiTest reads MY_TOKEN_VALUE, which core/jk.toml does not declare."
-                        + " Add to [env] optional: \"MY_TOKEN_VALUE\"");
+                .isEqualTo("AccessSomeApiTest reads MY_TOKEN_VALUE, which your shell sets; core/jk.toml is strict,"
+                        + " so its tests run without it. Add to [env] optional: \"MY_TOKEN_VALUE\" to pass it"
+                        + " (the name only; the value stays in your shell), or leave it out");
     }
 
     @Test
@@ -100,8 +103,17 @@ class EnvReadReportTest {
                         "LIB_HOME", "com.lib.Boot",
                         "RUN_SLOW", "ex.SlowTest"));
         assertThat(EnvReadReport.lookedUp("ex.AccessSomeApiTest", "MY_TOKEN_VALUE", "core/jk.toml"))
-                .isEqualTo("AccessSomeApiTest read MY_TOKEN_VALUE, which core/jk.toml does not declare;"
-                        + " it saw no value. Add to [env] require: \"MY_TOKEN_VALUE\"");
+                .isEqualTo("AccessSomeApiTest read MY_TOKEN_VALUE, which your shell sets; core/jk.toml is strict,"
+                        + " so the test saw no value. Add to [env] optional: \"MY_TOKEN_VALUE\" to pass it"
+                        + " (the name only; the value stays in your shell), or leave it out");
+        assertThat(EnvReadReport.setInShell("MY_TOKEN_VALUE", Set.of("MY_TOKEN_VALUE")))
+                .isTrue();
+        assertThat(EnvReadReport.setInShell("MY_TOKEN_VALUE", Set.of("OTHER")))
+                .as("a variable the shell does not set is no news")
+                .isFalse();
+        assertThat(EnvReadReport.setInShell("MY_TOKEN_VALUE", null))
+                .as("with no caller to say, nothing is told")
+                .isFalse();
     }
 
     /** A classes tree holding one class that reads {@code name} by a constant and {@code condition} by a condition. */

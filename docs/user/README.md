@@ -60,9 +60,9 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 - [Build](build.md)
 - [Test](test.md) — suites own test selection: `[test.suites.<name>]`, the built-in `integration`
   suite, `-s`, `-g`, `-A`
-- [Environment variables](build.md#worker-environment-env) — `[env]` require, optional and inherit:
-  what reaches tests, compilers and plugins, and the
-  [`env-undeclared` warning](test.md#environment-variables-a-suite-reads)
+- [Environment variables](build.md#worker-environment-env) — `[env]` require, optional, inherit
+  and scope: what reaches compilers and plugins, how a test reads your shell and is
+  [keyed on what it read](test.md#environment-variables-a-suite-reads)
 - [Guards](guards.md) — house rules in `jk-guards.toml`: kinds, baseline, packs, hooks
 - [Generate](generate.md) — code generators as cached steps: `[generate.<name>]`, the `[openapi]` preset
 - [Lint](lint.md) — Checkstyle, PMD, SpotBugs and detekt as cached steps: `[lint]`, findings in `jk-results.md`

@@ -11,6 +11,7 @@ import cc.jumpkick.wire.EngineHandshake;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.EngineTransport;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -33,9 +34,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.LockSupport;
@@ -372,8 +375,51 @@ public final class EngineWire {
      */
     static String withShell(String requestLine) {
         ClientKeychain.Carried keychain = ClientKeychain.carried();
-        return ProtoSession.withKeychain(
-                ProtoSession.withShell(requestLine, shellFor(requestLine)), keychain.secrets(), keychain.refused());
+        Shell shell = shellOf(requestLine);
+        String line = ProtoSession.withShellFacts(
+                ProtoSession.withShell(requestLine, shell.vars()),
+                new ProtoSession.ShellFacts(List.copyOf(shell.asked()), shell.whole(), shell.names(), true));
+        return ProtoSession.withKeychain(line, keychain.secrets(), keychain.refused());
+    }
+
+    /**
+     * What a request carries of this shell: the values ({@link #shellFor}), every name it looked up
+     * whether set or not (so the engine reads an unsent name it asked for as unset, not unknown),
+     * whether the values are the whole environment, and the names the shell sets when a suite of
+     * the project lists them ({@link ProjectInfo#ENV_READS_NAMES}).
+     */
+    record Shell(
+            Map<String, String> vars,
+            Set<String> asked,
+            boolean whole,
+            @Nullable List<String> names) {}
+
+    static Shell shellOf(String requestLine) {
+        Map<String, String> vars = shellFor(requestLine);
+        boolean whole = wantsWhole(requestLine);
+        Set<String> asked = new TreeSet<>(whole ? Set.of() : lookedUp());
+        List<String> names = !whole && ProjectInfos.envReads().contains(ProjectInfo.ENV_READS_NAMES)
+                ? List.copyOf(new TreeSet<>(ClientEnvForward.wholeShell().keySet()))
+                : null;
+        return new Shell(vars, asked, whole, names);
+    }
+
+    /** Whether the request carries this shell whole ({@link #shellFor}). */
+    private static boolean wantsWhole(String requestLine) {
+        return IMPORT.equals(EngineProtocol.typeOf(requestLine))
+                || ProjectInfos.wantsWholeShell()
+                || ProjectInfos.envReads().contains(ProjectInfo.ENV_READS_ALL)
+                || ClientEnvForward.userRefs().wholeShell();
+    }
+
+    /** Every name a request looks up in this shell beyond what the engine reads for itself: declared, read, configured. */
+    private static Set<String> lookedUp() {
+        Set<String> names = new HashSet<>(ProjectInfos.declaredNames());
+        names.addAll(ProjectInfos.envReadNames());
+        names.addAll(ClientEnvForward.userRefs().names());
+        Map<String, String> resolved = SessionContext.current().clientEnv();
+        if (resolved != null) names.addAll(resolved.keySet());
+        return names;
     }
 
     /** The request whose engine side runs a foreign build, which reads whatever it likes. */
@@ -383,8 +429,10 @@ public final class EngineWire {
      * The part of this shell a request carries. The whole of it when something needs all of it: a
      * module of the project says {@code [env] inherit = true}, a {@code ${cmd:…}} credential helper
      * in {@code ~/.jk/config.toml} runs under it, or the request is an import, whose Gradle or
-     * Maven build reads what it likes. Otherwise the variables the engine reads for itself and the
-     * names the project and this user's configuration declare ({@link ClientEnvForward#forwarded}).
+     * Maven build reads what it likes, or a suite of the project starts programs, which see all of
+     * it. Otherwise the variables the engine reads for itself, the names the project and this user's
+     * configuration declare, and the names its suites were found to read ({@link
+     * ClientEnvForward#forwarded}).
      *
      * <p>The project is the request's own: its {@code dir} is described ({@link ProjectInfos#orNull},
      * memoized for the run) before the names are read, so no verb has to have asked first. A verb
@@ -398,15 +446,10 @@ public final class EngineWire {
             String dir = Jsonl.str(requestLine, "dir");
             if (dir != null && !dir.isBlank()) ProjectInfos.orNull(Path.of(dir));
         }
-        if (IMPORT.equals(type)
-                || ProjectInfos.wantsWholeShell()
-                || ClientEnvForward.userRefs().wholeShell()) {
-            return ClientEnvForward.wholeShell();
-        }
-        Set<String> declared = new HashSet<>(ProjectInfos.declaredNames());
-        Map<String, String> resolved = SessionContext.current().clientEnv();
-        if (resolved != null) declared.addAll(resolved.keySet());
-        return ClientEnvForward.forwarded(declared);
+        if (wantsWhole(requestLine)) return ClientEnvForward.wholeShell();
+        // The names a suite of the project was found to read ride with the declared ones, values
+        // and all: its key is then taken with no question back to this shell.
+        return ClientEnvForward.forwarded(lookedUp());
     }
 
     /**

@@ -83,7 +83,8 @@ public final class EnvProbeJar {
     }
 
     static Path jar(Path runnerJar, Path cacheDir) throws IOException {
-        String name = "env-probe-" + Hashing.sha256Hex(runnerJar).substring(0, 16) + ".jar";
+        // The manifest's shape is part of the name: a jar cut before it changed is never taken for one after.
+        String name = "env-probe-2-" + Hashing.sha256Hex(runnerJar).substring(0, 16) + ".jar";
         Path jar = cacheDir.resolve(name);
         if (Files.isRegularFile(jar)) {
             Files.setLastModifiedTime(jar, FileTime.fromMillis(Clock.SYSTEM.millis()));
@@ -94,6 +95,9 @@ public final class EnvProbeJar {
         main.put(Attributes.Name.MANIFEST_VERSION, "1.0");
         main.putValue("Premain-Class", AGENT);
         main.putValue("Boot-Class-Path", name);
+        // ProcessBuilder is loaded before a test runs; the agent retransforms it when it hands the
+        // caller's environment on to the programs a test starts.
+        main.putValue("Can-Retransform-Classes", "true");
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         int classes = 0;
         try (ZipFile runner = new ZipFile(runnerJar.toFile());

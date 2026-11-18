@@ -6,6 +6,7 @@ import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -224,7 +225,10 @@ public final class WorkspaceLoader {
         // these members and one rebuilt from its memo carry one shape: a profile declared only at
         // the root resolves for every member either way.
         JkBuild member = inheritImage(
-                inheritPublish(inheritSuites(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root), root),
+                inheritTestEnvPolicy(
+                        inheritPublish(
+                                inheritSuites(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root), root),
+                        root),
                 root,
                 moduleDir);
         member = JkBuildParser.reapplyPlatformContributions(moduleDir, member);
@@ -258,6 +262,22 @@ public final class WorkspaceLoader {
         Objects.requireNonNull(root, "root");
         if (module.publish() != null || root.publish() == null) return module;
         return module.withPublish(root.publish());
+    }
+
+    /**
+     * {@code module} under the workspace root's test-environment policy: {@code [env] strict} at the
+     * root holds for every member (a team or CI that keeps test JVMs to the allow-list says so once),
+     * and the root's {@code scope} stands for a member that names none of its own.
+     */
+    public static JkBuild inheritTestEnvPolicy(JkBuild module, JkBuild root) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(root, "root");
+        EnvConfig own = module.build().env();
+        EnvConfig rootEnv = root.build().env();
+        boolean strict = own.strict() || rootEnv.strict();
+        List<String> scope = own.scope().isEmpty() ? rootEnv.scope() : own.scope();
+        if (strict == own.strict() && scope.equals(own.scope())) return module;
+        return module.withBuild(module.build().withEnv(own.withTestPolicy(strict, scope)));
     }
 
     /**
