@@ -87,16 +87,38 @@ final class SetupSteps {
         this.tools = cx.tools();
     }
 
+    /** The compiler version a row tells a module with sources of {@code key} and no version to declare. */
+    private static String defaultCompiler(String key) {
+        return switch (key) {
+            case "kotlin" -> KotlinResolver.DEFAULT_VERSION;
+            case "groovy" -> GroovyResolver.DEFAULT_VERSION;
+            default -> ScalaResolver.DEFAULT_VERSION;
+        };
+    }
+
     /**
      * What the manifest has to say once it is parsed: a shadowed module says once, on the build
      * after its POM changed, what the effective POM declares that the in-place build does not
-     * carry; a declared language set says which sources of another language it leaves uncompiled;
+     * carry; a declared language set says which Java sources it leaves uncompiled, and of Kotlin,
+     * Groovy or Scala sources fails on those in a root that language's compile collects, naming the
+     * key and version to add, and warns of those elsewhere under {@code src} (test data);
      * a Kotlin, Groovy or Scala below its floor says what the module compiles with instead, and a
      * {@code java} below jk's floor says the toolchain cross-compiles for it.
      */
     private static void warnManifestRows(TaskContext ctx, Path dir, JkBuild project) {
         for (String row : ShadowManifests.drainTier3(dir)) ctx.warn("pom", row);
-        for (String row : Languages.undeclaredWithSources(project.project(), dir)) ctx.warn("languages", row);
+        for (Languages.Uncompiled u : Languages.uncompiled(project.project(), dir)) {
+            if (u.java()) {
+                ctx.warn("languages", u.row("java = " + Languages.javaRelease(project.project())));
+            } else if (!u.inRoot()) {
+                ctx.warn("languages", u.row(u.key() + " = \"<version>\""));
+            } else {
+                // An empty jar that reports success hides the sources it left out: stop here.
+                String row = u.row(u.key() + " = \"" + defaultCompiler(u.key()) + "\"");
+                ctx.error("languages", row);
+                throw new IllegalStateException(row);
+            }
+        }
         if (JavaRelease.belowFloor(project.project().java())) {
             ctx.warn("java", JavaRelease.floorNote(project.project().java()));
         }

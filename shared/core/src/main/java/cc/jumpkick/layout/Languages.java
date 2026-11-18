@@ -5,6 +5,7 @@ import cc.jumpkick.model.Project;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -62,38 +63,119 @@ public record Languages(boolean java, boolean kotlin, boolean groovy, boolean sc
      * {@code kotlin =} manifest over {@code src/main/java} compiles no Java, and the row says so,
      * naming the root that holds the sources and the key that would compile them. Empty for a
      * module whose languages are inferred from the tree, and for one whose declaration covers
-     * every root.
+     * every root. The compiler keys read {@code "<version>"}; {@link #uncompiled} gives the parts.
      */
     public static List<String> undeclaredWithSources(Project project, Path projectDir) {
-        Languages declared = resolve(project, projectDir);
-        boolean anyDeclared = project.java() > 0 || project.isKotlin() || project.isGroovy() || project.isScala();
-        if (!anyDeclared) return List.of();
         List<String> rows = new ArrayList<>();
-        // The level the compile would use: the declared one, else the JDK the engine runs on.
-        int release = project.javaRelease() > 0
-                ? project.javaRelease()
-                : Runtime.version().feature();
-        if (!declared.java()) dropped(rows, projectDir, "java", ".java", "java = " + release);
-        if (!declared.kotlin()) dropped(rows, projectDir, "kotlin", ".kt", "kotlin = \"<version>\"");
-        if (!declared.groovy()) dropped(rows, projectDir, "groovy", ".groovy", "groovy = \"<version>\"");
-        if (!declared.scala()) dropped(rows, projectDir, "scala", ".scala", "scala = \"<version>\"");
+        for (Uncompiled u : uncompiled(project, projectDir)) {
+            rows.add(u.row(u.java() ? "java = " + javaRelease(project) : u.key() + " = \"<version>\""));
+        }
         return rows;
     }
 
-    private static void dropped(List<String> rows, Path projectDir, String key, String ext, String addition) {
-        Path traditional = projectDir.resolve("src/main/" + key);
-        String root;
-        String what;
-        if (anySourceUnder(traditional, ext)) {
-            root = "src/main/" + key;
-            what = Character.toUpperCase(key.charAt(0)) + key.substring(1) + " sources";
-        } else if (anySourceUnder(projectDir.resolve("src"), ext)) {
-            root = "src";
-            what = ext + " sources";
-        } else {
+    /**
+     * The sources of each language a declared language set leaves out, in Java, Kotlin, Groovy,
+     * Scala order: {@code root} is the directory the row names and {@code what} how it names them.
+     * Empty for a module whose languages are inferred from the tree.
+     *
+     * <p>A Kotlin, Groovy or Scala row names the first source root that language's compile would
+     * collect and that holds its files ({@link #compileRoots}: {@code src/main/kotlin}, {@code
+     * src/test/java}, a compact module's {@code src}), with {@code inRoot} set; files only elsewhere
+     * under {@code src}, such as test data in {@code src/test/data}, give a {@code src} row with it
+     * clear. A Java row names {@code src/main/java}, else {@code src}.
+     *
+     * <p>The build fails on a Kotlin, Groovy or Scala row in a root and warns on any other: those
+     * sources would compile under the key, so with no version (own or inherited from the workspace
+     * root) the module builds without them and an empty jar can report success; files outside
+     * every root are never compiled, and Java sources beside a declared Kotlin, Groovy or Scala set
+     * are a documented, warned state.
+     */
+    public static List<Uncompiled> uncompiled(Project project, Path projectDir) {
+        Languages declared = resolve(project, projectDir);
+        boolean anyDeclared = project.java() > 0 || project.isKotlin() || project.isGroovy() || project.isScala();
+        if (!anyDeclared) return List.of();
+        List<Uncompiled> out = new ArrayList<>();
+        if (!declared.java()) droppedJava(out, projectDir);
+        boolean compact = ModuleLayout.isCompact(projectDir);
+        if (!declared.kotlin()) dropped(out, projectDir, compact, "kotlin", ".kt");
+        if (!declared.groovy()) dropped(out, projectDir, compact, "groovy", ".groovy");
+        if (!declared.scala()) dropped(out, projectDir, compact, "scala", ".scala");
+        return out;
+    }
+
+    /**
+     * The source roots a {@code kotlin}, {@code groovy} or {@code scala} compile collects, in that
+     * order: main's ({@code src/main/<key>} and {@code src/main/java}, or a compact module's {@code
+     * src}), then each test suite's on disk ({@code src/<suite>/<key>} and {@code src/<suite>/java},
+     * or compact {@code test/src} and {@code <suite>/src}). Each may not exist.
+     */
+    static List<Path> compileRoots(Path projectDir, boolean compact, String key) {
+        LinkedHashSet<Path> roots = new LinkedHashSet<>(
+                compact
+                        ? List.of(projectDir.resolve("src"))
+                        : List.of(projectDir.resolve("src/main/" + key), projectDir.resolve("src/main/java")));
+        LinkedHashSet<String> suites = new LinkedHashSet<>();
+        suites.add(TestSuites.DEFAULT);
+        suites.addAll(TestSuites.discover(projectDir, compact));
+        for (String suite : suites) {
+            roots.addAll(
+                    switch (key) {
+                        case "kotlin" -> TestSuites.kotlinRoots(projectDir, compact, suite);
+                        case "groovy" -> TestSuites.groovyRoots(projectDir, compact, suite);
+                        default -> TestSuites.scalaRoots(projectDir, compact, suite);
+                    });
+        }
+        return List.copyOf(roots);
+    }
+
+    /** The level a Java row tells the module to declare: its own, else the JDK the engine runs on. */
+    public static int javaRelease(Project project) {
+        return project.javaRelease() > 0
+                ? project.javaRelease()
+                : Runtime.version().feature();
+    }
+
+    /**
+     * Sources of language {@code key} the module does not compile, under {@code root}.
+     *
+     * @param key the {@code jk.toml} key that would compile them: {@code java}, {@code kotlin},
+     *     {@code groovy} or {@code scala}
+     * @param inRoot whether {@code root} is one the language's compile collects, so the key would
+     *     compile them; never for a Java row
+     */
+    public record Uncompiled(String key, String root, String what, boolean inRoot) {
+
+        public boolean java() {
+            return "java".equals(key);
+        }
+
+        /** The row, ending with {@code addition}, the line to add ({@code kotlin = "2.4.10"}). */
+        public String row(String addition) {
+            return root + " has " + what + " that are not compiled; add " + addition + " to jk.toml";
+        }
+    }
+
+    private static void droppedJava(List<Uncompiled> out, Path projectDir) {
+        if (anySourceUnder(projectDir.resolve("src/main/java"), ".java")) {
+            out.add(new Uncompiled("java", "src/main/java", "Java sources", false));
+        } else if (anySourceUnder(projectDir.resolve("src"), ".java")) {
+            out.add(new Uncompiled("java", "src", ".java sources", false));
+        }
+    }
+
+    private static void dropped(List<Uncompiled> out, Path projectDir, boolean compact, String key, String ext) {
+        for (Path root : compileRoots(projectDir, compact, key)) {
+            if (!anySourceUnder(root, ext)) continue;
+            String what = key.equals(nameOf(root))
+                    ? Character.toUpperCase(key.charAt(0)) + key.substring(1) + " sources"
+                    : ext + " sources";
+            String rel = projectDir.relativize(root).toString().replace('\\', '/');
+            out.add(new Uncompiled(key, rel, what, true));
             return;
         }
-        rows.add(root + " has " + what + " that are not compiled; add " + addition + " to jk.toml");
+        if (anySourceUnder(projectDir.resolve("src"), ext)) {
+            out.add(new Uncompiled(key, "src", ext + " sources", false));
+        }
     }
 
     /**

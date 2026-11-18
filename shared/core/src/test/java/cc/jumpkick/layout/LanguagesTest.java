@@ -60,6 +60,91 @@ class LanguagesTest {
                 .containsExactly("src/main/java has Java sources that are not compiled; add java = 25 to jk.toml");
     }
 
+    /**
+     * A {@code java} module (its own key or the workspace root's) with Kotlin sources and no
+     * {@code kotlin} key compiles none of them: a real project kept its {@code .kt} under
+     * {@code src/main/java}, a Kotlin user's first try is {@code src/main/kotlin}. Both are roots a
+     * Kotlin compile collects, so both are rows in a root, and the build fails on them.
+     */
+    @Test
+    void kotlin_sources_in_a_java_module_are_uncompiled_kotlin_in_either_root(@TempDir Path tmp) throws Exception {
+        Project javaOnly =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        Files.createDirectories(tmp.resolve("src/main/java/demo"));
+        Files.writeString(tmp.resolve("src/main/java/demo/GreeterKt.kt"), "package demo\nfun f() = 1\n");
+        assertThat(Languages.uncompiled(javaOnly, tmp))
+                .containsExactly(new Languages.Uncompiled("kotlin", "src/main/java", ".kt sources", true));
+
+        Files.delete(tmp.resolve("src/main/java/demo/GreeterKt.kt"));
+        Files.createDirectories(tmp.resolve("src/main/kotlin/demo"));
+        Files.writeString(tmp.resolve("src/main/kotlin/demo/GreeterKt.kt"), "package demo\nfun f() = 1\n");
+        Languages.Uncompiled row = Languages.uncompiled(javaOnly, tmp).getFirst();
+        assertThat(row.java()).isFalse();
+        assertThat(row.inRoot()).isTrue();
+        assertThat(row.row("kotlin = \"2.4.10\""))
+                .isEqualTo(
+                        "src/main/kotlin has Kotlin sources that are not compiled; add kotlin = \"2.4.10\" to jk.toml");
+    }
+
+    /**
+     * A test suite's roots are compile roots too: {@code .kt} under {@code src/test/kotlin} or a
+     * suite's {@code src/it/java} would compile with the key, so the row names that root.
+     */
+    @Test
+    void kotlin_sources_in_a_test_suites_root_are_rows_in_that_root(@TempDir Path tmp) throws Exception {
+        Project javaOnly =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        write(tmp, "src/main/java/demo/App.java", "package demo; class App {}");
+        write(tmp, "src/it/java/demo/AppIT.kt", "package demo\nclass AppIT\n");
+        assertThat(Languages.uncompiled(javaOnly, tmp))
+                .containsExactly(new Languages.Uncompiled("kotlin", "src/it/java", ".kt sources", true));
+        write(tmp, "src/test/kotlin/demo/AppTest.kt", "package demo\nclass AppTest\n");
+        assertThat(Languages.uncompiled(javaOnly, tmp))
+                .containsExactly(new Languages.Uncompiled("kotlin", "src/test/kotlin", "Kotlin sources", true));
+    }
+
+    /**
+     * Files no compile collects, such as a Java module's test data under {@code src/test/data} or
+     * {@code src/test/fixtures}, would not compile with the key either: the row is {@code src}'s,
+     * not in a root, and the build warns of it as it always did.
+     */
+    @Test
+    void kotlin_groovy_or_scala_outside_every_compile_root_is_a_row_not_in_a_root(@TempDir Path tmp) throws Exception {
+        Project javaOnly =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        write(tmp, "src/main/java/demo/App.java", "package demo; class App {}");
+        write(tmp, "src/test/data/Sample.kt", "fun sample() = 1\n");
+        write(tmp, "src/test/fixtures/parser/input/Script.groovy", "println 'hi'\n");
+        write(tmp, "src/it/samples/Model.scala", "case class Model(id: Int)\n");
+        assertThat(Languages.uncompiled(javaOnly, tmp))
+                .containsExactly(
+                        new Languages.Uncompiled("kotlin", "src", ".kt sources", false),
+                        new Languages.Uncompiled("groovy", "src", ".groovy sources", false),
+                        new Languages.Uncompiled("scala", "src", ".scala sources", false));
+        assertThat(Languages.undeclaredWithSources(javaOnly, tmp))
+                .first()
+                .isEqualTo("src has .kt sources that are not compiled; add kotlin = \"<version>\" to jk.toml");
+    }
+
+    /** A compact module compiles every {@code .kt} under {@code src}, and its tests' under {@code test/src}. */
+    @Test
+    void a_compact_module_s_roots_are_src_and_its_suites_src(@TempDir Path tmp) throws Exception {
+        Project javaOnly =
+                Project.builder("com.example", "hello", "1.0.0").java(25).build();
+        write(tmp, "test/src/AppTest.kt", "class AppTest\n");
+        assertThat(Languages.uncompiled(javaOnly, tmp))
+                .containsExactly(new Languages.Uncompiled("kotlin", "test/src", ".kt sources", true));
+        write(tmp, "src/data/Sample.kt", "fun sample() = 1\n");
+        assertThat(Languages.uncompiled(javaOnly, tmp))
+                .containsExactly(new Languages.Uncompiled("kotlin", "src", ".kt sources", true));
+    }
+
+    private static void write(Path dir, String rel, String text) throws Exception {
+        Path file = dir.resolve(rel);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, text);
+    }
+
     @Test
     void a_declaration_that_covers_every_source_root_and_an_inferred_module_warn_nothing(@TempDir Path tmp)
             throws Exception {
@@ -137,7 +222,8 @@ class LanguagesTest {
         Project project =
                 Project.builder("com.example", "hello", "1.0.0").java(25).build();
         assertThat(Languages.undeclaredWithSources(project, tmp))
-                .containsExactly("src has .kt sources that are not compiled; add kotlin = \"<version>\" to jk.toml");
+                .containsExactly(
+                        "src/main/java has .kt sources that are not compiled; add kotlin = \"<version>\" to jk.toml");
     }
 
     @Test

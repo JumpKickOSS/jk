@@ -6,6 +6,12 @@ if `src/main/{java,kotlin,scala,groovy,resources}` or
 module is **traditional** (Maven). Otherwise it is **simple** (Mill-like).
 
 Language is by **file extension**. `.java` / `.kt` / `.groovy` may share a directory.
+A Kotlin module compiles the `.kt` files under `src/main/kotlin` and `src/main/java` alike, and a
+test suite's under `src/<suite>/kotlin` and `src/<suite>/java`; a module that declares its
+languages (a `java` key, its own or its workspace root's) but no `kotlin` while it holds `.kt`
+files in one of those roots fails its build naming the root and the key to add, and so do Groovy
+and Scala. `.kt` elsewhere under `src`, test data say, is only warned about
+([Projects](projects.md#identity-and-language)).
 `jk new` still asks which tree to scaffold; that only **places files**.
 
 One module may mix Java, Kotlin and Groovy, in main and in tests, compiled in Gradle's order:

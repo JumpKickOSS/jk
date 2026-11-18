@@ -64,7 +64,15 @@ module is rejected.** Scaffold with `jk new -l kotlin`, `--lang groovy` or `--la
 With no language key at all the languages are inferred from the tree; once one is declared, the
 declaration is the whole set — a `kotlin =` manifest over `src/main/java` compiles no Java, and the
 build warns once per module, naming the root and the key to add (`src/main/java has Java sources
-that are not compiled; add java = 25 to jk.toml`).
+that are not compiled; add java = 25 to jk.toml`). Kotlin, Groovy or Scala sources the declaration
+leaves out fail the build instead when they sit where that language's compile would collect them:
+`src/main/kotlin` and `src/main/java` (`groovy`, `scala` likewise), each test suite's
+`src/<suite>/kotlin` and `src/<suite>/java`, or in the simple layout anywhere under `src`, `test/src`
+or `<suite>/src`. A member that inherits `java = 25` from its workspace root and holds `.kt` files
+there stops with `src/main/kotlin has Kotlin sources that are not compiled; add kotlin = "2.4.10" to
+jk.toml`. Put the key in the member, or in the root for every member. Files elsewhere under `src`,
+such as test data in `src/test/data`, compile under no key: they get the warning (`src has .kt
+sources that are not compiled; …`) and the build goes on.
 
 ## Version strings
 
