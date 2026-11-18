@@ -15,11 +15,11 @@ import org.w3c.dom.Element;
  * {@code <error>}s, SpotBugs's {@code <BugInstance>}s. An empty report — a step with no sources or
  * no configuration — counts zero; a root element none of the tools writes is null.
  */
-final class LintReport {
+public final class LintReport {
 
     private LintReport() {}
 
-    static @Nullable Integer findings(Path report) throws IOException {
+    public static @Nullable Integer findings(Path report) throws IOException {
         if (Files.size(report) == 0) return 0;
         String xml = Files.readString(report).replaceFirst("<!DOCTYPE[^>]*>", "");
         Element root = DomXml.parse(xml).getDocumentElement();

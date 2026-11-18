@@ -238,7 +238,7 @@ final class PlannerGuards {
 
     /**
      * {@code guard-output}: the artefact assertions and output measures at the root, keyed on the
-     * artefacts' stamps, the coverage report, the rules and the baseline. Runs after packaging (and
+     * artefacts' stamps, the coverage and lint reports, the rules and the baseline. Runs after packaging (and
      * the native tail) in a plan that packages; after the other root lanes otherwise.
      */
     static Task outputStep(LaneEnv env, String... requires) {
