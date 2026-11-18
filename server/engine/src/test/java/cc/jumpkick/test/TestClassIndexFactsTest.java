@@ -36,11 +36,11 @@ class TestClassIndexFactsTest {
         Path testClasses = classesDir(tmp);
         Set<String> production = Set.of("cc.jumpkick.test.TestClassIndex", "cc.jumpkick.test.Unused");
         assertThat(TestClassIndex.currentFacts(testClasses)).as("no index yet").isEmpty();
-        List<TestClassIndex.Entry> fromClasses = TestClassIndex.scan(testClasses, production);
+        List<TestClassIndex.Entry> fromClasses = TestClassIndex.scan(testClasses, production, List.of());
 
         FactsIndexing.ensure(testClasses, FactsIndexing.indexPath(tmp.resolve("target"), "test"));
         assertThat(TestClassIndex.currentFacts(testClasses)).isPresent();
-        List<TestClassIndex.Entry> fromFacts = TestClassIndex.scan(testClasses, production);
+        List<TestClassIndex.Entry> fromFacts = TestClassIndex.scan(testClasses, production, List.of());
 
         assertThat(fromFacts).containsExactlyInAnyOrderElementsOf(fromClasses);
         TestClassIndex.Entry tagged = fromFacts.stream()

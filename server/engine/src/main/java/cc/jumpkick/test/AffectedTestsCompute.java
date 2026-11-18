@@ -222,7 +222,8 @@ public final class AffectedTestsCompute {
         Map<String, DeclaredSuite> declared = build.build().runSuites();
         TestSelection.Resolved resolved = TestStampInputs.resolveSuites(sel, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production);
+        // No build resolved a classpath here: a tag composed outside the tree is not seen.
+        List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production, List.of());
         Map<String, ClassTags> tags = new HashMap<>();
         for (TestClassIndex.Entry e : compiled) tags.put(e.className(), new ClassTags(e.classTags(), e.tags()));
         Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)

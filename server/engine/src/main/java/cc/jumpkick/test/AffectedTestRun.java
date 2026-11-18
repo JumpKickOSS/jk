@@ -40,11 +40,17 @@ public final class AffectedTestRun {
     public record Outcome(AffectedTests report, List<String> classNames, String stampToken) {}
 
     /**
+     * @param tagClasspath where a test class's tags from outside its tree are read ({@link TestClassIndex#scan})
      * @return {@code null} when {@code session.affected()} is false (caller runs the full
      *     selection). Throws {@link RankingRefused} when ranking cannot be honest.
      */
     public static @Nullable Outcome apply(
-            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteFilter suites) throws Exception {
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestSelection effectiveSel,
+            SuiteFilter suites,
+            List<Path> tagClasspath)
+            throws Exception {
         if (!in.session().affected()) return null;
         Path moduleDir = in.dir();
         Path wsRoot = WorkspaceLocator.findRoot(moduleDir).orElse(moduleDir);
@@ -69,7 +75,9 @@ public final class AffectedTestRun {
         Set<String> production = new LinkedHashSet<>(current.keySet());
         production.addAll(foreign.keySet());
         List<TestClassIndex.Entry> tests = runnable(
-                TestClassIndex.scan(testClasses, production), project.build().testExcludeClasses(), suites);
+                TestClassIndex.scan(testClasses, production, tagClasspath),
+                project.build().testExcludeClasses(),
+                suites);
         // run-tests only executes when compile-test found test sources, so an empty scan after
         // compile-test means the classes are missing — refuse, don't guess.
         if (tests.isEmpty()) {

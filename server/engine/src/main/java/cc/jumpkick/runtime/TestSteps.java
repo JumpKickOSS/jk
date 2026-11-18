@@ -122,10 +122,12 @@ final class TestSteps {
         // jk build / BSP / MCP: when the session selection carries no tags, resolve the
         // workspace's here as the CLI does for `jk test`. It feeds BOTH the stamp and the runner.
         var effectiveSel = in.session().testSelection();
-        SuiteFilter suites = suiteFilter(in, shape.compact(), projectUnderTest, testClasses);
-        AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites);
+        List<Path> tagCp = PlannerTest.tagClasspath(ctx);
+        SuiteFilter suites = suiteFilter(in, shape.compact(), projectUnderTest, testClasses, tagCp);
+        AffectedTestRun.Outcome affected = affectedRun(ctx, in, effectiveSel, suites, tagCp);
         if (affected != null && affected.classNames().isEmpty()) return; // nothing affected — no stamp store
-        if (affected == null && settledFromClassFiles(ctx, effectiveSel, suites, testClasses, projectUnderTest)) {
+        if (affected == null
+                && settledFromClassFiles(ctx, effectiveSel, suites, testClasses, tagCp, projectUnderTest)) {
             settleUnmatched(ctx, in, effectiveSel, suites, actionCache, testTaskId, !testSrcs.isEmpty(), snippets);
             return;
         }
@@ -323,10 +325,15 @@ final class TestSteps {
      * module has no class of), which is said as no tests to run.
      */
     private static boolean settledFromClassFiles(
-            TaskContext ctx, TestSelection sel, SuiteFilter suites, Path testClasses, JkBuild project) {
+            TaskContext ctx,
+            TestSelection sel,
+            SuiteFilter suites,
+            Path testClasses,
+            List<Path> tagClasspath,
+            JkBuild project) {
         List<String> excluded = project.build().testExcludeClasses();
         if (!sel.classes().isEmpty()) return !suites.namesCompiledClass(testClasses, sel.classes(), excluded);
-        if (suites.selectsCompiledClass(testClasses, excluded)) return false;
+        if (suites.selectsCompiledClass(testClasses, tagClasspath, excluded)) return false;
         ctx.label("no tests to run");
         ctx.cached();
         return true;
@@ -672,7 +679,8 @@ final class TestSteps {
             throws IOException {
         String suiteHint = exactClassList
                 ? null
-                : suites.classHint(ctx.require(PARSED_BUILD).testClassesDir(), sel.classes());
+                : suites.classHint(
+                        ctx.require(PARSED_BUILD).testClassesDir(), PlannerTest.tagClasspath(ctx), sel.classes());
         boolean nothing = TestClassMatch.nothingMatched(sel, exactClassList, result);
         if (!exactClassList && tagExcluded != null && TestClassMatch.namesClasses(sel)) {
             return nothing
@@ -694,10 +702,15 @@ final class TestSteps {
 
     /** The affected-test selection when the session asked for one; null otherwise. */
     private static AffectedTestRun.@Nullable Outcome affectedRun(
-            TaskContext ctx, BuildPlanner.Inputs in, TestSelection effectiveSel, SuiteFilter suites) throws Exception {
+            TaskContext ctx,
+            BuildPlanner.Inputs in,
+            TestSelection effectiveSel,
+            SuiteFilter suites,
+            List<Path> tagClasspath)
+            throws Exception {
         if (!in.session().affected()) return null;
         try {
-            return AffectedTestRun.apply(ctx, in, effectiveSel, suites);
+            return AffectedTestRun.apply(ctx, in, effectiveSel, suites, tagClasspath);
         } catch (AffectedTestRun.RankingRefused e) {
             throw new RuntimeException(e.getMessage(), e);
         }

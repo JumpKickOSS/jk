@@ -300,11 +300,11 @@ public final class SuiteFilter {
     /**
      * The sentence for {@code --class} patterns that name compiled classes this run's suites leave
      * out, naming the suite each belongs to; null when the patterns name none. Reads the class files
-     * under {@code testClasses}, their tags included.
+     * under {@code testClasses}, their tags included, types outside the tree from {@code classpath}.
      */
-    public @Nullable String classHint(Path testClasses, List<String> classPatterns) {
+    public @Nullable String classHint(Path testClasses, List<Path> classpath, List<String> classPatterns) {
         if (declared.isEmpty() || classPatterns.isEmpty() || !Files.isDirectory(testClasses)) return null;
-        SuiteFilter read = readsTags() ? withTags(classTagsIn(testClasses)) : this;
+        SuiteFilter read = readsTags() ? withTags(classTagsIn(testClasses, classpath)) : this;
         Pattern named = Pattern.compile(JUnitClassFilter.patternRegex(classPatterns));
         Map<String, List<String>> bySuite = new LinkedHashMap<>();
         for (String className : compiledClasses(testClasses)) {
@@ -343,12 +343,13 @@ public final class SuiteFilter {
      * name is one a selected suite claims, its tags (read from the class files, an unread tag
      * counting as present) admit it, and {@code excludeClasses} does not name it. False settles the
      * run as one with no tests before a test JVM starts: a tag suite that claims nothing in the
-     * module, or a directory suite the module has no class of.
+     * module, or a directory suite the module has no class of. Types outside the tree are read from
+     * {@code classpath}.
      */
-    public boolean selectsCompiledClass(Path testClasses, List<String> excludeClasses) {
+    public boolean selectsCompiledClass(Path testClasses, List<Path> classpath, List<String> excludeClasses) {
         // No tree to read settles nothing: the runner decides.
         if (!Files.isDirectory(testClasses)) return true;
-        Predicate<String> accepted = (readsTags() ? withTags(classTagsIn(testClasses)) : this).acceptor();
+        Predicate<String> accepted = (readsTags() ? withTags(classTagsIn(testClasses, classpath)) : this).acceptor();
         String excluded = JUnitClassFilter.excludeBody(excludeClasses);
         Pattern out = excluded == null ? null : Pattern.compile("^(?:" + excluded + ")$");
         for (String name : compiledClasses(testClasses, true)) {
@@ -378,9 +379,10 @@ public final class SuiteFilter {
 
     /**
      * The classes whose tags a run's {@link #withTags} reads: the tags of each top-level class
-     * compiled under {@code testClasses}, as {@link TestClassIndex} reads them, on first use.
+     * compiled under {@code testClasses}, as {@link TestClassIndex} reads them over {@code
+     * classpath}, on first use.
      */
-    public static Function<String, @Nullable ClassTags> classTagsIn(Path testClasses) {
+    public static Function<String, @Nullable ClassTags> classTagsIn(Path testClasses, List<Path> classpath) {
         Map<String, ClassTags> byClass = new HashMap<>();
         boolean[] read = {false};
         return name -> {
@@ -388,7 +390,7 @@ public final class SuiteFilter {
                 if (!read[0]) {
                     read[0] = true;
                     try {
-                        for (TestClassIndex.Entry entry : TestClassIndex.scan(testClasses, Set.of())) {
+                        for (TestClassIndex.Entry entry : TestClassIndex.scan(testClasses, Set.of(), classpath)) {
                             byClass.put(entry.className(), new ClassTags(entry.classTags(), entry.tags()));
                         }
                     } catch (IOException | UncheckedIOException unreadable) {

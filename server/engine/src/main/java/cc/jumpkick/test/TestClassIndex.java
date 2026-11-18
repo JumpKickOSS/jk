@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.guard.facts.AnnotationFacts;
 import cc.jumpkick.guard.facts.ClassFacts;
@@ -11,15 +12,23 @@ import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
@@ -45,11 +54,17 @@ public final class TestClassIndex {
     public record Entry(
             String className, Set<String> imports, Set<String> tags, Set<String> classTags, String nameMatchSimple) {}
 
-    public static List<Entry> scan(Path testClassesDir, Set<String> productionFqcs) throws IOException {
+    /**
+     * The classes under {@code testClassesDir}, a type outside the tree (a sibling module's or
+     * library's composed annotation, base class or interface) read from {@code classpath}, the one
+     * the tests compiled against; empty reads the tree's own types alone.
+     */
+    public static List<Entry> scan(Path testClassesDir, Set<String> productionFqcs, List<Path> classpath)
+            throws IOException {
         if (testClassesDir == null || !Files.isDirectory(testClassesDir)) return List.of();
         Optional<FactsIndex> facts = currentFacts(testClassesDir);
-        if (facts.isPresent()) return fromFacts(facts.get(), productionFqcs);
-        return readClassFiles(testClassesDir, productionFqcs);
+        if (facts.isPresent()) return fromFacts(facts.get(), productionFqcs, classpath);
+        return readClassFiles(testClassesDir, productionFqcs, classpath);
     }
 
     /**
@@ -72,11 +87,12 @@ public final class TestClassIndex {
 
     /**
      * One class file as read, before its tags are resolved: its direct {@code @Tag}s and the other
-     * annotations on it and on its members, by binary name, so a composed annotation can be followed.
+     * annotations on it and on its members, by binary name, so a composed annotation can be followed;
+     * {@code supertypes} its superclass, then its interfaces.
      */
     private record Raw(
             String name,
-            @Nullable String superName,
+            List<String> supertypes,
             Set<String> classTags,
             Set<String> classAnnotations,
             Set<String> memberTags,
@@ -84,12 +100,15 @@ public final class TestClassIndex {
             Set<String> refs) {}
 
     /** The entries as the class files would yield them, from the facts index. */
-    static List<Entry> fromFacts(FactsIndex facts, Set<String> productionFqcs) {
+    static List<Entry> fromFacts(FactsIndex facts, Set<String> productionFqcs, List<Path> classpath) {
         List<Raw> raws = new ArrayList<>();
         for (ClassFacts c : facts.classList()) {
             if (c.isPackageInfo()) continue;
             Set<String> refs = new LinkedHashSet<>();
             for (String ref : c.typeRefs()) refs.add(Descriptors.binaryName(ref));
+            List<String> supertypes = new ArrayList<>();
+            if (c.superName() != null) supertypes.add(Descriptors.binaryName(c.superName()));
+            for (String i : c.interfaces()) supertypes.add(Descriptors.binaryName(i));
             Set<String> classTags = new LinkedHashSet<>();
             Set<String> classAnnotations = new LinkedHashSet<>();
             annotationsOf(c.annotations(), classTags, classAnnotations);
@@ -98,25 +117,21 @@ public final class TestClassIndex {
             for (FieldFacts f : c.fields()) annotationsOf(f.annotations(), memberTags, memberAnnotations);
             for (MethodFacts m : c.methods()) annotationsOf(m.annotations(), memberTags, memberAnnotations);
             raws.add(new Raw(
-                    c.binaryName(),
-                    c.superName() == null ? null : Descriptors.binaryName(c.superName()),
-                    classTags,
-                    classAnnotations,
-                    memberTags,
-                    memberAnnotations,
-                    refs));
+                    c.binaryName(), supertypes, classTags, classAnnotations, memberTags, memberAnnotations, refs));
         }
-        return resolve(raws, productionFqcs);
+        return resolve(raws, productionFqcs, classpath);
     }
 
     private static void annotationsOf(List<AnnotationFacts> annotations, Set<String> tags, Set<String> others) {
         for (AnnotationFacts a : annotations) {
+            // A @Tags container's own @Tag values are facts of the same element.
             if (a.desc().equals(TAG)) tags.addAll(a.value());
-            else others.add(a.typeName());
+            else if (!a.desc().equals(TAGS)) others.add(a.typeName());
         }
     }
 
-    private static List<Entry> readClassFiles(Path testClassesDir, Set<String> productionFqcs) throws IOException {
+    private static List<Entry> readClassFiles(Path testClassesDir, Set<String> productionFqcs, List<Path> classpath)
+            throws IOException {
         List<Raw> raws = new ArrayList<>();
         PathUtil.forEachRegularFile(testClassesDir, (p, attrs) -> {
             if (!p.toString().endsWith(".class")) return;
@@ -125,27 +140,27 @@ public final class TestClassIndex {
             Collector c = new Collector();
             new ClassReader(bytes).accept(c, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
             if (c.className == null) return;
-            raws.add(new Raw(
-                    c.className,
-                    c.superName,
-                    c.classTags,
-                    c.classAnnotations,
-                    c.memberTags,
-                    c.memberAnnotations,
-                    c.refs));
+            raws.add(c.raw(c.className, c.refs));
         });
-        return resolve(raws, productionFqcs);
+        return resolve(raws, productionFqcs, classpath);
     }
 
     /**
      * Each top-level class's entry with its tags as JUnit reads them: a composed annotation counts
-     * as the tags it is meta-annotated with, a class inherits its superclass's tags and test
-     * methods, and a top-level class holds every tag its nested classes' tests carry. Types outside
-     * the tree (a library's composed annotation or base class) are not followed.
+     * as the tags it is meta-annotated with, a class inherits the tags and test methods of its
+     * superclasses and interfaces, and a top-level class holds every tag its nested classes' tests
+     * carry. A type outside the tree (a sibling module's or library's composed annotation, base
+     * class or interface) is read from {@code classpath}, the one the tests compiled against.
      */
-    private static List<Entry> resolve(List<Raw> raws, Set<String> productionFqcs) {
+    private static List<Entry> resolve(List<Raw> raws, Set<String> productionFqcs, List<Path> classpath) {
         Map<String, Raw> byName = new LinkedHashMap<>();
         for (Raw r : raws) byName.put(r.name(), r);
+        try (Types types = new Types(byName, classpath)) {
+            return entries(raws, productionFqcs, types);
+        }
+    }
+
+    private static List<Entry> entries(List<Raw> raws, Set<String> productionFqcs, Types types) {
         Map<String, List<Raw>> nested = new LinkedHashMap<>();
         for (Raw r : raws) {
             int dollar = r.name().indexOf('$');
@@ -156,13 +171,13 @@ public final class TestClassIndex {
         List<Entry> out = new ArrayList<>();
         for (Raw r : raws) {
             if (r.name().indexOf('$') >= 0) continue;
-            Set<String> classTags = classTags(r, byName);
+            Set<String> classTags = classTags(r, types);
             Set<String> tags = new LinkedHashSet<>(classTags);
-            tags.addAll(memberTags(r, byName));
+            tags.addAll(memberTags(r, types));
             Set<String> refs = new LinkedHashSet<>(r.refs());
             for (Raw inner : nested.getOrDefault(r.name(), List.of())) {
-                tags.addAll(classTags(inner, byName));
-                tags.addAll(memberTags(inner, byName));
+                tags.addAll(classTags(inner, types));
+                tags.addAll(memberTags(inner, types));
                 refs.addAll(inner.refs());
             }
             Set<String> imports = new LinkedHashSet<>();
@@ -175,42 +190,222 @@ public final class TestClassIndex {
         return List.copyOf(out);
     }
 
-    /** The tags every test of {@code r} carries: on it, through its composed annotations, and its superclasses'. */
-    private static Set<String> classTags(Raw r, Map<String, Raw> byName) {
+    /**
+     * The tags every test of {@code r} carries: on it and on its superclasses and interfaces, each
+     * directly or through its composed annotations, as JUnit's {@code findRepeatableAnnotations} finds
+     * {@code @Tag} on a class.
+     */
+    private static Set<String> classTags(Raw r, Types types) {
         Set<String> out = new LinkedHashSet<>();
-        Set<String> seen = new LinkedHashSet<>();
-        for (Raw at = r; at != null && seen.add(at.name()); at = superOf(at, byName)) {
+        for (Raw at : hierarchy(r, types)) {
             out.addAll(at.classTags());
-            for (String a : at.classAnnotations()) out.addAll(metaTags(a, byName, new LinkedHashSet<>()));
+            for (String a : at.classAnnotations()) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
         }
         return out;
     }
 
-    /** The tags on {@code r}'s members and its superclasses' members, composed ones followed. */
-    private static Set<String> memberTags(Raw r, Map<String, Raw> byName) {
+    /** The tags on the members of {@code r}, its superclasses and interfaces, composed ones followed. */
+    private static Set<String> memberTags(Raw r, Types types) {
         Set<String> out = new LinkedHashSet<>();
-        Set<String> seen = new LinkedHashSet<>();
-        for (Raw at = r; at != null && seen.add(at.name()); at = superOf(at, byName)) {
+        for (Raw at : hierarchy(r, types)) {
             out.addAll(at.memberTags());
-            for (String a : at.memberAnnotations()) out.addAll(metaTags(a, byName, new LinkedHashSet<>()));
+            for (String a : at.memberAnnotations()) out.addAll(metaTags(a, types, new LinkedHashSet<>()));
         }
         return out;
     }
 
-    private static @Nullable Raw superOf(Raw r, Map<String, Raw> byName) {
-        return r.superName() == null ? null : byName.get(r.superName());
+    /** {@code r}, then every superclass and interface of it that can be read, each once. */
+    private static List<Raw> hierarchy(Raw r, Types types) {
+        List<Raw> out = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        ArrayDeque<Raw> todo = new ArrayDeque<>(List.of(r));
+        while (!todo.isEmpty()) {
+            Raw at = todo.poll();
+            if (!seen.add(at.name())) continue;
+            out.add(at);
+            for (String s : at.supertypes()) {
+                Raw sup = types.get(s);
+                if (sup != null) todo.add(sup);
+            }
+        }
+        return out;
     }
 
     /** The tags annotation type {@code type} stands for: those it is meta-annotated with, followed through its own annotations. */
-    private static Set<String> metaTags(String type, Map<String, Raw> byName, Set<String> seen) {
-        Raw annotation = byName.get(type);
-        if (annotation == null || !seen.add(type)) return Set.of();
+    private static Set<String> metaTags(String type, Types types, Set<String> seen) {
+        if (!seen.add(type)) return Set.of();
+        Raw annotation = types.get(type);
+        if (annotation == null) return Set.of();
         Set<String> out = new LinkedHashSet<>(annotation.classTags());
-        for (String a : annotation.classAnnotations()) out.addAll(metaTags(a, byName, seen));
+        for (String a : annotation.classAnnotations()) out.addAll(metaTags(a, types, seen));
         return out;
     }
 
     private static final String TAG = "Lorg/junit/jupiter/api/Tag;";
+    private static final String TAGS = "Lorg/junit/jupiter/api/Tags;";
+
+    /**
+     * The types tags resolve over: the tree's class files, then those of the classpath the tests
+     * compiled against, each type read at most once a scan. A JDK type ({@code java.*}) is never
+     * read: none carries a tag.
+     */
+    private static final class Types implements AutoCloseable {
+        private final Map<String, Raw> tree;
+        private final List<Path> classpath;
+        private final Map<String, Optional<Raw>> outside = new HashMap<>();
+        private final Map<Path, Optional<ArchiveTypes>> archives = new HashMap<>();
+        private final Map<Path, ZipFile> open = new HashMap<>();
+
+        Types(Map<String, Raw> tree, List<Path> classpath) {
+            this.tree = tree;
+            this.classpath = classpath;
+        }
+
+        @Nullable
+        Raw get(String name) {
+            Raw own = tree.get(name);
+            if (own != null || name.startsWith("java.")) return own;
+            Optional<Raw> known = outside.get(name);
+            if (known == null) {
+                known = Optional.ofNullable(find(name));
+                outside.put(name, known);
+            }
+            return known.orElse(null);
+        }
+
+        private @Nullable Raw find(String name) {
+            String resource = name.replace('.', '/') + ".class";
+            for (Path entry : classpath) {
+                Raw found = isArchive(entry) ? inArchive(entry, name, resource) : inDirectory(entry, resource);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
+        private static boolean isArchive(Path entry) {
+            String file = entry.getFileName() == null ? "" : entry.getFileName().toString();
+            return file.endsWith(".jar") || file.endsWith(".zip");
+        }
+
+        private static @Nullable Raw inDirectory(Path dir, String resource) {
+            Path file = dir.resolve(resource);
+            try {
+                return Files.isRegularFile(file) ? external(Files.readAllBytes(file)) : null;
+            } catch (IOException | RuntimeException unreadable) {
+                return null;
+            }
+        }
+
+        /**
+         * {@code name} from archive {@code jar}, memoised across scans while the archive's path, size
+         * and mtime hold: a type whose package the archive lacks is answered without opening it.
+         */
+        private @Nullable Raw inArchive(Path jar, String name, String resource) {
+            ArchiveTypes types = archive(jar);
+            if (types == null) return null;
+            int slash = resource.lastIndexOf('/');
+            if (!types.packages().contains(slash < 0 ? "" : resource.substring(0, slash))) return null;
+            Optional<Raw> hit = types.read().get(name);
+            if (hit == null) {
+                hit = Optional.ofNullable(readArchive(jar, resource));
+                types.read().put(name, hit);
+            }
+            return hit.orElse(null);
+        }
+
+        private @Nullable ArchiveTypes archive(Path jar) {
+            Optional<ArchiveTypes> known = archives.get(jar);
+            if (known != null) return known.orElse(null);
+            ArchiveTypes types = null;
+            try {
+                BasicFileAttributes attrs = Files.readAttributes(jar, BasicFileAttributes.class);
+                if (attrs.isRegularFile()) {
+                    ArchiveStamp stamp = new ArchiveStamp(
+                            attrs.size(), attrs.lastModifiedTime().toMillis());
+                    types = ARCHIVE_TYPES.get(jar, stamp, () -> packagesOf(jar));
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                types = null;
+            }
+            archives.put(jar, Optional.ofNullable(types));
+            return types;
+        }
+
+        private @Nullable ArchiveTypes packagesOf(Path jar) {
+            ZipFile zip = zip(jar);
+            if (zip == null) return null;
+            Set<String> packages = new HashSet<>();
+            zip.stream().forEach(e -> {
+                String entry = e.getName();
+                if (!entry.endsWith(".class")) return;
+                int slash = entry.lastIndexOf('/');
+                packages.add(slash < 0 ? "" : entry.substring(0, slash));
+            });
+            return new ArchiveTypes(Set.copyOf(packages), new ConcurrentHashMap<>());
+        }
+
+        private @Nullable Raw readArchive(Path jar, String resource) {
+            ZipFile zip = zip(jar);
+            if (zip == null) return null;
+            try {
+                ZipEntry entry = zip.getEntry(resource);
+                if (entry == null) return null;
+                try (InputStream in = zip.getInputStream(entry)) {
+                    return external(in.readAllBytes());
+                }
+            } catch (IOException | RuntimeException unreadable) {
+                return null;
+            }
+        }
+
+        /** {@code jar} opened once a scan; null when it cannot be read. */
+        private @Nullable ZipFile zip(Path jar) {
+            ZipFile zip = open.get(jar);
+            if (zip != null) return zip;
+            try {
+                zip = new ZipFile(jar.toFile());
+            } catch (IOException | RuntimeException unreadable) {
+                return null;
+            }
+            open.put(jar, zip);
+            return zip;
+        }
+
+        /** A class file outside the tree, read for its tags and supertypes alone. */
+        private static @Nullable Raw external(byte[] bytes) {
+            Collector c = new Collector();
+            new ClassReader(bytes).accept(c, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            return c.className == null ? null : c.raw(c.className, Set.of());
+        }
+
+        @Override
+        public void close() {
+            for (ZipFile zip : open.values()) {
+                try {
+                    zip.close();
+                } catch (IOException ignored) {
+                    // Read-only: nothing is lost.
+                }
+            }
+        }
+    }
+
+    /** An archive as last seen: its size and mtime. */
+    private record ArchiveStamp(long size, long modifiedMillis) {}
+
+    /**
+     * What one archive holds for tag resolution: the packages of its classes, and the types of those
+     * packages read so far by binary name ({@code Optional.empty()} for one it does not hold).
+     */
+    private record ArchiveTypes(Set<String> packages, ConcurrentHashMap<String, Optional<Raw>> read) {}
+
+    /**
+     * Each classpath archive's {@link ArchiveTypes}, by path, while its size and mtime hold: every
+     * run-tests reads the same libraries' annotations. At most 512 archives; past that the memo
+     * clears and the next scans read again.
+     */
+    private static final StampedMemo<Path, ArchiveStamp, @Nullable ArchiveTypes> ARCHIVE_TYPES =
+            StampedMemo.bounded(512);
 
     /** Production simple name this test class name-matches, or empty. */
     public static String nameMatchSimple(String testFqc) {
@@ -244,8 +439,8 @@ public final class TestClassIndex {
         @Nullable
         String className;
 
-        @Nullable
-        String superName;
+        /** Its superclass, then its interfaces, by binary name. */
+        final List<String> supertypes = new ArrayList<>();
 
         final Set<String> refs = new LinkedHashSet<>();
         /** The tags on the class itself. */
@@ -261,15 +456,23 @@ public final class TestClassIndex {
             super(Opcodes.ASM9);
         }
 
+        /** The class as read, named {@code name}, referring to {@code refs}. */
+        Raw raw(String name, Set<String> refs) {
+            return new Raw(
+                    name, List.copyOf(supertypes), classTags, classAnnotations, memberTags, memberAnnotations, refs);
+        }
+
         @Override
         public void visit(
                 int version, int access, String name, String signature, String superName, String[] interfaces) {
             className = Type.getObjectType(name).getClassName();
-            this.superName =
-                    superName == null ? null : Type.getObjectType(superName).getClassName();
+            if (superName != null) supertypes.add(Type.getObjectType(superName).getClassName());
             addInternal(superName);
             if (interfaces != null) {
-                for (String i : interfaces) addInternal(i);
+                for (String i : interfaces) {
+                    supertypes.add(Type.getObjectType(i).getClassName());
+                    addInternal(i);
+                }
             }
         }
 
@@ -330,7 +533,7 @@ public final class TestClassIndex {
                     }
                 };
             }
-            if ("Lorg/junit/jupiter/api/Tags;".equals(descriptor)) {
+            if (TAGS.equals(descriptor)) {
                 return new AnnotationVisitor(Opcodes.ASM9) {
                     @Override
                     public AnnotationVisitor visitArray(String name) {

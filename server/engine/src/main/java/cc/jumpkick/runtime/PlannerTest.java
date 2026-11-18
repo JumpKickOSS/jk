@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
@@ -111,13 +112,28 @@ public final class PlannerTest {
 
     /**
      * Which tests the run's suites own, and which suite each runs in, reading tags from the classes
-     * compiled under {@code testClasses}.
+     * compiled under {@code testClasses}, types outside the tree from {@code tagClasspath}.
      */
-    static SuiteFilter suiteFilter(BuildPlanner.Inputs in, boolean compact, JkBuild project, Path testClasses) {
+    static SuiteFilter suiteFilter(
+            BuildPlanner.Inputs in, boolean compact, JkBuild project, Path testClasses, List<Path> tagClasspath) {
         var resolved = resolveSuites(in, compact, project);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
         return SuiteFilter.of(in.dir(), compact, suites, project.build().runSuites())
-                .withTags(SuiteFilter.classTagsIn(testClasses));
+                .withTags(SuiteFilter.classTagsIn(testClasses, tagClasspath));
+    }
+
+    /**
+     * Where a test class's composed annotation, base class or interface from outside its tree is
+     * read: the classpath compile-test compiled the tests against, less the Groovy jar, which holds
+     * no tag. Every entry exists once compile-test has run.
+     */
+    static List<Path> tagClasspath(TaskContext ctx) {
+        return TestOutputs.baseClasspath(
+                mainClasses(ctx),
+                ctx.require(MODULE).project(),
+                ctx.require(MODULE).layout(),
+                ctx.require(CLASSPATHS).testCompile(),
+                null);
     }
 
     /**
