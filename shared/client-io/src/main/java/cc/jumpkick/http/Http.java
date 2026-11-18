@@ -130,7 +130,7 @@ public final class Http {
     /** The {@code Authorization} a request for a URI carries, by its origin; none by default. */
     private final Function<URI, Optional<String>> authorization;
 
-    /** How long a read of a streamed body waits for its next byte before it fails. */
+    /** How long a response body, streamed or read into memory, may go without a byte before it fails. */
     private final Duration bodyIdle;
 
     /** The most bytes of a response body read into memory; past it the request fails. */
@@ -421,8 +421,8 @@ public final class Http {
     }
 
     /**
-     * This client failing a streamed body's read after {@code idle} without a byte rather than
-     * {@link StalledBodyGuard#NO_BYTES}, so a test proves a stalled body in milliseconds.
+     * This client failing a response body after {@code idle} without a byte rather than {@link
+     * StalledBodyGuard#NO_BYTES}, so a test proves a stalled body in milliseconds.
      */
     public Http withBodyIdle(Duration idle) {
         return new Http(
@@ -887,9 +887,12 @@ public final class Http {
                 }
                 throw noAnswerWithin(verb, uri, request, e);
             } catch (IOException e) {
-                // A body over the limit is an answer, and the same body would come back.
-                BodyTooLargeException tooLarge = tooLarge(e);
+                // A body over the limit is an answer, and the same body would come back; a body
+                // that stopped arriving is not asked for again, as silence before the headers is not.
+                BodyTooLargeException tooLarge = inChain(e, BodyTooLargeException.class);
                 if (tooLarge != null) throw tooLarge;
+                StalledBodyGuard.Stalled stalled = inChain(e, StalledBodyGuard.Stalled.class);
+                if (stalled != null) throw stalled;
                 lastIo = e;
                 if (!retriesSilence) break;
             }
@@ -915,10 +918,10 @@ public final class Http {
         throw failed;
     }
 
-    /** The {@link BodyTooLargeException} in {@code e}'s cause chain, or null. */
-    private static @Nullable BodyTooLargeException tooLarge(Throwable e) {
+    /** The first {@code type} in {@code e}'s cause chain, or null. */
+    private static <X extends Throwable> @Nullable X inChain(Throwable e, Class<X> type) {
         for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof BodyTooLargeException big) return big;
+            if (type.isInstance(t)) return type.cast(t);
         }
         return null;
     }
@@ -1081,13 +1084,14 @@ public final class Http {
     }
 
     /**
-     * The body read into memory, at most {@link #bodyLimit} bytes of it ({@link CappedBody}), and
-     * inflated when the server set {@code Content-Encoding: gzip}: the JDK client never
-     * decompresses on its own. The response keeps the wire's {@code Content-Encoding} and {@code
-     * Content-Length}, which describe the compressed bytes, not the ones handed back.
+     * The body read into memory, at most {@link #bodyLimit} bytes of it ({@link CappedBody}),
+     * failing after {@link #bodyIdle} without a byte, and inflated when the server set {@code
+     * Content-Encoding: gzip}: the JDK client never decompresses on its own. The response keeps the
+     * wire's {@code Content-Encoding} and {@code Content-Length}, which describe the compressed
+     * bytes, not the ones handed back.
      */
     private BodyHandler<byte[]> cappedBytes(URI uri) {
-        return responseInfo -> new CappedBody(uri, bodyLimit, isGzipped(responseInfo));
+        return responseInfo -> new CappedBody(uri, bodyLimit, isGzipped(responseInfo), bodyIdle);
     }
 
     /**

@@ -17,7 +17,8 @@ import org.jspecify.annotations.Nullable;
  * request timeout ends at the response headers, and the JDK client's body stream has no read
  * timeout of its own, so a server that stops sending mid-body would hold the reader (and its host
  * permit) forever. A watchdog interrupts the reading thread instead; the read then throws an
- * {@link IOException} naming the URL. Time the caller spends between reads does not count.
+ * {@link Stalled} naming the URL. Time the caller spends between reads does not count. A body read
+ * into memory ({@link CappedBody}) is watched by the same watchdog and fails the same way.
  */
 final class StalledBodyGuard extends FilterInputStream {
 
@@ -100,7 +101,7 @@ final class StalledBodyGuard extends FilterInputStream {
             if (stalled) throw stall(null);
             reader = Thread.currentThread();
             deadlineNanos = Clock.SYSTEM.nanos() + limit.toNanos();
-            if (check == null) check = WATCHDOG.schedule(this::check, limit.toNanos(), TimeUnit.NANOSECONDS);
+            if (check == null) check = watch(this::check, limit.toNanos());
         }
     }
 
@@ -123,7 +124,7 @@ final class StalledBodyGuard extends FilterInputStream {
             if (inRead == null || stalled) return;
             long left = deadlineNanos - Clock.SYSTEM.nanos();
             if (left > 0) {
-                check = WATCHDOG.schedule(this::check, left, TimeUnit.NANOSECONDS);
+                check = watch(this::check, left);
                 return;
             }
             stalled = true;
@@ -132,7 +133,24 @@ final class StalledBodyGuard extends FilterInputStream {
     }
 
     private IOException stall(@Nullable IOException cause) {
-        return new IOException(
+        return stalled(uri, limit, cause);
+    }
+
+    /** Runs {@code check} on the watchdog after {@code delayNanos}. */
+    static ScheduledFuture<?> watch(Runnable check, long delayNanos) {
+        return WATCHDOG.schedule(check, delayNanos, TimeUnit.NANOSECONDS);
+    }
+
+    /** The failure of a body from {@code uri} that sent no bytes for {@code limit}. */
+    static Stalled stalled(URI uri, Duration limit, @Nullable IOException cause) {
+        return new Stalled(
                 "no bytes from " + SafeUri.forMessage(uri) + " for " + Http.spoken(limit) + "; stopped reading", cause);
+    }
+
+    /** A response body that stopped arriving; the server answered, so the request is not asked again. */
+    static final class Stalled extends IOException {
+        Stalled(String message, @Nullable IOException cause) {
+            super(message, cause);
+        }
     }
 }

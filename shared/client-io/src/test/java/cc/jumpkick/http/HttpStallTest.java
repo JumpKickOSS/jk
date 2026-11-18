@@ -174,6 +174,69 @@ class HttpStallTest {
                 .isFalse();
     }
 
+    /**
+     * A buffered body that stops arriving fails the request as a streamed one fails its read, once
+     * and not retried, and the host permit it was sent under is free for the next request.
+     */
+    @Test
+    @Timeout(30)
+    void a_buffered_body_that_stops_arriving_fails_once_and_frees_its_permit() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        byte[] head = "<metadata>".getBytes(StandardCharsets.UTF_8);
+        server.createContext("/stalled/maven-metadata.xml", exchange -> {
+            calls.incrementAndGet();
+            exchange.sendResponseHeaders(200, head.length + 100);
+            try (var out = exchange.getResponseBody()) {
+                out.write(head);
+                out.flush();
+                release.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Http http = new Http(Http.standardClient(), new Duration[] {Duration.ofMillis(10), Duration.ofMillis(10)})
+                .withBodyIdle(Duration.ofMillis(500));
+        URI uri = base.resolve("/stalled/maven-metadata.xml");
+        HostRateLimiter oneAtATime = new HostRateLimiter(1);
+
+        for (int i = 0; i < 2; i++) {
+            assertThatThrownBy(() -> oneAtATime.run(uri, () -> http.get(uri)))
+                    .as("request %d", i + 1)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining(uri.toString())
+                    .hasMessageContaining("no bytes")
+                    .hasMessageContaining("500 ms");
+        }
+        assertThat(calls.get()).as("each stalled request is asked once").isEqualTo(2);
+    }
+
+    /** The bound is on the gap between bytes: a buffered body that keeps coming arrives whole. */
+    @Test
+    @Timeout(30)
+    void a_buffered_body_slower_than_its_idle_bound_still_arrives() throws Exception {
+        Duration idle = Duration.ofMillis(500);
+        server.createContext("/trickle/body.json", exchange -> {
+            exchange.sendResponseHeaders(200, 3);
+            try (var out = exchange.getResponseBody()) {
+                for (byte b : "abc".getBytes(StandardCharsets.UTF_8)) {
+                    if (b != 'a') Thread.sleep(idle.toMillis() * 3 / 5);
+                    out.write(b);
+                    out.flush();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        Http http = new Http(Http.standardClient(), new Duration[0]).withBodyIdle(idle);
+
+        long start = System.nanoTime();
+        HttpResponse<byte[]> response = http.get(base.resolve("/trickle/body.json"));
+        assertThat(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo("abc");
+        assertThat(Duration.ofNanos(System.nanoTime() - start))
+                .as("the body outlasted the idle bound")
+                .isGreaterThan(idle);
+    }
+
     /** Time the caller spends between reads is its own: only a read waiting on the server counts. */
     @Test
     @Timeout(30)
