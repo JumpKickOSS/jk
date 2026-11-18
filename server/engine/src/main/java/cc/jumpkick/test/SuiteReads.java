@@ -523,7 +523,7 @@ public final class SuiteReads {
             Path workspace = workspaceOf(moduleDir);
             for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                 if (line.startsWith("file ")) files.add(unspell(workspace, line.substring(5)));
-                else if (line.startsWith("command ")) commands.add(line.substring(8));
+                else if (line.startsWith("command ")) commands.add(unspellCommand(workspace, line.substring(8)));
                 else if (line.startsWith(NETWORK_LINE)) hosts.add(line.substring(NETWORK_LINE.length()));
                 else SuiteEnvReads.Record.read(line, env, envFlags);
             }
@@ -618,7 +618,7 @@ public final class SuiteReads {
         Path workspace = workspaceOf(moduleDir);
         for (Path f : d.files()) sb.append("file ").append(keep(workspace, f)).append('\n');
         for (String c : d.commands())
-            sb.append("command ").append(c.replace('\n', ' ')).append('\n');
+            sb.append("command ").append(keepCommand(workspace, c).replace('\n', ' ')).append('\n');
         for (String h : d.hosts()) sb.append(NETWORK_LINE).append(h).append('\n');
         for (String e : d.env().lines()) sb.append(e).append('\n');
         try {
@@ -666,7 +666,7 @@ public final class SuiteReads {
             if (parent != null && keysListing(parent, root, outputs)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
-        for (String c : d.commands()) out.add("proc:" + c + "=" + programIdentity(c, moduleDir));
+        for (String c : d.commands()) out.add("proc:" + programName(root, c) + "=" + programIdentity(c, moduleDir));
         if (d.network()) out.add("network");
         out.addAll(env);
         return out;
@@ -719,6 +719,20 @@ public final class SuiteReads {
         return root.resolve(PortablePath.fromJkRoot(spelled)).normalize();
     }
 
+    /**
+     * A started program as its token names it: a path under the workspace relative to it, one under
+     * a root by its word ({@code store:tools/node/24.22.0/bin/node}), anything else as recorded.
+     */
+    static String programName(Path root, String program) {
+        try {
+            Path file = Path.of(program);
+            if (file.isAbsolute()) return spell(root, file.normalize());
+        } catch (InvalidPathException notAPath) {
+            // A name with characters no path takes: keyed as it was written.
+        }
+        return program;
+    }
+
     private static String spell(Path root, Path p) {
         return p.startsWith(root) ? root.relativize(p).toString().replace('\\', '/') : PortablePath.underJkRoot(p);
     }
@@ -732,6 +746,32 @@ public final class SuiteReads {
         if (abs.startsWith(workspace))
             return WORKSPACE + workspace.relativize(abs).toString().replace('\\', '/');
         return PortablePath.underJkRoot(abs);
+    }
+
+    /** {@code command} as a kept line spells it: a program's path as {@link #keep} spells a file, a bare name as it is. */
+    static String keepCommand(Path workspace, String command) {
+        try {
+            Path file = Path.of(command);
+            if (file.isAbsolute()) return keep(workspace, file);
+        } catch (InvalidPathException notAPath) {
+            // kept as written
+        }
+        return command;
+    }
+
+    /** The command a kept line names, on this checkout and host. */
+    static String unspellCommand(Path workspace, String kept) {
+        if (!spelledUnderRoot(kept)) return kept;
+        return unspell(workspace, kept).toString();
+    }
+
+    /** Whether {@code kept} begins with a root word ({@code ws:}, {@code store:}, …) rather than naming a program itself. */
+    static boolean spelledUnderRoot(String kept) {
+        if (kept.startsWith(WORKSPACE)) return true;
+        for (String word : PortablePath.ROOT_WORDS) {
+            if (kept.startsWith(word)) return true;
+        }
+        return false;
     }
 
     /** The file a kept line names, on this checkout and host. */

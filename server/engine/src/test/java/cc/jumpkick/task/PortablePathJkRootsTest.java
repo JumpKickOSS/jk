@@ -28,7 +28,11 @@ class PortablePathJkRootsTest {
 
         assertThat(PortablePath.key(jar)).isEqualTo("store:repos/central/org/acme/lib/1.0/lib-1.0.jar");
         assertThat(PortablePath.key(blob)).isEqualTo("cache:sha256/ab/cd/" + "e".repeat(60));
-        assertThat(PortablePath.key(jdk)).startsWith(jdk.startsWith(JkDirs.store()) ? "store:" : "jk-home:");
+        assertThat(PortablePath.key(jdk))
+                .startsWith(
+                        jdk.startsWith(JkDirs.store())
+                                ? "store:"
+                                : jdk.startsWith(JkDirs.jdks()) ? "jdks:" : "jk-home:");
         assertThat(PortablePath.key(elsewhere))
                 .isEqualTo(elsewhere.toAbsolutePath().toString().replace('\\', '/'));
         assertThat(PortablePath.of(jar)).as("key material is as it was").isEqualTo("1.0/lib-1.0.jar");
@@ -64,5 +68,47 @@ class PortablePathJkRootsTest {
                 .containsEntry("worker:store:sha256/ab/cd/" + "f".repeat(60), "file:2");
         assertThat(String.join("\n", shared.keySet()))
                 .doesNotContain(JkDirs.home().toString());
+    }
+    /**
+     * The roots a suite's stamp met by absolute path in the dojo-4 study, each by its word: a POM in
+     * the Maven local repository (jk-engine, 328 of them), a library jk unpacked into its state
+     * (jumpkick-intellij's {@code -Djna.boot.library.path}), a JDK jk installed; jk's own root names
+     * a path the jk home holds too (JK-FNM8N).
+     */
+    @Test
+    void the_maven_repository_and_jks_state_and_jdks_are_named_by_their_word(@TempDir Path tmp) {
+        String was = System.getProperty("jk.m2.local");
+        System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
+        try {
+            Path pom = tmp.resolve("m2/org/scala-sbt/zinc-core_3/2.0.4/zinc-core_3-2.0.4.pom");
+            Path unpacked = JkDirs.state().resolve("tmp/unpacked/4d25ba9308df/lib/nio-fs.jar");
+            Path jdk = JkDirs.jdks().resolve("temurin-25/release");
+
+            assertThat(PortablePath.key(pom)).isEqualTo("m2:org/scala-sbt/zinc-core_3/2.0.4/zinc-core_3-2.0.4.pom");
+            assertThat(PortablePath.key(unpacked)).isEqualTo("state:tmp/unpacked/4d25ba9308df/lib/nio-fs.jar");
+            assertThat(PortablePath.key(jdk)).isEqualTo("jdks:temurin-25/release");
+            assertThat(PortablePath.key(JkDirs.store().resolve("tools/node/24.22.0/bin/node")))
+                    .as("the store, though it lies in the jk home")
+                    .isEqualTo("store:tools/node/24.22.0/bin/node");
+            for (Path p : List.of(pom, unpacked, jdk)) {
+                assertThat(PortablePath.fromJkRoot(PortablePath.key(p)))
+                        .isEqualTo(p.toAbsolutePath().normalize());
+            }
+        } finally {
+            if (was == null) System.clearProperty("jk.m2.local");
+            else System.setProperty("jk.m2.local", was);
+        }
+    }
+
+    /** A JVM flag that names a path under a root or the checkout reads the same from any home and checkout. */
+    @Test
+    void a_flag_naming_a_path_under_a_root_or_the_checkout_is_spelled_by_its_word(@TempDir Path tmp) {
+        Path ws = tmp.resolve("ws");
+        String flags = "-Djna.boot.library.path=" + JkDirs.state().resolve("tmp/unpacked/4d25/lib") + " -Dfixture="
+                + ws.resolve("data/a.json") + " -Duser.language=en";
+
+        assertThat(PortablePath.spelledText(flags, ws))
+                .isEqualTo("-Djna.boot.library.path=state:tmp/unpacked/4d25/lib -Dfixture=ws:data/a.json"
+                        + " -Duser.language=en");
     }
 }

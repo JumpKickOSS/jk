@@ -19,6 +19,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
@@ -152,7 +153,8 @@ class SuiteReadsTest {
         SuiteReads.save(module, TestSelection.DEFAULT, d);
         assertThat(SuiteReads.load(module, TestSelection.DEFAULT).commands()).containsExactly(tool.toString());
         assertThat(SuiteReads.tokens(module, TestSelection.DEFAULT, tmp))
-                .containsExactly("proc:" + tool + "=" + FileHashMemo.contentHash(tool));
+                .as("a program in the workspace, by its workspace path")
+                .containsExactly("proc:Program Files/bin/tool=" + FileHashMemo.contentHash(tool));
     }
 
     /**
@@ -178,6 +180,61 @@ class SuiteReadsTest {
         Files.writeString(Files.createDirectories(two.resolve("data")).resolve("in.txt"), "x");
         assertThat(SuiteReads.tokens(two, TestSelection.DEFAULT, two))
                 .isEqualTo(SuiteReads.tokens(one, TestSelection.DEFAULT, one));
+    }
+
+    /**
+     * Two jk homes on one machine, each with its own store, state and Maven local repository holding
+     * the same content: a suite that read a POM in the repository and a library jk unpacked into its
+     * state, and started the store's node, keys alike in both, every path named by its root's word
+     * and none by a home's absolute path (JK-FNM8N; the dojo-4 study's jk-engine, jumpkick-intellij
+     * and jk-web).
+     */
+    @Test
+    void two_homes_key_reads_and_programs_under_their_roots_alike(@TempDir Path tmp) throws Exception {
+        Path module = checkout(tmp.resolve("ws/app"));
+        List<String> one = keyedIn(tmp.resolve("home-1"), tmp.resolve("m2-1"), module);
+        List<String> two = keyedIn(tmp.resolve("home-2"), tmp.resolve("m2-2"), module);
+
+        assertThat(one)
+                .anyMatch(t -> t.startsWith("read:m2:org/acme/a/1.0/a-1.0.pom="))
+                .anyMatch(t -> t.startsWith("read:state:tmp/unpacked/4d25/lib/nio-fs.jar="))
+                .anyMatch(t -> t.startsWith("proc:store:tools/node/24.22.0/bin/node="))
+                .noneMatch(t -> t.contains(tmp.toString()));
+        assertThat(two).as("the second home's stamp tokens").isEqualTo(one);
+    }
+
+    /** The stamp tokens of a suite that read and started the same files under {@code home}'s roots and {@code m2}. */
+    private static List<String> keyedIn(Path home, Path m2, Path module) throws Exception {
+        String[] keys = {"jk.env.JK_HOME", "jk.env.JK_STORE_DIR", "jk.env.JK_CACHE_DIR", "jk.env.JK_STATE_DIR", "jk.m2.local"};
+        String[] was = new String[keys.length];
+        String[] now = {
+            home.toString(),
+            home.resolve("store").toString(),
+            home.resolve("cache").toString(),
+            home.resolve("state").toString(),
+            m2.toString()
+        };
+        for (int i = 0; i < keys.length; i++) {
+            was[i] = System.getProperty(keys[i]);
+            System.setProperty(keys[i], now[i]);
+        }
+        try {
+            Path pom = write(m2.resolve("org/acme/a/1.0/a-1.0.pom"), "<project/>");
+            Path lib = write(home.resolve("state/tmp/unpacked/4d25/lib/nio-fs.jar"), "jar");
+            Path node = write(home.resolve("store/tools/node/24.22.0/bin/node"), "node");
+            SuiteReads.save(
+                    module,
+                    TestSelection.DEFAULT,
+                    SuiteReads.Discovered.NONE.with(Set.of(pom, lib), Set.of(node.toString()), Set.of()));
+            return SuiteReads.tokens(module, TestSelection.DEFAULT, Objects.requireNonNull(module.getParent()));
+        } finally {
+            for (int i = 0; i < keys.length; i++) restore(keys[i], was[i]);
+        }
+    }
+
+    private static Path write(Path file, String text) throws Exception {
+        Files.createDirectories(Objects.requireNonNull(file.getParent()));
+        return Files.writeString(file, text);
     }
 
     private static Path checkout(Path dir) throws Exception {

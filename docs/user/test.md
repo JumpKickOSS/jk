@@ -1133,9 +1133,12 @@ The rest is found by watching the suite run. Every JVM that runs tests records, 
 Flight Recorder, each file it reads, each process it starts and its socket traffic. A file outside
 everything above — `../shared/fixture.json`, a file under `$HOME`, `jk.toml` read as data — is a
 **discovered input**: it is kept in JumpKick's cache under the module's project id and
-workspace-relative path, named relative to the workspace (or to the store, the cache or the JumpKick home), never by
-checkout path, so another checkout of the project, on this machine or one that shares the cache
-directory, finds it and replays the suite instead of running it. It keys the suite from then on,
+workspace-relative path, named relative to the workspace, or to the root that holds it (`store:`,
+`cache:`, `state:`, `jdks:` and `jk-home:` for JumpKick's own directories, `m2:` for the Maven
+local repository), never by checkout path or a JumpKick home's absolute path, so
+another checkout of the project, or another JumpKick home on this machine or one that shares the
+cache, finds it and replays the suite instead of running it. A path in a `[test] jvm-args` flag is
+named the same way (`-Djna.boot.library.path=state:tmp/unpacked/…`). It keys the suite from then on,
 by content, together with the listing of the directory it sits in, so a file added beside it is
 seen too. A started program keys the suite by its executable. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
@@ -1193,8 +1196,9 @@ with the suite's green result, filed under the key taken without it: a host that
 suite takes that key, gets the results filed under it, takes the key again over its own copies of
 the listed files, and replays the one whose key its tree gives, keeping the list as its own. A file
 that differs on that host makes the key differ, and the suite runs. A list travels only when every
-file in it lies in the workspace or under JumpKick's own directories, named relative to them; a
-suite that starts a program or reads a file elsewhere runs once on each host before it replays.
+file in it lies in the workspace or under one of the roots above, named relative to it; a suite
+that starts a program or reads a file elsewhere (`/etc/hostname`) runs once on each host before it
+replays.
 
 ## JUnit in-process parallel vs `-w`
 

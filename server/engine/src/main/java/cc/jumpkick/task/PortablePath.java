@@ -5,12 +5,17 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.repo.M2Dirs;
+import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The spelling of a path inside an action key. An action key depends on the content of its
@@ -26,7 +31,9 @@ import java.util.concurrent.TimeUnit;
  * path: the spelling for a record's map keys, where two distinct inputs must never fold onto one
  * entry. Under jk's own roots it is relative to the root ({@code store:repos/central/…}, {@code
  * cache:sha256/…}, {@code jk-home:jdks/…}), so a record names a dependency the same way on every
- * machine; anywhere else it is the absolute path, forward-slashed. Under a module the two agree.
+ * machine; so it is under jk's state ({@code state:}) and JDKs ({@code jdks:}) and the Maven local
+ * repository ({@code m2:}). Anywhere else it is the absolute path, forward-slashed. Under a module
+ * the two agree.
  */
 public final class PortablePath {
 
@@ -73,38 +80,99 @@ public final class PortablePath {
     }
 
     /**
-     * {@code abs} relative to the jk root that holds it, named: the artifact store, the cache, else
-     * the jk home; the absolute path when none does. The store and the cache are tried first, since
-     * either may be moved outside the home.
+     * {@code abs} relative to the root that holds it, named: jk's artifact store ({@code store:}),
+     * cache ({@code cache:}), state ({@code state:}) and JDKs ({@code jdks:}), whichever is deepest,
+     * since any may be moved; else the Maven local repository ({@code m2:}); else the jk home
+     * ({@code jk-home:}); the absolute path when none holds it. A path in the user's home directory
+     * outside these stays absolute: it names this host's own files.
      */
     public static String underJkRoot(Path abs) {
-        for (var root : List.of(
-                Map.entry("store:", JkDirs.store()),
-                Map.entry("cache:", JkDirs.cache()),
-                Map.entry("jk-home:", JkDirs.home()))) {
-            Path dir = root.getValue().toAbsolutePath().normalize();
-            if (abs.startsWith(dir) && !abs.equals(dir)) return root.getKey() + slashed(dir.relativize(abs));
+        for (List<Map.Entry<String, Path>> tier : tiers()) {
+            Map.Entry<String, Path> best = null;
+            for (Map.Entry<String, Path> root : tier) {
+                Path dir = root.getValue();
+                if (abs.startsWith(dir)
+                        && !abs.equals(dir)
+                        && (best == null || dir.getNameCount() > best.getValue().getNameCount())) best = root;
+            }
+            if (best != null) return best.getKey() + slashed(best.getValue().relativize(abs));
         }
         return slashed(abs);
     }
 
+    /** The root words {@link #underJkRoot} spells. */
+    public static final List<String> ROOT_WORDS = List.of("store:", "cache:", "state:", "jdks:", "m2:", "jk-home:");
+
     /**
-     * The path {@link #underJkRoot} spelled, on this machine: {@code store:}, {@code cache:} and
-     * {@code jk-home:} resolved against this host's roots; anything else as written.
+     * This host's roots by word, absolute and normalized, in the tiers {@link #underJkRoot} tries:
+     * jk's own movable directories, the Maven local repository, the jk home. A root that cannot be
+     * resolved here is left out: no path is named against it.
+     */
+    static List<List<Map.Entry<String, Path>>> tiers() {
+        List<Map.Entry<String, Path>> own = new ArrayList<>();
+        add(own, "store:", JkDirs::store);
+        add(own, "cache:", JkDirs::cache);
+        add(own, "state:", JkDirs::state);
+        add(own, "jdks:", JkDirs::jdks);
+        List<Map.Entry<String, Path>> m2 = new ArrayList<>();
+        add(m2, "m2:", M2Dirs::localRepository);
+        List<Map.Entry<String, Path>> home = new ArrayList<>();
+        add(home, "jk-home:", JkDirs::home);
+        return List.of(own, m2, home);
+    }
+
+    /** Every root of {@link #tiers}. */
+    static List<Map.Entry<String, Path>> roots() {
+        List<Map.Entry<String, Path>> out = new ArrayList<>();
+        tiers().forEach(out::addAll);
+        return out;
+    }
+
+    private static void add(List<Map.Entry<String, Path>> out, String word, Supplier<@Nullable Path> dir) {
+        try {
+            Path p = dir.get();
+            // A root at the file system's top names every path, and so none portably.
+            if (p != null && p.toAbsolutePath().normalize().getNameCount() > 0)
+                out.add(Map.entry(word, p.toAbsolutePath().normalize()));
+        } catch (RuntimeException unresolvable) {
+            // A root this host cannot name: nothing is spelled against it.
+        }
+    }
+
+    /**
+     * The path {@link #underJkRoot} spelled, on this machine: a root word resolved against this
+     * host's root; anything else as written.
      */
     public static Path fromJkRoot(String spelled) {
-        for (var root : List.of(
-                Map.entry("store:", JkDirs.store()),
-                Map.entry("cache:", JkDirs.cache()),
-                Map.entry("jk-home:", JkDirs.home()))) {
+        for (Map.Entry<String, Path> root : roots()) {
             if (spelled.startsWith(root.getKey())) {
-                return root.getValue()
-                        .toAbsolutePath()
-                        .normalize()
-                        .resolve(spelled.substring(root.getKey().length()));
+                return root.getValue().resolve(spelled.substring(root.getKey().length()));
             }
         }
         return Path.of(spelled);
+    }
+
+    /**
+     * {@code text} (a JVM flag, a command line) with every absolute path under {@code workspace}
+     * spelled {@code ws:<relative>} and every one under a root of {@link #underJkRoot} by its word,
+     * so a flag that names a file jk unpacked into its state, or a checkout's own file, reads the
+     * same in another home and another checkout. Other text is left as it is.
+     */
+    public static String spelledText(String text, @Nullable Path workspace) {
+        List<Map.Entry<String, Path>> all = new ArrayList<>(roots());
+        if (workspace != null)
+            all.add(Map.entry("ws:", workspace.toAbsolutePath().normalize()));
+        // The deepest root first, so a path in the store is not spelled against the jk home.
+        all.sort((x, y) -> Integer.compare(
+                y.getValue().toString().length(), x.getValue().toString().length()));
+        String out = text;
+        for (Map.Entry<String, Path> root : all) {
+            String dir = root.getValue().toString();
+            for (String spelling : List.of(dir + File.separator, slashed(root.getValue()) + "/")) {
+                out = out.replace(spelling, root.getKey());
+            }
+        }
+        return out;
     }
 
     private static Optional<String> moduleRelative(Path abs) {

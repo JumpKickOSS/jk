@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.run.ContextPropagator;
+import cc.jumpkick.task.PortablePath;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,8 +14,9 @@ import org.jspecify.annotations.Nullable;
  * A suite's discovered reads ({@link SuiteReads}) as a list that may leave the machine, and a key
  * taken as if the module's kept list were another one.
  *
- * <p>The list names each file portably: {@code ws:<workspace path>}, or under one of jk's roots
- * ({@code store:}, {@code cache:}, {@code jk-home:}). A suite found to start a program or reach the
+ * <p>The list names each file portably: {@code ws:<workspace path>}, or under one of the roots
+ * {@link PortablePath#underJkRoot} names ({@code store:}, {@code cache:}, {@code state:}, {@code
+ * m2:}, {@code jk-home:}, {@code home:}). A suite found to start a program or reach the
  * network, or to read a file outside the workspace and jk's roots, has no such list: its result is
  * shared only with hosts that found the same reads themselves. A list read from elsewhere is held to
  * the same spellings, with no {@code ..} segment, so it can name nothing outside those roots.
@@ -90,7 +92,7 @@ public final class SuiteReadLists {
         int colon = name.indexOf(':');
         if (colon <= 0) return false;
         String root = name.substring(0, colon);
-        if (!List.of("ws", "store", "cache", "jk-home").contains(root)) return false;
+        if (!root.equals("ws") && !PortablePath.ROOT_WORDS.contains(root + ":")) return false;
         String rel = name.substring(colon + 1);
         if (rel.isEmpty() || rel.contains("\\") || rel.startsWith("/") || rel.contains(":")) return false;
         for (String segment : rel.split("/", -1)) {

@@ -28,6 +28,7 @@ import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.BuildInfoKeys;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.task.ToolchainPolicy;
@@ -495,9 +496,14 @@ public record TestStampInputs(
         extras.addAll(suiteRunExtras(build, selection));
         // The test JVM's flags change what the suite sees (-D properties, heap), so they retest:
         // the module's, then the request's own, which the suite fork appends from the same source.
-        if (!jvmArgs.isEmpty()) extras.add("jvm-args:" + String.join(" ", jvmArgs));
+        // A path in a flag (a library jk unpacked into its state, a file of the checkout) by its root
+        // word, so another home and another checkout key the same flags alike.
+        Path workspace = WorkspaceScan.findRoot(moduleDir).orElse(moduleDir);
+        if (!jvmArgs.isEmpty())
+            extras.add("jvm-args:" + PortablePath.spelledText(String.join(" ", jvmArgs), workspace));
         List<String> userArgs = JvmOptions.suiteUserArgs();
-        if (!userArgs.isEmpty()) extras.add("jvm-user-args:" + String.join(" ", userArgs));
+        if (!userArgs.isEmpty())
+            extras.add("jvm-user-args:" + PortablePath.spelledText(String.join(" ", userArgs), workspace));
         // Whether a suite that reaches past the host may replay at all: a marker stored while it
         // could must not replay once it may not, or the suite never runs again until a file moves.
         if (build.testNetworkAllowed()) extras.add("network:allowed");
