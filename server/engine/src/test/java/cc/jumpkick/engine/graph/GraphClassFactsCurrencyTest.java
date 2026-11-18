@@ -91,6 +91,72 @@ class GraphClassFactsCurrencyTest {
                 .contains("compiled facts left out");
     }
 
+    /**
+     * Mid-edit, a signature changed and its caller not yet fixed: the compile fails on the caller
+     * after writing the edited class. The module keeps every other class's facts from its last good
+     * compile, and the answer says so and since when, rather than losing the module's calls.
+     */
+    @Test
+    void a_compile_that_fails_mid_edit_keeps_the_last_good_facts_of_every_other_class(@TempDir Path tmp)
+            throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                java = 25
+                """);
+        Path dir = Files.createDirectories(tmp.resolve("src/main/java/demo"));
+        Path app = dir.resolve("App.java");
+        Path util = dir.resolve("Util.java");
+        Files.writeString(app, "package demo; public class App { void a() { Util.b(); } }\n");
+        Files.writeString(util, "package demo; public class Util { static void b() {} class In {} }\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        Path classes = Files.createDirectories(
+                BuildLayout.of(tmp, graph.topoOrder().getFirst().manifest()).classesDir());
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(null, null, null, "-d", classes.toString(), app.toString(), util.toString()))
+                .isZero();
+        ModuleInputProvenance.recordClasses(
+                tmp, graph, Set.of(tmp.toAbsolutePath().normalize()));
+
+        Files.writeString(util, "package demo; public class Util { static void b(int n) {} class In { int x; } }\n");
+        // What the failing compile leaves: Util's classes rewritten, App's not (App.a() no longer compiles).
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(null, null, null, "-d", classes.toString(), "-cp", classes.toString(), util.toString()))
+                .isZero();
+        assertThat(ToolProvider.getSystemJavaCompiler()
+                        .run(null, null, null, "-d", classes.toString(), "-cp", classes.toString(), app.toString()))
+                .isNotZero();
+
+        GraphRunner.ClassIndexes broken = GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false);
+        String module = String.valueOf(tmp.getFileName());
+        assertThat(broken.leftOut())
+                .as("the module is not left out: App's facts are its last good compile's")
+                .isEmpty();
+        assertThat(broken.rows()).hasSize(1).allSatisfy(row -> assertThat(row)
+                .endsWith("\tsrc/main/java/demo/Util.java\t"));
+        assertThat(broken.edited()).containsExactly("src/main/java/demo/Util.java");
+        assertThat(broken.lastGood()).containsOnlyKeys(module);
+        assertThat(GraphRunner.withNote(ack(), broken.leftOut(), broken.edited(), broken.lastGood())
+                        .note())
+                .contains(module + ": compiled facts from its last good compile, ")
+                .contains("the compile since did not finish clean (it failed, or is running)")
+                .contains("1 source edited since the build (src/main/java/demo/Util.java)");
+
+        Files.write(classes.resolve("demo/App.class"), new byte[] {(byte) 0xCA, (byte) 0xFE});
+        assertThat(GraphRunner.classIndexes(tmp, tmp.resolve("cache"), false).leftOut())
+                .as("a class no edited source compiles to still vouches for nothing")
+                .containsExactly(module);
+        assertThat(ModuleInputProvenance.compiledFrom("demo/ApiKt.class", Set.of("src/main/kotlin/demo/Api.kt")))
+                .as("a Kotlin file's facade")
+                .isTrue();
+        assertThat(ModuleInputProvenance.compiledFrom("demo/Util$In.class", Set.of("src/main/java/demo/Util.java")))
+                .isTrue();
+        assertThat(ModuleInputProvenance.compiledFrom("demo/App.class", Set.of("src/main/java/demo/Util.java")))
+                .isFalse();
+    }
+
     @Test
     void a_module_or_test_set_with_sources_and_no_classes_is_named_uncompiled(@TempDir Path tmp) throws Exception {
         Files.writeString(tmp.resolve("jk.toml"), """

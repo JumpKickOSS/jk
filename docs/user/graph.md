@@ -325,7 +325,11 @@ of the checkout is running), the question is answered without it and says why in
 with no compiled classes then contributes what its sources declare, the line names it, and a
 callers answer does not say it is complete. After an edit, an edited source contributes what its
 text declares, and every other file of the module keeps its compiled facts, so the callers of the method being changed are
-still there mid-edit; the answer names the edited files. A module's tests that were never
+still there mid-edit; the answer names the edited files. A compile that fails mid-edit (a signature
+changed, its callers not fixed yet) still writes the classes of the files it got through, the edited
+ones among them: those are not read, every other class keeps its facts from the module's last good
+compile, and the answer names the module and that compile's time. A class file no edited source
+compiles to (a hand edit, another build's output) still leaves the module out. A module's tests that were never
 compiled are compiled the same way, in a job of their own after the main sources (in the history
 as a `compile`), so a fresh checkout's callers include its tests; when that compile cannot run, the
 line names their directory (`core/src/test`). A question compiles the same test tree every verb

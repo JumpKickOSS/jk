@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -278,29 +279,53 @@ public final class ModuleInputProvenance {
      * The module's JVM sources edited since the build whose classes sit in its target dir, as
      * module-relative paths (edited, added or gone); empty when the classes are the ones its
      * sources compile to. {@code null} when the classes cannot be vouched for at all: no record,
-     * a record without per-file digests, or a class file the record does not name. A class whose
-     * source is not in the set was compiled from that source as it stands, so its facts hold even
-     * while another file of the module is mid-edit. The graph reads class facts on that basis.
+     * a record without per-file digests, or a class file the record does not name that no edited
+     * source compiles to. A class whose source is not in the set was compiled from that source as
+     * it stands, so its facts hold even while another file of the module is mid-edit. The graph
+     * reads class facts on that basis.
      */
     public static @Nullable Set<String> staleSources(Path workspaceRoot, Path moduleDir, JkBuild build) {
+        Staleness s = staleness(workspaceRoot, moduleDir, build);
+        return s == null ? null : s.sources();
+    }
+
+    /**
+     * {@link #staleSources}, and since when: {@code lastGood} is the time of the last compile that
+     * left the classes current when a compile after it wrote class files for the edited sources
+     * without vouching for them (it failed, or is still running), else {@code null}.
+     */
+    public record Staleness(Set<String> sources, @Nullable Instant lastGood) {
+
+        public Staleness {
+            sources = Collections.unmodifiableSet(new TreeSet<>(sources));
+        }
+    }
+
+    /**
+     * {@link #staleSources} with the time of the last good compile. A compile that fails mid-edit
+     * still writes the classes of the files it got through, the edited ones among them: those are
+     * class files of edited sources, whose facts the graph does not read, so the module keeps the
+     * facts of every other class rather than losing them all. A file of a classes tree that is not a
+     * class holds no facts and is not judged here. A class file the record does not name and no
+     * edited source compiles to (a hand edit, another build's output) still vouches for nothing.
+     */
+    public static @Nullable Staleness staleness(Path workspaceRoot, Path moduleDir, JkBuild build) {
         BuildLayout layout = BuildLayout.of(workspaceRoot, moduleDir, build);
         Path target = norm(layout.moduleTargetDir());
         Classes record = readClasses(target);
         if (record == null || record.sources().isEmpty()) return null;
         try {
+            List<String> foreign = new ArrayList<>();
             for (Path tree : graphTrees(layout)) {
                 if (!tree.startsWith(target) || !Files.isDirectory(tree)) continue;
-                boolean[] foreign = {false};
                 PathUtil.forEachRegularFile(tree, (file, attrs) -> {
                     if (BuildStamps.isStampFile(file.getFileName().toString())) return;
-                    String want = record.outputs().get(rel(target, file));
-                    if (want == null
-                            || !want.equals(FileHashMemo.contentHash(
-                                    file.toAbsolutePath().normalize(), attrs))) {
-                        foreign[0] = true;
+                    Path abs = file.toAbsolutePath().normalize();
+                    String want = record.outputs().get(rel(target, abs));
+                    if (want == null || !want.equals(FileHashMemo.contentHash(abs, attrs))) {
+                        foreign.add(rel(tree, abs));
                     }
                 });
-                if (foreign[0]) return null;
             }
             Map<String, String> now = jvmSources(norm(moduleDir));
             Set<String> stale = new TreeSet<>();
@@ -310,10 +335,42 @@ public final class ModuleInputProvenance {
             for (String rel : record.sources().keySet()) {
                 if (!now.containsKey(rel)) stale.add(rel);
             }
-            return Collections.unmodifiableSet(stale);
+            boolean overwritten = false;
+            for (String f : foreign) {
+                if (!f.endsWith(".class")) continue;
+                if (!compiledFrom(f, stale)) return null;
+                overwritten = true;
+            }
+            Instant lastGood =
+                    overwritten ? Files.getLastModifiedTime(classesFile(target)).toInstant() : null;
+            return new Staleness(stale, lastGood);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
+    }
+
+    /**
+     * Whether class file {@code rel} (relative to its classes tree: {@code demo/App$1.class}) is one
+     * an edited source compiles to: its top-level class's path is the source's without its extension
+     * ({@code demo/App} for {@code src/main/java/demo/App.java}), or a Kotlin file's facade ({@code
+     * demo/ApiKt} for {@code demo/Api.kt}).
+     */
+    public static boolean compiledFrom(String rel, Set<String> edited) {
+        String name = rel.substring(0, rel.length() - ".class".length());
+        int dollar = name.indexOf('$', name.lastIndexOf('/') + 1);
+        if (dollar > 0) name = name.substring(0, dollar);
+        for (String source : edited) {
+            int dot = source.lastIndexOf('.');
+            if (dot < 0) continue;
+            String stem = "/" + source.substring(0, dot);
+            if (stem.endsWith("/" + name)) return true;
+            if (source.endsWith(".kt")
+                    && name.endsWith("Kt")
+                    && stem.endsWith("/" + name.substring(0, name.length() - 2))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

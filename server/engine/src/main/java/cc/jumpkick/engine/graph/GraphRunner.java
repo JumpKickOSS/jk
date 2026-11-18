@@ -57,6 +57,9 @@ import cc.jumpkick.wire.protocol.GraphRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -67,6 +70,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -197,7 +201,7 @@ public final class GraphRunner {
                 indexes = classIndexes(root, cache, true);
                 ack = ask(root, req, cache, indexes, modules, prefixes, scripts, progress);
             }
-            ack = withNote(ack, indexes.leftOut(), indexes.edited());
+            ack = withNote(ack, indexes.leftOut(), indexes.edited(), indexes.lastGood());
             String skipped = compiled.line();
             if (skipped != null) ack = withLine(ack, skipped);
             // The worker names the sets the answer may be missing calls from: a rename, only those
@@ -775,8 +779,17 @@ public final class GraphRunner {
      * classes it does not read, the edited sources whose own classes it skips, and the modules with
      * main sources and no main classes and the test suites ({@link #testSet}) with no classes.
      */
-    record ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<Uncompiled> uncompiled) {
-        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of(), List.of());
+    record ClassIndexes(
+            List<String> rows,
+            List<String> leftOut,
+            List<String> edited,
+            List<Uncompiled> uncompiled,
+            Map<String, Instant> lastGood) {
+        static final ClassIndexes NONE = new ClassIndexes(List.of(), List.of(), List.of(), List.of(), Map.of());
+
+        ClassIndexes(List<String> rows, List<String> leftOut, List<String> edited, List<Uncompiled> uncompiled) {
+            this(rows, leftOut, edited, uncompiled, Map.of());
+        }
 
         /** How answers name the {@link #uncompiled} sets. */
         List<String> uncompiledNames() {
@@ -815,6 +828,7 @@ public final class GraphRunner {
         List<String> leftOut = new ArrayList<>();
         List<String> edited = new ArrayList<>();
         List<Uncompiled> uncompiled = new ArrayList<>();
+        Map<String, Instant> lastGood = new TreeMap<>();
         for (Map.Entry<Path, JkBuild> module : modules(root).entrySet()) {
             BuildLayout layout = BuildLayout.of(root, module.getKey(), module.getValue());
             String rel = root.relativize(module.getKey()).toString().replace('\\', '/');
@@ -830,11 +844,13 @@ public final class GraphRunner {
             }
             Map<String, Path> sets = classSets(layout);
             if (sets.values().stream().noneMatch(Files::isDirectory)) continue;
-            Set<String> stale = ModuleInputProvenance.staleSources(root, module.getKey(), module.getValue());
-            if (stale == null) {
+            ModuleInputProvenance.Staleness staleness =
+                    ModuleInputProvenance.staleness(root, module.getKey(), module.getValue());
+            if (staleness == null) {
                 leftOut.add(name);
                 continue;
             }
+            Set<String> stale = staleness.sources();
             List<String> staleRel = stale.stream().map(s -> prefix + s).toList();
             String staleField = String.join(STALE_SEPARATOR, staleRel);
             List<String> rows = new ArrayList<>();
@@ -867,8 +883,9 @@ public final class GraphRunner {
             }
             out.addAll(rows);
             edited.addAll(staleRel);
+            if (staleness.lastGood() != null) lastGood.put(name, staleness.lastGood());
         }
-        return new ClassIndexes(out, leftOut, edited, uncompiled);
+        return new ClassIndexes(out, leftOut, edited, uncompiled, lastGood);
     }
 
     /**
@@ -894,8 +911,22 @@ public final class GraphRunner {
 
     /** {@code ack} with the modules and edited sources whose compiled facts were left out named in its note. */
     static GraphAck withNote(GraphAck ack, List<String> leftOut, List<String> edited) {
+        return withNote(ack, leftOut, edited, Map.of());
+    }
+
+    /**
+     * {@code ack} with the modules and edited sources whose compiled facts were left out named in
+     * its note, and each module of {@code lastGood} whose facts are those of its last good compile,
+     * at that compile's time: a compile since did not finish clean (it failed mid-edit, or is
+     * running), and the answer is still given, from those facts and the edited sources' text.
+     */
+    static GraphAck withNote(GraphAck ack, List<String> leftOut, List<String> edited, Map<String, Instant> lastGood) {
         if (!ack.ok() || (leftOut.isEmpty() && edited.isEmpty())) return ack;
         List<String> lines = new ArrayList<>();
+        DateTimeFormatter at = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
+        lastGood.forEach((module, when) -> lines.add(module + ": compiled facts from its last good compile, "
+                + at.format(when) + "; the compile since did not finish clean (it failed, or is running), so"
+                + " the classes it wrote for the edited sources are not read"));
         if (!leftOut.isEmpty()) {
             lines.add("compiled facts left out for " + String.join(", ", leftOut)
                     + " (classes older than the sources, or being built): calls and overrides there are missing, so a"
