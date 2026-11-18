@@ -1208,7 +1208,14 @@ it and is replayed from then on while it holds. A green marker is stored only wh
 key names, discovered ones and their listings included, still matches once the suite is done. When
 one moved while it ran (a test that writes beside a fixture it reads, say), the run keeps its
 outcome, stores no marker and warns `an input of run-tests changed while it ran: <file>; the next
-build runs it again`, on every such run.
+build runs it again`, on every such run. A file the suite writes before it first reads it is its own
+output and keys nothing. Inside the workspace, one it reads before it writes it (a snapshot, a golden
+file, a fixture a test updates, in its own module or another) is the project's input, so that run
+stores no marker; a test that rewrites it unchanged is replayed from the next run on, and one that
+changes it on every run (appends to it, say) runs on every build. Outside the workspace, a file the
+suite both reads and writes is some tool's own state (a daemon registry, a resolver's status file,
+preferences) that your project cannot fix, so it keys nothing: keyed, it would keep a suite that
+uses the Gradle Tooling API or the Kotlin daemon from ever replaying.
 
 **A suite that reaches the network is never replayed.** "Reaches the network" means a test JVM
 read from or wrote to a socket whose address is not this machine's: loopback (`localhost`,

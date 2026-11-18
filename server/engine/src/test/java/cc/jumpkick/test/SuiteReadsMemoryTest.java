@@ -130,7 +130,7 @@ class SuiteReadsMemoryTest {
         assertThat(child(tmp, "-Xmx256m", "mixed", recordings, ws)).contains("exit=0", "made");
         List<Path> roots = List.of(ws.resolve("sandbox"), ws.resolve("target"));
         SuiteReads.Observed whole = SuiteReads.collect(recordings, ws);
-        SuiteReads.Observed held = SuiteReads.collect(recordings, ws, SuiteReads.candidates(roots));
+        SuiteReads.Observed held = SuiteReads.collect(recordings, ws, ws, SuiteReads.candidates(roots));
         assertThat(held.files().size()).isLessThan(whole.files().size());
         Set<Path> fromWhole = SuiteReads.undeclared(whole, roots, ws, 0);
         assertThat(SuiteReads.undeclared(held, roots, ws, 0))
@@ -192,8 +192,8 @@ class SuiteReadsMemoryTest {
                 case "wide" -> wide(recordings, ws);
                 case "mixed" -> mixed(recordings, ws);
                 case "sandboxed" -> {
-                    SuiteReads.Observed seen =
-                            SuiteReads.collect(recordings, ws, SuiteReads.candidates(List.of(ws.resolve("sandbox"))));
+                    SuiteReads.Observed seen = SuiteReads.collect(
+                            recordings, ws, ws, SuiteReads.candidates(List.of(ws.resolve("sandbox"))));
                     // The recording JVM's own reads (its classpath) are outside the workspace.
                     long inWs =
                             seen.files().stream().filter(f -> f.startsWith(ws)).count();

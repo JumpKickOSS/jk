@@ -99,6 +99,119 @@ class SuiteReadsTest {
                 .doesNotContain(covered.resolve("in.txt").toAbsolutePath().normalize());
     }
 
+    /**
+     * In the workspace, a golden file a test loads and then rewrites in place is an input, by what it
+     * held before the run, a sibling member's as much as the module's own; a file the test writes and
+     * then reads back is its own output. Outside it, a file read and then rewritten is a tool's state.
+     */
+    @Test
+    void a_workspace_file_read_before_the_jvm_writes_it_is_an_input_and_one_written_first_is_not(@TempDir Path tmp)
+            throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path module = Files.createDirectories(ws.resolve("a"));
+        Path golden = Files.writeString(module.resolve("golden.txt"), "expected");
+        Path sibling =
+                Files.writeString(Files.createDirectories(ws.resolve("b")).resolve("fixture.json"), "{}");
+        Path registry =
+                Files.writeString(Files.createDirectories(tmp.resolve("tool")).resolve("registry.bin"), "1");
+        Path probe = Files.writeString(tmp.resolve("Probe.java"), """
+                import java.io.*;
+                class Probe {
+                    public static void main(String[] a) throws Exception {
+                        for (String f : new String[] {"golden.txt", "../b/fixture.json", "../../tool/registry.bin"}) {
+                            byte[] old;
+                            try (InputStream in = new FileInputStream(f)) { old = in.readAllBytes(); }
+                            try (OutputStream out = new FileOutputStream(f)) { out.write(old); }
+                        }
+                        try (OutputStream out = new FileOutputStream("made.txt")) { out.write(1); }
+                        try (InputStream in = new FileInputStream("made.txt")) { in.readAllBytes(); }
+                    }
+                }
+                """);
+        Path recordings = tmp.resolve("rec");
+        String flag = SuiteReads.prepare(recordings);
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(java.toString(), flag, probe.toString())
+                        .directory(module.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofMinutes(2));
+        assertThat(run.exit()).as(run.output()).isZero();
+
+        SuiteReads.Observed seen = SuiteReads.collect(recordings, module, ws, f -> true);
+        assertThat(seen.files())
+                .contains(
+                        golden.toAbsolutePath().normalize(),
+                        sibling.toAbsolutePath().normalize());
+        assertThat(seen.files())
+                .doesNotContain(
+                        module.resolve("made.txt").toAbsolutePath().normalize(),
+                        registry.toAbsolutePath().normalize());
+    }
+
+    @Test
+    void a_workspace_file_is_an_input_when_its_first_read_comes_before_its_first_write(@TempDir Path tmp) {
+        Path readFirst = tmp.resolve("read-first");
+        Path writtenFirst = tmp.resolve("written-first");
+        Path tied = tmp.resolve("tied");
+        Path readOnly = tmp.resolve("read-only");
+        Path writtenOnly = tmp.resolve("written-only");
+        SuiteReads.FirstTouches touched = new SuiteReads.FirstTouches(tmp);
+        touched.read(readFirst, 100);
+        touched.wrote(readFirst, 200);
+        touched.wrote(writtenFirst, 100);
+        touched.read(writtenFirst, 200);
+        touched.read(tied, 150);
+        touched.wrote(tied, 150);
+        touched.read(readOnly, 100);
+        touched.wrote(writtenOnly, 100);
+
+        assertThat(touched.inputs())
+                .as("a read stamped with its write counts as first: it may have seen the old bytes")
+                .containsExactlyInAnyOrder(readFirst, tied, readOnly);
+    }
+
+    /**
+     * Outside the workspace a file the run read and then wrote is some tool's own state (a daemon
+     * registry, a resolver's status file), dropped whatever the order; one it only read is an input.
+     */
+    @Test
+    void a_file_outside_the_workspace_read_then_written_is_no_input(@TempDir Path tmp) {
+        Path ws = tmp.resolve("ws");
+        Path registry = tmp.resolve("home/.gradle/daemon/registry.bin");
+        Path config = tmp.resolve("home/.docker/config.json");
+        Path sibling = ws.resolve("b/fixture.json");
+        SuiteReads.FirstTouches touched = new SuiteReads.FirstTouches(ws.resolve("a/.."));
+        touched.read(registry, 100);
+        touched.wrote(registry, 200);
+        touched.read(config, 100);
+        touched.read(sibling, 100);
+        touched.wrote(sibling, 200);
+
+        assertThat(touched.inputs()).containsExactlyInAnyOrder(config, sibling);
+    }
+
+    /**
+     * The recordings of several JVMs are read one after another, not in the order their events
+     * happened: a write in the recording read first does not hide a read another recorded earlier,
+     * and a read back that recording gave first does not make another's own output an input.
+     */
+    @Test
+    void the_order_is_the_events_time_not_the_order_the_recordings_are_read(@TempDir Path tmp) {
+        Path fixture = tmp.resolve("fixture.json");
+        Path scratch = tmp.resolve("scratch.json");
+        SuiteReads.FirstTouches touched = new SuiteReads.FirstTouches(tmp);
+        // The first recording read: this JVM rewrites the fixture, then reads the scratch file back.
+        touched.wrote(fixture, 300);
+        touched.read(scratch, 400);
+        touched.read(fixture, 500);
+        // The second: this JVM read the fixture before the first wrote it, and wrote the scratch file first.
+        touched.read(fixture, 100);
+        touched.wrote(scratch, 50);
+
+        assertThat(touched.inputs()).containsExactly(fixture);
+    }
+
     @Test
     void a_recorded_jvm_names_a_program_whose_path_holds_a_space_whole(@TempDir Path tmp) throws Exception {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");

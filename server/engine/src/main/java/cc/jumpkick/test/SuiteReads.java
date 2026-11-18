@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -116,7 +117,7 @@ public final class SuiteReads {
     }
 
     /**
-     * What one run observed: files read and not written by the run itself, commands started, the
+     * What one run observed: files read before the run itself wrote them, commands started, the
      * hosts past this one it read from or wrote to, and whether every recording read back ({@code
      * complete} false vouches for nothing this run; {@code unread} then says why).
      */
@@ -155,21 +156,25 @@ public final class SuiteReads {
 
     public static final long READ_PEAK_BYTES = RecordingReader.PEAK_BYTES + INPUTS_BYTES;
 
-    /** As {@link #collect(Path, Path, Predicate)}, keeping every file the recordings name. */
+    /**
+     * As {@link #collect(Path, Path, Path, Predicate)} with {@code cwd} as the workspace, keeping every
+     * file the recordings name.
+     */
     public static Observed collect(Path dir, Path cwd) {
-        return collect(dir, cwd, f -> true);
+        return collect(dir, cwd, cwd, f -> true);
     }
 
     /**
      * Every recording under {@code dir}, relative paths resolved against {@code cwd}, keeping only the
      * files {@code candidate} accepts, read or written: a file the suite's key already covers (its
      * sandbox, the module's build output, the classpath, the JDK) is no discovered input, so it is
-     * never held, however many a run names. The recordings are streamed by {@link RecordingReader},
-     * one at a time across the engine; only a recording no reader can read is incomplete.
+     * never held, however many a run names. A file the run both read and wrote is judged by
+     * {@link FirstTouches#inputs} against {@code workspace}. The recordings are streamed by {@link
+     * RecordingReader}, one at a time across the engine; only a recording no reader can read is incomplete.
      */
-    public static Observed collect(Path dir, Path cwd, Predicate<Path> candidate) {
+    public static Observed collect(Path dir, Path cwd, Path workspace, Predicate<Path> candidate) {
         Set<Path> files = new TreeSet<>();
-        Set<Path> written = new TreeSet<>();
+        FirstTouches touched = new FirstTouches(workspace);
         Set<String> commands = new TreeSet<>();
         Set<String> hosts = new TreeSet<>();
         List<Path> recordings = new ArrayList<>();
@@ -185,10 +190,12 @@ public final class SuiteReads {
         RecordingReader.Sink sink = (name, at, end, v) -> {
             switch (name) {
                 case "jdk.FileRead" -> {
-                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], candidate, files);
+                    Path f = resolve(cwd, v[0]);
+                    if (f != null && (touched.holds(f) || candidate.test(f))) touched.read(f, at);
                 }
                 case "jdk.FileWrite" -> {
-                    if (v[0] != null && !v[0].isBlank()) resolve(cwd, v[0], candidate, written);
+                    Path f = resolve(cwd, v[0]);
+                    if (f != null && (touched.holds(f) || candidate.test(f))) touched.wrote(f, at);
                 }
                 case "jdk.ProcessStart" -> {
                     // The program, not its arguments: a pid or a temp path in them would
@@ -215,13 +222,62 @@ public final class SuiteReads {
         }
         if (unread != null) {
             // Nothing of an incomplete run is used: let it go before the caller goes on.
-            files.clear();
-            written.clear();
+            touched.clear();
             return new Observed(files, commands, hosts, false, unread);
         }
-        // A file the run wrote is its own output: reading it back depends on nothing outside.
-        files.removeAll(written);
+        files.addAll(touched.inputs());
         return new Observed(files, commands, hosts, true, null);
+    }
+
+    /**
+     * Each file's first read and first write in one run, in epoch nanos, from every recording of it:
+     * each JVM stamps its events from the host's clock, so the events of several JVMs order against
+     * one another however the recordings are read.
+     */
+    static final class FirstTouches {
+        private final Path workspace;
+        private final Map<Path, Long> read = new TreeMap<>();
+        private final Map<Path, Long> written = new TreeMap<>();
+
+        FirstTouches(Path workspace) {
+            this.workspace = workspace.toAbsolutePath().normalize();
+        }
+
+        void read(Path f, long atNanos) {
+            read.merge(f, atNanos, Math::min);
+        }
+
+        void wrote(Path f, long atNanos) {
+            written.merge(f, atNanos, Math::min);
+        }
+
+        /** Whether {@code f} was read or written already, so it was a candidate. */
+        boolean holds(Path f) {
+            return read.containsKey(f) || written.containsKey(f);
+        }
+
+        void clear() {
+            read.clear();
+            written.clear();
+        }
+
+        /**
+         * The files the run read and never wrote, and those in the workspace it read before it first
+         * wrote them: a snapshot, a golden file or a fixture a test updates is the project's input, and
+         * what the tests saw of it is what it held before the run. A read stamped with its write counts
+         * as first: it may have seen the old bytes. A file the run wrote first is its own output. A file
+         * outside the workspace the run both read and wrote is some tool's own state (a daemon registry,
+         * a resolver's status file, preferences), which the project cannot fix and which, keyed, would
+         * keep the suite from ever replaying.
+         */
+        Set<Path> inputs() {
+            Set<Path> out = new TreeSet<>();
+            read.forEach((f, at) -> {
+                Long wrote = written.get(f);
+                if (wrote == null || (f.startsWith(workspace) && at <= wrote)) out.add(f);
+            });
+            return out;
+        }
     }
 
     /**
@@ -254,12 +310,14 @@ public final class SuiteReads {
         return name.strip().replace('\n', ' ');
     }
 
-    private static void resolve(Path cwd, String raw, Predicate<Path> candidate, Set<Path> into) {
+    /** The file a recorded path names, resolved against {@code cwd}; null for none. */
+    private static @Nullable Path resolve(Path cwd, @Nullable String raw) {
+        if (raw == null || raw.isBlank()) return null;
         try {
-            Path p = cwd.resolve(raw).toAbsolutePath().normalize();
-            if (!into.contains(p) && candidate.test(p)) into.add(p);
+            return cwd.resolve(raw).toAbsolutePath().normalize();
         } catch (InvalidPathException odd) {
             // A pseudo path (a pipe, a descriptor) is not a file the suite depends on.
+            return null;
         }
     }
 
