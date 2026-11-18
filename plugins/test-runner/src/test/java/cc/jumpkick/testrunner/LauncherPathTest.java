@@ -17,13 +17,20 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.platform.engine.DiscoverySelector;
 import org.junit.platform.engine.Filter;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
 import org.junit.platform.launcher.TagFilter;
@@ -181,6 +188,49 @@ class LauncherPathTest {
                 root, null, List.of(), new TagFilters(List.of("integration"), List.of(), List.of()), 0, events);
         assertThat(events.warnings()).isEmpty();
         assertThat(events.finishedTests()).isEmpty();
+    }
+
+    @Test
+    void a_root_whose_only_test_is_parameterized_is_an_empty_tier_under_a_filter_that_drops_it(@TempDir Path tmp)
+            throws IOException {
+        Path root = classpathRootOf(tmp, ParameterizedOnlyFixture.class);
+        var events = new Recorder();
+        LauncherPath.runListOnly(
+                root, null, List.of(), new TagFilters(List.of("integration"), List.of(), List.of()), 0, events);
+        assertThat(events.warnings()).isEmpty();
+
+        var ran = new Recorder();
+        int exit = LauncherPath.runOneShot(root, null, List.of(), TagFilters.NONE, 0, ran);
+        assertThat(exit).isZero();
+        assertThat(ran.warnings()).isEmpty();
+        assertThat(ran.finishedTests()).hasSize(4);
+    }
+
+    @Test
+    void a_container_that_registers_its_tests_as_it_runs_counts_as_a_test_in_the_plan() {
+        assertThat(LauncherPath.hasTest(
+                        planOf(DiscoverySelectors.selectMethod(Generated.class, "takes", String.class.getName()))))
+                .as("@ParameterizedTest")
+                .isTrue();
+        assertThat(LauncherPath.hasTest(planOf(DiscoverySelectors.selectMethod(Generated.class, "repeated"))))
+                .as("@RepeatedTest")
+                .isTrue();
+        assertThat(LauncherPath.hasTest(planOf(DiscoverySelectors.selectMethod(Generated.class, "factory"))))
+                .as("@TestFactory")
+                .isTrue();
+        assertThat(LauncherPath.hasTest(planOf(DiscoverySelectors.selectClass(ParameterizedClassFixture.class))))
+                .as("@ParameterizedClass")
+                .isTrue();
+        assertThat(LauncherPath.hasTest(filtered(TagEmptiedFixture.class, TagFilter.includeTags("integration"))))
+                .as("a class the tag filter emptied is pruned, not kept as a container")
+                .isFalse();
+    }
+
+    private static TestPlan planOf(DiscoverySelector selector) {
+        return LauncherFactory.create()
+                .discover(LauncherDiscoveryRequestBuilder.request()
+                        .selectors(selector)
+                        .build());
     }
 
     @Test
@@ -644,6 +694,35 @@ class LauncherPathTest {
 
         @Test
         void plain() {}
+    }
+
+    /** Containers with no test under them until they run; every invocation passes. */
+    static class Generated {
+
+        @ParameterizedTest
+        @ValueSource(strings = {"a", "b", "c"})
+        void takes(String value) {}
+
+        @RepeatedTest(2)
+        void repeated() {}
+
+        @TestFactory
+        Stream<DynamicTest> factory() {
+            return Stream.of(DynamicTest.dynamicTest("one", () -> {}));
+        }
+    }
+
+    /** A class template: its tests sit under invocations made as it runs. */
+    @ParameterizedClass
+    @ValueSource(strings = {"a", "b"})
+    static class ParameterizedClassFixture {
+
+        @Parameter
+        @Nullable
+        String value;
+
+        @Test
+        void uses() {}
     }
 
     /** A class with a {@code @Nested} child: one class to the pull workers, not two. */

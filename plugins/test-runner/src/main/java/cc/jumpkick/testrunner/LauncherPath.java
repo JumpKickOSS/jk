@@ -431,7 +431,13 @@ final class LauncherPath {
                 + "\n  check the test engine: jk why org.junit.platform:junit-platform-launcher";
     }
 
-    private static boolean hasTest(TestPlan plan) {
+    /**
+     * Whether {@code plan} holds a test, or a container that registers its tests as it runs: a
+     * {@code @ParameterizedTest}, {@code @RepeatedTest} or {@code @TestFactory} is a container with
+     * no test under it until it executes. The Platform prunes every node below an engine that
+     * neither is a test nor may register one, so a childless container it kept is such a one.
+     */
+    static boolean hasTest(TestPlan plan) {
         for (TestIdentifier root : plan.getRoots()) {
             if (hasTest(plan, root)) return true;
         }
@@ -440,7 +446,10 @@ final class LauncherPath {
 
     private static boolean hasTest(TestPlan plan, TestIdentifier node) {
         if (node.isTest()) return true;
-        for (TestIdentifier child : plan.getChildren(node)) {
+        Set<TestIdentifier> children = plan.getChildren(node);
+        if (children.isEmpty())
+            return node.isContainer() && plan.getParent(node).isPresent();
+        for (TestIdentifier child : children) {
             if (hasTest(plan, child)) return true;
         }
         return false;
