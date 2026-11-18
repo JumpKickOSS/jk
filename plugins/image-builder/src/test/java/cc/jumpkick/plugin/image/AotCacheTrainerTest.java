@@ -2,9 +2,11 @@
 package cc.jumpkick.plugin.image;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Os;
 import cc.jumpkick.image.ImageConfig;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -114,10 +116,87 @@ class AotCacheTrainerTest {
                 .containsEntry("LANG", "C.UTF-8")
                 .containsEntry("SPRING_FLYWAY_ENABLED", "false")
                 .containsEntry("SPRING_CONTEXT_EXIT", "onRefresh");
-        List<String> prefix = AotCacheTrainer.containerPrefix("podman", Path.of("/w/aot-train"), "img", "n", env);
+        List<String> prefix =
+                AotCacheTrainer.containerPrefix("podman", Path.of("/w/aot-train"), "img", "linux/amd64", "n", env);
         assertThat(String.join(" ", prefix))
                 .contains("-e SPRING_CONTEXT_EXIT=onRefresh")
                 .endsWith(" img");
+    }
+
+    /**
+     * The training runs ask for the image's platform. Without it the runtime runs the host's
+     * variant of a multi-platform base, and an arm64 Mac trained an arm64 cache into an amd64
+     * image whose JVM refused it at every start.
+     */
+    @Test
+    void training_runs_in_the_images_platform() {
+        assertThat(AotCacheTrainer.platform(config("b"))).isEqualTo("linux/amd64");
+        assertThat(AotCacheTrainer.platform(withPlatforms(List.of("linux/arm64"))))
+                .isEqualTo("linux/arm64");
+        List<String> prefix =
+                AotCacheTrainer.containerPrefix("podman", Path.of("/w/aot-train"), "img", "linux/arm64", "n", Map.of());
+        assertThat(String.join(" ", prefix)).startsWith("podman run --rm --platform linux/arm64 ");
+        assertThat(String.join(" ", prefix)).contains(" -v /w/aot-train:/app");
+    }
+
+    /** One cache layer cannot serve the JVMs of several platforms: the image ships without one and says so. */
+    @Test
+    void a_multi_platform_image_gets_no_cache_and_says_why() throws Exception {
+        ImageConfig both = withPlatforms(List.of("linux/amd64", "linux/arm64"));
+        ImageBuilder.Plan plan = new ImageBuilder.Plan(
+                both, "svc", "1.0.0", "com.example.Main", Path.of("/w/target/svc-1.0.0.jar"), List.of());
+        assertThat(AotCacheTrainer.platformCheck(plan).noCache())
+                .contains("only on the platform that trained it")
+                .contains("linux/amd64, linux/arm64");
+    }
+
+    /**
+     * An emulated training run leaves AOT code out of the cache: compiled for the emulator's CPU, it
+     * names features (the hypervisor bit) a real CPU lacks, and a JVM run with -XX:AOTMode=on on
+     * real amd64 refused the whole cache over it. The switches are read from the base's JVM, since
+     * an unknown -XX flag stops a JVM from starting.
+     */
+    @Test
+    void emulated_training_turns_off_every_aot_code_switch_the_jvm_has() {
+        String jdk27 = """
+                     bool AOTAdapterCaching                        = false                                  {diagnostic} {ergonomic}
+                     uint AOTCodeMaxSize                           = 10485760                               {diagnostic} {default}
+                     bool AOTStubCaching                           = false                                  {diagnostic} {ergonomic}
+                     bool AbortVMOnAOTCodeFailure                  = false                                  {diagnostic} {default}
+                """;
+        assertThat(AotCacheTrainer.noCodeFlags(jdk27))
+                .containsExactly("-XX:+UnlockDiagnosticVMOptions", "-XX:-AOTAdapterCaching", "-XX:-AOTStubCaching");
+        assertThat(AotCacheTrainer.noCodeFlags("     bool AOTClassLinking = false {product} {default}\n"))
+                .isEmpty();
+    }
+
+    /**
+     * The platform probe ({@code java -XshowSettings:properties -version} in the base, for the
+     * image's platform): the JVM that ran must be the platform's, a host that cannot run it ships
+     * no cache, and any other failure is the build's error.
+     */
+    @Test
+    void the_platform_probe_trains_only_in_the_images_jvm() throws Exception {
+        assertThat(AotCacheTrainer.platformRefusal("podman", "linux/amd64", 0, "    os.arch = amd64\n"))
+                .isNull();
+        assertThat(AotCacheTrainer.platformRefusal("docker", "linux/arm64", 0, "    os.arch = aarch64\n"))
+                .isNull();
+        assertThat(AotCacheTrainer.platformRefusal("podman", "linux/amd64", 0, "    os.arch = aarch64\n"))
+                .contains("ran the arm64 JVM when asked for linux/amd64");
+        assertThat(AotCacheTrainer.platformRefusal(
+                        "docker", "linux/arm64", 1, "exec /usr/bin/java: exec format error\n"))
+                .isEqualTo("docker on this host cannot run linux/arm64 programs (exec format error)");
+        assertThatThrownBy(() -> AotCacheTrainer.platformRefusal(
+                        "podman", "linux/amd64", 125, "Error: initializing source: unauthorized\n"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("unauthorized")
+                .hasMessageContaining("linux/amd64");
+    }
+
+    private static ImageConfig withPlatforms(List<String> platforms) {
+        return new ImageConfig(
+                "b", null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, platforms, null, null, null,
+                true);
     }
 
     @Test

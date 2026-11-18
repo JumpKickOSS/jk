@@ -177,7 +177,20 @@ public final class ImageBuilder {
         }
     }
 
-    public record Result(String imageReference, String digest) {}
+    /**
+     * What a build produced. {@code aotNotice} is set when {@code [image] aot-cache} asked for a
+     * cache the image does not carry, saying why: the user has to hear it on a passing build.
+     */
+    public record Result(
+            String imageReference, String digest, @Nullable String aotNotice) {
+        /** An image built as its config asked. */
+        public Result(String imageReference, String digest) {
+            this(imageReference, digest, null);
+        }
+    }
+
+    /** The built image and the notice its build owes the user, if any. */
+    private record Built(JibContainer container, @Nullable String aotNotice) {}
 
     /**
      * Push to a registry. {@code cacheRoot} is jk's cache root — where an AOT build extracts the
@@ -186,10 +199,8 @@ public final class ImageBuilder {
     public static Result pushToRegistry(Plan plan, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
-            JibContainer container = run(plan, Containerizer.to(registryTarget(plan, auth)), cacheRoot, auth);
-            return new Result(
-                    plan.config().targetReference(plan.artifact(), plan.version()),
-                    container.getDigest().toString());
+            Built built = run(plan, Containerizer.to(registryTarget(plan, auth)), cacheRoot, auth);
+            return result(plan, built);
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid target image reference: " + e.getMessage(), e);
         }
@@ -207,10 +218,8 @@ public final class ImageBuilder {
             DockerDaemonImage target =
                     DockerDaemonImage.named(plan.config().targetReference(plan.artifact(), plan.version()));
             if (dockerExecutable != null) target = target.setDockerExecutable(dockerExecutable);
-            JibContainer container = run(plan, Containerizer.to(target), cacheRoot, auth);
-            return new Result(
-                    plan.config().targetReference(plan.artifact(), plan.version()),
-                    container.getDigest().toString());
+            Built built = run(plan, Containerizer.to(target), cacheRoot, auth);
+            return result(plan, built);
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid target image reference: " + e.getMessage(), e);
         }
@@ -220,15 +229,13 @@ public final class ImageBuilder {
     public static Result writeToTarball(Plan plan, Path tarball, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
-            JibContainer container = run(
+            Built built = run(
                     plan,
                     Containerizer.to(
                             TarImage.at(tarball).named(plan.config().targetReference(plan.artifact(), plan.version()))),
                     cacheRoot,
                     auth);
-            return new Result(
-                    plan.config().targetReference(plan.artifact(), plan.version()),
-                    container.getDigest().toString());
+            return result(plan, built);
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid target image reference: " + e.getMessage(), e);
         }
@@ -367,8 +374,34 @@ public final class ImageBuilder {
         return dir;
     }
 
-    private static JibContainer run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth given)
+    private static Result result(Plan plan, Built built) {
+        return new Result(
+                plan.config().targetReference(plan.artifact(), plan.version()),
+                built.container().getDigest().toString(),
+                built.aotNotice());
+    }
+
+    /**
+     * Build the image. An {@code [image] aot-cache} the platform rules out ({@link
+     * AotCacheTrainer#platformCheck}) is not trained: the image ships without one, and says so,
+     * rather than with a cache its JVM would refuse at every start.
+     */
+    private static Built run(Plan plan, Containerizer containerizer, Path cacheRoot, RegistryAuth given)
             throws IOException, InterruptedException, InvalidImageReferenceException {
+        AotCacheTrainer.PlatformCheck check =
+                plan.config().aotCache() ? AotCacheTrainer.platformCheck(plan) : AotCacheTrainer.PlatformCheck.NATIVE;
+        String notice = check.noCache() == null ? null : "the image has no AOT cache: " + check.noCache();
+        return new Built(build(plan, containerizer, cacheRoot, given, check), notice);
+    }
+
+    private static JibContainer build(
+            Plan plan,
+            Containerizer containerizer,
+            Path cacheRoot,
+            RegistryAuth given,
+            AotCacheTrainer.PlatformCheck check)
+            throws IOException, InterruptedException, InvalidImageReferenceException {
+        boolean trainable = check.noCache() == null;
         // Every pull lands under jk's cache root, never in Jib's unbounded default.
         RegistryAuth auth = given.orCacheRoot(cacheRoot);
         ImageConfig cfg = plan.config();
@@ -386,10 +419,10 @@ public final class ImageBuilder {
         if (plan.hasAppTree()) {
             builder = builder.addFileEntriesLayer(treeLayer(plan.appTree(), null));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
-            boolean aot = cfg.aotCache();
+            boolean aot = cfg.aotCache() && trainable;
             if (aot) {
                 AotCacheTrainer.Result trained = AotCacheTrainer.train(
-                        plan, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
+                        plan, check, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
@@ -398,7 +431,8 @@ public final class ImageBuilder {
 
         // The lib-dir layout, as its own directory: release jars, then snapshot and sibling jars,
         // then the runnable jar, each its own layer so an app rebuild ships only the last one.
-        if (plan.hasLibDir() && !cfg.aotCache()) {
+        boolean aotCache = cfg.aotCache() && trainable;
+        if (plan.hasLibDir() && !aotCache) {
             String dir = Objects.requireNonNull(plan.libDir());
             if (!plan.dependencyJars().isEmpty()) {
                 builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.dependencyJars(), dir));
@@ -418,13 +452,13 @@ public final class ImageBuilder {
         // root would embed whatever the app wrote during the record run.
         AotCacheTrainer.Result aot = null;
         String appClasspath = null;
-        if (cfg.aotCache()) {
+        if (aotCache) {
             String blocked = AotCacheTrainer.unsupportedReason(plan);
             if (blocked != null) {
                 throw new IOException("[image] aot-cache: " + blocked);
             }
             aot = AotCacheTrainer.train(
-                    plan, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
+                    plan, check, dirOf(plan.mainJar()), cacheRoot, auth, msg -> System.err.println("jk: " + msg));
             for (FileEntriesLayer layer : stagedLayers(aot, plan)) builder = builder.addFileEntriesLayer(layer);
             builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));

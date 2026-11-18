@@ -25,8 +25,6 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -39,17 +37,23 @@ class ImageAotCacheE2eTest {
 
     private static final String BASE = "docker.io/bellsoft/liberica-runtime-container:jre-25-slim-glibc";
 
+    /**
+     * The image is linux/amd64 on every host. On an arm64 one (a Mac) the training runs and the
+     * checks below run the amd64 JVM under emulation, and the cache it maps is the amd64 one.
+     */
     @Test
-    @DisabledOnOs(
-            value = OS.MAC,
-            architectures = "aarch64",
-            disabledReason = "the amd64 image runs emulated there, and its JVM refuses the AOT cache")
     void an_image_with_aot_cache_ships_a_cache_its_jvm_maps(@TempDir Path tmp) throws Exception {
         String runtime = AotCacheTrainer.containerRuntime(null);
         Assumptions.assumeTrue(runtime != null, "no container runtime on PATH");
         // A bare `info`: podman's report has no ServerVersion field, so a Docker-only format
         // skipped this test on every podman host.
         Assumptions.assumeTrue(command(List.of(runtime, "info")).exit() == 0, "the container daemon is not answering");
+
+        // The runtime holds the host's own variant of the base, as it does after any native run of
+        // it: a training run that does not ask for the image's platform takes that one.
+        String hostArch = System.getProperty("os.arch").equals("aarch64") ? "arm64" : "amd64";
+        Output native_ = command(List.of(runtime, "pull", "-q", "--platform", "linux/" + hostArch, BASE));
+        assertThat(native_.exit()).as(native_.text()).isZero();
 
         String version = "0.1.0-" + UUID.randomUUID().toString().substring(0, 8);
         ImageConfig config = new ImageConfig(
@@ -108,9 +112,13 @@ class ImageAotCacheE2eTest {
         String ref = config.targetReference("jk-aot-e2e", version);
 
         try {
-            ImageBuilder.Result result =
-                    ImageBuilder.loadToLocalDaemon(plan, null, TestCaches.dir("image-aot-e2e"), RegistryAuth.NONE);
+            // Loaded into the runtime the test found: Jib's own default is docker, which a podman host lacks.
+            ImageBuilder.Result result = ImageBuilder.loadToLocalDaemon(
+                    plan, Path.of(runtime), TestCaches.dir("image-aot-e2e"), RegistryAuth.NONE);
             assertThat(result.imageReference()).isEqualTo(ref);
+            assertThat(result.aotNotice()).isNull();
+            Output arch = command(List.of(runtime, "image", "inspect", ref, "--format", "{{.Architecture}}"));
+            assertThat(lastLine(arch)).isEqualTo("amd64");
 
             Output inspect =
                     command(List.of(runtime, "image", "inspect", ref, "--format", "{{json .Config.Entrypoint}}"));
@@ -121,7 +129,7 @@ class ImageAotCacheE2eTest {
             Output history = command(List.of(runtime, "history", "--format", "{{.Size}}", ref));
             assertThat(history.exit()).as(history.text()).isZero();
             Output layers = command(List.of(runtime, "image", "inspect", ref, "--format", "{{len .RootFS.Layers}}"));
-            Output pulled = command(List.of(runtime, "pull", "-q", BASE));
+            Output pulled = command(List.of(runtime, "pull", "-q", "--platform", "linux/amd64", BASE));
             assertThat(pulled.exit()).as(pulled.text()).isZero();
             Output baseLayers =
                     command(List.of(runtime, "image", "inspect", BASE, "--format", "{{len .RootFS.Layers}}"));
@@ -136,14 +144,30 @@ class ImageAotCacheE2eTest {
 
             // The image's JVM maps the cache: JAVA_TOOL_OPTIONS reaches the entrypoint's java and
             // -Xlog:aot is the only place a refusal shows.
-            Output run = command(List.of(runtime, "run", "--rm", "-e", "JAVA_TOOL_OPTIONS=-Xlog:aot=info", ref));
+            Output run = command(List.of(
+                    runtime,
+                    "run",
+                    "--rm",
+                    "--platform",
+                    "linux/amd64",
+                    "-e",
+                    "JAVA_TOOL_OPTIONS=-Xlog:aot=info",
+                    ref));
             assertThat(run.exit()).as(run.text()).isZero();
             assertThat(AotCacheFiles.refusal(run.text())).as(run.text()).isNull();
             assertThat(run.text()).contains("Hello from the image");
 
             // -XX:AOTMode=on refuses to start at all when the cache does not match the classpath:
             // the layered tree is the one it was trained over.
-            Output strict = command(List.of(runtime, "run", "--rm", "-e", "JAVA_TOOL_OPTIONS=-XX:AOTMode=on", ref));
+            Output strict = command(List.of(
+                    runtime,
+                    "run",
+                    "--rm",
+                    "--platform",
+                    "linux/amd64",
+                    "-e",
+                    "JAVA_TOOL_OPTIONS=-XX:AOTMode=on",
+                    ref));
             assertThat(strict.exit()).as(strict.text()).isZero();
             assertThat(strict.text()).contains("Hello from the image");
         } finally {

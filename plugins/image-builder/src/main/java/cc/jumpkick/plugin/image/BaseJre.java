@@ -70,7 +70,8 @@ final class BaseJre {
         return platforms == null || platforms.isEmpty() ? "linux/amd64" : platforms.getFirst();
     }
 
-    private static String normalizeArch(String arch) {
+    /** {@code x86_64} and {@code amd64} as {@code amd64}, {@code aarch64} and {@code arm64} as {@code arm64}. */
+    static String normalizeArch(String arch) {
         String a = arch.toLowerCase(Locale.ROOT);
         if (a.equals("x86_64") || a.equals("amd64")) return "amd64";
         if (a.equals("aarch64") || a.equals("arm64")) return "arm64";

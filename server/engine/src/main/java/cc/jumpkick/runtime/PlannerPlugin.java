@@ -826,16 +826,18 @@ public final class PlannerPlugin {
      * notice belongs to neither, and is said once per run however many times it arrives.
      *
      * <p>A cache hit replays what its run said through here ({@link StepDiagnostics}), so a
-     * restored step's lines read as its run's did.
+     * restored step's lines read as its run's did. True when the line was a notice.
      */
-    static void forwardStepDiagnostic(TaskContext ctx, Path moduleDir, String module, String step, String line) {
-        if (sayNotice(moduleDir, module, step, line)) return;
+    public static boolean forwardStepDiagnostic(
+            TaskContext ctx, Path moduleDir, String module, String step, String line) {
+        if (sayNotice(moduleDir, module, step, line)) return true;
         String text = diagnosticText(line);
         if ("error".equals(Jsonl.str(line, "sev"))) {
             ctx.error(step, text);
         } else {
             ctx.warn(step, text);
         }
+        return false;
     }
 
     /**

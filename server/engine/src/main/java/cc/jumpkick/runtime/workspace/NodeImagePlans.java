@@ -230,8 +230,8 @@ final class NodeImagePlans {
                                     "base:" + base,
                                     "cfg:" + ImagePlans.imageConfigToken(config),
                                     "worker:" + ClasspathFingerprint.entry(workerJar)),
-                            base -> ImagePlans.forkWorker(
-                                    workerJar, spec(cache, project, layout, config, base, content, tarballPath)));
+                            (base, said) -> ImagePlans.forkWorker(
+                                    workerJar, spec(cache, project, layout, config, base, content, tarballPath), said));
                 })
                 .build();
     }

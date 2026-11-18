@@ -154,12 +154,22 @@ with the **image’s own JVM**, never the build JDK:
 
 - **Host** (Linux, matching the image architecture): unpack the base image JRE from layers
   Jib already pulled and run it directly. No container runtime.
-- **Container:** otherwise train inside the base image (docker, podman, or nerdctl).
+- **Container:** otherwise train inside the base image (docker, podman, or nerdctl), run for the
+  image's platform (`--platform`, linux/amd64 unless `platforms` names another). On a host of
+  another architecture (an arm64 Mac building the default amd64 image) the runtime emulates it:
+  the training runs are slower (on an M-series Mac with Podman, a Helidon server's image step took
+  about 35 s instead of 21 s), and the cache leaves out AOT code, which would be compiled for the
+  emulator's CPU rather than the one the image runs on.
+
+When the image cannot carry a cache that its JVM would load, it ships without one and the build
+says so on its result, a passing one included: a host whose runtime cannot run the image's
+platform, or an image built for several `platforms` (one cache layer cannot serve two JVMs).
 
 The training run must reach a steady state on its own: an application that exits with a failure
 before it settles (a missing database, a bad flag) fails the build with its last lines, rather than
-shipping a cache that describes a process which never started. The cache is then started once and
-checked before it becomes a layer.
+shipping a cache that describes a process which never started. The cache is then started once
+with `-XX:AOTMode=on`, so a JVM that would not map it refuses to start, and only then becomes a
+layer.
 
 The training runs see the image's `[image.env]`, with `[image.training-env]` laid over it, and
 the image's `JAVA_OPTS`. `training-env` reaches the training runs alone, never the image: it is

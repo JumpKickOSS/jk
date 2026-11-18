@@ -13,6 +13,7 @@ import cc.jumpkick.plugin.build.ImageExtension;
 import cc.jumpkick.plugin.build.ImageResult;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.ProjectFacts;
+import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
@@ -184,19 +185,26 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             Path tarballPath = Path.of(tarball.get());
             ctx.label("building OCI tarball");
             if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
-            ImageBuilder.writeToTarball(plan, tarballPath, cacheRoot, auth);
+            noticeOf(ctx, ImageBuilder.writeToTarball(plan, tarballPath, cacheRoot, auth));
             return ImageResult.tarball(tarballPath);
         }
         if (!pushing) {
             String exe = dockerExecutable != null ? dockerExecutable : "docker";
             ctx.label("loading " + ref + " into " + exe);
-            ImageBuilder.loadToLocalDaemon(
-                    plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot, auth);
+            noticeOf(
+                    ctx,
+                    ImageBuilder.loadToLocalDaemon(
+                            plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot, auth));
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
+        noticeOf(ctx, ImageBuilder.pushToRegistry(plan, cacheRoot, auth));
         return ImageResult.pushed(ref);
+    }
+
+    /** Pass on what the build owes the user: an AOT cache it was asked for and could not train. */
+    private static void noticeOf(ImageContext ctx, ImageBuilder.Result built) {
+        if (built.aotNotice() != null) ctx.notice("[image] aot-cache: " + built.aotNotice());
     }
 
     /**
@@ -351,6 +359,11 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         @Override
         public void label(String text) {
             out.emit(PluginReply.label(text));
+        }
+
+        @Override
+        public void notice(String message) {
+            out.emit(PluginReply.diagnostic(PluginProtocol.SEVERITY_NOTICE, null, 0, 0, message));
         }
     }
 }

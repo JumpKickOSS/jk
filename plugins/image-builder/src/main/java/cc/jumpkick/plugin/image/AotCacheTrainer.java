@@ -5,6 +5,7 @@ import cc.jumpkick.host.AotTraining;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -20,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -96,6 +98,112 @@ final class AotCacheTrainer {
         return unsupportedReason(plan) == null;
     }
 
+    /** The one platform a cache is trained for: the image's, linux/amd64 when it declares none. */
+    static String platform(ImageConfig config) {
+        return BaseJre.target(config.platforms());
+    }
+
+    /**
+     * What the platform check found: why the image ships without an AOT cache though one was asked
+     * for ({@code noCache}, null when one can be trained), and the flags that assemble a cache with
+     * no AOT code ({@code noCode}, empty unless the training runs are emulated).
+     */
+    record PlatformCheck(@Nullable String noCache, List<String> noCode) {
+        static final PlatformCheck NATIVE = new PlatformCheck(null, List.of());
+    }
+
+    /**
+     * Whether a cache can be trained for the image's platform here, and how. A cache only loads in a
+     * JVM of the platform that trained it: an image built for several platforms shares one cache
+     * layer among them, and a host whose container runtime cannot run the image's platform has no
+     * JVM to train it with. A host that runs it emulated trains it emulated, without AOT code: the
+     * code would be compiled for the emulator's CPU, whose features (the hypervisor bit among them)
+     * a real one lacks, and a JVM told to insist on the cache would refuse it.
+     */
+    static PlatformCheck platformCheck(ImageBuilder.Plan plan) throws IOException {
+        List<String> platforms = plan.config().platforms();
+        if (platforms.size() > 1) {
+            return new PlatformCheck(
+                    "an AOT cache loads only on the platform that trained it, and this image is built for "
+                            + String.join(", ", platforms),
+                    List.of());
+        }
+        if (BaseJre.hostCanExecute(platforms)) return PlatformCheck.NATIVE;
+        String runtime = containerRuntime(plan.config().dockerExecutable());
+        if (runtime == null) return PlatformCheck.NATIVE; // refused by unsupportedReason, as before
+        String platform = platform(plan.config());
+        String base = qualify(ImageBuilder.baseOf(plan.config()));
+        List<String> probe = List.of(
+                runtime,
+                "run",
+                "--rm",
+                "--platform",
+                platform,
+                base,
+                "java",
+                "-XshowSettings:properties",
+                "-XX:+UnlockDiagnosticVMOptions",
+                "-XX:+PrintFlagsFinal",
+                "-version");
+        Processes.Captured run = Processes.capture(probe, PROBE_TIMEOUT);
+        if (run.timedOut()) throw new IOException("[image] aot-cache: " + String.join(" ", probe) + " did not finish");
+        String refusal = platformRefusal(runtime, platform, run.exit(), run.output());
+        if (refusal != null) return new PlatformCheck(refusal, List.of());
+        return new PlatformCheck(null, emulatedOn(platform) == null ? List.of() : noCodeFlags(run.output()));
+    }
+
+    /**
+     * The flags that keep AOT code out of a cache, from a {@code -XX:+PrintFlagsFinal} listing: every
+     * {@code AOT…Caching} switch the JVM has (adapters and stubs in JDK 27), turned off. Empty for a
+     * JVM with none, which stores no code to begin with.
+     */
+    static List<String> noCodeFlags(String flagsFinal) {
+        List<String> off = new ArrayList<>();
+        for (String line : flagsFinal.split("\n")) {
+            String[] f = line.strip().split("\\s+");
+            if (f.length >= 3 && f[0].equals("bool") && f[1].matches("AOT\\w*Caching") && f[2].equals("=")) {
+                off.add("-XX:-" + f[1]);
+            }
+        }
+        if (off.isEmpty()) return List.of();
+        off.addFirst("-XX:+UnlockDiagnosticVMOptions");
+        return List.copyOf(off);
+    }
+
+    /** How long the platform probe (a pull, then {@code java -version}) may take. */
+    private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(300);
+
+    /**
+     * Read the platform probe: null when the base's JVM ran as {@code platform}, the reason when the
+     * runtime cannot run that platform here (no emulation for it) or ran another platform's JVM. A
+     * probe that failed for any other reason (a pull, a credential) is an error, not a skip.
+     */
+    static @Nullable String platformRefusal(String runtime, String platform, int exit, String output)
+            throws IOException {
+        String want = BaseJre.normalizeArch(platform.substring(platform.indexOf('/') + 1));
+        for (String line : output.split("\n")) {
+            String t = line.strip();
+            if (!t.startsWith("os.arch = ")) continue;
+            String ran =
+                    BaseJre.normalizeArch(t.substring("os.arch = ".length()).strip());
+            if (ran.equals(want)) return null;
+            return runtime + " ran the " + ran + " JVM when asked for " + platform
+                    + ", so the cache would be trained for another platform than the image's";
+        }
+        if (output.toLowerCase(Locale.ROOT).contains("exec format error")) {
+            return runtime + " on this host cannot run " + platform + " programs (exec format error)";
+        }
+        throw new IOException("[image] aot-cache: could not start the base image's java for " + platform + " (exit "
+                + exit + "):\n" + AotTraining.tail(output));
+    }
+
+    /** The host's architecture when it is not {@code platform}'s: the training runs are emulated. */
+    static @Nullable String emulatedOn(String platform) {
+        String host = BaseJre.normalizeArch(System.getProperty("os.arch", ""));
+        String want = BaseJre.normalizeArch(platform.substring(platform.indexOf('/') + 1));
+        return host.equals(want) ? null : host;
+    }
+
     /**
      * Stage the image's layout, train inside the base image, and verify the result loads. Returns
      * the cache file, or throws with the reason it could not be produced.
@@ -108,7 +216,13 @@ final class AotCacheTrainer {
      * @param auth the credential for the base image's registry — the JRE this trains with is
      *     extracted from that image, so a private base has to authenticate here too
      */
-    static Result train(ImageBuilder.Plan plan, Path workDir, Path cacheRoot, RegistryAuth auth, Consumer<String> log)
+    static Result train(
+            ImageBuilder.Plan plan,
+            PlatformCheck check,
+            Path workDir,
+            Path cacheRoot,
+            RegistryAuth auth,
+            Consumer<String> log)
             throws IOException, InterruptedException {
         String blocked = unsupportedReason(plan);
         if (blocked != null) throw new IOException(blocked);
@@ -172,12 +286,17 @@ final class AotCacheTrainer {
                 throw new IOException(
                         "no docker, podman or nerdctl to train in, and " + base + "'s JVM does not run here");
             }
-            launcher = containerLauncher(runtime, staging, base, env);
+            launcher = containerLauncher(runtime, staging, base, platform(plan.config()), env);
         }
+        String emulated = localJre == null ? emulatedOn(platform(plan.config())) : null;
         log.accept(
                 localJre != null
                         ? "training the AOT cache with " + base + "'s JVM, on this host"
-                        : "training the AOT cache in " + base);
+                        : "training the AOT cache in " + base + " for " + platform(plan.config())
+                                + (emulated == null
+                                        ? ""
+                                        : ", emulated on this " + emulated + " host"
+                                                + (check.noCode().isEmpty() ? "" : ", without AOT code")));
 
         Path cache = staging.resolve(CACHE_FILE);
         AotTraining.trainAotCache(
@@ -187,6 +306,7 @@ final class AotCacheTrainer {
                 runArgs,
                 new AotTraining.Target(CACHE_FILE, cache),
                 new AotTraining.Target(CONFIG_FILE, staging.resolve(CONFIG_FILE)),
+                localJre == null ? check.noCode() : List.of(),
                 TRAIN_TIMEOUT,
                 log);
         Files.setLastModifiedTime(cache, LAYER_TIME);
@@ -295,10 +415,14 @@ final class AotCacheTrainer {
         return env;
     }
 
-    /** {@code <runtime> run --rm -e … -v <staging>:/app -w /app <base>} — everything before the java command. */
+    /**
+     * {@code <runtime> run --rm --platform <p> -e … -v <staging>:/app -w /app <base>} — everything
+     * before the java command. The platform is the image's: without it the runtime runs the host's
+     * variant of a multi-platform base, whose JVM trains a cache the image's JVM refuses.
+     */
     static List<String> containerPrefix(
-            String runtime, Path staging, String base, String name, Map<String, String> env) {
-        List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--name", name));
+            String runtime, Path staging, String base, String platform, String name, Map<String, String> env) {
+        List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--platform", platform, "--name", name));
         // Rootful docker writes app.aot/app.aotconf into the bind mount as root:root — the
         // follow-up setLastModifiedTime/delete then fails AFTER a successful training run, and
         // the root-owned staging dir breaks the next build's cleanup. Rootless podman
@@ -401,11 +525,11 @@ final class AotCacheTrainer {
 
     /** Runs in a fresh container of {@code base}; stopped and killed through the runtime, by name. */
     private static AotTraining.Launcher containerLauncher(
-            String runtime, Path staging, String base, Map<String, String> env) {
+            String runtime, Path staging, String base, String platform, Map<String, String> env) {
         return new AotTraining.Launcher() {
             @Override
             public List<String> java(String runName) {
-                List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, runName, env));
+                List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, platform, runName, env));
                 cmd.add("java");
                 return cmd;
             }

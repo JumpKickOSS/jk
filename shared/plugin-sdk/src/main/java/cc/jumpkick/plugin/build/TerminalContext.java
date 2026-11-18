@@ -47,4 +47,11 @@ public interface TerminalContext {
 
     /** Progress label surfaced in the build UI. */
     void label(String text);
+
+    /**
+     * Something the goal left out of what it produced that the user asked for, such as an image
+     * shipped without the AOT cache its config names. The engine puts it on the verdict, a passing
+     * build's included, as it does a step's {@link TaskExec#notice}. Not for progress or chatter.
+     */
+    default void notice(String message) {}
 }

@@ -64,6 +64,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -224,7 +225,8 @@ public final class ImagePlans {
                             classesDir,
                             chosen,
                             workerJar,
-                            base -> runImageWorker(
+                            (base, said) -> runImageWorker(
+                                    said,
                                     cache,
                                     workerJar,
                                     project,
@@ -443,6 +445,7 @@ public final class ImagePlans {
      * may point somewhere else by the time Jib pulls.
      */
     private static String runImageWorker(
+            Consumer<String> said,
             Path cache,
             Path workerJar,
             JkBuild project,
@@ -456,14 +459,18 @@ public final class ImagePlans {
         try {
             return forkWorker(
                     workerJar,
-                    imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath));
+                    imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath),
+                    said);
         } catch (IOException e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
-    /** Run the image worker on {@code sw}; the reference it built, or {@code ""} for a tarball. */
-    static String forkWorker(Path workerJar, SpecWriter sw) {
+    /**
+     * Run the image worker on {@code sw}; the reference it built, or {@code ""} for a tarball.
+     * {@code said} takes each {@code diagnostic} reply.
+     */
+    static String forkWorker(Path workerJar, SpecWriter sw, Consumer<String> said) {
         try {
             Path spec = ImageCredentials.newSpecFile();
             try {
@@ -474,6 +481,7 @@ public final class ImagePlans {
                 PluginClient client = new PluginClient("##JKIM:")
                         .on(PluginProtocol.RESULT, json -> ref[0] = Jsonl.str(json, "ref"))
                         .on(PluginProtocol.ERROR, json -> workerError[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
+                        .on(PluginProtocol.DIAGNOSTIC, said)
                         .passthrough(ln -> diag.append(ln).append('\n'));
                 int exit;
                 // Base layers the worker pulls are the run's downloads like any other.

@@ -14,6 +14,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.LibDir;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.PlannerPlugin;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.base.BaseImageDigest;
 import cc.jumpkick.runtime.base.ImageCredentials;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,9 +41,12 @@ final class ImageWrite {
 
     private ImageWrite() {}
 
-    /** The image worker fork, indirect so a test can observe that no worker was forked. */
+    /**
+     * The image worker fork, indirect so a test can observe that no worker was forked. {@code said}
+     * takes each {@code diagnostic} reply the worker sends.
+     */
     interface WorkerFork {
-        String run(String base);
+        String run(String base, Consumer<String> said);
     }
 
     /**
@@ -192,13 +197,22 @@ final class ImageWrite {
                             project.project().name(), project.project().version()));
         }
         String built;
+        // What the worker says is the step's to say. A notice (an AOT cache the image was asked for
+        // and does not carry) also keeps the image unrecorded, so the next build says it again
+        // rather than calling the image up to date.
+        boolean[] noticed = {false};
+        Consumer<String> said = line -> {
+            noticed[0] |= PlannerPlugin.forwardStepDiagnostic(
+                    ctx, layout.moduleRoot(), project.project().name(), TaskNames.WRITE_IMAGE, line);
+        };
         try {
-            built = fork.run(base);
+            built = fork.run(base, said);
             ctx.put(ImagePlans.IMAGE_REF, built);
         } catch (RuntimeException e) {
             ctx.error("image", Errors.text(e));
             throw e;
         }
+        if (noticed[0]) recorded = null;
         if (recorded != null && tarballPath != null && Files.isRegularFile(tarballPath)) {
             ac.storeWithOutputs(recorded.task(), recorded.key(), ImageSidecar.ofTarball(tarballPath), Map.of());
         } else if (recorded != null && daemonExe != null) {

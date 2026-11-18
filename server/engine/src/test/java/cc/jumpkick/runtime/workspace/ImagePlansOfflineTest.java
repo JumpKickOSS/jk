@@ -216,7 +216,7 @@ class ImagePlansOfflineTest {
                         null,
                         MAIN,
                         fx.workerJar(),
-                        base -> {
+                        (base, said) -> {
                             forks.incrementAndGet();
                             return "";
                         }))

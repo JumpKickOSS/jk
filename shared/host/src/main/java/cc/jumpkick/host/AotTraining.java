@@ -107,6 +107,23 @@ public final class AotTraining {
             Duration timeout,
             Consumer<String> log)
             throws IOException, InterruptedException {
+        trainAotCache(launcher, javaOpts, runArgs, cache, config, List.of(), timeout, log);
+    }
+
+    /**
+     * As above, with {@code createFlags} on the assembling run only: what shapes the cache's
+     * content without being a flag the application runs with, such as leaving its AOT code out.
+     */
+    public static void trainAotCache(
+            Launcher launcher,
+            List<String> javaOpts,
+            List<String> runArgs,
+            Target cache,
+            Target config,
+            List<String> createFlags,
+            Duration timeout,
+            Consumer<String> log)
+            throws IOException, InterruptedException {
         Cmd record = command(
                 launcher,
                 "jk-aot-train-",
@@ -128,14 +145,10 @@ public final class AotTraining {
                     + tail(recorded.text()));
         }
 
-        Cmd assemble = command(
-                launcher,
-                "jk-aot-create-",
-                javaOpts,
-                runArgs,
-                "-XX:AOTMode=create",
-                "-XX:AOTConfiguration=" + config.arg(),
-                "-XX:AOTCache=" + cache.arg());
+        List<String> create = new ArrayList<>(createFlags);
+        create.addAll(
+                List.of("-XX:AOTMode=create", "-XX:AOTConfiguration=" + config.arg(), "-XX:AOTCache=" + cache.arg()));
+        Cmd assemble = command(launcher, "jk-aot-create-", javaOpts, runArgs, create.toArray(String[]::new));
         Run assembled = run(launcher, assemble, timeout, log);
         if (assembled.diedOnItsOwn() || sizeOrZero(cache.file()) == 0) {
             throw new IOException("the recording could not be assembled into a cache.\n"
@@ -145,19 +158,24 @@ public final class AotTraining {
         Files.deleteIfExists(config.file());
 
         // Prove it loads. A rejected cache is silent at default log level, so an unverified one is
-        // indistinguishable from a working one.
-        Cmd verify =
-                command(launcher, "jk-aot-verify-", javaOpts, runArgs, "-Xlog:aot=info", "-XX:AOTCache=" + cache.arg());
+        // indistinguishable from a working one; -XX:AOTMode=on makes a JVM that cannot map it
+        // refuse to start, and the log says why.
+        Cmd verify = command(launcher, "jk-aot-verify-", javaOpts, runArgs, verifyFlags(cache));
         Run verified = run(launcher, verify, timeout, log);
+        String refusal = AotCacheFiles.refusal(verified.text());
+        if (refusal != null) {
+            throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
+        }
         if (verified.diedOnItsOwn()) {
             throw new IOException("the application does not start with the cache (exit " + verified.exit() + ").\n"
                     + "  command: " + verify.line() + "\n"
                     + tail(verified.text()));
         }
-        String refusal = AotCacheFiles.refusal(verified.text());
-        if (refusal != null) {
-            throw new IOException("the AOT cache was trained but the JVM refused it:\n  " + refusal);
-        }
+    }
+
+    /** The proving run's flags: the cache, insisted on, with the JVM's account of mapping it. */
+    static String[] verifyFlags(Target cache) {
+        return new String[] {"-XX:AOTMode=on", "-Xlog:aot=info", "-XX:AOTCache=" + cache.arg()};
     }
 
     /**
