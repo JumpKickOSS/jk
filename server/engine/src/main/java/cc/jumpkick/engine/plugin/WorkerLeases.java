@@ -556,8 +556,9 @@ public final class WorkerLeases {
                         granted = waiter.granted;
                         if (!granted) {
                             long now = Clock.SYSTEM.nanos();
-                            long left = deadlineNanos - (now - Math.max(arrived, lastGrant));
-                            if (left <= 0) giveUp(waiter, now - arrived);
+                            long still = now - Math.max(arrived, lastGrant);
+                            long left = deadlineNanos - still;
+                            if (left <= 0) giveUp(waiter, now - arrived, lastGrant > arrived ? still : -1);
                             else {
                                 refuseIfItNeverFits(waiter);
                                 lock.wait(Math.max(1, Math.min(250, TimeUnit.NANOSECONDS.toMillis(left))));
@@ -622,13 +623,18 @@ public final class WorkerLeases {
 
         /**
          * Under the lock: no lease was granted for {@link #WAIT_AT_MOST} while {@code waiter} waited.
-         * Behind another waiter, it names the first in line, which is what it waited on.
+         * Behind another waiter, it names the first in line, which is what it waited on. {@code
+         * stillNanos} is how long the line stood still when leases were granted to others since the
+         * waiter came, so a wait past the limit says the limit counts from the last grant; else
+         * negative.
          */
-        private void giveUp(Waiter waiter, long waitedNanos) {
+        private void giveUp(Waiter waiter, long waitedNanos, long stillNanos) {
             long budget = capacityBytes();
             boolean slot = waiter.demand.cpuSlot && hostJvms() >= cpuCap();
             String phrase = MemoryNotes.waitedPhrase(waitedNanos);
             if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
+            if (stillNanos >= 0)
+                phrase += ", the last " + MemoryNotes.seconds(stillNanos) + " with no lease granted to anyone,";
             Waiter first = queue.peekFirst();
             String line = first == null || first == waiter
                     ? waitLine(waiter, budget, true)

@@ -372,7 +372,7 @@ and `auto-warmup` do not follow CI.
 | `log-max-mb` | `JK_ENGINE_LOG_MAX_MB` | 16 | engine start | Engine log size cap in MiB; at the cap the log rolls to .1. 0 = no cap. |
 | `log-level` | `JK_LOG_LEVEL` | info | engine start | Engine log threshold: debug, info, warn or error. debug adds the perf probes. |
 | `detached-deadline-ms` | `JK_ENGINE_DETACHED_DEADLINE_MS` | 3600000 | engine start | Wall deadline for a detached HTTP/MCP job, in ms; a request's own deadline wins. 0 = off. |
-| `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound. |
+| `queue-wait-ms` | `JK_ENGINE_QUEUE_WAIT_MS` | 3600000 | engine start | How long a job waits to start for the engine's own heap before it gives up naming the live job, in ms; a fork's wait for worker memory is not bounded by it. 0 = no bound. |
 | `keep-awake` | `JK_KEEP_AWAKE` | ac | each job | Keep the machine from idle sleep while a job runs: ac (on mains power), always or never. A closed lid always sleeps. |
 | `drain-deadline-ms` | `JK_ENGINE_DRAIN_DEADLINE_MS` | 3600000 | engine start | How long a stopping engine lets its in-flight jobs finish before it cancels them, kills its workers and exits, in ms. 0 = no bound. |
 <!-- engine-config:end -->
@@ -555,6 +555,11 @@ once no lease has been granted to anyone for ten minutes, a lease still queued f
 naming what it needed and who held the memory. A long wait in a line that keeps moving, such
 as two builds sharing the JVM slots, does not fail:
 `job #7 waited 600s for memory and gave up: needs 3.4 GiB (2.9 GiB free of the 13.5 GiB worker budget); held by job #3 6.1 GiB in 9 forks`.
+The ten minutes count from the last grant, so a lease that saw others granted first waited longer
+and says for how long the line stood still:
+`job #2 waited 1186s for memory, the last 600s with no lease granted to anyone, and gave up: …`.
+They are fixed; `queue-wait-ms` (`JK_ENGINE_QUEUE_WAIT_MS`) bounds a job's wait for the engine's
+own heap before it starts, not a fork's wait for worker memory.
 When it is the heaps' bound that stops it, the line says so:
 `needs 160 MiB with a 2.2 GiB heap ceiling (9.3 GiB free of the 14.0 GiB worker budget, but the held workers' heaps may grow to 20.1 GiB of the 21.0 GiB allowed together)`.
 A lease that gave up behind another names the first in line, which is what it waited on:

@@ -80,7 +80,7 @@ public final class EngineControls {
                     "JK_ENGINE_QUEUE_WAIT_MS",
                     "3600000",
                     ENGINE_START,
-                    "How long a job waits for engine memory before it gives up naming the live job, in ms. 0 = no bound."),
+                    "How long a job waits to start for the engine's own heap before it gives up naming the live job, in ms; a fork's wait for worker memory is not bounded by it. 0 = no bound."),
             control(
                     "keep-awake",
                     "JK_KEEP_AWAKE",

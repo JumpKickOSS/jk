@@ -103,6 +103,7 @@ Disable the transcript with `JK_CLI_DETAILS=off`. Chrome tracing (timings, not f
 | Cache surprise (rebuilt / didn’t) | `jk explain` | [Explain](explain.md) |
 | “Build #N already running” | another `jk` in this checkout, through this engine or another on the machine (`target/.jk/build.lock`) | `jk jobs` then `jk cancel`; or wait. Worktrees are separate slots |
 | Disk / CAS full | `jk cache usage` / `jk storage usage` | `jk cache clean` first; [Cache](cache.md) |
+| `job #N waited 600s for memory and gave up` (or `for a JVM slot`) | the line itself: what the fork needed, what is free, whether the held workers' heap ceiling stopped it, and who held the memory; `jk engine status` while it waits | Idle warm workers give way on their own, so it means working forks held the memory or the slots for ten minutes with nothing granted. Lower a pinned `-Xmx`, or run fewer modules at once (`-j`, `jk test -L`). `JK_ENGINE_QUEUE_WAIT_MS` does not shorten this wait; [Engine](engine.md) |
 | Engine won’t start / version skew | `jk engine status` | `jk engine stop` then retry; [Engine](engine.md) |
 | Plugin worker dies with `NoSuchMethodError` / `NoClassDefFoundError` (`jk image`, `jk test`, a compiler) | `jk doctor -v` — the `worker:` line names the jar’s source repo and lists the launch classpath | A `jk-local` worker was installed from a checkout and shadows the published one: `jk storage clean -w`, then rerun; [Cache](cache.md#plugin-workers) |
 | Format check failed | `jk format -c` | `jk format` (no `--check`); [Format](format.md) |

@@ -13,6 +13,8 @@ JumpKick shows you this page's new entries after it updates itself.
   classes asked for 3.5 GiB, half the runner, and waited ten minutes; it now takes the suite's heap.
 - **No "learned a test heap" line per module on a fresh machine.** Nothing was learned: the
   figure was the build's own plan. Past a quarter of RAM a test JVM runs at that, silently.
+- **A memory wait that gives up says how long nothing moved.** Ten minutes with no lease granted
+  to anyone; `JK_ENGINE_QUEUE_WAIT_MS` bounds a job's wait for the engine's own heap, not this one.
 
 - **Micronaut tests pass where your shell exports `HOSTNAME`, as under Maven and Gradle.** On Fedora
   and RHEL that name can reach the host over IPv6 alone, and 0.53.0's test JVMs, which preferred

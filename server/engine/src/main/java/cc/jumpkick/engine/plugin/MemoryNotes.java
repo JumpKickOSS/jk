@@ -29,12 +29,17 @@ public final class MemoryNotes {
 
     /** {@code waited 3s for memory}, or {@code waited 1.5s for memory}. */
     public static String waitedPhrase(long nanos) {
+        return "waited " + seconds(nanos) + " for memory";
+    }
+
+    /** {@code 18s}, {@code 0.3s}: whole seconds from ten on, tenths below. */
+    static String seconds(long nanos) {
         double seconds = Math.max(0, nanos) / 1_000_000_000.0;
         String text = seconds >= 10
                 ? String.format(Locale.ROOT, "%.0f", seconds)
                 : String.format(Locale.ROOT, "%.1f", seconds);
         if (text.endsWith(".0")) text = text.substring(0, text.length() - 2);
-        return "waited " + text + "s for memory";
+        return text + "s";
     }
 
     /**

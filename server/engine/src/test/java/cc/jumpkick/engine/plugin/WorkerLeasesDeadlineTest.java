@@ -108,6 +108,33 @@ class WorkerLeasesDeadlineTest {
         }
     }
 
+    /**
+     * A lease that gives up after a grant to another says how long the line stood still, which is
+     * what the limit counts: flaq's runner read "waited 1186s for memory and gave up" against a ten
+     * minute limit.
+     */
+    @Test
+    void a_lease_that_gives_up_after_the_line_moved_says_how_long_it_stood_still() throws Exception {
+        WorkerLeases.Ledger ledger =
+                ledger(() -> 4 * GIB, OverbookSignals.off()).waitAtMost(Duration.ofMillis(400));
+        WorkerLeases.Grant held = ledger.acquireBytes(3 * GIB, true, 3L);
+        CompletableFuture<WorkerLeases.Grant> first = acquireBytes(ledger, 3 * GIB, 4L);
+        awaitQueued(ledger, 1);
+        CompletableFuture<WorkerLeases.Grant> last = acquireBytes(ledger, 3 * GIB, 7L);
+        awaitQueued(ledger, 2);
+        Thread.sleep(250);
+        held.close();
+        try (WorkerLeases.Grant moved = first.get(5, TimeUnit.SECONDS)) {
+            Throwable cause = failure(last, 5);
+            assertThat(cause).isInstanceOf(WorkerLeases.LeaseRefused.class);
+            assertThat(cause.getMessage())
+                    .startsWith("job #7 waited ")
+                    .contains(
+                            "s for memory, the last 0.4s with no lease granted to anyone, and gave up: needs 3.0 GiB");
+            assertThat(ledger.queued()).isZero();
+        }
+    }
+
     @Test
     void a_lease_granted_before_its_deadline_is_not_failed() throws Exception {
         WorkerLeases.Ledger ledger = ledger(() -> 4 * GIB, LITTLE_FREE).waitAtMost(Duration.ofSeconds(30));
