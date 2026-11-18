@@ -12,7 +12,6 @@ src/main/java/com/acme/GreetingController.java
 src/main/java/com/acme/GreetingService.java
 src/main/resources/application.properties
 src/test/java/com/acme/GreetingControllerTest.java
-src/test/resources/application-test.properties
 --- jk.toml
 group = "com.acme"
 name = "demo"
@@ -83,7 +82,6 @@ resources/application.properties
 src/com/acme/Application.java
 src/com/acme/GreetingController.java
 src/com/acme/GreetingService.java
-test/resources/application-test.properties
 test/src/com/acme/GreetingControllerTest.java
 --- jk.toml
 group = "com.acme"
