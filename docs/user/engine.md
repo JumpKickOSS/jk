@@ -536,8 +536,11 @@ overbooked. JumpKick does not kill it; the per-worker cgroup cap above is what b
 
 A lease that does not fit waits, first in line first. The first in line waits only on
 forks that are working: when it would fit once a warm helper let go of its lease (the
-build-script host, a warm plugin worker or a lingering Java compiler worker), the helper is
-asked to exit, finishes what it is running, and starts again on its next use. A fork also
+build-script host, a warm plugin worker, a lingering Kotlin, Groovy or Java compiler worker),
+the helper is asked to exit, finishes what it is running, and starts again on its next use.
+That holds for both bounds: the budget, and the twice-the-budget bound on what the workers'
+heaps may grow to, which idle helpers with generous first heaps can fill while they hold
+little of the budget. A fork also
 waits when every JVM slot is taken (one per logical processor); that is ordinary queueing
 and writes nothing. A warm helper takes no JVM slot, so only forks that are working fill
 them. While none of a step's forks runs and its next one
@@ -552,6 +555,10 @@ once no lease has been granted to anyone for ten minutes, a lease still queued f
 naming what it needed and who held the memory. A long wait in a line that keeps moving, such
 as two builds sharing the JVM slots, does not fail:
 `job #7 waited 600s for memory and gave up: needs 3.4 GiB (2.9 GiB free of the 13.5 GiB worker budget); held by job #3 6.1 GiB in 9 forks`.
+When it is the heaps' bound that stops it, the line says so:
+`needs 160 MiB with a 2.2 GiB heap ceiling (9.3 GiB free of the 14.0 GiB worker budget, but the held workers' heaps may grow to 20.1 GiB of the 21.0 GiB allowed together)`.
+A lease that gave up behind another names the first in line, which is what it waited on:
+`job #8 waited 600s for memory and gave up: needs 64 MiB behind job #7, first in line, which needs …`.
 
 That same lease may start anyway, past the reservation, when the host still has
 room. It does not when this engine was started with `JK_OVERBOOK` set to `0` (`false`, `no`

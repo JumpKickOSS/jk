@@ -4,6 +4,12 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
+## 0.53.1
+
+- **A first build no longer gives up waiting for memory it has.** Kotlin, Groovy and plugin
+  workers left idle by earlier modules now exit for a job whose heap would not fit beside theirs,
+  instead of that job failing after ten minutes with most of the worker budget free.
+
 ## 0.53.0
 
 - **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test, and a cached result

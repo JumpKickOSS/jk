@@ -11,11 +11,9 @@ import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -53,7 +51,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A {@linkplain Resident resident} helper (the build-script host, a warm plugin worker, a
  * lingering Java compiler worker) holds its lease between requests and takes no JVM slot. When the head of the
- * queue would fit once residents let go, the ledger asks them to exit; they finish the request in
+ * queue would fit once residents let go, in the budget and under the bound on what the held heaps may
+ * grow to, the ledger asks them to exit; they finish the request in
  * flight, exit, and start again on their next use. So the head waits only on forks that are doing
  * work, never on an idle holder.
  *
@@ -605,13 +604,21 @@ public final class WorkerLeases {
                     + " worker budget allows; lower the heap, or raise " + WorkerContainment.BUDGET_ENV);
         }
 
-        /** Under the lock: no lease was granted for {@link #WAIT_AT_MOST} while {@code waiter} waited. */
+        /**
+         * Under the lock: no lease was granted for {@link #WAIT_AT_MOST} while {@code waiter} waited.
+         * Behind another waiter, it names the first in line, which is what it waited on.
+         */
         private void giveUp(Waiter waiter, long waitedNanos) {
             long budget = capacityBytes();
             boolean slot = waiter.demand.cpuSlot && hostJvms() >= cpuCap();
             String phrase = MemoryNotes.waitedPhrase(waitedNanos);
             if (slot) phrase = phrase.replace("for memory", "for a JVM slot");
-            throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + waitLine(waiter, budget, true));
+            Waiter first = queue.peekFirst();
+            String line = first == null || first == waiter
+                    ? waitLine(waiter, budget, true)
+                    : "needs " + format(waiter.demand.bytes) + " behind " + ownerOf(first) + ", first in line, which "
+                            + waitLine(first, budget, true);
+            throw new LeaseRefused(ownerOf(waiter) + " " + phrase + " and gave up: " + line);
         }
 
         /** Under the lock: grant {@code candidate} when it is the only waiter and it fits. */
@@ -640,28 +647,33 @@ public final class WorkerLeases {
         }
 
         /**
-         * Under the lock: when {@code head} is short only of memory that residents hold, ask enough of
-         * them to exit. Each resident is asked once; its grant closes when its process is gone. While
-         * forks that are working still hold what the head needs, residents are left alone.
+         * Under the lock: when {@code head} is short only of what residents hold, its bytes or room
+         * under the heap {@linkplain #ceilingBlocks ceiling}, ask enough of them to exit. Each resident
+         * is asked once; its grant closes when its process is gone. While forks that are working still
+         * hold what the head needs, residents are left alone.
          */
         private void reclaimFor(Waiter head) {
             if (head.demand.cpuSlot && hostJvms() >= cpuCap()) return;
             long cap = capacityBytes();
-            long resident = 0;
-            long yielding = 0;
+            long bytesShort = head.demand.bytes - (cap - hostCharged());
+            long heapsShort = ceilings + head.demand.worstBytes - OverbookSignals.ceiling(cap);
+            long bytesLeft = 0;
+            long heapsLeft = 0;
             for (Waiter w : held) {
                 if (w.resident == null) continue;
-                resident += w.demand.bytes;
-                if (w.yieldAsked) yielding += w.demand.bytes;
+                bytesShort -= w.yieldAsked ? w.demand.bytes : 0;
+                heapsShort -= w.yieldAsked ? w.demand.worstBytes : 0;
+                bytesLeft += w.yieldAsked ? 0 : w.demand.bytes;
+                heapsLeft += w.yieldAsked ? 0 : w.demand.worstBytes;
             }
-            long charged = hostCharged();
-            if (resident == 0 || head.demand.bytes > cap - (charged - resident)) return;
+            if (bytesShort > bytesLeft || heapsShort > heapsLeft) return;
             List<Waiter> ask = new ArrayList<>();
             for (Waiter w : held) {
-                if (head.demand.bytes <= cap - (charged - yielding)) break;
+                if (bytesShort <= 0 && heapsShort <= 0) break;
                 if (w.resident == null || w.yieldAsked) continue;
                 w.yieldAsked = true;
-                yielding += w.demand.bytes;
+                bytesShort -= w.demand.bytes;
+                heapsShort -= w.demand.worstBytes;
                 ask.add(w);
             }
             for (Waiter w : ask) {
@@ -707,34 +719,21 @@ public final class WorkerLeases {
                         .append(cpuCap())
                         .append(" running)");
             } else {
+                boolean heaps = ceilingBlocks(head, budget);
                 line.append(format(head.demand.bytes))
+                        .append(heaps ? " with a " + format(head.demand.worstBytes) + " heap ceiling" : "")
                         .append(" (")
                         .append(format(Math.max(0, budget - hostCharged())))
-                        .append(" free");
-                if (nameBudget) line.append(" of the ").append(format(budget)).append(" worker budget");
+                        .append(" free")
+                        .append(nameBudget ? " of the " + format(budget) + " worker budget" : "");
+                if (heaps)
+                    line.append(", but the held workers' heaps may grow to " + format(ceilings) + " of the "
+                            + format(OverbookSignals.ceiling(budget)) + " allowed together");
                 line.append(')');
             }
-            Map<String, Holder> holders = new LinkedHashMap<>();
-            for (Waiter w : held) {
-                holders.computeIfAbsent(ownerOf(w), Holder::new).add(w);
-            }
-            long others = others().bytes();
-            if (others > 0) holders.computeIfAbsent(OTHER_ENGINES, Holder::new).bytes += others;
-            if (holders.isEmpty()) return line.toString();
-            List<Holder> ranked = new ArrayList<>(holders.values());
-            ranked.sort((a, b) -> Long.compare(b.bytes, a.bytes));
-            line.append("; held by ");
-            int shown = Math.min(HOLDERS_SHOWN, ranked.size());
-            for (int i = 0; i < shown; i++) {
-                if (i > 0) line.append(", ");
-                Holder h = ranked.get(i);
-                line.append(h.owner).append(' ').append(format(h.bytes));
-                if (h.forks > 1) line.append(" in ").append(h.forks).append(" forks");
-                if (h.asked) line.append(" (asked to exit)");
-            }
-            if (ranked.size() > shown)
-                line.append(", ").append(ranked.size() - shown).append(" more");
-            return line.toString();
+            LeaseHolders holders = new LeaseHolders();
+            for (Waiter w : held) holders.add(ownerOf(w), w.demand.bytes + w.excess(), w.yieldAsked);
+            return line.append(holders.line(others().bytes(), HOLDERS_SHOWN)).toString();
         }
 
         /**
@@ -766,8 +765,7 @@ public final class WorkerLeases {
             if (waiter.demand.cpuSlot && (long) jvmRunning + others.jvms() >= cpuCap())
                 return refused(waiter, WaitReason.SLOT);
             long cap = capacityBytes();
-            if (ceilings > OverbookSignals.ceiling(cap) - waiter.demand.worstBytes)
-                return refused(waiter, WaitReason.MEMORY);
+            if (ceilingBlocks(waiter, cap)) return refused(waiter, WaitReason.MEMORY);
             long charged = charged() + Math.max(0, others.bytes());
             if (charged < 0) charged = Long.MAX_VALUE;
             if (charged <= cap && waiter.demand.bytes <= cap - charged) {
@@ -775,6 +773,15 @@ public final class WorkerLeases {
                 return true;
             }
             return overbook(waiter, cap, charged) || refused(waiter, WaitReason.MEMORY);
+        }
+
+        /**
+         * Under the lock: what the held forks and {@code waiter} may grow to, their {@code -Xmx}
+         * leases, would pass {@link OverbookSignals#ceiling} of {@code cap}, however much of the
+         * budget is free.
+         */
+        private boolean ceilingBlocks(Waiter waiter, long cap) {
+            return ceilings > OverbookSignals.ceiling(cap) - waiter.demand.worstBytes;
         }
 
         private static boolean refused(Waiter waiter, WaitReason reason) {
@@ -1029,27 +1036,6 @@ public final class WorkerLeases {
         /** The same demand leasing {@code next} bytes. */
         Demand withBytes(long next) {
             return new Demand(next, xmxBytes, jvm, clamped, userPinned, overBudget, cpuSlot, next, pin);
-        }
-    }
-
-    /** The holder {@link Snapshot#waiting()} names for leases of other engines of this host. */
-    private static final String OTHER_ENGINES = "other engines";
-
-    /** One owner's held leases, as {@link Snapshot#waiting()} names them. */
-    private static final class Holder {
-        final String owner;
-        long bytes;
-        int forks;
-        boolean asked;
-
-        Holder(String owner) {
-            this.owner = owner;
-        }
-
-        void add(Waiter waiter) {
-            bytes += waiter.demand.bytes + waiter.excess();
-            forks++;
-            asked |= waiter.yieldAsked;
         }
     }
 
