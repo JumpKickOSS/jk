@@ -50,9 +50,14 @@ final class ConfigExtractors {
             Set.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE");
     private static final Pattern TOML_FIELD = Pattern.compile("\\b(group|name|module)\\s*=\\s*\"([^\"]+)\"");
 
+    /** A Spring {@code application*} or {@code bootstrap*} YAML or properties file, whose keys Spring binds. */
+    static boolean springConfig(String relPath) {
+        return SPRING_CONFIG.matcher(relPath).find();
+    }
+
     static Fragment yaml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
-        boolean spring = SPRING_CONFIG.matcher(relPath).find();
+        boolean spring = springConfig(relPath);
         boolean openApi = OPENAPI.matcher(text).find();
         Liquibase.Yaml changelog = text.contains("databaseChangeLog") ? new Liquibase.Yaml(b) : null;
         List<int[]> indents = new ArrayList<>();
@@ -112,7 +117,7 @@ final class ConfigExtractors {
 
     static Fragment properties(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
-        boolean spring = SPRING_CONFIG.matcher(relPath).find();
+        boolean spring = springConfig(relPath);
         List<String> lines = Lines.split(text);
         int keys = 0;
         for (int i = 0; i < lines.size(); i++) {

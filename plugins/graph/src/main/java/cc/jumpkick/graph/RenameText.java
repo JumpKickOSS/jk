@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
@@ -9,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -116,11 +118,12 @@ final class RenameText {
 
     /**
      * How a line is judged: {@code null} to skip it, else whether it must change, the grade and the
-     * reason. {@code inString} says the match sits in a string literal of a JVM source.
+     * reason. {@code index} is the line's, from 0, and {@code inString} says the match sits in a string
+     * literal of a JVM source.
      */
     interface Judge {
         @Nullable
-        Verdict judge(String rel, String line, int at, boolean inString, boolean inComment);
+        Verdict judge(String rel, int index, String line, int at, boolean inString, boolean inComment);
     }
 
     record Verdict(boolean must, RenamePlan.Grade grade, String reason) {}
@@ -162,7 +165,7 @@ final class RenameText {
                             && (startsInBlock && !line.substring(0, m.start()).contains("*/")
                                     || commentAt(line, m.start()));
                     if (indexed.contains(rel) && !inString && !inComment) continue;
-                    Verdict here = judge.judge(rel, line, m.start(), inString, inComment);
+                    Verdict here = judge.judge(rel, i, line, m.start(), inString, inComment);
                     if (here == null) continue;
                     spans.add(new int[] {m.start(), m.end()});
                     verdicts.add(here);
@@ -290,6 +293,109 @@ final class RenameText {
      */
     static String envName(String key) {
         return key.replace("-", "").replace('.', '_').toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * The key a line of a Spring configuration file sets: {@code path}, its segments from the
+     * document's root joined by {@code .}; the line writes them from segment {@code depth} on, the
+     * first at offset {@code start} ({@code sender-address:} under {@code app:} and {@code mail:} has
+     * depth 2).
+     */
+    record ConfigKey(String path, int depth, int start) {
+
+        /** The offset on the line of the path's segment {@code n}, or -1 when the line does not write it. */
+        int segment(int n) {
+            String[] segments = path.split("\\.", -1);
+            if (n < depth || n >= segments.length) return -1;
+            int at = start;
+            for (int k = depth; k < n; k++) at += segments[k].length() + 1;
+            return at;
+        }
+
+        /**
+         * Whether the key is {@code key} or under it, as Spring's relaxed binding compares them ({@code
+         * senderAddress}, {@code sender-address} and {@code sender_address} alike).
+         */
+        boolean binds(String key) {
+            String p = Anchors.relaxed(path);
+            String k = Anchors.relaxed(key);
+            return p.equals(k) || p.startsWith(k + ".") || p.startsWith(k + "[");
+        }
+    }
+
+    private static final Pattern YAML_KEY =
+            Pattern.compile("^(\\s*)(?:-\\s+)?([^#\\s'\"][^:#]*?|'[^']*'|\"[^\"]*\")\\s*:(?:\\s+(.*))?$");
+
+    /** The key each line sets, by the line's index from 0, in a YAML or a properties file. */
+    static Map<Integer, ConfigKey> configKeys(String rel, String[] lines) {
+        return ext(rel).equals("properties") ? propertiesKeys(lines) : yamlKeys(lines);
+    }
+
+    private static Map<Integer, ConfigKey> yamlKeys(String[] lines) {
+        Map<Integer, ConfigKey> out = new HashMap<>();
+        List<Integer> indents = new ArrayList<>();
+        List<String> path = new ArrayList<>();
+        int scalar = -1;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].stripTrailing();
+            if (line.startsWith("---")) {
+                indents.clear();
+                path.clear();
+                scalar = -1;
+                continue;
+            }
+            String t = line.stripLeading();
+            if (t.isEmpty() || t.startsWith("#")) continue;
+            int indent = line.length() - t.length();
+            // A block scalar's text (key: |), however it reads, is no key.
+            if (scalar >= 0 && indent > scalar) continue;
+            scalar = -1;
+            Matcher m = YAML_KEY.matcher(line);
+            if (!m.matches()) continue;
+            int depth = indent + (t.startsWith("- ") ? 2 : 0);
+            while (!indents.isEmpty() && indents.getLast() >= depth) {
+                indents.removeLast();
+                path.removeLast();
+            }
+            String written = m.group(2).strip();
+            int start = m.start(2);
+            if (written.length() >= 2 && (written.startsWith("'") || written.startsWith("\""))) {
+                written = written.substring(1, written.length() - 1);
+                start++;
+            }
+            String parent = String.join(".", path);
+            int segments = parent.isEmpty() ? 0 : parent.split("\\.", -1).length;
+            indents.add(depth);
+            path.add(written);
+            out.put(i, new ConfigKey(String.join(".", path), segments, start));
+            String value = m.group(3) == null ? "" : m.group(3).strip();
+            if (value.startsWith("|") || value.startsWith(">")) scalar = depth;
+        }
+        return out;
+    }
+
+    private static Map<Integer, ConfigKey> propertiesKeys(String[] lines) {
+        Map<Integer, ConfigKey> out = new HashMap<>();
+        boolean continued = false;
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].stripTrailing();
+            boolean continuation = continued;
+            int slashes = 0;
+            for (int k = line.length() - 1; k >= 0 && line.charAt(k) == '\\'; k--) slashes++;
+            continued = slashes % 2 == 1;
+            String t = line.stripLeading();
+            if (continuation || t.isEmpty() || t.startsWith("#") || t.startsWith("!")) continue;
+            int start = line.length() - t.length();
+            int end = start;
+            while (end < line.length()) {
+                char ch = line.charAt(end);
+                if (ch == '\\') end++;
+                else if (ch == '=' || ch == ':' || ch == ' ' || ch == '\t') break;
+                end++;
+            }
+            out.put(i, new ConfigKey(line.substring(start, Math.min(end, line.length())), 0, start));
+        }
+        return out;
     }
 
     /** {@code telephoneNumber} → {@code telephone_number}. */

@@ -100,6 +100,11 @@ public final class Extractors {
         return new Fragment(read.nodes(), read.edges(), all);
     }
 
+    /** True for a Spring {@code application*} or {@code bootstrap*} file: its keys are {@code config} anchors. */
+    public static boolean isSpringConfig(String relPath) {
+        return ConfigExtractors.springConfig(relPath);
+    }
+
     /** True for the JVM source kinds whose compiled classes also feed the graph. */
     public static boolean isJvmSource(String relPath) {
         String lower = relPath.toLowerCase(Locale.ROOT);

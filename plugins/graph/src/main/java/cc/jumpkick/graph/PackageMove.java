@@ -280,7 +280,7 @@ final class PackageMove {
                 textFiles,
                 p,
                 RenameText.mapped(names),
-                (rel, line, at, inString, inComment) -> {
+                (rel, index, line, at, inString, inComment) -> {
                     if (RenameText.classList(rel))
                         return new RenameText.Verdict(true, RenamePlan.Grade.DECLARED, "class list");
                     if (RenameText.jvmSource(rel)) {

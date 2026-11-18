@@ -360,6 +360,102 @@ class RenameFieldTest {
         assertThat(ws.read("src/main/resources/application.properties")).contains("petclinic.visits.daily-limit=20");
     }
 
+    /**
+     * Only the key Spring binds a {@code @ConfigurationProperties} field to must change, nested in YAML or
+     * flat in properties: the word in a workflow, a compose file, a comment or another key is a judgment
+     * call, which {@code also=all} on the rename's own call leaves.
+     */
+    @Test
+    void onlyTheKeyAConfigPropertiesFieldBindsMustChangeNotTheWordInOtherYaml(@TempDir Path dir) throws IOException {
+        RenameFixture ws = new RenameFixture(
+                dir,
+                RenameFixture.files(
+                        "src/main/java/org/springframework/boot/context/properties/ConfigurationProperties.java",
+                        """
+                package org.springframework.boot.context.properties;
+
+                public @interface ConfigurationProperties {
+                    String value() default "";
+
+                    String prefix() default "";
+                }
+                """,
+                        "src/main/java/org/acme/mail/MailProperties.java",
+                        """
+                package org.acme.mail;
+
+                import org.springframework.boot.context.properties.ConfigurationProperties;
+
+                @ConfigurationProperties(prefix = "app.mail")
+                public class MailProperties {
+
+                    private String senderAddress;
+
+                    public String getSenderAddress() {
+                        return this.senderAddress;
+                    }
+
+                    public void setSenderAddress(String senderAddress) {
+                        this.senderAddress = senderAddress;
+                    }
+                }
+                """,
+                        "src/main/resources/application.yml",
+                        """
+                app:
+                  name: demo
+                  mail:
+                    sender-address: noreply@acme.org
+                    # sender-address is the From line
+                    reply-to: senderAddress
+                """,
+                        "src/main/resources/application-prod.properties",
+                        "app.mail.sender-address=ops@acme.org\nother.sender-address=x\n",
+                        ".github/workflows/ci.yml",
+                        """
+                name: ci
+                on: [push]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - name: check senderAddress
+                        run: echo sender-address
+                      - uses: acme/notify@v1
+                        with:
+                          sender: bot
+                          sender-address: bot@acme.org
+                """,
+                        "docker-compose.yml",
+                        """
+                services:
+                  mail:
+                    image: mailhog/mailhog
+                    environment:
+                      senderAddress: noreply@acme.org
+                    labels:
+                      sender-address: smtp
+                """));
+
+        String answer = ws.rename("org.acme.mail.MailProperties.senderAddress", "fromAddress", "also=all");
+
+        assertThat(ws.read("src/main/resources/application.yml"))
+                .contains("    from-address: noreply@acme.org\n", "# sender-address is", "reply-to: senderAddress");
+        assertThat(ws.read("src/main/resources/application-prod.properties"))
+                .isEqualTo("app.mail.from-address=ops@acme.org\nother.sender-address=x\n");
+        assertThat(ws.read(".github/workflows/ci.yml"))
+                .contains("check senderAddress", "echo sender-address", "sender-address: bot@acme.org");
+        assertThat(ws.read("docker-compose.yml")).contains("senderAddress: noreply", "sender-address: smtp");
+        assertThat(answer)
+                .contains("Judgment, left as they are unless chosen")
+                .containsPattern("c\\d+-c\\d+ inferred, yml text: .github/workflows/ci.yml:7,8,12 \\(3\\)")
+                .containsPattern("c\\d+ inferred, yml text: docker-compose.yml:5")
+                .containsPattern("c\\d+ inferred, yml text: docker-compose.yml:7")
+                .containsPattern("c\\d+ inferred, yml text: src/main/resources/application.yml:5")
+                .containsPattern("c\\d+ inferred, properties text: src/main/resources/application-prod.properties:2")
+                .doesNotContain("config key of app.mail: .github", "config key of app.mail: docker-compose");
+    }
+
     @Test
     void aRenameALocalVariableWouldShadowIsRolledBackByTheProof(@TempDir Path dir) throws IOException {
         RenameFixture ws = new RenameFixture(dir, RenameFixture.files("src/main/java/a/Counter.java", """

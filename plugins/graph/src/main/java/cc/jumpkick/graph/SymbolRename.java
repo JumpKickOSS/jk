@@ -6,6 +6,7 @@ import cc.jumpkick.codegraph.Decl;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Modules;
+import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
@@ -240,7 +241,7 @@ final class SymbolRename {
                 files,
                 any,
                 RenameText.mapped(names),
-                (rel, line, at, inString, inComment) -> {
+                (rel, index, line, at, inString, inComment) -> {
                     if (inComment) return null;
                     String why = rel.endsWith(".java")
                             ? "Java source with no index as it stands, matched by name"
@@ -269,7 +270,7 @@ final class SymbolRename {
                 files,
                 anyWord(names.keySet()),
                 RenameText.mapped(names),
-                (rel, line, at, inString, inComment) -> {
+                (rel, index, line, at, inString, inComment) -> {
                     if (RenameText.doc(rel)) return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "doc");
                     if (!indexed.contains(rel)) return null;
                     return inComment ? new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "comment") : null;
@@ -374,6 +375,9 @@ final class SymbolRename {
         String key = configPrefix == null ? null : configPrefix + "." + RenameText.kebab(name);
         String envOld = key == null ? null : RenameText.envName(key);
         if (envOld != null) configWords.put(envOld, RenameText.envName(configPrefix + "." + RenameText.kebab(to)));
+        if (configPrefix != null) configWords.put(RenameText.snake(name), RenameText.snake(to));
+        int fieldSegment = configPrefix == null ? 0 : configPrefix.split("\\.", -1).length;
+        Map<String, Map<Integer, RenameText.ConfigKey>> configKeys = new HashMap<>();
         List<String> files = textFiles.stream()
                 .filter(rel -> !RenameText.doc(rel) && !RenameText.jvmSource(rel) || rel.endsWith(".java"))
                 .toList();
@@ -384,7 +388,7 @@ final class SymbolRename {
                 files,
                 pattern,
                 RenameText.mapped(configWords),
-                (rel, line, at, inString, inComment) -> {
+                (rel, index, line, at, inString, inComment) -> {
                     if (envOld != null && line.startsWith(envOld, at) && !rel.endsWith(".java")) {
                         return new RenameText.Verdict(
                                 true, RenamePlan.Grade.INFERRED, "environment variable for " + key);
@@ -440,9 +444,19 @@ final class SymbolRename {
                     String ext = RenameText.ext(rel);
                     if (ext.equals("sql"))
                         return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "SQL column");
-                    if (configPrefix != null && (ext.equals("properties") || ext.equals("yml") || ext.equals("yaml"))) {
-                        String compact = line.replace(" ", "");
-                        if (compact.contains(configPrefix + ".") || ext.startsWith("y")) {
+                    // Spring binds only the key itself, at its nesting in an application or bootstrap file: the
+                    // word anywhere else (a workflow's name:, a value, another key) is a judgment call.
+                    if (key != null && Extractors.isSpringConfig(rel)) {
+                        RenameText.ConfigKey k = configKeys
+                                .computeIfAbsent(rel, r -> {
+                                    String text = c.text(r);
+                                    return text == null
+                                            ? Map.of()
+                                            : RenameText.configKeys(
+                                                    r, plan.current(r, text).split("\n", -1));
+                                })
+                                .get(index);
+                        if (k != null && k.binds(key) && k.segment(fieldSegment) == at) {
                             return new RenameText.Verdict(
                                     true, RenamePlan.Grade.INFERRED, "config key of " + configPrefix);
                         }
@@ -749,7 +763,7 @@ final class SymbolRename {
                 textFiles,
                 p,
                 RenameText.mapped(names),
-                (rel, line, at, inString, inComment) -> {
+                (rel, index, line, at, inString, inComment) -> {
                     if (RenameText.classList(rel))
                         return new RenameText.Verdict(true, RenamePlan.Grade.DECLARED, "class list");
                     if (RenameText.jvmSource(rel)) {
@@ -794,7 +808,7 @@ final class SymbolRename {
                 files,
                 RenameText.word(t.simple()),
                 m -> to,
-                (rel, line, at, inString, inComment) -> {
+                (rel, index, line, at, inString, inComment) -> {
                     if (RenameText.template(rel))
                         return new RenameText.Verdict(false, RenamePlan.Grade.INFERRED, "template text");
                     if (!inString || inComment) return null;

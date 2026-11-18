@@ -611,7 +611,10 @@ the match and the reason, at `file:line` with the line quoted:
   Spring's `*.imports` and `spring.factories`, `jk.toml`, an XML config);
 - **inferred**: a match by name (a template's bean path `${owner.telephone}`, a JPQL string, a
   reflection string, a Kotlin or Groovy source javac does not index, a source in a module with no
-  compiled classes).
+  compiled classes). For a `@ConfigurationProperties` field, the key it binds should change only
+  where an `application*` or `bootstrap*` file sets that key (`app.mail.sender-address`, nested in
+  YAML or flat, in any relaxed spelling), and so should the environment variable that sets it; the
+  word in any other YAML or properties line (a workflow, a compose file, a value) is a judgment call.
 
 Candidates that should change come first; judgment calls (a message key, a SQL column, a comment, a
 doc, a test class named after a type) after them. `--also c1,c3` (MCP `also`) applies chosen ones in a
