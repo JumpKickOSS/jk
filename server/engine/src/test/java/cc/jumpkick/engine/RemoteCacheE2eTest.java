@@ -11,6 +11,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -507,6 +508,11 @@ class RemoteCacheE2eTest extends EngineServerHarness {
      */
     @Test
     void a_host_that_never_ran_a_suite_that_starts_programs_takes_its_result_by_read_list() throws Exception {
+        if (Os.isWindows()) {
+            Assumptions.assumeTrue(
+                    Executables.onPath("sh") != null && Executables.onPath("sleep") != null,
+                    "sh and sleep are not on the PATH (Git's Unix tools); the suite starts both");
+        }
         Path root = shortTempDir();
         Path a = checkout(root.resolve("a"), STARTS, STRICT);
         Path b = copy(a, root.resolve("b"));
