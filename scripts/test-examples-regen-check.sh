@@ -4,7 +4,8 @@
 # Fixture test for scripts/examples-regen-check.sh, with a stand-in jk whose `new` and `import`
 # write fixed manifests: an example equal to its scaffold passes; one that lacks a key the
 # scaffold writes fails naming it, unless its README names the key's table; a converted example is
-# compared with what `jk import` writes; a workspace root is skipped. A rule pack or plugin manifest
+# compared with what `jk import` writes; a workspace root is skipped, and so is a group root
+# ([workspaces]) whose members are still compared, each on its own. A rule pack or plugin manifest
 # key that differs from the scaffold's is a finding, and every JumpKick pin in any example (a
 # skipped workspace root and its members included) must name the generating jk's release.
 set -euo pipefail
@@ -60,6 +61,8 @@ mkdir -p "$EX/01-start/ws/member"
 printf 'name = "ws"\ngroup = "g"\nversion = "1"\n\n[workspace]\nmodules = ["member"]\n' >"$EX/01-start/ws/jk.toml"
 printf 'name = "member"\n\n[dependencies]\njk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:0.50.2"\n' >"$EX/01-start/ws/member/jk.toml"
 printf '[guards]\nextends = ["cc.jumpkick.guards:monorepo:0.20.0"]\n' >"$EX/01-start/ws/jk-guards.toml"
+# The checkout's group root: no example, and its members are examples of their own.
+printf '[workspaces]\nmembers = ["01-start/*", "05-recipes/*"]\n' >"$EX/jk.toml"
 mkdir -p "$EX/05-recipes/migrate/from-maven"
 printf '<project/>\n' >"$EX/05-recipes/migrate/from-maven/pom.xml"
 printf 'name = "imported"\ngroup = "g"\nversion = "1.0"\njava = 21\n' >"$EX/05-recipes/migrate/from-maven/jk.toml"
@@ -75,6 +78,8 @@ grep -qF '| `05-recipes/documented` | jk new -t app -l java | 0 undocumented, 2 
   || { cat "$WORK/report" >&2; echo "a deviation the README names was not taken as documented" >&2; exit 1; }
 grep -qF '| `01-start/ws` | — | skipped: a workspace root |' "$WORK/report" \
   || { cat "$WORK/report" >&2; echo "the workspace root was not skipped" >&2; exit 1; }
+grep -qF '| `.` | — | skipped: a group root ([workspaces]); each member is an example of its own |' "$WORK/report" \
+  || { cat "$WORK/report" >&2; echo "the group root was not skipped" >&2; exit 1; }
 grep -qF '| `05-recipes/migrate/from-maven` | jk import pom.xml | equal |' "$WORK/report" \
   || { cat "$WORK/report" >&2; echo "the converted example was not compared with jk import" >&2; exit 1; }
 grep -qF '| `01-start/ws/member`' "$WORK/report" && { cat "$WORK/report" >&2; echo "a workspace member was compared on its own" >&2; exit 1; }

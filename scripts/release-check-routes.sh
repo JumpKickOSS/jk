@@ -11,7 +11,9 @@
 #                   included, ignored ones not), each copied under the out dir and committed there as
 #                   a fresh clone would be; an overlay/ (a ported checkout's, which its setup.sh
 #                   places) is not a project of its own and is left out. An example's build takes
-#                   the arguments of the first `jk build …` its scenario.toml `check` runs
+#                   the arguments of the first `jk build …` its scenario.toml `check` runs. A group
+#                   root (a jk.toml with [workspaces] members, such as the checkout's own root) is
+#                   no route: each project under it is one of its own
 #   --no-templates  only the examples
 #   --only          only the routes whose name contains the substring
 #   --skip          leave out the routes whose name contains the substring (repeatable), e.g. an
@@ -150,14 +152,16 @@ fi
 
 if [[ -n "$EXAMPLES" ]]; then
   mkdir -p "$OUT/examples" "$OUT/logs"
-  # A project root is a jk.toml with no jk.toml above it inside the checkout.
+  # A project root is a jk.toml with no jk.toml above it inside the checkout but a group root's.
+  group_root() { grep -qE '^\[workspaces\]' "$1/jk.toml"; }
   while IFS= read -r manifest; do
     dir="$(dirname "$manifest")"
     rel="${dir#"$EXAMPLES"/}"
+    group_root "$dir" && continue
     up="$(dirname "$dir")"
     nested=0
     while [[ "$up" == "$EXAMPLES"/* ]]; do
-      [[ -f "$up/jk.toml" ]] && nested=1 && break
+      [[ -f "$up/jk.toml" ]] && ! group_root "$up" && nested=1 && break
       up="$(dirname "$up")"
     done
     [[ "$nested" == 1 || "$rel" == bench/* || "$rel" == */overlay ]] && continue

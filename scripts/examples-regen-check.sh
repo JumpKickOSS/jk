@@ -24,7 +24,9 @@
 # ([spring-boot], [quarkus], [micronaut], [helidon], [grails], [android]), a Ktor dependency, a
 # library (no [application]) or an app, in the language of its sources; TEMPLATE_OF below names
 # the ones the reading gets wrong (a value of "<id> <lang>" fixes the language too). A workspace root, a front end alone, a port and a benchmark are
-# not one template's output and are reported as skipped, with the reason.
+# not one template's output and are reported as skipped, with the reason. A group root (a jk.toml
+# with [workspaces] members, such as the checkout's own root) is no example either: it is skipped,
+# and each project under it is an example of its own, not its member.
 #
 # Prints a Markdown report (also <out>/report.md): one row per example, then each finding. Exits 1
 # when any example has an undocumented finding or fails to regenerate.
@@ -347,19 +349,27 @@ regen_import() {
   return "$status"
 }
 
+# Whether <dir>'s jk.toml groups self-contained workspaces ([workspaces] members): no example itself.
+group_root() { grep -qE '^\[workspaces\]' "$1/jk.toml"; }
+
 while IFS= read -r toml; do
   dir="$(dirname "$toml")"
   rel="${dir#"$EXAMPLES"/}"
+  [[ "$dir" == "$EXAMPLES" ]] && rel="."
   case "$rel" in ports/*|bench/*) continue ;; esac
-  # A member of a workspace is compared with its root, not on its own.
+  # A member of a workspace is compared with its root, not on its own; a group root's are examples.
   parent="$(dirname "$dir")"
   member=0
   while [[ "$parent" == "$EXAMPLES"/* ]]; do
-    if [[ -f "$parent/jk.toml" ]]; then member=1; break; fi
+    if [[ -f "$parent/jk.toml" ]] && ! group_root "$parent"; then member=1; break; fi
     parent="$(dirname "$parent")"
   done
   [[ "$member" == 1 ]] && continue
   wanted "$rel" || continue
+  if group_root "$dir"; then
+    echo "| \`$rel\` | — | skipped: a group root ([workspaces]); each member is an example of its own |" >>"$REPORT"
+    continue
+  fi
   if [[ "$rel" == 05-recipes/migrate/* ]]; then
     regen_import "$dir" "$rel" || FAILED=1
     continue
