@@ -65,6 +65,7 @@ public final class JkTemplateToml {
             "jk_languages",
             "jk_layout",
             "jk_version",
+            JkRelease.PROPERTY,
             "name_normalized",
             Giter8ShortNames.LAYOUT_SIMPLE,
             "verbatim");

@@ -6,8 +6,8 @@ table     = "$name$"
 version   = "0.1.0"
 # The jk-plugin-sdk release the code compiles against (jk.toml [dependencies]): a consumer's lock
 # pins the worker's SDK at it. jk-compat is the oldest jk that loads the plugin.
-sdk       = "$jk_version$"
-jk-compat = ">=$jk_version$"
+sdk       = "$jk_release$"
+jk-compat = ">=$jk_release$"
 
 # Typed keys for the [$name$] table: jk validates a consumer's table against them and hands the
 # code the defaulted values, never raw TOML.

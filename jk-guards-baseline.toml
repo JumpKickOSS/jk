@@ -268,7 +268,7 @@ at     = "cc.jumpkick.engine.runtime.NewProjectOps#preview(Lcc/jumpkick/engine/r
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.giter8.Giter8Apply#apply(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Lcc/jumpkick/giter8/MavenVersionLookup;)I -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
+at     = "cc.jumpkick.giter8.Giter8Apply#apply(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/util/Map;Lcc/jumpkick/giter8/MavenVersionLookup;Lcc/jumpkick/giter8/JkRelease$Lookup;)I -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "server/engine"

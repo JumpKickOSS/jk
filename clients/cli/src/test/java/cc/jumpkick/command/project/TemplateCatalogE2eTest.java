@@ -42,8 +42,10 @@ import org.junit.jupiter.api.io.TempDir;
  * pairwise set in which every
  * layout the template declares and every option it asks appears, so a binding only a non-default
  * answer reaches is built too, and an option added to a template is built as soon as it is asked.
- * A plugin template builds against the SDK this checkout publishes, and its jar is checked for a
- * plugin's shape. A template that asks for a native binary is also linked with {@code jk native},
+ * A plugin template builds against the SDK it pins, and its jar is checked for a plugin's shape:
+ * from a release, the SDK this checkout publishes; from a {@code -SNAPSHOT}, which no repository
+ * serves, the newest published release at or below it, from jumpkick.build (JK-CBKBT). A
+ * template that asks for a native binary is also linked with {@code jk native},
  * once, where a GraalVM is available ({@code GRAALVM_HOME} with {@code native-image}); elsewhere
  * that test is skipped by assumption. An Android template is scaffolded and format-checked
  * everywhere, built only where an Android SDK with accepted licenses is installed: the test never
@@ -60,7 +62,10 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("slow")
 class TemplateCatalogE2eTest {
 
-    /** The SDK pin a plugin template writes: this jk's own version. */
+    /**
+     * The SDK pin a plugin template writes when this jk is a release: its own version, which this
+     * checkout publishes for the scaffold. A development build's pin names a published release.
+     */
     private static final String SDK_PIN = "cc.jumpkick:jk-plugin-sdk:" + JkVersion.VERSION + "\"";
 
     /** The ask a template offers a GraalVM native executable with. */
@@ -320,8 +325,8 @@ class TemplateCatalogE2eTest {
     }
 
     /**
-     * The checkout's SDK, published once for the suite: a plugin template pins the SDK at this jk's
-     * version, which jumpkick.build serves for a release and nothing serves for a checkout, so this
+     * The checkout's SDK, published once for the suite: a release's plugin template pins the SDK at
+     * this jk's version, which jumpkick.build serves only once the release ships, so this
      * repository stands in for jumpkick, from the user's config, while that scaffold builds.
      */
     private String sdkRepo() throws IOException {
@@ -334,8 +339,9 @@ class TemplateCatalogE2eTest {
     /** A plugin scaffold's jar is a plugin: the manifest at its root, the service file, the SDK's worker host. */
     private static void assertPluginJar(Path project, String name) throws IOException {
         Path jar;
+        // Every build but jk release and jk publish names the snapshot of the declared version.
         try (Stream<Path> jars = Files.list(project.resolve("target"))) {
-            jar = jars.filter(p -> p.getFileName().toString().matches("demo-[0-9.]+\\.jar"))
+            jar = jars.filter(p -> p.getFileName().toString().matches("demo-[0-9.]+-SNAPSHOT\\.jar"))
                     .findFirst()
                     .orElseThrow(() -> new AssertionError(name + " builds no jar under target/"));
         }

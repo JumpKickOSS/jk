@@ -85,7 +85,8 @@ The plugin SDK, `cc.jumpkick:jk-plugin-sdk` (with `jk-host`, its one dependency)
 JumpKick resolves `cc.jumpkick` from jumpkick.build alone; a plugin built with Maven or Gradle finds the
 SDK on Central. A
 plugin authored outside the JumpKick tree depends on that coordinate and declares the JumpKick release it needs with a
-`jk-compat` floor — `jk new -P <name>` scaffolds one against the running JumpKick's SDK (the
+`jk-compat` floor — `jk new -P <name>` scaffolds one against the running JumpKick's SDK, or for a
+development build the newest release at or below it, since no `-SNAPSHOT` is published (the
 [`plugin` template](templates.md#first-party-templates)),
 [examples/third-party-plugin](examples/third-party-plugin/) is the complete shape with a consumer,
 and the [contributor plugin guide](../contributors/plugins.md) the reference. Pre-1.0 the

@@ -112,12 +112,14 @@ class NewProjectCorpusTest {
                 "temurin-" + JDK_MAJOR + ".0.1", scratch.resolve("jdks/temurin-" + JDK_MAJOR + ".0.1")));
         NewProjectJava.inventory(() -> inventory);
         NewProjectOps.versionLookup((group, artifact, stable) -> MAVEN_VERSION);
+        NewProjectOps.releaseLookup(() -> MAVEN_VERSION);
     }
 
     @AfterAll
     static void machineDefaults() {
         NewProjectJava.inventory(null);
         NewProjectOps.versionLookup(null);
+        NewProjectOps.releaseLookup(null);
         // The registry is process-wide: every later test in this JVM sees what it held before.
         for (Displaced d : DISPLACED.reversed()) {
             PluginTableRegistry.unregister(d.installed());

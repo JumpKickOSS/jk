@@ -2262,6 +2262,10 @@ in     = "cc.jumpkick.engine.plugin.WorkerLeases#replaced"
 reason = "seam: null in production; a test swaps the engine's ledger"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.engine.runtime.NewProjectOps#releaseLookup"
+reason = "seam: null in production; a test answers the templates' $jk_release$"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.engine.runtime.NewProjectOps#versionLookup"
 reason = "seam: null in production; a test answers the templates' Maven versions"
 

@@ -19,8 +19,9 @@ version = "…"
 description = "A jk build plugin that owns the [demo] table"
 java = 25
 
-# The plugin SDK of the jk that scaffolded this project. src/main/resources/jk-plugin.toml names
-# the same release as its `sdk`: move the two together.
+# The plugin SDK of the jk release that scaffolded this project (a development build of jk names
+# the newest release at or below it). src/main/resources/jk-plugin.toml names the same release as
+# its `sdk`: move the two together.
 [dependencies]
 jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:…"
 

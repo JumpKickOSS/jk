@@ -4,10 +4,11 @@ version = "0.1.0"
 description = "A jk build plugin that owns the [$name$] table"
 java = $java$
 
-# The plugin SDK of the jk that scaffolded this project. src/main/resources/jk-plugin.toml names
-# the same release as its `sdk`: move the two together.
+# The plugin SDK of the jk release that scaffolded this project (a development build of jk names
+# the newest release at or below it). src/main/resources/jk-plugin.toml names the same release as
+# its `sdk`: move the two together.
 [dependencies]
-jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:$jk_version$"
+jk-plugin-sdk = "cc.jumpkick:jk-plugin-sdk:$jk_release$"
 
 # Null checking: every package is @NullMarked (package-info.java), and NullAway checks it at
 # compile time. The table brings JSpecify, Error Prone and NullAway at versions jk tests together.

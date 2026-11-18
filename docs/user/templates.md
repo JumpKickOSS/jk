@@ -299,7 +299,9 @@ jk template lint java/app.g8       # one template
 
 Reserved properties are JumpKick's own: the keys of its step (`lang`, `template`, `name`, `group`,
 `layout`) and what the apply sets (`organization`, `package`, `java`, `jk_languages`, `jk_layout`,
-`jk_version`, `name_normalized`, `simple` and `verbatim`).
+`jk_version`, `jk_release`, `name_normalized`, `simple` and `verbatim`). `jk_version` is the
+running JumpKick's version; `jk_release` is the same for a release and, for a development build,
+the newest published release at or below it, for a pin only a release publishes (the plugin SDK).
 
 ## Node front ends (`--lang node`)
 

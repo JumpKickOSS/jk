@@ -48,6 +48,17 @@ public final class Giter8Apply {
             Map<String, ? extends @Nullable String> overrides,
             @Nullable MavenVersionLookup maven)
             throws IOException {
+        return apply(templateRoot, dest, overrides, maven, JkRelease.SELF);
+    }
+
+    /** As above, with {@code release} answering {@code $jk_release$} where a file names it. */
+    public static int apply(
+            Path templateRoot,
+            Path dest,
+            Map<String, ? extends @Nullable String> overrides,
+            @Nullable MavenVersionLookup maven,
+            JkRelease.Lookup release)
+            throws IOException {
         Path root = templateRoot.toAbsolutePath().normalize();
         if (!Files.isDirectory(root)) {
             throw new IOException("template is not a directory: " + root);
@@ -92,6 +103,9 @@ public final class Giter8Apply {
                 requireInside(destReal, outParent.toRealPath().resolve(out.getFileName()), renderedRel);
                 byte[] raw = Files.readAllBytes(file);
                 String text = matchesVerbatim(rel, file.getFileName().toString(), verbatim) ? null : decodeText(raw);
+                if (text != null && !props.containsKey(JkRelease.PROPERTY) && text.contains(JkRelease.PROPERTY)) {
+                    props.put(JkRelease.PROPERTY, release.release());
+                }
                 if (text == null) {
                     Files.write(out, raw);
                 } else {

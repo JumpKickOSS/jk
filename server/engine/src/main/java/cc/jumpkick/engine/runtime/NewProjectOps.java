@@ -13,6 +13,7 @@ import cc.jumpkick.giter8.Giter8Apply;
 import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.giter8.Giter8ShortNames;
 import cc.jumpkick.giter8.Giter8TemplateIndex;
+import cc.jumpkick.giter8.JkRelease;
 import cc.jumpkick.giter8.JkTemplateToml;
 import cc.jumpkick.giter8.MavenVersionLookup;
 import cc.jumpkick.giter8.PluginTemplates;
@@ -69,6 +70,14 @@ public final class NewProjectOps {
      */
     static void versionLookup(@Nullable MavenVersionLookup lookup) {
         versionLookup = lookup;
+    }
+
+    /** What answers {@code $jk_release$} in place of the release site; unset in production. */
+    private static volatile JkRelease.@Nullable Lookup releaseLookup;
+
+    /** Test seam: {@code lookup} answers {@code $jk_release$}; {@code null} restores the release site. */
+    static void releaseLookup(JkRelease.@Nullable Lookup lookup) {
+        releaseLookup = lookup;
     }
 
     /** The template parameter (and {@code default.properties} key) naming a template's layout. */
@@ -327,6 +336,7 @@ public final class NewProjectOps {
                 throw new IllegalArgumentException("template " + prep.template() + ": " + e.getMessage(), e);
             }
             MavenVersionLookup lookup = versionLookup;
+            JkRelease.Lookup release = releaseLookup;
             Giter8Apply.apply(
                     templateRoot,
                     target,
@@ -334,7 +344,8 @@ public final class NewProjectOps {
                     lookup != null
                             ? lookup
                             : Giter8Maven.fromRepositories(
-                                    () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline));
+                                    () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()), offline),
+                    release != null ? release : JkRelease.live(offline));
         } catch (IOException e) {
             throw new IOException(
                     "applying template " + prep.template() + " lang=" + langName + ": " + e.getMessage(), e);
