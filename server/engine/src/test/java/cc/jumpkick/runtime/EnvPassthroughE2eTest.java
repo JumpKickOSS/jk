@@ -17,6 +17,8 @@ import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.ExplainReport;
 import cc.jumpkick.runtime.workspace.WorkspaceExecute;
+import cc.jumpkick.test.EnvProbeHook;
+import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.testing.SysProps;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.runtime.ModulePlan;
@@ -212,6 +214,86 @@ class EnvPassthroughE2eTest {
                 .isIn(null, TaskStatus.SKIPPED);
         assertThat(shell.with("OTHER", "2").build(m).status())
                 .as("any other value may reach the program: it runs again")
+                .isEqualTo(TaskStatus.SUCCESS);
+    }
+
+    /**
+     * On a JDK whose process launch the probe cannot hook, a program a test starts would see the
+     * test JVM's own environment alone. The run gives that JVM the caller's whole environment
+     * instead, keys the suite on all of it, and says so once.
+     */
+    @Test
+    void on_a_jdk_the_probe_cannot_hook_the_test_jvm_gets_the_whole_environment(@TempDir Path tmp) throws Exception {
+        String command = Os.isWindows()
+                ? "new ProcessBuilder(\"cmd\", \"/c\", \"echo %CHILD_VAR%\")"
+                : "new ProcessBuilder(\"sh\", \"-c\", \"printf %s \\\"$CHILD_VAR\\\"\")";
+        Path m = module(tmp, "UnhookedTest", """
+                @Test
+                void child() throws Exception {
+                    Process p = COMMAND.redirectErrorStream(true).start();
+                    String out = new String(p.getInputStream().readAllBytes()).strip();
+                    assertEquals(0, p.waitFor());
+                    assertEquals("from-the-shell", out);
+                }
+                """.replace("COMMAND", command));
+        EnvProbeHook.pretendForTests("a JDK that starts programs another way");
+        try {
+            Shell shell = new Shell(Map.of("CHILD_VAR", "from-the-shell", "OTHER", "1"));
+            Steps first = shell.build(m);
+            assertThat(first.status())
+                    .as("the program saw the shell's variable")
+                    .isEqualTo(TaskStatus.SUCCESS);
+            assertThat(first.warnings)
+                    .as("one line says why")
+                    .filteredOn(w -> w.startsWith(SuiteEnvDelivery.UNHOOKED))
+                    .singleElement()
+                    .satisfies(w -> assertThat(w).contains("whole environment").doesNotContain("from-the-shell"));
+            Steps again = shell.build(m);
+            assertThat(again.status()).as("the same shell: a hit").isIn(null, TaskStatus.SKIPPED);
+            assertThat(again.warnings).as("said once").noneMatch(w -> w.startsWith(SuiteEnvDelivery.UNHOOKED));
+            assertThat(shell.with("OTHER", "2").build(m).status())
+                    .as("keyed on every value: another variable changed, it runs again")
+                    .isEqualTo(TaskStatus.SUCCESS);
+        } finally {
+            EnvProbeHook.pretendForTests(null);
+        }
+    }
+
+    /**
+     * A suite JUnit enables only while a variable is set reads it in the test JVM, where the probe
+     * sees the read: run with it unset (no test runs, green), it runs once the variable is set; run
+     * with it set, it runs again once it is unset. The cached result never hides the tests, nor runs
+     * them where they are disabled.
+     */
+    @Test
+    void a_suite_enabled_by_a_variable_is_keyed_on_it(@TempDir Path tmp) throws Exception {
+        Path m = module(tmp, "GatedTest", """
+                @Test
+                @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "RUN_GATED", matches = "yes")
+                void gated() {
+                    assertEquals("no", "yes", "ran with RUN_GATED=yes");
+                }
+                """);
+        Shell unset = new Shell(Map.of("OTHER", "1"));
+        assertThat(unset.build(m).status()).as("disabled: green, no test runs").isEqualTo(TaskStatus.SUCCESS);
+        assertThat(unset.build(m).status()).as("still unset: a hit").isIn(null, TaskStatus.SKIPPED);
+        Shell set = unset.with("RUN_GATED", "yes");
+        assertThat(set.build(m).status())
+                .as("set since: the test runs (and fails)")
+                .isEqualTo(TaskStatus.FAIL);
+
+        Path n = module(tmp.resolve("2"), "GatedOnTest", """
+                @Test
+                @org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable(named = "RUN_GATED_ON", matches = "yes")
+                void gated() {
+                    assertEquals("yes", System.getProperty("jk.no.such.property", "yes"));
+                }
+                """);
+        Shell on = new Shell(Map.of("RUN_GATED_ON", "yes"));
+        assertThat(on.build(n).status()).as("enabled: runs green").isEqualTo(TaskStatus.SUCCESS);
+        assertThat(on.build(n).status()).as("a hit").isIn(null, TaskStatus.SKIPPED);
+        assertThat(on.without("RUN_GATED_ON").build(n).status())
+                .as("unset since: not the result of the run that ran it; runs again")
                 .isEqualTo(TaskStatus.SUCCESS);
     }
 

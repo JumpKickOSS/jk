@@ -2,9 +2,11 @@
 package cc.jumpkick.testrunner.env;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.Instrumentation;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
@@ -42,29 +44,81 @@ public final class EnvProbe {
     static final String START_DESC =
             "([Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;[Ljava/lang/ProcessBuilder$Redirect;Z)Ljava/lang/Process;";
 
+    /**
+     * The agent argument that asks only whether this JDK lets the probe hand the caller's
+     * environment on to the programs a test starts: {@code check:<file>} writes {@link #HOOKED}, or
+     * {@code unhooked: <why>}, to the file. The engine runs it once per JDK before it relies on the
+     * hook, and gives a JVM on a JDK that refuses it the caller's whole environment instead.
+     */
+    public static final String CHECK = "check:";
+
+    /** What a check writes when the hook takes. */
+    public static final String HOOKED = "hooked";
+
+    /** Whether {@code java.lang.ProcessBuilder} was repointed at {@link EnvLookups#start}. */
+    private static volatile boolean hooked;
+
     private EnvProbe() {}
 
     /** The agent entry point. */
     public static void premain(@Nullable String args, Instrumentation inst) {
         if (args == null || args.isBlank()) return;
+        if (args.startsWith(CHECK)) {
+            check(Path.of(args.substring(CHECK.length())), inst);
+            return;
+        }
         Path dir = Path.of(args);
         Path out = dir.resolve(ProcessHandle.current().pid() + ".lookups");
         BrokerLink link = BrokerLink.in(dir);
         EnvLookups.deliverThrough(link);
         boolean programs = link != null && openToRecorder(inst) && EnvLookups.prepareStart();
         inst.addTransformer(new Transformer(programs), programs);
-        if (programs) {
-            for (Class<?> loaded : inst.getAllLoadedClasses()) {
-                if (loaded == ProcessBuilder.class) {
-                    try {
-                        inst.retransformClasses(ProcessBuilder.class);
-                    } catch (Exception | LinkageError refused) {
-                        // the programs this JVM starts see its own environment, as before
-                    }
-                }
-            }
-        }
+        // Unhooked, the programs this JVM starts see its own environment: the engine checked this
+        // JDK first ({@link #check}) and launches it with the caller's whole environment when it refuses.
+        if (programs) hookProcessBuilder(inst);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> EnvLookups.writeTo(out), "jk-env-probe"));
+    }
+
+    /** The check's JVM runs nothing past the agent: {@code java -javaagent:<probe>=check:<file> -cp <probe> EnvProbe}. */
+    public static void main(String[] args) {}
+
+    /** Whether this JDK lets the probe repoint {@code ProcessBuilder}, written to {@code out}. */
+    private static void check(Path out, Instrumentation inst) {
+        String verdict;
+        if (!openToRecorder(inst)) verdict = "unhooked: java.base does not open java.lang to an agent";
+        else if (!EnvLookups.prepareStart())
+            verdict = "unhooked: java.lang.ProcessImpl.start is not the method the probe calls";
+        else {
+            inst.addTransformer(new Transformer(true), true);
+            verdict = hookProcessBuilder(inst)
+                    ? HOOKED
+                    : "unhooked: java.lang.ProcessBuilder does not start programs through ProcessImpl.start "
+                            + START_DESC;
+        }
+        try {
+            Files.writeString(out, verdict);
+        } catch (IOException | RuntimeException unwritten) {
+            // no verdict reads as a refusal
+        }
+    }
+
+    /**
+     * Repoint {@code ProcessBuilder} at {@link EnvLookups#start}: retransformed when already loaded,
+     * else as it loads now. Whether its bytes held the call the probe repoints: a JDK that starts
+     * programs another way leaves it as compiled.
+     */
+    static boolean hookProcessBuilder(Instrumentation inst) {
+        try {
+            boolean loaded = false;
+            for (Class<?> c : inst.getAllLoadedClasses()) {
+                if (c.getClassLoader() == null && c.getName().equals("java.lang.ProcessBuilder")) loaded = true;
+            }
+            if (loaded) inst.retransformClasses(Class.forName("java.lang.ProcessBuilder"));
+            else Class.forName("java.lang.ProcessBuilder");
+        } catch (Exception | LinkageError refused) {
+            return false;
+        }
+        return hooked;
     }
 
     /** Let {@code java.base} reach the recorder, and the recorder reach the JDK's process launch. */
@@ -97,7 +151,9 @@ public final class EnvProbe {
                 byte[] bytes) {
             if (programs && loader == null && PROCESS_BUILDER.equals(className)) {
                 try {
-                    return repoint(bytes, PROCESS_IMPL, "start", Set.of(START_DESC));
+                    byte[] hooks = repoint(bytes, PROCESS_IMPL, "start", Set.of(START_DESC));
+                    if (hooks != null) hooked = true;
+                    return hooks;
                 } catch (RuntimeException malformed) {
                     return null;
                 }

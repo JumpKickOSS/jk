@@ -9,6 +9,7 @@ import static cc.jumpkick.runtime.TestStampInputs.testStampWorkerJars;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -176,12 +177,7 @@ final class TestSteps {
         // before the gate too, never between the acquire and the try that releases it.
         SuiteDiscovery.Run reads = recordReads(ctx, in, projectUnderTest, effectiveSel, testEnv, runtimeCp, affected);
         // What the suite's JVMs read of the caller's environment is fetched and recorded as they run.
-        SuiteEnvDelivery env = SuiteEnvDelivery.prepare(
-                in.cache(),
-                EnvReadReport.recordDir(in.dir()),
-                ctx.require(MODULE).layout().classesDir(),
-                projectUnderTest,
-                testEnv);
+        SuiteEnvDelivery env = envDelivery(ctx, projectUnderTest, testEnv);
         CoverageTools.Jacoco jacoco = resolveBeforeGate(
                 coverage ? () -> CoverageTools.resolve(projectUnderTest, cas) : null,
                 gated,
@@ -280,6 +276,30 @@ final class TestSteps {
         if (affected != null || SuiteRunRules.forcedRunReason(in.session(), project) != null) return key;
         return SuiteDiscovery.adopt(in.dir(), selection, key, rekey, actionCache::restorable);
     }
+
+    /**
+     * How the run's test JVMs reach the caller's environment ({@link SuiteEnvDelivery}), said once
+     * per JDK when that JDK keeps the probe from the programs a test starts.
+     */
+    private SuiteEnvDelivery envDelivery(TaskContext ctx, JkBuild project, WorkerEnv testEnv) {
+        Path javaHome = ctx.require(JAVA_HOME);
+        SuiteEnvDelivery env = SuiteEnvDelivery.prepare(
+                in.cache(),
+                EnvReadReport.recordDir(in.dir()),
+                ctx.require(MODULE).layout().classesDir(),
+                javaHome,
+                project,
+                testEnv);
+        String unhooked = env.unhooked();
+        if (unhooked == null) return env;
+        boolean[] first = {false};
+        UNHOOKED_SAID.get(javaHome.toAbsolutePath().normalize(), "", () -> first[0] = true);
+        if (first[0]) ctx.warn(SuiteEnvDelivery.UNHOOKED, unhooked);
+        return env;
+    }
+
+    /** The JDKs whose refused hook this engine has said: once each, not on every run. */
+    private static final StampedMemo<Path, String, Boolean> UNHOOKED_SAID = StampedMemo.bounded(32);
 
     /**
      * What a whole suite's green marker key was taken over, for a later forecast that misses it to

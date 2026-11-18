@@ -77,6 +77,22 @@ class EnvDeliveryTest {
                 .contains("cc/jumpkick/testrunner/env/EnvLookups");
     }
 
+    /**
+     * A JDK whose {@code ProcessBuilder} reaches {@code ProcessImpl.start} by another descriptor is
+     * left as compiled: the hook does not take, and the engine's check says so ({@code EnvProbe.CHECK}).
+     */
+    @Test
+    void a_process_builder_of_another_shape_is_left_as_compiled() throws Exception {
+        byte[] bytes;
+        try (InputStream in =
+                Objects.requireNonNull(Object.class.getResourceAsStream("/java/lang/ProcessBuilder.class"))) {
+            bytes = in.readAllBytes();
+        }
+        assertThat(EnvProbe.repoint(
+                        bytes, EnvProbe.PROCESS_IMPL, "start", Set.of("([Ljava/lang/String;)Ljava/lang/Process;")))
+                .isNull();
+    }
+
     /** A broker answering from {@link #CALLER}, noting each question; its address in {@code dir}. */
     private ServerSocket broker(Path dir) throws IOException {
         ServerSocket server = new ServerSocket(0, 8, InetAddress.getLoopbackAddress());

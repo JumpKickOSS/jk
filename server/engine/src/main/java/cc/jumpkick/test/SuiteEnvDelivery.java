@@ -23,6 +23,7 @@ public final class SuiteEnvDelivery implements AutoCloseable {
     private final CallerEnv caller;
     private final WorkerEnv launchEnv;
     private final Path recordDir;
+    private final @Nullable String unhooked;
     private @Nullable EnvBroker broker;
 
     private SuiteEnvDelivery(
@@ -30,25 +31,48 @@ public final class SuiteEnvDelivery implements AutoCloseable {
             @Nullable String probe,
             CallerEnv caller,
             WorkerEnv launchEnv,
-            Path recordDir) {
+            Path recordDir,
+            @Nullable String unhooked) {
         this.policy = policy;
         this.probe = probe;
         this.caller = caller;
         this.launchEnv = launchEnv;
         this.recordDir = recordDir;
+        this.unhooked = unhooked;
     }
 
     /**
-     * The delivery for {@code project}'s run, whose probe records into {@code recordDir}: the probe
-     * cut under {@code cacheRoot} unless {@code classesDir} defines it ({@link EnvProbeJar#prepare}).
+     * The delivery for {@code project}'s run on the JDK at {@code javaHome}, whose probe records into
+     * {@code recordDir}: the probe cut under {@code cacheRoot} unless {@code classesDir} defines it
+     * ({@link EnvProbeJar#prepare}). On a JDK whose process launch the probe cannot reach ({@link
+     * EnvProbeHook}), a program a test started would see the test JVM's own environment alone: the
+     * run's JVMs start without the probe instead, with the caller's whole environment, and the
+     * suite is keyed on all of it ({@link #unhooked}).
      */
     public static SuiteEnvDelivery prepare(
-            Path cacheRoot, Path recordDir, Path classesDir, JkBuild project, WorkerEnv testEnv) {
+            Path cacheRoot, Path recordDir, Path classesDir, Path javaHome, JkBuild project, WorkerEnv testEnv) {
         SuiteEnvReads.Policy policy = SuiteEnvReads.Policy.of(project);
         String probe = EnvProbeJar.prepare(cacheRoot, recordDir, classesDir);
         CallerEnv caller = CallerEnv.current();
+        String unhooked =
+                probe == null || policy.strict() || !caller.attached() ? null : EnvProbeHook.unhooked(javaHome, probe);
+        if (unhooked != null) probe = null;
         WorkerEnv launchEnv = unprobedEnvironment(testEnv, probe == null, policy, caller);
-        return new SuiteEnvDelivery(policy, probe, caller, launchEnv, recordDir);
+        return new SuiteEnvDelivery(policy, probe, caller, launchEnv, recordDir, unhooked);
+    }
+
+    /** The warning code of a run whose JDK refused the probe's hook on its process launch. */
+    public static final String UNHOOKED = "suite-env-unhooked";
+
+    /**
+     * The line a run says when its JDK refused the probe's hook ({@link EnvProbeHook}): its test
+     * JVMs got the caller's whole environment, keyed on every value; null when the hook took.
+     */
+    public @Nullable String unhooked() {
+        return unhooked == null
+                ? null
+                : "this JDK does not let jk hand your shell to the programs a test starts (" + unhooked
+                        + "), so the test JVMs got your whole environment and the suite is keyed on all of it";
     }
 
     /** The probe's flag every test JVM starts with, or null when they run without it. */
