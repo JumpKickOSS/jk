@@ -11,6 +11,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.InputGuard;
+import cc.jumpkick.test.EnvScopeHint;
 import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
@@ -62,7 +63,8 @@ final class SuiteDiscovery {
             Collection<Path> keyed,
             boolean networkAllowed,
             boolean whole,
-            SuiteEnvReads.Policy envPolicy) {
+            SuiteEnvReads.Policy envPolicy,
+            EnvScopeHint envHint) {
 
         /**
          * As {@link SuiteDiscovery#settle}, for this run; a writing remote tier is told the read list
@@ -122,7 +124,8 @@ final class SuiteDiscovery {
                 List.copyOf(keyed),
                 networkAllowed,
                 whole,
-                SuiteEnvReads.Policy.of(project));
+                SuiteEnvReads.Policy.of(project),
+                EnvScopeHint.of(project));
     }
 
     /**
@@ -176,10 +179,10 @@ final class SuiteDiscovery {
                 ? SuiteReads.Discovered.NONE.with(
                         read, started, hosts, before.env().with(env.record()))
                 : before.with(read, started, hosts, env.record());
-        // Said once, on the run that first keys the suite broadly, with how to narrow it.
+        // Said once per module, on the first run that keys a suite broadly, with how to narrow it.
         // A build with no terminal (web UI, MCP) has nothing to narrow: its reads key as unknown.
-        String broad = env.attached() ? broadKeying(before.env(), after.env(), run.envPolicy()) : null;
-        if (broad != null) ctx.warn(ENV_BROAD, broad);
+        String broad = env.attached() ? run.envHint().message(after.env(), run.envPolicy()) : null;
+        if (broad != null && EnvScopeHint.firstFor(moduleDir)) ctx.warn(ENV_BROAD, broad);
         if (env.lost()) {
             // The client went away while a test was reading its shell: keep what was read, store nothing.
             if (!after.equals(before)) SuiteReads.save(moduleDir, run.selection(), after);
@@ -281,27 +284,8 @@ final class SuiteDiscovery {
     static final String ENV_LOST_MESSAGE =
             "the terminal that ran jk went away while the tests read its environment; the next build runs them again";
 
-    /** The warning code of a run that first keys its suite on the environment's names or all of it. */
+    /** The warning code of the run that first keys a suite of its module on the environment's names or all of it ({@link EnvScopeHint}). */
     static final String ENV_BROAD = "suite-env-broad";
-
-    /**
-     * What a run says when its suite's record first takes a broad keying under no {@code [env]
-     * scope} ({@code before} lacked it, {@code after} has it): why, and how to narrow it; null when
-     * nothing new is broad.
-     */
-    static @Nullable String broadKeying(
-            SuiteEnvReads.Record before, SuiteEnvReads.Record after, SuiteEnvReads.Policy policy) {
-        if (!policy.scope().isEmpty() || policy.strict()) return null;
-        if (after.whole() && !before.whole()) {
-            return "a test starts a program, which sees your whole environment, so the suite is keyed on all of it"
-                    + " but the terminal and session variables; [env] scope = [\"APP_*\"] narrows what it sees";
-        }
-        if (after.listed() && !before.listed()) {
-            return "the suite lists the environment's names, so a new variable runs it again;"
-                    + " [env] scope = [\"APP_*\"] narrows what it sees";
-        }
-        return null;
-    }
 
     /** The warning code of {@link #jkStateWarning}. */
     static final String JK_STATE = "suite-jk-state";

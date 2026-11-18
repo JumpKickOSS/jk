@@ -163,10 +163,20 @@ class EnvPassthroughE2eTest {
                 }
                 """);
         Shell shell = new Shell(Map.of("MY_APP_FOO", "on", "UNREAD", "1", "TERM_SESSION_ID", "s1"));
-        assertThat(shell.build(m).status()).isEqualTo(TaskStatus.SUCCESS);
-        assertThat(shell.with("UNREAD", "2").build(m).status())
-                .as("a value it never read changed")
-                .isIn(null, TaskStatus.SKIPPED);
+        Steps first = shell.build(m);
+        assertThat(first.status()).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(first.warnings)
+                .as("the module hears once why a new variable may rerun it, and the line that narrows it")
+                .filteredOn(w -> w.startsWith(SuiteDiscovery.ENV_BROAD))
+                .singleElement()
+                .satisfies(w -> assertThat(w).contains("[env] scope = [\"<YOURAPP>_*\"]"));
+        Steps unread = shell.with("UNREAD", "2").build(m);
+        assertThat(unread.status()).as("a value it never read changed").isIn(null, TaskStatus.SKIPPED);
+        Steps again = shell.with("NEW_NAME", "x").build(m);
+        assertThat(again.status()).as("a new name: the suite runs again").isEqualTo(TaskStatus.SUCCESS);
+        assertThat(List.of(unread, again))
+                .as("not on the next run, nor on one that runs the suite again")
+                .allSatisfy(steps -> assertThat(steps.warnings).noneMatch(w -> w.startsWith(SuiteDiscovery.ENV_BROAD)));
         assertThat(shell.with("TERM_SESSION_ID", "s2").build(m).status())
                 .as("another terminal's session id")
                 .isIn(null, TaskStatus.SKIPPED);
@@ -185,6 +195,21 @@ class EnvPassthroughE2eTest {
                 .as("a new name the binding would pick up: runs, and fails")
                 .isEqualTo(TaskStatus.FAIL);
         assertThat(bar.changed).as("the build names the name that came").contains("MY_APP_BAR");
+    }
+
+    /** A module that declares the variables its tests need never hears how to narrow what they see. */
+    @Test
+    void a_module_that_declares_hears_no_scope_hint(@TempDir Path tmp) throws Exception {
+        Path m = module(tmp, "DeclaresTest", """
+                @Test
+                void lists() {
+                    assertEquals(true, System.getenv().keySet().contains("OTHER"));
+                }
+                """);
+        Files.writeString(m.resolve("jk.toml"), MANIFEST + "\n[env]\noptional = [\"MY_APP_FOO\"]\n");
+        Steps first = new Shell(Map.of("MY_APP_FOO", "on", "OTHER", "1")).build(m);
+        assertThat(first.status()).isEqualTo(TaskStatus.SUCCESS);
+        assertThat(first.warnings).noneMatch(w -> w.startsWith(SuiteDiscovery.ENV_BROAD));
     }
 
     /**

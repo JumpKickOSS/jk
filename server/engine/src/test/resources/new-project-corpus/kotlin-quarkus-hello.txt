@@ -38,6 +38,11 @@ rest-assured = { group = "io.rest-assured", name = "rest-assured" }
 name      = "demo"
 aot-cache = false
 
+# Tests see every variable of your shell. Uncommented, this keeps them to these names: results
+# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# [env]
+# scope = ["QUARKUS_*", "<YOURAPP>_*"]
+
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
 # integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
 # claims one more cost tag, so every tagged test runs in exactly one tier.
@@ -96,6 +101,11 @@ rest-assured = { group = "io.rest-assured", name = "rest-assured" }
 [image]
 name      = "demo"
 aot-cache = false
+
+# Tests see every variable of your shell. Uncommented, this keeps them to these names: results
+# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# [env]
+# scope = ["QUARKUS_*", "<YOURAPP>_*"]
 
 # Test tiers: `jk test` runs what no suite claims; `@Tag("integration")` tests are the built-in
 # integration suite's (`jk test -s integration`, or `jk test -g` for both), and each suite below
