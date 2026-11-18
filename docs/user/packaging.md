@@ -571,7 +571,9 @@ The install writes the thin jar and POM once, to the Maven local repository (`~/
 with Maven's checksum sidecars, so Maven and Gradle builds on the machine see the artifact. An
 application then also gets a launcher: a native binary in `~/.jk/bin` if one exists, else a
 minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script
-over the repo jars. The settle line names the coordinate and where it went.
+over the repo jars. The settle line names the coordinate and where it went. Another JumpKick project on the
+machine depends on it by pinning that version, with no repository to declare:
+[Using another project's install](dependencies.md#using-another-projects-install).
 
 In a workspace every member takes the suffix, and so does each member's dependency on a sibling, so
 the POMs it installs name `lib:1.0.0-SNAPSHOT`, not a release that was never installed. A version

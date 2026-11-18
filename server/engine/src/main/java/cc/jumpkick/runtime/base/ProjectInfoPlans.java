@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
@@ -14,7 +15,6 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.SourceLayout;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -23,6 +23,7 @@ import cc.jumpkick.lock.ModuleEntry;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.manifest.VariantApply;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -360,7 +361,7 @@ public final class ProjectInfoPlans {
                 layoutOf(build, dir, BuildLayout::kotlinClassesDir),
                 layoutOf(build, dir, BuildLayout::groovyClassesDir),
                 layoutOf(build, dir, BuildLayout::testResultsDir),
-                hasLock && LockFreshness.isStale(dir, lockFile),
+                hasLock && LocalInstall.lockStaleReason(dir, lockFile, JkStores.store()) != null,
                 build.project().isScala(),
                 build.project().scala() == null ? "" : build.project().scala().raw(),
                 CompileSupport.coordinatorOnly(build, dir),

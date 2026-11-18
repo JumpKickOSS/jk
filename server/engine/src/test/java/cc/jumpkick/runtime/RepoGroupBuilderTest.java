@@ -655,8 +655,12 @@ class RepoGroupBuilderTest {
         }
 
         assertThat(group.repos())
+                .filteredOn(r -> !group.isLocalInstall(r))
                 .extracting(MavenRepo::name)
                 .containsExactly(RepositorySpec.JUMPKICK_NAME, RepositorySpec.CENTRAL, RepositorySpec.GOOGLE);
+        assertThat(group.localInstalls())
+                .as("this machine's installs follow, never routed through a mirror")
+                .allSatisfy(r -> assertThat(r.mirror()).isEmpty());
         MavenRepo central = group.repos().get(1);
         assertThat(central.baseUrl()).isEqualTo(RepositorySpec.MAVEN_CENTRAL.url());
         assertThat(central.fetchBase()).hasToString("https://artifactory.acme.test/maven-virtual/");

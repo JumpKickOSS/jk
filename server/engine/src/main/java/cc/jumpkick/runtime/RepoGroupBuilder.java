@@ -17,6 +17,7 @@ import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ExclusiveGroups;
+import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.repo.RepoGroup;
@@ -25,6 +26,7 @@ import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.transport.RepoTransports;
 import cc.jumpkick.task.RunNotices;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -168,7 +170,31 @@ public final class RepoGroupBuilder {
             return new RepoGroup(List.of(new MavenRepo(
                     RepositorySpec.CENTRAL, overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2)));
         }
-        return build(project.repositories(), mirrorToM2, cas, env);
+        return build(project.repositories(), mirrorToM2, cas, env).withLocalInstalls(localInstalls(cas, mirrorToM2));
+    }
+
+    /**
+     * This machine's installs as repositories, in the order they are asked: the Maven local
+     * repository ({@code jk install}'s default destination, and {@code mvn install}'s) and jk's
+     * {@code repos/jk-local} shelf ({@code --destination jk}). Both are named {@link
+     * RepositorySpec#LOCAL_INSTALL}; a row one of them served records that name alone, never the
+     * directory, which is this machine's ({@link RepoGroup#withLocalInstalls}).
+     */
+    static List<MavenRepo> localInstalls(Cas cas, boolean mirrorToM2) {
+        Http http = new Http();
+        List<MavenRepo> out = new ArrayList<>(2);
+        for (Path dir :
+                List.of(M2Dirs.localRepository(), cas.root().resolve("repos").resolve(RepositorySpec.JK_LOCAL))) {
+            out.add(new MavenRepo(
+                            RepositorySpec.LOCAL_INSTALL,
+                            dir.toAbsolutePath().normalize().toUri(),
+                            http,
+                            cas,
+                            RepoCredential.ANONYMOUS,
+                            mirrorToM2)
+                    .withPolicy(true, true));
+        }
+        return List.copyOf(out);
     }
 
     /**
@@ -177,7 +203,7 @@ public final class RepoGroupBuilder {
      * before the manifest exists.
      */
     public static RepoGroup buildDefault(Cas cas) {
-        return build(List.of(), false, cas, BuildEnv.ambient());
+        return build(List.of(), false, cas, BuildEnv.ambient()).withLocalInstalls(localInstalls(cas, false));
     }
 
     /**

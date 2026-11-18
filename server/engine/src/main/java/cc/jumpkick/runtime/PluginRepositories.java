@@ -95,6 +95,8 @@ record PluginRepositories(
         List<RepositoryRoute> routes = new ArrayList<>();
         StringBuilder declared = new StringBuilder();
         for (MavenRepo repo : group.repos()) {
+            // This machine's installs are no remote: a step's resolver is handed what jk declares.
+            if (group.isLocalInstall(repo)) continue;
             refuseRefusedMirror(repo);
             URI url = centralRoute.apply(repo.fetchBase());
             routes.add(route(repo, url).through(proxyFor.apply(url)));

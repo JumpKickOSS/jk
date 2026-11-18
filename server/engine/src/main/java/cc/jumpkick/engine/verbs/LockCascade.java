@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.verbs;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.api.CoalescingLockPackages;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.LockDiff;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.FeatureSelection;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
@@ -94,7 +95,7 @@ final class LockCascade {
         synchronized (LockGate.monitorFor(lockDir)) {
             // needsRefresh, not isStale: a missing lock is not "stale" (isStale is digest-only)
             // but an invisible freshen must still write one (jk tree / explain / status).
-            if (skipWhenFresh && !LockFreshness.needsRefresh(lockDir)) {
+            if (skipWhenFresh && !LocalInstall.needsRefresh(lockDir, JkStores.store())) {
                 host.sendQuiet(writer, ProtoEvents.lockFinish(true, 0, List.of(), -1));
                 return JobOutcome.ok();
             }

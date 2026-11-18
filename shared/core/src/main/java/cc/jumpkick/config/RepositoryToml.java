@@ -65,11 +65,12 @@ public final class RepositoryToml {
         if (repos == null) return List.of();
         List<RepositorySpec> result = new ArrayList<>(repos.size());
         for (String name : repos.keySet()) {
-            if (RepositorySpec.JK_LOCAL.equals(name)) {
-                // The first-party install store (repos/jk-local) is not a user's to redeclare.
+            if (RepositorySpec.JK_LOCAL.equals(name) || RepositorySpec.LOCAL_INSTALL.equals(name)) {
+                // The first-party install store (repos/jk-local) and this machine's installs, which
+                // every resolve already asks, are not a user's to redeclare.
                 if (onBad == OnBad.REJECT) {
                     throw new JkBuildParseException(
-                            "repositories.jk-local: name reserved for JumpKick; pick another name");
+                            "repositories." + name + ": name reserved for JumpKick; pick another name");
                 }
                 continue;
             }

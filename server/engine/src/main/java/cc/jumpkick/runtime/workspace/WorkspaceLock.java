@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.workspace;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.LockTimings;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
@@ -13,6 +14,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.FailureLocation;
@@ -55,20 +57,23 @@ public final class WorkspaceLock {
         // A lock on disk that could not be updated is named as stale; with none yet, the
         // resolver's reason alone says why the first lock failed.
         boolean onDisk = Files.isRegularFile(LockPaths.lockFile(root));
+        // Why it is stale, asked before the update rewrites it: a moved manifest, or an install.
+        String why = onDisk ? AutoLock.staleReason(root, LockPaths.lockFile(root)) : null;
+        String staleness = why == null ? LockFreshness.STALE : why;
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
             // explicit `jk lock`, so lock content never depends on which path freshened.
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, repoUrl);
             if (r.status() == 0) return BuildService.LockGuard.OK;
             return new BuildService.LockGuard(
-                    r.status(), onDisk ? AutoLock.RefreshFailed.message(r.error()) : r.error(), null);
+                    r.status(), onDisk ? AutoLock.RefreshFailed.message(staleness, r.error()) : r.error(), null);
         } catch (UnsatisfiableException e) {
             return new BuildService.LockGuard(Exit.RESOLVE, e.getMessage(), FailureLocation.of(e, root));
         } catch (Exception e) {
             // Never carry on with a stale lock in silence (JK-K43HA): the build stops, naming why.
             String reason = Errors.text(e);
             return new BuildService.LockGuard(
-                    Exit.RESOLVE, onDisk ? AutoLock.RefreshFailed.message(reason) : reason, null);
+                    Exit.RESOLVE, onDisk ? AutoLock.RefreshFailed.message(staleness, reason) : reason, null);
         }
     }
 
@@ -140,6 +145,7 @@ public final class WorkspaceLock {
     public static boolean workspaceLockStale(Path root, JkBuild rootBuild, Path rootLock) {
         // rootBuild is unused for the check — member list comes from the live root manifest inside
         // LockFreshness (digest-aware, clone-safe). Kept on the signature for call-site compat.
-        return LockFreshness.workspaceLockStale(root, rootLock);
+        return LockFreshness.workspaceLockStale(root, rootLock)
+                || LocalInstall.staleReason(rootLock, JkStores.store()) != null;
     }
 }

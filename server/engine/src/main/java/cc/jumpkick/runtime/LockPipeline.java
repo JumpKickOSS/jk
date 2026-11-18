@@ -1016,7 +1016,8 @@ public final class LockPipeline {
                 if (repos == null) {
                     repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas, BuildEnv.forModule(lockDir));
                     group = repos;
-                    any = repos.repos().stream().anyMatch(MavenRepo::local);
+                    RepoGroup built = repos;
+                    any = repos.repos().stream().anyMatch(r -> r.local() && !built.isLocalInstall(r));
                     if (!any) return false;
                 }
                 return repos.tryFetchArtifact(pkg.coordinate(), sha256Hex).isPresent();

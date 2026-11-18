@@ -71,6 +71,29 @@ class LockfileRoundTripTest {
                 .isEqualTo("0.52.0");
     }
 
+    /**
+     * A row this machine's installs served records that, and no directory: {@code
+     * source = "local-install"} reads back as written, a bare source with no {@code +<url>}.
+     */
+    @Test
+    void a_row_from_a_local_install_names_no_directory_and_round_trips() {
+        Lockfile lock = new Lockfile(
+                Lockfile.CURRENT_VERSION,
+                "jk 0.1.0-SNAPSHOT",
+                Lockfile.RESOLUTION_ALGORITHM,
+                List.of(new Lockfile.Artifact(
+                        "zz:liba", "0.1.0-SNAPSHOT", "local-install", "sha256:abcd", null, List.of())));
+
+        String rendered = LockfileWriter.render(lock);
+
+        assertThat(rendered).contains("source   = \"local-install\"").doesNotContain("file:");
+        Lockfile.Artifact row = LockfileReader.parse(rendered).artifacts().getFirst();
+        assertThat(row.source()).isEqualTo("local-install");
+        assertThat(RepoSource.parse(row.source()).name()).isNull();
+        assertThat(row.version()).isEqualTo("0.1.0-SNAPSHOT");
+        assertThat(row.checksumHex()).isEqualTo("abcd");
+    }
+
     @Test
     void jk_floor_round_trips_and_the_retired_artifact_pin_is_refused() {
         Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT").withJkMin("9.1.0");

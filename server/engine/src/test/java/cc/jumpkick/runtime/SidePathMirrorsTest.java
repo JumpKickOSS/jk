@@ -91,8 +91,10 @@ class SidePathMirrorsTest {
 
         RepoGroup repos = ScriptPlans.buildRepos(ScriptHeader.empty(), null, new Http(), cas());
 
-        assertThat(repos.repos()).isNotEmpty().allSatisfy(repo -> assertThat(repo.mirror())
-                .isPresent());
+        assertThat(repos.repos())
+                .filteredOn(repo -> !repos.isLocalInstall(repo))
+                .isNotEmpty()
+                .allSatisfy(repo -> assertThat(repo.mirror()).isPresent());
         assertThat(repos.tryFetchArtifact(coordinate())).isPresent();
         assertThat(http.requested()).contains(jarPath());
     }

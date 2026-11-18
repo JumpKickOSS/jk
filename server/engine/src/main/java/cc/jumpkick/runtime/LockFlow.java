@@ -5,7 +5,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -95,7 +94,7 @@ public final class LockFlow {
         // Serialize per lock dir. A freshen that waited here may find the lock already
         // fresh — a concurrent job won the flight; skip the duplicate resolve.
         synchronized (LockGate.monitorFor(lockDir)) {
-            if (Files.exists(lockFile) && !LockFreshness.isStale(lockDir, lockFile)) {
+            if (Files.exists(lockFile) && !AutoLock.isStale(lockDir, lockFile)) {
                 try {
                     Lockfile current = LockfileReader.read(lockFile);
                     return ok(current, scope);

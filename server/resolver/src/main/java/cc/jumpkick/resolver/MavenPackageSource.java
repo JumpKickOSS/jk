@@ -482,22 +482,10 @@ public final class MavenPackageSource implements PackageSource {
         RepoGroup group = declared.reposFor(pkg);
         for (RepositorySpec spec : group.blocked()) out.add(blockedNote(spec));
         for (MavenRepo repo : group.passedOver()) out.add(passedOverNote(repo));
+        String display = PackageId.parse(pkg).display();
         for (String wanted : wantedVersions(pkg)) {
-            if (!Versions.isSnapshot(wanted)) continue;
-            List<MavenRepo> asked = group.repositoriesFor(withVersion(pkg, wanted));
-            List<String> serving = new ArrayList<>();
-            List<String> refusing = new ArrayList<>();
-            for (MavenRepo repo : asked) {
-                (repo.servesSnapshots() ? serving : refusing).add(repo.name() + " (" + repo.policyLabel() + ")");
-            }
-            String display = PackageId.parse(pkg).display();
-            if (serving.isEmpty()) {
-                out.add(wanted + " is a snapshot and no repository for " + display + " serves snapshots: "
-                        + String.join(", ", refusing) + "; add one to [repositories]");
-            } else {
-                out.add(wanted + " is a snapshot; the snapshot repositories for " + display + " do not list it: "
-                        + String.join(", ", serving));
-            }
+            String note = LocalInstallNotes.of(group, withVersion(pkg, wanted), display);
+            if (note != null) out.add(note);
         }
         return List.copyOf(out);
     }

@@ -12,6 +12,7 @@ import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.repo.DownloadSlots;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactResolver;
 import cc.jumpkick.repo.RepoCredentialResolver;
@@ -184,6 +185,7 @@ public final class CacheSync {
         // single-writer).
         Map<String, MavenRepo> repoCache = new HashMap<>();
         List<PendingFetch> pending = new ArrayList<>();
+        List<String> localMisses = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) {
                 skipped++; // POM-only / path / git deps
@@ -205,6 +207,19 @@ public final class CacheSync {
                 observer.upToDate(pkg);
                 continue;
             }
+            // A row this machine's installs served is read where they keep it, never fetched: absent
+            // or changed, the other project's install is what is missing, and only it can say so.
+            if (LocalInstall.isSource(pkg.source())) {
+                if (locator.locate(pkg).isPresent()) {
+                    upToDate++;
+                    observer.upToDate(pkg);
+                    continue;
+                }
+                String error = notInstalled();
+                observer.failed(pkg, error);
+                localMisses.add(pkg.coordinate().toGav() + ": " + error);
+                continue;
+            }
             pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
         }
 
@@ -214,7 +229,7 @@ public final class CacheSync {
         AtomicBoolean aborted = new AtomicBoolean();
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
         int fetched = 0;
-        List<String> errors = new ArrayList<>();
+        List<String> errors = new ArrayList<>(localMisses);
         try {
             for (PendingFetch p : pending) {
                 CompletableFuture<FetchResult> fut = submit(window, aborted, () -> fetch(p, aborted));
@@ -429,6 +444,16 @@ public final class CacheSync {
             Thread.currentThread().interrupt();
             return FetchResult.failure(p.pkg.name() + " v" + p.pkg.version() + ": interrupted");
         }
+    }
+
+    /**
+     * Why a row this machine's installs served is not on disk, and the two ways a machine gets it — the other project's {@code jk install} here, or a repository that serves it.
+     */
+    static String notInstalled() {
+        return "the lock took it from a jk install (source = \"" + LocalInstall.SOURCE
+                + "\") and this machine's installs do not hold the bytes the lock pins: run jk install in its project"
+                + " on this machine, then jk lock here; or add a repository that serves it to [repositories]; "
+                + LocalInstallNotes.SEE;
     }
 
     private MavenRepo repoFor(String source, Map<String, MavenRepo> cache) {

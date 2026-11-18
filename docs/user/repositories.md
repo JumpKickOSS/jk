@@ -16,8 +16,11 @@ never in `~/.m2`. A file already in the local repository is used where it is onc
 not copied and not downloaded. Set `[m2] integration = false` to keep every origin's artifacts in
 its own store tree and leave the Maven local repository alone. `jk install` writes the Maven local repo
 by default; `[install] destination = "jk"` keeps a project's artifacts in `repos/jk-local` instead
-([Install](packaging.md#jk-install-project)). First-party workers always live in `repos/jk-local`
-(`jk-local` is reserved; `[repositories.local]` is a normal user remote name).
+([Install](packaging.md#jk-install-project)). Both are asked for a version a project pins by name,
+so another project's install needs no `[repositories]` entry
+([Using another project's install](dependencies.md#using-another-projects-install)). First-party
+workers always live in `repos/jk-local` (`jk-local` and `local-install` are reserved;
+`[repositories.local]` is a normal user remote name).
 
 ## Store layout: one tree per origin
 

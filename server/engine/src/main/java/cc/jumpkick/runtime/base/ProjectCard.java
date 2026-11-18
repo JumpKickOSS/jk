@@ -2,14 +2,15 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.Log;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.mvn.PomCoord;
+import cc.jumpkick.repo.LocalInstall;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -69,7 +70,7 @@ public record ProjectCard(
         }
         boolean lockStale;
         try {
-            lockStale = LockFreshness.needsRefresh(root);
+            lockStale = LocalInstall.needsRefresh(root, JkStores.store());
         } catch (RuntimeException e) {
             lockStale = true;
         }

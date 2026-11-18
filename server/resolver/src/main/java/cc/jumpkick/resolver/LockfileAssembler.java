@@ -7,6 +7,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -141,6 +142,15 @@ final class LockfileAssembler {
     }
 
     /**
+     * A row's {@code source}: {@code <name>+<url>} for a repository, and the bare {@link
+     * RepositorySpec#LOCAL_INSTALL} for one of this machine's installs, whose directory is this
+     * machine's and is read where each machine keeps it.
+     */
+    static String sourceOf(RepoGroup group, MavenRepo repo) {
+        return group.isLocalInstall(repo) ? RepositorySpec.LOCAL_INSTALL : repo.name() + "+" + repo.baseUrl();
+    }
+
+    /**
      * Fold a graph's modules into the multi-row lock map. Same module@version accumulates scopes;
      * a different version of the same module becomes a separate row with only this graph's scopes.
      */
@@ -255,7 +265,7 @@ final class LockfileAssembler {
             }
         }
         if (hit != null) {
-            source = hit.repo().name() + "+" + hit.repo().baseUrl();
+            source = sourceOf(group, hit.repo());
             checksum = "sha256:" + hit.fetched().sha256();
         } else if (!kmpAlias && !pomOnly) {
             // a resolved package whose artifact 404s must not land as a checksum-less
@@ -269,7 +279,7 @@ final class LockfileAssembler {
             // named on the row so a reader can tell a row without a file by design from one whose
             // jar nobody fetched.
             MavenRepo holder = group.pomRepository(coord).orElse(null);
-            if (holder != null) source = holder.name() + "+" + holder.baseUrl();
+            if (holder != null) source = sourceOf(group, holder);
             if (coord.type() == null || !"pom".equalsIgnoreCase(coord.type())) {
                 artifactFile = coord.artifact() + "-" + coord.version() + (kmpAlias ? ".module" : ".pom");
             }

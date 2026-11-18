@@ -375,6 +375,10 @@ without the project declaring it. The lock output names each such repository onc
 that introduced it; the trust rule is a declared repository's (https, published checksums), with
 no opt-out. See [Dependencies](dependencies.md#repositories-a-dependencys-pom-declares).
 
+A row another project's `jk install` on this machine served says `source = "local-install"`, with no
+URL: each machine reads its own Maven local repository and shelf. The lock is stale once they no
+longer hold the bytes the row pins ([Using another project's install](dependencies.md#using-another-projects-install)).
+
 ## Rows without a file
 
 A row that pins no `checksum` has no file of its own: a BOM (`type = "pom"`), an aggregator or a

@@ -62,6 +62,16 @@ class JkBuildParserRepositoryTest {
     }
 
     @Test
+    void repositories_local_install_is_reserved() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                [repositories]
+                local-install = "https://example.invalid/maven/"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("repositories.local-install: name reserved for JumpKick");
+    }
+
+    @Test
     void repositories_jk_local_is_reserved() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [repositories]

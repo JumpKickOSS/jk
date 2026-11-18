@@ -35,8 +35,13 @@ class RepoGroupBuilderHttpTest {
         var group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")));
 
         assertThat(group.repos()).isNotEmpty();
-        assertThat(group.repos()).allSatisfy(repo -> assertThat(repo.hasMetadataCache())
-                .as("%s must carry the HTTP client, or its metadata cache and ~/.m2 probe are dead", repo.name())
-                .isTrue());
+        // This machine's installs are file: repositories, read from the disk with no metadata cache.
+        assertThat(group.repos())
+                .filteredOn(repo -> !group.isLocalInstall(repo))
+                .allSatisfy(repo -> assertThat(repo.hasMetadataCache())
+                        .as(
+                                "%s must carry the HTTP client, or its metadata cache and ~/.m2 probe are dead",
+                                repo.name())
+                        .isTrue());
     }
 }

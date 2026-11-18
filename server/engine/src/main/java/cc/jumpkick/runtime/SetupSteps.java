@@ -20,6 +20,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -167,7 +168,10 @@ final class SetupSteps {
                         }
                         lock = memberView(in, Objects.requireNonNull(result.lockfile(), "lockfile"));
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
-                        ctx.label("jk.toml changed: updating jk-lock.toml");
+                        ctx.label(
+                                LockFreshness.isStale(in.dir(), in.lockFile())
+                                        ? "jk.toml changed: updating jk-lock.toml"
+                                        : "an installed dependency changed: updating jk-lock.toml");
                         Lockfile existing = LockfileReader.read(in.lockFile());
                         Lockfile updated;
                         try {

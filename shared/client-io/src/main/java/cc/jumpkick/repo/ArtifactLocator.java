@@ -62,11 +62,13 @@ public final class ArtifactLocator {
 
     /**
      * @param source the lock row's {@code "<name>+<url>"} source, read through {@link
-     *     RepoArtifactStore#forSource}; null or a bare {@code jk-local} reads the first-party shelf
+     *     RepoArtifactStore#forSource}; null or a bare {@code jk-local} reads the first-party shelf,
+     *     a bare {@code local-install} this machine's installs ({@link LocalInstall})
      */
     public Optional<Path> locate(
             @Nullable String source, @Nullable String relativePath, @Nullable String expectedSha256) {
         if (expectedSha256 == null || expectedSha256.isBlank() || relativePath == null) return Optional.empty();
+        if (LocalInstall.isSource(source)) return LocalInstall.locate(storeRoot, relativePath, expectedSha256);
         RepoArtifactStore store = source == null
                 ? RepoArtifactStore.forStoreId(storeRoot, RepoArtifactResolver.JK_LOCAL)
                 : RepoArtifactStore.forSource(storeRoot, source, m2integration);

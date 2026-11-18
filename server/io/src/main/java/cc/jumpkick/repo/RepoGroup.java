@@ -10,11 +10,13 @@ import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -153,6 +155,14 @@ public final class RepoGroup {
      */
     private final List<RepositorySpec> blocked;
 
+    /**
+     * How many of the last repositories stand for this machine's installs ({@link
+     * #withLocalInstalls}): asked for a version only when a resolve names it and no other
+     * repository lists it, and for a {@code -SNAPSHOT} ahead of every repository but the priority
+     * prefix.
+     */
+    private final int localInstalls;
+
     public RepoGroup(List<MavenRepo> repos) {
         this(repos, null);
     }
@@ -182,7 +192,7 @@ public final class RepoGroup {
             @Nullable List<List<String>> exclusiveGroups,
             @Nullable List<List<String>> routedGroups,
             int priorityCount) {
-        this(repos, exclusiveGroups, routedGroups, priorityCount, List.of());
+        this(repos, exclusiveGroups, routedGroups, priorityCount, List.of(), 0);
     }
 
     private RepoGroup(
@@ -190,7 +200,8 @@ public final class RepoGroup {
             @Nullable List<List<String>> exclusiveGroups,
             @Nullable List<List<String>> routedGroups,
             int priorityCount,
-            List<RepositorySpec> blocked) {
+            List<RepositorySpec> blocked,
+            int localInstalls) {
         Objects.requireNonNull(repos, "repos");
         if (repos.isEmpty()) {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
@@ -200,6 +211,7 @@ public final class RepoGroup {
         this.routedGroups = normalizePatterns(this.repos.size(), routedGroups);
         this.priorityCount = priorityCount;
         this.blocked = List.copyOf(blocked);
+        this.localInstalls = localInstalls;
         // Bindings and the priority prefix change which repos are eligible for a coordinate, so
         // they are part of the question every memo answers — two groups with the same URLs but
         // different bindings must never share memo entries. Each repository is named by the URL its
@@ -214,7 +226,9 @@ public final class RepoGroup {
             List<String> routed = this.routedGroups.get(i);
             if (!routed.isEmpty()) id.append('>').append(String.join(";", routed));
         }
-        this.repoIdentity = id.append("|p").append(priorityCount).toString();
+        id.append("|p").append(priorityCount);
+        if (localInstalls > 0) id.append("|l").append(localInstalls);
+        this.repoIdentity = id.toString();
     }
 
     public static RepoGroup of(MavenRepo single) {
@@ -224,7 +238,7 @@ public final class RepoGroup {
     /** This group with {@code blocked} as the repositories it knows of and never asks. */
     public RepoGroup withBlocked(List<RepositorySpec> blocked) {
         if (blocked.isEmpty()) return this;
-        return new RepoGroup(repos, exclusiveGroups, routedGroups, priorityCount, blocked);
+        return new RepoGroup(repos, exclusiveGroups, routedGroups, priorityCount, blocked, localInstalls);
     }
 
     /** The repositories declared {@code blocked = true}: never asked, named when nothing else serves a package. */
@@ -248,25 +262,71 @@ public final class RepoGroup {
                 padded(leading.size(), exclusiveGroups, 0),
                 padded(leading.size(), routedGroups, 0),
                 leading.size() + priorityCount,
-                blocked);
+                blocked,
+                localInstalls);
     }
 
     /**
      * This group followed by {@code trailing}, which answer only when every repository here has
      * missed: the repositories a dependency's POM declares for its own subtree. They carry no
-     * binding, and the priority prefix is unchanged.
+     * binding, and the priority prefix is unchanged. They go ahead of this machine's installs,
+     * which stay last ({@link #withLocalInstalls}).
      */
     public RepoGroup withReposAppended(List<MavenRepo> trailing) {
         if (trailing == null || trailing.isEmpty()) return this;
+        int declared = repos.size() - localInstalls;
         List<MavenRepo> merged = new ArrayList<>(repos.size() + trailing.size());
-        merged.addAll(repos);
+        merged.addAll(repos.subList(0, declared));
         merged.addAll(trailing);
+        merged.addAll(repos.subList(declared, repos.size()));
         return new RepoGroup(
                 merged,
-                padded(0, exclusiveGroups, trailing.size()),
-                padded(0, routedGroups, trailing.size()),
+                padded(0, exclusiveGroups.subList(0, declared), trailing.size() + localInstalls),
+                padded(0, routedGroups.subList(0, declared), trailing.size() + localInstalls),
                 priorityCount,
-                blocked);
+                blocked,
+                localInstalls);
+    }
+
+    /**
+     * This group followed by {@code installs}, the directories this machine's {@code jk install}
+     * writes (the Maven local repository, jk's {@code repos/jk-local} shelf). They carry no binding,
+     * so a group a repository claims never reaches them. A version is asked of them only when a
+     * resolve names it ({@link #availableVersions}: a pin, a POM edge) and no other repository lists
+     * it, so a floating selector never lands on what a machine happened to install; a {@code
+     * -SNAPSHOT} is fetched from them first, a release last. One whose URL a repository here
+     * already has is left out: that repository answers for it as declared.
+     */
+    public RepoGroup withLocalInstalls(List<MavenRepo> installs) {
+        List<MavenRepo> added = new ArrayList<>();
+        for (MavenRepo install : installs) {
+            boolean known = false;
+            for (MavenRepo repo : repos) known |= repo.fetchBase().equals(install.fetchBase());
+            if (!known) added.add(install);
+        }
+        if (added.isEmpty()) return this;
+        List<MavenRepo> merged = new ArrayList<>(repos);
+        merged.addAll(added);
+        return new RepoGroup(
+                merged,
+                padded(0, exclusiveGroups, added.size()),
+                padded(0, routedGroups, added.size()),
+                priorityCount,
+                blocked,
+                localInstalls + added.size());
+    }
+
+    /** True when {@code repo} is one of this machine's installs ({@link #withLocalInstalls}). */
+    public boolean isLocalInstall(MavenRepo repo) {
+        for (int i = repos.size() - localInstalls; i < repos.size(); i++) {
+            if (repos.get(i) == repo) return true;
+        }
+        return false;
+    }
+
+    /** This machine's installs ({@link #withLocalInstalls}), in the order they are asked. */
+    public List<MavenRepo> localInstalls() {
+        return repos.subList(repos.size() - localInstalls, repos.size());
     }
 
     /** {@code patterns} with {@code before} empty entries ahead of it and {@code after} behind it. */
@@ -544,17 +604,23 @@ public final class RepoGroup {
         boolean force = MavenMetadataCache.forceRevalidate()
                 || SessionContext.current().config().forceOr(false);
         boolean memoable = !force && memoizesEveryRepo();
+        List<MavenRepo> eligible = eligibleRepos(coord);
+        List<MavenRepo> candidates = new ArrayList<>(eligible);
+        candidates.addAll(lastResortRepos(coord, eligible));
         if (memoable) {
             VersionsEntry cached = VERSIONS_CACHE.get(key);
-            if (cached != null && !cached.expired() && cached.versions().containsAll(wanted)) return cached.versions();
+            if (cached != null && !cached.expired()) {
+                List<String> unlisted = missing(wanted, cached.versions());
+                if (unlisted.isEmpty()) return cached.versions();
+                // The catalogs are memoised; what this machine installed never is.
+                List<String> installed = installedVersions(coord, candidates, unlisted);
+                if (installed.size() == unlisted.size()) return withInstalled(cached.versions(), installed);
+            }
             if (cached != null) VERSIONS_CACHE.remove(key, cached);
         }
-        List<MavenRepo> eligible = eligibleRepos(coord);
         List<MavenRepo> asked = new ArrayList<>();
-        for (MavenRepo repo : eligible) {
-            if (repo.servesReleases() || (snapshots && repo.servesSnapshots())) asked.add(repo);
-        }
-        for (MavenRepo repo : lastResortRepos(coord, eligible)) {
+        for (MavenRepo repo : candidates) {
+            if (isLocalInstall(repo)) continue;
             if (repo.servesReleases() || (snapshots && repo.servesSnapshots())) asked.add(repo);
         }
         // With nothing asked for by name the first catalog that answers ends the walk, so it alone
@@ -601,11 +667,15 @@ public final class RepoGroup {
         } finally {
             RepoLegs.settle(catalogs);
         }
+        // A version asked for by name that no repository lists may be one this machine installed;
+        // what the installs hold is read on every call and never memoised, since a jk install or a
+        // removal changes it between two resolves.
+        List<String> installed = installedVersions(coord, candidates, missing(wanted, union));
         // A catalog can end below a release its directory serves (Central's jfree:jfreechart lists
         // up to 1.0.1 and serves 1.0.13). Maven never reads the catalog for an exact version, so a
         // wanted version no catalog lists is probed by its POM before it is refused.
         for (String v : wanted) {
-            if (union.contains(v) || (Versions.isSnapshot(v) && !snapshots)) continue;
+            if (union.contains(v) || installed.contains(v) || (Versions.isSnapshot(v) && !snapshots)) continue;
             if (servesUnlisted(Coordinate.of(coord.group(), coord.artifact(), v))) union.add(v);
         }
         // Every candidate failed to answer: that is the failure, not an empty catalog, and an
@@ -624,7 +694,63 @@ public final class RepoGroup {
             admit(VERSIONS_CACHE, VERSIONS_CACHE_MAX);
             VERSIONS_CACHE.put(key, new VersionsEntry(immutable, now + VERSIONS_TTL_NANOS));
         }
-        return immutable;
+        return withInstalled(immutable, installed);
+    }
+
+    /** The versions of {@code wanted} that {@code listed} leaves out, in order. */
+    private static List<String> missing(Set<String> wanted, Collection<String> listed) {
+        List<String> out = new ArrayList<>();
+        for (String v : wanted) {
+            if (!listed.contains(v)) out.add(v);
+        }
+        return out;
+    }
+
+    /**
+     * The versions of {@code missing} that one of this machine's installs among {@code candidates}
+     * holds, in the order the installs are asked. Only a version named is ever taken from an
+     * install; an install that cannot be read answers nothing.
+     */
+    private List<String> installedVersions(Coordinate coord, List<MavenRepo> candidates, List<String> missing)
+            throws InterruptedException {
+        if (missing.isEmpty() || localInstalls == 0) return List.of();
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (MavenRepo repo : candidates) {
+            if (!isLocalInstall(repo)) continue;
+            List<String> held;
+            try {
+                held = repo.availableVersions(coord);
+            } catch (IOException unreadable) {
+                continue;
+            }
+            for (String v : missing) {
+                if (held.contains(v) && repo.serves(v) && holdsPom(repo, coord, v)) out.add(v);
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * True when the install's own directory holds {@code version}'s POM now. Offline, a {@code
+     * file:} repository also lists what its store copy holds, and an install's copy outlives the
+     * install: a version removed from the machine must not be offered from it.
+     */
+    private static boolean holdsPom(MavenRepo install, Coordinate coord, String version) {
+        try {
+            URI pom = install.fetchBase()
+                    .resolve(MavenLayout.pomPath(Coordinate.of(coord.group(), coord.artifact(), version)));
+            return Files.isRegularFile(Path.of(pom));
+        } catch (IllegalArgumentException notAPath) {
+            return false;
+        }
+    }
+
+    /** {@code listed} followed by the {@code installed} versions it does not hold. */
+    private static List<String> withInstalled(List<String> listed, List<String> installed) {
+        if (installed.isEmpty()) return listed;
+        LinkedHashSet<String> out = new LinkedHashSet<>(listed);
+        out.addAll(installed);
+        return List.copyOf(out);
     }
 
     /** Whether some repository here serves {@code coord}'s POM although no catalog listed its version. */
@@ -643,6 +769,7 @@ public final class RepoGroup {
      */
     private boolean memoizesEveryRepo() {
         for (MavenRepo repo : repos) {
+            if (isLocalInstall(repo)) continue; // asked past the memo, never through it
             if (!RepoMisses.memoizes(repo.fetchBase())) return false;
         }
         return true;
@@ -762,13 +889,25 @@ public final class RepoGroup {
             boolean resolve)
             throws IOException, InterruptedException {
         List<MavenRepo> eligible = eligibleRepos(coord);
+        List<MavenRepo> lastResort = lastResortRepos(coord, eligible);
+        if (localInstalls > 0 && Versions.isSnapshot(coord.version())) {
+            // A snapshot this machine installed is the one its resolve means: asked ahead of every
+            // repository but the workspace's own (path and git) builds.
+            List<MavenRepo> first = new ArrayList<>(eligible.subList(0, priorityCount));
+            for (MavenRepo repo : eligible) if (isLocalInstall(repo)) first.add(repo);
+            for (MavenRepo repo : lastResort) if (isLocalInstall(repo)) first.add(repo);
+            for (MavenRepo repo : eligible.subList(priorityCount, eligible.size())) {
+                if (!isLocalInstall(repo)) first.add(repo);
+            }
+            eligible = first;
+            lastResort = lastResort.stream().filter(r -> !isLocalInstall(r)).toList();
+        }
         FetchFanOut fanOut = new FetchFanOut(coord, holder);
         Optional<RepoFetched> found =
                 tryFetchFrom(serving(eligible, coord), coord, localProbe, fetcher, abort, fanOut, resolve);
         if (found.isPresent()) return found;
         // Full miss on the fast path: consult non-claiming specialists before giving up.
-        found = tryFetchFrom(
-                serving(lastResortRepos(coord, eligible), coord), coord, localProbe, fetcher, abort, fanOut, resolve);
+        found = tryFetchFrom(serving(lastResort, coord), coord, localProbe, fetcher, abort, fanOut, resolve);
         if (found.isPresent()) return found;
         fanOut.settle();
         return Optional.empty();

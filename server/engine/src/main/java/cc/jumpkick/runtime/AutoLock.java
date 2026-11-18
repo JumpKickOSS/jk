@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
@@ -9,6 +10,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.runtime.base.LockGate;
@@ -33,12 +35,21 @@ public final class AutoLock {
     private AutoLock() {}
 
     /**
-     * Returns {@code true} when the lock no longer matches its manifests (content digest), or the
-     * lock lacks a valid {@code manifests-sha256} (always re-lock). See
-     * {@link LockFreshness#isStale}.
+     * Returns {@code true} when the lock no longer matches its manifests (content digest), the
+     * lock lacks a valid {@code manifests-sha256} (always re-lock), or a row this machine's
+     * installs served no longer has its bytes there ({@link LocalInstall}). See {@link #staleReason}.
      */
     public static boolean isStale(Path dir, Path lockFile) {
-        return LockFreshness.isStale(dir, lockFile);
+        return staleReason(dir, lockFile) != null;
+    }
+
+    /**
+     * Why the lock is stale, the sentence the build, {@code jk explain} and {@code jk doctor} give,
+     * or null when it is not: {@link LockFreshness#STALE} for moved manifests, else the install a
+     * row came from that changed ({@link LocalInstall#staleReason}).
+     */
+    public static @Nullable String staleReason(Path dir, Path lockFile) {
+        return LocalInstall.lockStaleReason(dir, lockFile, JkStores.store());
     }
 
     /**
@@ -71,7 +82,8 @@ public final class AutoLock {
         if (!isStale(dir, lockFile)) return null;
         // Serialize per lock owner; a concurrent job may have freshened while we waited.
         synchronized (LockGate.monitorFor(LockPaths.lockOwnerDir(dir))) {
-            if (!isStale(dir, lockFile)) {
+            String stale = staleReason(dir, lockFile);
+            if (stale == null) {
                 try {
                     return LockfileReader.read(lockFile);
                 } catch (Exception e) {
@@ -79,7 +91,15 @@ public final class AutoLock {
                     Log.debug("maybeReLock: unreadable", e);
                 }
             }
-            return reLock(dir, existing, cache, repoUrl, features, withDefaults, observer);
+            return reLock(
+                    dir,
+                    existing,
+                    cache,
+                    repoUrl,
+                    features,
+                    withDefaults,
+                    observer,
+                    stale == null ? LockFreshness.STALE : stale);
         }
     }
 
@@ -90,7 +110,8 @@ public final class AutoLock {
             @Nullable URI repoUrl,
             @Nullable Collection<String> features,
             boolean withDefaults,
-            ResolveObserver observer) {
+            ResolveObserver observer,
+            String stale) {
         try {
             // One lock scope, shared with every other lock entry point: a workspace member (or
             // root) resolves the merged union at the root — a module-scoped relock
@@ -114,7 +135,7 @@ public final class AutoLock {
             // rather than run on pins jk.toml no longer names. Carrying on cost a CI run its
             // cause: a test failed far from it, and the next checkout's forecast waited on the
             // same update (JK-K43HA).
-            throw new RefreshFailed(e);
+            throw new RefreshFailed(stale, e);
         }
     }
 
@@ -122,14 +143,27 @@ public final class AutoLock {
     public static final class RefreshFailed extends RuntimeException {
         private static final long serialVersionUID = 1L;
 
-        RefreshFailed(Exception cause) {
-            super(message(Errors.text(cause)), cause);
+        RefreshFailed(String stale, Exception cause) {
+            super(message(stale, Errors.text(cause)), cause);
         }
 
         /** What a build says when it stops on a stale lock it could not update for {@code reason}. */
         public static String message(@Nullable String reason) {
-            return LockFreshness.STALE + ", and updating it failed: "
-                    + (reason == null || reason.isBlank() ? "dependency resolution failed" : reason.strip())
+            return message(LockFreshness.STALE, reason);
+        }
+
+        /**
+         * As {@link #message(String)} for a lock stale for {@code stale} ({@link #staleReason}): a
+         * moved manifest, or an install a row came from that this machine no longer holds.
+         */
+        public static String message(String stale, @Nullable String reason) {
+            String why = reason == null || reason.isBlank() ? "dependency resolution failed" : reason.strip();
+            if (!stale.equals(LockFreshness.STALE)) {
+                return stale + ", and updating it failed: " + why
+                        + "\nThe build stops rather than run on bytes no install here holds: run jk install in that"
+                        + " project on this machine, or add a repository that serves it to [repositories]";
+            }
+            return stale + ", and updating it failed: " + why
                     + "\nThe build stops rather than run on pins jk.toml no longer names: run jk lock once it can"
                     + " resolve (online, the host allowed, the artifact published), or undo the jk.toml change";
         }

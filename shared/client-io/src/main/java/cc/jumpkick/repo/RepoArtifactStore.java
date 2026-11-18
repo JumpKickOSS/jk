@@ -119,7 +119,8 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * The store for the repository at {@code origin}, whatever a project calls it. A repository
+     * The store for the repository at {@code origin}, whatever a project calls it, except this
+     * machine's installs ({@link RepositorySpec#LOCAL_INSTALL}), which keep a copy. A repository
      * served out of this very store ({@code file:} at {@code <cacheRoot>/repos/<id>}, the view the
      * worker launcher reads through) is that tree itself, not a copy of it. A loopback origin's tree
      * is this process's alone: the first touch here removes what a previous process stored under it.
@@ -136,6 +137,17 @@ public final class RepoArtifactStore {
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(origin, "origin");
+        if (RepositorySpec.LOCAL_INSTALL.equals(name)) {
+            // This machine's installs are read, never written: what a resolve takes from them is
+            // copied to a tree of its own, so a re-installed snapshot evicts the copy and never the
+            // install — which, read as the Maven local repository or the shelf it is, it would be.
+            return new RepoArtifactStore(
+                    dirFor(cacheRoot, RepoIdentity.storeId(origin)),
+                    null,
+                    name,
+                    RepoIdentity.canonicalOrigin(origin),
+                    false);
+        }
         String self = selfView(cacheRoot, origin);
         if (self != null) return new RepoArtifactStore(cacheRoot, self);
         if (isM2View(origin)) {

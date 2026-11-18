@@ -229,7 +229,9 @@ public final class StableVersions {
         LinkedHashSet<String> union = new LinkedHashSet<>();
         boolean anyLocal = false;
         for (MavenRepo repo : asked) {
-            if (!repo.local() || !repo.servesReleases()) continue;
+            // What this machine installed is no account of the newest release; it is asked only
+            // for a version a resolve names.
+            if (!repo.local() || !repo.servesReleases() || repos.isLocalInstall(repo)) continue;
             anyLocal = true;
             union.addAll(repo.availableVersions(coord));
         }

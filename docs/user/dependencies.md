@@ -360,7 +360,9 @@ repository a snapshot was deployed to in Maven's unique form (what `jk publish` 
 `-SNAPSHOT` version as the newest build that metadata lists; from a remote repository only the
 `-SNAPSHOT` file names are read so far. A timestamped
 snapshot (`1.0-20260101.120000-1`) names one build and is kept like a release. `jk build` still
-reads what the lock pinned; `jk lock` is how a re-installed snapshot reaches the build.
+reads what the lock pinned; `jk lock` is how a re-installed snapshot reaches the build. A snapshot
+another project on this machine installed needs no repository at all:
+[Using another project's install](#using-another-projects-install).
 
 When a snapshot is pinned and no repository the dependency may resolve from serves snapshots, the
 refusal says so, naming each repository asked and its policy:
@@ -371,6 +373,43 @@ refusal says so, naming each repository asked and its policy:
   │   available: 1.3.9, 1.3.8, …
   │   1.3.10-SNAPSHOT is a snapshot and no repository for org.questdb:questdb-client serves snapshots: central (releases only); add one to [repositories]
 ```
+
+### Using another project's install
+
+`jk install` in project A puts A's jar and POM in the Maven local repository (`~/.m2/repository`,
+the default) or in JumpKick's shelf (`--destination jk`), at A's version plus `-SNAPSHOT`
+([Install](packaging.md#jk-install-project)). Project B on the same machine pins that version and
+builds; it declares no repository:
+
+```toml
+[dependencies]
+liba = { group = "com.example", name = "liba", version = "0.1.0-SNAPSHOT" }
+```
+
+Both install destinations are asked by every resolve, with no configuration, for a version pinned
+by name: a `-SNAPSHOT` pin, an exact release, or a version a dependency's POM names. A snapshot is
+taken from them ahead of any repository; a release only when no repository serves it, so a
+published release and its checksum rule win. A floating selector (`latest`, `^0.1`, `snapshot`)
+and `jk add` with no version never land on an install, and neither does a group a repository
+claims with `groups` (`[repositories.<name>] groups`, `cc.jumpkick.*`).
+
+The lock row says where it came from, and names no directory:
+
+```toml
+[[artifact]]
+name     = "com.example:liba:jar:"
+version  = "0.1.0-SNAPSHOT"
+source   = "local-install"
+checksum = "sha256:…"
+```
+
+Install A again and B's lock is stale by content: the next `jk build` of B re-locks onto the new jar,
+and `jk explain` says so first. On a machine that never ran A's `jk install`, B's build stops naming
+the coordinate: run `jk install` in A there, or add a repository that serves it to `[repositories]`.
+
+A library you publish may not depend on a snapshot: the `library` guard pack's
+`no-snapshot-versions` rule refuses a `-SNAPSHOT` in its dependencies, as before. An application may
+pin one while you work across both projects; pin the release once A is published.
 
 ### An exact version the first catalog does not list
 

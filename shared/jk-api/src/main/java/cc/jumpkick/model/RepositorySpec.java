@@ -76,6 +76,15 @@ public record RepositorySpec(
     public static final String JK_LOCAL = "jk-local";
 
     /**
+     * The name this machine's installs answer to in a resolve — the Maven local repository and the
+     * {@link #JK_LOCAL} shelf, the two places {@code jk install} writes — and the bare lockfile
+     * {@code source} of a row one of them served. Not a remote: no URL is recorded, since the
+     * directories are this machine's, and another machine reads its own. Reserved in {@code
+     * [repositories]}.
+     */
+    public static final String LOCAL_INSTALL = "local-install";
+
+    /**
      * Groups Google's Android Maven serves. Applied as <em>routed</em> bindings when the Google
      * remote is present: Google is asked first and alone when it answers, so warm multi-repo locks
      * do not probe Central for every {@code androidx.*} GAV, and every other repository is asked

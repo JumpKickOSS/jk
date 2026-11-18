@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.doctor;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkCacheConfig;
@@ -10,10 +11,10 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.lock.JumpKickPins;
-import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.M2Integrity;
 import cc.jumpkick.winhost.HostRow;
@@ -273,13 +274,14 @@ public final class DoctorChecks {
             long artifacts = text.lines()
                     .filter(l -> l.trim().startsWith("[[artifact]]"))
                     .count();
-            if (LockFreshness.isStale(project, lock)) {
+            String stale = LocalInstall.lockStaleReason(project, lock, JkStores.store());
+            if (stale != null) {
                 // The same phrase the build fails or warns with, and jk explain gives as its reason.
                 return new HostRow(
                         "lock",
                         "lock",
                         Status.WARN,
-                        LockFreshness.STALE + " · " + lock,
+                        stale + " · " + lock,
                         "run jk lock; the next build updates it first and stops, naming why, if it cannot resolve");
             }
             return row("lock", Status.OK, artifacts + " artifacts · " + lock);
