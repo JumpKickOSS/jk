@@ -42,13 +42,16 @@ class RenameLeftTest {
     @Test
     void judgmentCallsLeftAreNamedByKindWithTheirIdsAndTheUnpinnedHazard(@TempDir Path root) throws IOException {
         assertThat(RenameLeft.after(write(root, TELEPHONE).toString()))
-                .isEqualTo("Done where a compile or test reads it. Left as they were, and no compile or test reads"
-                        + " them: comment at src/main/java/org/acme/petclinic/owner/OwnerController.java:14 (c8);"
+                .isEqualTo("Done where a compile or test reads it: no build, test or search is needed to check it."
+                        + " Left as they were (the graph found these; no compile or test reads them): comment at"
+                        + " src/main/java/org/acme/petclinic/owner/OwnerController.java:14 (c8);"
                         + " SQL column at src/main/resources/db/schema.sql:3 (c9); message key at"
                         + " src/main/resources/messages/messages.properties:1,"
                         + " src/main/resources/messages/messages_de.properties:1 (c10,c11); h1 hazard, not pinned."
                         + " also=<id> changes one the task wants changed.")
-                .doesNotContain("task is done");
+                .doesNotContain("task is done")
+                // The graph lists what it found, not every use there is: it claims no completeness.
+                .doesNotContainPattern("(?i)\\ball\\b");
     }
 
     @Test

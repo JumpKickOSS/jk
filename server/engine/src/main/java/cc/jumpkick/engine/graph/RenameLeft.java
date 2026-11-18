@@ -77,8 +77,12 @@ public final class RenameLeft {
                     .append(", or edit them.");
         }
         if (!may.isEmpty()) {
-            s.append(must.isEmpty() ? "Done where a compile or test reads it. " : " ")
-                    .append("Left as they were, and no compile or test reads them: ")
+            // What a compile or test reads was checked, so the agent need not check it again; the rest
+            // is what the graph found, which is not everything a search could (its recall is partial
+            // for some kinds of link), so the sentence claims no more than that.
+            String done = "Done where a compile or test reads it: no build, test or search is needed to check it. ";
+            s.append(must.isEmpty() ? done : " ")
+                    .append("Left as they were (the graph found these; no compile or test reads them): ")
                     .append(kinds(may))
                     .append(". also=<id> changes one the task wants changed.");
         }
