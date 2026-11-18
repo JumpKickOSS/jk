@@ -6,9 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.53.0
 
-- **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test and the programs it starts,
-  and a cached result holds only while what it read keeps its value; the undeclared-variable
-  warnings are gone. `[env] inherit = false` keeps the old allow-list; `[env] scope` narrows it.
+- **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test, and a cached result
+  holds while what it read keeps its value; the undeclared-variable warnings are gone.
+  `[env] inherit = false` keeps the old allow-list. Where the shell exports `HOSTNAME`, Micronaut
+  tests need `micronaut.server.host=localhost`.
 - **Breaking: a version another project installed here resolves with no repository.** `jk install`
   the library, then depend on its version; lock rows say `local-install`. The default guards let a
   developer build use such a snapshot; CI, `jk release` and `jk publish` refuse it.

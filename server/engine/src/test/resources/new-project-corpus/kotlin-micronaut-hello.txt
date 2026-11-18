@@ -10,6 +10,7 @@ src/main/kotlin/com/acme/Application.kt
 src/main/kotlin/com/acme/HelloController.kt
 src/main/resources/application.properties
 src/test/kotlin/com/acme/HelloControllerTest.kt
+src/test/resources/application-test.properties
 --- jk.toml
 group = "com.acme"
 name = "demo"
@@ -78,6 +79,7 @@ jk.toml
 resources/application.properties
 src/com/acme/Application.kt
 src/com/acme/HelloController.kt
+test/resources/application-test.properties
 test/src/com/acme/HelloControllerTest.kt
 --- jk.toml
 group = "com.acme"
