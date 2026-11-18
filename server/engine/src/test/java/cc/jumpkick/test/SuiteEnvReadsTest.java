@@ -98,6 +98,10 @@ class SuiteEnvReadsTest {
         assertThat(SuiteEnvReads.volatileName("TERM_SESSION_ID")).isTrue();
         assertThat(SuiteEnvReads.volatileName("=C:")).isTrue();
         assertThat(SuiteEnvReads.volatileName("DATABASE_URL")).isFalse();
+        assertThat(SuiteEnvReads.volatileName("PSModulePath"))
+                .as("PowerShell's module path, which a cmd window does not share")
+                .isTrue();
+        assertThat(SuiteEnvReads.volatileName("PSExecutionPolicyPreference")).isTrue();
     }
 
     @Test

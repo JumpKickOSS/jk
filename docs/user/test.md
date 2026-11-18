@@ -1049,7 +1049,7 @@ nothing. Two kinds of read cannot name one variable, and are keyed more broadly:
   instead, the suite is keyed on every value, and the run says so once.
 
 Both leave out the names that change between two terminals of one user (the session, window and
-login ids, `TERM`, `SSH_*`, the desktop session), so a second terminal still replays a Spring Boot
+login ids, `TERM`, `SSH_*`, the desktop session, PowerShell's `PSModulePath`), so a second terminal still replays a Spring Boot
 suite. Those names never key a suite even when a test reads one: Micronaut and Flyway list the
 environment and read every value, and keying the terminal's own variables would rerun them in every
 new tab. The cost: a test whose outcome depends on `TERM`, `PWD` or `SHLVL` can replay from another

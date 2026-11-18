@@ -223,7 +223,12 @@ public final class SuiteEnvReads {
             "SECURITYSESSIONID",
             "WSL_INTEROP",
             "SESSIONNAME",
-            "CLIENTNAME");
+            "CLIENTNAME",
+            // the shell itself: PowerShell rewrites its module path for the processes it starts, so a
+            // jk run from PowerShell and one from cmd differ there (measured on Windows 11, PowerShell
+            // 5.1); a launch with -ExecutionPolicy sets the preference for that session alone
+            "PSMODULEPATH",
+            "PSEXECUTIONPOLICYPREFERENCE");
 
     /**
      * The families of {@link #VOLATILE} names, by prefix: the ssh login ({@code SSH_CLIENT}, {@code
