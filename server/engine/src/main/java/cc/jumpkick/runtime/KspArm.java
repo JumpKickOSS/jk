@@ -27,6 +27,7 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
@@ -201,6 +202,7 @@ final class KspArm {
 
         // Before the round reads a source: a source edited while it runs is stale next time.
         long readClock = FreshnessStamp.clockNow(outBase);
+        InputGuard guard = InputGuard.of(round.sourceRoots());
         String keyDigest = roundKeyDigest(
                 project,
                 ctx.require(PARSED_BUILD).lockfile(),
@@ -225,7 +227,10 @@ final class KspArm {
                         round.classpath(),
                         round.processorCp(),
                         ClasspathFingerprint.ON_DISK));
-        // A stale round's outputs must not survive into the source union or the classes tree.
+        // A stale round's outputs must not survive into the source union or the classes tree. The
+        // stamp and warnings go first: a round that stops before it stamps leaves nothing fresh.
+        Files.deleteIfExists(outBase.resolve(BuildStamps.KSP));
+        Files.deleteIfExists(warnings);
         for (String sub : OUTPUT_DIRS) {
             PathUtil.deleteRecursively(outBase.resolve(sub));
         }
@@ -276,7 +281,13 @@ final class KspArm {
             // The round is not incremental: every run starts from cleared outputs, so its caches
             // hold nothing a later round reads, and the record is the four output dirs alone.
             PathUtil.deleteRecursively(outBase.resolve("caches"));
-            if (!in.ephemeralActions()) record(actionCache, key, outBase, CompileWarnings.keptSaid(said));
+            // A source that moved while KSP read it may be in the output, and is not what the key names.
+            List<Path> moved = guard.moved();
+            if (!moved.isEmpty()) {
+                ctx.warn(InputGuard.MOVED, InputGuard.describe(round.producer(), moved));
+            } else if (!in.ephemeralActions()) {
+                record(actionCache, key, outBase, CompileWarnings.keptSaid(said));
+            }
         }
         CompileWarnings.writeCurrent(warnings, said);
         FreshnessStamp.write(

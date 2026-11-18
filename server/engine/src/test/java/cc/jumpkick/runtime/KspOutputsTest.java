@@ -17,6 +17,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.testing.TestCaches;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -35,7 +36,8 @@ import org.junit.jupiter.api.io.TempDir;
  * and nowhere else. A module that drops its processors keeps nothing of either round, the test
  * round reads what the test compile reads, a test-only processor gets a test round, and after
  * {@code jk clean} the forecast reads the main round's files from its record as the build restores
- * them.
+ * them. A round that fails after clearing its outputs is not up to date next time, and one whose
+ * source moves while it runs records nothing.
  *
  * <p>The processor is a few lines of Java compiled here against jk's KSP2 closure and published to
  * a {@code file://} repository, so the round runs a processor this test controls. Network test
@@ -63,17 +65,39 @@ class KspOutputsTest {
             import java.lang.constant.ClassDesc;
             import java.lang.constant.ConstantDescs;
             import java.nio.charset.StandardCharsets;
+            import java.nio.file.Files;
+            import java.nio.file.Path;
+            import java.nio.file.StandardOpenOption;
             import java.util.Iterator;
             import java.util.List;
+            import java.util.Map;
 
-            /** For each class annotated demo.Marked: a resource marked/<Name>.txt and a class demo.<Name>Marker. */
+            /**
+             * For each class annotated demo.Marked: a resource marked/<Name>.txt and a class demo.<Name>Marker.
+             * Option marker.fail=true fails the round; marker.touch=<file> appends a comment to that file.
+             */
             public final class MarkerProvider implements SymbolProcessorProvider {
                 @Override
                 public SymbolProcessor create(SymbolProcessorEnvironment environment) {
                     CodeGenerator generator = environment.getCodeGenerator();
+                    Map<String, String> options = environment.getOptions();
                     return new SymbolProcessor() {
+                        private boolean touched;
+
                         @Override
                         public List<KSAnnotated> process(Resolver resolver) {
+                            if ("true".equals(options.get("marker.fail"))) {
+                                throw new IllegalStateException("marker.fail");
+                            }
+                            String touch = options.get("marker.touch");
+                            if (touch != null && !touched) {
+                                touched = true;
+                                try {
+                                    Files.writeString(Path.of(touch), "// touched\\n", StandardOpenOption.APPEND);
+                                } catch (IOException e) {
+                                    throw new UncheckedIOException(e);
+                                }
+                            }
                             Iterator<KSAnnotated> it = resolver.getSymbolsWithAnnotation("demo.Marked", false).iterator();
                             while (it.hasNext()) {
                                 if (it.next() instanceof KSClassDeclaration type) emit(type);
@@ -324,6 +348,58 @@ class KspOutputsTest {
                     .as("%s: the forecast reads the round's files from its record: %s", name, predicted.text())
                     .isTrue();
         }
+    }
+
+    @Test
+    void a_round_that_fails_after_clearing_its_outputs_is_not_up_to_date_next_time(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("ksp-outputs");
+        Path repo = tmp.resolve("repo");
+        publishProcessor(repo, tmp.resolve("proc"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        writeSources(project, false);
+        BuildLayout layout = lock(project, manifest(repo, MAIN_TABLE, ""), cache);
+        Path marker = layout.buildDir().resolve("ksp/classes/demo/GreeterMarker.class");
+        BuildPlanResult first = buildSkippingTests(project, cache);
+        assertThat(first.errors()).isEmpty();
+        assertThat(marker).isRegularFile();
+
+        // An options edit re-runs the round, which clears its outputs and then fails.
+        lock(project, manifest(repo, MAIN_TABLE, "[build]\nksp-options = [\"marker.fail=true\"]\n"), cache);
+        BuildPlanResult failed = buildSkippingTests(project, cache);
+        assertThat(failed.success()).isFalse();
+        assertThat(marker).as("the failed round cleared its outputs").doesNotExist();
+
+        // Back to the inputs the old stamp names: the empty output is not up to date.
+        lock(project, manifest(repo, MAIN_TABLE, ""), cache);
+        BuildPlanResult reverted = buildSkippingTests(project, cache);
+        assertThat(reverted.errors()).isEmpty();
+        assertThat(reverted.success()).isTrue();
+        assertThat(marker).as("the round's output is back").isRegularFile();
+        assertThat(jarEntries(layout.mainJar())).contains("demo/GreeterMarker.class", "marked/Greeter.txt");
+    }
+
+    @Test
+    void a_source_edited_while_the_round_runs_stores_no_record(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("ksp-outputs");
+        Path repo = tmp.resolve("repo");
+        publishProcessor(repo, tmp.resolve("proc"));
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        writeSources(project, false);
+        Path greeter = project.resolve("src/main/kotlin/demo/Greeter.kt");
+        String touch = greeter.toAbsolutePath().toString().replace('\\', '/');
+        lock(project, manifest(repo, MAIN_TABLE, "[build]\nksp-options = [\"marker.touch=" + touch + "\"]\n"), cache);
+
+        BuildPlanResult result = buildSkippingTests(project, cache);
+        assertThat(result.errors()).isEmpty();
+        assertThat(Files.readString(greeter))
+                .as("the processor edited a source")
+                .contains("// touched");
+        assertThat(result.warnings())
+                .as("the round says its record is not kept")
+                .anySatisfy(w -> {
+                    assertThat(w.code()).isEqualTo(InputGuard.MOVED);
+                    assertThat(w.message()).contains(TaskNames.KSP);
+                });
     }
 
     /** The main sources: the annotation and a class it marks; with a test that reads both rounds' output. */
