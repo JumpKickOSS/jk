@@ -499,6 +499,8 @@ public final class SuiteReads {
 
     /** What the module's suites under {@code selection} were found to read; none before a run found any. */
     public static Discovered load(Path moduleDir, TestSelection selection) {
+        Discovered standIn = SuiteReadLists.standIn(moduleDir);
+        if (standIn != null) return standIn;
         Path file = discoveredFile(moduleDir, selection);
         if (!Files.isRegularFile(file)) return Discovered.NONE;
         Set<Path> files = new TreeSet<>();
@@ -704,7 +706,7 @@ public final class SuiteReads {
         return PortablePath.fromJkRoot(kept);
     }
 
-    private static Path workspaceOf(Path moduleDir) {
+    static Path workspaceOf(Path moduleDir) {
         return WorkspaceScan.findRoot(moduleDir)
                 .orElse(moduleDir)
                 .toAbsolutePath()

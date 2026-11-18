@@ -1137,8 +1137,13 @@ naming the module and the time until that module's next run is read.
 
 What this does not see: a directory listed where nothing was then read, the clock, and, under a
 suite JDK older than 22, file channel reads. `jk clean` keeps the discovered inputs, so a clean
-build is keyed as the build before it was. A remote cache tier holds the suite's markers but not
-these lists yet (JK-02G9W), so a host that shares only a remote tier finds them on its first run of the suite.
+build is keyed as the build before it was. A [shared cache](cache.md#shared-cache) carries the list
+with the suite's green result, filed under the key taken without it: a host that never ran the
+suite takes that key, gets the results filed under it, takes the key again over its own copies of
+the listed files, and replays the one whose key its tree gives, keeping the list as its own. A file
+that differs on that host makes the key differ, and the suite runs. A list travels only when every
+file in it lies in the workspace or under JumpKick's own directories, named relative to them; a
+suite that starts a program or reads a file elsewhere runs once on each host before it replays.
 
 ## JUnit in-process parallel vs `-w`
 

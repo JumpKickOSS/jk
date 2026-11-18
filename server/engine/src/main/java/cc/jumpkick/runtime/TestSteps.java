@@ -134,7 +134,7 @@ final class TestSteps {
         TestTier tier = stamp.tier();
         InputGuard suiteGuard = suiteGuard(ctx, testClasses, testRtCp);
         SuiteDiscovery.Rekey rekey = () -> namedStampKey(ctx, in, stamp, affected, testSrcs);
-        String stampKey = rekey.key();
+        String stampKey = stampKey(rekey, affected, projectUnderTest, effectiveSel);
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         // --force forces a real test run, matching the compile/package
         // freshness checks above (which all guard on !rerun). Without
@@ -245,6 +245,22 @@ final class TestSteps {
                 snippets,
                 said);
         keepTokens(effectiveSel, stampKey, result, affected, rekey);
+    }
+
+    /**
+     * The stamp key the run starts from: {@code rekey}'s, or, unless the run is forced or runs only
+     * what an edit affects, a result's the remote tier found by its read list on a host that never
+     * ran the suite ({@link SuiteDiscovery#adopt}).
+     */
+    private @Nullable String stampKey(
+            SuiteDiscovery.Rekey rekey,
+            AffectedTestRun.@Nullable Outcome affected,
+            JkBuild project,
+            TestSelection selection)
+            throws Exception {
+        String key = rekey.key();
+        if (affected != null || SuiteRunRules.forcedRunReason(in.session(), project) != null) return key;
+        return SuiteDiscovery.adopt(in.dir(), selection, key, rekey, actionCache::restorable);
     }
 
     /**

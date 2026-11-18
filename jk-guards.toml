@@ -2697,6 +2697,10 @@ reason = "the key audit's tap: the lines a key derivation hashes, on whichever l
 in     = "server/engine/src/main/java/cc/jumpkick/task/ProjectedFiles.java"
 reason = "the output trees a forecast projects instead of reading"
 
+[[guards.carried-value-owners.allow]]
+in     = "server/engine/src/main/java/cc/jumpkick/test/SuiteReadLists.java"
+reason = "the read list a suite's stamp is taken with in place of the kept one, on whichever lane takes it"
+
 # G133. A ScopedValue that work reads after a pool hop must be carried, or the hop reads it unbound.
 # Every one is registered with ContextPropagator.carry in its own file, or is an allow entry saying
 # why it never needs to leave the thread that bound it: one operation's binding, or a test seam.

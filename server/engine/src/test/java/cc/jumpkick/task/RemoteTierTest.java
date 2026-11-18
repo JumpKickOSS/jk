@@ -252,6 +252,39 @@ class RemoteTierTest {
         assertThat(tier.uploaded()).isEqualTo(2);
     }
 
+    @Test
+    void a_suites_read_list_rides_the_upload_of_its_result(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true);
+        CacheBackend.Reads reads = new CacheBackend.Reads("base", List.of("ws:data/fixture.txt"));
+
+        tier.noteReads("k1", reads);
+        storeThrough(tier, tmp);
+
+        assertThat(remote.reads).containsExactly(Map.entry("k1", reads));
+    }
+
+    @Test
+    void results_found_by_a_base_are_offered_and_one_taken_needs_no_second_lookup(@TempDir Path tmp) throws Exception {
+        ActionCache elsewhere = cache(tmp.resolve("elsewhere"));
+        elsewhere.storeWithOutputs("run-tests@x", "settled", Map.of(), TestStamp.outcome(3, 3, 0, 0));
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(elsewhere, "settled");
+        CacheBackend.Reads reads = new CacheBackend.Reads("base", List.of("ws:data/fixture.txt"));
+        remote.reads.put("settled", reads);
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+
+        List<CacheBackend.Candidate> candidates = tier.candidates("base", null);
+        assertThat(candidates).singleElement().satisfies(c -> {
+            assertThat(c.key()).isEqualTo("settled");
+            assertThat(c.reads()).isEqualTo(reads);
+        });
+        tier.take(candidates.getFirst());
+
+        assertThat(tier.record("settled")).contains("tests.total");
+        assertThat(remote.lookups).as("the base's lookup brought the result").hasSize(1);
+    }
+
     /** Store two records, k1 and k2, with the tier bound, and wait for their uploads. */
     private static void storeThrough(RemoteTier tier, Path tmp) throws Exception {
         Path out = tmp.resolve("built");

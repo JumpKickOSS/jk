@@ -175,6 +175,53 @@ class HttpCacheBackendTest {
     }
 
     @Test
+    void results_found_by_read_list_come_with_their_lists() throws Exception {
+        // Section 6.2's by_reads entry, with keys and a record in place of its ellipses.
+        String answer = """
+                {
+                  "found": [],
+                  "missing": ["%s"],
+                  "followed": [],
+                  "by_reads": [{
+                    "key": "%s", "kind": "java:run-tests", "writes": "test-marker", "scope": "trusted",
+                    "record": "TASK run-tests@3f\\nKEY %s\\nEND 0\\n",
+                    "host": "linux-x86_64", "toolchain": "toolchain:jdk:eclipse-adoptium/25.0.5+11-LTS/3f1c",
+                    "reads": {"base": "%s", "files": ["ws:src/test/resources/fixtures.json"]},
+                    "stored_by": "ci-protected:acme/shop", "stored_at": "2026-11-15T17:03:11Z"
+                  }]
+                }
+                """.formatted(KEY_A, KEY_B, KEY_B, KEY_A);
+        URI url = serve(Map.of("/v0/capabilities", CAPABILITIES, "/v0/records/lookup", answer));
+
+        CacheBackend.Answer got = client(url, "t").lookup(new CacheBackend.Lookup(List.of(KEY_A), "linux-x86_64"));
+
+        assertThat(got.records()).isEmpty();
+        assertThat(got.byReads().get(KEY_A)).singleElement().satisfies(c -> {
+            assertThat(c.key()).isEqualTo(KEY_B);
+            assertThat(c.recordText()).isEqualTo("TASK run-tests@3f\nKEY " + KEY_B + "\nEND 0\n");
+            assertThat(c.reads())
+                    .isEqualTo(new CacheBackend.Reads(KEY_A, List.of("ws:src/test/resources/fixtures.json")));
+        });
+    }
+
+    @Test
+    void a_put_carries_the_suites_read_list_and_a_lookup_of_its_base_finds_it() throws Exception {
+        try (FakeCacheServer server = FakeCacheServer.start()) {
+            HttpCacheBackend writer = client(server.url(), FakeCacheServer.WRITER);
+            String marker = marker(KEY_B);
+            CacheBackend.Reads reads = new CacheBackend.Reads(KEY_A, List.of("ws:data/fixture.txt"));
+
+            writer.putRecord(KEY_B, marker, reads);
+
+            CacheBackend.Answer got = client(server.url(), FakeCacheServer.READER)
+                    .lookup(new CacheBackend.Lookup(List.of(KEY_A), "linux-x86_64"));
+            assertThat(got.byReads().get(KEY_A))
+                    .singleElement()
+                    .isEqualTo(new CacheBackend.Candidate(KEY_B, marker, reads));
+        }
+    }
+
+    @Test
     void every_request_names_the_protocol_and_a_found_record_needs_its_blobs() throws Exception {
         try (FakeCacheServer server = FakeCacheServer.start()) {
             byte[] payload = "class bytes".getBytes(StandardCharsets.UTF_8);
@@ -299,6 +346,29 @@ class HttpCacheBackendTest {
                         null,
                         -1,
                         Map.of("classes/A.class", size),
+                        Map.of()));
+    }
+
+    /** A green test marker, as {@link ActionRecordText} writes it. */
+    static String marker(String key) {
+        return ActionRecordText.render(
+                "run-tests@3f",
+                key,
+                Map.of(),
+                Map.of("tests.total", "3", "tests.failed", "0"),
+                Set.of(),
+                List.of(),
+                new ActionRecordText.Meta(
+                        ActionRecordText.FORMAT,
+                        "java:run-tests",
+                        ActionRecordText.Writes.TEST_MARKER,
+                        null,
+                        null,
+                        "linux-x86_64",
+                        null,
+                        null,
+                        -1,
+                        Map.of(),
                         Map.of()));
     }
 

@@ -823,7 +823,12 @@ and builds from the first's records, a red suite is never shared, a record namin
 `TARGET` is not taken, an unreachable store warns once and the build goes on, and the same sources
 at two checkout paths store every step under the same key; through `FakeCacheServer` over HTTP, a
 reader's token and a pull request never write, an altered blob is a miss, and a server that is down
-warns once. With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
+warns once. A suite's discovered reads (`SuiteReads`) ride its green result as a read list on the
+key taken without them (`RemoteSuiteReads.offer`, `SuiteReadLists.portable`: workspace and jk-root
+names only); a host with no list of its own gets the results filed under that base with the base's
+lookup (`by_reads`), takes the key again with each list standing in for its own
+(`SuiteReadLists.as`), and adopts the one whose key matches (`RemoteSuiteReads.adopt`), so it
+replays the suite without a test JVM (`RemoteCacheE2eTest`). With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
 holds whole is `restorable` without a download, so the forecast and `jk explain` price it as a
 hit, and the restore fetches the missing blobs (each verified by `Cas.putVerified`, a mismatch is
 a miss) and keeps the record locally. A record with no blob to fetch (a verdict, a test marker) is

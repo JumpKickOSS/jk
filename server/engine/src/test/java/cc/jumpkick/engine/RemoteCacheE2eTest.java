@@ -12,6 +12,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.LockfileReader;
@@ -21,6 +22,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.runtime.LockPlans;
+import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CachePlatform;
 import cc.jumpkick.task.RemoteCacheBinding;
 import cc.jumpkick.task.RemoteCacheSettings;
@@ -75,6 +77,22 @@ class RemoteCacheE2eTest extends EngineServerHarness {
             """;
 
     private static final String RED = GREEN.replace("assertEquals(42", "assertEquals(41");
+
+    /** A suite that also reads a file nothing declares: {@code data/fixture.txt} at the workspace root. */
+    private static final String READS = """
+            package com.example;
+            import java.nio.file.Files;
+            import java.nio.file.Path;
+            import org.junit.jupiter.api.Assertions;
+            import org.junit.jupiter.api.Test;
+            class OneTest {
+                @Test
+                void answers() throws Exception {
+                    Assertions.assertEquals(42, One.answer());
+                    Assertions.assertEquals("one", Files.readString(Path.of("../data/fixture.txt")).strip());
+                }
+            }
+            """;
 
     private EnginePaths.Paths engine;
     private EngineServer server;
@@ -325,6 +343,67 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     /**
+     * A suite keyed by a file it was found to read: a host that never ran it computes its stamp
+     * without that file, finds A's result by the read list filed under that stamp, recomputes the
+     * stamp from its own copy of the file, and replays the result without starting a test JVM.
+     */
+    @Test
+    void a_host_that_never_ran_a_suite_takes_its_result_by_read_list_and_runs_no_test() throws Exception {
+        Path root = shortTempDir();
+        Path a = withFixture(checkout(root.resolve("a"), READS), "one");
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            assertThat(succeeded(build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true))))
+                    .isTrue();
+            settled(a);
+            assertThat(service.recordsOf("test-marker")).singleElement().satisfies(m -> {
+                List<?> files = MiniJson.list(m.reads(), "files");
+                assertThat(files).as("the list A filed with its result").hasSize(1);
+                assertThat(String.valueOf(files.getFirst())).isEqualTo("ws:data/fixture.txt");
+                assertThat(MiniJson.str(m.reads(), "base"))
+                        .as("under the stamp without the read")
+                        .isNotBlank();
+            });
+            assertThat(service.records().values().stream().flatMap(List::stream))
+                    .as("no record names a checkout path")
+                    .noneMatch(r -> r.text().contains(root.toString())
+                            || String.valueOf(r.reads()).contains(root.toString()));
+            forgetReads(a);
+
+            List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
+            assertThat(succeeded(again)).as("B builds: " + again).isTrue();
+            BuildRecord record = settled(b);
+            assertThat(service.byReadsServed())
+                    .as("B found the result by its read list")
+                    .isPositive();
+            assertThat(suite(record).outcome())
+                    .as("B replayed A's result: " + record.modules())
+                    .isEqualTo(StepCache.Outcome.REMOTE_HIT);
+        }
+    }
+
+    @Test
+    void a_host_whose_copy_of_a_read_file_differs_runs_the_suite() throws Exception {
+        Path root = shortTempDir();
+        Path a = withFixture(checkout(root.resolve("a"), READS), "one");
+        Path b = withFixture(copy(a, root.resolve("b")), "two");
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            assertThat(succeeded(build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true))))
+                    .isTrue();
+            settled(a);
+            forgetReads(a);
+
+            List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
+            assertThat(succeeded(again))
+                    .as("B ran the suite, and its file says two: " + again)
+                    .isFalse();
+            BuildRecord record = settled(b);
+            assertThat(service.byReadsServed()).as("B was offered A's result").isPositive();
+            assertThat(suite(record).outcome()).isEqualTo(StepCache.Outcome.MISS);
+        }
+    }
+
+    /**
      * The property every shared hit rests on: the same sources at two checkout paths, each with its
      * own cache, store every step under the same action key.
      */
@@ -471,6 +550,34 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                 ws, TestCaches.dir("remote-cache-e2e-lock"), null, List.of(), true, false, ResolveObserver.NOOP, null);
         assertThat(lock.run().success()).as("workspace lock").isTrue();
         return ws;
+    }
+
+    /** {@code ws} with {@code data/fixture.txt} holding {@code text}. */
+    private static Path withFixture(Path ws, String text) throws IOException {
+        Files.writeString(Files.createDirectories(ws.resolve("data")).resolve("fixture.txt"), text);
+        return ws;
+    }
+
+    /**
+     * Drop what {@code ws}'s suite was found to read from this JVM's jk cache, where every checkout
+     * of the project finds it: the next checkout is then a host that shares only the remote tier.
+     */
+    private static void forgetReads(Path ws) throws IOException {
+        PathUtil.deleteRecursively(CacheTree.PROJECTS
+                .under(JkDirs.cache())
+                .resolve("m-" + ActionKey.taskTag(ws.resolve("lib")))
+                .resolve("suite-reads"));
+    }
+
+    /** What the action cache said for the run's one suite. */
+    private static StepCache suite(BuildRecord record) {
+        StepCache found = null;
+        for (BuildRecord.Module m : record.modules()) {
+            for (BuildRecord.Task t : m.steps()) {
+                if (t.name().equals("run-tests") && t.cache() != null) found = t.cache();
+            }
+        }
+        return requireNonNull(found, "run-tests consulted the cache: " + record.modules());
     }
 
     /** {@code from}'s sources and lock at {@code to}: another checkout of the same commit. */

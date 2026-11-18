@@ -152,8 +152,18 @@ public final class HttpCacheBackend implements CacheBackend {
 
     @Override
     public Map<String, String> records(Lookup lookup) throws IOException {
+        return lookup(lookup).records();
+    }
+
+    /**
+     * The records found for the asked keys, and for an asked key with none, the test results the
+     * service holds under a read list whose base is that key ({@code by_reads}), best first.
+     */
+    @Override
+    public Answer lookup(Lookup lookup) throws IOException {
         Capabilities caps = capabilities();
         Map<String, String> found = new LinkedHashMap<>();
+        Map<String, List<Candidate>> byReads = new LinkedHashMap<>();
         for (List<String> keys : chunks(lookup.keys(), caps.batchEntries())) {
             Object answer = post("records/lookup", lookupBody(keys, lookup), "lookup");
             Set<String> asked = Set.copyOf(keys);
@@ -162,8 +172,28 @@ public final class HttpCacheBackend implements CacheBackend {
                 String record = MiniJson.str(f, "record");
                 if (key != null && record != null && asked.contains(key)) found.put(key, record);
             }
+            for (Object f : MiniJson.list(answer, "by_reads")) {
+                Candidate c = candidate(f);
+                if (c != null
+                        && asked.contains(c.reads().base())
+                        && !found.containsKey(c.reads().base()))
+                    byReads.computeIfAbsent(c.reads().base(), b -> new ArrayList<>())
+                            .add(c);
+            }
         }
-        return found;
+        return new Answer(found, byReads);
+    }
+
+    /** A {@code by_reads} entry as a candidate, or null when it lacks a key, a record or a read list. */
+    private static @Nullable Candidate candidate(@Nullable Object found) {
+        String key = MiniJson.str(found, "key");
+        String record = MiniJson.str(found, "record");
+        Object reads = MiniJson.get(found, "reads");
+        String base = MiniJson.str(reads, "base");
+        if (key == null || record == null || base == null) return null;
+        List<String> files = new ArrayList<>();
+        for (Object f : MiniJson.list(reads, "files")) if (f instanceof String name) files.add(name);
+        return files.isEmpty() ? null : new Candidate(key, record, new Reads(base, files));
     }
 
     /** The lookup body for {@code keys}: the doc's shape, one {@code accept} entry per distinct policy. */
@@ -300,9 +330,27 @@ public final class HttpCacheBackend implements CacheBackend {
 
     @Override
     public void putRecord(String key, String recordText) throws IOException {
+        putRecord(key, recordText, null);
+    }
+
+    /**
+     * As {@link #putRecord(String, String)}, with the suite's read list when it fits the service's
+     * limit ({@code reads_max_files}); a longer one is left off, and the result is still shared
+     * with hosts that know the list.
+     */
+    @Override
+    public void putRecord(String key, String recordText, @Nullable Reads reads) throws IOException {
         if (!ActionRecordText.isSha256(key)) throw new Skipped("not an action key: " + key);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("record", recordText);
+        if (reads != null
+                && !reads.files().isEmpty()
+                && reads.files().size() <= capabilities().readsMaxFiles()) {
+            Map<String, Object> list = new LinkedHashMap<>();
+            list.put("base", reads.base());
+            list.put("files", reads.files());
+            body.put("reads", list);
+        }
         byte[] bytes = MiniJson.write(body).getBytes(StandardCharsets.UTF_8);
         URI uri = endpoint("records/" + key);
         HttpResponse<byte[]> response = call(() -> api.put(uri, bytes, jsonHeaders()));

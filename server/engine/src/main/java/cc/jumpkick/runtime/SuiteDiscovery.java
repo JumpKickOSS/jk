@@ -20,9 +20,11 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -58,11 +60,31 @@ final class SuiteDiscovery {
             boolean networkAllowed,
             boolean whole) {
 
-        /** As {@link SuiteDiscovery#settle}, for this run. */
+        /**
+         * As {@link SuiteDiscovery#settle}, for this run; a writing remote tier is told the read list
+         * of the key it settles ({@link RemoteSuiteReads#offer}).
+         */
         @Nullable
         String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey) throws Exception {
-            return SuiteDiscovery.settle(ctx, this, stampKey, rekey);
+            String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey);
+            RemoteSuiteReads.offer(moduleDir, selection, settled, rekey::key);
+            return settled;
         }
+    }
+
+    /**
+     * The stamp key a run takes before it looks for a green result: {@code stampKey}, or a result's
+     * the remote tier found by read list ({@link RemoteSuiteReads#adopt}); {@code held} says whether
+     * a key's record is here or in the tier.
+     */
+    static @Nullable String adopt(
+            Path moduleDir,
+            TestSelection selection,
+            @Nullable String stampKey,
+            Rekey rekey,
+            Function<String, ? extends Optional<?>> held)
+            throws Exception {
+        return RemoteSuiteReads.adopt(moduleDir, selection, stampKey, rekey::key, held);
     }
 
     /** Ready the module's recording for a run that starts now. */

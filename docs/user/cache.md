@@ -168,7 +168,8 @@ and restores what it holds. Each blob is checked against its digest as it lands,
 altered blob is a miss, and what was restored is kept in the local cache for the next build. Every
 record is read as untrusted, as a local one is, and judged by your own JDK policy (`[cache]
 jdk-match`, a `jdk` table with `required = true`): the server picks the record your policy would,
-and JumpKick checks it again. `jk explain` forecasts the hits the build would take.
+and JumpKick checks it again. A suite keyed by files it was found to read is found too on a host
+that never ran it ([Tests](test.md)). `jk explain` forecasts the hits the build would take.
 
 **Writing.** A build that writes uploads each result it can share (no red suite, no step of a kind
 it does not know) behind the build, its blobs before its record, and waits up to two minutes at

@@ -40,6 +40,15 @@ public interface CacheBackend {
      */
     Map<String, String> records(Lookup lookup) throws IOException;
 
+    /**
+     * As {@link #records}, with the test results this backend holds under a read list whose base is
+     * a key it holds no record of ({@link Candidate}). A backend that keeps no read lists answers
+     * none.
+     */
+    default Answer lookup(Lookup lookup) throws IOException {
+        return new Answer(records(lookup), Map.of());
+    }
+
     /** Of {@code blobs} (sha256 hex to byte count), those this backend does not hold at that size. */
     Set<String> missing(Map<String, Long> blobs) throws IOException;
 
@@ -59,6 +68,16 @@ public interface CacheBackend {
      * store never holds a record whose payload it lacks.
      */
     void putRecord(String key, String recordText) throws IOException;
+
+    /**
+     * As {@link #putRecord(String, String)}, for a suite's green result that folded in the files the
+     * suite was found to read ({@code reads}): a backend that keeps read lists files it under the
+     * list's base, so a host that has not run the suite can find it. A backend that keeps none
+     * stores the record alone.
+     */
+    default void putRecord(String key, String recordText, @Nullable Reads reads) throws IOException {
+        putRecord(key, recordText);
+    }
 
     /**
      * Whether this build may write here at all. A backend that learns from the store that the
@@ -109,6 +128,38 @@ public interface CacheBackend {
         public Accept {
             Objects.requireNonNull(toolchain, "toolchain");
             Objects.requireNonNull(match, "match");
+        }
+    }
+
+    /**
+     * A suite's read list: the stamp a host computes before it knows what the suite reads ({@code
+     * base}) and the portable names of the files the stored stamp folded in ({@code
+     * ws:src/test/resources/x.json}, {@code store:…}).
+     */
+    record Reads(String base, List<String> files) {
+        public Reads {
+            Objects.requireNonNull(base, "base");
+            files = List.copyOf(files);
+        }
+    }
+
+    /** A test result stored under {@code key} with read list {@code reads}, found by its base. */
+    record Candidate(String key, String recordText, Reads reads) {
+        public Candidate {
+            Objects.requireNonNull(key, "key");
+            Objects.requireNonNull(recordText, "recordText");
+            Objects.requireNonNull(reads, "reads");
+        }
+    }
+
+    /**
+     * What a lookup found: record text by key, and for keys with none, the candidates stored under a
+     * read list on that key, best first.
+     */
+    record Answer(Map<String, String> records, Map<String, List<Candidate>> byReads) {
+        public Answer {
+            records = Map.copyOf(records);
+            byReads = Map.copyOf(byReads);
         }
     }
 

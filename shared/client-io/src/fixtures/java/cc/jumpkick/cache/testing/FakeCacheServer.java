@@ -62,6 +62,7 @@ public final class FakeCacheServer implements AutoCloseable {
     private final List<String> storeAuthorizations = Collections.synchronizedList(new ArrayList<>());
     private final Set<String> tampered = ConcurrentHashMap.newKeySet();
     private final AtomicLong seq = new AtomicLong();
+    private final AtomicLong byReadsServed = new AtomicLong();
     private volatile long directMin = 1024 * 1024;
     private volatile long stallMillis;
 
@@ -136,6 +137,11 @@ public final class FakeCacheServer implements AutoCloseable {
         synchronized (storeAuthorizations) {
             return List.copyOf(storeAuthorizations);
         }
+    }
+
+    /** How many results lookups have answered by read list ({@code by_reads}) so far. */
+    public long byReadsServed() {
+        return byReadsServed.get();
     }
 
     /** The blobs held, by sha256. */
@@ -405,6 +411,7 @@ public final class FakeCacheServer implements AutoCloseable {
                 byReads.add(found(e.getKey(), best));
             }
         }
+        byReadsServed.addAndGet(byReads.size());
         json(ex, 200, Map.of("found", found, "missing", missing, "followed", List.of(), "by_reads", byReads));
     }
 

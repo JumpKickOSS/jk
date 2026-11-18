@@ -52,6 +52,8 @@ public final class RemoteTier {
     private final String platform;
     private final Map<String, String> found = new ConcurrentHashMap<>();
     private final Set<String> absent = ConcurrentHashMap.newKeySet();
+    private final Map<String, List<CacheBackend.Candidate>> byReads = new ConcurrentHashMap<>();
+    private final Map<String, CacheBackend.Reads> readLists = new ConcurrentHashMap<>();
     private final AtomicBoolean off = new AtomicBoolean();
     private final AtomicLong hits = new AtomicLong();
     private final AtomicLong bytesDown = new AtomicLong();
@@ -125,12 +127,13 @@ public final class RemoteTier {
             Map<String, Long> sizes = new LinkedHashMap<>();
             for (Map.Entry<String, Path> e : blobs.entrySet()) sizes.put(e.getKey(), IoLedger.sizeOf(e.getValue()));
             putBlobs(backend.missing(sizes), blobs, io);
+            CacheBackend.Reads reads = readLists.get(key);
             try {
-                backend.putRecord(key, sharedText);
+                backend.putRecord(key, sharedText, reads);
             } catch (CacheBackend.BlobsMissing lacking) {
                 // Gone from the store between the question and the put (a sweep): send them, once.
                 putBlobs(lacking.missing(), blobs, io);
-                backend.putRecord(key, sharedText);
+                backend.putRecord(key, sharedText, reads);
             }
             io.cacheUp(sharedText.length());
             uploaded.incrementAndGet();
@@ -144,6 +147,35 @@ public final class RemoteTier {
                         + "); uploading nothing more this build");
             }
         }
+    }
+
+    /**
+     * Note that the result about to be stored under {@code key} folded in the files a suite was found
+     * to read: its upload carries {@code reads}, so a host that has not run the suite can find it
+     * from the stamp it computes without them ({@link CacheBackend.Reads#base}).
+     */
+    public void noteReads(String key, CacheBackend.Reads reads) {
+        if (writes()) readLists.put(key, reads);
+    }
+
+    /**
+     * The results the backend holds under a read list whose base is {@code base}, a key it holds no
+     * record of, best first: asked with {@code base}'s lookup (in one round trip with it, or from
+     * what an earlier batch learned). Empty when the backend holds a record of {@code base} itself,
+     * keeps no read lists, or is off.
+     */
+    public List<CacheBackend.Candidate> candidates(String base, CacheBackend.@Nullable Accept accept) {
+        if (record(base, accept) != null) return List.of();
+        return byReads.getOrDefault(base, List.of());
+    }
+
+    /**
+     * Take {@code candidate} as the record of its key for this build: its reader recomputed the
+     * key from its own tree and found it equal, so a lookup of that key needs no round trip.
+     */
+    public void take(CacheBackend.Candidate candidate) {
+        absent.remove(candidate.key());
+        found.put(candidate.key(), candidate.recordText());
     }
 
     /** Send the blobs of {@code digests} that {@code blobs} holds a file for. */
@@ -226,15 +258,16 @@ public final class RemoteTier {
             if (e.getValue() != null) accept.put(key, e.getValue());
         }
         if (ask.isEmpty() || off.get()) return;
-        Map<String, String> answer;
+        CacheBackend.Answer answer;
         try {
-            answer = backend.records(new CacheBackend.Lookup(ask, platform, accept));
+            answer = backend.lookup(new CacheBackend.Lookup(ask, platform, accept));
         } catch (IOException | RuntimeException e) {
             failed("lookup", e);
             return;
         }
+        answer.byReads().forEach((base, candidates) -> byReads.put(base, List.copyOf(candidates)));
         for (String key : ask) {
-            String text = answer.get(key);
+            String text = answer.records().get(key);
             if (text != null) found.put(key, text);
             else absent.add(key);
         }

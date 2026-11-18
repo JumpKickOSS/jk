@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A {@link CacheBackend} held in memory, standing in for a store on another machine: it counts the
@@ -35,6 +36,8 @@ final class MemoryCacheBackend implements CacheBackend {
     volatile boolean loseBlobsBeforeFirstPut;
     /** Record puts asked, taken or not. */
     volatile int puts;
+    /** The read list each record was put with. */
+    final Map<String, Reads> reads = new ConcurrentHashMap<>();
 
     @Override
     public String name() {
@@ -90,6 +93,27 @@ final class MemoryCacheBackend implements CacheBackend {
     public void putBlobs(Map<String, Path> files) throws IOException {
         if (down) throw new IOException("connection refused");
         for (Map.Entry<String, Path> e : files.entrySet()) blobs.put(e.getKey(), Files.readAllBytes(e.getValue()));
+    }
+
+    @Override
+    public synchronized Answer lookup(Lookup lookup) throws IOException {
+        Map<String, String> found = records(lookup);
+        Map<String, List<Candidate>> byReads = new LinkedHashMap<>();
+        for (String base : lookup.keys()) {
+            if (found.containsKey(base)) continue;
+            reads.forEach((key, list) -> {
+                String text = records.get(key);
+                if (list.base().equals(base) && text != null)
+                    byReads.computeIfAbsent(base, b -> new ArrayList<>()).add(new Candidate(key, text, list));
+            });
+        }
+        return new Answer(found, byReads);
+    }
+
+    @Override
+    public synchronized void putRecord(String key, String recordText, @Nullable Reads list) throws IOException {
+        putRecord(key, recordText);
+        if (list != null) reads.put(key, list);
     }
 
     @Override
