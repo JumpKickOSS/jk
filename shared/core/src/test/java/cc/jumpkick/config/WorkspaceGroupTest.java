@@ -170,7 +170,10 @@ class WorkspaceGroupTest {
 
         assertThatThrownBy(() -> JkBuildParser.parse(root.resolve("jk.toml")))
                 .hasMessageContaining("groups workspaces (cache) and is not a project")
-                .hasMessageContaining("jk -C cache");
+                .hasMessageContaining("jk -C cache")
+                // Every verb the root runs, as groups.md lists them, not a few of them.
+                .hasMessageContaining("jk build, compile, test, native, image, sync, train, install, guard, format,"
+                        + " explain, clean and lock run over every member from here");
     }
 
     @Test

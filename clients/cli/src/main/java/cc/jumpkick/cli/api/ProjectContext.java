@@ -3,9 +3,11 @@ package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -27,6 +29,18 @@ public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
     public static Optional<ProjectContext> require(Path dir, String command) {
         if (!ManifestPaths.describesProject(dir)) {
             CommandWedge.printFail(command, "no jk.toml in " + PathDisplay.styledRaw(dir));
+            return Optional.empty();
+        }
+        // A group root is no project: refused here, before a job (the lock refresh such a command
+        // starts) writes run reports into a root that never builds anything.
+        String group;
+        try {
+            group = WorkspaceGroup.notAProject(dir);
+        } catch (IOException | RuntimeException unreadable) {
+            group = unreadable.getMessage();
+        }
+        if (group != null) {
+            CommandWedge.printFail(command, group);
             return Optional.empty();
         }
         // A directory built from its pom.xml has its manifest rendered by the engine, which declines

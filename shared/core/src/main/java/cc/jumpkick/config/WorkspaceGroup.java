@@ -52,6 +52,11 @@ public record WorkspaceGroup(
     /** The table that makes a {@code jk.toml} a group root. */
     public static final String TABLE = "workspaces";
 
+    /** The verbs that run at a group root over its members, in the order groups.md lists them. */
+    public static final List<String> ROOT_VERBS = List.of(
+            "build", "compile", "test", "native", "image", "sync", "train", "install", "guard", "format", "explain",
+            "clean", "lock");
+
     /** What the list is called in errors. */
     static final String MEMBERS = "[workspaces] members";
 
@@ -102,6 +107,18 @@ public record WorkspaceGroup(
         }
     }
 
+    /**
+     * Why a command that needs a project cannot run at {@code dir}, or null when {@code dir} is no
+     * group root: the refusal a parse of its {@code jk.toml} as a project gives, said before any job
+     * starts, so the command leaves nothing behind at the root.
+     */
+    public static @Nullable String notAProject(Path dir) throws IOException {
+        if (!declares(dir)) return null;
+        Path manifest = dir.resolve(ManifestPaths.MANIFEST);
+        JkBuildParseException refusal = asProject(JkBuildParser.document(manifest));
+        return refusal == null ? null : refusal.locatedIn(manifest).getMessage();
+    }
+
     /** True when {@code dir}'s {@code jk.toml} declares {@code [workspaces]}: a key scan, no parse. */
     public static boolean declares(Path dir) {
         Path manifest = dir.resolve(ManifestPaths.MANIFEST);
@@ -150,8 +167,8 @@ public record WorkspaceGroup(
                 "this jk.toml groups workspaces"
                         + (named.isEmpty() ? "" : " (" + String.join(", ", named) + ")")
                         + " and is not a project: run this command in a member (jk -C " + example
-                        + " …); jk build, test, install, guard, format, explain and clean run over every member"
-                        + " from here");
+                        + " …); jk " + String.join(", ", ROOT_VERBS.subList(0, ROOT_VERBS.size() - 1)) + " and "
+                        + ROOT_VERBS.getLast() + " run over every member from here");
     }
 
     /**

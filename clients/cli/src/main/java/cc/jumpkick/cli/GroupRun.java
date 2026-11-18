@@ -45,9 +45,7 @@ import org.jspecify.annotations.Nullable;
 final class GroupRun {
 
     /** The verbs that run over the members. */
-    static final Set<String> VERBS = Set.of(
-            "compile", "build", "test", "native", "image", "sync", "train", "install", "guard", "format", "explain",
-            "clean", "lock");
+    static final Set<String> VERBS = Set.copyOf(WorkspaceGroup.ROOT_VERBS);
 
     /** The verbs refused at a group root: each belongs to one workspace. */
     static final Set<String> REFUSED = Set.of("release", "publish");
