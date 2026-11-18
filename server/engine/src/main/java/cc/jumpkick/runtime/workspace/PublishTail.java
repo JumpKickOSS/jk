@@ -26,7 +26,7 @@ public final class PublishTail {
     public static Tail of(TailArgs.Publish args) {
         PublishPlans.Request req = request(args);
         return (plan, in) -> {
-            if (ModuleJar.packagingStep(manifest(in.buildFile()), in.dir()) == null) return;
+            if (ModuleJar.shippedStep(manifest(in.buildFile()), in.dir()) == null) return;
             plan.stateKeys(
                             PublishPlans.PROJECT,
                             PublishPlans.JAR,

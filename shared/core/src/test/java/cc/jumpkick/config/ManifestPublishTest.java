@@ -193,4 +193,35 @@ class ManifestPublishTest {
         assertThat(ownBuild.pomMetadata().url()).isEqualTo("https://example.com/own");
         assertThat(ownBuild.pomMetadata().licenses()).isEqualTo(List.of());
     }
+
+    /** A member keeps itself out of jk publish and jk install; the root's word is not a member's. */
+    @Test
+    void skip_is_read_refused_when_not_a_boolean_and_never_inherited_from_the_root() throws Exception {
+        assertThat(parse("[publish]\nskip = true\n").pomMetadata().skip()).isTrue();
+        assertThat(parse(TABLE).pomMetadata().skip()).isFalse();
+        assertThat(parse("[publish]\nskip = true\n").pomMetadata().isEmpty()).isFalse();
+        assertThatThrownBy(() -> parse("[publish]\nskip = \"yes\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[publish] skip must be true or false");
+
+        Path root = Files.createDirectories(tmp.resolve("ws"));
+        Files.writeString(root.resolve("jk.toml"), """
+                name = "ws"
+                group = "com.example"
+                version = "1.0"
+
+                [workspace]
+                modules = ["lib", "jmh"]
+                """ + TABLE + "skip = true\n");
+        Path lib = Files.createDirectories(root.resolve("lib"));
+        Files.writeString(lib.resolve("jk.toml"), "name = \"lib\"\n");
+        Path jmh = Files.createDirectories(root.resolve("jmh"));
+        Files.writeString(jmh.resolve("jk.toml"), "name = \"jmh\"\n\n[publish]\nskip = true\n");
+
+        JkBuild libBuild = JkBuildParser.parse(lib.resolve("jk.toml"));
+        assertThat(libBuild.pomMetadata().url()).as("the root's other keys").isEqualTo("https://example.com/widget");
+        assertThat(libBuild.pomMetadata().skip()).as("the root's skip").isFalse();
+        assertThat(JkBuildParser.parse(jmh.resolve("jk.toml")).pomMetadata().skip())
+                .isTrue();
+    }
 }

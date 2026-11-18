@@ -118,7 +118,8 @@ public final class ProjectInfoPlans {
             List<JkBuild> envSources,
             List<String> moduleDirs,
             List<String> moduleNames,
-            Map<String, String> toolchains) {}
+            Map<String, String> toolchains,
+            List<String> publishSkipped) {}
 
     private static Workspace workspace(Path dir, JkBuild build) throws IOException {
         String workspaceRootDir = "";
@@ -126,6 +127,7 @@ public final class ProjectInfoPlans {
         List<String> moduleDirs = new ArrayList<>();
         List<String> moduleNames = new ArrayList<>();
         Map<String, String> toolchains = new LinkedHashMap<>();
+        List<String> publishSkipped = new ArrayList<>();
         Path wsRoot = null;
         JkBuild rootBuild = build;
         if (build.isWorkspaceRoot()) {
@@ -153,6 +155,8 @@ public final class ProjectInfoPlans {
                     moduleNames.add(e.getValue().project().name());
                     envSources.add(e.getValue()); // a member declares what the root does not
                     toolchains.put(abs, toolchain(e.getValue()));
+                    if (e.getValue().pomMetadata().skip())
+                        publishSkipped.add(e.getValue().project().name());
                 }
             } catch (UserConfigParseException unparsed) {
                 throw unparsed; // config.toml's own error, with its position — never this site's fallback
@@ -172,7 +176,8 @@ public final class ProjectInfoPlans {
             moduleNames.add(build.project().name());
             toolchains.put(abs, toolchain(build));
         }
-        return new Workspace(wsRoot, workspaceRootDir, rootBuild, envSources, moduleDirs, moduleNames, toolchains);
+        return new Workspace(
+                wsRoot, workspaceRootDir, rootBuild, envSources, moduleDirs, moduleNames, toolchains, publishSkipped);
     }
 
     /**
@@ -376,7 +381,9 @@ public final class ProjectInfoPlans {
                 upstreams,
                 SessionContext.current().release(),
                 "",
-                List.of());
+                List.of(),
+                build.pomMetadata().skip(),
+                ws.publishSkipped());
     }
 
     private static String sanitizeIdentity(String value) {

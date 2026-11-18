@@ -81,12 +81,13 @@ public final class InstallPlans {
     public static final BuildPlanKey<String> FETCHED_SHA = BuildPlanKey.scalar("fetched-sha", String.class);
 
     /**
-     * {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar has
-     * nothing to install. {@code override} is the {@code --destination} flag, null when none was given.
+     * {@code jk install}'s tail: {@link #appendCacheInstall} after the build; a module with no jar, or
+     * one {@code [publish] skip} keeps out, has nothing to install. {@code override} is the {@code
+     * --destination} flag, null when none was given.
      */
     public static Tail tail(JkBuild proj, Path cache, @Nullable Path m2Dir, @Nullable InstallDestination override) {
         return (plan, in) -> {
-            String packaging = ModuleJar.packagingStep(proj, in.dir());
+            String packaging = ModuleJar.shippedStep(proj, in.dir());
             if (packaging != null) appendCacheInstall(plan, proj, cache, m2Dir, override, packaging);
         };
     }

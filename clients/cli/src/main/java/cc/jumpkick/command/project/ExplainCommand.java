@@ -264,7 +264,9 @@ public final class ExplainCommand implements CliCommand {
                 etaOut[3],
                 criticalPath,
                 scopeLabel(modulesSpec, affectedSince, affectedWip));
-        ReleaseLine.print(ProjectInfos.orNull(startDir), global);
+        var described = ProjectInfos.orNull(startDir);
+        ReleaseLine.print(described, global);
+        ReleaseLine.printSkipped(described, global);
         return 0;
     }
 

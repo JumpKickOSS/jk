@@ -41,6 +41,10 @@ import org.jspecify.annotations.Nullable;
  * release a build of it ships (a clean checkout at the declared version's tag), and {@code
  * releaseLine} is the line that says so, or why a tagged tree builds a snapshot; empty otherwise.
  *
+ * <p>{@code publishSkip} is the module's {@code [publish] skip}: {@code jk publish} and {@code jk
+ * install} leave it out. {@code publishSkipped} names, at a workspace root, every member that says
+ * so, in module order; {@code jk explain} prints them.
+ *
  * <p>{@code envReads} names the environment variables the workspace's suites were found to read
  * (names only, never values; {@code SuiteEnvReads}): the client ships their values with the next
  * request, so a suite's key needs no question back. {@link #ENV_READS_NAMES} among them asks for
@@ -115,7 +119,9 @@ public record ProjectInfo(
         Map<String, String> upstreams,
         boolean releaseBuild,
         String releaseLine,
-        List<String> envReads) {
+        List<String> envReads,
+        boolean publishSkip,
+        List<String> publishSkipped) {
 
     /**
      * One module's effective toolchain as {@link ProjectInfo#toolchains} carries it: the resolver
@@ -215,7 +221,9 @@ public record ProjectInfo(
                 upstreams,
                 releaseBuild,
                 line,
-                envReads);
+                envReads,
+                publishSkip,
+                publishSkipped);
     }
 
     /** This summary with {@link #envReads} set. */
@@ -283,7 +291,9 @@ public record ProjectInfo(
                 upstreams,
                 releaseBuild,
                 releaseLine,
-                List.copyOf(reads));
+                List.copyOf(reads),
+                publishSkip,
+                publishSkipped);
     }
 
     /** The siblings {@code dir} depends on ({@link #upstreams}), as absolute directories; empty for none. */
@@ -367,6 +377,8 @@ public record ProjectInfo(
                 Map.of(),
                 false,
                 "",
+                List.of(),
+                false,
                 List.of());
     }
 
@@ -435,6 +447,8 @@ public record ProjectInfo(
                 .string("releaseLine", releaseLine)
                 // Absent when empty: a summary of a tree whose suites read nothing is the line it always was.
                 .optionalArray("envReads", envReads.isEmpty() ? null : envReads)
+                .optionalTrue("publishSkip", publishSkip)
+                .optionalArray("publishSkipped", publishSkipped.isEmpty() ? null : publishSkipped)
                 .finish();
     }
 
@@ -503,7 +517,9 @@ public record ProjectInfo(
                 Jsonl.strMap(line, "upstreams"),
                 Jsonl.bool(line, "releaseBuild", false),
                 orEmpty(Jsonl.str(line, "releaseLine")),
-                Jsonl.strArray(line, "envReads"));
+                Jsonl.strArray(line, "envReads"),
+                Jsonl.bool(line, "publishSkip", false),
+                Jsonl.strArray(line, "publishSkipped"));
     }
 
     /** {@code ,"key":true|false} when set; empty string when unset (tri-state). */

@@ -583,6 +583,10 @@ would go (`1.0.0` is there, so `1.0.0-SNAPSHOT` would never be chosen): raise th
 `jk.toml` first. The snapshot jar is built for its own version, so it is never a release jar
 renamed; `jk publish` still refuses a `-SNAPSHOT` version.
 
+A member with `[publish] skip = true` builds and tests but is not installed, and gets no launcher;
+a member that is installed may not depend on it outside its test tables
+([Publish](publish.md#keeping-a-member-out-of-a-release)).
+
 `[install] destination = "jk"` (or `jk install --destination jk`, or the same key in `~/.jk/config.toml`)
 puts the jar and POM in JumpKick's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
 are always installed there: the engine rebuilds their runtime classpath from the installed POM.

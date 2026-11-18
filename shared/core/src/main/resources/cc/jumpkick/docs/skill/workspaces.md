@@ -6,4 +6,6 @@ From a member directory, `jk build` and `jk test` mean that module plus its upst
 
 Outputs: each module's own `target/`, in Maven's layout.
 
+A member with `[publish] skip = true` (tests, examples, tools) builds and tests, but `jk publish` and `jk install` leave it out; a shipped member may name it only in test tables.
+
 `deps` edits the module whose `dir` you pass. A short-name catalog is `jk-libs.toml` at the root only.

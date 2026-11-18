@@ -768,6 +768,7 @@ public final class JkBuildRenderer {
         if (publish.sign()) sb.append("sign = true\n");
         if (publish.keyFile() != null)
             sb.append("key-file = ").append(quote(publish.keyFile())).append('\n');
+        if (publish.skip()) sb.append("skip = true\n");
     }
 
     private static void renderRepositories(StringBuilder sb, List<RepositorySpec> repos) {

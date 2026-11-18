@@ -255,13 +255,15 @@ public final class WorkspaceLoader {
     /**
      * {@code module} carrying the workspace root's {@code [publish]} table when it declares none
      * of its own. The metadata is a workspace fact — one home page, one license, one team — so
-     * the root answers for it; a member's own table wins wholesale.
+     * the root answers for it; a member's own table wins wholesale. The root's {@code skip} is not
+     * passed on: whether a module ships is that module's word, and a root that kept itself out of a
+     * release would otherwise keep every member out with it.
      */
     public static JkBuild inheritPublish(JkBuild module, JkBuild root) {
         Objects.requireNonNull(module, "module");
         Objects.requireNonNull(root, "root");
         if (module.publish() != null || root.publish() == null) return module;
-        return module.withPublish(root.publish());
+        return module.withPublish(root.publish().withSkip(false));
     }
 
     /**

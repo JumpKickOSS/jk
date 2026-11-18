@@ -6,6 +6,7 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.wire.protocol.ProjectInfo;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,5 +25,25 @@ public final class ReleaseLine {
         } else {
             CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + info.releaseLine());
         }
+    }
+
+    /**
+     * Print, for {@code jk explain}, which modules a release leaves out: the members whose {@code
+     * [publish] skip} keeps them out of {@code jk publish} and {@code jk install}. Nothing when none
+     * does, since then every module with a jar ships.
+     */
+    public static void printSkipped(@Nullable ProjectInfo info, GlobalOptions global) {
+        String line = skippedLine(info);
+        if (line != null && !global.outputIsJson()) CliOutput.out(Glyphs.BULLET + " " + line);
+    }
+
+    /** {@link #printSkipped}'s line, or null when it prints none. */
+    static @Nullable String skippedLine(@Nullable ProjectInfo info) {
+        if (info == null || info.error() != null) return null;
+        List<String> skipped = info.publishSkipped();
+        if (skipped.isEmpty() && info.publishSkip()) skipped = List.of(info.name());
+        if (skipped.isEmpty()) return null;
+        return "jk publish and jk install leave out " + skipped.size() + (skipped.size() == 1 ? " module" : " modules")
+                + " ([publish] skip): " + String.join(", ", skipped) + "; every other module with a jar ships";
     }
 }

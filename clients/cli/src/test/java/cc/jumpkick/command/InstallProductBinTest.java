@@ -310,6 +310,8 @@ class InstallProductBinTest {
                 base.upstreams(),
                 base.releaseBuild(),
                 base.releaseLine(),
+                List.of(),
+                false,
                 List.of());
     }
 }

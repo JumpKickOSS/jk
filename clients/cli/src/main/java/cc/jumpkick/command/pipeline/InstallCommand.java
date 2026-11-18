@@ -655,9 +655,10 @@ public final class InstallCommand {
             for (Map.Entry<Path, ProjectInfo> entry : ordered) {
                 Path mod = entry.getKey();
                 ProjectInfo info = entry.getValue();
-                // A coordinator root builds as a unit but publishes nothing — announcing it would
-                // claim an install the plan never carried a `cache-install` step for.
-                if (info.coordinatorOnly()) continue;
+                // A coordinator root builds as a unit but publishes nothing, and [publish] skip keeps a
+                // module out: announcing either would claim an install the plan never carried a
+                // `cache-install` step for.
+                if (info.coordinatorOnly() || info.publishSkip()) continue;
                 Path launcher = null;
                 boolean productLib = !info.productLib().isBlank();
                 boolean productBin = !info.productBin().isBlank();

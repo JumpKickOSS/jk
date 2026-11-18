@@ -337,7 +337,7 @@ public final class ManifestTables {
     }
 
     static final List<String> PUBLISH_KEYS =
-            List.of("name", "url", "licenses", "developers", "scm", "repository", "sign", "key-file");
+            List.of("name", "url", "licenses", "developers", "scm", "repository", "sign", "key-file", "skip");
 
     /** Keys that would hold a secret: refused with where a secret does belong. */
     static final List<String> PUBLISH_SECRET_KEYS =
@@ -418,6 +418,11 @@ public final class ManifestTables {
             if (!publish.isBoolean("sign")) throw new JkBuildParseException("[publish] sign must be true or false");
             sign = Boolean.TRUE.equals(publish.getBoolean("sign"));
         }
+        boolean skip = false;
+        if (publish.contains("skip")) {
+            if (!publish.isBoolean("skip")) throw new JkBuildParseException("[publish] skip must be true or false");
+            skip = Boolean.TRUE.equals(publish.getBoolean("skip"));
+        }
         List<PomMetadata.License> licenses = new ArrayList<>();
         for (TomlTable t : tables(publish, "licenses", "publish.licenses")) {
             rejectUnknownKeys(t, PUBLISH_LICENSE_KEYS, "[publish] licenses");
@@ -461,7 +466,8 @@ public final class ManifestTables {
                 scm,
                 stringOrThrow(publish, "repository", "publish.repository"),
                 sign,
-                stringOrThrow(publish, "key-file", "publish.key-file")));
+                stringOrThrow(publish, "key-file", "publish.key-file"),
+                skip));
     }
 
     private static List<TomlTable> tables(TomlTable parent, String key, String displayPath) {

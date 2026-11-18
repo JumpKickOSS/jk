@@ -826,6 +826,7 @@
         "repository": { "type": "string", "description": "Where `jk publish` sends a release: a [repositories.<name>] entry, or \"central\". A --repo-url or --central flag overrides it." },
         "sign": { "type": "boolean", "description": "Sign the release as `jk publish --sign` does. Default false." },
         "key-file": { "type": "string", "description": "The signing key file, relative to the module or ~/-prefixed. The passphrase never goes here (JK_GPG_PASSPHRASE)." },
+        "skip": { "type": "boolean", "description": "When true, jk publish and jk install leave this module out (a test harness, an example, a site tool); it still builds and tests. Never inherited from the workspace root. A shipped module may not depend on a skipped one outside its test tables." },
         "licenses": {
           "type": "array",
           "items": {

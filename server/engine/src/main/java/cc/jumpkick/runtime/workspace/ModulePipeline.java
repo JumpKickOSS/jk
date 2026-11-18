@@ -166,9 +166,9 @@ public final class ModulePipeline {
         return plan.build();
     }
 
-    /** Install's second pass: shelve the jars already on disk. A module without a jar has none. */
+    /** Install's second pass: shelve the jars already on disk. A module without a jar, or skipped, has none. */
     private static BuildPlan reshelve(BuildGraph.BuildUnit unit, Path cache, WorkspaceSpec spec) {
-        if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) {
+        if (ModuleJar.shippedStep(unit.manifest(), unit.dir()) == null) {
             return BuildPlan.builder("reshelve-skip").build();
         }
         return InstallPlans.reshelveBuildPlan(unit.dir(), cache, spec.m2Dir(), spec.installDestination());

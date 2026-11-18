@@ -102,6 +102,30 @@ A published file never changes. Publishing a version again uploads only what the
 not hold yet, so a run that stopped half way finishes on the next try (`16 files, 4 already
 there`); a file the repository holds with other bytes stops the run and says to raise the version.
 
+### Keeping a member out of a release
+
+A workspace publishes every member with a jar. A member that must never ship (a test harness, a
+benchmark, an example, the tool that builds the site) says so in its own `jk.toml`:
+
+```toml
+[publish]
+skip = true
+```
+
+It still builds and tests with the workspace; `jk publish`, `jk install` (and so `jk release`) leave
+it out, and the run says which members it left out (`[publish] skip keeps 3 modules out of jk
+publish: corpus-checks, jmh, site`). `jk explain` names them too. `skip` belongs to the member that
+writes it: a workspace root's `[publish]` table passes its other keys to members that have none,
+never `skip`.
+
+A shipped member's POM names the siblings in its `[dependencies]`, `[export-dependencies]` and
+`[runtime-dependencies]`; a consumer resolving it would find none of the skipped ones. So a publish
+or install that would ship such a member stops before it builds, naming both: `core depends on
+testkit, which [publish] skip keeps out of jk publish, so nothing that uses core could resolve
+it; remove skip from testing/testkit/jk.toml, or make testkit a [test-dependencies] entry of
+core`. A skipped member in a shipped member's test tables is fine: test scope is not
+transitive.
+
 ## Releasing
 
 `jk.toml` declares the **next release**, never a `-SNAPSHOT`. `jk release` cuts it:

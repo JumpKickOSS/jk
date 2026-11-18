@@ -32,4 +32,17 @@ public final class ModuleJar {
         }
         return CompileSupport.coordinatorOnly(project, moduleDir) ? null : TaskNames.PACKAGE_JAR;
     }
+
+    /**
+     * {@link #packagingStep}, or {@code null} for a module whose {@code [publish] skip} keeps it out
+     * of {@code jk publish} and {@code jk install}: the step whose jar a release ships, if any.
+     */
+    public static @Nullable String shippedStep(JkBuild project, Path moduleDir) {
+        return skipsRelease(project) ? null : packagingStep(project, moduleDir);
+    }
+
+    /** {@code [publish] skip = true}: the module builds and tests, and no release ships it. */
+    public static boolean skipsRelease(JkBuild project) {
+        return project.pomMetadata().skip();
+    }
 }

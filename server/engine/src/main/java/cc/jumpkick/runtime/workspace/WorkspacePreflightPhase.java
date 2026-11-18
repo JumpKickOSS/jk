@@ -27,7 +27,6 @@ import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildLogicScripts;
 import cc.jumpkick.runtime.EffortWeights;
 import cc.jumpkick.runtime.FirstPartyPins;
-import cc.jumpkick.runtime.InstallPlans;
 import cc.jumpkick.runtime.ModuleJar;
 import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.SelfHostEngine;
@@ -55,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -210,8 +210,12 @@ public final class WorkspacePreflightPhase {
                 forecastStart);
 
         Set<Path> scheduled = scheduled(units, forecast.dirty(), forecast.restoreNeeded());
-        List<String> refused = installRefusals(request, units);
+        Predicate<Path> selected = selection(request);
+        Map<Path, JkBuild> manifests = manifests(units);
+        List<String> refused = ReleaseSet.refusals(request, manifests, selected);
         if (!refused.isEmpty()) return completed(false, Exit.FAILURE, refused);
+        String skipped = ReleaseSet.note(request, manifests, selected);
+        if (skipped != null) listener.onNote(skipped);
         scheduled = withStaleInstallJars(request, graph, units, scheduled, listener);
 
         return new Ready(new Context(
@@ -234,22 +238,23 @@ public final class WorkspacePreflightPhase {
      * rebuild after an engine change reproduces them, and only the comparison can tell.
      */
     static List<String> installRefusals(WorkspaceRequest request, List<BuildGraph.BuildUnit> units) {
-        if (request.target() != WorkspaceTarget.INSTALL) return List.of();
+        return ReleaseSet.installRefusals(request, manifests(units), selection(request));
+    }
+
+    /** Each unit's dir and effective manifest, in the graph's order. */
+    static Map<Path, JkBuild> manifests(List<BuildGraph.BuildUnit> units) {
+        Map<Path, JkBuild> out = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit unit : units) out.put(unit.dir(), unit.manifest());
+        return out;
+    }
+
+    /** Whether a unit's dir is in the request's {@code -m} selection (every unit when there is none). */
+    static Predicate<Path> selection(WorkspaceRequest request) {
         WorkspaceSpec spec = request.spec() == null ? WorkspaceSpec.DEFAULT : request.spec();
-        List<String> refused = new ArrayList<>();
-        for (BuildGraph.BuildUnit unit : units) {
-            Path dir = BuildGraph.canonicalPath(unit.dir());
-            if (spec.hasSelection()
-                    && spec.selectedModules().stream()
-                            .noneMatch(sel -> BuildGraph.canonicalPath(sel).equals(dir))) {
-                continue;
-            }
-            if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) continue;
-            String hidden = InstallPlans.shadowedByRelease(
-                    unit.manifest(), unit.dir(), spec.m2Dir(), spec.installDestination());
-            if (hidden != null) refused.add(hidden);
-        }
-        return refused;
+        if (!spec.hasSelection()) return dir -> true;
+        Set<Path> selected = new LinkedHashSet<>();
+        for (Path sel : spec.selectedModules()) selected.add(BuildGraph.canonicalPath(sel));
+        return dir -> selected.contains(BuildGraph.canonicalPath(dir));
     }
 
     /**
@@ -276,7 +281,7 @@ public final class WorkspacePreflightPhase {
                             .noneMatch(sel -> BuildGraph.canonicalPath(sel).equals(dir))) {
                 continue;
             }
-            if (ModuleJar.packagingStep(unit.manifest(), unit.dir()) == null) continue;
+            if (ModuleJar.shippedStep(unit.manifest(), unit.dir()) == null) continue;
             String stale = InstallFreshness.stale(unit.dir(), unit.manifest());
             if (stale == null) continue;
             listener.onNote(stale);

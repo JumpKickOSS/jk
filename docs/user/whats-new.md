@@ -6,6 +6,9 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Keep a workspace member out of a release.** `[publish] skip = true` in a member's `jk.toml`
+  keeps tests, examples and tools out of `jk publish` and `jk install`; `jk explain` names them, and
+  a shipped member that depends on one stops before it builds.
 - **Breaking: Kotlin sources with no `kotlin` key fail the build.** A module that inherits `java`
   and holds `.kt` files in `src/main/kotlin`, `src/main/java` or a test suite's root built an empty
   jar and said OK; it now stops, naming the line to add (`kotlin = "2.4.10"`). Groovy and Scala do

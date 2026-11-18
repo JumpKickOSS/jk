@@ -14,6 +14,10 @@ jk explain -v                # expand every task under each module (a compile st
 jk explain -r                # forecast full rebuild (same as jk build -r)
 ```
 
+In a workspace where members say `[publish] skip = true`, the forecast ends with the line naming
+them: `jk publish and jk install leave out 3 modules ([publish] skip): corpus-checks, jmh, site;
+every other module with a jar ships` ([Publish](publish.md#keeping-a-member-out-of-a-release)).
+
 When the lock is missing or stale, `jk explain` refreshes it first (same as `jk build`) so
 the plan and ETA match the live countdown. Automatic refreshes keep pins — pinned versions
 stay put.
