@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.testing.Symlinks;
+import cc.jumpkick.util.JkOwnership;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -286,8 +287,11 @@ class CrossHostKeyEqualityTest {
         try (Stream<Path> children = Files.list(real)) {
             for (Path child : children.toList()) {
                 String name = child.getFileName().toString();
+                // The real JDK's own marker (read-only when jk installed it) is not linked:
+                // the fake gets its own below.
+                if (name.equals("release") || name.equals(JkOwnership.MARKER)) continue;
                 if (name.equals("bin")) linkFiles(child, Files.createDirectories(fake.resolve(name)));
-                else if (!name.equals("release")) Symlinks.create(fake.resolve(name), child);
+                else Symlinks.create(fake.resolve(name), child);
             }
         }
         StringBuilder release = new StringBuilder();
@@ -299,6 +303,9 @@ class CrossHostKeyEqualityTest {
             release.append(line).append('\n');
         }
         Files.writeString(fake.resolve("release"), release.toString());
+        // Installed by jk, as the root's probe asks: without the marker it lists nothing, and a build
+        // that finds no JDK of its own takes the first javac on PATH (macOS's /usr/bin shim).
+        Files.writeString(fake.resolve(JkOwnership.MARKER), "");
         side.env().put("JK_JDKS_DIR", root.toString());
         side.env().put("JK_JDK_PROBES", "jk");
     }
@@ -357,8 +364,9 @@ class CrossHostKeyEqualityTest {
         Process p = pb.start();
         if (!p.waitFor(10, TimeUnit.MINUTES)) {
             p.destroyForcibly();
+            // The side's files go with the test's temp dir: what they say rides the failure.
             throw new AssertionError("jk " + String.join(" ", args) + " at site " + side.name()
-                    + " did not finish in 10 minutes; log: " + log);
+                    + " did not finish in 10 minutes\n--- " + log + "\n" + tail(log) + engineLogs(side));
         }
         int exit = p.exitValue();
         if (exit != 0 && !args[0].equals("engine")) {
@@ -366,6 +374,36 @@ class CrossHostKeyEqualityTest {
                     + Files.readString(log, StandardCharsets.UTF_8));
         }
         return exit;
+    }
+
+    /** The last 40 lines of {@code file}, or why there are none. */
+    private static String tail(Path file) {
+        try {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            return String.join("\n", lines.subList(Math.max(0, lines.size() - 40), lines.size()));
+        } catch (IOException e) {
+            return "(unreadable: " + e.getMessage() + ")";
+        }
+    }
+
+    /** Each engine log of the side's home, its tail after its path. */
+    private static String engineLogs(Side side) {
+        Path dir = side.home().resolve("state/engine");
+        StringBuilder out = new StringBuilder();
+        try (Stream<Path> files = Files.list(dir)) {
+            for (Path f : files.filter(f -> f.getFileName().toString().endsWith(".log"))
+                    .sorted()
+                    .toList()) {
+                out.append("\n--- ").append(f).append('\n').append(tail(f));
+            }
+        } catch (IOException e) {
+            out.append("\n(no engine logs at ")
+                    .append(dir)
+                    .append(": ")
+                    .append(e.getMessage())
+                    .append(')');
+        }
+        return out.toString();
     }
 
     private static void writeProject(Path dir) throws IOException {

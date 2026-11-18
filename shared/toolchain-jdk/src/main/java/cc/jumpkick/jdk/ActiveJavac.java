@@ -20,6 +20,11 @@ import org.jspecify.annotations.Nullable;
  * than a symlink to the real binary (jenv, asdf) resolve to the shim's own directory, not a JDK
  * home, and so won't be matched. Direct {@code PATH} entries and symlink-based managers (SDKMAN,
  * jk, Homebrew) work.
+ *
+ * <p>A home with no {@code release} file is a launcher shim's directory, not a JDK: macOS ships
+ * {@code /usr/bin/javac} and {@code /usr/bin/java} as real executables that pick a JDK each time
+ * they run, and taking {@code /usr} for the home sent a build's test forks to {@code
+ * /usr/bin/java}. Every JDK since 7u72 has the file, so such an entry is passed over.
  */
 public final class ActiveJavac {
 
@@ -53,7 +58,7 @@ public final class ActiveJavac {
                 Path real = candidate.toRealPath(); // follow symlinks (SDKMAN et al.)
                 Path bin = real.getParent(); // <home>/bin
                 Path jdkHome = bin != null ? bin.getParent() : null;
-                if (jdkHome != null) return Optional.of(jdkHome);
+                if (jdkHome != null && Files.isRegularFile(jdkHome.resolve("release"))) return Optional.of(jdkHome);
             } catch (IOException ignored) {
                 // Unreadable/broken symlink — keep walking the PATH.
             }
