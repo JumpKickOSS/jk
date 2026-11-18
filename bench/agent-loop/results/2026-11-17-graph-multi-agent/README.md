@@ -3,7 +3,8 @@
 Does jk 0.52.0's code graph save tokens, turns, wall time and money for each agent, against jk 0.51.1's graph
 and against no graph tools? Ten agent/model configs, three arms, three tiers of tasks. TABLE.md has the numbers;
 `rows-tier*-<host>.jsonl` are the raw rows (one per run, change-tasks' row format); `runner.py`, `plan.py` and
-`tabulate.py` are what ran the matrix and built the table, `build-table.sh` writes TABLE.md from the rows, and
+`tabulate.py` are what ran the matrix and built the table, `build-table.sh` writes TABLE.md from the rows,
+`adoption.py` (with `calls.py`, the transcript extractor) counts how each agent used the graph, and
 `runlog-*.txt` are the runner's logs (per run: load average, wall and monotonic seconds, least free memory).
 
 **Hosts.** The bench started on bocabox (Fedora) and moved to **daybreak** (Windows 11, WSL Ubuntu 26.04 capped
@@ -50,6 +51,24 @@ files named `*-VOID-*.jsonl` and are in no table.
 Redone with the fixed harness: daybreak's tier-0 B for all ten configs, and codex's tier 1 (after a new codex
 login); see Findings.
 
+## JK-3MF95: petclinic's callers answers in every jk arm told the agent to search src/test
+
+Found after these rows ran (agent-knobs, fixed on main in 8f2e9732c). The petclinic fixture has `[build-info]`;
+the graph's own test compile failed to plan on such a project, so a `callers` answer that needs compiled facts
+ended "compile skipped: the code does not compile (step 'compile-test' requires unknown 'build-info'); src/test
+has no compiled classes, so the calls made there are missing: search it for calls too". It invites exactly the
+verification a graph answer should save. **0.51.1 has it too** (a daybreak B warm-up transcript of
+petclinic-callers-addpet carries the same sentence). Counted from the transcripts (`adoption.py`):
+- **Tier 1, petclinic-callers-addpet, arm A: 24 of 24 runs, and every one of their 24 callers answers**, for all
+  eight configs (codex's rows are void, defect 4). Arm C's answers never carry it (no graph).
+- **The sliver: no answer carries it** in any arm (A, B, F; C has no graph). Its tasks ask callers about anchors
+  (`route:`, `column:`, `env:`, `config:`) and renames, whose answers do not need the test compile. The only
+  "compile skipped" notes in the sliver have another cause, "the compile was refused: Build is already running;
+  answering from the last build's classes" (an agent's own build still running when it asked): 6 answers in
+  arm A, 6 in F, 1 in B, all grok-4.5 (`adoption-tier2-daybreak.md`).
+So tier 1's petclinic task is the one number that carries the defect for every graph arm; it is re-measured with
+main's fixed graph in stage R.
+
 ## Arms
 
 | Arm | jk | What it is |
@@ -57,6 +76,7 @@ login); see Findings.
 | **A** `jk` | 0.52.0 | the product as installed: `jk mcp`'s default list, graph included |
 | **B** `jk-before` | 0.51.1, in its own home | the graph as it was before 0.52.0 (anchors, the wider rename and group roots are new in 0.52.0) |
 | **C** `jk-nograph` | 0.52.0 | every graph tool hidden from MCP and refused, `jk graph` refused on a shell |
+| **F** `jk`, own home | 0.52.1-SNAPSHOT (main a4d6277d9's product code, built from this branch at 2df07ae19) | the sliver only: main with gate 93's three graph fixes (JK-7NXBH, JK-BJDSS, JK-930DA), `jk install`ed into a private home (`self-update = "never"`) |
 
 C is "no graph *tools*", not "no graph *data*": jk's loop tools (run, skill, …) stay listed, AGENTS.md and the
 skill text still name `callers`, and `target/incremental/classes-refs/*.refs` (jk's compiled reference files)
@@ -95,7 +115,7 @@ differ.
 |---|---|---|---|
 | 0 smoke (`smoke-test`, 166-line fixture) | smoke-callers, smoke-rename, smoke-rename-field, smoke-rename-class | A, B, C | 1 |
 | 1 (`change-tasks`) | petclinic-callers-addpet, gs-multi-module-rename-message, gs-uploading-rename-loadasresource | A, C | 3, interleaved |
-| 2 sliver (`change-tasks`) | petclinic-rename-telephone, petclinic-anchor-relaxed-env, petclinic-anchor-composed-route, petclinic-anchor-column-case | A, B, C | 3, interleaved |
+| 2 sliver (`change-tasks`) | petclinic-rename-telephone, petclinic-anchor-relaxed-env, petclinic-anchor-composed-route, petclinic-anchor-column-case | A, B, C, F | 3, interleaved |
 
 Interleaved: every cell's run k before any cell's run k+1, across all configs, with the arm order rotated per
 round and per config, so cache warmth from the run before does not always favour one arm.
@@ -175,6 +195,42 @@ Pauses: tier 0, 29 min before run 100.
 See TABLE.md's notes; the honest reading per tier is in the next section.
 
 ## Findings
+
+### Tier-2 sliver on daybreak (4 petclinic tasks, 3 interleaved runs per cell, arms A, B, C, F)
+
+384 runs for the eight configs other than codex, 2026-11-17 11:01 to 2026-11-18 01:47 MST; codex's 96 runs
+failed fast on its lost login and are void (`rows-tier2-daybreak-VOID-codex-login.jsonl`, 4 rows), re-run in
+the codex catch-up. Every row's `jk_version` is its arm's (A and C 0.52.0, B 0.51.1, F 0.52.1-SNAPSHOT). No run
+was capped or spans a suspend; least free memory 6.8 GB of 12.
+- **Green:** F 95/96, A 92/96, C 75/96, B 73/96. Almost all of B's and C's misses are petclinic-anchor-relaxed-env
+  (`claimed`: the agent said done, the hidden check failed), the task whose other side only 0.52's env/config
+  anchors name, and agy's: it reached green in 3 of 12 runs in B and in C, 12 of 12 in A and F. A's four misses:
+  composer 2 (relaxed-env, `claimed`), Sonnet 1 and muse 1 (column-case, `claimed`).
+- **A against B (0.52.0 against 0.51.1):** fewer tokens in A for six of eight; **separate** ranges only for
+  Sonnet (18%) and agy (69%, where B also fails 9 of 12). Opus 17%, grok-4.5 29%, cursor grok-4.7-high 9% and
+  muse 7% are inside the noise; composer is level (0%); **grok-4.7 used 44% more tokens in A** (inside the
+  noise: two A runs of column-case and rename-telephone took 1.1M and 0.75M tokens), though A was green 12/12
+  against B's 9/12. So: 0.52.0 is clearly better than 0.51.1 here for agy and Sonnet, and in green rate for
+  every grok, cursor grok-4.7-high and muse; in tokens, for the rest, not shown.
+- **A against C:** fewer tokens in A for seven of eight, separate for Sonnet, grok-4.5 and agy; muse used 7%
+  fewer in C (noise).
+- **F against A (main's graph fixes against 0.52.0):** fewer tokens in F for seven of eight (agy +2% more,
+  noise): grok-4.7 62%, cursor grok-4.7-high 39%, Opus 8%, muse 8%, composer 6%, grok-4.5 3%, Sonnet 2%. **Every
+  range overlaps**, so none of it is outside run-to-run noise on three runs; grok-4.7's and cursor grok's are
+  the large ones (grok-4.7's rename-telephone 94k against 671k median). Green F 95 against A 92.
+- **Adoption** (`adoption-tier2-daybreak.md`): every config answered with the graph in every A and F run except
+  Sonnet (A 5/12, F 9/12: it often edits from a single grep) and composer's A (11/12). grok-4.7 made 9.8 jk calls a run in A
+  (2.8 `skill` card reads) against 6.3 in F (1.4), and read or searched 20.6 times a run after its first graph
+  answer in A against 9.9 in F. 0.52-capability calls (anchors, field renames, `also`): 0.75 to 4.25 a run in A.
+
+### Tier 0 B redone on daybreak with 0.51.1 (one run per cell)
+
+32 rows for the eight configs other than codex (2026-11-17 10:27 to 11:00 MST, every row `jk_version` 0.51.1,
+after the warm-up checked the home online and with `JK_OFFLINE=1`); 31 green, one agy `claimed`. Codex's four
+failed fast on its login and are re-run in the catch-up (`rows-tier0-daybreak-VOID-codex-login.jsonl`).
+**A against B:** A uses fewer tokens for all eight, from 37% (Sonnet) to 86% (grok-4.5), and fewer turns and
+lower cost for all eight; one run per cell, so no noise estimate. Unlike the void B column, this is a real
+0.51.1: its field and class renames leave the accessors, template and file move to the agent.
 
 ### Tier 1 on daybreak (3 interleaved runs per cell, arms A and C)
 

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""TABLE.md body for the multi-agent graph bench.   tabulate.py TIER=ROWS.jsonl[,ROWS...] ... > TABLE.md
+"""TABLE.md body for the multi-agent graph bench.   tabulate.py TIER=ROWS.jsonl[@LABEL][,ROWS...] ... > TABLE.md
 
 Per config x tier x arm: runs, green, errors, median tokens, turns, wall s, jk s, est. cost. Then per config and
-tier, A against B and C: sums of per-task medians over the tasks both arms have, and whether the ranges overlap
-(with repeats: A's per-task max summed against the other's per-task min summed, both ways)."""
+tier, each pair of PAIRS both present (A against B and C, F against A, M against A, B, F and C): sums of per-task
+medians over the tasks both arms have, and whether the ranges overlap (with repeats: one side's per-task max summed
+against the other's per-task min summed, both ways). ROWS@LABEL labels every row of that file with arm LABEL (arm F
+and M rows are `--arm jk` run by another jk, so their file names the arm)."""
 import json
 import statistics
 import sys
 from collections import defaultdict
 
 ARM = {"jk": "A", "jk-before": "B", "jk-nograph": "C"}
+ARMS = "MFABC"
+PAIRS = [("A", "B"), ("A", "C"), ("F", "A"), ("M", "A"), ("M", "B"), ("M", "F"), ("M", "C")]
 CFG = {
     ("claude-code", "claude-sonnet-5-5"): "claude2 / sonnet-5-5 medium",
     ("claude-code", "claude-opus-5-5"): "claude2 / opus-5-5 medium",
@@ -30,13 +34,19 @@ def load(spec):
     tier, paths = spec.split("=", 1)
     rows = []
     for p in paths.split(","):
+        p, _, label = p.partition("@")
         with open(p) as fh:
-            rows += [json.loads(x) for x in fh if x.strip()]
+            for x in fh:
+                if x.strip():
+                    r = json.loads(x)
+                    if r.get("arm") in ARM:
+                        r["_arm"] = label or ARM[r["arm"]]
+                        rows.append(r)
     keep = {}
     # A rerun of the same cell and run number (a time-cap retry) replaces the first.
     for r in rows:
-        if r.get("arm") in ARM and (r.get("driver"), r.get("model")) in CFG:
-            keep[(r["driver"], r["model"], r["task"], r["arm"], r.get("run"))] = r
+        if (r.get("driver"), r.get("model")) in CFG:
+            keep[(r["driver"], r["model"], r["task"], r["_arm"], r.get("run"))] = r
     return tier, list(keep.values())
 
 
@@ -70,12 +80,12 @@ def main():
     for tier, rows in tiers:
         cells = defaultdict(list)
         for r in rows:
-            cells[(CFG[(r["driver"], r["model"])], r["task"], ARM[r["arm"]])].append(r)
+            cells[(CFG[(r["driver"], r["model"])], r["task"], r["_arm"])].append(r)
         out.append(f"\n## {tier}\n")
         out.append("| Config | Arm | Runs | Green | Errors | Median tokens | Turns | Wall s | jk s | Est. cost | CLI versions |")
         out.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|")
         for cfg in ORDER:
-            for arm in "ABC":
+            for arm in ARMS:
                 rs = [r for (c, t, a), v in cells.items() if c == cfg and a == arm for r in v]
                 if not rs:
                     continue
@@ -93,28 +103,30 @@ def main():
                     totals[arm]["green"] += r.get("outcome") == "green"
                     totals[arm]["cost"] += r.get("cost_est_usd") or 0
                     totals[arm]["tokens"] += r.get("tokens") or 0
-        out.append(f"\n### {tier}: savings of A against B and C\n")
-        out.append("Per config, summed over the tasks both arms measured (sum of per-task medians); positive means A "
-                   "lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the "
+        present = {a for (c, t, a) in cells}
+        pairs = [(x, y) for x, y in PAIRS if x in present and y in present]
+        out.append(f"\n### {tier}: savings of " + ", ".join(f"{x} against {y}" for x, y in pairs) + "\n")
+        out.append("Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the "
+                   "first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the "
                    "difference is inside run-to-run noise; with one run per cell there is no noise estimate.\n")
-        out.append("| Config | vs | Tasks | Green A / other | Tokens A → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |")
+        out.append("| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |")
         out.append("|---|---|---:|---|---|---:|---:|---:|---:|---|")
         for cfg in ORDER:
-            for other in "BC":
-                tasks = sorted({t for (c, t, a) in cells if c == cfg and a == "A"} &
+            for first, other in pairs:
+                tasks = sorted({t for (c, t, a) in cells if c == cfg and a == first} &
                                {t for (c, t, a) in cells if c == cfg and a == other})
                 sums = {}
                 rng = {}
                 greens = {}
                 ok_tasks = []
                 for t in tasks:
-                    a_ok = [r for r in cells[(cfg, t, "A")] if r.get("tokens")]
+                    a_ok = [r for r in cells[(cfg, t, first)] if r.get("tokens")]
                     o_ok = [r for r in cells[(cfg, t, other)] if r.get("tokens")]
                     if a_ok and o_ok:
                         ok_tasks.append(t)
                 if not ok_tasks:
                     continue
-                for side in ("A", other):
+                for side in (first, other):
                     allr = [r for t in tasks for r in cells[(cfg, t, side)]]
                     greens[side] = f"{sum(r.get('outcome') == 'green' for r in allr)}/{len(allr)}"
                     for k, _ in METRICS:
@@ -122,14 +134,14 @@ def main():
                                               for t in ok_tasks)
                     toks = [[r["tokens"] for r in cells[(cfg, t, side)] if r.get("tokens")] for t in ok_tasks]
                     rng[side] = (sum(min(x) for x in toks), sum(max(x) for x in toks), min(len(x) for x in toks))
-                if min(rng["A"][2], rng[other][2]) < 2:
+                if min(rng[first][2], rng[other][2]) < 2:
                     noise = "1 run"
                 else:
-                    overlap = rng["A"][1] >= rng[other][0] and rng[other][1] >= rng["A"][0]
+                    overlap = rng[first][1] >= rng[other][0] and rng[other][1] >= rng[first][0]
                     noise = "overlap (noise)" if overlap else "separate"
-                out.append(f"| {cfg} | {other} | {len(ok_tasks)} | {greens['A']} / {greens[other]} | "
-                           f"{fmt(sums[('A', 'tokens')], 'tokens')} → {fmt(sums[(other, 'tokens')], 'tokens')} | "
-                           + " | ".join(pct(sums[("A", k)], sums[(other, k)]) for k, _ in METRICS) + f" | {noise} |")
+                out.append(f"| {cfg} | {first} vs {other} | {len(ok_tasks)} | {greens[first]} / {greens[other]} | "
+                           f"{fmt(sums[(first, 'tokens')], 'tokens')} → {fmt(sums[(other, 'tokens')], 'tokens')} | "
+                           + " | ".join(pct(sums[(first, k)], sums[(other, k)]) for k, _ in METRICS) + f" | {noise} |")
         out.append(f"\n### {tier}: per task\n")
         out.append("| Config | Task | Arm | Runs | Green | Median tokens (min–max) | Turns | Wall s | Est. cost |")
         out.append("|---|---|---|---:|---:|---|---:|---:|---:|")
@@ -146,7 +158,7 @@ def main():
     out.append("\n## Totals (all tiers so far)\n")
     out.append("| Arm | Runs | Green | Tokens (sum) | Est. cost (sum) |")
     out.append("|---|---:|---:|---:|---:|")
-    for arm in "ABC":
+    for arm in ARMS:
         t = totals[arm]
         if t["runs"]:
             out.append(f"| {arm} | {t['runs']:.0f} | {t['green']:.0f} | {t['tokens'] / 1e6:.2f}M | ${t['cost']:.2f} |")

@@ -1,80 +1,109 @@
 # Graph bench across agents: banked table (2026-11-17, daybreak WSL)
 
-Arms: **A** `jk` (0.52.0 graph), **B** `jk-before` (0.51.1), **C** `jk-nograph` (no graph tools; see README.md).
+Arms: **A** `jk` (0.52.0 graph), **B** `jk-before` (0.51.1), **C** `jk-nograph` (no graph tools; see README.md),
+**F** `jk` from main with gate 93's graph fixes (the sliver only).
 Medians over runs that reported tokens; for the arm rows, all of the tier's tasks pooled. Est. cost is the API
 list price of reported tokens (an API-equivalent estimate for subscription CLIs; README.md says how cache warmth
-moves it). Savings: positive means A lower. A row with "1 run" has no noise estimate.
+moves it). Savings: positive means the first arm lower. A row with "1 run" has no noise estimate.
 
 Every table names its host. **daybreak** (Windows 11 + WSL Ubuntu 26.04, 12 GB) is the measurement host; tier 0
 was first run on **bocabox** (Fedora) and is kept below as a second host's table, never pooled with daybreak's.
 
-Status: tier 0 on daybreak: A and C complete (120 runs; its 40 B rows are void, redo pending); tier 1 complete for 8 configs (144 runs; 36 codex runs void, rerun pending); sliver not started.
+Status: tier 0 on daybreak: A and C complete, B redone with 0.51.1 (codex B pending); tier 1 complete for 8 configs (codex pending); sliver complete for 8 configs (A, B, C, F; codex pending in the catch-up).
 
 **Void rows are in no table** (README.md, "Defects found after tier 0"): daybreak's 40 tier-0 B rows ran 0.52.0
 (rows-tier0-daybreak-VOID-B-ran-0.52.0.jsonl), and its 36 tier-1 codex rows ran without a codex login
-(rows-tier1-daybreak-VOID-codex-login.jsonl). Redone rows replace them as they are run.
+(rows-tier1-daybreak-VOID-codex-login.jsonl); codex's tier-0 B and sliver rows failed fast on the same lost login
+(rows-tier0-daybreak-VOID-codex-login.jsonl, rows-tier2-daybreak-VOID-codex-login.jsonl). Redone rows replace them as they are run.
+
+**JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (24 of 24 runs) ended "compile skipped ...:
+search it for calls too" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliver answer carries it. README.md says more.
 
 ## Tier 0 on daybreak (smoke fixture, 1 run per cell)
 
 | Config | Arm | Runs | Green | Errors | Median tokens | Turns | Wall s | jk s | Est. cost | CLI versions |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | claude2 / sonnet-5-5 medium | A | 4 | 4/4 (100%) | 0 | 23.9k | 3.5 | 11.3 | 1.0 | $0.0160 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | B | 4 | 4/4 (100%) | 0 | 33.9k | 6 | 13.2 | 0.6 | $0.0257 | 2.1.326 (Claude Code) |
 | claude2 / sonnet-5-5 medium | C | 4 | 4/4 (100%) | 0 | 34.6k | 9.5 | 16.9 | 0.1 | $0.0379 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | A | 4 | 4/4 (100%) | 0 | 27.4k | 4 | 12.6 | 1.0 | $0.0343 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | B | 4 | 4/4 (100%) | 0 | 43.7k | 8 | 19.6 | 0.4 | $0.0870 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | C | 4 | 4/4 (100%) | 0 | 43.2k | 10.5 | 23.1 | 0.2 | $0.0938 | 2.1.326 (Claude Code) |
 | codex / gpt-6.1-terra low (default) | A | 4 | 4/4 (100%) | 0 | 72.8k | 3 | 12.8 | 0.8 | $0.0104 | codex-cli 0.166.0 |
 | codex / gpt-6.1-terra low (default) | C | 4 | 4/4 (100%) | 0 | 112.3k | 5 | 20.9 | 0.0 | $0.0198 | codex-cli 0.166.0 |
 | codex / gpt-6.1-sol low (default) | A | 4 | 4/4 (100%) | 0 | 80.9k | 3 | 15.0 | 0.9 | $0.0283 | codex-cli 0.166.0 |
 | codex / gpt-6.1-sol low (default) | C | 4 | 4/4 (100%) | 0 | 158.1k | 8.5 | 26.4 | 0.3 | $0.0495 | codex-cli 0.166.0 |
 | grok / grok-4.7 high 256k | A | 4 | 4/4 (100%) | 0 | 41.6k | 5 | 24.6 | 4.7 | $0.0491 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | B | 4 | 4/4 (100%) | 0 | 107.2k | 8.5 | 69.5 | 8.2 | $0.1110 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.7 high 256k | C | 4 | 4/4 (100%) | 0 | 325.1k | 19 | 148.4 | 11.6 | $0.3020 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.5 high | A | 4 | 4/4 (100%) | 0 | 32.9k | 4.5 | 11.9 | 2.8 | $0.0361 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | B | 4 | 4/4 (100%) | 0 | 78.2k | 8 | 26.2 | 6.5 | $0.0609 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.5 high | C | 4 | 4/4 (100%) | 0 | 199.9k | 16.5 | 61.9 | 11.4 | $0.1312 | grok 1.0.77 (50ca579fa996) [stable] |
 | cursor / composer-2.5 | A | 4 | 4/4 (100%) | 0 | 62.1k | 4 | 32.8 | 0.8 | $0.0183 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | B | 4 | 4/4 (100%) | 0 | 148.4k | 9 | 34.5 | 0.6 | $0.0405 | 2026.11.13-eacade1 |
 | cursor / composer-2.5 | C | 4 | 4/4 (100%) | 0 | 154.5k | 9 | 35.7 | 0.3 | $0.0413 | 2026.11.13-eacade1 |
 | cursor / grok-4.7-high | A | 4 | 4/4 (100%) | 0 | 54.9k | 3 | 36.7 | 0.9 | $0.0609 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | B | 4 | 4/4 (100%) | 0 | 139.8k | 6.5 | 63.5 | 0.8 | $0.1417 | 2026.11.13-eacade1 |
 | cursor / grok-4.7-high | C | 4 | 4/4 (100%) | 0 | 240.5k | 11.5 | 136.2 | 0.8 | $0.2717 | 2026.11.13-eacade1 |
 | agy / gemini-4-hydrogen-medium | A | 4 | 4/4 (100%) | 0 | 25.8k | 4 | 19.4 | 3.0 | $0.0291 | 1.5.10, 1.5.9 |
+| agy / gemini-4-hydrogen-medium | B | 4 | 3/4 (75%) | 0 | 60.2k | 7 | 40.7 | 7.2 | $0.0502 | 1.5.10 |
 | agy / gemini-4-hydrogen-medium | C | 4 | 4/4 (100%) | 0 | 120.4k | 11.5 | 60.7 | 8.1 | $0.0908 | 1.5.10 |
 | muse / spark-1.3-contributor high | A | 4 | 4/4 (100%) | 0 | 141.0k | 7 | 55.3 | 0.9 | $0.0046 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | B | 4 | 4/4 (100%) | 0 | 344.0k | 13 | 115.6 | 0.7 | $0.0045 | Muse Code 1.4.23 (1.4.23-R8977.1) |
 | muse / spark-1.3-contributor high | C | 4 | 4/4 (100%) | 0 | 481.4k | 20 | 91.5 | 0.6 | $0.0049 | Muse Code 1.4.23 (1.4.23-R8977.1) |
 
-### Tier 0 on daybreak (smoke fixture, 1 run per cell): savings of A against B and C
+### Tier 0 on daybreak (smoke fixture, 1 run per cell): savings of A against B, A against C
 
-Per config, summed over the tasks both arms measured (sum of per-task medians); positive means A lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
+Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | vs | Tasks | Green A / other | Tokens A → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
 |---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | C | 4 | 4/4 / 4/4 | 91.8k → 137.0k | +33% | +66% | +34% | +60% | 1 run |
-| claude2 / opus-5-5 medium | C | 4 | 4/4 / 4/4 | 114.9k → 166.9k | +31% | +55% | +38% | +55% | 1 run |
-| codex / gpt-6.1-terra low (default) | C | 4 | 4/4 / 4/4 | 276.5k → 495.0k | +44% | +40% | +39% | +51% | 1 run |
-| codex / gpt-6.1-sol low (default) | C | 4 | 4/4 / 4/4 | 312.9k → 598.4k | +48% | +56% | +37% | +42% | 1 run |
-| grok / grok-4.7 high 256k | C | 4 | 4/4 / 4/4 | 169.7k → 1794.9k | +91% | +76% | +43% | +87% | 1 run |
-| grok / grok-4.5 high | C | 4 | 4/4 / 4/4 | 129.0k → 1143.7k | +89% | +77% | +87% | +82% | 1 run |
-| cursor / composer-2.5 | C | 4 | 4/4 / 4/4 | 261.1k → 1126.7k | +77% | +68% | +29% | +72% | 1 run |
-| cursor / grok-4.7-high | C | 4 | 4/4 / 4/4 | 233.0k → 1037.7k | +78% | +73% | +74% | +79% | 1 run |
-| agy / gemini-4-hydrogen-medium | C | 4 | 4/4 / 4/4 | 105.8k → 485.9k | +78% | +67% | +69% | +68% | 1 run |
-| muse / spark-1.3-contributor high | C | 4 | 4/4 / 4/4 | 563.5k → 1804.8k | +69% | +62% | +52% | +4% | 1 run |
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 91.8k → 146.2k | +37% | +54% | +23% | +46% | 1 run |
+| claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 91.8k → 137.0k | +33% | +66% | +34% | +60% | 1 run |
+| claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 114.9k → 187.3k | +39% | +49% | +31% | +51% | 1 run |
+| claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 114.9k → 166.9k | +31% | +55% | +38% | +55% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 276.5k → 495.0k | +44% | +40% | +39% | +51% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 312.9k → 598.4k | +48% | +56% | +37% | +42% | 1 run |
+| grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 169.7k → 940.2k | +82% | +61% | +2% | +72% | 1 run |
+| grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 169.7k → 1794.9k | +91% | +76% | +43% | +87% | 1 run |
+| grok / grok-4.5 high | A vs B | 4 | 4/4 / 4/4 | 129.0k → 931.7k | +86% | +65% | +77% | +74% | 1 run |
+| grok / grok-4.5 high | A vs C | 4 | 4/4 / 4/4 | 129.0k → 1143.7k | +89% | +77% | +87% | +82% | 1 run |
+| cursor / composer-2.5 | A vs B | 4 | 4/4 / 4/4 | 261.1k → 776.1k | +66% | +61% | +11% | +61% | 1 run |
+| cursor / composer-2.5 | A vs C | 4 | 4/4 / 4/4 | 261.1k → 1126.7k | +77% | +68% | +29% | +72% | 1 run |
+| cursor / grok-4.7-high | A vs B | 4 | 4/4 / 4/4 | 233.0k → 727.7k | +68% | +59% | +64% | +65% | 1 run |
+| cursor / grok-4.7-high | A vs C | 4 | 4/4 / 4/4 | 233.0k → 1037.7k | +78% | +73% | +74% | +79% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 4/4 / 3/4 | 105.8k → 328.6k | +68% | +52% | +54% | +51% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs C | 4 | 4/4 / 4/4 | 105.8k → 485.9k | +78% | +67% | +69% | +68% | 1 run |
+| muse / spark-1.3-contributor high | A vs B | 4 | 4/4 / 4/4 | 563.5k → 1443.8k | +61% | +50% | +61% | +12% | 1 run |
+| muse / spark-1.3-contributor high | A vs C | 4 | 4/4 / 4/4 | 563.5k → 1804.8k | +69% | +62% | +52% | +4% | 1 run |
 
 ### Tier 0 on daybreak (smoke fixture, 1 run per cell): per task
 
 | Config | Task | Arm | Runs | Green | Median tokens (min–max) | Turns | Wall s | Est. cost |
 |---|---|---|---:|---:|---|---:|---:|---:|
 | claude2 / sonnet-5-5 medium | smoke-callers | A | 1 | 1 | 20.4k | 3 | 9.6 | $0.0142 |
+| claude2 / sonnet-5-5 medium | smoke-callers | B | 1 | 1 | 19.8k | 3 | 9.4 | $0.0142 |
 | claude2 / sonnet-5-5 medium | smoke-callers | C | 1 | 1 | 29.9k | 6 | 12.5 | $0.0283 |
 | claude2 / sonnet-5-5 medium | smoke-rename | A | 1 | 1 | 12.8k | 2 | 8.6 | $0.0105 |
+| claude2 / sonnet-5-5 medium | smoke-rename | B | 1 | 1 | 12.4k | 2 | 8.5 | $0.0101 |
 | claude2 / sonnet-5-5 medium | smoke-rename | C | 1 | 1 | 22.6k | 9 | 15.5 | $0.0360 |
 | claude2 / sonnet-5-5 medium | smoke-rename-class | A | 1 | 1 | 31.2k | 4 | 13.0 | $0.0223 |
+| claude2 / sonnet-5-5 medium | smoke-rename-class | B | 1 | 1 | 66.0k | 14 | 24.5 | $0.0595 |
 | claude2 / sonnet-5-5 medium | smoke-rename-class | C | 1 | 1 | 45.2k | 13 | 22.8 | $0.0573 |
 | claude2 / sonnet-5-5 medium | smoke-rename-field | A | 1 | 1 | 27.4k | 4 | 14.6 | $0.0178 |
+| claude2 / sonnet-5-5 medium | smoke-rename-field | B | 1 | 1 | 48.1k | 9 | 17.1 | $0.0373 |
 | claude2 / sonnet-5-5 medium | smoke-rename-field | C | 1 | 1 | 39.2k | 10 | 18.4 | $0.0399 |
 | claude2 / opus-5-5 medium | smoke-callers | A | 1 | 1 | 28.3k | 4 | 12.5 | $0.0377 |
+| claude2 / opus-5-5 medium | smoke-callers | B | 1 | 1 | 19.8k | 3 | 9.7 | $0.0624 |
 | claude2 / opus-5-5 medium | smoke-callers | C | 1 | 1 | 28.8k | 4 | 12.8 | $0.0472 |
 | claude2 / opus-5-5 medium | smoke-rename | A | 1 | 1 | 12.8k | 2 | 9.1 | $0.0218 |
+| claude2 / opus-5-5 medium | smoke-rename | B | 1 | 1 | 19.1k | 3 | 10.6 | $0.0285 |
 | claude2 / opus-5-5 medium | smoke-rename | C | 1 | 1 | 51.7k | 12 | 24.3 | $0.1039 |
 | claude2 / opus-5-5 medium | smoke-rename-class | A | 1 | 1 | 26.4k | 4 | 12.6 | $0.0310 |
+| claude2 / opus-5-5 medium | smoke-rename-class | B | 1 | 1 | 67.6k | 16 | 29.6 | $0.1266 |
 | claude2 / opus-5-5 medium | smoke-rename-class | C | 1 | 1 | 47.6k | 15 | 28.4 | $0.1188 |
 | claude2 / opus-5-5 medium | smoke-rename-field | A | 1 | 1 | 47.3k | 8 | 20.3 | $0.0696 |
+| claude2 / opus-5-5 medium | smoke-rename-field | B | 1 | 1 | 80.9k | 13 | 28.7 | $0.1116 |
 | claude2 / opus-5-5 medium | smoke-rename-field | C | 1 | 1 | 38.7k | 9 | 22.0 | $0.0836 |
 | codex / gpt-6.1-terra low (default) | smoke-callers | A | 1 | 1 | 84.8k | 3 | 14.3 | $0.0159 |
 | codex / gpt-6.1-terra low (default) | smoke-callers | C | 1 | 1 | 130.8k | 5 | 16.0 | $0.0221 |
@@ -93,52 +122,76 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | codex / gpt-6.1-sol low (default) | smoke-rename-field | A | 1 | 1 | 80.7k | 5 | 18.7 | $0.0272 |
 | codex / gpt-6.1-sol low (default) | smoke-rename-field | C | 1 | 1 | 147.2k | 8 | 24.9 | $0.0492 |
 | grok / grok-4.7 high 256k | smoke-callers | A | 1 | 1 | 41.2k | 5 | 13.4 | $0.0330 |
+| grok / grok-4.7 high 256k | smoke-callers | B | 1 | 1 | 40.9k | 5 | 13.2 | $0.0447 |
 | grok / grok-4.7 high 256k | smoke-callers | C | 1 | 1 | 333.8k | 19 | 100.8 | $0.2860 |
 | grok / grok-4.7 high 256k | smoke-rename | A | 1 | 1 | 40.7k | 5 | 302.6 | $0.0629 |
+| grok / grok-4.7 high 256k | smoke-rename | B | 1 | 1 | 34.3k | 4 | 14.8 | $0.0380 |
 | grok / grok-4.7 high 256k | smoke-rename | C | 1 | 1 | 248.4k | 17 | 109.5 | $0.3017 |
 | grok / grok-4.7 high 256k | smoke-rename-class | A | 1 | 1 | 45.8k | 5 | 22.9 | $0.0704 |
+| grok / grok-4.7 high 256k | smoke-rename-class | B | 1 | 1 | 691.7k | 30 | 219.1 | $0.4568 |
 | grok / grok-4.7 high 256k | smoke-rename-class | C | 1 | 1 | 896.5k | 30 | 247.1 | $0.6569 |
 | grok / grok-4.7 high 256k | smoke-rename-field | A | 1 | 1 | 41.9k | 5 | 26.4 | $0.0354 |
+| grok / grok-4.7 high 256k | smoke-rename-field | B | 1 | 1 | 173.4k | 12 | 124.3 | $0.1774 |
 | grok / grok-4.7 high 256k | smoke-rename-field | C | 1 | 1 | 316.3k | 19 | 187.4 | $0.3023 |
 | grok / grok-4.5 high | smoke-callers | A | 1 | 1 | 25.7k | 4 | 7.9 | $0.0214 |
+| grok / grok-4.5 high | smoke-callers | B | 1 | 1 | 27.3k | 4 | 7.7 | $0.0221 |
 | grok / grok-4.5 high | smoke-callers | C | 1 | 1 | 204.4k | 18 | 59.8 | $0.1313 |
 | grok / grok-4.5 high | smoke-rename | A | 1 | 1 | 22.0k | 3 | 9.8 | $0.0346 |
+| grok / grok-4.5 high | smoke-rename | B | 1 | 1 | 21.5k | 3 | 7.1 | $0.0440 |
 | grok / grok-4.5 high | smoke-rename | C | 1 | 1 | 133.4k | 12 | 41.2 | $0.0928 |
 | grok / grok-4.5 high | smoke-rename-class | A | 1 | 1 | 40.0k | 5 | 13.9 | $0.0376 |
+| grok / grok-4.5 high | smoke-rename-class | B | 1 | 1 | 753.8k | 30 | 153.5 | $0.4069 |
 | grok / grok-4.5 high | smoke-rename-class | C | 1 | 1 | 610.5k | 30 | 209.6 | $0.4356 |
 | grok / grok-4.5 high | smoke-rename-field | A | 1 | 1 | 41.3k | 5 | 17.1 | $0.0494 |
+| grok / grok-4.5 high | smoke-rename-field | B | 1 | 1 | 129.1k | 12 | 44.6 | $0.0779 |
 | grok / grok-4.5 high | smoke-rename-field | C | 1 | 1 | 195.4k | 15 | 64.0 | $0.1311 |
 | cursor / composer-2.5 | smoke-callers | A | 1 | 1 | 46.0k | 3 | 18.0 | $0.0123 |
+| cursor / composer-2.5 | smoke-callers | B | 1 | 1 | 45.9k | 3 | 18.8 | $0.0124 |
 | cursor / composer-2.5 | smoke-callers | C | 1 | 1 | 136.0k | 9 | 37.1 | $0.0373 |
 | cursor / composer-2.5 | smoke-rename | A | 1 | 1 | 59.6k | 4 | 32.8 | $0.0185 |
+| cursor / composer-2.5 | smoke-rename | B | 1 | 1 | 87.4k | 6 | 37.0 | $0.0254 |
 | cursor / composer-2.5 | smoke-rename | C | 1 | 1 | 117.6k | 8 | 24.3 | $0.0300 |
 | cursor / composer-2.5 | smoke-rename-class | A | 1 | 1 | 64.5k | 4 | 32.9 | $0.0182 |
+| cursor / composer-2.5 | smoke-rename-class | B | 1 | 1 | 209.5k | 12 | 32.1 | $0.0557 |
 | cursor / composer-2.5 | smoke-rename-class | C | 1 | 1 | 173.0k | 9 | 34.3 | $0.0454 |
 | cursor / composer-2.5 | smoke-rename-field | A | 1 | 1 | 91.0k | 6 | 40.8 | $0.0294 |
+| cursor / composer-2.5 | smoke-rename-field | B | 1 | 1 | 433.3k | 23 | 52.5 | $0.1067 |
 | cursor / composer-2.5 | smoke-rename-field | C | 1 | 1 | 700.0k | 27 | 79.2 | $0.1680 |
 | cursor / grok-4.7-high | smoke-callers | A | 1 | 1 | 52.4k | 3 | 20.8 | $0.0519 |
+| cursor / grok-4.7-high | smoke-callers | B | 1 | 1 | 53.0k | 3 | 26.1 | $0.0611 |
 | cursor / grok-4.7-high | smoke-callers | C | 1 | 1 | 204.8k | 11 | 86.5 | $0.2390 |
 | cursor / grok-4.7-high | smoke-rename | A | 1 | 1 | 70.8k | 4 | 38.4 | $0.0701 |
+| cursor / grok-4.7-high | smoke-rename | B | 1 | 1 | 54.9k | 3 | 38.2 | $0.0838 |
 | cursor / grok-4.7-high | smoke-rename | C | 1 | 1 | 268.8k | 12 | 153.6 | $0.3045 |
 | cursor / grok-4.7-high | smoke-rename-class | A | 1 | 1 | 56.9k | 3 | 35.6 | $0.0654 |
+| cursor / grok-4.7-high | smoke-rename-class | B | 1 | 1 | 224.7k | 10 | 88.8 | $0.1996 |
 | cursor / grok-4.7-high | smoke-rename-class | C | 1 | 1 | 212.2k | 10 | 118.9 | $0.2175 |
 | cursor / grok-4.7-high | smoke-rename-field | A | 1 | 1 | 52.9k | 3 | 37.7 | $0.0565 |
+| cursor / grok-4.7-high | smoke-rename-field | B | 1 | 1 | 395.1k | 16 | 212.0 | $0.3488 |
 | cursor / grok-4.7-high | smoke-rename-field | C | 1 | 1 | 351.9k | 15 | 158.2 | $0.4185 |
 | agy / gemini-4-hydrogen-medium | smoke-callers | A | 1 | 1 | 24.3k | 4 | 18.7 | $0.0257 |
+| agy / gemini-4-hydrogen-medium | smoke-callers | B | 1 | 1 | 23.8k | 4 | 15.8 | $0.0247 |
 | agy / gemini-4-hydrogen-medium | smoke-callers | C | 1 | 1 | 122.3k | 11 | 46.6 | $0.0946 |
 | agy / gemini-4-hydrogen-medium | smoke-rename | A | 1 | 1 | 19.4k | 3 | 15.7 | $0.0233 |
+| agy / gemini-4-hydrogen-medium | smoke-rename | B | 1 | 1 | 18.6k | 3 | 19.0 | $0.0216 |
 | agy / gemini-4-hydrogen-medium | smoke-rename | C | 1 | 1 | 87.3k | 11 | 42.6 | $0.0668 |
 | agy / gemini-4-hydrogen-medium | smoke-rename-class | A | 1 | 1 | 34.7k | 5 | 25.9 | $0.0341 |
+| agy / gemini-4-hydrogen-medium | smoke-rename-class | B | 1 | 1 | 96.5k | 10 | 62.4 | $0.0758 |
 | agy / gemini-4-hydrogen-medium | smoke-rename-class | C | 1 | 1 | 118.5k | 12 | 99.5 | $0.0870 |
 | agy / gemini-4-hydrogen-medium | smoke-rename-field | A | 1 | 1 | 27.4k | 4 | 20.2 | $0.0326 |
+| agy / gemini-4-hydrogen-medium | smoke-rename-field | B | 1 | 0 | 189.7k | 16 | 77.4 | $0.1160 |
 | agy / gemini-4-hydrogen-medium | smoke-rename-field | C | 1 | 1 | 157.7k | 14 | 74.7 | $0.1085 |
 | muse / spark-1.3-contributor high | smoke-callers | A | 1 | 1 | 57.7k | 3 | 41.7 | $0.0041 |
+| muse / spark-1.3-contributor high | smoke-callers | B | 1 | 1 | 56.5k | 3 | 30.2 | $0.0021 |
 | muse / spark-1.3-contributor high | smoke-callers | C | 1 | 1 | 210.7k | 10 | 58.9 | $0.0032 |
 | muse / spark-1.3-contributor high | smoke-rename | A | 1 | 1 | 96.5k | 5 | 24.7 | $0.0042 |
+| muse / spark-1.3-contributor high | smoke-rename | B | 1 | 1 | 57.7k | 3 | 67.2 | $0.0023 |
 | muse / spark-1.3-contributor high | smoke-rename | C | 1 | 1 | 631.2k | 24 | 92.6 | $0.0057 |
 | muse / spark-1.3-contributor high | smoke-rename-class | A | 1 | 1 | 223.8k | 11 | 68.9 | $0.0050 |
+| muse / spark-1.3-contributor high | smoke-rename-class | B | 1 | 1 | 699.4k | 27 | 304.8 | $0.0067 |
 | muse / spark-1.3-contributor high | smoke-rename-class | C | 1 | 1 | 584.3k | 23 | 216.2 | $0.0061 |
 | muse / spark-1.3-contributor high | smoke-rename-field | A | 1 | 1 | 185.5k | 9 | 86.7 | $0.0050 |
+| muse / spark-1.3-contributor high | smoke-rename-field | B | 1 | 1 | 630.3k | 23 | 163.9 | $0.0097 |
 | muse / spark-1.3-contributor high | smoke-rename-field | C | 1 | 1 | 378.6k | 17 | 90.4 | $0.0041 |
 
 ## Tier 1 on daybreak (3 runs per cell, interleaved)
@@ -162,20 +215,20 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | muse / spark-1.3-contributor high | A | 9 | 9/9 (100%) | 0 | 77.4k | 4 | 41.4 | 0.6 | $0.0039 | Muse Code 1.4.23 (1.4.23-R8977.1) |
 | muse / spark-1.3-contributor high | C | 9 | 9/9 (100%) | 0 | 321.8k | 14 | 65.3 | 0.6 | $0.0037 | Muse Code 1.4.23 (1.4.23-R8977.1) |
 
-### Tier 1 on daybreak (3 runs per cell, interleaved): savings of A against B and C
+### Tier 1 on daybreak (3 runs per cell, interleaved): savings of A against C
 
-Per config, summed over the tasks both arms measured (sum of per-task medians); positive means A lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
+Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | vs | Tasks | Green A / other | Tokens A → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
 |---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | C | 3 | 9/9 / 9/9 | 46.6k → 86.2k | +46% | +65% | +39% | +59% | separate |
-| claude2 / opus-5-5 medium | C | 3 | 9/9 / 9/9 | 46.9k → 131.7k | +64% | +77% | +52% | +66% | separate |
-| grok / grok-4.7 high 256k | C | 3 | 9/9 / 9/9 | 99.5k → 883.5k | +89% | +77% | +88% | +85% | separate |
-| grok / grok-4.5 high | C | 3 | 9/9 / 9/9 | 74.2k → 570.1k | +87% | +80% | +83% | +78% | separate |
-| cursor / composer-2.5 | C | 3 | 9/9 / 9/9 | 160.8k → 242.7k | +34% | +33% | +0% | +32% | overlap (noise) |
-| cursor / grok-4.7-high | C | 3 | 9/9 / 9/9 | 148.5k → 1627.2k | +91% | +86% | +85% | +91% | separate |
-| agy / gemini-4-hydrogen-medium | C | 3 | 9/9 / 9/9 | 63.8k → 300.1k | +79% | +58% | +62% | +64% | separate |
-| muse / spark-1.3-contributor high | C | 3 | 9/9 / 9/9 | 260.7k → 860.5k | +70% | +67% | +9% | -10% | separate |
+| claude2 / sonnet-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.6k → 86.2k | +46% | +65% | +39% | +59% | separate |
+| claude2 / opus-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.9k → 131.7k | +64% | +77% | +52% | +66% | separate |
+| grok / grok-4.7 high 256k | A vs C | 3 | 9/9 / 9/9 | 99.5k → 883.5k | +89% | +77% | +88% | +85% | separate |
+| grok / grok-4.5 high | A vs C | 3 | 9/9 / 9/9 | 74.2k → 570.1k | +87% | +80% | +83% | +78% | separate |
+| cursor / composer-2.5 | A vs C | 3 | 9/9 / 9/9 | 160.8k → 242.7k | +34% | +33% | +0% | +32% | overlap (noise) |
+| cursor / grok-4.7-high | A vs C | 3 | 9/9 / 9/9 | 148.5k → 1627.2k | +91% | +86% | +85% | +91% | separate |
+| agy / gemini-4-hydrogen-medium | A vs C | 3 | 9/9 / 9/9 | 63.8k → 300.1k | +79% | +58% | +62% | +64% | separate |
+| muse / spark-1.3-contributor high | A vs C | 3 | 9/9 / 9/9 | 260.7k → 860.5k | +70% | +67% | +9% | -10% | separate |
 
 ### Tier 1 on daybreak (3 runs per cell, interleaved): per task
 
@@ -230,12 +283,215 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | muse / spark-1.3-contributor high | petclinic-callers-addpet | A | 3 | 3 | 128.3k (78.2–178.4k) | 6 | 88.7 | $0.0034 |
 | muse / spark-1.3-contributor high | petclinic-callers-addpet | C | 3 | 3 | 80.4k (79.1–149.3k) | 4 | 49.6 | $0.0025 |
 
+## Tier-2 sliver on daybreak (3 runs per cell, interleaved; F: main's graph fixes)
+
+| Config | Arm | Runs | Green | Errors | Median tokens | Turns | Wall s | jk s | Est. cost | CLI versions |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | F | 12 | 12/12 (100%) | 0 | 52.8k | 8 | 62.8 | 45.4 | $0.0495 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | A | 12 | 11/12 (92%) | 0 | 49.1k | 8.5 | 62.5 | 45.0 | $0.0503 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | B | 12 | 11/12 (92%) | 0 | 58.4k | 12.5 | 66.8 | 44.8 | $0.0656 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | C | 12 | 11/12 (92%) | 0 | 71.6k | 12 | 62.4 | 44.3 | $0.0891 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | F | 12 | 12/12 (100%) | 0 | 65.2k | 12 | 71.1 | 45.6 | $0.1124 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | A | 12 | 12/12 (100%) | 0 | 69.7k | 13 | 71.8 | 45.0 | $0.1210 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | B | 12 | 12/12 (100%) | 0 | 81.7k | 14 | 75.8 | 44.8 | $0.1460 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | C | 12 | 12/12 (100%) | 0 | 96.8k | 14.5 | 46.7 | 5.7 | $0.1934 | 2.1.326 (Claude Code) |
+| grok / grok-4.7 high 256k | F | 12 | 12/12 (100%) | 0 | 165.6k | 10.5 | 138.8 | 9.8 | $0.1459 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | A | 12 | 12/12 (100%) | 0 | 219.9k | 13 | 189.4 | 16.9 | $0.2520 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | B | 12 | 9/12 (75%) | 0 | 234.8k | 12.5 | 112.4 | 8.6 | $0.2390 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | C | 12 | 9/12 (75%) | 0 | 353.6k | 15 | 140.5 | 22.4 | $0.3541 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | F | 12 | 12/12 (100%) | 0 | 106.3k | 7 | 78.1 | 8.1 | $0.0843 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | A | 12 | 12/12 (100%) | 0 | 127.2k | 10 | 70.5 | 18.7 | $0.1027 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | B | 12 | 9/12 (75%) | 0 | 141.1k | 9.5 | 127.3 | 78.5 | $0.1237 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | C | 12 | 9/12 (75%) | 0 | 287.9k | 16.5 | 78.2 | 29.5 | $0.2421 | grok 1.0.77 (50ca579fa996) [stable] |
+| cursor / composer-2.5 | F | 12 | 11/12 (92%) | 0 | 181.2k | 9 | 76.2 | 45.8 | $0.0501 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | A | 12 | 10/12 (83%) | 0 | 213.2k | 10.5 | 82.4 | 44.8 | $0.0531 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | B | 12 | 11/12 (92%) | 0 | 194.9k | 10 | 84.5 | 44.7 | $0.0528 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | C | 12 | 11/12 (92%) | 0 | 218.5k | 10 | 64.0 | 6.6 | $0.0559 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | F | 12 | 12/12 (100%) | 0 | 208.1k | 9 | 181.2 | 86.3 | $0.2195 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | A | 12 | 12/12 (100%) | 0 | 293.4k | 11.5 | 168.8 | 13.9 | $0.3120 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | B | 12 | 10/12 (83%) | 0 | 258.5k | 12.5 | 205.6 | 47.5 | $0.3263 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | C | 12 | 11/12 (92%) | 0 | 394.3k | 14.5 | 210.6 | 45.0 | $0.4700 | 2026.11.13-eacade1 |
+| agy / gemini-4-hydrogen-medium | F | 12 | 12/12 (100%) | 0 | 83.3k | 8.5 | 107.8 | 59.7 | $0.0709 | 1.5.10, 1.5.11 |
+| agy / gemini-4-hydrogen-medium | A | 12 | 12/12 (100%) | 0 | 93.6k | 9 | 57.0 | 20.2 | $0.0688 | 1.5.10, 1.5.11 |
+| agy / gemini-4-hydrogen-medium | B | 12 | 3/12 (25%) | 0 | 297.6k | 13 | 179.1 | 105.8 | $0.1459 | 1.5.10, 1.5.11 |
+| agy / gemini-4-hydrogen-medium | C | 12 | 3/12 (25%) | 0 | 337.8k | 14 | 159.4 | 90.2 | $0.1646 | 1.5.10, 1.5.11 |
+| muse / spark-1.3-contributor high | F | 12 | 12/12 (100%) | 0 | 958.9k | 26.5 | 196.2 | 67.0 | $0.0098 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | A | 12 | 11/12 (92%) | 0 | 1225.7k | 34.5 | 179.0 | 50.8 | $0.0107 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | B | 12 | 8/12 (67%) | 0 | 1087.5k | 38 | 214.3 | 93.0 | $0.0112 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | C | 12 | 9/12 (75%) | 0 | 1133.4k | 35.5 | 146.4 | 44.0 | $0.0103 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+
+### Tier-2 sliver on daybreak (3 runs per cell, interleaved; F: main's graph fixes): savings of A against B, A against C, F against A
+
+Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
+
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
+|---|---|---:|---|---|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 11/12 / 11/12 | 203.2k → 246.9k | +18% | +31% | +21% | +17% | separate |
+| claude2 / sonnet-5-5 medium | A vs C | 4 | 11/12 / 11/12 | 203.2k → 278.9k | +27% | +39% | +1% | +31% | separate |
+| claude2 / sonnet-5-5 medium | F vs A | 4 | 12/12 / 11/12 | 199.2k → 203.2k | +2% | +6% | -7% | +4% | overlap (noise) |
+| claude2 / opus-5-5 medium | A vs B | 4 | 12/12 / 12/12 | 271.3k → 325.1k | +17% | +18% | +12% | +24% | overlap (noise) |
+| claude2 / opus-5-5 medium | A vs C | 4 | 12/12 / 12/12 | 271.3k → 358.3k | +24% | +14% | -48% | +29% | overlap (noise) |
+| claude2 / opus-5-5 medium | F vs A | 4 | 12/12 / 12/12 | 250.0k → 271.3k | +8% | +2% | +7% | +5% | overlap (noise) |
+| grok / grok-4.7 high 256k | A vs B | 4 | 12/12 / 9/12 | 1678.5k → 1169.2k | -44% | -39% | -59% | -54% | overlap (noise) |
+| grok / grok-4.7 high 256k | A vs C | 4 | 12/12 / 9/12 | 1678.5k → 2195.6k | +24% | +9% | -12% | +15% | overlap (noise) |
+| grok / grok-4.7 high 256k | F vs A | 4 | 12/12 / 12/12 | 630.5k → 1678.5k | +62% | +41% | +38% | +58% | overlap (noise) |
+| grok / grok-4.5 high | A vs B | 4 | 12/12 / 9/12 | 459.7k → 646.5k | +29% | +0% | +30% | +13% | overlap (noise) |
+| grok / grok-4.5 high | A vs C | 4 | 12/12 / 9/12 | 459.7k → 1618.1k | +72% | +45% | +15% | +62% | separate |
+| grok / grok-4.5 high | F vs A | 4 | 12/12 / 12/12 | 444.5k → 459.7k | +3% | +16% | +14% | +25% | overlap (noise) |
+| cursor / composer-2.5 | A vs B | 4 | 10/12 / 11/12 | 781.4k → 780.9k | -0% | +0% | +15% | +6% | overlap (noise) |
+| cursor / composer-2.5 | A vs C | 4 | 10/12 / 11/12 | 781.4k → 816.5k | +4% | +2% | -39% | +10% | overlap (noise) |
+| cursor / composer-2.5 | F vs A | 4 | 11/12 / 10/12 | 737.0k → 781.4k | +6% | +2% | +14% | +1% | overlap (noise) |
+| cursor / grok-4.7-high | A vs B | 4 | 12/12 / 10/12 | 1206.2k → 1326.3k | +9% | +0% | +13% | +16% | overlap (noise) |
+| cursor / grok-4.7-high | A vs C | 4 | 12/12 / 11/12 | 1206.2k → 1669.7k | +28% | +20% | +8% | +20% | overlap (noise) |
+| cursor / grok-4.7-high | F vs A | 4 | 12/12 / 12/12 | 737.2k → 1206.2k | +39% | +33% | +11% | +37% | overlap (noise) |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 12/12 / 3/12 | 370.4k → 1208.8k | +69% | +38% | +63% | +56% | separate |
+| agy / gemini-4-hydrogen-medium | A vs C | 4 | 12/12 / 3/12 | 370.4k → 1281.2k | +71% | +35% | +58% | +56% | separate |
+| agy / gemini-4-hydrogen-medium | F vs A | 4 | 12/12 / 12/12 | 376.6k → 370.4k | -2% | +6% | -63% | -4% | overlap (noise) |
+| muse / spark-1.3-contributor high | A vs B | 4 | 11/12 / 8/12 | 5808.1k → 6249.9k | +7% | +0% | +9% | +20% | overlap (noise) |
+| muse / spark-1.3-contributor high | A vs C | 4 | 11/12 / 9/12 | 5808.1k → 5420.2k | -7% | -5% | -34% | -6% | overlap (noise) |
+| muse / spark-1.3-contributor high | F vs A | 4 | 12/12 / 11/12 | 5344.2k → 5808.1k | +8% | +7% | +6% | +4% | overlap (noise) |
+
+### Tier-2 sliver on daybreak (3 runs per cell, interleaved; F: main's graph fixes): per task
+
+| Config | Task | Arm | Runs | Green | Median tokens (min–max) | Turns | Wall s | Est. cost |
+|---|---|---|---:|---:|---|---:|---:|---:|
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | A | 3 | 2 | 77.7k (74.6–78.7k) | 15 | 76.5 | $0.1042 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | B | 3 | 3 | 87.8k (75.2–91.9k) | 15 | 78.4 | $0.0944 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | C | 3 | 2 | 103.1k (90.1–121.4k) | 16 | 88.3 | $0.1205 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | F | 3 | 3 | 75.1k (72.6–101.7k) | 15 | 87.5 | $0.1022 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | A | 3 | 3 | 62.6k (58.6–71.9k) | 9 | 65.7 | $0.0532 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | B | 3 | 3 | 49.0k (48.2–49.7k) | 9 | 61.4 | $0.0471 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | C | 3 | 3 | 49.3k (46.2–69.8k) | 9 | 21.3 | $0.0509 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | F | 3 | 3 | 69.7k (67.1–74.4k) | 10 | 69.2 | $0.0558 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | A | 3 | 3 | 37.5k (37.4–39.6k) | 8 | 60.7 | $0.0301 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | B | 3 | 2 | 36.5k (29.9–39.0k) | 9 | 61.7 | $0.0349 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | C | 3 | 3 | 29.2k (28.7–35.7k) | 9 | 63.6 | $0.0355 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | F | 3 | 3 | 28.9k (28.9–38.5k) | 5 | 60.4 | $0.0203 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | A | 3 | 3 | 25.4k (25.3–26.6k) | 3 | 12.7 | $0.0435 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | B | 3 | 3 | 73.6k (67.2–74.3k) | 18 | 71.6 | $0.1033 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | C | 3 | 3 | 97.2k (73.3–117.6k) | 23 | 45.6 | $0.1254 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | F | 3 | 3 | 25.4k (25.4–25.5k) | 3 | 13.3 | $0.0435 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | A | 3 | 3 | 83.6k (74.0–88.1k) | 17 | 74.4 | $0.1682 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | B | 3 | 3 | 89.6k (85.6–104.5k) | 18 | 77.4 | $0.1805 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | C | 3 | 3 | 101.5k (92.1–128.4k) | 17 | 79.3 | $0.2079 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | F | 3 | 3 | 60.3k (46.3–92.3k) | 16 | 79.0 | $0.1401 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | A | 3 | 3 | 65.6k (65.0–77.2k) | 11 | 63.1 | $0.0935 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | B | 3 | 3 | 71.8k (69.9–77.8k) | 11 | 69.1 | $0.1154 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | C | 3 | 3 | 68.4k (67.7–108.0k) | 10 | 28.9 | $0.1077 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | F | 3 | 3 | 78.4k (73.9–104.5k) | 12 | 72.1 | $0.1122 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | A | 3 | 3 | 61.3k (57.3–73.7k) | 14 | 72.4 | $0.1113 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | B | 3 | 3 | 52.7k (52.2–53.2k) | 14 | 69.5 | $0.1082 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | C | 3 | 3 | 50.7k (49.3–60.6k) | 12 | 34.4 | $0.1061 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | F | 3 | 3 | 51.7k (50.1–83.9k) | 13 | 74.6 | $0.0979 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | A | 3 | 3 | 60.8k (59.4–82.9k) | 8 | 71.1 | $0.1295 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | B | 3 | 3 | 111.0k (98.4–120.5k) | 18 | 103.7 | $0.2533 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | C | 3 | 3 | 137.7k (110.0–272.4k) | 19 | 47.7 | $0.2848 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | F | 3 | 3 | 59.6k (36.1–70.1k) | 8 | 36.4 | $0.1259 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | A | 3 | 3 | 664.2k (211.1–1112.1k) | 23 | 215.8 | $0.6323 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | B | 3 | 3 | 293.0k (263.2–345.9k) | 11 | 104.0 | $0.2203 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | C | 3 | 3 | 366.8k (271.5–673.6k) | 14 | 114.7 | $0.3917 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | F | 3 | 3 | 241.7k (181.2–259.0k) | 11 | 133.7 | $0.2709 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | A | 3 | 3 | 158.1k (141.4–228.7k) | 12 | 136.5 | $0.1699 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | B | 3 | 3 | 165.4k (150.7–232.8k) | 10 | 96.8 | $0.1757 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | C | 3 | 3 | 256.2k (217.7–407.7k) | 14 | 119.7 | $0.3166 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | F | 3 | 3 | 162.1k (102.3–180.0k) | 12 | 155.8 | $0.1474 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | A | 3 | 3 | 184.9k (159.3–209.9k) | 12 | 179.0 | $0.2431 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | B | 3 | 0 | 234.0k (186.0–235.5k) | 13 | 117.7 | $0.1982 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | C | 3 | 0 | 290.8k (180.2–340.4k) | 15 | 143.1 | $0.2835 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | F | 3 | 3 | 132.9k (131.3–169.2k) | 10 | 141.9 | $0.1427 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | A | 3 | 3 | 671.3k (420.5–747.5k) | 21 | 283.8 | $0.5933 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | B | 3 | 3 | 476.8k (231.6–495.8k) | 15 | 194.5 | $0.4684 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | C | 3 | 3 | 1281.8k (986.7–2075.5k) | 32 | 353.2 | $0.9412 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | F | 3 | 3 | 93.8k (48.9–410.8k) | 7 | 75.3 | $0.1334 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | A | 3 | 3 | 121.7k (117.4–230.7k) | 9 | 76.4 | $0.1793 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | B | 3 | 3 | 127.8k (113.5–168.7k) | 7 | 79.8 | $0.1099 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | C | 3 | 3 | 190.5k (133.4–829.2k) | 9 | 80.7 | $0.1629 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | F | 3 | 3 | 171.5k (143.8–179.3k) | 9 | 94.8 | $0.1307 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | A | 3 | 3 | 105.6k (97.9–193.9k) | 9 | 113.1 | $0.0744 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | B | 3 | 3 | 116.8k (115.8–135.0k) | 8 | 124.3 | $0.0978 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | C | 3 | 3 | 227.9k (130.9–384.3k) | 13 | 70.1 | $0.1865 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | F | 3 | 3 | 171.9k (153.2–201.7k) | 12 | 134.9 | $0.1086 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | A | 3 | 3 | 136.3k (132.8–159.4k) | 12 | 138.7 | $0.1079 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | B | 3 | 0 | 146.7k (135.4–287.5k) | 11 | 190.0 | $0.1187 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | C | 3 | 0 | 229.5k (197.1–346.3k) | 15 | 75.0 | $0.2396 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | F | 3 | 3 | 44.9k (44.5–45.6k) | 5 | 63.3 | $0.0443 |
+| grok / grok-4.5 high | petclinic-rename-telephone | A | 3 | 3 | 96.2k (46.3–155.2k) | 7 | 45.7 | $0.0974 |
+| grok / grok-4.5 high | petclinic-rename-telephone | B | 3 | 3 | 255.2k (208.0–262.4k) | 11 | 142.6 | $0.2003 |
+| grok / grok-4.5 high | petclinic-rename-telephone | C | 3 | 3 | 970.2k (649.5–1298.3k) | 30 | 215.0 | $0.6111 |
+| grok / grok-4.5 high | petclinic-rename-telephone | F | 3 | 3 | 56.2k (43.5–68.7k) | 5 | 28.3 | $0.0600 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | A | 3 | 3 | 234.8k (206.1–422.0k) | 12 | 86.8 | $0.0606 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | B | 3 | 3 | 203.2k (186.6–228.4k) | 10 | 74.1 | $0.0566 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | C | 3 | 3 | 217.3k (186.9–255.7k) | 10 | 40.4 | $0.0612 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | F | 3 | 2 | 215.8k (175.3–226.4k) | 11 | 75.9 | $0.0547 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | A | 3 | 3 | 226.8k (145.7–234.2k) | 11 | 91.3 | $0.0566 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | B | 3 | 3 | 186.4k (170.6–407.2k) | 10 | 120.0 | $0.0489 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | C | 3 | 3 | 140.5k (129.1–150.5k) | 8 | 50.4 | $0.0386 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | F | 3 | 3 | 218.7k (193.3–261.0k) | 12 | 82.7 | $0.0665 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | A | 3 | 1 | 144.1k (105.8–360.4k) | 9 | 68.2 | $0.0408 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | B | 3 | 2 | 166.4k (131.6–415.7k) | 11 | 73.7 | $0.0481 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | C | 3 | 2 | 234.3k (219.7–434.1k) | 14 | 72.1 | $0.0585 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | F | 3 | 3 | 125.9k (106.6–140.1k) | 8 | 76.5 | $0.0326 |
+| cursor / composer-2.5 | petclinic-rename-telephone | A | 3 | 3 | 175.8k (77.1–220.4k) | 9 | 66.1 | $0.0444 |
+| cursor / composer-2.5 | petclinic-rename-telephone | B | 3 | 3 | 224.9k (116.9–283.2k) | 10 | 100.1 | $0.0626 |
+| cursor / composer-2.5 | petclinic-rename-telephone | C | 3 | 3 | 224.4k (150.0–660.3k) | 10 | 61.4 | $0.0653 |
+| cursor / composer-2.5 | petclinic-rename-telephone | F | 3 | 3 | 176.6k (132.2–185.8k) | 9 | 34.9 | $0.0473 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | A | 3 | 3 | 304.3k (223.4–612.1k) | 11 | 206.6 | $0.3113 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | B | 3 | 3 | 227.8k (203.9–237.3k) | 8 | 120.6 | $0.2328 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | C | 3 | 3 | 337.1k (332.8–940.3k) | 12 | 155.6 | $0.4216 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | F | 3 | 3 | 265.6k (240.3–268.4k) | 9 | 174.2 | $0.2899 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | A | 3 | 3 | 264.7k (217.0–282.5k) | 12 | 138.5 | $0.2887 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | B | 3 | 3 | 340.8k (262.5–383.6k) | 15 | 210.4 | $0.3949 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | C | 3 | 3 | 268.6k (243.0–1894.4k) | 12 | 163.4 | $0.2770 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | F | 3 | 3 | 224.6k (206.2–271.0k) | 11 | 182.9 | $0.2491 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | A | 3 | 3 | 329.4k (209.8–350.2k) | 14 | 147.7 | $0.3966 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | B | 3 | 1 | 182.0k (159.2–254.6k) | 9 | 200.8 | $0.2735 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | C | 3 | 2 | 341.9k (215.4–936.0k) | 14 | 212.2 | $0.3857 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | F | 3 | 3 | 183.5k (161.5–210.0k) | 9 | 194.9 | $0.1911 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | A | 3 | 3 | 307.9k (115.5–583.9k) | 11 | 190.0 | $0.3127 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | B | 3 | 3 | 575.7k (460.2–622.1k) | 16 | 257.1 | $0.6600 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | C | 3 | 3 | 722.1k (446.7–792.6k) | 22 | 214.1 | $0.5627 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | F | 3 | 3 | 63.5k (61.7–171.2k) | 3 | 55.9 | $0.0918 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | A | 3 | 3 | 93.1k (71.0–116.8k) | 8 | 55.8 | $0.0709 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | B | 3 | 0 | 260.8k (234.9–336.2k) | 10 | 152.6 | $0.1253 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | C | 3 | 0 | 329.3k (256.2–541.5k) | 11 | 128.3 | $0.1660 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | F | 3 | 3 | 72.5k (72.2–82.6k) | 7 | 91.8 | $0.0689 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | A | 3 | 3 | 83.6k (82.5–94.0k) | 9 | 51.5 | $0.0646 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | B | 3 | 0 | 442.3k (334.0–869.9k) | 19 | 246.1 | $0.2244 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | C | 3 | 0 | 344.3k (327.5–695.7k) | 18 | 222.3 | $0.1910 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | F | 3 | 3 | 71.0k (70.5–84.0k) | 8 | 126.4 | $0.0559 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | A | 3 | 3 | 124.5k (105.7–144.2k) | 11 | 125.5 | $0.0834 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | B | 3 | 0 | 216.1k (127.4–305.5k) | 14 | 171.1 | $0.1181 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | C | 3 | 0 | 196.3k (152.3–365.2k) | 11 | 136.2 | $0.1205 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | F | 3 | 3 | 101.1k (87.9–105.2k) | 9 | 124.8 | $0.0739 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | A | 3 | 3 | 69.1k (45.2–100.1k) | 7 | 50.0 | $0.0582 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | B | 3 | 3 | 289.6k (241.5–311.3k) | 13 | 190.2 | $0.1648 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | C | 3 | 3 | 411.3k (331.4–448.9k) | 14 | 191.2 | $0.1578 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | F | 3 | 3 | 132.0k (32.3–138.7k) | 9 | 118.1 | $0.0890 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | A | 3 | 2 | 1322.0k (1208.7–1480.8k) | 34 | 141.2 | $0.0110 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | B | 3 | 3 | 1936.6k (872.9–2524.6k) | 46 | 201.4 | $0.0156 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | C | 3 | 3 | 1461.8k (1220.5–2322.5k) | 43 | 142.2 | $0.0114 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | F | 3 | 3 | 1288.2k (1024.5–1772.9k) | 37 | 224.7 | $0.0107 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | A | 3 | 3 | 619.0k (495.1–623.3k) | 24 | 183.4 | $0.0060 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | B | 3 | 3 | 600.0k (394.3–1024.1k) | 22 | 191.2 | $0.0087 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | C | 3 | 3 | 714.9k (639.1–819.7k) | 23 | 142.5 | $0.0064 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | F | 3 | 3 | 613.4k (447.0–893.2k) | 25 | 148.9 | $0.0064 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | A | 3 | 3 | 920.1k (894.9–1242.7k) | 35 | 174.6 | $0.0080 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | B | 3 | 0 | 713.4k (444.1–1150.9k) | 26 | 181.4 | $0.0076 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | C | 3 | 0 | 563.6k (463.4–1046.3k) | 22 | 100.1 | $0.0066 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | F | 3 | 3 | 672.6k (553.6–829.3k) | 24 | 195.2 | $0.0077 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | A | 3 | 3 | 2947.1k (1754.2–2953.0k) | 60 | 312.4 | $0.0165 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | B | 3 | 2 | 2999.9k (2948.5–3391.5k) | 59 | 321.2 | $0.0201 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | C | 3 | 3 | 2679.8k (2455.7–2712.2k) | 58 | 221.8 | $0.0147 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | F | 3 | 3 | 2770.2k (1043.1–2884.3k) | 57 | 197.3 | $0.0149 |
+
 ## Totals on daybreak (all tiers so far)
 
 | Arm | Runs | Green | Tokens (sum) | Est. cost (sum) |
 |---|---:|---:|---:|---:|
-| A | 112 | 112 | 5.06M | $3.09 |
-| C | 112 | 112 | 22.73M | $15.46 |
+| F | 96 | 95 | 25.21M | $9.49 |
+| A | 208 | 204 | 36.97M | $16.71 |
+| B | 128 | 104 | 42.18M | $18.11 |
+| C | 208 | 187 | 69.75M | $38.68 |
 
 # Second host: bocabox (Fedora), tier 0 only
 
@@ -281,32 +537,32 @@ between identical builds (README.md, Findings).
 | muse / spark-1.3-contributor high | B | 4 | 4/4 (100%) | 0 | 182.6k | 8 | 71.5 | 1.1 | $0.0054 | Muse Code 1.4.23 (1.4.23-R8977.1) |
 | muse / spark-1.3-contributor high | C | 4 | 4/4 (100%) | 0 | 517.0k | 21 | 121.5 | 0.6 | $0.0064 | Muse Code 1.4.23 (1.4.23-R8977.1) |
 
-### Tier 0 on bocabox (smoke fixture, 1 run per cell): savings of A against B and C
+### Tier 0 on bocabox (smoke fixture, 1 run per cell): savings of A against B, A against C
 
-Per config, summed over the tasks both arms measured (sum of per-task medians); positive means A lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
+Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | vs | Tasks | Green A / other | Tokens A → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
 |---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | B | 4 | 4/4 / 4/4 | 75.4k → 92.3k | +18% | +24% | +13% | +45% | 1 run |
-| claude2 / sonnet-5-5 medium | C | 4 | 4/4 / 4/4 | 75.4k → 134.9k | +44% | +63% | +56% | +60% | 1 run |
-| claude2 / opus-5-5 medium | B | 4 | 4/4 / 4/4 | 89.2k → 133.4k | +33% | +36% | +32% | +40% | 1 run |
-| claude2 / opus-5-5 medium | C | 4 | 4/4 / 4/4 | 89.2k → 192.7k | +54% | +68% | +62% | +66% | 1 run |
-| codex / gpt-6.1-terra low (default) | B | 4 | 4/4 / 4/4 | 349.5k → 331.3k | -6% | -7% | +8% | -12% | 1 run |
-| codex / gpt-6.1-terra low (default) | C | 4 | 4/4 / 4/4 | 349.5k → 524.6k | +33% | +32% | +19% | +30% | 1 run |
-| codex / gpt-6.1-sol low (default) | B | 4 | 4/4 / 4/4 | 320.4k → 304.4k | -5% | +0% | -9% | +8% | 1 run |
-| codex / gpt-6.1-sol low (default) | C | 4 | 4/4 / 4/4 | 320.4k → 533.5k | +40% | +48% | +35% | +51% | 1 run |
-| grok / grok-4.7 high 256k | B | 4 | 4/4 / 4/4 | 185.2k → 184.0k | -1% | -5% | -1% | -1% | 1 run |
-| grok / grok-4.7 high 256k | C | 4 | 4/4 / 4/4 | 185.2k → 1582.4k | +88% | +74% | +88% | +87% | 1 run |
-| grok / grok-4.5 high | B | 4 | 4/4 / 4/4 | 148.3k → 139.1k | -7% | -6% | -3% | -6% | 1 run |
-| grok / grok-4.5 high | C | 4 | 4/4 / 4/4 | 148.3k → 1108.9k | +87% | +72% | +84% | +83% | 1 run |
-| cursor / composer-2.5 | B | 4 | 4/4 / 4/4 | 319.2k → 301.0k | -6% | -5% | -10% | -8% | 1 run |
-| cursor / composer-2.5 | C | 4 | 4/4 / 4/4 | 319.2k → 664.4k | +52% | +46% | +22% | +51% | 1 run |
-| cursor / grok-4.7-high | B | 4 | 4/4 / 4/4 | 291.1k → 269.0k | -8% | -7% | -15% | -17% | 1 run |
-| cursor / grok-4.7-high | C | 4 | 4/4 / 4/4 | 291.1k → 992.7k | +71% | +65% | +64% | +70% | 1 run |
-| agy / gemini-4-hydrogen-medium | B | 4 | 4/4 / 4/4 | 95.9k → 112.3k | +15% | +12% | -22% | +16% | 1 run |
-| agy / gemini-4-hydrogen-medium | C | 4 | 4/4 / 4/4 | 95.9k → 642.9k | +85% | +73% | +66% | +77% | 1 run |
-| muse / spark-1.3-contributor high | B | 4 | 4/4 / 4/4 | 747.3k → 916.5k | +18% | +22% | +16% | +13% | 1 run |
-| muse / spark-1.3-contributor high | C | 4 | 4/4 / 4/4 | 747.3k → 1882.9k | +60% | +57% | +59% | +33% | 1 run |
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 75.4k → 92.3k | +18% | +24% | +13% | +45% | 1 run |
+| claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 75.4k → 134.9k | +44% | +63% | +56% | +60% | 1 run |
+| claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 89.2k → 133.4k | +33% | +36% | +32% | +40% | 1 run |
+| claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 89.2k → 192.7k | +54% | +68% | +62% | +66% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 4/4 / 4/4 | 349.5k → 331.3k | -6% | -7% | +8% | -12% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 349.5k → 524.6k | +33% | +32% | +19% | +30% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 4/4 / 4/4 | 320.4k → 304.4k | -5% | +0% | -9% | +8% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 320.4k → 533.5k | +40% | +48% | +35% | +51% | 1 run |
+| grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 185.2k → 184.0k | -1% | -5% | -1% | -1% | 1 run |
+| grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 185.2k → 1582.4k | +88% | +74% | +88% | +87% | 1 run |
+| grok / grok-4.5 high | A vs B | 4 | 4/4 / 4/4 | 148.3k → 139.1k | -7% | -6% | -3% | -6% | 1 run |
+| grok / grok-4.5 high | A vs C | 4 | 4/4 / 4/4 | 148.3k → 1108.9k | +87% | +72% | +84% | +83% | 1 run |
+| cursor / composer-2.5 | A vs B | 4 | 4/4 / 4/4 | 319.2k → 301.0k | -6% | -5% | -10% | -8% | 1 run |
+| cursor / composer-2.5 | A vs C | 4 | 4/4 / 4/4 | 319.2k → 664.4k | +52% | +46% | +22% | +51% | 1 run |
+| cursor / grok-4.7-high | A vs B | 4 | 4/4 / 4/4 | 291.1k → 269.0k | -8% | -7% | -15% | -17% | 1 run |
+| cursor / grok-4.7-high | A vs C | 4 | 4/4 / 4/4 | 291.1k → 992.7k | +71% | +65% | +64% | +70% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 4/4 / 4/4 | 95.9k → 112.3k | +15% | +12% | -22% | +16% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs C | 4 | 4/4 / 4/4 | 95.9k → 642.9k | +85% | +73% | +66% | +77% | 1 run |
+| muse / spark-1.3-contributor high | A vs B | 4 | 4/4 / 4/4 | 747.3k → 916.5k | +18% | +22% | +16% | +13% | 1 run |
+| muse / spark-1.3-contributor high | A vs C | 4 | 4/4 / 4/4 | 747.3k → 1882.9k | +60% | +57% | +59% | +33% | 1 run |
 
 ### Tier 0 on bocabox (smoke fixture, 1 run per cell): per task
 
