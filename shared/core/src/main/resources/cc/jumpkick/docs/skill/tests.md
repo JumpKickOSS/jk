@@ -8,7 +8,7 @@ Suites choose tests; a profile never does. `jk test` and `run()` run the unit su
 
 `modules` on `run` (CLI `-m`) limits modules. Roots: `src/test`, `src/integration`, `src/e2e` (simple layout: `test/src`, …). A tag tier is `[test.suites.<name>] tags = [...]`; `jk new` writes `network`, `slow`, `bench`.
 
-A green suite replays while its inputs hold. `W tests reached <host>`: it reruns every time; stub it on loopback, move it to `network`, or `[test] network = "allowed"` when the remote cannot change its result.
+A green suite replays while its inputs hold, shell variables too. `W tests reached <host>`: it reruns every time; stub it on loopback, move it to `network`, or `[test] network = "allowed"` when the remote cannot change its result.
 
 ## Slow tests
 

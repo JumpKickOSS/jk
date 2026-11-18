@@ -1042,7 +1042,11 @@ nothing. Two kinds of read cannot name one variable, and are keyed more broadly:
   not read. A new `MY_APP_BAR` runs the suite again. `System.getenv()` answers a view whose values
   are fetched only as they are read, so `get` and `containsKey` key one name each.
 - *Starting a program* (`ProcessBuilder`, `Runtime.exec`): the program gets your whole environment
-  beneath what the test set for it, and reads it unseen, so the suite is keyed on every value.
+  beneath what the test set for it, and reads it unseen, so the suite is keyed on every value. The
+  agent reaches the program through the JDK's own process launch; before a run relies on that,
+  JumpKick asks each JDK once whether it can (the answer is kept in the cache). On a JDK that
+  starts programs another way, the test JVM is given your whole environment when it starts
+  instead, the suite is keyed on every value, and the run says so once.
 
 Both leave out the names that change between two terminals of one user (the session, window and
 login ids, `TERM`, `SSH_*`, the desktop session), so a second terminal still replays a Spring Boot
@@ -1050,7 +1054,10 @@ suite. Those names never key a suite even when a test reads one: Micronaut and F
 environment and read every value, and keying the terminal's own variables would rerun them in every
 new tab. The cost: a test whose outcome depends on `TERM`, `PWD` or `SHLVL` can replay from another
 terminal. What a suite read only grows, so switching between two shells settles after one run in
-each. `jk explain` forecasts the rerun and never shows a value.
+each. `jk explain` names what moved and never a value: `run tests · MUST_BE_TRUE changed`,
+`SHOULD_BE_ABSENT set`, `MY_APP_BAR set, OLD_FLAG unset` for names a listing saw come and go (a few,
+then how many more); the run that follows records the same names as the reason it ran (`jk history
+show <id>`: `ran: inputs changed (x:env-read:MUST_BE_TRUE)`).
 
 **What never leaves your machine.** Values are HMAC'd under a secret of your JumpKick home before they
 enter a key, so a key that travels gives no way to test guesses at a short secret. They are held
@@ -1069,9 +1076,23 @@ a build from a terminal does not take one that read a variable it could not have
 `[env] scope = ["SPRING_*", "MYAPP_*"]` narrows what a test JVM sees of your other variables to the
 names the patterns match (a name, or a prefix ending in `*`), beside the allow-list and the
 declared names. A suite that lists the environment then keys on a small, stable set of names, so
-its result holds on another machine and may be shared. For a Spring Boot module, scope it to your
-application's prefixes. Set at a workspace root, it holds for every member that sets none of its
-own.
+an unrelated variable no longer reruns it and its result holds on another machine and may be
+shared. The cost: a test sees no other variable of your shell. Set at a workspace root, it holds
+for every member that sets none of its own.
+
+Spring Boot, Quarkus, Micronaut, Flyway and Testcontainers list the environment and read every
+value, so without a scope their suites are keyed on all of it. The first time a module's suite is
+keyed that broadly, the run says so in one line, with the scope for the frameworks its
+dependencies name:
+
+```text
+Spring Boot reads your whole environment, so changing any variable runs these tests again; [env] scope = ["SPRING_*", "<YOURAPP>_*"] in jk.toml keeps them to those names (and lets the result be shared)
+```
+
+Once per module: not on later runs, not per suite, not in later verdicts. A module that already
+scopes, declares a name in `[env]` or is strict never hears it. `jk new`'s Spring Boot, Quarkus,
+Micronaut and Helidon templates carry the line commented out; nothing is scoped by default, so a
+variable set in your shell reaches the test with no configuration.
 
 ### Keeping a module strict
 
@@ -1095,6 +1116,8 @@ A read the probe cannot see is not keyed: native code calling `getenv(3)` throug
 API, a JVM the suite starts itself (`java -jar …` from a test: it gets your environment like any
 program, and the suite is keyed on all of it), and code that runs in the test runner's discovery
 JVM before the tests (a static initializer that reads a variable while JUnit lists the tests).
+JUnit's conditions are not among them: `@EnabledIfEnvironmentVariable` is decided in the test JVM,
+so a suite it disabled runs once the variable is set, and one it ran runs again once it is unset.
 
 ## What a suite read: discovered inputs
 
