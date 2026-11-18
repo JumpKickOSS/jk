@@ -54,4 +54,34 @@ class SharedRecordEnvTest {
                 .contains("classes:dir:abc");
         assertThat(ActionRecordText.parse(shared, key).inputs()).containsEntry("src/A.java", "aaa");
     }
+
+    /**
+     * The names behind a suite's listing and whole-environment tokens, which its record keeps so a
+     * miss can name the variable that came or went, stay on this host.
+     */
+    @Test
+    void the_shared_form_leaves_out_the_callers_variable_names_behind_a_listing() {
+        String key = "k".repeat(64);
+        Map<String, String> inputs = Map.of(
+                "x:env-names", "n".repeat(64),
+                "env-name:MY_APP_FOO", "",
+                "env-value:MY_APP_BAR", "v".repeat(64));
+        String local = ActionRecordText.render(
+                "run-tests@x",
+                key,
+                inputs,
+                Map.of(),
+                Set.of(),
+                List.of(),
+                ActionRecordText.Meta.now(
+                        "java:run-tests", ActionRecordText.Writes.VERDICT, "jk/test", "linux-x86_64", -1, Map.of()));
+
+        String shared = ActionRecordText.renderShared(ActionRecordText.parse(local, key));
+
+        assertThat(local).contains("MY_APP_FOO").contains("MY_APP_BAR");
+        assertThat(shared)
+                .doesNotContain("MY_APP_FOO")
+                .doesNotContain("MY_APP_BAR")
+                .contains("x:env-names");
+    }
 }

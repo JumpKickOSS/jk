@@ -17,6 +17,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
@@ -59,7 +61,15 @@ class EnvPassthroughCliE2eTest {
 
         assertThat(test(ws, cache, "true")).as("MUST_BE_TRUE=true runs green").contains("\"success\":true");
         assertThat(test(ws, cache, "true")).as("the same value again: replayed").contains("\"upToDate\":true");
+        assertThat(explain(ws, cache, null))
+                .as("jk explain names the variable that went, as the forecast's reason")
+                .contains("MUST_BE_TRUE unset")
+                .doesNotContain("jk changed");
         assertThat(test(ws, cache, null)).as("unset: not honoured, fails").contains("\"success\":false");
+        assertThat(lastRun())
+                .as("the build's own miss reason names it too")
+                .contains("ran: inputs changed")
+                .contains("MUST_BE_TRUE");
         assertThat(test(ws, cache, "banana")).as("banana: not honoured, fails").contains("\"success\":false");
         assertThat(test(ws, cache, "false")).as("false: not honoured, fails").contains("\"success\":false");
         assertThat(test(ws, cache, "true"))
@@ -67,12 +77,11 @@ class EnvPassthroughCliE2eTest {
                 .contains("\"upToDate\":true");
 
         // A value no run had: no red record under that key, so the forecast says what moved.
-        ProjectInfos.forget();
-        System.setProperty("jk.env." + MUST, "pear-never-run");
-        String explain = Capture.stdout(() -> run("explain", "-O", "jsonl", "-C", ws.toString(), "--cache-dir", cache));
+        String explain = explain(ws, cache, "pear-never-run");
         assertThat(explain)
                 .as("the forecast runs the suite again under a value it never read, and never says the value")
                 .contains("\"step\":\"run-tests\",\"status\":\"run\"")
+                .contains("MUST_BE_TRUE changed")
                 .doesNotContain("pear-never-run");
     }
 
@@ -134,6 +143,21 @@ class EnvPassthroughCliE2eTest {
                 Files.delete(dump);
             }
         }
+    }
+
+    private static String explain(Path ws, String cache, @Nullable String value) {
+        ProjectInfos.forget();
+        if (value == null) System.clearProperty("jk.env." + MUST);
+        else System.setProperty("jk.env." + MUST, value);
+        return Capture.stdout(() -> run("explain", "-O", "jsonl", "-C", ws.toString(), "--cache-dir", cache));
+    }
+
+    /** {@code jk history show} of the last build, as a person reads it. */
+    private static String lastRun() {
+        String list = Capture.stdout(() -> run("history", "list", "-O", "jsonl", "-n", "1"));
+        Matcher id = Pattern.compile("\"id\":\"([^\"]+)\"").matcher(list);
+        assertThat(id.find()).as("a build on record: " + list).isTrue();
+        return Capture.stdout(() -> run("history", "show", id.group(1)));
     }
 
     private static String test(Path ws, String cache, @Nullable String value) {

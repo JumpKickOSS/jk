@@ -9,6 +9,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -283,15 +284,29 @@ public final class SuiteEnvReads {
         }
         if (record.listed()) {
             Set<String> names = caller.names();
-            out.add(NAMES_TOKEN
-                    + (names == null ? UNKNOWN : digest(key, "", String.join("\n", keyedNames(names, policy)))));
+            List<String> keyed = names == null ? List.of() : keyedNames(names, policy);
+            out.add(NAMES_TOKEN + (names == null ? UNKNOWN : digest(key, "", String.join("\n", keyed))));
+            if (KeyAudit.listening()) keyed.forEach(n -> KeyAudit.tap(NAME_DETAIL + n));
         }
         if (record.whole()) {
             Map<String, String> all = caller.all();
             out.add(ALL_TOKEN + (all == null ? UNKNOWN : digest(key, "", keyedValues(all, policy))));
+            if (all != null && KeyAudit.listening())
+                visibleValues(all, policy).forEach((n, v) -> KeyAudit.tap(VALUE_DETAIL + n + "=" + digest(key, n, v)));
         }
         return out;
     }
+
+    /**
+     * The names behind a listing's token ({@code env-name:NAME}) and the digests behind a whole
+     * environment's ({@code env-value:NAME=<digest>}), named to the key's audit and never hashed:
+     * the digest of every name or value says only that one moved, and these let a miss name which
+     * ({@code StampTokens}). They reach this host's own records and kept tokens; a shared record
+     * carries none ({@code ActionRecordText.renderShared}).
+     */
+    public static final String NAME_DETAIL = "env-name:";
+
+    public static final String VALUE_DETAIL = "env-value:";
 
     private static final String UNKNOWN = "unknown";
 
@@ -321,13 +336,19 @@ public final class SuiteEnvReads {
 
     /** The whole environment as a suite that starts programs keys on: what it may see, less the volatile. */
     static String keyedValues(Map<String, String> all, Policy policy) {
+        StringBuilder sb = new StringBuilder();
+        visibleValues(all, policy)
+                .forEach((n, v) -> sb.append(n).append('=').append(v).append('\n'));
+        return sb.toString();
+    }
+
+    /** What {@link #keyedValues} keys on, by name, sorted. */
+    private static Map<String, String> visibleValues(Map<String, String> all, Policy policy) {
         Map<String, String> sorted = new TreeMap<>();
         all.forEach((n, v) -> {
             if (policy.visible(n) && !volatileName(n)) sorted.put(key(n), v);
         });
-        StringBuilder sb = new StringBuilder();
-        sorted.forEach((n, v) -> sb.append(n).append('=').append(v).append('\n'));
-        return sb.toString();
+        return sorted;
     }
 
     /**

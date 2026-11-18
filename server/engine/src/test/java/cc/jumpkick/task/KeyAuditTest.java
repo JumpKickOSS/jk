@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -48,6 +49,25 @@ class KeyAuditTest {
                     .contains("report.txt missing went away")
                     .endsWith("; the next build runs it again");
         });
+    }
+
+    /**
+     * A derivation that taps itself (a suite's stamp names its tokens for its record) still names
+     * them to a caller tapping it whole: the tokens a forecast compares against were empty, and every
+     * miss after a green run read "jk changed".
+     */
+    @Test
+    void a_tap_inside_a_tap_names_its_lines_to_both() throws Exception {
+        KeyAudit.KeySource inner = () -> {
+            KeyAudit.tap("x:env-read:FOO=" + "c".repeat(64));
+            return "k";
+        };
+        KeyAudit.Keyed outer = KeyAudit.tapped(() -> {
+            KeyAudit.Keyed named = Objects.requireNonNull(KeyAudit.tapped(inner));
+            assertThat(named.tokens()).containsOnlyKeys("x:env-read:FOO");
+            return named.key();
+        });
+        assertThat(Objects.requireNonNull(outer).tokens()).containsEntry("x:env-read:FOO", "c".repeat(64));
     }
 
     @Test

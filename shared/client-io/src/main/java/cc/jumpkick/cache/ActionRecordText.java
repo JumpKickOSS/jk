@@ -391,7 +391,7 @@ public final class ActionRecordText {
         }
         Map<String, String> portable = new TreeMap<>();
         for (Map.Entry<String, String> e : record.inputs().entrySet()) {
-            if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()))
+            if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()) && !callerEnvDetail(e.getKey()))
                 portable.put(withoutEnvValues(e.getKey()), withoutEnvValues(e.getValue()));
         }
         return render(
@@ -402,6 +402,15 @@ public final class ActionRecordText {
                 record.executables(),
                 List.of(),
                 record.meta());
+    }
+
+    /**
+     * Whether {@code input} names one variable of the caller's environment behind a suite's listing
+     * or whole-environment token ({@code env-name:NAME}, {@code env-value:NAME}): the names a shell
+     * holds, which no key hashes one by one and which say nothing to another host. They stay home.
+     */
+    static boolean callerEnvDetail(String input) {
+        return input.startsWith("env-name:") || input.startsWith("env-value:");
     }
 
     /**

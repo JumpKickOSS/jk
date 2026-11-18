@@ -117,4 +117,40 @@ class StampTokensTest {
         assertThat(StampTokens.reason(Map.of("x:env-all", "a"), Map.of("x:env-all", "b")))
                 .isEqualTo("the environment changed (a test starts programs)");
     }
+
+    /** A variable newly set, newly unset, and the names a listing saw: each named, with what it did. */
+    @Test
+    void a_variable_set_or_unset_and_a_name_that_came_or_went_are_named() {
+        String d1 = "1".repeat(64);
+        String d2 = "2".repeat(64);
+        assertThat(StampTokens.reason(Map.of("x:env-read:FOO", "unset"), Map.of("x:env-read:FOO", d1)))
+                .isEqualTo("FOO set");
+        assertThat(StampTokens.reason(Map.of("x:env-read:FOO", d1), Map.of("x:env-read:FOO", "unset")))
+                .isEqualTo("FOO unset");
+        Map<String, String> was = Map.of("x:env-names", d1, "env-name:MY_APP_FOO", "", "env-name:GONE", "");
+        Map<String, String> now = Map.of("x:env-names", d2, "env-name:MY_APP_FOO", "", "env-name:MY_APP_BAR", "");
+        assertThat(StampTokens.reason(was, now)).isEqualTo("GONE unset, MY_APP_BAR set");
+        assertThat(StampTokens.reason(
+                        Map.of("x:env-all", d1, "env-value:A", d1, "env-value:B", d1),
+                        Map.of("x:env-all", d2, "env-value:A", d2, "env-value:B", d1, "env-value:C", d1)))
+                .isEqualTo("A changed, C set");
+        Map<String, String> many = Map.of(
+                "x:env-names",
+                d2,
+                "env-name:A",
+                "",
+                "env-name:B",
+                "",
+                "env-name:C",
+                "",
+                "env-name:D",
+                "",
+                "env-name:E",
+                "");
+        assertThat(StampTokens.reason(Map.of("x:env-names", d1), many))
+                .isEqualTo("A set, B set, C set and 2 more variables");
+        assertThat(StampTokens.reason(Map.of("x:env-read:FOO", d1, "cp", d1), Map.of("x:env-read:FOO", d2, "cp", d2)))
+                .as("another input moved beside it")
+                .isEqualTo("FOO changed (+1 more)");
+    }
 }

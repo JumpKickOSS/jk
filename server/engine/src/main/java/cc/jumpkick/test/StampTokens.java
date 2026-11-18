@@ -9,9 +9,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -129,6 +131,12 @@ public final class StampTokens {
         for (KeyAudit.Token t : moved) {
             if (t.name().startsWith(JK_TOKEN)) return JK_CHANGED;
         }
+        // The caller's variables by name, never by value: which one changed, came or went.
+        String env = variablesMoved(moved);
+        if (env != null) {
+            long rest = moved.stream().filter(t -> !envToken(t.name())).count();
+            return rest == 0 ? env : env + " (+" + rest + " more)";
+        }
         String name = moved.getFirst().name();
         String first = describe(name);
         String reason = moved.size() == 1 ? first : first + " (+" + (moved.size() - 1) + " more)";
@@ -140,6 +148,72 @@ public final class StampTokens {
         }
         return reason;
     }
+
+    /** How many variables a reason names before it counts the rest. */
+    private static final int VARIABLES_NAMED = 3;
+
+    private static final String ENV_READ = "x:env-read:";
+    private static final String ENV_NAMES = "x:env-names";
+    private static final String ENV_ALL = "x:env-all";
+
+    /** Whether {@code name} is a token of the caller's environment ({@link SuiteEnvReads}). */
+    private static boolean envToken(String name) {
+        return name.startsWith(ENV_READ)
+                || name.startsWith(ENV_NAMES)
+                || name.startsWith(ENV_ALL)
+                || name.startsWith(SuiteEnvReads.NAME_DETAIL)
+                || name.startsWith(SuiteEnvReads.VALUE_DETAIL);
+    }
+
+    /**
+     * The variables of the caller's environment among {@code moved}, each named once with what it
+     * did: {@code MUST_BE_TRUE changed}, {@code FOO set} (it was unset, or not among the names),
+     * {@code BAR unset}; at most {@link #VARIABLES_NAMED}, then how many more. A listing or whole
+     * environment kept without its names (a run with no caller) says only that the names or the
+     * values changed. Null when no such token moved. Never a value.
+     */
+    static @Nullable String variablesMoved(List<KeyAudit.Token> moved) {
+        Map<String, String> said = new TreeMap<>();
+        String aggregate = null;
+        for (KeyAudit.Token t : moved) {
+            String n = t.name();
+            String variable;
+            if (n.startsWith(ENV_READ)) variable = n.substring(ENV_READ.length());
+            else if (n.startsWith(SuiteEnvReads.NAME_DETAIL))
+                variable = n.substring(SuiteEnvReads.NAME_DETAIL.length());
+            else if (n.startsWith(SuiteEnvReads.VALUE_DETAIL))
+                variable = n.substring(SuiteEnvReads.VALUE_DETAIL.length());
+            else {
+                if (aggregate == null && (n.startsWith(ENV_NAMES) || n.startsWith(ENV_ALL))) aggregate = describe(n);
+                continue;
+            }
+            said.putIfAbsent(variable, variable + " " + did(n.startsWith(ENV_READ), t));
+        }
+        if (said.isEmpty()) return aggregate;
+        List<String> named = new ArrayList<>(said.values());
+        String head = String.join(", ", named.subList(0, Math.min(VARIABLES_NAMED, named.size())));
+        int more = named.size() - VARIABLES_NAMED;
+        return more > 0 ? head + " and " + more + " more variable" + (more == 1 ? "" : "s") : head;
+    }
+
+    /**
+     * What one variable did between the two keys: a value read by name keys {@code unset} when the
+     * shell had none; a name behind a listing or a whole environment is there or not.
+     */
+    private static String did(boolean readByName, KeyAudit.Token t) {
+        if (readByName) {
+            if (t.was() == null) return "newly read";
+            if (t.now() == null) return "no longer read";
+            if (UNSET.equals(t.was())) return "set";
+            if (UNSET.equals(t.now())) return "unset";
+            return "changed";
+        }
+        if (t.was() == null) return "set";
+        if (t.now() == null) return "unset";
+        return "changed";
+    }
+
+    private static final String UNSET = "unset";
 
     /** One token's name as the reason reads it. */
     static String describe(String name) {

@@ -12,6 +12,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
+import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.runtime.workspace.ExplainReport;
@@ -88,9 +89,16 @@ class EnvPassthroughE2eTest {
                 .as("the same shell again: the green result holds")
                 .isIn(null, TaskStatus.SKIPPED);
 
-        assertThat(shell.without("MUST_BE_TRUE").build(m).status())
-                .as("unset: not honoured, runs, fails")
-                .isEqualTo(TaskStatus.FAIL);
+        assertThat(shell.without("MUST_BE_TRUE").forecast(m))
+                .as("jk explain names the variable that went")
+                .anySatisfy(step -> assertThat(step)
+                        .startsWith(TaskNames.RUN_TESTS + " RUN")
+                        .contains("MUST_BE_TRUE unset"));
+        Steps unset = shell.without("MUST_BE_TRUE").build(m);
+        assertThat(unset.status()).as("unset: not honoured, runs, fails").isEqualTo(TaskStatus.FAIL);
+        assertThat(unset.changed)
+                .as("the build says which input moved: the variable, by name")
+                .contains("MUST_BE_TRUE");
         assertThat(shell.with("MUST_BE_TRUE", "banana").build(m).status())
                 .as("banana: not honoured")
                 .isEqualTo(TaskStatus.FAIL);
@@ -106,7 +114,10 @@ class EnvPassthroughE2eTest {
         List<String> forecast = shell.with("MUST_BE_TRUE", "pear").forecast(m);
         assertThat(forecast)
                 .as("jk explain runs the suite again under a value it never read, and never says the value")
-                .anySatisfy(step -> assertThat(step).startsWith(TaskNames.RUN_TESTS + " RUN"))
+                .anySatisfy(step -> assertThat(step)
+                        .startsWith(TaskNames.RUN_TESTS + " RUN")
+                        .contains("MUST_BE_TRUE changed")
+                        .doesNotContain("jk changed"))
                 .noneSatisfy(step -> assertThat(step).contains("pear"));
     }
 
@@ -122,9 +133,15 @@ class EnvPassthroughE2eTest {
         Shell shell = new Shell(Map.of("OTHER", "x"));
         assertThat(shell.build(m).status()).isEqualTo(TaskStatus.SUCCESS);
         assertThat(shell.build(m).status()).as("still unset").isIn(null, TaskStatus.SKIPPED);
-        assertThat(shell.with("SHOULD_BE_ABSENT", "now").build(m).status())
-                .as("set since: runs and fails")
-                .isEqualTo(TaskStatus.FAIL);
+        assertThat(shell.with("SHOULD_BE_ABSENT", "now").forecast(m))
+                .as("jk explain names the variable set since")
+                .anySatisfy(step -> assertThat(step)
+                        .startsWith(TaskNames.RUN_TESTS + " RUN")
+                        .contains("SHOULD_BE_ABSENT set"))
+                .noneSatisfy(step -> assertThat(step).contains("now"));
+        Steps set = shell.with("SHOULD_BE_ABSENT", "now").build(m);
+        assertThat(set.status()).as("set since: runs and fails").isEqualTo(TaskStatus.FAIL);
+        assertThat(set.changed).as("the build names it too").contains("SHOULD_BE_ABSENT");
     }
 
     /**
@@ -151,9 +168,21 @@ class EnvPassthroughE2eTest {
         assertThat(shell.with("TERM_SESSION_ID", "s2").build(m).status())
                 .as("another terminal's session id")
                 .isIn(null, TaskStatus.SKIPPED);
-        assertThat(shell.with("MY_APP_BAR", "x").build(m).status())
+        assertThat(shell.without("UNREAD").forecast(m))
+                .as("jk explain names the name that went")
+                .anySatisfy(step -> assertThat(step)
+                        .startsWith(TaskNames.RUN_TESTS + " RUN")
+                        .contains("UNREAD unset"));
+        assertThat(shell.with("MY_APP_BAR", "x").forecast(m))
+                .as("jk explain names the name that came")
+                .anySatisfy(step -> assertThat(step)
+                        .startsWith(TaskNames.RUN_TESTS + " RUN")
+                        .contains("MY_APP_BAR set"));
+        Steps bar = shell.with("MY_APP_BAR", "x").build(m);
+        assertThat(bar.status())
                 .as("a new name the binding would pick up: runs, and fails")
                 .isEqualTo(TaskStatus.FAIL);
+        assertThat(bar.changed).as("the build names the name that came").contains("MY_APP_BAR");
     }
 
     /**
@@ -355,6 +384,8 @@ class EnvPassthroughE2eTest {
     static final class Steps implements WorkspaceBuildListener {
         final List<String> warnings = new ArrayList<>();
         private @Nullable TaskStatus runTests;
+        /** The inputs the run-tests step's miss names ({@link StepCache#changed}), or "" when none. */
+        volatile String changed = "";
 
         @Override
         public BuildPlanListener onModuleStart(ModulePlan module) {
@@ -364,6 +395,11 @@ class EnvPassthroughE2eTest {
                     synchronized (Steps.this) {
                         warnings.add(code + " " + message);
                     }
+                }
+
+                @Override
+                public void stepCache(String step, StepCache cache) {
+                    if (step.equals(TaskNames.RUN_TESTS) && cache.changed() != null) changed = cache.changed();
                 }
 
                 @Override

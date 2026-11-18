@@ -95,6 +95,14 @@ public final class KeyAudit {
         if (lines != null) lines.add(line);
     }
 
+    /**
+     * Whether a {@link #tapped} derivation is listening on this thread: an owner that names a token
+     * past the lines it hashes ({@link #tap} alone) does that work only then.
+     */
+    public static boolean listening() {
+        return ContextPropagator.get(TAP) != null;
+    }
+
     /** Each line of {@code text}, as {@link #tap} takes one: for an owner that hashes a built-up string. */
     public static void tapLines(CharSequence text) {
         List<String> lines = ContextPropagator.get(TAP);
@@ -104,10 +112,22 @@ public final class KeyAudit {
         }
     }
 
-    /** {@code source}'s key with the lines it hashed on this thread as its tokens; null when it has no key. */
+    /**
+     * {@code source}'s key with the lines it hashed on this thread as its tokens; null when it has no
+     * key. A tap already listening hears the same lines: a step whose key derivation taps itself (a
+     * suite's stamp names its tokens for its record) still names them to the caller that taps the
+     * step's derivation whole. Bound afresh instead, the outer listener heard nothing, so the tokens
+     * kept for a forecast were empty and every later miss read as the jk that moved.
+     */
     public static @Nullable Keyed tapped(KeySource source) throws Exception {
         List<String> lines = Collections.synchronizedList(new ArrayList<>());
         String key = ScopedValue.where(TAP, lines).<String, Exception>call(source::key);
+        List<String> outer = ContextPropagator.get(TAP);
+        if (outer != null) {
+            synchronized (lines) {
+                outer.addAll(lines);
+            }
+        }
         return key == null ? null : new Keyed(key, lines("", lines));
     }
 
