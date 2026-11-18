@@ -251,6 +251,9 @@ public final class WorkerLeases {
 
         private int jvmRunning;
         private Duration waitAtMost = WAIT_AT_MOST;
+        /** Whether the heaps' bound is the one of a {@code CI} engine: {@link OverbookSignals#CAUTIOUS}. */
+        private boolean cautious = OverbookSignals.CAUTIOUS;
+
         private @Nullable Duration sampleEvery;
         private boolean sampling;
         private @Nullable HostLeases host;
@@ -307,6 +310,19 @@ public final class WorkerLeases {
                 share.publish(line(null));
             }
             return this;
+        }
+
+        /** Bound the held heaps as an engine started with {@code CI} set does, or as one without it. */
+        Ledger underCi(boolean ci) {
+            synchronized (lock) {
+                this.cautious = ci;
+            }
+            return this;
+        }
+
+        /** {@link OverbookSignals#ceiling(long, boolean)} of {@code cap} for this ledger. */
+        private long ceiling(long cap) {
+            return OverbookSignals.ceiling(cap, cautious);
         }
 
         /** Fail a lease that has waited {@code most} without being granted. */
@@ -594,7 +610,7 @@ public final class WorkerLeases {
          */
         private void refuseIfItNeverFits(Waiter waiter) {
             long cap = capacityBytes();
-            long most = OverbookSignals.ceiling(cap);
+            long most = ceiling(cap);
             if (waiter.demand.worstBytes <= most) return;
             String what = waiter.demand.pin.isEmpty()
                     ? ownerOf(waiter) + " needs " + format(waiter.demand.worstBytes)
@@ -656,7 +672,7 @@ public final class WorkerLeases {
             if (head.demand.cpuSlot && hostJvms() >= cpuCap()) return;
             long cap = capacityBytes();
             long bytesShort = head.demand.bytes - (cap - hostCharged());
-            long heapsShort = ceilings + head.demand.worstBytes - OverbookSignals.ceiling(cap);
+            long heapsShort = ceilings + head.demand.worstBytes - ceiling(cap);
             long bytesLeft = 0;
             long heapsLeft = 0;
             for (Waiter w : held) {
@@ -728,7 +744,7 @@ public final class WorkerLeases {
                         .append(nameBudget ? " of the " + format(budget) + " worker budget" : "");
                 if (heaps)
                     line.append(", but the held workers' heaps may grow to " + format(ceilings) + " of the "
-                            + format(OverbookSignals.ceiling(budget)) + " allowed together");
+                            + format(ceiling(budget)) + " allowed together");
                 line.append(')');
             }
             LeaseHolders holders = new LeaseHolders();
@@ -781,7 +797,7 @@ public final class WorkerLeases {
          * budget is free.
          */
         private boolean ceilingBlocks(Waiter waiter, long cap) {
-            return ceilings > OverbookSignals.ceiling(cap) - waiter.demand.worstBytes;
+            return ceilings > ceiling(cap) - waiter.demand.worstBytes;
         }
 
         private static boolean refused(Waiter waiter, WaitReason reason) {
@@ -792,12 +808,12 @@ public final class WorkerLeases {
         private boolean overbook(Waiter waiter, long cap, long charged) {
             if (cap <= 0) return false;
             long bytes = waiter.demand.bytes;
-            long ceiling = OverbookSignals.ceiling(cap);
+            long ceiling = ceiling(cap);
             if (overLeaseCount > 0) return false;
             if (bytes > ceiling || charged > ceiling - bytes) return false;
             OverbookSignals.Reading reading = readSignals();
             if (!reading.enabled() || !reading.pressureLow()) return false;
-            if (!reading.covers(waiter.demand.worstBytes, OverbookSignals.headroom(cap))) return false;
+            if (!reading.covers(waiter.demand.worstBytes, OverbookSignals.headroom(cap, cautious))) return false;
             waiter.overbooked = true;
             waiter.sample = reading;
             return true;
