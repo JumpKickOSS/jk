@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -124,6 +125,20 @@ class AgentsGuideTest {
                 .isLessThanOrEqualTo(1600);
         assertThat(AgentsGuide.SECTION).doesNotContain(AgentsGuide.BEGIN).doesNotContain(AgentsGuide.END);
         assertThat(AgentsGuide.SECTION + AgentsGuide.ENFORCED_SECTION).doesNotContain("jk format");
+    }
+
+    /**
+     * "Done when the gate is OK" alone sent codex to run the gate after every rename whose answer had
+     * already run tests and guards and said the task was done: one turn per rename (bench tier 0/1,
+     * JK-XP4B9). The done line names rename's own verdict as an end.
+     */
+    @Test
+    void a_rename_that_says_done_is_an_end_as_the_gate_is() {
+        for (String section : List.of(AgentsGuide.SECTION, AgentsGuide.ENFORCED_SECTION)) {
+            assertThat(section)
+                    .contains("Done when the gate is OK, or when `rename` says the task is done (it ran the tests and"
+                            + " guards).");
+        }
     }
 
     @Test
