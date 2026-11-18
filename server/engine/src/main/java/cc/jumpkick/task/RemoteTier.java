@@ -566,9 +566,13 @@ public final class RemoteTier {
         adopted.add(key);
     }
 
-    /** Whether {@code key}'s record came from the backend in this build (see {@link #adopted}). */
-    boolean adoptedThisBuild(String key) {
-        return adopted.contains(key);
+    /**
+     * Whether {@code key}'s record came from {@code tier}'s backend in this build: kept on this disk
+     * by an earlier lookup (the forecast's, see {@link #adopted}), so a step that reads it here is
+     * still the remote's hit. False with no tier or no key.
+     */
+    static boolean adoptedThisBuild(@Nullable RemoteTier tier, @Nullable String key) {
+        return tier != null && key != null && tier.adopted.contains(key);
     }
 
     private final Set<String> adopted = ConcurrentHashMap.newKeySet();

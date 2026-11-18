@@ -198,13 +198,13 @@ public final class ActionCache {
         Expectation expected = ToolchainPolicy.of(actionKey);
         Optional<ActionRecord> here = lookupLocal(actionKey, expected);
         Optional<ActionRecord> found = here.isEmpty() ? lookupRemote(actionKey, expected) : here;
-        boolean remote = here.isEmpty() || fromRemote(actionKey);
+        boolean served = here.isEmpty() || RemoteTier.adoptedThisBuild(remote, actionKey);
         if (found.isPresent() && StepCacheNotes.inStep()) {
             ActionRecordText.Writes kind = found.get().meta().writes();
             // A marker or verdict is the result itself: reading it is the step's hit, unless the
             // step goes on to run and store.
             if (kind == ActionRecordText.Writes.TEST_MARKER || kind == ActionRecordText.Writes.VERDICT) {
-                StepCacheNotes.replayed(actionKey, remote, found.get().meta().wallMillis());
+                StepCacheNotes.replayed(actionKey, served, found.get().meta().wallMillis());
             }
         }
         return found;
@@ -265,7 +265,7 @@ public final class ActionCache {
             remote.forget(actionKey);
             return Optional.empty();
         }
-        if (local.missing(record.outputs().values()).isEmpty()) adopt(actionKey, text);
+        if (local.missing(record.outputs().values()).isEmpty()) adopt(record, text);
         if (expected != null) ToolchainChoice.madeOn(actionKey, record.meta(), expected);
         return Optional.of(record);
     }
@@ -279,18 +279,16 @@ public final class ActionCache {
         return target == null || target.equals(platform);
     }
 
-    /** Keep the remote tier's record text for {@code actionKey} on this disk, its blobs already here. */
-    private void adopt(String actionKey, String text) throws IOException {
-        local.putRecord(actionKey, text);
-        if (remote != null) remote.adopted(actionKey);
-    }
-
     /**
-     * Whether {@code actionKey}'s record came from the remote tier in this build: kept here by an
-     * earlier lookup (the forecast's), so a step that reads it locally is still the remote's hit.
+     * Keep the remote tier's {@code record} (its text {@code text}) on this disk, its blobs already
+     * here, and point its task at it when no record made here does yet, so the step's next miss
+     * names the inputs that moved since rather than {@code no-record}.
      */
-    private boolean fromRemote(@Nullable String actionKey) {
-        return remote != null && actionKey != null && remote.adoptedThisBuild(actionKey);
+    private void adopt(ActionRecord record, String text) throws IOException {
+        String key = Objects.requireNonNull(record.actionKey(), "actionKey");
+        local.putRecord(key, text);
+        if (record.taskId() != null && !Files.exists(tasksDir().resolve(record.taskId()))) pointAt(record);
+        if (remote != null) remote.adopted(key);
     }
 
     /**
@@ -304,7 +302,7 @@ public final class ActionCache {
         if (missing.isEmpty()) return false;
         String text = remote.record(record.actionKey());
         if (text == null || !remote.fetch(record, missing, cas)) return false;
-        adopt(record.actionKey(), text);
+        adopt(record, text);
         return true;
     }
 
@@ -889,7 +887,7 @@ public final class ActionCache {
             // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
             FileHashMemo.rememberContent(target, entry.getValue());
         }
-        noteRestored(record, fetched || fromRemote(record.actionKey()), blobs);
+        noteRestored(record, fetched || RemoteTier.adoptedThisBuild(remote, record.actionKey()), blobs);
         return true;
     }
 
@@ -1059,7 +1057,7 @@ public final class ActionCache {
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());
         }
-        noteRestored(record, fetched || fromRemote(record.actionKey()), blobs);
+        noteRestored(record, fetched || RemoteTier.adoptedThisBuild(remote, record.actionKey()), blobs);
         return true;
     }
 

@@ -100,6 +100,32 @@ class StepCacheNotesTest {
     }
 
     @Test
+    void a_step_restored_from_the_remote_names_the_input_that_moved_on_its_next_miss(@TempDir Path tmp)
+            throws Exception {
+        Path out = Files.createDirectories(tmp.resolve("out"));
+        Files.writeString(out.resolve("A.class"), "class A");
+        ActionCache elsewhere = new ActionCache(new Cas(tmp.resolve("e/cas")), tmp.resolve("e/actions"));
+        elsewhere.store("compile-main@x", "k1", Map.of("src/A.java", "a", "src/B.java", "b"), out);
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(elsewhere, "k1");
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+        // An action cache binds the tier in scope when it is made, as each step's does.
+        Supplier<ActionCache> here = () -> new ActionCache(new Cas(tmp.resolve("h/cas")), tmp.resolve("h/actions"));
+
+        StepCache hit = step(() -> RemoteCaches.where(
+                tier, () -> here.get().restore(here.get().restorable("k1").orElseThrow(), tmp.resolve("back"))));
+        Files.writeString(out.resolve("A.class"), "class A2");
+        StepCache miss = step(() -> RemoteCaches.where(tier, () -> here.get()
+                .store("compile-main@x", "k2", Map.of("src/A.java", "a2", "src/B.java", "b"), out)));
+
+        assertThat(hit.outcome()).isEqualTo(StepCache.Outcome.REMOTE_HIT);
+        assertThat(miss.reason())
+                .as("the record the remote served is the one this miss is compared with")
+                .isEqualTo(StepCache.Reason.INPUTS_CHANGED);
+        assertThat(miss.changed()).isEqualTo("src/A.java");
+    }
+
+    @Test
     void a_green_marker_read_is_a_hit_and_a_red_one_that_runs_again_is_a_miss(@TempDir Path tmp) throws Exception {
         ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));
         cache.storeMarkers(
