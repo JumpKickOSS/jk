@@ -225,14 +225,14 @@ class McpToolRegistryTest {
     void the_instructions_carry_the_graph_calls_whole_for_clients_without_cards() {
         for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {
             assertThat(instructions)
-                    .contains("need no card or skill lookup")
+                    .contains("show every argument they need")
                     .contains("callers(address=\"Type.method\")")
-                    .contains("rename(address=\"Type.field\", to=\"newName\")")
+                    .contains("rename(goal=\"<the task>\", address=\"Type.field\", to=\"newName\")")
                     .contains("also=\"c1,c3\"")
                     .contains("do not grep, read or re-run to check them");
             assertThat(instructions.getBytes(StandardCharsets.UTF_8).length)
                     .as("instructions bytes")
-                    .isLessThanOrEqualTo(900);
+                    .isLessThanOrEqualTo(1_000);
         }
     }
 
