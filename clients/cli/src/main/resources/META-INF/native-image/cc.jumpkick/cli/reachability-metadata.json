@@ -297,5 +297,22 @@
         }
       }
     ]
-  }
+  },
+  "reflection": [
+    {
+      "type": "sun.nio.fs.WindowsNativeDispatcher$Account",
+      "jniAccessible": true,
+      "fields": [{ "name": "domain" }, { "name": "name" }, { "name": "use" }]
+    },
+    {
+      "type": "sun.nio.fs.WindowsNativeDispatcher$AclInformation",
+      "jniAccessible": true,
+      "fields": [{ "name": "aceCount" }]
+    },
+    {
+      "type": "sun.nio.fs.WindowsException",
+      "jniAccessible": true,
+      "methods": [{ "name": "<init>", "parameterTypes": ["int"] }]
+    }
+  ]
 }

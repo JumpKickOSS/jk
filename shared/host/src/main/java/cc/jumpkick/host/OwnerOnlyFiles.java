@@ -19,8 +19,10 @@ import java.util.Set;
  * Writes secret files as {@code 0600} inside a {@code 0700} directory, and creates the directories
  * jk's own security rests on {@code 0700}. Everything jk creates under the state root
  * ({@link #inState}) goes through here or {@link AtomicWrites}, which applies the same modes there,
- * so no file or directory in it depends on the umask. On non-POSIX filesystems permission
- * tightening is a best-effort no-op.
+ * so no file or directory in it depends on the umask. On a filesystem with Windows ACLs and no
+ * POSIX modes, owner-only is an ACL that allows only the user jk runs as and nothing inherited
+ * ({@link OwnerOnlyAcl}), and a filesystem that refuses it gets a plain create; on any other
+ * non-POSIX filesystem tightening is a no-op.
  */
 public final class OwnerOnlyFiles {
 
@@ -51,11 +53,11 @@ public final class OwnerOnlyFiles {
         setOwnerOnly(file, "rw-------");
     }
 
-    /** A sibling of {@code file} created {@code 0600}; on a non-POSIX filesystem, a plain temp file. */
+    /** A sibling of {@code file} created {@code 0600}, or with the owner-only ACL where there are no modes. */
     private static Path staging(Path parent, Path file) throws IOException {
         String prefix = "." + file.getFileName() + "-";
         if (Files.getFileAttributeView(parent, PosixFileAttributeView.class) == null) {
-            return Files.createTempFile(parent, prefix, ".tmp");
+            return OwnerOnlyAcl.create(parent, false, a -> Files.createTempFile(parent, prefix, ".tmp", a));
         }
         try {
             return Files.createTempFile(parent, prefix, ".tmp", PosixFilePermissions.asFileAttribute(OWNER_ONLY));
@@ -74,11 +76,13 @@ public final class OwnerOnlyFiles {
      *
      * <p>The create itself carries the mode, so there is no umask-default window; a failed tighten
      * is best-effort like every other chmod here, and {@code jk doctor} reports what remains loose.
-     * On non-POSIX filesystems this is a plain create.
+     * With Windows ACLs the same holds for the owner-only ACL; on other non-POSIX filesystems this is
+     * a plain create.
      */
     public static void directory(Path dir) throws IOException {
         if (Files.getFileAttributeView(dir, PosixFileAttributeView.class) == null) {
-            Files.createDirectories(dir);
+            OwnerOnlyAcl.create(dir, true, a -> Files.createDirectories(dir, a));
+            if (OwnerOnlyAcl.applies(dir)) OwnerOnlyAcl.tighten(dir, true);
             return;
         }
         Files.createDirectories(dir, PosixFilePermissions.asFileAttribute(OWNER_ONLY_DIR));
@@ -100,7 +104,9 @@ public final class OwnerOnlyFiles {
     /** {@link Files#createDirectory} at {@code 0700}: fails when {@code dir} exists. */
     public static Path createDirectory(Path dir) throws IOException {
         if (Files.getFileAttributeView(dir, PosixFileAttributeView.class) == null) {
-            return Files.createDirectory(dir);
+            OwnerOnlyAcl.create(dir, true, a -> Files.createDirectory(dir, a));
+            if (OwnerOnlyAcl.applies(dir)) OwnerOnlyAcl.tighten(dir, true);
+            return dir;
         }
         return Files.createDirectory(dir, PosixFilePermissions.asFileAttribute(OWNER_ONLY_DIR));
     }
@@ -111,7 +117,14 @@ public final class OwnerOnlyFiles {
      * root; best-effort like {@link #setOwnerOnly}.
      */
     public static void seal(Path root) throws IOException {
-        if (Files.getFileAttributeView(root, PosixFileAttributeView.class) == null) return;
+        if (Files.getFileAttributeView(root, PosixFileAttributeView.class) == null) {
+            if (!OwnerOnlyAcl.applies(root)) return;
+            PathUtil.forEachEntry(root, dir -> false, (p, attrs) -> {
+                if (attrs.isDirectory() || attrs.isRegularFile()) OwnerOnlyAcl.tighten(p, attrs.isDirectory());
+                return true;
+            });
+            return;
+        }
         PathUtil.forEachEntry(root, dir -> false, (p, attrs) -> {
             if (attrs.isDirectory()) tighten(p, OWNER_ONLY_DIR);
             else if (attrs.isRegularFile()) tighten(p, OWNER_ONLY);
@@ -136,7 +149,9 @@ public final class OwnerOnlyFiles {
         if (parent != null) directory(parent);
         Set<OpenOption> opts = Set.of(options);
         if (Files.getFileAttributeView(file, PosixFileAttributeView.class) == null) {
-            return FileChannel.open(file, opts);
+            FileChannel ch = OwnerOnlyAcl.create(file, false, a -> FileChannel.open(file, opts, a));
+            if (OwnerOnlyAcl.applies(file)) OwnerOnlyAcl.tighten(file, false);
+            return ch;
         }
         FileChannel ch = FileChannel.open(file, opts, PosixFilePermissions.asFileAttribute(OWNER_ONLY));
         tighten(file, OWNER_ONLY);
@@ -148,7 +163,8 @@ public final class OwnerOnlyFiles {
         Path parent = file.toAbsolutePath().getParent();
         if (parent != null) directory(parent);
         if (Files.getFileAttributeView(file, PosixFileAttributeView.class) == null) {
-            if (!Files.exists(file)) Files.createFile(file);
+            if (!Files.exists(file)) OwnerOnlyAcl.create(file, false, a -> Files.createFile(file, a));
+            if (OwnerOnlyAcl.applies(file)) OwnerOnlyAcl.tighten(file, false);
             return file;
         }
         try {
@@ -180,10 +196,16 @@ public final class OwnerOnlyFiles {
         }
     }
 
-    /** Best-effort tighten POSIX permissions on {@code path}; a no-op where POSIX perms are unsupported. */
+    /**
+     * Best-effort tighten POSIX permissions on {@code path} to {@code perms}; with Windows ACLs, give
+     * it the owner-only ACL; a no-op on other non-POSIX filesystems.
+     */
     public static void setOwnerOnly(Path path, String perms) {
         PosixFileAttributeView view = Files.getFileAttributeView(path, PosixFileAttributeView.class);
-        if (view == null) return; // non-POSIX (Windows) — nothing to tighten
+        if (view == null) {
+            if (OwnerOnlyAcl.applies(path)) OwnerOnlyAcl.tighten(path, Files.isDirectory(path));
+            return;
+        }
         try {
             Files.setPosixFilePermissions(path, PosixFilePermissions.fromString(perms));
         } catch (IOException ignored) {

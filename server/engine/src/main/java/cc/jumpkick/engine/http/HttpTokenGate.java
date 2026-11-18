@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.wire.EngineTransport;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import org.jspecify.annotations.Nullable;
 
@@ -33,24 +33,20 @@ final class HttpTokenGate {
     /**
      * Load the owner-only bearer token from disk, or mint one. Stable across restarts so open
      * dashboard tabs keep working; rotate only via {@code jk engine rotate-token}. The file is
-     * deliberately not deleted on shutdown.
+     * deliberately not deleted on shutdown. A token adopted from a file another user can read is
+     * tightened to owner-only first.
      */
     void loadOrMint() throws IOException {
         String existing = readPersistedToken();
         if (existing != null) {
+            OwnerOnlyFiles.setOwnerOnly(tokenFile, "rw-------");
             token = existing.getBytes(StandardCharsets.UTF_8);
             return;
         }
         String minted = EngineTransport.newToken();
         token = minted.getBytes(StandardCharsets.UTF_8);
-        Files.deleteIfExists(tokenFile);
-        try {
-            Files.createFile(
-                    tokenFile, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
-        } catch (UnsupportedOperationException e) {
-            Files.createFile(tokenFile); // non-POSIX filesystem (Windows): default ACLs are per-user
-        }
-        Files.writeString(tokenFile, minted);
+        Path dir = tokenFile.toAbsolutePath().getParent();
+        OwnerOnlyFiles.write(dir == null ? tokenFile : dir, tokenFile, minted);
     }
 
     /** The bearer token in force, for links the engine itself hands out; null before {@link #loadOrMint}. */

@@ -29,8 +29,8 @@ public final class FrontDoorToken {
 
     /**
      * Makes the host's {@code httpToken} file and the front-door file in {@code engineDir} hold one
-     * token: the front-door one when it exists, else the host's, copied. Nothing when neither exists
-     * yet; best effort.
+     * token: the front-door one when it exists, else the host's, copied. An existing front-door file
+     * is tightened to owner-only. Nothing when neither exists yet; best effort.
      */
     public static void align(Path engineDir, Path httpToken) {
         Path front = file(engineDir);
@@ -38,6 +38,7 @@ public final class FrontDoorToken {
             String shared = read(front);
             String own = read(httpToken);
             if (shared != null) {
+                OwnerOnlyFiles.setOwnerOnly(front, "rw-------");
                 if (!shared.equals(own)) OwnerOnlyFiles.write(engineDir, httpToken, shared);
             } else if (own != null) {
                 OwnerOnlyFiles.write(engineDir, front, own);
