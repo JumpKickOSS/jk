@@ -4,6 +4,25 @@ The highlights of each JumpKick release, newest first: the improvements and fixe
 Every release's full list of changes is on its [GitHub Release](https://github.com/JumpKickOSS/jk/releases).
 JumpKick shows you this page's new entries after it updates itself.
 
+## 0.53.0
+
+- **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test and the programs it starts,
+  and a cached result holds only while what it read keeps its value; the undeclared-variable
+  warnings are gone. `[env] inherit = false` keeps the old allow-list; `[env] scope` narrows it.
+- **Breaking: a version another project installed here resolves with no repository.** `jk install`
+  the library, then depend on its version; lock rows say `local-install`. The default guards let a
+  developer build use such a snapshot; CI, `jk release` and `jk publish` refuse it.
+- **`jk graph callers` reads your tests again, and one call shows what a change reaches.** It
+  missed them in projects with `[build-info]`, as `jk new` writes. The graph now links JSON
+  properties, Thymeleaf bean paths and ports, and `callers file:<path>` lists a file's anchors.
+- **Agents finish renames in fewer turns.** The MCP instructions carry `callers` and `rename` whole,
+  so agents call them without looking them up first; a rename never hides ids and says what is
+  left, and `AGENTS.md` takes a rename that reports done as done.
+- **Share results through a cache server**, off unless `[cache] remote` names one. Templates are
+  format-clean, Kotlin Micronaut's second build does nothing, `jk image` trains its AOT cache in the
+  image's platform, test heaps stay under a quarter of RAM, and a background `jk` on Linux or macOS
+  no longer stops itself.
+
 ## 0.52.0
 
 - **Breaking: tests run in en-US and UTC wherever they run.** Your shell's locale and time zone no
