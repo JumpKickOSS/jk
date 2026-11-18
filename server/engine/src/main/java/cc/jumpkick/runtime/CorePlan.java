@@ -470,7 +470,7 @@ final class CorePlan {
      * adds the test compile, run by nothing.
      */
     private BuildPlan.Builder compileOnlyPlan(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
-        b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
+        addClassesTail(b, cx, s);
         List<String> leaves = new ArrayList<>();
         boolean tests = in.compileTests();
         if (tests) {
@@ -500,10 +500,7 @@ final class CorePlan {
         // After the compile and the resource copy before it.
         leaves.add(PlannerResources.CLASSES_WHOLE);
         // A processor sibling is found through the services files module-services writes.
-        if (s.moduleServices() != null) {
-            b.addTask(s.moduleServices());
-            leaves.add(TaskNames.MODULE_SERVICES);
-        }
+        if (s.moduleServices() != null) leaves.add(TaskNames.MODULE_SERVICES);
         // Every plugin step joins the plan, and the terminal keeps the ones the compile requires:
         // the source generators the compiles read. A classes transform (bytecode enhancement)
         // makes the module's classes what they are, so a recompile runs it too: `jk dev` launches
@@ -524,12 +521,24 @@ final class CorePlan {
         return b.terminal(BuildPlanner.COMPILE_JOIN);
     }
 
-    /** The after-compile scripts, the test branch, the guard suite, the plugin steps and packaging, then the stamps. */
-    private void addTestsAndPackaging(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s, boolean skipJUnit) {
+    /**
+     * The steps that finish the main classes tree after the compile, the same for every plan that
+     * compiles: the after-compile scripts, then build-info and module-services when planned. The test
+     * compiles, the guard suite's and a classes-reading plugin step wait for them (JK-NVBS1), so a
+     * plan that carries one of those without them fails ("requires unknown 'build-info'"), as the
+     * test-compile goal a graph question runs did on every project with {@code [build-info]}
+     * (JK-3MF95). A step nothing in the plan requires is pruned with the terminal.
+     */
+    private static void addClassesTail(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         // Build-logic AFTER_COMPILE: the resources and AFTER_RESOURCES ran before the compile.
         b.addTask(PlannerResources.buildLogicAfterCompileStep(cx));
         if (s.buildInfo() != null) b.addTask(s.buildInfo());
         if (s.moduleServices() != null) b.addTask(s.moduleServices());
+    }
+
+    /** The after-compile scripts, the test branch, the guard suite, the plugin steps and packaging, then the stamps. */
+    private void addTestsAndPackaging(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s, boolean skipJUnit) {
+        addClassesTail(b, cx, s);
         // Fixtures compile whether or not tests are skipped: a guard suite, this module's or a
         // sibling's, and a sibling's own fixtures compile against them, and a classpath that named
         // an empty fixtures tree would key differently from the full build's.
