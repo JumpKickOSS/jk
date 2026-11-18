@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
-import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
@@ -18,7 +17,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.PortablePath;
-import cc.jumpkick.task.ToolIdentity;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
@@ -618,7 +616,9 @@ public final class SuiteReads {
         Path workspace = workspaceOf(moduleDir);
         for (Path f : d.files()) sb.append("file ").append(keep(workspace, f)).append('\n');
         for (String c : d.commands())
-            sb.append("command ").append(keepCommand(workspace, c).replace('\n', ' ')).append('\n');
+            sb.append("command ")
+                    .append(keepCommand(workspace, c).replace('\n', ' '))
+                    .append('\n');
         for (String h : d.hosts()) sb.append(NETWORK_LINE).append(h).append('\n');
         for (String e : d.env().lines()) sb.append(e).append('\n');
         try {
@@ -646,6 +646,20 @@ public final class SuiteReads {
      */
     public static List<String> tokens(
             Path moduleDir, TestSelection selection, Path workspaceRoot, SuiteEnvReads.Policy policy) {
+        return tokens(moduleDir, selection, workspaceRoot, policy, List.of());
+    }
+
+    /**
+     * {@link #tokens(Path, TestSelection, Path, SuiteEnvReads.Policy)} for a module that declares
+     * {@code declaredTools} in {@code [test] tools}: a started program of that name keys by the
+     * declaration ({@link SuitePrograms}).
+     */
+    public static List<String> tokens(
+            Path moduleDir,
+            TestSelection selection,
+            Path workspaceRoot,
+            SuiteEnvReads.Policy policy,
+            Collection<String> declaredTools) {
         Discovered d = load(moduleDir, selection);
         List<String> env = SuiteEnvReads.tokens(d.env(), policy, CallerEnv.current());
         if (d.files().isEmpty() && d.commands().isEmpty() && !d.network()) return env;
@@ -666,7 +680,10 @@ public final class SuiteReads {
             if (parent != null && keysListing(parent, root, outputs)) dirs.add(parent);
         }
         for (Path dir : dirs) out.add("list:" + spell(root, dir) + "=" + listing(dir));
-        for (String c : d.commands()) out.add("proc:" + programName(root, c) + "=" + programIdentity(c, moduleDir));
+        // One line per tool: /bin/sh and sh, or one tool started twice, key once.
+        Set<String> programs = new TreeSet<>();
+        for (String c : d.commands()) programs.add(SuitePrograms.token(root, c, moduleDir, declaredTools));
+        out.addAll(programs);
         if (d.network()) out.add("network");
         out.addAll(env);
         return out;
@@ -719,18 +736,9 @@ public final class SuiteReads {
         return root.resolve(PortablePath.fromJkRoot(spelled)).normalize();
     }
 
-    /**
-     * A started program as its token names it: a path under the workspace relative to it, one under
-     * a root by its word ({@code store:tools/node/24.22.0/bin/node}), anything else as recorded.
-     */
-    static String programName(Path root, String program) {
-        try {
-            Path file = Path.of(program);
-            if (file.isAbsolute()) return spell(root, file.normalize());
-        } catch (InvalidPathException notAPath) {
-            // A name with characters no path takes: keyed as it was written.
-        }
-        return program;
+    /** {@code p} as a token spells it: workspace-relative, else under a root by its word, else absolute. */
+    static String spellUnder(Path root, Path p) {
+        return spell(root, p);
     }
 
     private static String spell(Path root, Path p) {
@@ -872,22 +880,6 @@ public final class SuiteReads {
      */
     private static String outputEntry(Path dir) {
         return Files.isRegularFile(ManifestPaths.manifestIn(dir)) ? BuildLayout.TARGET : "";
-    }
-
-    /**
-     * A started program by content when the command named its file, else by what the name, resolved
-     * on the PATH the suite gets, says to {@code --version} ({@link ToolIdentity}).
-     */
-    private static String programIdentity(String program, Path moduleDir) {
-        try {
-            Path file = Path.of(program);
-            if (file.isAbsolute()) {
-                return Files.isRegularFile(file) ? FileHashMemo.contentHash(file.normalize()) : "absent";
-            }
-        } catch (InvalidPathException | IOException unreadable) {
-            return "unreadable";
-        }
-        return ToolIdentity.of(program, BuildEnv.machine().get("PATH"), moduleDir);
     }
 
     /**

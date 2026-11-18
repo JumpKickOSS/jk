@@ -203,9 +203,56 @@ class SuiteReadsTest {
         assertThat(two).as("the second home's stamp tokens").isEqualTo(one);
     }
 
+    /**
+     * How a started program keys (JK-EV4F4), as the dojo-4 study's records named them: {@code
+     * /bin/sh} and {@code sh} are one POSIX utility keyed by OS family, as are {@code sleep} and
+     * {@code ps} (whose {@code --version} a Mac answers "illegal option"); a declared tool defers to
+     * its declaration; a program named relative to the test's directory keys as such; a tool an
+     * administrator installed keys by what it says to {@code --version}, never its bytes, and one
+     * in a place this user may write by its bytes.
+     */
+    @Test
+    void a_started_program_keys_by_what_it_is_not_by_its_hosts_bytes(@TempDir Path tmp) throws Exception {
+        Assumptions.assumeFalse(Os.isWindows(), "POSIX utilities and file modes");
+        Path module = checkout(tmp.resolve("ws/app"));
+        Path tools = Files.createDirectories(tmp.resolve("opt/tools/bin"));
+        Path admin = Files.writeString(tools.resolve("faketool"), "#!/bin/sh\necho 'faketool version 2.54.0'\n");
+        Path mine = Files.writeString(tmp.resolve("faketool2"), "#!/bin/sh\necho 'faketool2 version 1'\n");
+        Files.setPosixFilePermissions(admin, PosixFilePermissions.fromString("r-xr-xr-x"));
+        Files.setPosixFilePermissions(mine, PosixFilePermissions.fromString("rwxr-xr-x"));
+        Files.setPosixFilePermissions(tools, PosixFilePermissions.fromString("r-xr-xr-x"));
+        try {
+            Assumptions.assumeFalse(Files.isWritable(admin), "a user who may write anything (root)");
+            SuiteReads.save(
+                    module,
+                    TestSelection.DEFAULT,
+                    SuiteReads.Discovered.NONE.with(
+                            Set.of(),
+                            Set.of("/bin/sh", "sh", "sleep", "ps", "protoc", "./jk", admin.toString(), mine.toString()),
+                            Set.of()));
+            List<String> tokens = SuiteReads.tokens(
+                    module, TestSelection.DEFAULT, tmp.resolve("ws"), SuiteEnvReads.Policy.NONE, List.of("protoc"));
+
+            assertThat(tokens)
+                    .containsExactlyInAnyOrder(
+                            "proc:sh=posix",
+                            "proc:sleep=posix",
+                            "proc:ps=posix",
+                            "proc:protoc=declared",
+                            "proc:./jk=relative",
+                            "proc:faketool=faketool version 2.54.0",
+                            "proc:faketool2=" + FileHashMemo.contentHash(mine));
+            assertThat(String.join("\n", tokens)).doesNotContain(tmp.toString());
+        } finally {
+            Files.setPosixFilePermissions(tools, PosixFilePermissions.fromString("rwxr-xr-x"));
+        }
+    }
+
     /** The stamp tokens of a suite that read and started the same files under {@code home}'s roots and {@code m2}. */
     private static List<String> keyedIn(Path home, Path m2, Path module) throws Exception {
-        String[] keys = {"jk.env.JK_HOME", "jk.env.JK_STORE_DIR", "jk.env.JK_CACHE_DIR", "jk.env.JK_STATE_DIR", "jk.m2.local"};
+        String[] keys = {
+            "jk.env.JK_HOME", "jk.env.JK_STORE_DIR", "jk.env.JK_CACHE_DIR", "jk.env.JK_STATE_DIR", "jk.m2.local"
+        };
         String[] was = new String[keys.length];
         String[] now = {
             home.toString(),

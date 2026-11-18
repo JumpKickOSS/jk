@@ -159,6 +159,15 @@ public final class RemoteTier {
     }
 
     /**
+     * The running step was offered a result another host stored under its base, whose key its own
+     * tree does not give, and {@code inputs} names what differs ({@code x:proc:git}): the step's
+     * miss names it when it runs with no record of its own to compare ({@link StepCacheNotes}).
+     */
+    public static void candidateDiffered(String inputs) {
+        StepCacheNotes.differed(inputs);
+    }
+
+    /**
      * The results the backend holds under a read list whose base is {@code base}, a key it holds no
      * record of, best first: asked with {@code base}'s lookup (in one round trip with it, or from
      * what an earlier batch learned). Empty when the backend holds a record of {@code base} itself,

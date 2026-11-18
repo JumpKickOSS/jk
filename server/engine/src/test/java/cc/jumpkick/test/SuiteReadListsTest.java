@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
+import cc.jumpkick.host.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -46,8 +47,18 @@ class SuiteReadListsTest {
                 .isNull();
         assertThat(SuiteReadLists.portable(
                         a.resolve("m"),
-                        new SuiteReads.Discovered(Set.of(a.resolve("data/fixture.txt")), Set.of("git"), Set.of())))
-                .as("a program the suite started")
+                        new SuiteReads.Discovered(
+                                Set.of(a.resolve("data/fixture.txt")), Set.of(), Set.of("example.com"))))
+                .as("a suite that reached the network")
+                .isNull();
+        assertThat(SuiteReadLists.portable(
+                        a.resolve("m"),
+                        new SuiteReads.Discovered(
+                                Set.of(a.resolve("data/fixture.txt")),
+                                Set.of(Path.of(System.getProperty("user.home"), ".jdks/temurin-27/bin/java")
+                                        .toString()),
+                                Set.of())))
+                .as("a program in the user's home names the user")
                 .isNull();
         assertThat(SuiteReadLists.portable(a.resolve("m"), SuiteReads.Discovered.NONE))
                 .isNull();
@@ -72,6 +83,57 @@ class SuiteReadListsTest {
         }
         assertThat(SuiteReadLists.fromPortable(a.resolve("m"), List.of("store:repos/central/x.jar")))
                 .isNotNull();
+    }
+
+    /**
+     * The programs a suite started travel with its list (JK-EV4F4): a tool by its bare name, a POSIX
+     * utility named by path as a system path, a workspace script and the store's node by their
+     * root, a program named relative to the test's directory as written; another checkout reads
+     * each back as its own.
+     */
+    @Test
+    void a_list_names_the_programs_a_suite_started_and_reads_them_back_on_another_checkout(@TempDir Path tmp)
+            throws Exception {
+        Path a = workspace(tmp.resolve("a"));
+        Path b = workspace(tmp.resolve("elsewhere/b"));
+        Path script = a.resolve("data/gen.sh");
+        Path node = JkDirs.store().resolve("tools/node/24.22.0/bin/node");
+        SuiteReads.Discovered read = new SuiteReads.Discovered(
+                Set.of(a.resolve("data/fixture.txt")),
+                Set.of("git", "/bin/sh", "./jk", script.toString(), node.toString()),
+                Set.of());
+
+        List<String> names = requireNonNull(SuiteReadLists.portable(a.resolve("m"), read));
+
+        assertThat(names)
+                .containsExactlyInAnyOrder(
+                        "ws:data/fixture.txt",
+                        "proc:git",
+                        "proc:sys:bin/sh",
+                        "proc:rel:.%2Fjk",
+                        "proc:ws:data/gen.sh",
+                        "proc:store:tools/node/24.22.0/bin/node");
+        assertThat(names).noneMatch(n -> n.contains(tmp.toString()));
+        assertThat(requireNonNull(SuiteReadLists.fromPortable(b.resolve("m"), names))
+                        .commands())
+                .containsExactlyInAnyOrder(
+                        "git", "/bin/sh", "./jk", b.resolve("data/gen.sh").toString(), node.toString());
+    }
+
+    @Test
+    void a_list_from_elsewhere_names_no_program_but_by_a_portable_name(@TempDir Path tmp) throws Exception {
+        Path a = workspace(tmp.resolve("a"));
+        for (String bad : List.of(
+                "proc:git;rm -rf ~",
+                "proc:sys:usr/../etc/x",
+                "proc:sys:usr\\bin\\git",
+                "proc:ws:../x",
+                "proc:rel:",
+                "proc:")) {
+            assertThat(SuiteReadLists.fromPortable(a.resolve("m"), List.of("ws:data/fixture.txt", bad)))
+                    .as(bad)
+                    .isNull();
+        }
     }
 
     @Test

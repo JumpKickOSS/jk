@@ -10,6 +10,7 @@ import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.host.Settled;
+import cc.jumpkick.testing.Symlinks;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -83,6 +84,38 @@ class ToolIdentityTest {
 
         assertThat(first).isEqualTo("v22 in a");
         assertThat(second).isEqualTo("v24 in b");
+    }
+
+    /**
+     * A binary of its own is asked its version once while its file holds still; a script, as an
+     * asdf shim is, or a link to a binary named otherwise, as a mise or volta shim is, is asked per
+     * request, since its answer follows the directory (JK-EV4F4).
+     */
+    @Test
+    void only_a_binary_of_its_own_is_asked_once_for_the_engines_life(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "POSIX links and scripts");
+        Path bin = Files.createDirectories(tmp.resolve("bin"));
+        Path script = tool(bin, "node", "echo v24");
+        Path binary = Files.write(bin.resolve("faketool"), new byte[] {0x7f, 'E', 'L', 'F', 0, 0});
+        Path shim = Symlinks.create(bin.resolve("git"), binary);
+
+        assertThat(ToolIdentity.ownBinary(binary)).isEqualTo(binary.toRealPath());
+        assertThat(ToolIdentity.ownBinary(script)).as("a script").isNull();
+        assertThat(ToolIdentity.ownBinary(shim))
+                .as("a link to a binary named otherwise")
+                .isNull();
+    }
+
+    /** {@code /bin/sh} and {@code sh}, {@code ps} and {@code sleep} key by name and OS family; bash and git do not. */
+    @Test
+    void a_posix_utility_is_one_tool_however_it_is_named() {
+        assertThat(ToolIdentity.toolName("/bin/sh")).isEqualTo("sh");
+        assertThat(ToolIdentity.stable("/bin/sh")).isTrue();
+        assertThat(ToolIdentity.stable("sleep")).isTrue();
+        assertThat(ToolIdentity.stable("ps")).isTrue();
+        assertThat(ToolIdentity.stable("bash")).isFalse();
+        assertThat(ToolIdentity.stable("git")).isFalse();
+        assertThat(ToolIdentity.osFamily()).isEqualTo(Os.isWindows() ? "windows" : "posix");
     }
 
     @Test

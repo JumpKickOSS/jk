@@ -1140,7 +1140,15 @@ another checkout of the project, or another JumpKick home on this machine or one
 cache, finds it and replays the suite instead of running it. A path in a `[test] jvm-args` flag is
 named the same way (`-Djna.boot.library.path=state:tmp/unpacked/…`). It keys the suite from then on,
 by content, together with the listing of the directory it sits in, so a file added beside it is
-seen too. A started program keys the suite by its executable. The run that discovers an input
+seen too. A started program keys the suite by what it is, never where this host keeps it or its
+bytes: a POSIX utility whose version is the operating system's (`sh`, `sleep`, `ps`, `env`, …)
+by its name and the OS family (`x:proc:sh` valued `posix`); a tool you declare in `[test] tools`
+by that declaration; any other tool by its name and the first line its `--version` prints, asked
+once per binary (`git version 2.54.0`), whether the test named it bare or by a path an
+administrator installed (`/usr/bin/git`); a tool in JumpKick's store by its store path, which
+names its version (`store:tools/node/24.22.0/bin/node`); a script of the workspace by content. A program in a place you may write outside those
+(`/opt/homebrew/bin/node`) keys by content, since only what an administrator installed is run to
+ask its version for a list from another host. The run that discovers an input
 keeps its outcome but stores no marker, and the build says what it found; the next run is keyed on
 it and is replayed from then on while it holds. A green marker is stored only when every input the
 key names, discovered ones and their listings included, still matches once the suite is done. When
@@ -1196,9 +1204,11 @@ with the suite's green result, filed under the key taken without it: a host that
 suite takes that key, gets the results filed under it, takes the key again over its own copies of
 the listed files, and replays the one whose key its tree gives, keeping the list as its own. A file
 that differs on that host makes the key differ, and the suite runs. A list travels only when every
-file in it lies in the workspace or under one of the roots above, named relative to it; a suite
-that starts a program or reads a file elsewhere (`/etc/hostname`) runs once on each host before it
-replays.
+file in it lies in the workspace or under one of the roots above, named relative to it, and every
+program it started has a portable name (`proc:git`, `proc:sys:usr/libexec/java_home`); a suite
+that reads a file elsewhere (`/etc/hostname`) or starts a program in your home directory runs once
+on each host before it replays. When the result on offer was made with another version of a
+program, the suite runs and its miss names it: `ran: inputs changed (x:proc:git)`, not `no-record`.
 
 ## JUnit in-process parallel vs `-w`
 

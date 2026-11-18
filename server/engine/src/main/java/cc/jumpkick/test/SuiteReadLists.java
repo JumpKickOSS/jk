@@ -16,8 +16,9 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The list names each file portably: {@code ws:<workspace path>}, or under one of the roots
  * {@link PortablePath#underJkRoot} names ({@code store:}, {@code cache:}, {@code state:}, {@code
- * m2:}, {@code jk-home:}, {@code home:}). A suite found to start a program or reach the
- * network, or to read a file outside the workspace and jk's roots, has no such list: its result is
+ * jdks:}, {@code m2:}, {@code jk-home:}), and each program it started as {@link SuitePrograms}
+ * names it. A suite found to reach the network, or to read a file outside the workspace and those
+ * roots, has no such list: its result is
  * shared only with hosts that found the same reads themselves. A list read from elsewhere is held to
  * the same spellings, with no {@code ..} segment, so it can name nothing outside those roots.
  */
@@ -53,12 +54,13 @@ public final class SuiteReadLists {
     }
 
     /**
-     * {@code reads} as portable names, for {@code moduleDir}'s workspace; null when they hold what no
-     * such name carries (a program the suite started, the network) or a file outside the workspace and
-     * jk's roots, or nothing at all.
+     * {@code reads} as portable names, for {@code moduleDir}'s workspace: each file, then each
+     * program it started as {@link SuitePrograms#portable} names it; null when they hold what no
+     * such name carries (the network, a file outside the workspace and the roots, a program in the
+     * user's home), or nothing at all.
      */
     public static @Nullable List<String> portable(Path moduleDir, SuiteReads.Discovered reads) {
-        if (reads.files().isEmpty() || !reads.commands().isEmpty() || reads.network()) return null;
+        if ((reads.files().isEmpty() && reads.commands().isEmpty()) || reads.network()) return null;
         Path workspace = workspace(moduleDir);
         List<String> out = new ArrayList<>();
         for (Path f : reads.files()) {
@@ -66,22 +68,34 @@ public final class SuiteReadLists {
             if (!portableName(name)) return null;
             out.add(name);
         }
+        for (String c : reads.commands()) {
+            String name = SuitePrograms.portable(workspace, c);
+            if (name == null) return null;
+            out.add(name);
+        }
         return out;
     }
 
     /**
      * The reads {@code names} spell, on this checkout and host; null when one is not a portable name
-     * ({@link #portableName}) or the list is empty.
+     * ({@link #portableName}, {@link SuitePrograms#fromPortable}) or the list is empty.
      */
     public static SuiteReads.@Nullable Discovered fromPortable(Path moduleDir, List<String> names) {
         if (names.isEmpty()) return null;
         Path workspace = workspace(moduleDir);
         Set<Path> files = new TreeSet<>();
+        Set<String> commands = new TreeSet<>();
         for (String name : names) {
+            if (name.startsWith(SuitePrograms.LIST_PREFIX)) {
+                String program = SuitePrograms.fromPortable(workspace, name);
+                if (program == null) return null;
+                commands.add(program);
+                continue;
+            }
             if (!portableName(name)) return null;
             files.add(SuiteReads.unspell(workspace, name));
         }
-        return new SuiteReads.Discovered(files, Set.of(), Set.of());
+        return new SuiteReads.Discovered(files, commands, Set.of());
     }
 
     /**

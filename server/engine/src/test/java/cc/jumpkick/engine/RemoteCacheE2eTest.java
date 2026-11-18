@@ -12,6 +12,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -33,9 +34,11 @@ import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.ExplainRequest;
 import cc.jumpkick.wire.protocol.ExplainTaskEvent;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -46,6 +49,7 @@ import java.util.TreeMap;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -93,6 +97,38 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                 }
             }
             """;
+
+    /** A suite that starts two POSIX utilities, {@code sh} and {@code sleep}. */
+    private static final String STARTS = """
+            package com.example;
+            import org.junit.jupiter.api.Assertions;
+            import org.junit.jupiter.api.Test;
+            class OneTest {
+                @Test
+                void answers() throws Exception {
+                    Assertions.assertEquals(42, One.answer());
+                    Assertions.assertEquals(0, new ProcessBuilder("sh", "-c", "exit 0").start().waitFor());
+                    Assertions.assertEquals(0, new ProcessBuilder("sleep", "0").start().waitFor());
+                }
+            }
+            """;
+
+    /** A suite that starts {@code jkfaketool}, whichever the PATH finds. */
+    private static final String STARTS_TOOL = """
+            package com.example;
+            import org.junit.jupiter.api.Assertions;
+            import org.junit.jupiter.api.Test;
+            class OneTest {
+                @Test
+                void answers() throws Exception {
+                    Assertions.assertEquals(42, One.answer());
+                    Assertions.assertEquals(0, new ProcessBuilder("jkfaketool").start().waitFor());
+                }
+            }
+            """;
+
+    /** lib's test JVMs see the allow-list alone, as jk's own tree's do: a started program keys no shell. */
+    private static final String STRICT = "\n[env]\ninherit = false\n";
 
     private EnginePaths.Paths engine;
     private EngineServer server;
@@ -391,7 +427,9 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     void a_suite_whose_module_forwards_an_unset_variable_is_shared_and_replayed_elsewhere() throws Exception {
         Path root = shortTempDir();
         Path a = checkout(
-                root.resolve("a"), GREEN, "\n[test]\nenv = [\"JK_ANWXB_NEVER_SET\", { SUITE_MODE = \"anwxb-literal\" }]\n");
+                root.resolve("a"),
+                GREEN,
+                "\n[test]\nenv = [\"JK_ANWXB_NEVER_SET\", { SUITE_MODE = \"anwxb-literal\" }]\n");
         Path b = copy(a, root.resolve("b"));
         try (FakeCacheServer service = FakeCacheServer.start()) {
             assertThat(succeeded(build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true))))
@@ -409,10 +447,84 @@ class RemoteCacheE2eTest extends EngineServerHarness {
             List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
             assertThat(succeeded(again)).as("B builds: " + again).isTrue();
             // A hit either way: one the forecast restored is told as local (JK-501G8).
-            assertThat(suite(settled(b)).outcome())
-                    .as("B replayed A's result")
-                    .isNotEqualTo(StepCache.Outcome.MISS);
+            assertThat(suite(settled(b)).outcome()).as("B replayed A's result").isNotEqualTo(StepCache.Outcome.MISS);
         }
+    }
+
+    /**
+     * A suite that starts {@code sh} and {@code sleep} sends its read list, programs named: a host
+     * that never ran it takes the result by the list, keying both by name and OS family as the
+     * writer did, and runs no test (JK-EV4F4: the dojo-4 study's same-machine misses).
+     */
+    @Test
+    void a_host_that_never_ran_a_suite_that_starts_programs_takes_its_result_by_read_list() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), STARTS, STRICT);
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            assertThat(succeeded(build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true))))
+                    .isTrue();
+            settled(a);
+            assertThat(service.recordsOf("test-marker")).singleElement().satisfies(m -> {
+                assertThat(MiniJson.list(m.reads(), "files"))
+                        .as("the list A filed names the programs")
+                        .map(String::valueOf)
+                        .contains("proc:sh", "proc:sleep");
+                assertThat(m.text()).contains("INPUT posix x:proc:sh\n").contains("INPUT posix x:proc:sleep\n");
+            });
+            forgetReads(a);
+
+            List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
+            assertThat(succeeded(again)).as("B builds: " + again).isTrue();
+            BuildRecord record = settled(b);
+            assertThat(service.byReadsServed())
+                    .as("B found the result by its read list")
+                    .isPositive();
+            assertThat(suite(record).outcome()).as("B replayed A's result").isNotEqualTo(StepCache.Outcome.MISS);
+        }
+    }
+
+    /**
+     * A host whose tool answers another version runs the suite, and its miss names the tool: the
+     * result on offer was made with another one, which {@code no-record} hid (JK-EV4F4).
+     */
+    @Test
+    void a_host_whose_tool_says_another_version_runs_the_suite_and_names_the_tool() throws Exception {
+        Assumptions.assumeFalse(Os.isWindows(), "a shell script for a tool");
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), STARTS_TOOL, STRICT);
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            Map<String, String> writer = new HashMap<>(service(service, FakeCacheServer.WRITER, true));
+            writer.put(
+                    "PATH",
+                    fakeTool(root.resolve("tools-a"), "jkfaketool 1.0") + File.pathSeparator + System.getenv("PATH"));
+            assertThat(succeeded(build(a, root.resolve("cache-a"), writer))).isTrue();
+            settled(a);
+            assertThat(service.recordsOf("test-marker")).singleElement().satisfies(m -> assertThat(m.text())
+                    .contains("INPUT jkfaketool%201.0 x:proc:jkfaketool\n"));
+            forgetReads(a);
+
+            Map<String, String> reader = new HashMap<>(service(service, FakeCacheServer.READER, false));
+            reader.put(
+                    "PATH",
+                    fakeTool(root.resolve("tools-b"), "jkfaketool 2.0") + File.pathSeparator + System.getenv("PATH"));
+            List<String> again = build(b, root.resolve("cache-b"), reader);
+            assertThat(succeeded(again)).as("B builds: " + again).isTrue();
+            StepCache miss = suite(settled(b));
+            assertThat(service.byReadsServed()).as("B was offered A's result").isPositive();
+            assertThat(miss.outcome()).isEqualTo(StepCache.Outcome.MISS);
+            assertThat(miss.reason()).as(String.valueOf(miss)).isEqualTo(StepCache.Reason.INPUTS_CHANGED);
+            assertThat(miss.changed()).as("names the tool").contains("x:proc:jkfaketool");
+        }
+    }
+
+    /** A directory holding {@code jkfaketool}, which prints {@code version}. */
+    private static Path fakeTool(Path dir, String version) throws IOException {
+        Path tool = Files.createDirectories(dir).resolve("jkfaketool");
+        Files.writeString(tool, "#!/bin/sh\necho '" + version + "'\n");
+        Files.setPosixFilePermissions(tool, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return dir;
     }
 
     @Test

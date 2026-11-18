@@ -15,7 +15,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -23,7 +25,9 @@ import org.jspecify.annotations.Nullable;
  * The identity of an external tool a suite shells out to — {@code node}, {@code git}, {@code
  * protoc} — as a run-tests input: what the executable the name resolves to on the PATH the test JVM
  * gets says to {@code --version}, never where it is installed, so two machines whose tool prints the
- * same version share the stamp. An upgrade changes the version line; a tool that is not on the PATH
+ * same version share the stamp, and a binary is asked once while its file holds still. A POSIX
+ * utility whose version is the OS's ({@link #STABLE}) is keyed by name and OS family alone. An
+ * upgrade changes the version line; a tool that is not on the PATH
  * is {@link #MISSING}, so a suite that went green with the tool and now runs without it is retested
  * rather than replayed.
  *
@@ -61,7 +65,60 @@ public final class ToolIdentity {
     private static final StampedMemo<Path, StampedMemo.FileStamp, Boolean> HUNG =
             StampedMemo.<Path, StampedMemo.FileStamp, Boolean>bounded(64).keeping(Boolean::booleanValue);
 
+    /**
+     * The version line of each binary, while its file keeps its stat: what a real binary (not a
+     * version manager's shim, whose answer moves with the directory) says to {@code --version}
+     * depends on its bytes alone, so it is asked once per binary for the engine's life rather than
+     * once per request.
+     */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, String> BY_BINARY =
+            StampedMemo.<Path, StampedMemo.FileStamp, String>bounded(256).keeping(line -> !line.equals(NO_VERSION));
+
+    /**
+     * POSIX utilities whose behaviour a suite depends on only as the operating system ships them:
+     * their version is the OS's, and a suite that runs {@code sh -c}, {@code sleep 1} or {@code ps}
+     * does not change outcome between a Mac and a Linux host. Keyed by name and {@link #osFamily}
+     * alone. A tool whose flavours differ in what a script sees ({@code bash}, {@code sed}, {@code
+     * grep}, {@code awk}, {@code find}) is not one of them.
+     */
+    static final Set<String> STABLE = Set.of(
+            "sh", "sleep", "ps", "kill", "true", "false", "env", "cat", "echo", "ls", "mkdir", "rm", "cp", "mv",
+            "chmod", "ln", "touch", "uname", "id", "pwd", "printf", "test", "nohup");
+
     private ToolIdentity() {}
+
+    /** Whether {@code tool} (a bare name, or a program's file name) is one of {@link #STABLE}. */
+    public static boolean stable(String tool) {
+        return STABLE.contains(toolName(tool));
+    }
+
+    /** The family of operating system a {@link #STABLE} tool comes with: {@code windows} or {@code posix}. */
+    public static String osFamily() {
+        return Os.isWindows() ? "windows" : "posix";
+    }
+
+    /**
+     * A program's name as a tool: its file name, less {@code .exe} on Windows, so {@code /bin/sh},
+     * {@code /usr/bin/sh} and {@code sh} are one tool.
+     */
+    public static String toolName(String program) {
+        String name = program;
+        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+        if (slash >= 0) name = name.substring(slash + 1);
+        return Os.isWindows() && name.toLowerCase(Locale.ROOT).endsWith(".exe")
+                ? name.substring(0, name.length() - 4)
+                : name;
+    }
+
+    /**
+     * The version line of the program at {@code exe} (an absolute path a suite started), asked in
+     * {@code dir} as {@link #of} asks a tool on the PATH and {@link #normalized}; {@link #MISSING}
+     * when there is no runnable file. Asked once per binary while its file holds still.
+     */
+    public static String ofProgram(Path exe, Path dir) {
+        if (!Files.isRegularFile(exe) || !PathUtil.isRunnable(exe)) return MISSING;
+        return normalized(versionOfBinary(exe, dir, BuildEnv.machine().get("PATH")), exe);
+    }
 
     /**
      * The version line of {@code tool} resolved on {@code path} (the PATH the test JVM gets), asked
@@ -70,7 +127,7 @@ public final class ToolIdentity {
     public static String of(String tool, @Nullable String path, Path dir) {
         Path exe = resolve(tool, path);
         if (exe == null) return MISSING;
-        return normalized(version(exe, dir, path), exe);
+        return normalized(versionOfBinary(exe, dir, path), exe);
     }
 
     /**
@@ -101,6 +158,39 @@ public final class ToolIdentity {
             }
         }
         return null;
+    }
+
+    /**
+     * {@code exe}'s version line from {@link #BY_BINARY} when it is a binary of its own ({@link
+     * #ownBinary}), else asked for this request ({@link #version}).
+     */
+    private static String versionOfBinary(Path exe, Path dir, @Nullable String path) {
+        Path real = ownBinary(exe);
+        StampedMemo.FileStamp stamp = real == null ? null : StampedMemo.FileStamp.of(real);
+        if (real == null || stamp == null) return version(exe, dir, path);
+        return BY_BINARY.get(real, stamp, () -> version(exe, dir, path));
+    }
+
+    /**
+     * The real file of {@code exe} when its answer to {@code --version} depends on its bytes alone,
+     * or null: a script ({@code #!}, as an asdf or pyenv shim is) or a program whose real file is
+     * named otherwise ({@code git} a link to {@code mise}, {@code node} to {@code volta-shim}) may
+     * be a version manager's shim, whose answer moves with the directory and the shell.
+     */
+    static @Nullable Path ownBinary(Path exe) {
+        try {
+            Path real = exe.toRealPath();
+            Path realName = real.getFileName();
+            Path exeName = exe.getFileName();
+            if (realName == null || exeName == null || !realName.equals(exeName)) return null;
+            byte[] head = new byte[2];
+            try (var in = Files.newInputStream(real)) {
+                if (in.readNBytes(head, 0, 2) == 2 && head[0] == '#' && head[1] == '!') return null;
+            }
+            return real;
+        } catch (IOException | RuntimeException unreadable) {
+            return null;
+        }
     }
 
     private static String version(Path exe, Path dir, @Nullable String path) {

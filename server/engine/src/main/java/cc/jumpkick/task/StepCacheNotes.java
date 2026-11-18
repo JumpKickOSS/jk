@@ -69,6 +69,17 @@ final class StepCacheNotes {
     }
 
     /**
+     * A record another host stored for this step was on offer but its key differs from the one
+     * this host takes, and {@code inputs} names the inputs that differ ({@code x:proc:git}): if the
+     * step goes on to run with no record of its own to compare, that is its miss reason rather than
+     * {@code no-record}.
+     */
+    static void differed(String inputs) {
+        Note n = StepScope.local(NOTE);
+        if (n != null) n.differed(inputs);
+    }
+
+    /**
      * The record the step took for {@code key} was made by another JDK than this build uses;
      * {@code note} says which and where ("made on temurin-25.0.5, linux-x86_64; this build uses …"),
      * and is the step's output line and its hit's {@code changed}.
@@ -112,6 +123,11 @@ final class StepCacheNotes {
 
         private @Nullable String mismatch;
         private @Nullable String madeOn;
+        private @Nullable String differed;
+
+        synchronized void differed(String inputs) {
+            if (differed == null) differed = inputs;
+        }
 
         synchronized void mismatch(String note) {
             if (mismatch == null) mismatch = note;
@@ -149,9 +165,18 @@ final class StepCacheNotes {
             if (outcome != StepCache.Outcome.MISS) {
                 outcome = StepCache.Outcome.MISS;
                 this.key = key;
-                // A miss only because the records on offer came from another JDK says so.
-                this.reason = mismatch != null ? StepCache.Reason.TOOLCHAIN_CHANGED : reason;
-                this.changed = mismatch != null ? mismatch : changed;
+                // A miss only because the records on offer came from another JDK says so; one
+                // whose only other record was another host's says what differed from it.
+                if (mismatch != null) {
+                    this.reason = StepCache.Reason.TOOLCHAIN_CHANGED;
+                    this.changed = mismatch;
+                } else if (differed != null && reason == StepCache.Reason.NO_RECORD) {
+                    this.reason = StepCache.Reason.INPUTS_CHANGED;
+                    this.changed = differed;
+                } else {
+                    this.reason = reason;
+                    this.changed = changed;
+                }
             }
         }
 

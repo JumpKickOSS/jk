@@ -68,7 +68,7 @@ final class SuiteEnvKeys {
         // narrowing the scope, changes what a test sees, so it retests the suite.
         if (policy.strict()) out.add("env-policy:strict");
         if (!policy.scope().isEmpty()) out.add("env-policy:scope=" + String.join(",", policy.scope()));
-        out.addAll(SuiteReads.tokens(moduleDir, selection, root, policy));
+        out.addAll(SuiteReads.tokens(moduleDir, selection, root, policy, build.testTools()));
         return out;
     }
 
