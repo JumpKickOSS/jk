@@ -7,13 +7,19 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.M2Dirs;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.AutoLock;
+import cc.jumpkick.runtime.workspace.BuildService;
+import cc.jumpkick.wire.runtime.BuildKnobs;
+import cc.jumpkick.wire.runtime.ExplainPlan;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -205,6 +211,19 @@ class LocalInstallConsumersTest {
         // is not installed; online, the update fails naming it (here the sandbox's denied hosts
         // answer for the remotes the update asks first).
         PathUtil.deleteRecursivelyOrThrow(m2Dir(name));
+        // The forecast the engine serves (MCP, /api/explain) agrees: the lock is stale and every step
+        // runs after the update, where the dirty memo of the last build read "Fully Cached".
+        LockfileReader.clearCache();
+        ExplainPlan plan = BuildService.explain(
+                app,
+                JkBuildParser.parse(app.resolve("jk.toml")),
+                app.resolve("cache"),
+                BuildKnobs.of(SessionContext.current()).withSkipTests(true));
+        assertThat(plan.modules()).singleElement().satisfies(m -> {
+            assertThat(m.dirty()).as("not Fully Cached").isTrue();
+            assertThat(m.steps()).extracting(TaskForecast.Task::text).allSatisfy(t -> assertThat(t)
+                    .contains("that is no longer on this machine"));
+        });
         Capture.Streams offline = jk(exit, app, "build", "-S", "--offline");
         assertThat(exit[0]).isNotZero();
         assertThat(offline.out() + offline.err())
@@ -212,11 +231,25 @@ class LocalInstallConsumersTest {
                 .doesNotContain("listed but cannot be downloaded")
                 .contains("run jk install in its project on this machine");
         Capture.Streams online = jk(exit, app, "build", "-S");
-        assertThat(exit[0]).isNotZero();
-        assertThat(online.out() + online.err())
+        int built = exit[0];
+        assertThat(built).isNotZero();
+        String failed = online.out() + online.err();
+        assertThat(failed)
                 .contains(GROUP + ":" + name + ":0.1.0-SNAPSHOT came from a local install (jk install) that is no"
                         + " longer on this machine")
                 .contains("run jk install in that project on this machine, or add a repository that serves it");
+
+        // jk explain says the build will fail, in its words and with its exit: on the base it warned
+        // "lock refresh failed; using the existing jk-lock.toml" and forecast the old lock.
+        Capture.Streams forecast = jk(exit, app, "explain", "-S");
+        String said = forecast.out() + forecast.err();
+        assertThat(exit[0]).isEqualTo(built);
+        assertThat(said)
+                .contains("jk build would fail here: jk-lock.toml is stale: " + GROUP + ":" + name
+                        + ":0.1.0-SNAPSHOT came from a local install (jk install) that is no longer on this machine")
+                .contains("run jk install in that project on this machine, or add a repository that serves it")
+                .doesNotContain("using the existing jk-lock.toml")
+                .doesNotContain("Fully Cached");
     }
 
     /**

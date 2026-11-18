@@ -7,7 +7,9 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildLogicScripts;
@@ -21,6 +23,7 @@ import cc.jumpkick.wire.runtime.BuildKnobs;
 import cc.jumpkick.wire.runtime.ExplainPlan;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -550,6 +553,15 @@ public final class BuildForecasting {
         // to `server/engine` read as 30 modules dirty and priced their suites, while `jk build`
         // scheduled 7 and never touched them. Both statements were true; only one is the plan for
         // the command the user is about to run.
+        if (entryDir != null && installMoved(entryDir)) {
+            // The build updates the lock first, and every module's walk says why (the stale reason,
+            // ForecastScope#unlocked). The dirty memo cannot: it vouches for the tree, a moved
+            // manifest and an unreadable input among it, but not for what a lock row's install
+            // holds, so a removed or rebuilt install read as "Fully Cached".
+            Set<Path> all = new LinkedHashSet<>();
+            for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
+            return scheduledPlan(graph, cache, knobs, all);
+        }
         Preflight pf = forecastWithFingerprints(graph, cache, entryDir, knobs, /* persistMemo= */ false);
         Set<Path> scheduled = new HashSet<>(pf.dirty());
         scheduled.addAll(pf.restoreNeeded());
@@ -565,6 +577,20 @@ public final class BuildForecasting {
                 graph.edges(),
                 graph.maxReadyWidth(),
                 List.of());
+    }
+
+    /**
+     * Whether the lock that governs {@code entryDir} is stale because an install a row came from
+     * moved ({@link LocalInstall#staleReason}); a lock that cannot be read is the preflight's.
+     */
+    private static boolean installMoved(Path entryDir) {
+        try {
+            Path lock = LockPaths.lockFile(LockPaths.lockOwnerDir(entryDir));
+            return Files.isRegularFile(lock) && LocalInstall.staleReason(lock, JkStores.store()) != null;
+        } catch (RuntimeException unasked) {
+            Log.debug("explain: an install's staleness not asked", unasked);
+            return false;
+        }
     }
 
     /**

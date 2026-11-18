@@ -47,7 +47,7 @@ public final class LockFreshness {
      * The one phrase for a lock its manifests moved past, so the build that fails or warns on it,
      * {@code jk explain} and {@code jk doctor} name it alike.
      */
-    public static final String STALE = "jk-lock.toml is stale: jk.toml changed since it was written";
+    public static final String STALE = StaleLock.STALE;
 
     /**
      * True when {@code lockFile} is missing, or when the lock no longer reflects manifests under

@@ -10,6 +10,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.lock.StaleLock;
 import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
@@ -157,15 +158,7 @@ public final class AutoLock {
          * moved manifest, or an install a row came from that this machine no longer holds.
          */
         public static String message(String stale, @Nullable String reason) {
-            String why = reason == null || reason.isBlank() ? "dependency resolution failed" : reason.strip();
-            if (!stale.equals(LockFreshness.STALE)) {
-                return stale + ", and updating it failed: " + why
-                        + "\nThe build stops rather than run on bytes no install here holds: run jk install in that"
-                        + " project on this machine, or add a repository that serves it to [repositories]";
-            }
-            return stale + ", and updating it failed: " + why
-                    + "\nThe build stops rather than run on pins jk.toml no longer names: run jk lock once it can"
-                    + " resolve (online, the host allowed, the artifact published), or undo the jk.toml change";
+            return StaleLock.refreshFailed(stale, reason);
         }
     }
 }

@@ -14,6 +14,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.StaleLock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -24,6 +25,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -80,7 +82,26 @@ public final class EnsureFreshLock {
             String wedgeCommand,
             @Nullable Spinner spinner,
             boolean ownSpinner) {
-        return ensure(projectDir, cacheDir, global, wedgeCommand, spinner, ownSpinner, null);
+        return ensure(projectDir, cacheDir, global, wedgeCommand, spinner, ownSpinner, null, null);
+    }
+
+    /**
+     * As {@link #ensure(Path, Path, GlobalOptions, String)} for a command that forecasts the build
+     * ({@code jk explain}): a refresh that fails stops it as it stops the build, in the build's
+     * words, never a warning over the old lock and a plan the build will not run. {@code staleWhy}
+     * is {@link #staleWhy}'s answer, asked before the refresh; null reads as a moved manifest.
+     */
+    public static int ensureAsBuild(
+            Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, @Nullable String staleWhy) {
+        return ensure(
+                projectDir,
+                cacheDir,
+                global,
+                wedgeCommand,
+                null,
+                true,
+                null,
+                staleWhy == null ? StaleLock.STALE : staleWhy);
     }
 
     /**
@@ -95,7 +116,7 @@ public final class EnsureFreshLock {
             GlobalOptions global,
             String wedgeCommand,
             @Nullable URI repoUrl) {
-        return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
+        return ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl, null);
     }
 
     /**
@@ -105,7 +126,7 @@ public final class EnsureFreshLock {
      */
     public static void ensureBestEffort(
             Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand, @Nullable URI repoUrl) {
-        int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl);
+        int code = ensure(projectDir, cacheDir, global, wedgeCommand, null, true, repoUrl, null);
         if (code != Exit.SUCCESS) {
             CliOutput.err("‼ jk: lock refresh failed; continuing without jk-lock.toml");
         }
@@ -118,7 +139,8 @@ public final class EnsureFreshLock {
             String wedgeCommand,
             @Nullable Spinner spinner,
             boolean ownSpinner,
-            @Nullable URI repoUrl) {
+            @Nullable URI repoUrl,
+            @Nullable String asBuild) {
         if (projectDir == null) return Exit.SUCCESS; // no project, nothing to freshen
         Path dir = WorkingDirectory.resolve(projectDir);
         if (!ManifestPaths.describesProject(dir)) {
@@ -141,10 +163,18 @@ public final class EnsureFreshLock {
             EngineRequests.LockRequest req = new EngineRequests.LockRequest(
                     dir, cache, List.of(), false, false, repoUrl, global.offline, global.force, global.verbose, true);
 
+            // A module whose lock failed carries the resolver's reason as a step error, not on the
+            // terminal: kept here, it is what the freshen says (and decides soft or hard) with.
+            List<String> failures = new ArrayList<>();
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
                 public BuildPlanListener onModuleStart(String moduleDir, String moduleCoord, List<Task> steps) {
                     return new BuildPlanListener() {};
+                }
+
+                @Override
+                public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+                    keepFailure(result, failures);
                 }
             };
 
@@ -153,15 +183,16 @@ public final class EnsureFreshLock {
                 spinner.update(message);
                 outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
             } else if (showOwn) {
-                outcome = runInRegion(chip, message, req);
+                outcome = runInRegion(chip, message, req, failures);
             } else {
                 outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
             }
 
             if (outcome.exitCode() != 0) {
-                String err = outcome.errors() == null || outcome.errors().isEmpty()
-                        ? "could not refresh jk-lock.toml"
-                        : outcome.errors().getFirst();
+                String err = outcome.errors() != null && !outcome.errors().isEmpty()
+                        ? outcome.errors().getFirst()
+                        : failures.isEmpty() ? "could not refresh jk-lock.toml" : failures.getFirst();
+                if (asBuild != null) return failAsBuild(dir, chip, asBuild, err, outcome.exitCode(), spinner);
                 return failSoftOrHard(dir, chip, err, outcome.exitCode(), spinner);
             }
             // The lock just changed on disk — memoized summaries (hasLock/lockJdk/lockStale)
@@ -169,7 +200,9 @@ public final class EnsureFreshLock {
             ProjectInfos.forget();
             return Exit.SUCCESS;
         } catch (Exception e) {
-            return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
+            String err = "could not refresh jk-lock.toml: " + e.getMessage();
+            if (asBuild != null) return failAsBuild(dir, chip, asBuild, err, Exit.CONFIG, spinner);
+            return failSoftOrHard(dir, chip, err, Exit.CONFIG, spinner);
         }
     }
 
@@ -179,8 +212,8 @@ public final class EnsureFreshLock {
      * downloads, and a one-line spinner had nowhere to show them. The region is wiped when the
      * lock ends, as the spinner was: the command's own output follows on a clean screen.
      */
-    private static EngineRequests.LockOutcome runInRegion(String chip, String message, EngineRequests.LockRequest req)
-            throws IOException {
+    private static EngineRequests.LockOutcome runInRegion(
+            String chip, String message, EngineRequests.LockRequest req, List<String> failures) throws IOException {
         JkManager view = JkManager.plan(CliOutput.stdout(), chip, true);
         Map<String, String> coordByDir = new ConcurrentHashMap<>();
         try {
@@ -202,6 +235,7 @@ public final class EnsureFreshLock {
 
                 @Override
                 public void onModuleFinish(String moduleDir, BuildPlanResult result, EngineRequests.LockCounts counts) {
+                    keepFailure(result, failures);
                     String coord = coordByDir.get(moduleDir);
                     if (coord != null) view.stepDone(coord, "lock", result.success());
                 }
@@ -209,6 +243,15 @@ public final class EnsureFreshLock {
             return EngineClient.runLock(EnginePaths.current(), req, region);
         } finally {
             view.close();
+        }
+    }
+
+    /** A failed lock module's errors, as the resolver wrote them, onto {@code failures}. */
+    static void keepFailure(BuildPlanResult result, List<String> failures) {
+        if (result.success()) return;
+        for (BuildPlanResult.Diagnostic d : result.errors()) {
+            String message = d.message();
+            if (message != null && !message.isBlank()) failures.add(message.strip());
         }
     }
 
@@ -269,6 +312,21 @@ public final class EnsureFreshLock {
         }
         CommandWedge.printFail(chip, err);
         return exitCode != 0 ? exitCode : Exit.CONFIG;
+    }
+
+    /**
+     * {@link #ensureAsBuild}'s failure: what the build prints when its own refresh of the lock fails
+     * — the solver's explanation as it stands when the requirements cannot be resolved, else the
+     * stale lock named with why it could not be updated ({@link StaleLock#refreshFailed}) — and
+     * the build's exit.
+     */
+    static int failAsBuild(Path dir, String chip, String stale, String err, int exitCode, @Nullable Spinner spinner) {
+        if (spinner != null) spinner.close();
+        boolean unsatisfiable = err.contains("Cannot resolve dependencies");
+        boolean onDisk = Files.isRegularFile(LockPaths.lockFile(lockOwnerOrSelf(dir)));
+        String said = unsatisfiable || !onDisk ? err : StaleLock.refreshFailed(stale, err);
+        CommandWedge.printFail(chip, "jk build would fail here: " + said);
+        return exitCode != 0 ? exitCode : Exit.RESOLVE;
     }
 
     private static Path lockOwnerOrSelf(Path dir) {

@@ -207,14 +207,13 @@ public final class ExplainCommand implements CliCommand {
         // Same starting lock as `jk build` so the dirty plan and ETA match the countdown. It runs
         // ahead of the prep wedge, in its own region, so a first lock's downloads are drawn.
         // Why the lock is stale, asked before the update answers it: the plan that follows is the
-        // re-locked build's, and without this line nothing in it says what moved the lock.
+        // re-locked build's, and without this line nothing in it says what moved the lock. An
+        // update that fails stops here as it stops the build, in the build's words.
         if (needsLock) {
-            String stale = global.outputIsJson() ? null : EnsureFreshLock.staleWhy(startDir);
-            int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain");
+            String stale = EnsureFreshLock.staleWhy(startDir);
+            int lockCode = EnsureFreshLock.ensureAsBuild(startDir, cache, global, "Explain", stale);
             if (lockCode != 0) return lockCode;
-            if (stale != null && !EnsureFreshLock.needsRefresh(startDir)) {
-                CliOutput.out(EnsureFreshLock.updated(stale));
-            }
+            if (stale != null && !global.outputIsJson()) CliOutput.out(EnsureFreshLock.updated(stale));
         }
         // The variant and the declared variables the build would run with, as `jk build` installs
         // them: after the lock, whose refresh drops the project summaries they are read from.
