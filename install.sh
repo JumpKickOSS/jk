@@ -240,12 +240,14 @@ main() {
 
   # The feature version `java -version` reports: `"25.0.1"` is 25, `"1.8.0_392"` is 8.
   java_major() {
-    "$1" -version 2>&1 | awk -F'"' '/ version "/ { split($2, v, /[._]/); if (v[1] == "1") print v[2]; else print v[1]; exit }'
+    "$1" -version 2>&1 | awk -F'"' '!found && / version "/ { found = 1; split($2, v, /[._]/); if (v[1] == "1") print v[2]; else print v[1] }'
   }
 
   # The `java.home` of a java executable, however it was reached (a PATH symlink, a shim).
+  # Both readers take the whole output: an awk that exits at its line leaves java writing to a
+  # closed pipe, and under pipefail that SIGPIPE ended the installer with nothing said.
   java_home_of() {
-    "$1" -XshowSettings:properties -version 2>&1 | awk -F' = ' '/^ *java\.home = / { print $2; exit }'
+    "$1" -XshowSettings:properties -version 2>&1 | awk -F' = ' '!found && /^ *java\.home = / { found = 1; print $2 }'
   }
 
   # The JDK the JVM client runs on: JK_JAVA_HOME, else JAVA_HOME, else `java` on the PATH — a
