@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.api;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -18,6 +19,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import cc.jumpkick.wire.EnginePaths;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -208,6 +210,34 @@ public final class EnsureFreshLock {
         } finally {
             view.close();
         }
+    }
+
+    /**
+     * Why the engine would re-lock {@code projectDir}, asked before {@link #ensure} does it: the
+     * sentence a build gives ({@code LocalInstall.lockStaleWhy}, the decision {@code jk doctor}
+     * asks for), or null when the lock is missing or fresh, or the engine could not say.
+     */
+    public static @Nullable String staleWhy(Path projectDir) {
+        try {
+            CacheInventoryAck ack = EngineClient.cacheInventory(
+                    EnginePaths.current(),
+                    "lock-freshness",
+                    JkDirs.cache(),
+                    JkStores.store(),
+                    List.of(WorkingDirectory.resolve(projectDir).toString()),
+                    List.of(),
+                    false);
+            return ack.error() == null && !ack.lines().isEmpty() ? ack.lines().getFirst() : null;
+        } catch (IOException | RuntimeException unasked) {
+            return null;
+        }
+    }
+
+    /** What a command that updated a stale lock first says of it, given {@link #staleWhy}'s sentence. */
+    public static String updated(String staleWhy) {
+        String prefix = "jk-lock.toml is stale: ";
+        String cause = staleWhy.startsWith(prefix) ? staleWhy.substring(prefix.length()) : staleWhy;
+        return "jk-lock.toml updated first, as jk build does: " + cause;
     }
 
     /**

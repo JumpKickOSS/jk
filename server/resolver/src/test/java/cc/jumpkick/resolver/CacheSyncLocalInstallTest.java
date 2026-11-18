@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.M2Dirs;
@@ -15,6 +16,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -109,6 +113,35 @@ class CacheSyncLocalInstallTest {
                 .isEqualTo("zz.local:liba");
         assertThat(sync(dir.resolve("store"), lock).errors()).hasSize(1);
         assertThat(jar).as("a moved install is never deleted").exists();
+    }
+
+    /**
+     * Why a lock is stale on an install's account, as the build, jk explain and jk doctor say it:
+     * the coordinate, whether its install changed (and when it was written) or is gone. The base
+     * said "came from this machine's installs, which no longer hold the bytes it pins" for both.
+     */
+    @Test
+    void the_stale_reason_names_a_changed_install_and_when_and_a_removed_one(@TempDir Path dir) throws Exception {
+        Path store = dir.resolve("store");
+        Path jar = write(M2Dirs.localRepository(), "first build");
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(lockOf("first build"), lockFile);
+        assertThat(LocalInstall.staleReason(lockFile, store)).isNull();
+
+        Files.writeString(jar, "second build, installed again", StandardCharsets.UTF_8);
+        Files.setLastModifiedTime(
+                jar,
+                FileTime.from(LocalDateTime.of(2026, 11, 18, 4, 43)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()));
+        assertThat(LocalInstall.staleReason(lockFile, store))
+                .isEqualTo("jk-lock.toml is stale: the local install of zz.local:liba:0.1.0-SNAPSHOT changed (jk"
+                        + " install at 2026-11-18 04:43), and the lock pins the jar it replaced");
+
+        Files.delete(jar);
+        assertThat(LocalInstall.staleReason(lockFile, store))
+                .isEqualTo("jk-lock.toml is stale: zz.local:liba:0.1.0-SNAPSHOT came from a local install (jk"
+                        + " install) that is no longer on this machine");
     }
 
     @Test

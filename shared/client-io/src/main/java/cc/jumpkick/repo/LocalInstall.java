@@ -9,6 +9,9 @@ import cc.jumpkick.model.RepositorySpec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
@@ -27,6 +30,9 @@ public final class LocalInstall {
 
     /** The bare lockfile source of a row an install served. */
     public static final String SOURCE = RepositorySpec.LOCAL_INSTALL;
+
+    /** How a stale reason dates an install: {@code 2026-11-18 04:43}, this machine's time. */
+    static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT);
 
     private LocalInstall() {}
 
@@ -83,8 +89,40 @@ public final class LocalInstall {
         }
         Lockfile.Artifact row = moved(lock, storeRoot);
         if (row == null) return null;
-        return "jk-lock.toml is stale: " + row.coordinate().toGav()
-                + " came from this machine's installs (jk install), which no longer hold the bytes it pins";
+        String gav = row.coordinate().toGav();
+        Path now =
+                installed(storeRoot, MavenLayout.artifactPath(row.coordinate())).orElse(null);
+        if (now == null) {
+            return "jk-lock.toml is stale: " + gav
+                    + " came from a local install (jk install) that is no longer on this machine";
+        }
+        String at = when(now);
+        return "jk-lock.toml is stale: the local install of " + gav + " changed (jk install"
+                + (at == null ? "" : " at " + at) + "), and the lock pins the jar it replaced";
+    }
+
+    /**
+     * Where an install holds {@code relativePath} now, whatever its bytes: the Maven local
+     * repository, then the shelf under {@code storeRoot}. Empty when neither has it.
+     */
+    static Optional<Path> installed(Path storeRoot, String relativePath) {
+        Path m2 = MavenLayout.safeResolve(
+                M2Dirs.localRepository().toAbsolutePath().normalize(), relativePath);
+        if (Files.isRegularFile(m2)) return Optional.of(m2);
+        Path shelf =
+                RepoArtifactStore.forStoreId(storeRoot, RepositorySpec.JK_LOCAL).artifactRoot();
+        if (shelf == null) return Optional.empty();
+        Path shelved = MavenLayout.safeResolve(shelf, relativePath);
+        return Files.isRegularFile(shelved) ? Optional.of(shelved) : Optional.empty();
+    }
+
+    /** When the install at {@code jar} was written, in this machine's time to the minute; null if unreadable. */
+    static @Nullable String when(Path jar) {
+        try {
+            return WHEN.format(Files.getLastModifiedTime(jar).toInstant().atZone(ZoneId.systemDefault()));
+        } catch (IOException unreadable) {
+            return null;
+        }
     }
 
     /**

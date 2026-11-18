@@ -181,8 +181,16 @@ class LocalInstallConsumersTest {
         assertThat(jk(lib, "install", "-S")).isEqualTo(0);
         assertThat(AutoLock.staleReason(app, lockFile))
                 .as("the forecast's reason, the build's freshen")
-                .contains(GROUP + ":" + name + ":0.1.0-SNAPSHOT")
-                .contains("jk install");
+                .startsWith("jk-lock.toml is stale: the local install of " + GROUP + ":" + name
+                        + ":0.1.0-SNAPSHOT changed (jk install at ");
+
+        // jk explain updates the lock as the build does, and says what moved it.
+        int[] exit = {0};
+        Capture.Streams explained = jk(exit, app, "explain", "-S");
+        assertThat(exit[0]).isZero();
+        assertThat(explained.out())
+                .contains("jk-lock.toml updated first, as jk build does: the local install of " + GROUP + ":" + name
+                        + ":0.1.0-SNAPSHOT changed (jk install at ");
 
         assertThat(jk(app, "build", "-S")).isEqualTo(0);
         Lockfile.Artifact second = row(app, name);
@@ -197,7 +205,6 @@ class LocalInstallConsumersTest {
         // is not installed; online, the update fails naming it (here the sandbox's denied hosts
         // answer for the remotes the update asks first).
         PathUtil.deleteRecursivelyOrThrow(m2Dir(name));
-        int[] exit = {0};
         Capture.Streams offline = jk(exit, app, "build", "-S", "--offline");
         assertThat(exit[0]).isNotZero();
         assertThat(offline.out() + offline.err())
@@ -207,7 +214,8 @@ class LocalInstallConsumersTest {
         Capture.Streams online = jk(exit, app, "build", "-S");
         assertThat(exit[0]).isNotZero();
         assertThat(online.out() + online.err())
-                .contains(GROUP + ":" + name + ":0.1.0-SNAPSHOT came from this machine's installs (jk install)")
+                .contains(GROUP + ":" + name + ":0.1.0-SNAPSHOT came from a local install (jk install) that is no"
+                        + " longer on this machine")
                 .contains("run jk install in that project on this machine, or add a repository that serves it");
     }
 
