@@ -93,7 +93,9 @@ siblings' builds stay snapshots. `[release] tag` in the member overrides both.
 terminal it asks first (yes by default), without one it adds it, and `--no-module` leaves it out.
 
 `jk doctor` at the root reports a `members` entry whose directory holds no project (a root verb
-refuses to start until it is fixed) and a project below the root that no entry lists.
+refuses to start until it is fixed) and a project below the root that no entry lists. Its project
+rows (`jdk-patch`, `lock`, `pins`, `m2`) speak for the members, each after its path, since the root
+has no lock, Java level or pins of its own.
 
 An `AGENTS.md` at the root (`jk agents`) describes the group instead of a project.
 

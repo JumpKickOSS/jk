@@ -37,6 +37,20 @@ final class GroupDoctor {
             List<String> unlisted,
             @Nullable String error) {}
 
+    /**
+     * The members of the group root at {@code dir}, excluded ones included: what doctor's project
+     * rows speak for there. {@code null} when {@code dir} is no group root; empty when its list
+     * cannot be read (the group row says why).
+     */
+    static @Nullable List<WorkspaceGroup.Member> members(Path dir) {
+        if (!WorkspaceGroup.declares(dir)) return null;
+        try {
+            return WorkspaceGroup.load(dir).members();
+        } catch (JkBuildParseException | IOException e) {
+            return List.of();
+        }
+    }
+
     /** The report for {@code dir}, or {@code null} when it is no group root. */
     static @Nullable Report of(Path dir) {
         if (!WorkspaceGroup.declares(dir)) return null;

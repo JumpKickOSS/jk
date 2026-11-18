@@ -22,6 +22,7 @@ import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolRegistry;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.doctor.DoctorChecks;
 import cc.jumpkick.host.JkDirs;
@@ -53,6 +54,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -114,17 +116,19 @@ public final class DoctorCommand implements CliCommand {
         Check cache = checkDirs();
         Check state = checkStateMode();
         Check jdk = checkJdk();
-        Check jdkPatch = checkJdkPatch();
-        Check lock = checkLock(
-                WorkingDirectory.current(),
-                in.isSet("no-engine")
-                        ? null
-                        : dir -> queryInventory("lock-freshness", List.of(dir.toString()), !in.isSet("engine")));
-        Check pins = check(DoctorChecks.pins(WorkingDirectory.current(), JkVersion.VERSION));
+        // At a group root the project rows are the members': the root has no lock, java level or
+        // pins of its own, so a row about it would warn of what nothing can clear.
+        List<WorkspaceGroup.Member> members = GroupDoctor.members(global.workingDir());
+        LockProbe lockProbe = in.isSet("no-engine")
+                ? null
+                : dir -> queryInventory("lock-freshness", List.of(dir.toString()), !in.isSet("engine"));
+        Check jdkPatch = projectRow("jdk-patch", members, DoctorCommand::checkJdkPatch);
+        Check lock = projectRow("lock", members, dir -> checkLock(dir, lockProbe));
+        Check pins = projectRow("pins", members, dir -> check(DoctorChecks.pins(dir, JkVersion.VERSION)));
         Check suites = check(DoctorChecks.suiteReads(JkDirs.state()));
         Check shell = checkShell();
         Check mvn = checkMavenSpy(MavenSpyJar.current());
-        Check m2 = checkM2();
+        Check m2 = projectRow("m2", members, dir -> check(DoctorChecks.m2(dir)));
         // At a group root: members listed with no project, and projects no entry lists.
         GroupDoctor.Report groupReport = GroupDoctor.of(global.workingDir());
         Check group = groupReport == null ? null : GroupDoctor.check(groupReport);
@@ -636,8 +640,24 @@ public final class DoctorCommand implements CliCommand {
      * and the shell's {@code JK_JDK}, judged against the project's Java level ({@link
      * DoctorChecks#jdkPatch}).
      */
-    private static Check checkJdkPatch() {
-        Path project = WorkingDirectory.current();
+    /**
+     * A project row: the project's own, or at a group root ({@code members} not null) one row that
+     * speaks for the members, each member's answer after its path and the worst status as the row's.
+     */
+    static Check projectRow(String label, @Nullable List<WorkspaceGroup.Member> members, Function<Path, Check> check) {
+        if (members == null) return check.apply(WorkingDirectory.current());
+        if (members.isEmpty()) return new Check(Status.OK, label, "no members to check");
+        Status worst = Status.OK;
+        List<String> parts = new ArrayList<>();
+        for (WorkspaceGroup.Member member : members) {
+            Check c = check.apply(member.dir());
+            if (c.status().compareTo(worst) > 0) worst = c.status();
+            parts.add(member.path() + ": " + c.detail());
+        }
+        return new Check(worst, label, String.join("; ", parts));
+    }
+
+    private static Check checkJdkPatch(Path project) {
         List<Integer> majors = new ArrayList<>();
         try {
             for (JdkHit hit : new JdkRegistry().listHits()) {
@@ -757,11 +777,6 @@ public final class DoctorCommand implements CliCommand {
             if (ack.error() != null) throw new IOException("engine query failed: " + ack.error());
             return ack.lines().isEmpty() ? null : ack.lines().getFirst();
         }));
-    }
-
-    /** The Maven local repository's copies of this project's locked POMs and jars, checked against their {@code .sha1}. */
-    private static Check checkM2() {
-        return check(DoctorChecks.m2(WorkingDirectory.current()));
     }
 
     /** {@link DoctorChecks#m2(Path, List)}: the files whose bytes do not match their {@code .sha1}. */
