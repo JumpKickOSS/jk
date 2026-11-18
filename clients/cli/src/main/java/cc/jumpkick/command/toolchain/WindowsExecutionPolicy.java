@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -126,7 +127,7 @@ final class WindowsExecutionPolicy {
     }
 
     private static Process startPowerShell() throws IOException {
-        return new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
+        return new ProcessBuilder(Executables.windowsPowerShell(), "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
                 .redirectErrorStream(false)
                 .start();
     }

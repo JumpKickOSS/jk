@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.toolchain;
 
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.WorkingDirectory;
 import java.io.ByteArrayOutputStream;
@@ -115,7 +116,8 @@ final class WindowsUserPath {
     }
 
     private static Process startPowerShell(Path binDir) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT);
+        ProcessBuilder pb = new ProcessBuilder(
+                Executables.windowsPowerShell(), "-NoProfile", "-NonInteractive", "-Command", SCRIPT);
         pb.environment().put("JK_ACTIVATE_BIN", WorkingDirectory.resolve(binDir).toString());
         return pb.redirectErrorStream(false).start();
     }

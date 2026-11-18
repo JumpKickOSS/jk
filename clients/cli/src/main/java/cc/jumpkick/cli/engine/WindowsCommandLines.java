@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.time.Clock;
@@ -124,8 +125,9 @@ final class WindowsCommandLines {
 
     private static Map<Long, String> query() {
         try {
+            String powershell = Executables.windowsPowerShell();
             Processes.Captured c = Processes.capture(
-                    new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
+                    new ProcessBuilder(powershell, "-NoProfile", "-NonInteractive", "-Command", SCRIPT)
                             .redirectError(ProcessBuilder.Redirect.DISCARD),
                     Duration.ofSeconds(QUERY_TIMEOUT_SECONDS));
             return c.ok() ? parse(c.output()) : Map.of();

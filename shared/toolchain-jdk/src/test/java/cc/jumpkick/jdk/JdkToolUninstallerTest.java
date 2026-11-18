@@ -12,8 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -138,6 +140,25 @@ class JdkToolUninstallerTest {
         assertThat(entry.action()).isEqualTo(Change.UNINSTALL);
         assertThat(entry.summary()).contains("21.0.5").contains("jabba");
         assertThat(entry.diff()).startsWith("through ").contains("jabba");
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void on_windows_the_tool_is_started_by_its_path_from_the_path_never_by_bare_name() {
+        // where.exe sits in System32, which every Windows PATH names.
+        List<String> argv = Objects.requireNonNull(JdkToolUninstaller.resolved(List.of("where", "uninstall", "x")));
+        assertThat(Path.of(argv.getFirst())).isAbsolute().isRegularFile();
+        assertThat(argv.subList(1, argv.size())).containsExactly("uninstall", "x");
+        assertThat(JdkToolUninstaller.resolved(List.of("jk-no-such-tool", "uninstall")))
+                .as("a tool off the PATH is not started from the current directory")
+                .isNull();
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void off_windows_the_command_is_run_as_written() {
+        assertThat(JdkToolUninstaller.resolved(List.of("mise", "uninstall", "--yes", "java@x")))
+                .containsExactly("mise", "uninstall", "--yes", "java@x");
     }
 
     // --- helpers ----------------------------------------------------------

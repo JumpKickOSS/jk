@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class SystemProbeTest {
@@ -119,5 +121,18 @@ class SystemProbeTest {
                 .containsExactly(Map.entry(
                         "SOFTWARE\\Eclipse Adoptium\\JDK\\21.0.1.12\\hotspot\\MSI",
                         "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.1.12-hotspot\\"));
+    }
+
+    /** A bare {@code reg} would be looked up in the current directory first, so a planted one would run. */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void the_registry_query_starts_system32_reg_by_its_path() {
+        List<String> argv = WindowsJavaRegistry.regQueryCommand("SOFTWARE\\JavaSoft", "JavaHome");
+        Path reg = Path.of(argv.getFirst());
+
+        assertThat(reg).isAbsolute().isRegularFile();
+        assertThat(reg.toString()).endsWithIgnoringCase("\\System32\\reg.exe");
+        assertThat(argv.subList(1, argv.size()))
+                .containsExactly("query", "HKLM\\SOFTWARE\\JavaSoft", "/s", "/v", "JavaHome");
     }
 }

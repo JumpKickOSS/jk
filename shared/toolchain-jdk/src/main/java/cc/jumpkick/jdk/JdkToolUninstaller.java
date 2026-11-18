@@ -3,10 +3,12 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
@@ -134,11 +136,13 @@ public final class JdkToolUninstaller {
     /**
      * Fire-and-wait subprocess with stdio dropped — we don't want the tool's progress chatter mixed
      * into jk's own spinner output. Bounded by {@link #TIMEOUT_SECONDS}; anything that hangs longer
-     * than that is killed and treated as a failure.
+     * than that is killed and treated as a failure. A tool not on the {@code PATH} is a failure too.
      */
     private static boolean runQuietly(List<String> command) {
+        List<String> argv = resolved(command);
+        if (argv == null) return false;
         try {
-            Process p = new ProcessBuilder(command)
+            Process p = new ProcessBuilder(argv)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
@@ -158,6 +162,18 @@ public final class JdkToolUninstaller {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    /**
+     * {@code command} with its program as {@link Executables#onPath} finds it, so Windows never
+     * starts a tool of that name from the current directory; null when it is not on the {@code PATH}.
+     */
+    static @Nullable List<String> resolved(List<String> command) {
+        String program = Executables.onPath(command.getFirst());
+        if (program == null) return null;
+        List<String> argv = new ArrayList<>(command);
+        argv.set(0, program);
+        return argv;
     }
 
     /** Single-quote a token for {@code bash -c} interpolation. */

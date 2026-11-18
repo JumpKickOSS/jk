@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.host.ProcessEnv;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -110,9 +110,7 @@ final class Shell32Elevator implements Elevator {
     public Outcome run(String script, Duration timeout) {
         Calls c = Holder.CALLS;
         if (c == null) return new Outcome.Failed(0, "elevation needs Windows and native access");
-        String root = ProcessEnv.get("SystemRoot");
-        String powershell =
-                (root == null ? "C:\\Windows" : root) + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+        String powershell = Executables.windowsPowerShell();
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment info = arena.allocate(INFO);
             MemorySegment state = arena.allocate(c.state());

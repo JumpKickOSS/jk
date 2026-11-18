@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
+import cc.jumpkick.host.Executables;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -17,7 +18,7 @@ public interface UserCommands {
             @Override
             public boolean executionPolicy() {
                 return run(List.of(
-                        "powershell.exe",
+                        Executables.windowsPowerShell(),
                         "-NoProfile",
                         "-NonInteractive",
                         "-Command",

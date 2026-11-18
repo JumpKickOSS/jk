@@ -27,13 +27,17 @@ public final class PersistedHome {
     public static @Nullable String windowsUserJkHome() {
         if (!Os.isWindows()) return null;
         try {
-            Processes.Captured c =
-                    Processes.capture(List.of("reg", "query", "HKCU\\Environment", "/v", "JK_HOME"), REG_WAIT);
+            Processes.Captured c = Processes.capture(regQuery(), REG_WAIT);
             if (c.timedOut() || c.exit() != 0) return null;
             return regValue(c.output(), "JK_HOME");
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
+    }
+
+    /** The {@code reg query} that reads the User environment's {@code JK_HOME}, {@code reg.exe} by its path. */
+    static List<String> regQuery() {
+        return List.of(Executables.windowsSystem("reg.exe"), "query", "HKCU\\Environment", "/v", "JK_HOME");
     }
 
     /**

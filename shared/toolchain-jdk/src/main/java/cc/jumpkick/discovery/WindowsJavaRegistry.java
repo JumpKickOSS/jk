@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -84,10 +85,14 @@ final class WindowsJavaRegistry {
     }
 
     private static Map<String, String> regQuery(String key, String valueName) {
-        String out = Processes.outputIfOk(
-                List.of("reg", "query", "HKLM\\" + key, "/s", "/v", valueName), Duration.ofSeconds(TIMEOUT_SECONDS));
+        String out = Processes.outputIfOk(regQueryCommand(key, valueName), Duration.ofSeconds(TIMEOUT_SECONDS));
         // A missing key exits 1.
         return out == null ? Map.of() : parse(out, valueName);
+    }
+
+    /** {@code reg query HKLM\<key> /s /v <valueName>}, {@code reg.exe} by its System32 path. */
+    static List<String> regQueryCommand(String key, String valueName) {
+        return List.of(Executables.windowsSystem("reg.exe"), "query", "HKLM\\" + key, "/s", "/v", valueName);
     }
 
     /**
