@@ -52,6 +52,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -204,11 +205,10 @@ public final class DoctorCommand implements CliCommand {
         CommandWedge.envelopeStart();
         CliOutput.out(CommandWedge.menu("Doctor"));
 
-        for (Check c :
-                List.of(config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, shell, mvn, m2)) {
-            printCheck(c, t);
-        }
-        if (group != null) printCheck(group, t);
+        List<Check> checks = new ArrayList<>(
+                List.of(config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, shell, mvn, m2));
+        if (group != null) checks.add(group);
+        for (Check c : checks) printCheck(c, t);
         for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
         for (String line : WindowsSection.render(windows, t)) CliOutput.out(line);
 
@@ -220,13 +220,8 @@ public final class DoctorCommand implements CliCommand {
         for (String line : MavenSettingsRows.render(settings, t)) CliOutput.out(line);
 
         CliOutput.out(Theme.paint("---", t.darkGray()));
-        String summary = Theme.colorize(String.valueOf(healthy), t.focused())
-                + " healthy"
-                + (pruned > 0 ? ", " + Theme.colorize(String.valueOf(pruned), t.focused()) + " pruned" : "")
-                + (verified > 0 ? ", " + Theme.colorize(String.valueOf(verified), t.focused()) + " unchanged" : "")
-                + (firstSeen > 0 ? ", " + Theme.colorize(String.valueOf(firstSeen), t.focused()) + " recorded" : "")
-                + (drifted > 0 ? ", " + Theme.colorize(String.valueOf(drifted), t.focused()) + " drifted" : "")
-                + (empty > 0 ? ", " + Theme.colorize(String.valueOf(empty), t.focused()) + " empty" : "");
+        String summary =
+                DoctorSummary.line(checks, tally, n -> Objects.requireNonNullElse(Theme.colorize(n, t.focused()), n));
         // Append subsystem warnings to summary when any check failed.
         if (hasFail) {
             summary += Theme.colorize(" — issues found", t.warning());
@@ -496,7 +491,7 @@ public final class DoctorCommand implements CliCommand {
             @Nullable String detail) {}
 
     /** The tool-row counts the summary and the JSON report both print; every row but a pruned one is healthy. */
-    private record Tally(int healthy, int pruned, int verified, int drifted, int firstSeen, int empty) {
+    record Tally(int healthy, int pruned, int verified, int drifted, int firstSeen, int empty) {
 
         static Tally of(List<ToolRow> rows) {
             int healthy = 0, pruned = 0, verified = 0, drifted = 0, firstSeen = 0, empty = 0;
