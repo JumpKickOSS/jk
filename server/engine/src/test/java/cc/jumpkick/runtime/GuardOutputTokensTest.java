@@ -9,13 +9,14 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The output lane's key covers the lint reports its {@code lint.*} measures count, by their findings. */
+/** The output lane's key covers the coverage and lint reports its measures read, by what they read. */
 class GuardOutputTokensTest {
 
     private static final String CHECKSTYLE = "core/target/plugin/lint-checkstyle/lint/checkstyle/checkstyle.xml";
     private static final String NOHTTP =
             "core/target/plugin/lint-checkstyle-nohttp/lint/checkstyle-nohttp/checkstyle.xml";
     private static final String PMD = "core/target/plugin/lint-pmd/lint/pmd/pmd.xml";
+    private static final String JACOCO = "core/target/site/jacoco/jacoco.xml";
 
     private static void write(Path file, String text) throws Exception {
         Files.createDirectories(file.getParent());
@@ -62,7 +63,9 @@ class GuardOutputTokensTest {
                 .append(source)
                 .append("\">\n");
         for (int i = 0; i < findings; i++) {
-            xml.append("<violation beginline=\"").append(i + 1).append("\" rule=\"UnusedLocalVariable\">m</violation>\n");
+            xml.append("<violation beginline=\"")
+                    .append(i + 1)
+                    .append("\" rule=\"UnusedLocalVariable\">m</violation>\n");
         }
         return xml.append("</file>\n</pmd>\n").toString();
     }
@@ -113,6 +116,44 @@ class GuardOutputTokensTest {
     void a_report_that_does_not_parse_is_keyed_as_unreadable(@TempDir Path root) throws Exception {
         scaffold(root, "");
         write(root.resolve(PMD), "<pmd");
-        assertThat(tokens(root)).contains("out:" + PMD + ":unreadable");
+        write(root.resolve(JACOCO), "<report");
+        assertThat(tokens(root)).contains("out:" + PMD + ":unreadable", "out:" + JACOCO + ":unreadable");
+    }
+
+    /** A JaCoCo report as the tool writes it: a session per test JVM, by id and times, then the counters. */
+    private static String jacoco(String session, long start, int linesMissed) {
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+                + "<!DOCTYPE report PUBLIC \"-//JACOCO//DTD Report 1.1//EN\" \"report.dtd\">"
+                + "<report name=\"core\"><sessioninfo id=\"" + session + "\" start=\"" + start
+                + "\" dump=\"" + (start + 900) + "\"/>"
+                + "<package name=\"a\"><counter type=\"LINE\" missed=\"9\" covered=\"9\"/></package>"
+                + "<counter type=\"BRANCH\" missed=\"2\" covered=\"6\"/>"
+                + "<counter type=\"LINE\" missed=\"" + linesMissed + "\" covered=\"30\"/></report>";
+    }
+
+    @Test
+    void a_coverage_report_keys_its_counters_not_its_sessions(@TempDir Path a, @TempDir Path b) throws Exception {
+        for (Path root : List.of(a, b)) scaffold(root, "");
+        assertThat(tokens(a)).contains("out:" + JACOCO + ":absent");
+        write(a.resolve(JACOCO), jacoco("hostA-1a2b", 1_763_400_000_000L, 4));
+        write(b.resolve(JACOCO), jacoco("hostB-9f8e", 1_763_500_000_000L, 4));
+        assertThat(tokens(a)).contains("out:" + JACOCO + ":counters={BRANCH=2/6, LINE=4/30}");
+        assertThat(tokens(a)).isEqualTo(tokens(b));
+
+        List<String> before = tokens(b);
+        write(b.resolve(JACOCO), jacoco("hostB-7c6d", 1_763_600_000_000L, 4));
+        assertThat(tokens(b)).as("a rerun measuring the same coverage").isEqualTo(before);
+
+        write(b.resolve(JACOCO), jacoco("hostB-7c6d", 1_763_600_000_000L, 5));
+        assertThat(tokens(b)).isNotEqualTo(before);
+    }
+
+    @Test
+    void a_named_coverage_report_is_keyed_where_guards_says(@TempDir Path root) throws Exception {
+        scaffold(root, "");
+        write(root.resolve("build/coverage.xml"), jacoco("s", 1L, 1));
+        assertThat(GuardKeys.outputTokens(root, List.of(root.resolve("core")), "build/coverage.xml"))
+                .contains("out:build/coverage.xml:counters={BRANCH=2/6, LINE=1/30}")
+                .noneMatch(t -> t.startsWith("out:" + JACOCO));
     }
 }

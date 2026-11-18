@@ -14,6 +14,7 @@ import cc.jumpkick.guard.baseline.Baseline;
 import cc.jumpkick.guard.baseline.BaselineFile;
 import cc.jumpkick.guard.baseline.Entry;
 import cc.jumpkick.guard.baseline.RuleBaseline;
+import cc.jumpkick.guard.eval.CoverageReport;
 import cc.jumpkick.guard.eval.EvalContext;
 import cc.jumpkick.guard.eval.Evaluators;
 import cc.jumpkick.guard.eval.GuardSuites;
@@ -380,17 +381,17 @@ final class GuardKeys {
     }
 
     /**
-     * The output lane's key material: each module's jar, POM, native binary and coverage report by
-     * content, through the stat-memoized hash — the sidecar POM is rewritten on every packaging
-     * pass and an untouched jar is never re-read, so only a real change moves the key — and every
-     * lint report the {@code lint.*} measures may read by {@link #lintStamp}. A file not on disk is
-     * {@code absent}.
+     * The output lane's key material: each module's jar, POM and native binary by content, through
+     * the stat-memoized hash — the sidecar POM is rewritten on every packaging pass and an
+     * untouched jar is never re-read, so only a real change moves the key — its coverage report by
+     * {@link #coverageStamp} and every lint report the {@code lint.*} measures may read by {@link
+     * #lintStamp}. A file not on disk is {@code absent}.
      */
     static List<String> outputTokens(Path root, List<Path> modules, @Nullable String coverageReport)
             throws IOException {
         List<String> tokens = new ArrayList<>();
         for (OutputArtifacts.Module m : OutputArtifacts.of(root, modules, coverageReport)) {
-            for (Path p : List.of(m.jar(), m.pom(), m.nativeBinary(), m.coverage())) {
+            for (Path p : List.of(m.jar(), m.pom(), m.nativeBinary())) {
                 String stamp = "absent";
                 if (Files.isRegularFile(p)) {
                     BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
@@ -398,6 +399,7 @@ final class GuardKeys {
                 }
                 tokens.add("out:" + WorkspaceModel.rel(root, p) + ":" + stamp);
             }
+            tokens.add("out:" + WorkspaceModel.rel(root, m.coverage()) + ":" + coverageStamp(m.coverage()));
             for (String tool : OutputArtifacts.LINT_TOOLS) {
                 for (Path p : m.lintReports(tool)) {
                     tokens.add("out:" + WorkspaceModel.rel(root, p) + ":" + lintStamp(p));
@@ -407,27 +409,51 @@ final class GuardKeys {
         return tokens;
     }
 
-    /** {@link #lintStamp} by report path, stamped with the report's content hash: one parse per version. */
-    private static final StampedMemo<Path, String, String> LINT_STAMPS = StampedMemo.bounded(4_096);
+    /** A report's stamp by its path, stamped with the report's content hash: one parse per version. */
+    private static final StampedMemo<Path, String, String> REPORT_STAMPS = StampedMemo.bounded(4_096);
+
+    /** What a report reader makes of a report's bytes, or why it could not read them. */
+    private interface ReportReader {
+        String read(Path report) throws IOException;
+    }
+
+    /**
+     * {@code reader}'s stamp of {@code report}, memoized by its content hash; {@code absent} when not
+     * on disk, {@code unreadable} when it does not parse as a report (the lane reports that).
+     */
+    private static String reportStamp(Path report, ReportReader reader) throws IOException {
+        if (!Files.isRegularFile(report)) return "absent";
+        Path abs = report.toAbsolutePath().normalize();
+        return REPORT_STAMPS.get(abs, FileHashMemo.contentHash(abs), () -> {
+            try {
+                return reader.read(abs);
+            } catch (IOException | RuntimeException unparsed) {
+                return "unreadable";
+            }
+        });
+    }
 
     /**
      * A lint report as the {@code lint.*} measures read it: its finding count ({@link
      * LintReport#findings}), never its bytes, which carry the checkout's absolute paths and the
-     * run's timestamp — so two checkouts with the same findings key alike. {@code absent} when not
-     * on disk, {@code unreadable} when it does not parse as a report (the lane reports that). A
-     * measure that reads a report per rule or per file must key that here too.
+     * run's timestamp — so two checkouts with the same findings key alike. A measure that reads a
+     * report per rule or per file must key that here too.
      */
     static String lintStamp(Path report) throws IOException {
-        if (!Files.isRegularFile(report)) return "absent";
-        Path abs = report.toAbsolutePath().normalize();
-        return LINT_STAMPS.get(abs, FileHashMemo.contentHash(abs), () -> {
-            try {
-                Integer count = LintReport.findings(abs);
-                return count == null ? "unreadable" : "findings=" + count;
-            } catch (IOException unparsed) {
-                return "unreadable";
-            }
+        return reportStamp(report, r -> {
+            Integer count = LintReport.findings(r);
+            return count == null ? "unreadable" : "findings=" + count;
         });
+    }
+
+    /**
+     * A JaCoCo report as the {@code coverage.*} measures read it: its whole-report counters ({@link
+     * CoverageReport#counters}), never its bytes, which carry each run's session ids and times — so
+     * a rerun measuring the same coverage, here or on another host, keys alike. A measure that reads
+     * more of the report than these counters (per package, per class) must key that here too.
+     */
+    static String coverageStamp(Path report) throws IOException {
+        return reportStamp(report, r -> "counters=" + CoverageReport.counters(r));
     }
 
     /** The forecast's {@code guard-output} step, or empty when no rule is on the output lane. */
