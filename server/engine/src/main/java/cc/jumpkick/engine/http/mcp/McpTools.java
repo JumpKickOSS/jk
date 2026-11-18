@@ -93,13 +93,25 @@ public final class McpTools {
     /** {@link #INSTRUCTIONS} for a {@link McpConnection#pinned() pinned} connection: no {@code dir}. */
     public static final String PINNED_INSTRUCTIONS = instructions(true);
 
+    /**
+     * Grok and Cursor put this text in the model's context and not the tool cards (Cursor shows the
+     * names, Grok nothing), so it carries the two graph calls whole: a model that sees only this
+     * still calls them first, with their arguments, and trusts the answer.
+     */
     private static String instructions(boolean pinned) {
         return "This project builds with jk, not Maven or Gradle: never add pom.xml or Gradle files. "
+                + "Tools: run, diagnostics, deps, callers, rename, skill; the calls below need no card or skill lookup. "
                 + (pinned
                         ? "Loop: run() returns the verdict → edit → run(). "
                         : "Loop: run(dir=<project>) returns the verdict and binds the connection → edit → run(). ")
-                + "Who calls a method: callers(address), complete, instead of grep. "
-                + "skill has the rest; tools/list extended=true lists every tool.";
+                + "Who uses a method, field, type or column: callers(address=\"Type.method\"), once, before any "
+                + "search; complete. "
+                + "Rename or move a method, field (with its getter and setter), class or package: "
+                + "rename(address=\"Type.field\", to=\"newName\") first, with no callers before it; it edits every "
+                + "use, compiles and tests. Uses it lists but did not apply: the same call with also=\"c1,c3\". "
+                + "Both answers are compiled facts and final: do not grep, read or re-run to check them; when "
+                + "rename says the task is done, it is. "
+                + "skill(topic=…) has the rest; tools/list extended=true lists every tool.";
     }
 
     private final Map<String, McpTool> byName;

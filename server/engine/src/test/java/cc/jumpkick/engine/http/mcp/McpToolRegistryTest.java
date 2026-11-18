@@ -216,6 +216,26 @@ class McpToolRegistryTest {
         assertThat(json).contains("action=form", "params").doesNotContain("database", "native");
     }
 
+    /**
+     * Grok and Cursor show the model this text and not the tool cards. With only "callers(address)" in it,
+     * grok fetched the skill page before 3 renames in 4 and cursor grepped after the answer; with both calls
+     * whole here neither did (bench tier 0/1, JK-XP4B9). It is sent once per session, so its ceiling is loose.
+     */
+    @Test
+    void the_instructions_carry_the_graph_calls_whole_for_clients_without_cards() {
+        for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {
+            assertThat(instructions)
+                    .contains("need no card or skill lookup")
+                    .contains("callers(address=\"Type.method\")")
+                    .contains("rename(address=\"Type.field\", to=\"newName\")")
+                    .contains("also=\"c1,c3\"")
+                    .contains("do not grep, read or re-run to check them");
+            assertThat(instructions.getBytes(StandardCharsets.UTF_8).length)
+                    .as("instructions bytes")
+                    .isLessThanOrEqualTo(900);
+        }
+    }
+
     @Test
     void the_playbook_names_only_the_default_tools() {
         for (String instructions : List.of(McpTools.INSTRUCTIONS, McpTools.PINNED_INSTRUCTIONS)) {
