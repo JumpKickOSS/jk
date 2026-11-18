@@ -133,10 +133,11 @@ class AotCacheTrainerTest {
         assertThat(AotCacheTrainer.platform(config("b"))).isEqualTo("linux/amd64");
         assertThat(AotCacheTrainer.platform(withPlatforms(List.of("linux/arm64"))))
                 .isEqualTo("linux/arm64");
-        List<String> prefix =
-                AotCacheTrainer.containerPrefix("podman", Path.of("/w/aot-train"), "img", "linux/arm64", "n", Map.of());
+        Path staging = Path.of("/w/aot-train");
+        List<String> prefix = AotCacheTrainer.containerPrefix("podman", staging, "img", "linux/arm64", "n", Map.of());
         assertThat(String.join(" ", prefix)).startsWith("podman run --rm --platform linux/arm64 ");
-        assertThat(String.join(" ", prefix)).contains(" -v /w/aot-train:/app");
+        // The mount names the host's absolute path: C:\w\aot-train on Windows, which podman and docker take there.
+        assertThat(String.join(" ", prefix)).contains(" -v " + staging.toAbsolutePath() + ":/app");
     }
 
     /** One cache layer cannot serve the JVMs of several platforms: the image ships without one and says so. */
