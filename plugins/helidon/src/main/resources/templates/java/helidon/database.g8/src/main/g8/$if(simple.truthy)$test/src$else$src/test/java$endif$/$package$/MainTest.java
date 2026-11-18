@@ -6,7 +6,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import io.helidon.http.Status;
 import io.helidon.webclient.api.ClientResponseTyped;
 import io.helidon.webclient.http1.Http1Client;
+$if(health.truthy || metrics.truthy)$
 import io.helidon.webclient.http1.Http1ClientResponse;
+$endif$
 import io.helidon.webserver.http.HttpRouting;
 import io.helidon.webserver.testing.junit5.ServerTest;
 import io.helidon.webserver.testing.junit5.SetUpRoute;
@@ -100,25 +102,25 @@ class MainTest {
         // application.yaml, which is what points the database client at an in-memory H2.
         assertThat(System.getProperty("helidon.config.profile"), is("test"));
     }
-$if(health.truthy)$
 
+$if(health.truthy)$
     @Test
     void health_is_up() {
         try (Http1ClientResponse response = client.get("/observe/health").request()) {
             assertThat(response.status(), is(Status.NO_CONTENT_204));
         }
     }
+
 $endif$
 $if(metrics.truthy)$
-
     @Test
     void metrics_are_served() {
         try (Http1ClientResponse response = client.get("/observe/metrics").request()) {
             assertThat(response.status(), is(Status.OK_200));
         }
     }
-$endif$
 
+$endif$
     /** The NAME column of each row; the database client upper-cases column names. */
     private static List<String> names(JsonArray rows) {
         return rows.stream().map(e -> e.asJsonObject().getString("NAME")).toList();

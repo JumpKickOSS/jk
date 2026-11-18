@@ -69,25 +69,25 @@ $endif$
         // resources would overlay application.yaml here.
         assertThat(System.getProperty("helidon.config.profile"), is("test"));
     }
-$if(health.truthy)$
 
+$if(health.truthy)$
     @Test
     void health_is_up() {
         try (Http1ClientResponse response = client.get("/observe/health").request()) {
             assertThat(response.status(), is(Status.NO_CONTENT_204));
         }
     }
+
 $endif$
 $if(metrics.truthy)$
-
     @Test
     void metrics_are_served() {
         try (Http1ClientResponse response = client.get("/observe/metrics").request()) {
             assertThat(response.status(), is(Status.OK_200));
         }
     }
-$endif$
 
+$endif$
     private String message(String path) {
         try (Http1ClientResponse response = client.get(path).request()) {
             assertThat(response.status(), is(Status.OK_200));

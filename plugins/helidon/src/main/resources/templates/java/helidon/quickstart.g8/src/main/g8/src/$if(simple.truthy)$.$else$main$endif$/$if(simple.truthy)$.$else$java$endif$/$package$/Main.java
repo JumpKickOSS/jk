@@ -29,7 +29,10 @@ public final class Main {
 
     /** The routes; the observability endpoints under /observe join from the classpath. */
     static void routing(HttpRouting.Builder routing) {
-        routing.register("/greet", new GreetService())$if(tracing.truthy)$
-                .register("/traced", new TracedService())$endif$;
+$if(tracing.truthy)$
+        routing.register("/greet", new GreetService()).register("/traced", new TracedService());
+$else$
+        routing.register("/greet", new GreetService());
+$endif$
     }
 }

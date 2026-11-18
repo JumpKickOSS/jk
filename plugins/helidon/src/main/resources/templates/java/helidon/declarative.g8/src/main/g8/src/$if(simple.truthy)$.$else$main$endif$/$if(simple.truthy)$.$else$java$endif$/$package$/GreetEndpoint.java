@@ -84,8 +84,7 @@ $if(media_jsonp.truthy)$
         }
         greeting.set(json.getString("greeting"));
 $else$
-        greeting.set(json.stringValue("greeting")
-                .orElseThrow(() -> new BadRequestException("No greeting provided")));
+        greeting.set(json.stringValue("greeting").orElseThrow(() -> new BadRequestException("No greeting provided")));
 $endif$
     }
 

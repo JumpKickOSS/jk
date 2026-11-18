@@ -13,8 +13,10 @@ import io.helidon.webserver.http.HttpRouting;
 $if(health.truthy)$
 import io.helidon.webserver.observe.ObserveFeature;
 import io.helidon.webserver.observe.health.HealthObserver;
-$endif$
 
+$else$
+
+$endif$
 /** Starts the web server on the port {@code server.port} in {@code application.yaml} names. */
 public final class Main {
 

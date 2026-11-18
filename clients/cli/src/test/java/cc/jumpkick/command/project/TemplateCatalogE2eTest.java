@@ -76,21 +76,6 @@ class TemplateCatalogE2eTest {
      */
     private static final Map<String, String> KNOWN_DEFECTS = Map.of();
 
-    /** The Helidon templates' format defect. */
-    private static final String HELIDON_FORMAT = "JK-SEWYW: Giter8 conditionals leave Main.java,"
-            + " MainTest.java or GreetEndpoint.java unformatted for some answers";
-
-    /**
-     * Templates some of whose non-default answer vectors generate sources jk format would rewrite,
-     * by id, each with its ticket: their defaults vector is format-checked like every template's,
-     * the others are built, tested and guarded but not format-checked. Delete an entry when its
-     * ticket is fixed.
-     */
-    private static final Map<String, String> FORMAT_DEFECTS = Map.of(
-            "java/helidon/database", HELIDON_FORMAT,
-            "java/helidon/declarative", HELIDON_FORMAT,
-            "java/helidon/quickstart", HELIDON_FORMAT);
-
     /**
      * Rows a template's lock holds though its manifest declares none of them, by id, each with the
      * {@code added-by} line that says why: conditional dependencies jk follows the way the
@@ -242,9 +227,7 @@ class TemplateCatalogE2eTest {
         // As generated, every source is what the template's own formatter writes. jk guard outside
         // CI formats an unformatted file in place and passes, so only a check sees it, as CI=1 jk
         // guard does on the user's first push. Before the Android assumption: no SDK is needed.
-        if (flags.isEmpty() || !FORMAT_DEFECTS.containsKey(id)) {
-            jk(name, "-C", project.toString(), "format", "-c");
-        }
+        jk(name, "-C", project.toString(), "format", "-c");
         String defect = KNOWN_DEFECTS.get(id);
         assumeTrue(defect == null, () -> name + " is scaffolded but not built: " + defect);
         String manifest = Files.readString(project.resolve("jk.toml"));
