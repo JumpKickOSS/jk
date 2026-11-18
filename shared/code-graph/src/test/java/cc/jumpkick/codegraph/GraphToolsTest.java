@@ -227,8 +227,12 @@ class GraphToolsTest {
     @Test
     void callers_of_a_method_the_graph_does_not_have_says_so_instead_of_answering_for_a_near_name() {
         assertThat(new GraphTools(release()).callers("Main.main", 1, 2000))
-                .startsWith("No method 'Main.main'.")
+                .startsWith("No method, field or type 'Main.main'. Pass Type.method, Type.field (or Type#field), Type,"
+                        + " @Annotation, or an anchor (column:t.c, route:GET /x).")
                 .doesNotContain("Callers of");
+        assertThat(new GraphTools(release()).callers("Info#name", 1, 2000))
+                .as("Type#member, as javadoc writes it")
+                .isEqualTo(new GraphTools(release()).callers("Info.name", 1, 2000));
         assertThat(new GraphTools(release()).callers("Info.nmae", 1, 2000))
                 .startsWith("'Info' (src/main/java/a/Info.java) declares no member 'nmae'; its members: name");
     }

@@ -207,6 +207,9 @@ class GraphUsesTest {
                         "  reads:",
                         "    Use.twice()  src/main/java/com/acme/shop/Use.java:8",
                         "        L8| return b.size + b.size;"));
+        assertThat(callers(root, "Box#size"))
+                .as("Type#field, as javadoc writes it")
+                .isEqualTo(answer);
     }
 
     @Test

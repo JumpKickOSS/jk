@@ -182,7 +182,7 @@ public final class GraphTools {
      */
     public String callers(String name, int depth, int budget) {
         // Type.m(Entry), the form rename takes, names the method: callers answers every overload.
-        String wanted = name.strip().replaceFirst("^([^(]+)\\([^()]+\\)$", "$1");
+        String wanted = address(name).replaceFirst("^([^(]+)\\([^()]+\\)$", "$1");
         List<String> named = graph.has(wanted) ? List.of(wanted) : members(wanted);
         String anchor = anchors.answer(wanted, named.isEmpty(), budget);
         if (anchor != null) return anchor;
@@ -634,6 +634,16 @@ public final class GraphTools {
         return added;
     }
 
+    /** What a callers address may name, as a refusal says it (rename's names the forms it takes). */
+    static final String FORMS =
+            "Pass Type.method, Type.field (or Type#field), Type, @Annotation, or an anchor (column:t.c, route:GET /x).";
+
+    /** {@code name} as callers reads it: {@code Type#member}, as javadoc writes it, is {@code Type.member}. */
+    public static String address(String name) {
+        String s = name.strip();
+        return s.matches("[\\w.$]+#[\\w$]+(\\(.*\\))?") ? s.replace('#', '.') : s;
+    }
+
     /**
      * Why {@code address} names no method, with the closest names: an answer an agent acts on without
      * checking must never be about something it did not ask for.
@@ -642,7 +652,7 @@ public final class GraphTools {
         String missing = missingMember(address);
         if (missing != null) return missing;
         List<String> lines = new ArrayList<>();
-        lines.add("No method '" + address + "'. Pass Type.method.");
+        lines.add("No method, field or type '" + address + "'. " + FORMS);
         List<String> near = new GraphSearch(graph, scope).nearest(address, 5);
         if (!near.isEmpty()) lines.add("Closest names:");
         for (String id : near) {
