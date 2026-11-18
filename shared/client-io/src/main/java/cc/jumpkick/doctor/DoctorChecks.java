@@ -259,35 +259,62 @@ public final class DoctorChecks {
     }
 
     /**
-     * The lock that governs {@code project}: present, of this format and not stale, with its
-     * artifact count. A lock jk.toml moved past is a {@code WARN} naming it.
+     * Whether a lock is stale, and why: {@link LocalInstall#lockStaleWhy}, asked where the plugins'
+     * manifests are installed. Only the engine has them: in the client a plugin table such as
+     * {@code [jooq]} has no owner, and the same question answered there called a fresh lock stale.
+     * {@link IOException} when there is no one to ask, with the reason.
      */
+    @FunctionalInterface
+    public interface Freshness {
+        @Nullable
+        String staleReason(Path project, Path lock) throws IOException;
+    }
+
+    /** {@link #lock(Path, Freshness)} answered in this process: the engine's own doctor rows. */
     public static HostRow lock(Path project) {
+        return lock(project, (dir, lock) -> LocalInstall.lockStaleWhy(dir, lock, JkStores.store()));
+    }
+
+    /**
+     * The lock that governs {@code project}: present, of this format and not stale, with its
+     * artifact count. A stale lock is a {@code WARN} naming why, in the words the build uses; a lock
+     * whose freshness could not be asked is reported as present, saying so.
+     */
+    public static HostRow lock(Path project, Freshness freshness) {
         Path lock = LockPaths.lockFile(project);
         Path owner = lock.getParent();
         if (!Files.isRegularFile(lock)) {
             return new HostRow("lock", "lock", Status.WARN, "no jk-lock.toml at " + owner, "run jk lock");
         }
+        long artifacts;
         try {
             String text = Files.readString(lock);
             if (!text.contains("version = 1")) return row("lock", Status.WARN, "unexpected lock version");
-            long artifacts = text.lines()
+            artifacts = text.lines()
                     .filter(l -> l.trim().startsWith("[[artifact]]"))
                     .count();
-            String stale = LocalInstall.lockStaleReason(project, lock, JkStores.store());
-            if (stale != null) {
-                // The same phrase the build fails or warns with, and jk explain gives as its reason.
-                return new HostRow(
-                        "lock",
-                        "lock",
-                        Status.WARN,
-                        stale + " · " + lock,
-                        "run jk lock; the next build updates it first and stops, naming why, if it cannot resolve");
-            }
-            return row("lock", Status.OK, artifacts + " artifacts · " + lock);
         } catch (IOException e) {
             return row("lock", Status.WARN, "check failed: " + e.getMessage());
         }
+        String stale;
+        try {
+            stale = freshness.staleReason(project, lock);
+        } catch (IOException unasked) {
+            return row(
+                    "lock",
+                    Status.OK,
+                    artifacts + " artifacts · " + lock + " · not checked for staleness: " + unasked.getMessage());
+        }
+        if (stale != null) {
+            // The phrase the build fails or warns with, and jk explain gives as its reason.
+            return new HostRow(
+                    "lock",
+                    "lock",
+                    Status.WARN,
+                    stale + " · " + lock,
+                    "run jk lock; the next build updates it first and stops, naming why, if it cannot resolve");
+        }
+        return row("lock", Status.OK, artifacts + " artifacts · " + lock);
     }
 
     /**

@@ -19,6 +19,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.http.SafeUri;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkVersion;
@@ -26,6 +27,7 @@ import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
 import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.M2Dirs;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.Pom;
@@ -102,6 +104,7 @@ public final class CacheInventoryOps {
             case "workers" -> workers(store);
             case "repos" -> repos(store);
             case "m2-settings" -> m2Settings();
+            case "lock-freshness" -> lockFreshness(req.terms() == null ? List.of() : req.terms(), store);
             case "drop-workers" -> dropWorkers(store, req.dryRun());
             default -> CacheInventoryAck.error("unknown cache inventory query: " + query);
         };
@@ -347,6 +350,16 @@ public final class CacheInventoryOps {
      * the files looked for, every mirror with the built-in remotes it answers for, the active proxies
      * (never their credentials) and the active profiles' repositories. {@code jk doctor} prints these.
      */
+    /**
+     * {@code jk doctor}'s lock row: whether the lock of the project {@code terms} names is stale, by
+     * the decision a build makes, here where the plugins' manifests are installed.
+     */
+    static CacheInventoryAck lockFreshness(List<String> terms, Path store) {
+        if (terms.size() != 1) return CacheInventoryAck.error("lock-freshness takes one project directory");
+        Path dir = Path.of(terms.getFirst());
+        return CacheInventoryAck.lockFreshness(LocalInstall.lockStaleWhy(dir, LockPaths.lockFile(dir), store));
+    }
+
     private static CacheInventoryAck m2Settings() {
         MavenSettings settings = MavenSettings.current();
         List<String> lines = new ArrayList<>();

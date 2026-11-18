@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -94,13 +95,24 @@ public final class LockFreshness {
      * (fail closed).
      */
     public static boolean isStale(Path dir, Path lockFile) {
+        return staleReason(dir, lockFile) != null;
+    }
+
+    /**
+     * Why the lock is stale, as one line that starts {@code jk-lock.toml is stale:}, or null when it
+     * is fresh: {@link #STALE} when the manifests moved past the lock, else the fact the lock lacks
+     * (the {@code [[tool]]} row a plugin fetches, the {@code [node]} pin, ...), so a lock whose
+     * digest matches is never said to have been outrun by jk.toml. The same decision as {@link
+     * #isStale}, asked once per request and owner.
+     */
+    public static @Nullable String staleReason(Path dir, Path lockFile) {
         Path buildFile = ManifestPaths.manifestIn(dir);
-        if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
+        if (!Files.exists(buildFile) || !Files.exists(lockFile)) return null;
         BasicFileAttributes lockAttrs;
         try {
             lockAttrs = Files.readAttributes(lockFile, BasicFileAttributes.class);
         } catch (IOException e) {
-            return true; // unreadable lock → re-lock
+            return STALE_PREFIX + "it cannot be read (" + e.getMessage() + ")"; // unreadable lock → re-lock
         }
         // The answer is the owner's: every member of a workspace reads the root's lock against every
         // manifest, so it is asked once per request rather than once per module and step — the
@@ -112,36 +124,49 @@ public final class LockFreshness {
                 lockFile.toAbsolutePath().normalize(),
                 lockAttrs.lastModifiedTime().toMillis(),
                 lockAttrs.size());
-        return RequestScope.current().get(key, k -> computeStale(dir, lockFile));
+        Optional<String> reason =
+                RequestScope.current().get(key, k -> Optional.ofNullable(computeReason(dir, lockFile)));
+        return reason.orElse(null);
     }
+
+    /** What every {@link #staleReason} says first. */
+    private static final String STALE_PREFIX = "jk-lock.toml is stale: ";
 
     /** One owner's lock as it stood: the request-scoped key of {@link #isStale}. */
     private record StaleKey(Path owner, Path lockFile, long lockMtimeMillis, long lockSize) {}
 
-    private static boolean computeStale(Path dir, Path lockFile) {
+    private static @Nullable String computeReason(Path dir, Path lockFile) {
         try {
             Path buildFile = ManifestPaths.manifestIn(dir);
-            if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
+            if (!Files.exists(buildFile) || !Files.exists(lockFile)) return null;
 
             Lockfile lock = LockfileReader.read(lockFile);
             String stored = lock.manifestsSha256();
             if (stored == null || !isValidDigest(stored)) {
-                return true; // no trustworthy stamp → re-lock
+                return STALE_PREFIX + "it carries no manifests-sha256 stamp"; // no trustworthy stamp → re-lock
             }
             Path owner = LockPaths.lockOwnerDir(dir);
             String live = LockManifestDigest.compute(owner);
-            if (!stored.equalsIgnoreCase(live)) return true;
-            if (missingNativePin(owner, lock)) return true;
-            if (missingRulePackPin(owner, lock)) return true;
+            if (!stored.equalsIgnoreCase(live)) return STALE;
+            if (missingNativePin(owner, lock)) return STALE_PREFIX + "it has no [native] metadata-repository pin";
+            if (missingRulePackPin(owner, lock)) {
+                return STALE_PREFIX + "it has no [[plugin]] row for a rule pack jk-guards.toml extends";
+            }
             Map<Path, JkBuild> modules = modules(owner);
-            return missingNodePin(modules.values(), lock)
-                    || missingKotlinPluginPin(owner, modules, lock)
-                    || missingToolPin(owner, modules, lock)
-                    || LockSchemas.missing(owner, modules, lock);
+            if (missingNodePin(modules.values(), lock)) return STALE_PREFIX + "it has no [node] pin";
+            if (missingKotlinPluginPin(owner, modules, lock)) {
+                return STALE_PREFIX + "it has no [[plugin]] row for a Kotlin compiler plugin";
+            }
+            String tool = missingToolPin(owner, modules, lock);
+            if (tool != null) return STALE_PREFIX + "it has no [[tool]] row for " + tool;
+            if (LockSchemas.missing(owner, modules, lock)) {
+                return STALE_PREFIX + "it has no [[schema]] row for a registry subject";
+            }
+            return null;
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
-            return true; // unreadable lock / digest failure → re-lock
+            return STALE_PREFIX + "it could not be checked (" + e.getMessage() + ")"; // fail closed → re-lock
         }
     }
 
@@ -249,7 +274,7 @@ public final class LockFreshness {
      * digest already covers; {@code jk lock} compares the rest when it decides to ask again. Which platforms a row covers is the build's
      * question, not freshness's.
      */
-    private static boolean missingToolPin(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
+    private static @Nullable String missingToolPin(Path owner, Map<Path, JkBuild> modules, Lockfile lock) {
         for (Map.Entry<Path, JkBuild> module : modules.entrySet()) {
             Path dir = module.getKey().toAbsolutePath().normalize();
             Lockfile view = memberView(owner, dir, lock);
@@ -263,11 +288,14 @@ public final class LockFreshness {
                         .anyMatch(row -> coord.module().equals(row.coordinate())
                                 && row.type().equals(coord.type())
                                 && (exact == null || exact.equals(row.version())));
-                if (!pinned) return true;
+                if (!pinned)
+                    return tool.id() + " (" + module.getValue().project().name() + ")";
             }
             for (PluginContributions.LockedTool url :
                     PluginContributions.lockedUrls(module.getValue(), dir, view.platformPins())) {
-                if (url.host() && ToolEntry.urlSha256In(lock.tools(), url.id()) == null) return true;
+                if (url.host() && ToolEntry.urlSha256In(lock.tools(), url.id()) == null) {
+                    return url.id() + " (" + module.getValue().project().name() + ")";
+                }
             }
             List<PluginContributions.StepDep> closures =
                     new ArrayList<>(PluginContributions.closureTools(module.getValue(), dir, view.platformPins()));
@@ -275,16 +303,21 @@ public final class LockFreshness {
                     module.getValue(), dir, view.platformPins(), view.classpathModules()));
             for (PluginContributions.StepDep closure : closures) {
                 String root = Objects.requireNonNull(closure.coordinateSpec());
-                if (ToolEntry.closureIn(lock.tools(), root, closure.with(), closure.managedBySpec()) == null)
-                    return true;
+                if (ToolEntry.closureIn(lock.tools(), root, closure.with(), closure.managedBySpec()) == null) {
+                    return "the closure of " + root + " ("
+                            + module.getValue().project().name() + ")";
+                }
             }
             for (PluginContributions.LockClosureDep closure :
                     PluginContributions.lockClosures(module.getValue(), dir)) {
                 ToolEntry row = ToolEntry.resolvedIn(lock.tools(), closure.resolvedBy(), moduleUnder(owner, dir));
-                if (row == null || !LockClosureStamp.of(closure.manifest()).equals(row.plugin())) return true;
+                if (row == null || !LockClosureStamp.of(closure.manifest()).equals(row.plugin())) {
+                    return "the closure " + closure.resolvedBy() + " resolves ("
+                            + module.getValue().project().name() + ")";
+                }
             }
         }
-        return false;
+        return null;
     }
 
     /** {@code dir} under {@code owner}, {@code /}-separated; empty for the owner itself. */

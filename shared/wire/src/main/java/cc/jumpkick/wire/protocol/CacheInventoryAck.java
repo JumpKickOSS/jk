@@ -74,6 +74,25 @@ public record CacheInventoryAck(
         return new CacheInventoryAck(null, "m2-settings", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, 0, 0);
     }
 
+    /**
+     * Whether the lock of the project the request named is stale, as the engine decides it for a
+     * build: no {@code lines} when fresh, else one, the reason ({@code jk-lock.toml is stale: …}).
+     */
+    public static CacheInventoryAck lockFreshness(@Nullable String staleReason) {
+        return new CacheInventoryAck(
+                null,
+                "lock-freshness",
+                List.of(),
+                0,
+                0,
+                List.of(),
+                staleReason == null ? List.of() : List.of(staleReason),
+                0,
+                0,
+                0,
+                0);
+    }
+
     public static CacheInventoryAck droppedWorkers(List<String> lines, long files, long bytes) {
         return new CacheInventoryAck(
                 null, "drop-workers", List.of(), 0, 0, List.of(), List.copyOf(lines), 0, 0, files, bytes);

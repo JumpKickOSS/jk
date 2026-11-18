@@ -115,7 +115,11 @@ public final class DoctorCommand implements CliCommand {
         Check state = checkStateMode();
         Check jdk = checkJdk();
         Check jdkPatch = checkJdkPatch();
-        Check lock = checkLock();
+        Check lock = checkLock(
+                WorkingDirectory.current(),
+                in.isSet("no-engine")
+                        ? null
+                        : dir -> queryInventory("lock-freshness", List.of(dir.toString()), !in.isSet("engine")));
         Check pins = check(DoctorChecks.pins(WorkingDirectory.current(), JkVersion.VERSION));
         Check suites = check(DoctorChecks.suiteReads(JkDirs.state()));
         Check shell = checkShell();
@@ -266,11 +270,16 @@ public final class DoctorCommand implements CliCommand {
 
     /** One engine inventory query; {@code ifRunning} asks only an engine that is already up. */
     private static CacheInventoryAck queryInventory(String query, boolean ifRunning) throws IOException {
+        return queryInventory(query, List.of(), ifRunning);
+    }
+
+    private static CacheInventoryAck queryInventory(String query, List<String> terms, boolean ifRunning)
+            throws IOException {
         return ifRunning
                 ? EngineClient.cacheInventoryIfRunning(
-                        EnginePaths.current(), query, JkDirs.cache(), JkStores.store(), List.of(), List.of(), false)
+                        EnginePaths.current(), query, JkDirs.cache(), JkStores.store(), terms, List.of(), false)
                 : EngineClient.cacheInventory(
-                        EnginePaths.current(), query, JkDirs.cache(), JkStores.store(), List.of(), List.of(), false);
+                        EnginePaths.current(), query, JkDirs.cache(), JkStores.store(), terms, List.of(), false);
     }
 
     /** The repository stores and their origins, so a wrong-origin cache is one line apart from the symptom. */
@@ -726,8 +735,28 @@ public final class DoctorCommand implements CliCommand {
         return PROCESS_WRAPPERS.contains(name);
     }
 
-    private static Check checkLock() {
-        return check(DoctorChecks.lock(WorkingDirectory.current()));
+    /** The engine's answer to whether {@code dir}'s lock is stale: {@link CacheInventoryAck#lockFreshness}. */
+    interface LockProbe {
+        CacheInventoryAck ask(Path dir) throws IOException;
+    }
+
+    /**
+     * The lock row. Whether the lock is stale is the engine's decision, the one a build makes
+     * (only the engine has the plugins' manifests that decide it); {@code probe} asks it, and null
+     * ({@code --no-engine}) or an engine that is not running leaves staleness unchecked, said so.
+     */
+    static Check checkLock(Path project, @Nullable LockProbe probe) {
+        return check(DoctorChecks.lock(project, (dir, lock) -> {
+            if (probe == null) throw new IOException("not asked (--no-engine)");
+            CacheInventoryAck ack;
+            try {
+                ack = probe.ask(dir);
+            } catch (EngineClient.EngineNotRunningException e) {
+                throw new IOException("the engine decides it, and none is running (jk doctor -e starts one)", e);
+            }
+            if (ack.error() != null) throw new IOException("engine query failed: " + ack.error());
+            return ack.lines().isEmpty() ? null : ack.lines().getFirst();
+        }));
     }
 
     /** The Maven local repository's copies of this project's locked POMs and jars, checked against their {@code .sha1}. */

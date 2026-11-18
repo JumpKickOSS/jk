@@ -400,6 +400,38 @@ class LockFreshnessTest {
                 .isTrue();
     }
 
+    /**
+     * Why a lock is stale is said as it is: a lock whose digest matches jk.toml but that lacks a row
+     * a plugin needs names the row, never "jk.toml changed since it was written", which a re-run of
+     * jk lock would then seem not to fix.
+     */
+    @Test
+    void a_lock_stale_only_for_a_missing_row_names_the_row(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group  = "g"
+                name   = "n"
+                version = "1"
+                java = 25
+
+                [quarkus]
+                version = "3.40.1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile); // stamped: the digest matches
+
+        assertThat(LockFreshness.staleReason(dir, lockFile))
+                .startsWith("jk-lock.toml is stale: it has no [[tool]] row for ")
+                .contains("io.quarkus")
+                .doesNotContain("jk.toml changed");
+
+        Files.writeString(lockFile, LockfileWriter.render(Lockfile.empty("test").withManifestsSha256("0".repeat(64))));
+        assertThat(LockFreshness.staleReason(dir, lockFile)).isEqualTo(LockFreshness.STALE);
+
+        Files.writeString(lockFile, LockfileWriter.render(Lockfile.empty("test")));
+        assertThat(LockFreshness.staleReason(dir, lockFile))
+                .isEqualTo("jk-lock.toml is stale: it carries no manifests-sha256 stamp");
+    }
+
     @Test
     void isValidDigest_accepts_hex64_only() {
         assertThat(LockFreshness.isValidDigest(null)).isFalse();

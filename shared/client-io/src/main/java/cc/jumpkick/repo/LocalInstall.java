@@ -97,6 +97,16 @@ public final class LocalInstall {
         return staleReason(lockFile, storeRoot);
     }
 
+    /**
+     * As {@link #lockStaleReason}, the same decision, but naming what a lock whose manifests did not
+     * move lacks ({@link LockFreshness#staleReason}: the {@code [[tool]]} row a plugin fetches, the
+     * {@code [node]} pin, ...) rather than calling it outrun by jk.toml: what {@code jk doctor} says.
+     */
+    public static @Nullable String lockStaleWhy(Path dir, Path lockFile, Path storeRoot) {
+        String why = LockFreshness.staleReason(dir, lockFile);
+        return why != null ? why : staleReason(lockFile, storeRoot);
+    }
+
     /** {@link LockFreshness#needsRefresh} or an install a row came from changed. */
     public static boolean needsRefresh(Path projectDir, Path storeRoot) {
         if (LockFreshness.needsRefresh(projectDir)) return true;
