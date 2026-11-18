@@ -27,6 +27,7 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.CachePlatform;
 import cc.jumpkick.task.RemoteCacheBinding;
 import cc.jumpkick.task.RemoteCacheSettings;
+import cc.jumpkick.task.ToolIdentity;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
@@ -98,7 +99,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
             }
             """;
 
-    /** A suite that starts two POSIX utilities, {@code sh} and {@code sleep}. */
+    /** A suite that starts two POSIX utilities, {@code sh} and {@code sleep} (on Windows, Git's on the PATH). */
     private static final String STARTS = """
             package com.example;
             import org.junit.jupiter.api.Assertions;
@@ -518,7 +519,10 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                         .as("the list A filed names the programs")
                         .map(String::valueOf)
                         .contains("proc:sh", "proc:sleep");
-                assertThat(m.text()).contains("INPUT posix x:proc:sh\n").contains("INPUT posix x:proc:sleep\n");
+                String family = ToolIdentity.osFamily();
+                assertThat(m.text())
+                        .contains("INPUT " + family + " x:proc:sh\n")
+                        .contains("INPUT " + family + " x:proc:sleep\n");
             });
             forgetReads(a);
 
