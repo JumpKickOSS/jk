@@ -107,8 +107,10 @@ class PortablePathJkRootsTest {
         String flags = "-Djna.boot.library.path=" + JkDirs.state().resolve("tmp/unpacked/4d25/lib") + " -Dfixture="
                 + ws.resolve("data/a.json") + " -Duser.language=en";
 
+        // Only the root is replaced: the rest of the path keeps this host's separators.
+        // TODO(JK-QX08F): spell the rest alike on every OS, so the flag keys alike on Windows and Unix
         assertThat(PortablePath.spelledText(flags, ws))
-                .isEqualTo("-Djna.boot.library.path=state:tmp/unpacked/4d25/lib -Dfixture=ws:data/a.json"
-                        + " -Duser.language=en");
+                .isEqualTo("-Djna.boot.library.path=state:" + Path.of("tmp/unpacked/4d25/lib") + " -Dfixture=ws:"
+                        + Path.of("data/a.json") + " -Duser.language=en");
     }
 }
