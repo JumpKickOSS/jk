@@ -420,7 +420,7 @@ public final class InstallCommand {
             // Before the build: an engine the install would refuse after it is a run for nothing.
             try {
                 new EngineInstall(JkDirs.productLib())
-                        .requirePass(null, InstallOrder.engineVersion(infoByDir.entrySet()));
+                        .requirePass(null, InstallOrder.engineVersion(infoByDir.entrySet()), global.force);
             } catch (IOException refused) {
                 CommandWedge.printFail("Install", refused.getMessage());
                 return Exit.FAILURE;
@@ -649,7 +649,7 @@ public final class InstallCommand {
         }
         List<Map.Entry<Path, ProjectInfo>> ordered = InstallOrder.ordered(installed, infoByDir, this::projectInfo);
         EngineInstall.Pass jk = new EngineInstall(JkDirs.productLib())
-                .pass(InstallOrder.clientVersion(ordered), InstallOrder.engineVersion(ordered));
+                .pass(InstallOrder.clientVersion(ordered), InstallOrder.engineVersion(ordered), global.force);
         // A pass cut short still records the client it put in place.
         try {
             for (Map.Entry<Path, ProjectInfo> entry : ordered) {

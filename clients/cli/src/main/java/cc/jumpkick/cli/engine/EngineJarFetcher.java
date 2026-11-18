@@ -21,14 +21,19 @@ final class EngineJarFetcher {
 
     private EngineJarFetcher() {}
 
-    /** Download, verify, and CAS-materialize the engine jar for {@code version}. */
-    static Path fetch(URI releasesBase, String version, ReleaseArtifacts.Progress progress) throws IOException {
+    /**
+     * Download, verify, and CAS-materialize the engine jar for {@code version}. {@code downgrade}
+     * ({@code -F}) lets it replace a newer live engine, which this client could not run anyway.
+     */
+    static Path fetch(URI releasesBase, String version, boolean downgrade, ReleaseArtifacts.Progress progress)
+            throws IOException {
         return fetch(
                 releasesBase,
                 version,
                 JkStores.storeCas(),
                 EngineInstall.current(),
                 ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()),
+                downgrade,
                 progress);
     }
 
@@ -40,18 +45,20 @@ final class EngineJarFetcher {
                 cas,
                 install,
                 ReleaseVerifier.current(GlobalConfig.releaseTrustedKeys()),
+                false,
                 ReleaseArtifacts.Progress.NONE);
     }
 
     /** Fully injected variant for tests. Release evidence is mandatory on every remote fetch. */
     static Path fetch(URI releasesBase, String version, Cas cas, EngineInstall install, ReleaseVerifier verifier)
             throws IOException {
-        return fetch(releasesBase, version, cas, install, verifier, ReleaseArtifacts.Progress.NONE);
+        return fetch(releasesBase, version, cas, install, verifier, false, ReleaseArtifacts.Progress.NONE);
     }
 
     /**
      * As above, reporting the jar download to {@code progress}. The version is the running
      * client's, so a release site that does not publish it means this jk was built from a checkout.
+     * A newer live engine is refused before the download unless {@code downgrade}.
      */
     static Path fetch(
             URI releasesBase,
@@ -59,8 +66,17 @@ final class EngineJarFetcher {
             Cas cas,
             EngineInstall install,
             ReleaseVerifier verifier,
+            boolean downgrade,
             ReleaseArtifacts.Progress progress)
             throws IOException {
+        try {
+            install.requireAccepts(version, downgrade);
+        } catch (IOException refused) {
+            throw new IOException(
+                    refused.getMessage() + "; run again with -F to put jk-engine " + version
+                            + " in its place, or `jk install -S` in the checkout of the newer one",
+                    refused);
+        }
         ReleaseArtifacts.Verified jar;
         try {
             jar = ReleaseArtifacts.fetch(
@@ -75,7 +91,7 @@ final class EngineJarFetcher {
                         version,
                         cas,
                         jar.sha256(),
-                        false,
+                        downgrade,
                         InstalledClients.running(cas, null).orElse(null))
                 .engineJar();
         progress.done(engineJar);

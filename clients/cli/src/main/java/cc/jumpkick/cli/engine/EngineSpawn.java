@@ -471,7 +471,11 @@ public final class EngineSpawn {
             // The same bar, phase lines and done line `jk jdk install` renders, under an Engine
             // chip: the user is watching this download as they watch a JDK's.
             try (ReleaseDownloadView view = ReleaseDownloadView.engine(clientVersion)) {
-                EngineJarFetcher.fetch(ReleaseArtifacts.releasesBase(), clientVersion, view);
+                EngineJarFetcher.fetch(
+                        ReleaseArtifacts.releasesBase(),
+                        clientVersion,
+                        SessionContext.current().config().forceOr(false),
+                        view);
             }
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }

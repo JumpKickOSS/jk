@@ -386,8 +386,14 @@ public final class EngineInstall {
      * refused by {@link #requirePass} before anything moves.
      */
     public Pass pass(@Nullable String clientVersion, @Nullable String engineVersion) throws IOException {
-        requirePass(clientVersion, engineVersion);
-        return new Pass();
+        return pass(clientVersion, engineVersion, false);
+    }
+
+    /** As {@link #pass(String, String)}; {@code downgrade} ({@code -F}) lets the engine replace a newer one. */
+    public Pass pass(@Nullable String clientVersion, @Nullable String engineVersion, boolean downgrade)
+            throws IOException {
+        requirePass(clientVersion, engineVersion, downgrade);
+        return new Pass(downgrade);
     }
 
     /**
@@ -397,12 +403,19 @@ public final class EngineInstall {
      * runs only the engine of its own version.
      */
     public void requirePass(@Nullable String clientVersion, @Nullable String engineVersion) throws IOException {
+        requirePass(clientVersion, engineVersion, false);
+    }
+
+    /** As {@link #requirePass(String, String)}; {@code downgrade} lifts the refusal of an older engine. */
+    public void requirePass(@Nullable String clientVersion, @Nullable String engineVersion, boolean downgrade)
+            throws IOException {
         Optional<Materialized> live = currentInstall();
         if (engineVersion != null
+                && !downgrade
                 && live.isPresent()
                 && Versions.compare(live.get().version(), engineVersion) > 0) {
             throw new IOException("jk " + live.get().version() + " is installed, newer than " + engineVersion
-                    + "; nothing was installed (a private JK_HOME takes it)");
+                    + "; nothing was installed (-F replaces it, or a private JK_HOME takes it)");
         }
         if (clientVersion == null) return;
         String after = engineVersion != null
@@ -423,9 +436,12 @@ public final class EngineInstall {
      * alone at {@link #finish}.
      */
     public final class Pass {
+        private final boolean downgrade;
         private @Nullable InstalledClient placed;
 
-        private Pass() {}
+        private Pass(boolean downgrade) {
+            this.downgrade = downgrade;
+        }
 
         /**
          * Ingest {@code built} into {@code cas} and put a copy of that blob in place as the PATH
@@ -441,7 +457,7 @@ public final class EngineInstall {
 
         /** Ingest {@code engineJar} and materialize it as {@code version}, paired with the client placed so far. */
         public Materialized engine(String version, Cas cas, Path engineJar) throws IOException {
-            Materialized m = materializeFromFiles(version, cas, engineJar, false, placed);
+            Materialized m = materializeFromFiles(version, cas, engineJar, downgrade, placed);
             placed = null;
             return m;
         }

@@ -10,6 +10,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.repo.ReleaseArtifacts;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -112,6 +113,44 @@ class EngineJarFetcherTest {
                 .hasMessageContaining("HTTP 404");
     }
 
+    /**
+     * A released client over a newer live engine (a checkout's snapshot) cannot run that engine,
+     * and its own is refused before anything downloads, saying -F replaces it.
+     */
+    @Test
+    void a_newer_live_engine_is_refused_before_the_download_and_names_force(@TempDir Path root) throws Exception {
+        var cas = cas(root);
+        var install = engineInstall(root);
+        install.materializeFromFiles("1.2.4-SNAPSHOT", cas, snapshotJar(root));
+
+        assertThatThrownBy(() -> EngineJarFetcher.fetch(release.base(), VERSION, cas, install, release.verifier()))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("refusing to replace jk-engine 1.2.4-SNAPSHOT with older 1.2.3")
+                .hasMessageContaining("-F");
+        assertThat(release.requested()).isEmpty();
+        assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("1.2.4-SNAPSHOT");
+    }
+
+    /** -F puts the client's own engine in place of the newer one it could not run. */
+    @Test
+    void force_replaces_a_newer_live_engine_with_the_clients_own(@TempDir Path root) throws Exception {
+        var cas = cas(root);
+        var install = engineInstall(root);
+        install.materializeFromFiles("1.2.4-SNAPSHOT", cas, snapshotJar(root));
+
+        Path jar = EngineJarFetcher.fetch(
+                release.base(), VERSION, cas, install, release.verifier(), true, ReleaseArtifacts.Progress.NONE);
+
+        assertThat(jar).hasBinaryContent(JAR);
+        assertThat(install.currentInstall().orElseThrow().version()).isEqualTo(VERSION);
+    }
+
+    private static Path snapshotJar(Path root) throws IOException {
+        Path jar = root.resolve("jk-engine-1.2.4-SNAPSHOT.jar");
+        Files.write(jar, "snapshot engine bytes".getBytes(StandardCharsets.UTF_8));
+        return jar;
+    }
+
     /** The gate that keeps this out of the JVM dist, offline runs, and dev/CI snapshot builds. */
     @Test
     void applicable_only_for_online_native_release_clients() {
@@ -143,7 +182,7 @@ class EngineJarFetcherTest {
         };
 
         Path jar = EngineJarFetcher.fetch(
-                release.base(), VERSION, cas(root), engineInstall(root), release.verifier(), sink);
+                release.base(), VERSION, cas(root), engineInstall(root), release.verifier(), false, sink);
 
         assertThat(events).first().isEqualTo("start " + JAR_NAME + " " + JAR.length);
         assertThat(events).contains("progress " + JAR.length + "/" + JAR.length);
@@ -179,7 +218,7 @@ class EngineJarFetcherTest {
         };
 
         Path jar = EngineJarFetcher.fetch(
-                release.base(), VERSION, cas(root), engineInstall(root), release.verifier(), sink);
+                release.base(), VERSION, cas(root), engineInstall(root), release.verifier(), false, sink);
 
         assertThat(jar).hasBinaryContent(JAR);
         assertThat(events).first().isEqualTo("start 0");

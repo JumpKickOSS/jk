@@ -138,10 +138,24 @@ class InstallProductBinTest {
         assertThatThrownBy(() -> pointer.pass("0.51.0-SNAPSHOT", "0.51.0-SNAPSHOT"))
                 .isInstanceOf(IOException.class)
                 .hasMessage("jk 0.51.0 is installed, newer than 0.51.0-SNAPSHOT; nothing was installed"
-                        + " (a private JK_HOME takes it)");
+                        + " (-F replaces it, or a private JK_HOME takes it)");
 
         assertThat(EngineInstall.pathClient(bin)).hasContent("client 0.51.0");
         assertThat(pointer.configFile()).hasContent(pointerBefore);
+    }
+
+    @Test
+    void a_forced_pass_installs_an_older_engine_over_a_newer_one(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        EngineInstall pointer = new EngineInstall(tmp.resolve("lib"));
+        Path target = Files.createDirectories(tmp.resolve("target"));
+        pointer.materializeFromFiles("0.52.1-SNAPSHOT", cas, Files.writeString(target.resolve("new.jar"), "new"));
+
+        EngineInstall.Pass pass = pointer.pass(null, "0.52.0", true);
+        pass.engine("0.52.0", cas, Files.writeString(target.resolve("old.jar"), "old"));
+        pass.finish();
+
+        assertThat(pointer.currentInstall().orElseThrow().version()).isEqualTo("0.52.0");
     }
 
     @Test
