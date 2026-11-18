@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.config.GraphConfig;
+import cc.jumpkick.engine.api.BuildHistoryKinds;
 import cc.jumpkick.layout.AnchorWatch;
 import cc.jumpkick.layout.GraphLayout;
 import cc.jumpkick.lock.ManifestPaths;
@@ -17,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * What a hand edit left under an old name, as the verdict of the build after it says it: the places
@@ -36,8 +38,17 @@ public final class AnchorsLeft {
     /** How long a verdict waits for the graph refresh its build started. */
     static final long REFRESH_WAIT_MS = 10_000;
 
-    /** Verdicts after which the graph was refreshed: a build that compiled the tree. */
-    private static final Pattern REFRESHED = Pattern.compile("^OK (test|build|gate)\\b");
+    /**
+     * Verdicts after which the graph was refreshed: a build jk ran that compiled the tree. A verdict's
+     * first word is the kind its run journals as ({@link BuildHistoryKinds}), so a gate's reads {@code OK guard}.
+     */
+    private static final Pattern REFRESHED = Pattern.compile("^OK ("
+            + BuildHistoryKinds.ALL.stream()
+                    .filter(kind -> !BuildHistoryKinds.isExternalTool(kind))
+                    .sorted()
+                    .map(Pattern::quote)
+                    .collect(Collectors.joining("|"))
+            + ")\\b");
 
     private AnchorsLeft() {}
 

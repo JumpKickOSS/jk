@@ -251,7 +251,7 @@ carries the old name or the edit is undone, so a build after a graph question st
 
 The record is always kept, and `callers` answers from it (below). Naming its places in a build's verdict
 is experimental and off by default, while the agent bench measures it: with `[graph] anchor-tail` set
-to a variant ([Settings](#settings)), an MCP `run` that builds (`kind=build`, `test` or `gate`) and passes ends with the places that must change, a file's lines as one place, in five
+to a variant ([Settings](#settings)), an MCP `run` that builds (`kind=build`, `test`, `gate`, `guard`, `install` or any kind that builds the tree) and passes ends with the places that must change, a file's lines as one place, in five
 files at most, then `+N more:` and the call that lists the rest. It says nothing when none is left,
 and nothing after a run that failed. It waits for the refresh its build started (10 seconds at
 most) only when a file that defines or uses an anchor, or that the record names, changed since the

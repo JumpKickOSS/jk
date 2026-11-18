@@ -3,14 +3,21 @@ package cc.jumpkick.engine.graph;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.api.BuildHistoryKinds;
+import cc.jumpkick.engine.jobs.JobSpec;
+import cc.jumpkick.engine.verbs.InertVerbHost;
+import cc.jumpkick.engine.verbs.WorkspaceBuildVerb;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.AnchorWatch;
+import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -257,12 +264,47 @@ class AnchorsLeftTest {
                 .isEqualTo("Your edit changed a name the docs still use: 1 place.\n");
     }
 
+    /**
+     * Every kind a workspace build journals as, after whose success it refreshes the graph, names the
+     * places as a test does: a verdict's first word is that kind, so a gate, the call an agent finishes
+     * with, reads {@code OK guard}. The kinds are what the build verb journals its jobs as (a native or
+     * upload job needs a GraalVM or a {@code [publish]} to decode; their goals are walked by target), and
+     * they must be every project-build kind jk runs itself. A sync builds nothing and carries nothing.
+     */
     @Test
-    void aFailedRunAGuardNoGraphOrNoRecordSaysNothing(@TempDir Path root) throws IOException {
+    void everyKindABuildJournalsAsNamesThePlacesAsATestDoes(@TempDir Path root) throws IOException {
+        String dir = workspace(root, COLUMN, SILENT).toString();
+        WorkspaceBuildVerb verb = new WorkspaceBuildVerb(new InertVerbHost());
+        Set<String> journaled = new TreeSet<>();
+        journaled.add(BuildHistoryKinds.GUARD);
+        for (WorkspaceTarget target : WorkspaceTarget.values()) journaled.add(target.jobKind());
+        for (String kind : verb.jobKinds()) {
+            if (kind.equals("native") || kind.equals("upload")) continue;
+            journaled.add(
+                    verb.toJobRequest(verb.decodeJob(JobSpec.of(kind, dir))).verb());
+        }
+        assertThat(journaled).contains("guard", "test", "build", "install", "compile", "sync");
+        Set<String> builds = new TreeSet<>(journaled);
+        builds.removeIf(kind -> !BuildHistoryKinds.isBuildLike(kind));
+        Set<String> ran = new TreeSet<>(BuildHistoryKinds.ALL);
+        ran.removeIf(BuildHistoryKinds::isExternalTool);
+        assertThat(builds).as("every kind jk builds the project under").isEqualTo(ran);
+        for (String kind : builds) {
+            String verdict = "OK " + kind + " spring-petclinic · 8.3s\n";
+            assertThat(AnchorsLeft.after(dir, verdict))
+                    .as(verdict.strip())
+                    .startsWith("Your edit changed these names;");
+        }
+        assertThat(AnchorsLeft.after(dir, "OK sync spring-petclinic · 0.4s\n")).isEmpty();
+    }
+
+    @Test
+    void aFailedRunNoGraphOrNoRecordSaysNothing(@TempDir Path root) throws IOException {
         String dir = workspace(root, COLUMN, SILENT).toString();
         assertThat(AnchorsLeft.after(dir, "FAIL test spring-petclinic · 1 failed\n"))
                 .isEmpty();
-        assertThat(AnchorsLeft.after(dir, "OK guard spring-petclinic · 8.3s\n")).isEmpty();
+        assertThat(AnchorsLeft.after(dir, "FAIL guard spring-petclinic · 1 failed\n"))
+                .isEmpty();
         Files.delete(root.resolve("target/graph/anchors/stale"));
         assertThat(AnchorsLeft.after(dir, OK)).isEmpty();
         Files.delete(root.resolve("target/graph/graph.bin"));
