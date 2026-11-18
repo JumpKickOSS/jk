@@ -74,10 +74,10 @@ public final class ModuleEnvKeys {
     }
 
     /**
-     * What the test JVM is handed, as run-tests stamp tokens: {@code test-env:<name>=<value>} for
-     * the {@code [env]} entries with {@code [test] env} laid on top, in the stamp's key mode (path
-     * tokens literal, anything the environment answered hashed), and {@link #inheritedToken} under
-     * {@code [env] inherit}.
+     * What the test JVM is handed, as run-tests stamp tokens: {@code test-env:<name>=<digest>} for
+     * the {@code [env]} entries with {@code [test] env} laid on top, resolved in the stamp's key mode
+     * (path tokens literal, anything the environment answered hashed) and then hashed whole ({@link
+     * #testEnvValue}), and {@link #inheritedToken} under {@code [env] inherit}.
      */
     public static List<String> testJvm(JkBuild project, Path moduleDir) {
         return tokens(project, moduleDir, Reader.TEST_JVM);
@@ -129,7 +129,7 @@ public final class ModuleEnvKeys {
             Map<String, String> resolved =
                     new LinkedHashMap<>(TestEnvValues.resolve("[env]", worker, null, null, mode));
             resolved.putAll(TestEnvValues.resolve("[test].env", test, null, null, mode));
-            resolved.forEach((name, value) -> out.add("test-env:" + name + "=" + value));
+            resolved.forEach((name, value) -> out.add("test-env:" + name + "=" + testEnvValue(value)));
         } else if (!worker.isEmpty()) {
             TestEnvValues.resolve("[env]", worker, null, null, mode)
                     .forEach((name, value) -> out.add("env:" + name + "=" + Hashing.sha256Hex(value)));
@@ -137,6 +137,16 @@ public final class ModuleEnvKeys {
         if (inherit) out.add(inheritedToken());
         for (String name : plugin) out.add("plugin-env:" + name + "=" + digest(lookup.get(name)));
         return List.copyOf(out);
+    }
+
+    /**
+     * What one variable the test JVM is handed contributes to the stamp: the digest of its value as
+     * the fork resolves it, literal or forwarded, or {@code unset} for a forwarded name the caller
+     * lacks. Never the value itself, and never a control character: the token is a record's {@code
+     * INPUT} line, and a record may leave the machine.
+     */
+    static String testEnvValue(String resolved) {
+        return TestEnvValues.isAbsent(resolved) ? "unset" : Hashing.sha256Hex(resolved);
     }
 
     /** A value's digest, or a marker no digest can equal for a variable the caller lacks. */

@@ -501,6 +501,11 @@ public final class FakeCacheServer implements AutoCloseable {
             problem(ex, 422, "invalid", "KEY does not name " + key, List.of());
             return;
         }
+        if (text.indexOf('\u0000') >= 0) {
+            // As the cache service does: a record is text, and its index stores no U+0000.
+            problem(ex, 422, "invalid", "a record holds U+0000", List.of());
+            return;
+        }
         String writes = header(text, "WRITES");
         if (writes == null) {
             problem(ex, 422, "refused_kind", "a record of no write class", List.of());

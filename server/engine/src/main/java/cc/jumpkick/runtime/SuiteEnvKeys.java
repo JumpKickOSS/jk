@@ -5,6 +5,7 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
@@ -76,7 +77,8 @@ final class SuiteEnvKeys {
         Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
         if (profile == null || profile.env().isEmpty()) return List.of();
         List<String> out = new ArrayList<>();
-        new TreeMap<>(profile.env()).forEach((k, v) -> out.add("profile-env:" + k + "=" + v));
+        // By digest, as [test] env is: a record names no value a test JVM is handed.
+        new TreeMap<>(profile.env()).forEach((k, v) -> out.add("profile-env:" + k + "=" + Hashing.sha256Hex(v)));
         return out;
     }
 }

@@ -9,6 +9,7 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -38,6 +39,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -450,7 +452,9 @@ public record TestStampInputs(
         build.runSuites().forEach((suite, spec) -> {
             SuiteSettings run = spec.settings();
             if (run.isEmpty() || selection == null || !selection.runs(suite, spec.explicit())) return;
-            out.add("suite-run:" + suite + "=" + String.join(" ", run.forkArgs()) + ";env=" + run.env());
+            // The suite's env by digest: a record names no value a test JVM is handed.
+            out.add("suite-run:" + suite + "=" + String.join(" ", run.forkArgs()) + ";env="
+                    + (run.env().isEmpty() ? "none" : Hashing.sha256Hex(new TreeMap<>(run.env()).toString())));
         });
         return out;
     }

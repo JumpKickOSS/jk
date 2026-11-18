@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,6 +52,29 @@ class ModuleEnvKeysTest {
                 .isNotEqualTo(under("SUITE_MODE", "b", () -> ModuleEnvKeys.testJvm(project, tmp)));
         assertThat(under("SUITE_MODE", "a", () -> ModuleEnvKeys.plugin(project, tmp)))
                 .isEmpty();
+    }
+
+    /**
+     * What the test JVM is handed keys its suite by digest: a forwarded name the caller lacks as
+     * {@code unset}, a literal and a forwarded value by their digests, so the run-tests record that
+     * carries these tokens holds no control character and no value (JK-ANWXB).
+     */
+    @Test
+    void a_test_env_token_holds_no_value_and_no_control_character() throws Exception {
+        JkBuild project = project("""
+                [test]
+                env = ["JK_ANWXB_UNSET", "SUITE_MODE", { CI = "false" }]
+                """);
+        List<String> tokens = under("SUITE_MODE", "fast", () -> ModuleEnvKeys.testJvm(project, tmp));
+
+        assertThat(tokens)
+                .hasSize(3)
+                .contains("test-env:JK_ANWXB_UNSET=unset", "test-env:CI=" + Hashing.sha256Hex("false"))
+                .anyMatch(t -> t.matches("test-env:SUITE_MODE=[0-9a-f]{64}"));
+        assertThat(String.join("\n", tokens))
+                .doesNotContain("\u0000")
+                .doesNotContain("=fast")
+                .doesNotContain("=false");
     }
 
     @Test

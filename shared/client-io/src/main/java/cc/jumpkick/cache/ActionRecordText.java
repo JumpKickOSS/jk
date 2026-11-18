@@ -378,7 +378,7 @@ public final class ActionRecordText {
      * named by an absolute path (a store jar, a JDK, a file declared by absolute path) or whose
      * value holds one stays home, and so does every {@code SAID} line: a compiler's warning names
      * the source by its absolute path. Environment values a key hashed leave as their names only
-     * ({@link #withoutEnvValues}). No key hashes either, so the hit it serves is the same.
+     * ({@link #withoutEnvValues}, {@link #envInput}). No key hashes either, so the hit it serves is the same.
      */
     public static String renderShared(Parsed record) {
         if (!shareable(record)) {
@@ -391,8 +391,10 @@ public final class ActionRecordText {
         }
         Map<String, String> portable = new TreeMap<>();
         for (Map.Entry<String, String> e : record.inputs().entrySet()) {
-            if (!namesMachinePath(e.getKey()) && !namesMachinePath(e.getValue()) && !callerEnvDetail(e.getKey()))
-                portable.put(withoutEnvValues(e.getKey()), withoutEnvValues(e.getValue()));
+            if (namesMachinePath(e.getKey()) || namesMachinePath(e.getValue()) || callerEnvDetail(e.getKey())) continue;
+            String env = envInput(e.getKey());
+            if (env != null) portable.put(env, WITHHELD);
+            else portable.put(withoutEnvValues(e.getKey()), withoutEnvValues(e.getValue()));
         }
         return render(
                 record.taskId(),
@@ -412,6 +414,32 @@ public final class ActionRecordText {
     static boolean callerEnvDetail(String input) {
         return input.startsWith("env-name:") || input.startsWith("env-value:");
     }
+
+    /**
+     * The name a stamp input that holds one variable's value is shared under, or null for any other
+     * input. A run-tests stamp names what its test JVM is handed and what its suite read one
+     * variable to an input ({@code x:test-env:MODE}, {@code x:env-read:MY_APP_URL}, {@code
+     * x:profile-env:}, {@code x:plugin-env:}, {@code x:env:}) and the whole environment to one
+     * ({@code x:env-all}), each valued by a digest; a record from before the values were hashed
+     * may carry the value itself, or a digest's word in the name ({@code x:test-env:CI=sha256}). The
+     * shared form keeps the name alone, cut at any {@code =}, and withholds the value as {@link
+     * #WITHHELD}.
+     */
+    static @Nullable String envInput(String input) {
+        for (String family : ENV_INPUTS) {
+            if (input.startsWith(family)) {
+                int eq = input.indexOf('=', family.length());
+                return eq < 0 ? input : input.substring(0, eq);
+            }
+        }
+        return null;
+    }
+
+    private static final List<String> ENV_INPUTS =
+            List.of("x:test-env:", "x:env:", "x:plugin-env:", "x:profile-env:", "x:env-read:", "x:env-all");
+
+    /** What a shared record holds in place of an environment value or its digest. */
+    static final String WITHHELD = "-";
 
     /**
      * What a record written without a {@code WRITES} holds: a verdict when it names no output,

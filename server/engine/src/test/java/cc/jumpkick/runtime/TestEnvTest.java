@@ -10,10 +10,10 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.SearchCeiling;
-import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
@@ -379,7 +379,8 @@ class TestEnvTest {
                         .extras());
         assertThat(TestStampInputs.of(TestStampInputs.Facts.of(tmp, before), ClasspathFingerprint.ON_DISK)
                         .extras())
-                .contains("test-env:MODE=a");
+                .contains("test-env:MODE=" + Hashing.sha256Hex("a"))
+                .noneMatch(s -> s.endsWith("=a"));
     }
 
     @Test
@@ -395,7 +396,7 @@ class TestEnvTest {
                 .extras();
 
         assertThat(extras).noneMatch(s -> s.contains(home));
-        assertThat(extras).anyMatch(s -> s.startsWith("test-env:HOME_DIR=" + SecretRedactor.KEY_PREFIX));
+        assertThat(extras).anyMatch(s -> s.startsWith("test-env:HOME_DIR="));
     }
 
     @Test
@@ -408,7 +409,7 @@ class TestEnvTest {
         List<String> extras = TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
                 .extras();
         assertThat(extras).noneMatch(s -> s.contains(secret));
-        assertThat(extras).anyMatch(s -> s.startsWith("test-env:API_KEY=" + SecretRedactor.KEY_PREFIX));
+        assertThat(extras).anyMatch(s -> s.startsWith("test-env:API_KEY="));
 
         // A different secret must retest (different digest).
         Files.writeString(tmp.resolve(".env"), "TOKEN=other-secret-value\n");
@@ -501,7 +502,7 @@ class TestEnvTest {
         // Both tables key the run: a changed [env] var must retest as a changed [test] env does.
         assertThat(TestStampInputs.of(TestStampInputs.Facts.of(tmp, project), ClasspathFingerprint.ON_DISK)
                         .extras())
-                .contains("test-env:TZ=PST8PDT", "test-env:LANG=C");
+                .contains("test-env:TZ=" + Hashing.sha256Hex("PST8PDT"), "test-env:LANG=" + Hashing.sha256Hex("C"));
     }
 
     @Test

@@ -37,10 +37,17 @@ public final class TestEnvValues {
     private static final String MODULE = "module";
 
     /**
-     * What a forwarded-but-unset variable contributes to an action key. Not the empty string, which
-     * is a value a caller can genuinely have.
+     * What a forwarded-but-unset variable resolves to in {@link Mode.CacheKey}: not the empty
+     * string, which is a value a caller can genuinely have, and holding U+0000, which no variable's
+     * value can. It is a sentinel for the key's builder ({@link #isAbsent}), never key text: a record
+     * is lines of text, and a shared cache's index refuses a NUL.
      */
     private static final String ABSENT = "\u0000absent";
+
+    /** Whether {@code value}, resolved in {@link Mode.CacheKey}, stands for a forwarded variable the caller lacks. */
+    public static boolean isAbsent(@Nullable String value) {
+        return ABSENT.equals(value);
+    }
 
     /**
      * True for {@code ${target}} / {@code ${module}} — jk's own tokens, not environment variables.

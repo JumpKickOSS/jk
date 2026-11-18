@@ -57,8 +57,10 @@ inputs under JumpKick's own store, cache or home, which a record names relative 
 (`store:repos/central/…`), so another machine can tell which dependency moved; an input named by
 an absolute path anywhere else (a jar declared by absolute path, a JDK outside `~/.jk`) and what the step said as it ran,
 which names sources by absolute path, stay local. Of the environment, only the names of the
-variables a key read leave the machine (`env:DB_PIN=-`): no value, and no digest of one, since a
-digest of a short secret can be guessed; the key itself, hashed here from the values, is unchanged. Every record also says when it was made, by
+variables a key read leave the machine (`env:DB_PIN=-`, a suite's `x:test-env:CI` valued `-`): no
+value, and no digest of one, since a digest of a short secret can be guessed; the key itself, hashed
+here from the values, is unchanged. A suite's record names even a `[test] env` literal by its digest,
+and a forwarded variable the shell lacks as `unset`. Every record also says when it was made, by
 which JumpKick version, on which host (`linux-x86_64`, `macos-aarch64`, ...), how many bytes each
 output holds, and how long the step that made it worked. The host is a statement about the record,
 not part of its key: class files and jars are the same wherever they are made.

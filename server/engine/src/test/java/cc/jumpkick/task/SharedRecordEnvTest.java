@@ -84,4 +84,63 @@ class SharedRecordEnvTest {
                 .doesNotContain("MY_APP_BAR")
                 .contains("x:env-names");
     }
+    /**
+     * A run-tests record as jk 0.52 wrote it for a module whose {@code [test] env} forwards an unset
+     * variable and sets literals (the dojo-4 study's writer, jk-cli and jk-client-io): the sentinel
+     * holds U+0000, the literals stand as the values, and a forwarded value's digest sits under a
+     * name that kept its word. Its shared form names each variable and holds none of that (JK-ANWXB).
+     */
+    @Test
+    void the_shared_form_of_a_suite_record_names_its_test_env_and_holds_no_value_and_no_nul() {
+        String key = "k".repeat(64);
+        String digest = Hashing.sha256Hex("unix:path=/run/user/1000/bus");
+        String local = String.join(
+                "\n",
+                "TASK run-tests@093fa723c276",
+                "KEY " + key,
+                "FORMAT 2",
+                "KIND java:run-tests",
+                "WRITES test-marker",
+                "CREATED 2026-11-18T09:22:28Z",
+                "PRODUCER jk/0.52.1-SNAPSHOT#10+05fd08b5e362",
+                "HOST macos-aarch64",
+                "INPUT 6e39be448abf7901b9c95a164da25743450d826b3b29440810a6597333aa5f99 cp",
+                "INPUT \u0000absent x:test-env:ANDROID_HOME",
+                "INPUT false x:test-env:CI",
+                "INPUT tcp x:test-env:JK_ENGINE_TRANSPORT",
+                "INPUT xterm-256color x:test-env:TERM",
+                "INPUT  x:test-env:NO_COLOR",
+                "INPUT " + digest + " x:test-env:DBUS_SESSION_BUS_ADDRESS=sha256",
+                "INPUT unset x:test-env:GRAALVM_HOME",
+                "INPUT " + Hashing.sha256Hex("1") + " x:env-read:MY_APP_PIN",
+                "INPUT " + Hashing.sha256Hex("v") + " x:profile-env:MODE",
+                "INPUT  test-stamp-v4",
+                "OUTPUT 0 tests.failed",
+                "OUTPUT 15 tests.succeeded",
+                "OUTPUT 15 tests.total",
+                "END 3",
+                "");
+
+        String shared = ActionRecordText.renderShared(ActionRecordText.parse(local, key));
+
+        assertThat(shared)
+                .doesNotContain("\u0000")
+                .doesNotContain(digest)
+                .doesNotContain(Hashing.sha256Hex("1"))
+                .doesNotContain(Hashing.sha256Hex("v"))
+                .doesNotContain("xterm-256color")
+                .doesNotContain(" tcp ")
+                .doesNotContain("INPUT false")
+                .contains("INPUT - x:test-env:ANDROID_HOME\n")
+                .contains("INPUT - x:test-env:CI\n")
+                .contains("INPUT - x:test-env:NO_COLOR\n")
+                .contains("INPUT - x:test-env:DBUS_SESSION_BUS_ADDRESS\n")
+                .contains("INPUT - x:test-env:GRAALVM_HOME\n")
+                .contains("INPUT - x:env-read:MY_APP_PIN\n")
+                .contains("INPUT - x:profile-env:MODE\n")
+                .contains("x:test-env:TERM")
+                .contains("test-stamp-v4")
+                .contains("6e39be448abf7901b9c95a164da25743450d826b3b29440810a6597333aa5f99 cp");
+        assertThat(ActionRecordText.parse(shared, key).actionKey()).isEqualTo(key);
+    }
 }

@@ -382,6 +382,39 @@ class RemoteCacheE2eTest extends EngineServerHarness {
         }
     }
 
+    /**
+     * A suite whose module forwards a variable the caller lacks and sets another is shared and
+     * replayed: its record holds no U+0000, which the service's index refuses, and names each
+     * variable without its value (JK-ANWXB).
+     */
+    @Test
+    void a_suite_whose_module_forwards_an_unset_variable_is_shared_and_replayed_elsewhere() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(
+                root.resolve("a"), GREEN, "\n[test]\nenv = [\"JK_ANWXB_NEVER_SET\", { SUITE_MODE = \"anwxb-literal\" }]\n");
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            assertThat(succeeded(build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true))))
+                    .isTrue();
+            settled(a);
+            assertThat(service.recordsOf("test-marker"))
+                    .as("A shared its suite's result")
+                    .singleElement()
+                    .satisfies(m -> assertThat(m.text())
+                            .doesNotContain("\u0000")
+                            .doesNotContain("anwxb-literal")
+                            .contains("INPUT - x:test-env:JK_ANWXB_NEVER_SET\n")
+                            .contains("INPUT - x:test-env:SUITE_MODE\n"));
+
+            List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
+            assertThat(succeeded(again)).as("B builds: " + again).isTrue();
+            // A hit either way: one the forecast restored is told as local (JK-501G8).
+            assertThat(suite(settled(b)).outcome())
+                    .as("B replayed A's result")
+                    .isNotEqualTo(StepCache.Outcome.MISS);
+        }
+    }
+
     @Test
     void a_host_whose_copy_of_a_read_file_differs_runs_the_suite() throws Exception {
         Path root = shortTempDir();
@@ -489,6 +522,11 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     // ---- fixture -------------------------------------------------------------------------
 
     private static Path checkout(Path ws, String test) throws Exception {
+        return checkout(ws, test, "");
+    }
+
+    /** As {@link #checkout(Path, String)}, with {@code libToml} appended to lib's manifest. */
+    private static Path checkout(Path ws, String test, String libToml) throws Exception {
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
                 group   = "com.example"
@@ -511,7 +549,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
-                """);
+                """ + libToml);
         Files.writeString(ws.resolve("lib/src/com/example/One.java"), """
                 package com.example;
 
