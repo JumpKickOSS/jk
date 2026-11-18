@@ -160,12 +160,13 @@ final class ViewAnchors {
                 nodes.add(Anchors.node(KIND, name));
                 int line = JsonAnchors.declarationLine(masked, starts, b.member(), !b.field(), from);
                 edges.add(GraphEdge.of(
-                        type.id(),
-                        Anchors.id(KIND, name),
-                        Relations.DEFINES,
-                        Confidence.EXTRACTED,
-                        type.sourceFile(),
-                        line));
+                                type.id(),
+                                Anchors.id(KIND, name),
+                                Relations.DEFINES,
+                                Confidence.EXTRACTED,
+                                type.sourceFile(),
+                                line)
+                        .withContext((b.field() ? "field " : "method ") + b.member()));
             }
         }
         for (Map.Entry<String, Map<String, GraphEdge>> f : uses.entrySet()) {

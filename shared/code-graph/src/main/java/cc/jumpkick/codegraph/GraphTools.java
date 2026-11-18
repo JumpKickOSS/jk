@@ -42,6 +42,7 @@ public final class GraphTools {
     private final BiPredicate<String, String> sees;
     private final Map<String, @Nullable List<String>> read = new HashMap<>();
     private final AnchorAnswers anchors;
+    private final Impact impact;
 
     public GraphTools(CodeGraph graph) {
         this(graph, Scope.ALL);
@@ -79,6 +80,7 @@ public final class GraphTools {
         this.complete = complete;
         this.sees = sees;
         this.anchors = new AnchorAnswers(graph, scope, this);
+        this.impact = new Impact(graph, scope, this);
     }
 
     /** A resolved node id, or the message explaining why there is none. */
@@ -287,7 +289,7 @@ public final class GraphTools {
             lines.addAll(guessed);
         }
         if (found.isEmpty() && guessed.isEmpty()) lines.add("Nothing in the compiled classes calls it.");
-        lines.addAll(anchors.defined(named));
+        lines.addAll(impact.method(named));
         if (!transitive) {
             long onward = found.keySet().stream()
                     .filter(c -> reaches(c, reached.getOrDefault(c, Set.of(ANY))).stream()
@@ -845,11 +847,30 @@ public final class GraphTools {
     }
 
     /**
-     * The lines a field's uses answer ends with: each anchor type {@code typeId} maps its field {@code
-     * field} to (a JPA entity's column), with its uses no compiler checks.
+     * The lines a field's uses answer carries ({@link Impact#field}): what was looked at, the places no
+     * compiler checks under each anchor the field maps to, its accessors' callers and the tests that
+     * reach it.
      */
-    public List<String> fieldAnchorHints(String typeId, String field) {
-        return anchors.fieldHints(typeId, field);
+    public ImpactLines fieldImpact(String typeId, String field) {
+        return impact.field(typeId, field);
+    }
+
+    /** The lines a type's uses answer carries ({@link Impact#type}): each anchor it or its members map to. */
+    public ImpactLines typeImpact(String typeId) {
+        return new ImpactLines(impact.type(typeId), List.of());
+    }
+
+    /**
+     * The calls that reach {@code method} directly, or through a supertype method it overrides, one per
+     * calling method, in scope.
+     */
+    List<GraphEdge> directCalls(String method) {
+        Map<String, GraphEdge> out = new LinkedHashMap<>();
+        for (Reach r : reaches(method, Set.of(ANY))) {
+            if (r.caller().equals(method) || !scope.contains(graph.node(r.caller()))) continue;
+            out.merge(r.caller(), r.edge(), (a, b) -> a);
+        }
+        return List.copyOf(out.values());
     }
 
     /** Every definition and use of an anchor ({@link AnchorAnswers#uses}); {@code null} when {@code name} is none. */

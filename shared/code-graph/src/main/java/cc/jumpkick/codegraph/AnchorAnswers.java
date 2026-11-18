@@ -6,9 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,11 +19,13 @@ final class AnchorAnswers {
     private final CodeGraph graph;
     private final Scope scope;
     private final GraphTools tools;
+    private final Impact impact;
 
     AnchorAnswers(CodeGraph graph, Scope scope, GraphTools tools) {
         this.graph = graph;
         this.scope = scope;
         this.tools = tools;
+        this.impact = new Impact(graph, scope, tools);
     }
 
     /**
@@ -44,84 +44,6 @@ final class AnchorAnswers {
             return String.valueOf(uses(wanted, budget));
         }
         return noMethod ? uses(wanted, budget) : null;
-    }
-
-    /**
-     * One line per anchor the methods {@code named} define (a handler's route): its uses no compiler
-     * links to the method, counted, and the question that lists them. A route's clients call it over
-     * HTTP, so a callers answer from the compiled classes never names them.
-     */
-    List<String> defined(List<String> named) {
-        Set<String> anchors = new TreeSet<>();
-        for (String id : named) {
-            for (GraphEdge e : graph.incident(id)) {
-                if (e.source().equals(id)
-                        && e.relation().equals(Relations.DEFINES)
-                        && Anchors.is(graph.node(e.target()))) anchors.add(e.target());
-            }
-            GraphNode owner = graph.owner(id);
-            GraphNode n = graph.node(id);
-            String property = n == null ? null : property(n.label());
-            if (owner != null && property != null) anchors.addAll(fieldAnchors(owner.id(), property));
-        }
-        return hints(anchors);
-    }
-
-    /** The anchors type {@code typeId} maps its field {@code field} to: a JPA entity's column. */
-    List<String> fieldAnchors(String typeId, String field) {
-        Set<String> out = new TreeSet<>();
-        for (GraphEdge e : graph.incident(typeId)) {
-            if (e.source().equals(typeId)
-                    && ("field " + field).equals(e.context())
-                    && Anchors.is(graph.node(e.target()))) out.add(e.target());
-        }
-        return List.copyOf(out);
-    }
-
-    /** {@link #hints} for the anchors field {@code field} of {@code typeId} maps to. */
-    List<String> fieldHints(String typeId, String field) {
-        return hints(new TreeSet<>(fieldAnchors(typeId, field)));
-    }
-
-    /**
-     * One line per anchor: its uses no compiler checks, counted, and the question that lists them. A
-     * route's clients call it over HTTP and a column's queries are strings, so a callers answer from the
-     * compiled classes never names them.
-     */
-    private List<String> hints(Set<String> anchors) {
-        List<String> out = new ArrayList<>();
-        for (String a : anchors) {
-            int uses = (int) edges(a, Relations.USES).stream()
-                    .filter(e -> e.confidence() != Confidence.EXTRACTED)
-                    .count();
-            List<String> setters = new ArrayList<>();
-            for (GraphEdge e : graph.incident(a)) {
-                if (e.relation().equals(Relations.BINDS) && e.target().equals(a))
-                    setters.add(GraphQuery.clean(e.source()));
-            }
-            out.add((Anchors.ROUTE.equals(Anchors.kindOf(a)) ? "It defines " : "It maps to ") + GraphQuery.clean(a)
-                    + (setters.isEmpty() ? "" : " (set by " + String.join(", ", setters) + ")")
-                    + ", "
-                    + (uses == 0
-                            ? "which nothing in the graph uses."
-                            : count(uses, "use") + " no compiler checks:" + " callers '" + GraphQuery.clean(a)
-                                    + "' lists them."));
-        }
-        return out;
-    }
-
-    /** {@code telephone} for {@code .getTelephone()}, {@code .setTelephone()} or {@code .isTelephone()}; else null. */
-    private static @Nullable String property(String label) {
-        String name = label.startsWith(".") ? label.substring(1) : label;
-        if (name.endsWith("()")) name = name.substring(0, name.length() - 2);
-        for (String prefix : List.of("get", "set", "is")) {
-            if (name.length() > prefix.length()
-                    && name.startsWith(prefix)
-                    && Character.isUpperCase(name.charAt(prefix.length()))) {
-                return Character.toLowerCase(name.charAt(prefix.length())) + name.substring(prefix.length() + 1);
-            }
-        }
-        return null;
     }
 
     /** The most definitions an anchor's place lists. */
@@ -219,6 +141,7 @@ final class AnchorAnswers {
             lines.add("An inferred use was matched by text and nothing checked it; declared ones are read from"
                     + " annotations and definition files.");
         }
+        lines.addAll(impact.anchor(id));
         return Budget.lines(lines, budget, "Raise the budget, or narrow with scope, modules or source_set");
     }
 
@@ -279,7 +202,10 @@ final class AnchorAnswers {
         if (at.isEmpty()) at = tools.where(e.source()).strip();
         if (at.isEmpty()) at = GraphQuery.clean(e.sourceFile());
         String who = file ? "" : GraphQuery.clean(graph.display(e.source())) + "  ";
+        // A JSON or bean property's definition names its member for the impact answer; the quoted line shows it.
         String context = e.context();
+        if (context != null && e.relation().equals(Relations.DEFINES) && context.matches("(field|method) .*"))
+            context = null;
         String written = context == null
                 ? ""
                 : context.startsWith("field ") ? "  " + GraphQuery.clean(context) : "  as " + GraphQuery.clean(context);

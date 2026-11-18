@@ -143,16 +143,20 @@ class SqlGraphTest {
         assertThat(new GraphTools(g).callers("column:customer_order.state", 1, 2000))
                 .startsWith("column:customer_order.state: 1 definition, 3 uses (1 bound, 1 declared, 1 inferred).")
                 .contains("  OrderEntity  src/main/java/com/acme/OrderEntity.java:", "  field status\n");
-        String hint = "It maps to column:customer_order.state, 2 uses no compiler checks:"
-                + " callers 'column:customer_order.state' lists them.";
+        String places = "anchors (places no compiler checks; must-change first):\n"
+                + "  column:customer_order.state (and 1 use a compiler checks): 1 definition, 1 use:\n";
         assertThat(new GraphTools(g).callers("OrderEntity.getStatus", 1, 2000))
-                .as("a getter's callers name the column its field maps to")
-                .contains(hint);
+                .as("a getter's callers carry the places of the column its field maps to")
+                .contains(places)
+                .contains("    Reports.totals()  ")
+                .doesNotContain("    Reports.states()  ");
         String entity = g.nodes().stream()
                 .filter(n -> n.label().equals("OrderEntity"))
                 .findFirst()
                 .orElseThrow()
                 .id();
-        assertThat(new GraphTools(g).fieldAnchorHints(entity, "status")).containsExactly(hint);
+        assertThat(String.join(
+                        "\n", new GraphTools(g).fieldImpact(entity, "status").before()))
+                .contains(places);
     }
 }

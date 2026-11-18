@@ -136,8 +136,8 @@ nothing.
 
 A use links only to a table or column some DDL defines, except an explicit JPA name or a jOOQ
 field, which make the anchor themselves, so an entity mapped to a column no migration creates
-answers `No file defines it.`. A JPA field's uses answer, and its getter's or setter's callers answer, end with the column it
-maps to and how many uses no compiler checks. A column with no use answers `Nothing uses it.`, which is not a
+answers `No file defines it.`. A JPA field's uses answer, and its getter's or setter's callers answer, carry the column it
+maps to with its places no compiler checks ([What a change reaches](#what-a-change-reaches)). A column with no use answers `Nothing uses it.`, which is not a
 promise: a name assembled at run time is not seen. Not read yet: JPQL and HQL (entity names, not
 tables), Spring Data's derived queries, a custom naming strategy, and SQL in Kotlin or Groovy
 string templates.
@@ -579,8 +579,28 @@ What is exact, and what is not:
 The answer says it is complete only when no such source spells the name: then every use is one javac
 resolved, and no search is needed. Otherwise its second line says how many sources were matched by
 name, and the rest of the list is still exact. An unused field, type or annotation is answered
-`Nothing uses it.` under the same rule, so "no uses" is a fact you can delete on, not a missed
+`No Java source uses it.` under the same rule, so "no uses" is a fact you can delete on, not a missed
 search. Reflection and names in strings are not uses.
+
+### What a change reaches
+
+A `callers` answer carries what else a change to the symbol reaches, so one question does the work
+of one per accessor, column and template. Each list is bounded (six places per anchor, six callers
+per accessor, six test classes, each with the question that lists the rest), the places no compiler
+checks come first, and the answer says what it looked at; it never says nothing else exists.
+
+| Asked about | The answer also carries |
+|---|---|
+| a field (`Owner.telephone`) | a `Looked at:` line naming the anchor kinds looked for and found; under `anchors`, each anchor the field or its accessors map to (its column, JSON or bean property, configuration key) with its definitions, the variables that set it, then its uses, each at `file:line` quoted, uses a compiler checks (jOOQ) counted only; after the Java uses, each accessor's callers (`getX`, `isX`, `setX`, a record's `x()`); then the test classes that call an accessor, or call a method that does, or use one of the anchors |
+| an accessor (`Owner.getTelephone`) | its property's anchors with their places, and the property's other accessors with their callers' `file:line` |
+| a handler (`OwnerController.initFindForm`) | the route it defines, with every place that requests it |
+| a type (`Owner`) | before its uses, one line per anchor it or its members map to or define (its table, its fields' columns and properties, its methods' routes), with counts and the first places |
+| an anchor (`column:owners.telephone`, `bean:Owner.telephone`, `config:...`) | after its places, the Java side: the field it maps to, its accessors' caller counts and the field's other anchors; then the test classes that reach it |
+
+The field, its accessors and the anchors are found through the graph's links (a column a field's
+annotation or name maps to, the member a JSON or bean property is read from, the field a
+`@ConfigurationProperties` key binds), not by name: a method that only happens to be called
+`getTelephone` on another class is not listed.
 
 ## Rename
 

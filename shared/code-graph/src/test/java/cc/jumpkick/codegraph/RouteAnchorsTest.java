@@ -239,8 +239,12 @@ class RouteAnchorsTest {
                         "other:\n  frontend/src/app/hotel-api.ts:6 (inferred)\n"
                                 + "  scripts/smoke.sh:3  as /api/hotels/harborview (inferred)");
         assertThat(new GraphTools(g).callers("HotelController.hotels", 1, 2000))
-                .contains("It defines route:GET /api/hotels, 3 uses no compiler checks:"
-                        + " callers 'route:GET /api/hotels' lists them.");
+                .as("a handler's callers carry its route's places, the handler's own definition left out")
+                .endsWith("anchors (places no compiler checks; must-change first):\n"
+                        + "  route:GET /api/hotels: 3 uses:\n"
+                        + "    .github/workflows/ci.yml:4 (inferred)\n"
+                        + "    frontend/src/app/hotel-api.ts:3 (inferred)\n"
+                        + "    HotelControllerTest.lists()  src/test/java/com/acme/HotelControllerTest.java:13");
     }
 
     /**

@@ -195,12 +195,13 @@ final class JsonAnchors {
                 nodes.add(Anchors.node(Anchors.JSON, name));
                 int line = declarationLine(src.masked(), src.starts(), p.member(), !p.field(), b.line());
                 edges.add(GraphEdge.of(
-                        b.nodeId(),
-                        Anchors.id(Anchors.JSON, name),
-                        Relations.DEFINES,
-                        Confidence.EXTRACTED,
-                        b.rel(),
-                        line));
+                                b.nodeId(),
+                                Anchors.id(Anchors.JSON, name),
+                                Relations.DEFINES,
+                                Confidence.EXTRACTED,
+                                b.rel(),
+                                line)
+                        .withContext((p.field() ? "field " : "method ") + p.member()));
             }
         }
         for (Map.Entry<String, Map<String, GraphEdge>> f : uses.entrySet()) {

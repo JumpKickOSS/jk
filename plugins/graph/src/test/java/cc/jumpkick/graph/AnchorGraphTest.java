@@ -208,8 +208,8 @@ class AnchorGraphTest {
                 .extracting(e -> g.display(e.source()), GraphEdge::confidence, GraphEdge::context)
                 .containsExactly(tuple("VisitLimits", Confidence.DECLARED, "field maxPerDay"));
         assertThat(new GraphTools(g).callers("VisitLimits.getMaxPerDay", 1, 2000))
-                .contains("It maps to config:clinic.visits.maxperday (set by env:CLINIC_VISITS_MAXPERDAY), 1 use no"
-                        + " compiler checks: callers 'config:clinic.visits.maxperday' lists them.");
+                .contains("anchors (places no compiler checks; must-change first):\n"
+                        + "  config:clinic.visits.maxperday: ");
     }
 
     @Test

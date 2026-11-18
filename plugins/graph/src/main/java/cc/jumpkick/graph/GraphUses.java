@@ -8,6 +8,7 @@ import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.GraphQuery;
 import cc.jumpkick.codegraph.GraphTools;
+import cc.jumpkick.codegraph.ImpactLines;
 import cc.jumpkick.codegraph.Linker;
 import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.Relations;
@@ -123,7 +124,7 @@ final class GraphUses {
         }
         // Every source the index does not describe is searched by name, those of a module with no
         // compiled classes included, so no note sends the agent to search them again.
-        return new GraphService.Reply(uses(w, g, scope, subject, budget), List.of());
+        return new GraphService.Reply(uses(w, g, scope, tools, subject, budget), List.of());
     }
 
     private static Subject subject(Kind kind, GraphNode type, @Nullable String member, boolean annotation) {
@@ -178,7 +179,8 @@ final class GraphUses {
     }
 
     /** The uses of a type, an annotation or a field, from the index where it holds them, else by name. */
-    private static String uses(GraphService.Workspace w, CodeGraph g, Scope scope, Subject s, int budget) {
+    private static String uses(
+            GraphService.Workspace w, CodeGraph g, Scope scope, GraphTools tools, Subject s, int budget) {
         Modules modules = g.modules();
         String home = prefix(modules, s.type().sourceFile());
         Set<String> reaching = w.reach().reaching(List.of(home), modules);
@@ -231,7 +233,7 @@ final class GraphUses {
             if (uses.size() > before) guessed.add(rel);
         }
         return Budget.lines(
-                render(g, w.root(), s, uses, guessed),
+                render(g, w.root(), tools, s, uses, guessed),
                 budget,
                 "Raise the budget, or narrow with scope, modules or source_set");
     }
@@ -376,7 +378,8 @@ final class GraphUses {
         return null;
     }
 
-    private static List<String> render(CodeGraph g, Path root, Subject s, List<Use> uses, Set<String> guessed) {
+    private static List<String> render(
+            CodeGraph g, Path root, GraphTools tools, Subject s, List<Use> uses, Set<String> guessed) {
         String subject = display(g, s);
         boolean field = s.kind() == Kind.FIELD;
         List<Use> code = uses.stream().filter(u -> !u.doc()).toList();
@@ -398,10 +401,15 @@ final class GraphUses {
                     + " javac has not indexed as they stand (Kotlin, Groovy, edited or uncompiled Java) spell the"
                     + " name; those lines are matched by name and marked (inferred). Java uses elsewhere are exact.");
         }
-        if (field && s.member() != null)
-            lines.addAll(new GraphTools(g).fieldAnchorHints(s.type().id(), s.member()));
+        // What else the change reaches, the places no compiler checks first (a field's anchors, a
+        // type's); the Java uses follow, which the build checks, then a field's accessors and tests.
+        ImpactLines impact = field && s.member() != null
+                ? tools.fieldImpact(s.type().id(), s.member())
+                : s.kind() == Kind.TYPE ? tools.typeImpact(s.type().id()) : new ImpactLines(List.of(), List.of());
+        lines.addAll(impact.before());
         if (code.isEmpty() && docs == 0) {
-            lines.add(guessed.isEmpty() ? "Nothing uses it." : "Nothing resolved uses it.");
+            lines.add(guessed.isEmpty() ? "No Java source uses it." : "Nothing resolved uses it.");
+            lines.addAll(impact.after());
             return lines;
         }
         Map<String, List<String>> text = new HashMap<>();
@@ -423,6 +431,7 @@ final class GraphUses {
             }
             group(lines, g, root, text, set.stream().filter(Use::doc).toList(), "doc links");
         }
+        lines.addAll(impact.after());
         return lines;
     }
 

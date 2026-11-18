@@ -215,7 +215,9 @@ class GraphUsesTest {
         assertThat(callers(root, "Box.unused"))
                 .startsWith("Uses of Box.unused (field): 0 in main sources, 0 in tests (0 writes, 0 reads).")
                 .contains("Complete:")
-                .endsWith("Nothing uses it.");
+                .contains("Looked at: its Java uses, accessors (none declared), anchors it maps to (column, json, bean,"
+                        + " config, cli; found none)")
+                .endsWith("No Java source uses it.");
     }
 
     @Test
