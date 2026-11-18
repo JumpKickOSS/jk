@@ -2,6 +2,7 @@
 package cc.jumpkick.test;
 
 import cc.jumpkick.cache.ActionRecordText;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -45,7 +46,9 @@ import org.jspecify.annotations.Nullable;
  * may travel, and a plain digest of a short secret is guessed by trying values. So a result that
  * read an undeclared variable keys alike on this host alone. Under {@code [env] scope} the module
  * has said which names its suites may see, and those key by plain digest, as a declared name's
- * value does, so the result may be shared ({@link #localOnly}). What the test JVM could not have been handed under the module's policy now (a name outside the scope, or
+ * value does, so the result may be shared ({@link #localOnly}); a name that reads as a credential
+ * ({@link BuildEnv#looksSecret}) keys by HMAC still, and keeps its result on this host. What the
+ * test JVM could not have been handed under the module's policy now (a name outside the scope, or
  * one it declares since) keys nothing, whatever an earlier run under another policy kept ({@link
  * Record#under}). A result keyed on this host alone carries {@link #HOST_TOKEN}, and never leaves it
  * ({@code ActionRecordText.shareable}).
@@ -314,7 +317,7 @@ public final class SuiteEnvReads {
      * =unknown} when the run has no caller to say), one for a listing ({@code env-names=}) and a
      * whole environment ({@code env-all=}), and {@link #HOST_TOKEN} when the result keys alike on
      * this host alone ({@link #localOnly}). A digest is an HMAC under this jk home's secret, or a
-     * plain digest under a scope.
+     * plain digest under a scope for a name that is no credential.
      */
     public static List<String> tokens(Record record, Policy policy, CallerEnv caller) {
         return keyed(record, policy, caller).tokens();
@@ -323,7 +326,8 @@ public final class SuiteEnvReads {
     /**
      * Why a result keyed on {@code record} for {@code caller} stays on this host, or null when it may
      * be shared: it read a variable the module neither declares nor scopes, listed or took the
-     * environment unscoped, or ran with no caller to answer for it. Every other value it read of a declared, scoped or allow-listed name is keyed alike
+     * environment unscoped, read a credential's value under a scope, or ran with no caller to answer
+     * for it. Every other value it read of a declared, scoped or allow-listed name is keyed alike
      * everywhere, so only those results travel.
      */
     public static @Nullable String localOnly(Record record, Policy policy, CallerEnv caller) {
@@ -345,7 +349,9 @@ public final class SuiteEnvReads {
             CallerEnv.Value v = values.getOrDefault(name, CallerEnv.Value.UNKNOWN);
             out.add(READ_TOKEN + name + "=" + digest(keying, name, v));
             if (local == null && !keying.shared(name) && v.state() == CallerEnv.State.SET)
-                local = "read " + name + ", which the module does not declare";
+                local = policy.scoped()
+                        ? "read " + name + ", which names a credential, so its value keys on this host alone"
+                        : "read " + name + ", which the module does not declare";
         }
         if (record.listed()) {
             Set<String> names = caller.names();
@@ -357,10 +363,15 @@ public final class SuiteEnvReads {
         if (record.whole()) {
             Map<String, String> all = caller.all();
             Map<String, String> visible = all == null ? Map.of() : visibleValues(all, policy);
-            out.add(ALL_TOKEN + (all == null ? UNKNOWN : keying.aggregate(keyedValues(visible))));
+            out.add(ALL_TOKEN + (all == null ? UNKNOWN : keying.aggregate(keyedValues(visible, keying))));
             if (KeyAudit.listening())
                 visible.forEach((n, v) -> KeyAudit.tap(VALUE_DETAIL + n + "=" + keying.value(n, v)));
             if (local == null && !policy.scoped()) local = "started a program, which sees the whole environment";
+            for (String n : visible.keySet()) {
+                if (local == null && !keying.shared(n))
+                    local = "started a program with " + n + " set, which names a credential, so its value keys on"
+                            + " this host alone";
+            }
         }
         if (local != null) out.add(HOST_TOKEN);
         return new Keyed(out, local);
@@ -368,7 +379,10 @@ public final class SuiteEnvReads {
 
     /**
      * How a value enters a key: by HMAC under this jk home's secret ({@link EnvReadKey}, read only
-     * when a value needs it), or by plain digest under a scope, so another host keys alike.
+     * when a value needs it), or by plain digest under a scope, so another host keys alike. Under a
+     * scope a name that reads as a credential ({@link BuildEnv#looksSecret}: the repository token
+     * variables, a datasource password) is HMAC'd still: no record, here or shared, holds a plain
+     * digest a guessed secret could be checked against.
      */
     private static final class Keying {
         private final boolean scoped;
@@ -380,7 +394,7 @@ public final class SuiteEnvReads {
 
         /** Whether {@code name}'s value keys alike on every host. */
         boolean shared(String name) {
-            return scoped;
+            return scoped && !BuildEnv.looksSecret(name);
         }
 
         /** {@code name}'s {@code value} as a key holds it. */
@@ -433,10 +447,16 @@ public final class SuiteEnvReads {
         return new ArrayList<>(out);
     }
 
-    /** The whole environment as a suite that starts programs keys on, from {@link #visibleValues}. */
-    private static String keyedValues(Map<String, String> visible) {
+    /**
+     * The whole environment as a suite that starts programs keys on, from {@link #visibleValues}:
+     * each value as it is, but a credential's as its HMAC when the whole is digested plainly.
+     */
+    private static String keyedValues(Map<String, String> visible, Keying keying) {
         StringBuilder sb = new StringBuilder();
-        visible.forEach((n, v) -> sb.append(n).append('=').append(v).append('\n'));
+        visible.forEach((n, v) -> sb.append(n)
+                .append('=')
+                .append(keying.scoped && !keying.shared(n) ? keying.value(n, v) : v)
+                .append('\n'));
         return sb.toString();
     }
 

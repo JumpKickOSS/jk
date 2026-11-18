@@ -14,8 +14,9 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * Under {@code [env] scope} a suite keys on what its test JVM could be handed and nothing else,
- * and a result only this home keys alike stays here (JK-2M8VG). The names are the dojo-5 study's scoped spring-petclinic record's: the
+ * Under {@code [env] scope} a suite keys on what its test JVM could be handed and nothing else, a
+ * credential's value never by a plain digest, and a result only this home keys alike stays here
+ * (JK-2M8VG, JK-1QNSV). The names are the dojo-5 study's scoped spring-petclinic record's: the
  * writer's suite had read them before the module scoped, and kept them.
  */
 class ScopedEnvKeysTest {
@@ -100,6 +101,52 @@ class ScopedEnvKeysTest {
         assertThat(inA).anyMatch(t -> t.startsWith("env-read:USER=")).contains(SuiteEnvReads.HOST_TOKEN);
         assertThat(SuiteEnvReads.localOnly(STUDY, SuiteEnvReads.Policy.NONE, a))
                 .isEqualTo("read " + TOKEN_VAR + ", which the module does not declare");
+    }
+
+    @Test
+    void a_credential_the_scope_lets_through_keys_by_this_homes_secret_and_stays_here() {
+        String password = "made-up-password";
+        SuiteEnvReads.Record read =
+                new SuiteEnvReads.Record(Set.of("SPRING_DATASOURCE_PASSWORD", "SPRING_PROFILES_ACTIVE"), false, false);
+        CallerEnv shell = caller(Map.of("SPRING_DATASOURCE_PASSWORD", password, "SPRING_PROFILES_ACTIVE", "test"));
+
+        List<String> tokens = SuiteEnvReads.tokens(read, PETCLINIC, shell);
+
+        String plain = Hashing.sha256Hex("SPRING_DATASOURCE_PASSWORD\u0000" + password);
+        assertThat(tokens)
+                .as("no plain digest a guessed password could be checked against")
+                .noneMatch(t -> t.contains(plain) || t.contains(password))
+                .anyMatch(t -> t.startsWith("env-read:SPRING_DATASOURCE_PASSWORD="))
+                .contains(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.localOnly(read, PETCLINIC, shell))
+                .contains("SPRING_DATASOURCE_PASSWORD")
+                .contains("credential");
+        assertThat(SuiteEnvReads.tokens(read, PETCLINIC, caller(Map.of("SPRING_PROFILES_ACTIVE", "test"))))
+                .as("unset, it keys as unset everywhere")
+                .contains("env-read:SPRING_DATASOURCE_PASSWORD=unset")
+                .doesNotContain(SuiteEnvReads.HOST_TOKEN);
+    }
+
+    @Test
+    void jks_own_token_variable_under_a_scope_that_lets_everything_through_is_never_keyed_plainly() {
+        SuiteEnvReads.Policy everything = new SuiteEnvReads.Policy(false, List.of("*"), Set.of());
+        String token = "made-up-cache-token";
+        SuiteEnvReads.Record read = new SuiteEnvReads.Record(Set.of(TOKEN_VAR), false, true);
+        CallerEnv shell = caller(Map.of(TOKEN_VAR, token, "MODE", "fast"));
+
+        List<String> tokens = SuiteEnvReads.tokens(read, everything, shell);
+
+        assertThat(tokens)
+                .noneMatch(t -> t.contains(Hashing.sha256Hex(TOKEN_VAR + "\u0000" + token)))
+                .contains(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.tokens(
+                        new SuiteEnvReads.Record(Set.of(), false, true),
+                        everything,
+                        caller(Map.of(TOKEN_VAR, token, "MODE", "fast"))))
+                .as("a program started with the token set keys on this host alone")
+                .contains(SuiteEnvReads.HOST_TOKEN)
+                .noneMatch(t ->
+                        t.equals("env-all=" + Hashing.sha256Hex("\u0000" + TOKEN_VAR + "=" + token + "\nMODE=fast\n")));
     }
 
     /**

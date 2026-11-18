@@ -1083,7 +1083,11 @@ for every member that sets none of its own.
 
 Under a scope a scoped value is keyed by its plain digest, so two homes key it alike. A name
 outside the scope keys nothing: the test saw it unset, as it does on every host, even when a run
-before the scope read it.
+before the scope read it. A scoped name that reads as a credential (it says `TOKEN`, `SECRET`,
+`KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, as `SPRING_DATASOURCE_PASSWORD` and
+JumpKick's own `JK_REPO_*_TOKEN` do) is still HMAC'd when it is set, so no record here or in a
+shared cache holds a digest a guessed secret could be checked against, and such a result stays
+on this host. Unset, it keys as unset everywhere.
 
 The test JVM always gets what JumpKick hands every worker, scope or not: the machine's
 `PATH`, `HOME` and temp roots (and on Windows `USERPROFILE` and the system roots), the locale and
