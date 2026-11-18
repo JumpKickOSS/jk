@@ -35,7 +35,7 @@ class WorkspacePreflightPinsBehindTest {
             }
         };
 
-        WorkspacePreflightPhase.warnPinsBehindClient(request(), listener);
+        WorkspacePreflightPhase.warnPinsBehindClient(request(), listener, "0.52.0");
 
         assertThat(warnings)
                 .singleElement()
@@ -44,8 +44,11 @@ class WorkspacePreflightPinsBehindTest {
                 .contains("library 0.1.0 (jk-guards.toml)", "run jk update");
 
         warnings.clear();
+        WorkspacePreflightPhase.warnPinsBehindClient(request(), listener, "0.52.1-SNAPSHOT");
+        assertThat(warnings).as("a checkout's snapshot jk nags about nothing").isEmpty();
+
         Files.writeString(tmp.resolve("jk-guards.toml"), "[guards]\nextends = [\"com.acme:house:0.1.0\"]\n");
-        WorkspacePreflightPhase.warnPinsBehindClient(request(), listener);
+        WorkspacePreflightPhase.warnPinsBehindClient(request(), listener, "0.52.0");
         assertThat(warnings).as("a third-party pack is not JumpKick's").isEmpty();
     }
 

@@ -303,10 +303,15 @@ public final class WorkspacePreflightPhase {
      * builds runs this preflight, so the warning is one, whichever verb asked.
      */
     static void warnPinsBehindClient(WorkspaceRequest request, WorkspaceBuildListener listener) {
+        warnPinsBehindClient(request, listener, JkVersion.VERSION);
+    }
+
+    /** As above for a jk at {@code client}; a jk that is not a release names nothing ({@link JumpKickPins#behind}). */
+    static void warnPinsBehindClient(WorkspaceRequest request, WorkspaceBuildListener listener, String client) {
         Path owner = LockPaths.lockOwnerDir(request.entryDir()).toAbsolutePath().normalize();
         List<JumpKickPins.Pin> behind;
         try {
-            behind = JumpKickPins.behind(owner, JkVersion.VERSION);
+            behind = JumpKickPins.behind(owner, client);
         } catch (RuntimeException unreadable) {
             return;
         }
@@ -317,7 +322,7 @@ public final class WorkspacePreflightPhase {
                 name == null ? owner.toString() : name.toString(),
                 "lock",
                 PINS_BEHIND,
-                JumpKickPins.describe(owner, behind, JkVersion.VERSION));
+                JumpKickPins.describe(owner, behind, client));
     }
 
     private static Optional<Completed> freshenLock(

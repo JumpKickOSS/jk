@@ -31,5 +31,11 @@ class DoctorPinsRowTest {
         HostRow current = DoctorChecks.pins(project, "0.50.2");
         assertThat(current.status()).isEqualTo(HostRow.Status.OK);
         assertThat(current.detail()).isEqualTo("1 JumpKick pin at this jk's release or newer");
+
+        HostRow snapshot = DoctorChecks.pins(project, "0.51.2-SNAPSHOT");
+        assertThat(snapshot.status()).as("a checkout's jk nags about nothing").isEqualTo(HostRow.Status.OK);
+        assertThat(snapshot.detail())
+                .isEqualTo("1 JumpKick pin; not compared: this jk (0.51.2-SNAPSHOT) is not a release")
+                .doesNotContain("jk update");
     }
 }

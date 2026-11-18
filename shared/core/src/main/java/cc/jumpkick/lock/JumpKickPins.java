@@ -90,11 +90,13 @@ public final class JumpKickPins {
     }
 
     /**
-     * True when {@code pinned} is a release older than {@code client}. A pin that is not a plain
-     * version, or a client that is not a release (a checkout's build), compares by numeric core,
-     * so a dev build of 0.51.2 still calls a 0.51.1 pin behind and never a 0.51.2 one.
+     * True when {@code pinned} is a release older than {@code client}, a release. A pin that is not
+     * a plain version compares by numeric core. A client that is not a release (a checkout's
+     * {@code -SNAPSHOT} build) calls nothing behind: its version is published nowhere, the release
+     * before it may be the newest there is, and the way out would be to pin a snapshot.
      */
     public static boolean behind(String pinned, String client) {
+        if (!isRelease(client)) return false;
         String p = Versions.numericCore(pinned);
         String c = Versions.numericCore(client);
         if (p.isEmpty() || c.isEmpty()) return false;
@@ -161,9 +163,17 @@ public final class JumpKickPins {
                 .toList();
     }
 
-    /** The one line a build and {@code jk doctor} say about {@code behind}; empty when there is nothing. */
+    /** True when {@code client} is a released jk, the only one whose pins can be behind it ({@link #behind}). */
+    public static boolean isRelease(String client) {
+        return Versions.isStable(client);
+    }
+
+    /**
+     * The one line a build and {@code jk doctor} say about {@code behind}; empty when there is
+     * nothing, or when {@code client} is not a release, whose version no pin may move to.
+     */
     public static String describe(Path lockDir, List<Pin> behind, String client) {
-        if (behind.isEmpty()) return "";
+        if (behind.isEmpty() || !isRelease(client)) return "";
         String pins = behind.stream().map(p -> p.describe(lockDir)).collect(Collectors.joining(", "));
         return "JumpKick's own " + (behind.size() == 1 ? "pin is" : "pins are") + " behind this jk (" + client
                 + "): " + pins + "; JumpKick removes older releases from its repository, so run jk update to"

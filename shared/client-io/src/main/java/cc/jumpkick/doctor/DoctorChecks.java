@@ -303,6 +303,13 @@ public final class DoctorChecks {
             List<JumpKickPins.Pin> behind = declared.stream()
                     .filter(p -> JumpKickPins.behind(p.version(), version))
                     .toList();
+            if (behind.isEmpty() && !declared.isEmpty() && !JumpKickPins.isRelease(version)) {
+                return row(
+                        "pins",
+                        Status.OK,
+                        declared.size() + " JumpKick " + (declared.size() == 1 ? "pin" : "pins")
+                                + "; not compared: this jk (" + version + ") is not a release");
+            }
             if (behind.isEmpty()) {
                 return row(
                         "pins",

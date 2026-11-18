@@ -70,11 +70,29 @@ class JumpKickPinsTest {
     }
 
     @Test
-    void behind_compares_numeric_cores_so_a_checkout_build_is_its_release() {
-        assertThat(JumpKickPins.behind("0.51.1", "0.51.2-SNAPSHOT")).isTrue();
-        assertThat(JumpKickPins.behind("0.51.2", "0.51.2-SNAPSHOT")).isFalse();
+    void behind_compares_numeric_cores_against_a_released_jk() {
+        assertThat(JumpKickPins.behind("0.51.1", "0.51.2")).isTrue();
+        assertThat(JumpKickPins.behind("0.51.2", "0.51.2")).isFalse();
         assertThat(JumpKickPins.behind("0.52.0", "0.51.2")).isFalse();
         assertThat(JumpKickPins.behind("not-a-version", "0.51.2")).isFalse();
+    }
+
+    /**
+     * A checkout's {@code -SNAPSHOT} jk nags about nothing: the release before it (0.52.0 under
+     * 0.52.1-SNAPSHOT) may be the newest published, and moving to the client's version would pin
+     * a snapshot. The ticket's every-command line was this case.
+     */
+    @Test
+    void a_snapshot_jk_calls_no_pin_behind_and_never_advises_its_own_version(@TempDir Path ws) throws Exception {
+        assertThat(JumpKickPins.behind("0.52.0", "0.52.1-SNAPSHOT")).isFalse();
+        assertThat(JumpKickPins.behind("0.20.0", "0.52.1-SNAPSHOT")).isFalse();
+        Files.writeString(ws.resolve("jk.toml"), "name = \"app\"\n");
+        Files.writeString(
+                ws.resolve("jk-guards.toml"), "[guards]\nextends = [\"cc.jumpkick.guards:library:0.52.0\"]\n");
+        assertThat(JumpKickPins.declared(ws)).hasSize(1);
+        assertThat(JumpKickPins.behind(ws, "0.52.1-SNAPSHOT")).isEmpty();
+        assertThat(JumpKickPins.describe(ws, JumpKickPins.declared(ws), "0.52.1-SNAPSHOT"))
+                .isEmpty();
     }
 
     @Test
