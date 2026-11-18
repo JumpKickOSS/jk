@@ -223,11 +223,12 @@ final class SseEndpoint {
      * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
      * events with {@code notifications/jk/event} JSON-RPC bodies. Optional query filters: {@code
      * jid} (engine job id) or {@code progressToken} (bound from tools/call {@code
-     * _meta.progressToken}).
+     * _meta.progressToken} on the session the request's {@code Mcp-Session-Id} names).
      */
     void serveMcp(HttpExchange exchange) throws IOException {
-        Supplier<@Nullable Long> filter =
-                mcpEventFilter(exchange.getRequestURI().getRawQuery());
+        Supplier<@Nullable Long> filter = mcpEventFilter(
+                exchange.getRequestHeaders().getFirst(McpFront.SESSION_HEADER),
+                exchange.getRequestURI().getRawQuery());
         Long jid = filter == null ? null : filter.get();
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
@@ -254,11 +255,12 @@ final class SseEndpoint {
 
     /**
      * The optional SSE filter a query names; {@code null} is every job. {@code jid} wins over {@code
-     * progressToken}. A token is resolved per event, so a stream opened before the {@code
-     * tools/call} that binds it follows that job once it starts, and never another job before.
+     * progressToken}. A token is {@code session}'s own (null for a request with no session id) and
+     * is resolved per event, so a stream opened before the {@code tools/call} that binds it follows
+     * that job once it starts, and never another job before, nor another session's.
      */
     @Nullable
-    Supplier<@Nullable Long> mcpEventFilter(@Nullable String query) {
+    Supplier<@Nullable Long> mcpEventFilter(@Nullable String session, @Nullable String query) {
         String rid = HttpQuery.queryParamLenient(query, "jid");
         if (rid != null && !rid.isBlank()) {
             try {
@@ -271,7 +273,7 @@ final class SseEndpoint {
         String tok = HttpQuery.queryParamLenient(query, "progressToken");
         if (tok != null && !tok.isBlank()) {
             String token = tok.trim();
-            return () -> progressTokens.resolve(token);
+            return () -> progressTokens.resolve(session, token);
         }
         return null;
     }

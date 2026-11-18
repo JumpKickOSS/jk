@@ -181,7 +181,9 @@ from the event stream (below).
 `jk mcp` handles requests concurrently: while a `run` waits, a `ping`, a `status` or a second call
 answers at once. A `notifications/cancelled` naming an outstanding `run` cancels its job, and the
 call answers with the cancelled verdict. Over HTTP, send the cancel with the call's
-`_meta.progressToken` in its own `params._meta`, or call the `cancel` tool with the `jid`.
+`_meta.progressToken` in its own `params._meta`, or call the `cancel` tool with the `jid`. A
+progress token is the session's own: the cancel finds it only under the `Mcp-Session-Id` the call
+went out on, so two agents that pick the same token never cancel each other's job.
 
 The CLI prints the same text with `--agent` or `JK_AGENT=1`, and when stdout is not a terminal
 and the process was spawned by a coding-agent CLI. Human terminals keep today's output.
@@ -403,7 +405,7 @@ when there are several) with the same widgets `jk new` uses. Anywhere, `-y` acce
 | Query | Effect |
 |-------|--------|
 | `?jid=N` | Only that job (from the tool result) |
-| `?progressToken=T` | The job a `tools/call` with `"_meta":{"progressToken":"T"}` runs or waits on; the stream may open before that call |
+| `?progressToken=T` | The job a `tools/call` with `"_meta":{"progressToken":"T"}` on the same `Mcp-Session-Id` runs or waits on (send the header with the `GET`); the stream may open before that call |
 
 Unfiltered `GET /mcp` still receives every job.
 

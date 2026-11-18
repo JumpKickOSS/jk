@@ -292,7 +292,7 @@ class McpHandlerTest {
         String body = withTokens.handleBody("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":{\"dir\":\"/tmp/demo\",\"kind\":\"build\",\"wait\":false},"
                 + "\"_meta\":{\"progressToken\":\"tok-1\"}}}");
-        assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
+        assertThat(tokens.resolve(null, "tok-1")).isEqualTo(42L);
         assertThat(body).contains("jid=42");
         assertThat(body).contains("jid=42");
     }

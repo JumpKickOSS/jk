@@ -188,7 +188,10 @@ public final class McpHandler {
     public void sessions(SessionLog sessions) {
         ctx.sessions(sessions);
         McpConnections connections = ctx.connections();
-        sessions.whenConnectionEnds(connections::close);
+        sessions.whenConnectionEnds(id -> {
+            connections.close(id);
+            ctx.progressTokens().forget(id);
+        });
         String engine = ctx.version();
         ctx.connections().store(new McpConnections.Store() {
             @Override
@@ -226,6 +229,7 @@ public final class McpHandler {
     public boolean closeConnection(@Nullable String sessionId) {
         McpConnection c = ctx.connections().find(sessionId);
         boolean closed = ctx.connections().close(sessionId);
+        if (closed) ctx.progressTokens().forget(sessionId);
         SessionLog log = ctx.sessions();
         if (closed && c != null && log != null) log.end(ORIGIN, c.label());
         return closed;
@@ -406,7 +410,7 @@ public final class McpHandler {
         return switch (method) {
             case "notifications/initialized", "initialized" -> null; // notification
             case "notifications/cancelled" -> {
-                McpJobRuns.cancelled(ctx, params);
+                McpJobRuns.cancelled(ctx, connection, params);
                 yield null;
             }
             case "ping" -> Map.of();

@@ -60,7 +60,7 @@ public final class McpJobRuns {
                 requestId = running.jid();
             }
             String progressToken = in.progressToken();
-            if (progressToken != null) ctx.progressTokens().bind(progressToken, requestId);
+            if (progressToken != null) ctx.progressTokens().bind(sessionId(in.connection()), progressToken, requestId);
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("kind", spec.kind());
             fields.put("jid", requestId);
@@ -111,7 +111,7 @@ public final class McpJobRuns {
     public static Map<String, Object> await(McpCall in, long jid) {
         McpContext ctx = in.ctx();
         String progressToken = in.progressToken();
-        if (progressToken != null) ctx.progressTokens().bind(progressToken, jid);
+        if (progressToken != null) ctx.progressTokens().bind(sessionId(in.connection()), progressToken, jid);
         int timeoutS = timeoutS(in);
         McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
         boolean done =
@@ -185,14 +185,21 @@ public final class McpJobRuns {
     /**
      * {@code notifications/cancelled}: the job bound to the cancelled call's progress token
      * ({@code params._meta.progressToken}, which {@code jk mcp} adds) is cancelled, so the parked
-     * call answers with its verdict. A call that started no job, or an unknown token, is left alone.
+     * call answers with its verdict. The token is looked up under the cancel's own {@code connection}
+     * (null for none), so it never reaches another session's job. A call that started no job, or an
+     * unknown token, is left alone.
      */
-    public static void cancelled(McpContext ctx, Map<String, Object> params) {
+    public static void cancelled(McpContext ctx, @Nullable McpConnection connection, Map<String, Object> params) {
         if (!(params.get("_meta") instanceof Map<?, ?> meta)) return;
         Object token = meta.get("progressToken");
         if (token == null) return;
-        Long jid = ctx.progressTokens().resolve(String.valueOf(token));
+        Long jid = ctx.progressTokens().resolve(sessionId(connection), String.valueOf(token));
         if (jid != null) ctx.jobs().cancel(jid);
+    }
+
+    /** The {@code Mcp-Session-Id} a progress token is bound under: the connection's, or null for none. */
+    private static @Nullable String sessionId(@Nullable McpConnection connection) {
+        return connection == null ? null : connection.id();
     }
 
     /** Modules and test filters, emitted only when the caller narrowed the job. */

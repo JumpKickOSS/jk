@@ -44,6 +44,7 @@ class McpBridgeTest {
     private final List<String> sessions = new CopyOnWriteArrayList<>();
     private final List<String> tokens = new CopyOnWriteArrayList<>();
     private final List<String> eventQueries = new CopyOnWriteArrayList<>();
+    private final List<String> eventSessions = new CopyOnWriteArrayList<>();
     private final List<String> bodies = new CopyOnWriteArrayList<>();
     private final Set<String> forgotten = ConcurrentHashMap.newKeySet();
     private final AtomicInteger opened = new AtomicInteger();
@@ -109,6 +110,7 @@ class McpBridgeTest {
     /** The engine's filtered event stream: one step, one label, then quiet until the bridge hangs up. */
     private void events(HttpExchange exchange) throws IOException {
         eventQueries.add(exchange.getRequestURI().getRawQuery());
+        eventSessions.add(exchange.getRequestHeaders().getFirst(McpBridge.SESSION_HEADER));
         if (eventsDown) {
             exchange.sendResponseHeaders(404, -1);
             exchange.close();
@@ -205,6 +207,18 @@ class McpBridgeTest {
         String out = serve(paced(), slowCall(",\"_meta\":{\"progressToken\":\"t\"}"));
         assertThat(progress(out)).hasSizeGreaterThanOrEqualTo(3).allSatisfy(n -> assertThat(n.get("message"))
                 .isEqualTo("running"));
+    }
+
+    @Test
+    void the_event_stream_names_the_session_the_call_went_out_on() throws IOException {
+        serve(
+                paced(),
+                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}",
+                slowCall(",\"_meta\":{\"progressToken\":7}"));
+        assertThat(eventQueries).containsExactly("progressToken=7");
+        assertThat(eventSessions)
+                .as("the engine finds a client's token only under the session that bound it")
+                .containsExactly("ab12");
     }
 
     @Test

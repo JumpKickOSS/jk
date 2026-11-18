@@ -88,7 +88,7 @@ public final class McpBridge {
     /** Requests in flight at once; a line past this waits for one to answer. */
     static final int MAX_IN_FLIGHT = 32;
 
-    /** Prefix of a token the bridge adds; unique per bridge, since the engine's token table is shared. */
+    /** Prefix of a token the bridge adds, so it never repeats a token the client chose itself. */
     private final String tokenPrefix = "jk-mcp-" + UUID.randomUUID() + "-";
 
     private final AtomicLong tokens = new AtomicLong();
@@ -355,19 +355,20 @@ public final class McpBridge {
         }
     }
 
-    /** The engine's MCP event stream for one progress token. */
+    /** The engine's MCP event stream for one progress token, on the session the call went out on. */
     private InputStream events(String token) throws IOException, InterruptedException {
         Endpoint target = endpoint;
         if (target == null) target = endpoints.current();
         String url = target.url().toString();
         URI uri = URI.create(url + (url.contains("?") ? "&" : "?") + "progressToken="
                 + URLEncoder.encode(token, StandardCharsets.UTF_8));
-        HttpRequest request = Http.proxiedRequest(uri)
+        HttpRequest.Builder request = Http.proxiedRequest(uri)
                 .header("Authorization", "Bearer " + target.token())
                 .header("Accept", "text/event-stream")
-                .GET()
-                .build();
-        HttpResponse<InputStream> response = http.send(request, HttpResponse.BodyHandlers.ofInputStream());
+                .GET();
+        String sent = session;
+        if (sent != null) request.header(SESSION_HEADER, sent);
+        HttpResponse<InputStream> response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
         if (response.statusCode() / 100 != 2) {
             response.body().close();
             throw new IOException("jk engine event stream answered HTTP " + response.statusCode());
