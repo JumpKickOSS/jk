@@ -35,7 +35,7 @@ final class Impact {
     static final int TYPE_ANCHORS = 12;
 
     /** The anchor kinds a field can map to, as an answer names what it looked at. */
-    static final String FIELD_KINDS = "column, json, bean, config, cli";
+    static final String FIELD_KINDS = "column, json, bean, config";
 
     private final CodeGraph graph;
     private final Scope scope;

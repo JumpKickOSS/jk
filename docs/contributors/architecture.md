@@ -1062,7 +1062,7 @@ have) are open.
 The code graph (`shared/code-graph`, built in `plugins/graph`) links symbols through the
 compiler. An **anchor** is a node for a surface that code and files no compiler checks both
 name: a configuration key, an environment variable, an HTTP route, a network port, a SQL table or
-column, a CLI command or flag. Every file or symbol that defines or uses the surface gets an edge to the
+column, a JSON property of a route's body, a bean property a template reads. Every file or symbol that defines or uses the surface gets an edge to the
 anchor, in whatever language it is written, so N languages need N extractors, not N² pairwise
 ones.
 
@@ -1079,7 +1079,6 @@ the two namespaces apart.
 | `port` | `port:8080` | the number without leading zeros, a `/tcp` or `/udp` dropped |
 | `table` | `table:orders` | lower-cased unless quoted, quotes, backticks and brackets dropped; a schema stays when written, but for the default `public` and `dbo` |
 | `column` | `column:orders.status` | table key, `.`, column key |
-| `cli` | `cli:jk build --skip-tests` | program, subcommand path, then one flag, whitespace collapsed, `=value` dropped |
 
 Kinds are open strings (`[a-z][a-z0-9.-]*`): a kind `Anchors` does not list keys its name
 trimmed, so a new extractor adds a kind without a schema change. Nothing in an id names a
@@ -1098,7 +1097,7 @@ answer carries the schema's history. An edge's `context` holds the name as writt
 |---|---|---|---|
 | bound | `EXTRACTED` | a compiler or code generator made the link | a call to a jOOQ field the generator wrote for the column; a generated client method |
 | declared | `DECLARED` | read from a framework annotation's literal or a definition file's syntax | `@GetMapping("/orders")`, `@Value("${k}")`, a YAML key, `CREATE TABLE`, `System.getenv("X")` |
-| inferred | `INFERRED`, `AMBIGUOUS` | a string matched, or a name the linker matched | a key-shaped literal, SQL inside a string, a `curl` URL in a script, a flag on a command line in a workflow |
+| inferred | `INFERRED`, `AMBIGUOUS` | a string matched, or a name the linker matched | a key-shaped literal, SQL inside a string, a `curl` URL in a script, a JSON property a client reads |
 
 `DECLARED` is new; the existing scale had no step between a link read straight from code and a
 guess. An extractor that knows the anchor writes the edge itself, with its grade; a name only the

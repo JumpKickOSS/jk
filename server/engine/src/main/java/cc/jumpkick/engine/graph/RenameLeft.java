@@ -13,7 +13,7 @@ import java.util.Map;
 /**
  * What a rename left that no compile or test reads, as the verdict after its check says it: the
  * uses it listed and nobody applied (a template's bean path, a compose file's variable, a SQL column,
- * a CLI flag in a script, a port in a Dockerfile) and the hazards nobody pinned. The graph worker
+ * a variable in a script, a port in a Dockerfile) and the hazards nobody pinned. The graph worker
  * writes them after each rename and {@code also}, one row each: {@code id \t must|may \t what \t rel
  * \t line}, {@code what} being the use's reason as the answer gave it. An agent told the task was
  * done trusted it and left the compose file's variable stale; told what is left, it needs no grep.

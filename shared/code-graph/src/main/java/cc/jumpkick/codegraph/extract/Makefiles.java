@@ -9,7 +9,6 @@ import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,7 +17,7 @@ import java.util.regex.Pattern;
  * {@code $(VAR)} and {@code ${VAR}} named as a variable are inferred mentions of it, linked only to
  * one something else sets or reads; {@code VAR ?= default} reads it, declared; {@code export VAR}
  * sets it for the recipes, declared. A recipe line is a shell line ({@code $$VAR} read, URLs to this
- * service requested, flags passed). Comments are skipped; targets and prerequisites are not read yet.
+ * service requested). Comments are skipped; targets and prerequisites are not read yet.
  */
 final class Makefiles {
 
@@ -36,7 +35,7 @@ final class Makefiles {
                 || name.toLowerCase(Locale.ROOT).endsWith(".mk");
     }
 
-    static Fragment extract(String relPath, String text, Set<String> programs) {
+    static Fragment extract(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "code", "makefile");
         List<String> lines = Lines.split(text);
         for (int i = 0; i < lines.size(); i++) {
@@ -57,7 +56,6 @@ final class Makefiles {
                 String shell = REFERENCE.matcher(make).replaceAll("").replace('\u0000', '$');
                 Requests.urls(b, b.fileId(), shell, n);
                 EnvVars.shellLine(b, shell, n);
-                CommandLines.mentions(b, programs, b.fileId(), shell, n);
                 continue;
             }
             Matcher e = EXPORT.matcher(line);

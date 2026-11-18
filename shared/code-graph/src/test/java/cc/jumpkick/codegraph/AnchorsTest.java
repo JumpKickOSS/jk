@@ -42,7 +42,6 @@ class AnchorsTest {
         assertThat(Anchors.id("table", "\"Orders\"")).isEqualTo("table:Orders");
         assertThat(Anchors.id("column", "`orders`.[Status]")).isEqualTo("column:orders.Status");
         assertThat(Anchors.id("column", "orders.STATUS")).isEqualTo("column:orders.status");
-        assertThat(Anchors.id("cli", "jk  build   --out=dist")).isEqualTo("cli:jk build --out");
         assertThat(Anchors.id("ci.job", "  build  "))
                 .as("an unlisted kind keys its name trimmed")
                 .isEqualTo("ci.job:build");
@@ -56,6 +55,9 @@ class AnchorsTest {
         assertThat(Anchors.parse("OrderService:total")).isNull();
         assertThat(Anchors.parse("src/main/App.java:12")).isNull();
         assertThat(Anchors.parse("ci.job:build")).isNull();
+        assertThat(Anchors.parse("cli:shop serve --port"))
+                .as("a command line's flags are not an anchor kind")
+                .isNull();
         assertThat(Anchors.parse("route:")).isNull();
     }
 

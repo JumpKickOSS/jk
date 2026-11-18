@@ -9,7 +9,6 @@ import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -18,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * Markdown and AsciiDoc: the page, its headings nested by level, links
  * to other files, and code spans naming a symbol — which the linker ties to the code they name.
  * Fenced and delimited code blocks are skipped, but for the requests to this service their URLs
- * make ({@link Requests}) and the command lines that pass flags ({@link CommandLines}).
+ * make ({@link Requests}).
  */
 final class DocExtractors {
 
@@ -31,22 +30,16 @@ final class DocExtractors {
     private static final Pattern CODE_SPAN = Pattern.compile("`+([^`\\n]+?)`+|\\+([^+\\n]+?)\\+");
     private static final Pattern SYMBOL = Pattern.compile("[A-Za-z_][\\w$]*(?:\\.[A-Za-z_][\\w$]*)*(?:\\(\\))?");
 
-    static Fragment markdown(String relPath, String text, Set<String> programs) {
-        return read(relPath, text, MD_HEADING, MD_LINK, "```", false, programs);
+    static Fragment markdown(String relPath, String text) {
+        return read(relPath, text, MD_HEADING, MD_LINK, "```", false);
     }
 
-    static Fragment asciidoc(String relPath, String text, Set<String> programs) {
-        return read(relPath, text, ADOC_HEADING, ADOC_LINK, "----", true, programs);
+    static Fragment asciidoc(String relPath, String text) {
+        return read(relPath, text, ADOC_HEADING, ADOC_LINK, "----", true);
     }
 
     private static Fragment read(
-            String relPath,
-            String text,
-            Pattern heading,
-            Pattern link,
-            String fence,
-            boolean adoc,
-            Set<String> programs) {
+            String relPath, String text, Pattern heading, Pattern link, String fence, boolean adoc) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "page");
         @Nullable String[] parents = new String[7];
         parents[0] = b.fileId();
@@ -61,10 +54,7 @@ final class DocExtractors {
                 continue;
             }
             Requests.urls(b, current, line, n);
-            if (inBlock) {
-                CommandLines.mentions(b, programs, current, line, n);
-                continue;
-            }
+            if (inBlock) continue;
             Matcher h = heading.matcher(line);
             if (h.matches()) {
                 int level = h.group(1).length();

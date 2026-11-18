@@ -42,13 +42,6 @@ public final class Linker {
     private final Map<String, String> files = new HashMap<>();
     private final List<String> configKeys = new ArrayList<>();
     private final Map<Integer, List<RouteAnchor>> routes = new HashMap<>();
-    private final Set<String> programs = new HashSet<>();
-
-    /** The commands that have subcommands, {@code shop} for {@code shop serve}. */
-    private final Set<String> parents = new HashSet<>();
-
-    /** Anchors the linker made: a flag a command line passes that its command does not define. */
-    private final Map<String, GraphNode> made = new LinkedHashMap<>();
 
     private Linker(Map<String, GraphNode> nodes) {
         this.nodes = nodes;
@@ -56,13 +49,6 @@ public final class Linker {
             if (n.extra().get(QUALIFIED_NAME) instanceof String fqcn) classes.put(fqcn.replace('$', '.'), n.id());
             if (Anchors.is(n)) {
                 if (Anchors.CONFIG.equals(Anchors.kindOf(n.id()))) configKeys.add(n.id());
-                if (Anchors.CLI.equals(Anchors.kindOf(n.id()))) {
-                    String key = n.id().substring(Anchors.CLI.length() + 1);
-                    int space = key.indexOf(' ');
-                    programs.add(space < 0 ? key : key.substring(0, space));
-                    int last = key.lastIndexOf(' ');
-                    if (last > 0 && key.charAt(last + 1) != '-') parents.add(key.substring(0, last));
-                }
                 if (Anchors.ROUTE.equals(Anchors.kindOf(n.id()))) {
                     RouteAnchor r = RouteAnchor.of(n.id());
                     routes.computeIfAbsent(r.wild() ? -1 : r.segments().size(), k -> new ArrayList<>())
@@ -91,7 +77,6 @@ public final class Linker {
         all.add(types);
         all.add(calls);
         all.add(linker.bindings());
-        all.add(new Fragment(List.copyOf(linker.made.values()), List.of()));
         CodeGraph graph = CodeGraph.merge(all);
         graph.stale(linker.stale);
         return graph;
@@ -169,75 +154,6 @@ public final class Linker {
         return b.confidence().ordinal() < a.confidence().ordinal() ? b.withSitesOf(a) : a.withSitesOf(b);
     }
 
-    /**
-     * A command line's uses, inferred: its program when the graph defines one by that name, the
-     * deepest subcommand its words name exactly, and each flag after it on that command ({@code -abc}
-     * as {@code -a -b -c} when each is one); a flag the command does not define is a use of an anchor
-     * the linker makes, which nothing defines. Words after {@code --} are arguments. After a word
-     * that names no subcommand of a command that has some (an alias, a typo) no flag is looked up.
-     */
-    private List<GraphEdge> commandLine(Mention m, GraphNode from) {
-        String[] words = m.text().split(" ");
-        if (!programs.contains(words[0])) return List.of();
-        String path = words[0];
-        int i = 1;
-        while (i < words.length
-                && !words[i].startsWith("-")
-                && nodes.containsKey(Anchors.id(Anchors.CLI, path + " " + words[i]))) {
-            path += " " + words[i++];
-        }
-        String command = path;
-        // A word that names no subcommand of a command that has some may be an alias: its flags are not judged.
-        if (i < words.length && !words[i].startsWith("-") && parents.contains(command)) {
-            return List.of(GraphEdge.of(
-                    m.source(),
-                    Anchors.id(Anchors.CLI, command),
-                    m.relation(),
-                    Confidence.INFERRED,
-                    from.sourceFile(),
-                    m.line()));
-        }
-        List<GraphEdge> out = new ArrayList<>();
-        out.add(GraphEdge.of(
-                m.source(),
-                Anchors.id(Anchors.CLI, command),
-                m.relation(),
-                Confidence.INFERRED,
-                from.sourceFile(),
-                m.line()));
-        for (; i < words.length; i++) {
-            String w = words[i];
-            if (w.equals("-" + "-")) break;
-            if (w.length() < 2 || w.charAt(0) != '-' || !Character.isLetter(w.charAt(w.startsWith("-" + "-") ? 2 : 1)))
-                continue;
-            String flag = Anchors.key(Anchors.CLI, w);
-            List<String> found = new ArrayList<>();
-            if (nodes.containsKey(Anchors.id(Anchors.CLI, command + " " + flag))) {
-                found.add(flag);
-            } else if (!flag.startsWith("-" + "-") && flag.length() > 2) {
-                for (char c : flag.substring(1).toCharArray()) found.add("-" + c);
-                if (!found.stream().allMatch(f -> nodes.containsKey(Anchors.id(Anchors.CLI, command + " " + f))))
-                    found.clear();
-            }
-            if (found.isEmpty()) {
-                GraphNode stale = Anchors.node(Anchors.CLI, command + " " + flag);
-                made.putIfAbsent(stale.id(), stale);
-                found.add(flag);
-            }
-            for (String f : found) {
-                GraphEdge e = GraphEdge.of(
-                        m.source(),
-                        Anchors.id(Anchors.CLI, command + " " + f),
-                        m.relation(),
-                        Confidence.INFERRED,
-                        from.sourceFile(),
-                        m.line());
-                out.add(found.size() > 1 ? e.withContext(w) : e);
-            }
-        }
-        return out;
-    }
-
     /** The id of anchor {@code name} of {@code kind} when some file or symbol made it; else null. */
     private @Nullable String known(String kind, String name) {
         String id = Anchors.id(kind, name);
@@ -247,7 +163,6 @@ public final class Linker {
     private List<GraphEdge> resolve(Mention m) {
         GraphNode from = nodes.get(m.source());
         if (from == null) return List.of();
-        if (m.kind() == Mention.Kind.CLI) return commandLine(m, from);
         List<String> targets =
                 switch (m.kind()) {
                     case CLASS -> one(classes.get(m.text().replace('$', '.')));
@@ -260,7 +175,6 @@ public final class Linker {
                     case TABLE, COLUMN -> sqlNames(m);
                     case ENV -> one(known(Anchors.ENV, m.text()));
                     case PORT -> one(known(Anchors.PORT, m.text()));
-                    case CLI -> List.of();
                 };
         if (m.kind() == Mention.Kind.TABLE || m.kind() == Mention.Kind.COLUMN) return sqlEdges(m, from, targets);
         if (m.kind() == Mention.Kind.ROUTE || m.kind() == Mention.Kind.ROUTE_CALL) return routeEdges(m, from, targets);

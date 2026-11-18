@@ -83,8 +83,6 @@ final class JvmFacts {
         Map<String, Set<String>> delegates = new LinkedHashMap<>();
         Map<String, Map<String, Object>> facts = new LinkedHashMap<>();
         JvmSql.Jooq jooq = JvmSql.jooq(index);
-        // Where each class sits, kept only when some class is a command: most projects define none.
-        Map<String, JvmCli.Placed> placed = JvmCli.any(index) ? new LinkedHashMap<>() : null;
         for (ClassFacts c : index.classList()) {
             if (c.isPackageInfo() || c.name().endsWith("module-info") || c.sourceFile() == null) continue;
             String pkg = c.name().contains("/") ? c.name().substring(0, c.name().lastIndexOf('/')) : "";
@@ -94,7 +92,6 @@ final class JvmFacts {
             if (owner == null) continue;
             Set<String> generated = generated(c);
             if (owner.named()) {
-                if (placed != null) placed.put(c.name(), new JvmCli.Placed(owner.id(), rel));
                 boolean nested =
                         c.name().substring(c.name().lastIndexOf('/') + 1).contains("$");
                 Map<String, Object> type = new LinkedHashMap<>();
@@ -136,7 +133,6 @@ final class JvmFacts {
                 JvmSql.method(m, from, rel, jooq, nodes, edges, mentions);
             }
         }
-        if (placed != null) JvmCli.commands(index, placed, nodes, edges);
         facts.forEach((id, f) -> {
             GraphNode n = nodes.get(id);
             if (n != null) nodes.put(id, Decl.with(n, f));

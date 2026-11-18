@@ -59,8 +59,8 @@ class FileAnchorsTest {
                 .contains("L2 config:petclinic.visits.max-per-day (defined here): ")
                 .contains("docker-compose.yml:6 as PETCLINIC_VISITS_MAXPERDAY (inferred)");
         assertThat(callers(ws, "file:README.md"))
-                .isEqualTo("No anchor in README.md: no route, SQL table or column, config key, environment variable"
-                        + " or CLI flag is named there.");
+                .isEqualTo("No anchor in README.md: no route, SQL table or column, config key or environment variable"
+                        + " is named there.");
         assertThat(callers(ws, "file:nope.sql")).isEqualTo("No file nope.sql in the graph.");
     }
 

@@ -35,21 +35,21 @@ public final class Extractors {
             Map.entry("mts", ScriptScanner::extract),
             Map.entry("cts", ScriptScanner::extract),
             Map.entry("vue", ScriptScanner::extract),
-            Map.entry("md", reads(DocExtractors::markdown)),
-            Map.entry("markdown", reads(DocExtractors::markdown)),
-            Map.entry("mdx", reads(DocExtractors::markdown)),
-            Map.entry("adoc", reads(DocExtractors::asciidoc)),
-            Map.entry("asciidoc", reads(DocExtractors::asciidoc)),
-            Map.entry("asc", reads(DocExtractors::asciidoc)),
-            Map.entry("ad", reads(DocExtractors::asciidoc)),
-            Map.entry("json", reads(ConfigExtractors::json)),
-            Map.entry("jsonc", reads(ConfigExtractors::json)),
-            Map.entry("yml", reads(ConfigExtractors::yaml)),
-            Map.entry("yaml", reads(ConfigExtractors::yaml)),
-            Map.entry("properties", reads(ConfigExtractors::properties)),
-            Map.entry("toml", reads(ConfigExtractors::toml)),
-            Map.entry("ini", reads(ConfigExtractors::toml)),
-            Map.entry("cfg", reads(ConfigExtractors::toml)),
+            Map.entry("md", DocExtractors::markdown),
+            Map.entry("markdown", DocExtractors::markdown),
+            Map.entry("mdx", DocExtractors::markdown),
+            Map.entry("adoc", DocExtractors::asciidoc),
+            Map.entry("asciidoc", DocExtractors::asciidoc),
+            Map.entry("asc", DocExtractors::asciidoc),
+            Map.entry("ad", DocExtractors::asciidoc),
+            Map.entry("json", ConfigExtractors::json),
+            Map.entry("jsonc", ConfigExtractors::json),
+            Map.entry("yml", ConfigExtractors::yaml),
+            Map.entry("yaml", ConfigExtractors::yaml),
+            Map.entry("properties", ConfigExtractors::properties),
+            Map.entry("toml", ConfigExtractors::toml),
+            Map.entry("ini", ConfigExtractors::toml),
+            Map.entry("cfg", ConfigExtractors::toml),
             Map.entry("csv", ConfigExtractors::csv),
             Map.entry("xml", MarkupExtractors::xml),
             Map.entry("xsd", MarkupExtractors::xml),
@@ -65,11 +65,8 @@ public final class Extractors {
             Map.entry("mermaid", MarkupExtractors::diagram),
             Map.entry("puml", MarkupExtractors::diagram),
             Map.entry("sql", MarkupExtractors::sql),
-            Map.entry("sh", reads(ShellScripts::extract)),
-            Map.entry("bash", reads(ShellScripts::extract)));
-
-    private static final Extractor DOCKERFILE = reads(EnvVars::dockerfile);
-    private static final Extractor MAKEFILE = reads(Makefiles::extract);
+            Map.entry("sh", ShellScripts::extract),
+            Map.entry("bash", ShellScripts::extract));
 
     /** Files under {@code META-INF/} named by their contents' contract, not an extension. */
     private static final Set<String> CLASS_LISTS = Set.of("spring.factories");
@@ -81,21 +78,11 @@ public final class Extractors {
             return ConfigExtractors::classList;
         }
         if (EnvVars.isDotEnv(name)) return EnvVars::dotEnv;
-        if (EnvVars.isDockerfile(name)) return DOCKERFILE;
-        if (Makefiles.isMakefile(name)) return MAKEFILE;
+        if (EnvVars.isDockerfile(name)) return EnvVars::dockerfile;
+        if (Makefiles.isMakefile(name)) return Makefiles::extract;
         int dot = name.lastIndexOf('.');
         if (dot < 0) return null;
         return BY_EXTENSION.get(name.substring(dot + 1).toLowerCase(Locale.ROOT));
-    }
-
-    /**
-     * True for a file whose extractor reads command lines ({@link CommandLines}): a script, a
-     * Dockerfile, a Makefile, a YAML, TOML, properties or JSON file ({@code package.json}'s scripts) and
-     * a Markdown or AsciiDoc page. Its fragment depends on the programs the graph defines; no other
-     * file's does.
-     */
-    public static boolean readsCommandLines(String relPath) {
-        return forPath(relPath) instanceof CommandLineReader;
     }
 
     /**
@@ -111,29 +98,6 @@ public final class Extractors {
         List<Mention> all = new ArrayList<>(read.mentions());
         all.addAll(found);
         return new Fragment(read.nodes(), read.edges(), all);
-    }
-
-    /** An extractor that reads command lines: given the programs the graph defines, their uses. */
-    @FunctionalInterface
-    interface Reader {
-        Fragment extract(String relPath, String text, Set<String> programs);
-    }
-
-    private static Extractor reads(Reader reader) {
-        return new CommandLineReader(reader);
-    }
-
-    /** {@code reader} as an {@link Extractor}: read alone, no command line, as for a project with no program. */
-    private record CommandLineReader(Reader reader) implements Extractor {
-        @Override
-        public Fragment extract(String relPath, String text) {
-            return reader.extract(relPath, text, Set.of());
-        }
-
-        @Override
-        public Fragment extract(String relPath, String text, Set<String> programs) {
-            return reader.extract(relPath, text, programs);
-        }
     }
 
     /** True for the JVM source kinds whose compiled classes also feed the graph. */

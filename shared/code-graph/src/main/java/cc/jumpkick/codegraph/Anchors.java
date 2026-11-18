@@ -13,7 +13,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Anchor nodes: one node per surface that code and files no compiler checks both name (a
  * configuration key, an environment variable, an HTTP route, a network port, a SQL table or column, a
- * CLI command or flag, a JSON property of a route's body, a bean property a template reads), with a {@link Relations#DEFINES} or {@link Relations#USES} edge from every file or
+ * JSON property of a route's body, a bean property a template reads), with a {@link Relations#DEFINES} or {@link Relations#USES} edge from every file or
  * symbol that names it, graded by its {@link Confidence}. An anchor's id is {@code <kind>:<key>}:
  * the key is the name folded so that every spelling the surface itself treats as one is one id,
  * and depends on nothing but that name, so a file's fragment carries its anchors and is cached
@@ -32,7 +32,6 @@ public final class Anchors {
     public static final String ROUTE = "route";
     public static final String TABLE = "table";
     public static final String COLUMN = "column";
-    public static final String CLI = "cli";
     public static final String PORT = "port";
 
     /** A JSON property of a route's body, {@code json:<Class>.<property>}: the class a Java DTO declares, the name Jackson writes. */
@@ -45,14 +44,13 @@ public final class Anchors {
     public static final String BEAN = "bean";
 
     /** The kinds whose key is written down here; any other kind is keyed by its name trimmed. */
-    public static final Set<String> KINDS = Set.of(CONFIG, ENV, ROUTE, PORT, TABLE, COLUMN, CLI, JSON, BEAN);
+    public static final Set<String> KINDS = Set.of(CONFIG, ENV, ROUTE, PORT, TABLE, COLUMN, JSON, BEAN);
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9.-]*");
     private static final Pattern CAMEL = Pattern.compile("(?<=[a-z0-9])(?=[A-Z])");
     private static final Pattern METHOD =
             Pattern.compile("(?i)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|TRACE|\\*)\\s+(.*)");
     private static final Pattern VARIABLE = Pattern.compile("^(?:\\{[^}]*}|:[A-Za-z_]\\w*|<[^>]*>)$");
-    private static final Pattern FLAG_VALUE = Pattern.compile("^(-{1,2}[^=\\s]+)=.*$");
 
     /** The id of the anchor {@code name} of {@code kind}. */
     public static String id(String kind, String name) {
@@ -68,7 +66,6 @@ public final class Anchors {
             case ROUTE -> route(n);
             case TABLE -> sqlName(n);
             case COLUMN -> column(n);
-            case CLI -> cli(n);
             case PORT -> port(n);
             default -> n;
         };
@@ -202,17 +199,6 @@ public final class Anchors {
     /** {@code table.column}, each part as {@link #sqlName} keys it. */
     static String column(String name) {
         return sqlName(name);
-    }
-
-    /** The command path and flag, whitespace collapsed and a flag's {@code =value} dropped. */
-    static String cli(String name) {
-        List<String> words = new ArrayList<>();
-        for (String w : name.strip().split("\\s+")) {
-            if (w.isEmpty()) continue;
-            Matcher f = FLAG_VALUE.matcher(w);
-            words.add(f.matches() ? f.group(1) : w);
-        }
-        return String.join(" ", words);
     }
 
     /** A port number without leading zeros and its protocol dropped: {@code 08080/tcp} is {@code 8080}. */

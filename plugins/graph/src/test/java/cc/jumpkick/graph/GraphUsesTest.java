@@ -219,7 +219,7 @@ class GraphUsesTest {
                 .startsWith("Uses of Box.unused (field): 0 in main sources, 0 in tests (0 writes, 0 reads).")
                 .contains("Complete:")
                 .contains("Looked at: its Java uses, accessors (none declared), anchors it maps to (column, json, bean,"
-                        + " config, cli; found none)")
+                        + " config; found none)")
                 .endsWith("No Java source uses it.");
     }
 

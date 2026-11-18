@@ -37,7 +37,6 @@ class.
 | HTTP handlers (compiled classes): Spring `@RequestMapping` and its shortcuts, JAX-RS `@Path` with `@GET` and the rest, Micronaut `@Controller` with `@Get` and the rest; OpenAPI YAML `paths` | one [route anchor](#routes) per method and path | `defines` from the handler method or the document; `uses` from MockMvc and RestAssured calls, `@HttpExchange` clients, path literals in code, front-end `http.get`/`fetch` calls, and URLs to this service in scripts, workflows, config and Markdown |
 | Shell scripts (`.sh`, `.bash`) and workflow `run:` steps | | `uses` of routes their command lines request; `defines` of the variables they `export` or append to `$GITHUB_ENV`, `uses` of the ones they read |
 | `.env` files, Dockerfiles (`ENV`, `ARG`), compose `environment:`, workflow and Kubernetes `env:` | one [variable anchor](#environment-variables) each | `defines` from each file that sets it; `uses` from `${VAR}`/`$VAR`, Spring placeholders, `System.getenv` |
-| picocli commands (compiled classes) | one [CLI anchor](#commands-and-flags) per command and flag | `defines` from the command's class; `uses` from command lines in scripts, workflow steps, Dockerfile `RUN`/`CMD`/`ENTRYPOINT`, Makefile recipes, `package.json` scripts and fenced blocks in Markdown |
 | Makefiles (`Makefile`, `GNUmakefile`, `*.mk`) | | `defines` of the variables they `export`; `uses` of `VAR ?= default`, `$(VAR)`, recipe lines as shell lines |
 | Spring `server.port`, Dockerfile `EXPOSE`, compose `ports:`, Kubernetes `containerPort` | one [port anchor](#ports) each | `defines` from the file that says a service listens on it; `uses` from a compose mapping's container side and URLs to `localhost:<port>` anywhere |
 | `jk.toml`, `pom.xml`, Gradle, version catalogs, `package.json` | dependencies | `depends_on`, workspace and Maven modules |
@@ -54,9 +53,9 @@ and an answer marks them `(inferred)`.
 ## Anchors
 
 An anchor is a node for something code and other files both name without a compiler between
-them: configuration keys, environment variables, HTTP routes, ports, SQL tables and columns, a
-program's commands and flags, the JSON properties of a route's body and the bean properties a
-server-side template reads. Every file or symbol that defines or uses it has an edge to it, so one
+them: configuration keys, environment variables, HTTP routes, ports, SQL tables and columns, the
+JSON properties of a route's body and the bean properties a server-side template reads. Every file
+or symbol that defines or uses it has an edge to it, so one
 question finds the YAML line, the annotation and the string literal together.
 
 ```bash
@@ -170,24 +169,6 @@ declared use; the long form's container side is not read yet. A URL to this mach
 (`localhost:8080`, `127.0.0.1:8080`) in a script, a workflow, a config value, a doc or code is an
 inferred use and links only to a port something defines or uses. So `jk graph callers port:8080` before moving a service lists the
 Dockerfile, the compose file and every script and test that calls it there.
-
-### Commands and flags
-
-A command is `cli:<program> <subcommand…>` and a flag `cli:<program> <subcommand…> <flag>`:
-`cli:shop serve --listen-port`. Definitions come from compiled picocli classes, declared: a
-`@Command` no other command lists names the program, its `subcommands` the commands under it, and
-each `@Option` on a field or setter of the command or a superclass a flag of it (with `-h`,
-`--help`, `-V`, `--version` when it sets `mixinStandardHelpOptions`). Uses are command lines that
-pass a flag, inferred: in a script, a workflow `run:` step, a Dockerfile's `RUN`, `CMD` or
-`ENTRYPOINT` (exec form too), a Makefile recipe, a `package.json` script and a fenced block in
-Markdown or AsciiDoc. The program is matched by file name (`./bin/shop` is `shop`), each following
-word that names a subcommand exactly is walked, and each flag is looked up on the command reached;
-`-vq` is `-v -q` when both are flags, and words after `--` are arguments. A flag the command does
-not define becomes an anchor with no definition: `callers` on `cli:shop serve --listn-port` answers
-`No file defines it.` with the line that passes it, and `jk graph find -t cli` lists every flag
-with its counts, stale ones at 0 definitions. Only flag names enter the graph: the values a
-command line passes are dropped. Not read yet: JumpKick's own commands, JCommander, Spring Shell and
-commons-cli, picocli mixins, method subcommands, aliases, and abbreviated subcommands.
 
 ### JSON properties
 

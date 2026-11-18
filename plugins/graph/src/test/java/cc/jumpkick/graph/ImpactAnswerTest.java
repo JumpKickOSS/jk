@@ -102,7 +102,7 @@ class ImpactAnswerTest {
         assertThat(FileAnchorsTest.callers(ws, "Owner.telephone")).isEqualTo("""
                 Uses of Owner.telephone (field): 2 in main sources, 0 in tests (1 write, 1 read).
                 Complete: javac resolved each Java use at its line, and no Kotlin, Groovy or edited source spells the name; no search needed.
-                Looked at: its Java uses, its accessors' callers, anchors it maps to (column, json, bean, config, cli; found bean, column) and the tests reaching those. Reflection and names built at run time are not looked at.
+                Looked at: its Java uses, its accessors' callers, anchors it maps to (column, json, bean, config; found bean, column) and the tests reaching those. Reflection and names built at run time are not looked at.
                 anchors (places no compiler checks; must-change first):
                   bean:Owner.telephone: 3 uses:
                     %1$screateOrUpdateOwnerForm.html:14 (inferred)

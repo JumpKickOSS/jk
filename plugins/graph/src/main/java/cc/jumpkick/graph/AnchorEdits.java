@@ -34,8 +34,8 @@ import org.jspecify.annotations.Nullable;
  * name or the edit is undone, so a build that follows a graph question still names them.
  *
  * <p>A place is listed as one that must change when the old name sits in a structured position the
- * anchor links (a SQL column, a config key, an environment variable, a route's path, a CLI flag, a
- * JSON property a client tied to the route or class reads, a bean property a template reads off
+ * anchor links (a SQL column, a config key, an environment variable, a route's path, a JSON
+ * property a client tied to the route or class reads, a bean property a template reads off
  * its controller's model),
  * and as a judgment one when it sits in prose (markdown, text). A use a compiler or generator bound
  * ({@link Confidence#EXTRACTED}) is the build's to check and a generated file is nobody's to edit:

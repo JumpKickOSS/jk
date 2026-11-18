@@ -31,7 +31,6 @@ class ExtractorVersionTest {
             Path.of("src/main/java/cc/jumpkick/graph/JvmFacts.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmRoutes.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmSql.java"),
-            Path.of("src/main/java/cc/jumpkick/graph/JvmCli.java"),
             // Which source a compiled class maps to, and the module and source set tables it reads.
             Path.of("src/main/java/cc/jumpkick/graph/ClassSources.java"),
             Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/Modules.java"),

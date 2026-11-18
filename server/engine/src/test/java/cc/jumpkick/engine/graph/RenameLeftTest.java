@@ -63,11 +63,12 @@ class RenameLeftTest {
         for (int i = 1; i <= 9; i++)
             rows.append("c")
                     .append(i)
-                    .append("\tmust\tCLI flag\tscripts/run")
+                    .append("\tmust\tenvironment variable\tscripts/run")
                     .append(i)
                     .append(".sh\t2\n");
         assertThat(RenameLeft.after(write(root, rows.toString()).toString()))
-                .contains("CLI flag at scripts/run1.sh:2, scripts/run2.sh:2, scripts/run3.sh:2, +6 more (c1-c9)")
+                .contains(
+                        "environment variable at scripts/run1.sh:2, scripts/run2.sh:2, scripts/run3.sh:2, +6 more (c1-c9)")
                 .contains("also=c1-c9");
     }
 

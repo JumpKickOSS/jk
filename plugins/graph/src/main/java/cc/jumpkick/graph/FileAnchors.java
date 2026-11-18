@@ -95,7 +95,7 @@ final class FileAnchors {
                 return "No file " + rel + " in the graph.";
             }
             return "No anchor " + (line == 0 ? "in " + rel : "at " + rel + ":" + line)
-                    + ": no route, SQL table or column, config key, environment variable or CLI flag is named there.";
+                    + ": no route, SQL table or column, config key or environment variable is named there.";
         }
         if (!anchors.isEmpty()) {
             lines.add((line == 0 ? rel : rel + ":" + line) + ": " + anchors.size()

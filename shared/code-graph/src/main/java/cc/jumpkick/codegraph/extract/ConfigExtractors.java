@@ -50,7 +50,7 @@ final class ConfigExtractors {
             Set.of("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE");
     private static final Pattern TOML_FIELD = Pattern.compile("\\b(group|name|module)\\s*=\\s*\"([^\"]+)\"");
 
-    static Fragment yaml(String relPath, String text, Set<String> programs) {
+    static Fragment yaml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         boolean spring = SPRING_CONFIG.matcher(relPath).find();
         boolean openApi = OPENAPI.matcher(text).find();
@@ -75,7 +75,7 @@ final class ConfigExtractors {
                     path.removeLast();
                 }
                 if (!spring) EnvVars.yamlListEntry(b, path, line, i + 1);
-                values(b, line, i + 1, spring, programs);
+                values(b, line, i + 1, spring);
                 continue;
             }
             if (!m.matches() && LIST_ENTRY.matcher(line).find()) {
@@ -104,13 +104,13 @@ final class ConfigExtractors {
                 if (!spring) EnvVars.yamlKey(b, path, value, i + 1);
                 if (!spring) Ports.yamlKey(b, path, uncommented(value), i + 1);
             }
-            values(b, line, i + 1, spring, programs);
+            values(b, line, i + 1, spring);
         }
         if (changelog != null) changelog.flush();
         return b.build();
     }
 
-    static Fragment properties(String relPath, String text, Set<String> programs) {
+    static Fragment properties(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         boolean spring = SPRING_CONFIG.matcher(relPath).find();
         List<String> lines = Lines.split(text);
@@ -128,12 +128,12 @@ final class ConfigExtractors {
             String key = (sep < 0 ? entry : entry.substring(0, sep)).strip().replace("\\ ", " ");
             if (spring && !key.isEmpty() && keys++ < MAX_KEYS) configKey(b, key, start + 1);
             if (spring && sep >= 0) Ports.springKey(b, key, entry.substring(sep + 1), start + 1);
-            values(b, sep < 0 ? "" : entry.substring(sep + 1), start + 1, spring, programs);
+            values(b, sep < 0 ? "" : entry.substring(sep + 1), start + 1, spring);
         }
         return b.build();
     }
 
-    static Fragment toml(String relPath, String text, Set<String> programs) {
+    static Fragment toml(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         String name = relPath.substring(relPath.lastIndexOf('/') + 1);
         boolean jk = name.equals(ManifestNames.MANIFEST);
@@ -170,12 +170,12 @@ final class ConfigExtractors {
                 }
                 if (line.contains("]")) modules = false;
             }
-            values(b, line, n, false, programs);
+            values(b, line, n, false);
         }
         return b.build();
     }
 
-    static Fragment json(String relPath, String text, Set<String> programs) {
+    static Fragment json(String relPath, String text) {
         FragmentBuilder b = new FragmentBuilder(relPath, "document", "config");
         String name = relPath.substring(relPath.lastIndexOf('/') + 1);
         Lines lines = new Lines(text);
@@ -186,7 +186,7 @@ final class ConfigExtractors {
             doc = null;
         }
         if (doc instanceof Map<?, ?> root) {
-            if (name.equals("package.json")) packageJson(b, root, text, lines, programs);
+            if (name.equals("package.json")) packageJson(b, root, text, lines);
             if (name.startsWith("tsconfig") || name.startsWith("jsconfig")) {
                 String ext = MiniJson.str(root, "extends");
                 if (ext != null && ext.startsWith("."))
@@ -220,7 +220,7 @@ final class ConfigExtractors {
         return b.build();
     }
 
-    private static void packageJson(FragmentBuilder b, Map<?, ?> root, String text, Lines lines, Set<String> programs) {
+    private static void packageJson(FragmentBuilder b, Map<?, ?> root, String text, Lines lines) {
         for (String section : List.of("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")) {
             if (MiniJson.get(root, section) instanceof Map<?, ?> deps) {
                 for (Object dep : deps.keySet()) {
@@ -240,8 +240,6 @@ final class ConfigExtractors {
                 int line = lineOf(text, lines, "\"" + s + "\"");
                 String id = b.declared("script " + s, s, "code", line, Map.of("node_kind", "script"));
                 b.edge(b.fileId(), id, Relations.CONTAINS, Confidence.EXTRACTED, line);
-                if (scripts.get(script) instanceof String command)
-                    CommandLines.mentions(b, programs, id, command, line);
             }
         }
     }
@@ -312,7 +310,7 @@ final class ConfigExtractors {
      * read of that variable; elsewhere a {@code $VAR} is an inferred mention and a value read as a
      * shell line (a workflow's {@code run:}) sets the variables it exports.
      */
-    private static void values(FragmentBuilder b, String value, int line, boolean spring, Set<String> programs) {
+    private static void values(FragmentBuilder b, String value, int line, boolean spring) {
         if (value.isEmpty()) return;
         Matcher m = Lines.FQCN.matcher(value);
         while (m.find()) b.mention(b.fileId(), Mention.Kind.CLASS, m.group(), line);
@@ -324,10 +322,7 @@ final class ConfigExtractors {
                 b.mention(b.fileId(), Mention.Kind.CONFIG_KEY, p.group(1), line);
             }
         }
-        if (!spring) {
-            EnvVars.shellLine(b, value, line);
-            CommandLines.mentions(b, programs, b.fileId(), value, line);
-        }
+        if (!spring) EnvVars.shellLine(b, value, line);
         Requests.urls(b, b.fileId(), value, line);
     }
 

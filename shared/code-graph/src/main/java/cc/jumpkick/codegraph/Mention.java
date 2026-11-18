@@ -36,7 +36,7 @@ public record Mention(
         return switch (kind) {
             case MODULE -> Relations.IMPORTS_FROM;
             case MEMBER -> Relations.CALLS;
-            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN, ENV, PORT, CLI -> Relations.USES;
+            case CONFIG_KEY, ROUTE, ROUTE_CALL, TABLE, COLUMN, ENV, PORT -> Relations.USES;
             default -> Relations.REFERENCES;
         };
     }
@@ -79,13 +79,6 @@ public record Mention(
         /** An environment variable a script or YAML value reads, {@code $DATABASE_URL}: linked only to one something sets or reads, inferred. */
         ENV,
         /** A port a URL names, {@code localhost:8080}: linked only to a port something defines or uses, inferred. */
-        PORT,
-        /**
-         * A command line passing flags, {@code shop serve --port 8080}: resolved to the {@code cli}
-         * anchors of a program the graph defines, its subcommands walked and each flag looked up on the
-         * command reached, inferred; a flag the command does not define becomes an anchor nothing
-         * defines.
-         */
-        CLI
+        PORT
     }
 }

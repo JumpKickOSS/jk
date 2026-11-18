@@ -2,7 +2,6 @@
 package cc.jumpkick.graph;
 
 import cc.jumpkick.cache.GraphCacheKeys;
-import cc.jumpkick.codegraph.Anchors;
 import cc.jumpkick.codegraph.CodeGraph;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.codegraph.GraphEdge;
@@ -30,7 +29,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -199,12 +197,6 @@ public final class GraphBuild {
             }
         }
         FragmentCache fragmentCache = GraphMemory.fragments(out, cache);
-        // The compiled classes first: the programs they define are what a command line is read for.
-        progress.phase("map compiled classes");
-        Map<String, Fragment> built = new HashMap<>();
-        Set<String> classKeys = new HashSet<>();
-        mapClasses(sources, indexes, modules, fragmentCache, rebuild, classKeys, built);
-        Set<String> programs = programs(built.values());
         List<String> unread = new ArrayList<>();
         for (GraphSources.Source s : sources) {
             String sha = shas.get(s.rel());
@@ -225,19 +217,18 @@ public final class GraphBuild {
         ParallelMap.forEach(sources, 2, s -> {
             String sha = shas.get(s.rel());
             if (sha == null) return;
-            String cli = commandLines(s.rel(), programs);
             String flavor = scripts.flavor(s.rel());
-            String k = GraphCacheKeys.declarations(s.rel(), sha, flavor + cli);
+            String k = GraphCacheKeys.declarations(s.rel(), sha, flavor);
             Fragment stored = rebuild ? null : fragmentCache.declarations(k, s.rel());
             Fragment read = oxc.get(s.rel());
             if (read != null && stored == null) read = withRequests(read, s, changed.get(s.rel()));
-            Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()), programs);
+            Fragment f = stored != null ? stored : read != null ? read : extract(s, changed.get(s.rel()));
             if (stored == null) {
                 if (read == null && !flavor.isEmpty()) {
                     flavor = "";
-                    k = GraphCacheKeys.declarations(s.rel(), sha, cli);
+                    k = GraphCacheKeys.declarations(s.rel(), sha, flavor);
                 }
-                fragmentCache.putDeclarations(k, s.rel(), sha, flavor + cli, f);
+                fragmentCache.putDeclarations(k, s.rel(), sha, flavor, f);
                 extracted.incrementAndGet();
             }
             declarationKeys.add(k);
@@ -249,6 +240,10 @@ public final class GraphBuild {
             Fragment f = fragments.get(s.rel());
             if (f != null) all.add(f);
         }
+        progress.phase("map compiled classes");
+        Map<String, Fragment> built = new HashMap<>();
+        Set<String> classKeys = new HashSet<>();
+        mapClasses(sources, indexes, modules, fragmentCache, rebuild, classKeys, built);
         for (GraphSources.Source s : sources) {
             Fragment compiled = built.get(s.rel());
             if (compiled != null && shas.containsKey(s.rel())) all.add(compiled);
@@ -467,39 +462,13 @@ public final class GraphBuild {
         }
     }
 
-    /**
-     * The names of the programs {@code compiled} defines, {@code shop} for {@code cli:shop}: empty for a
-     * project with no command-line program, which then reads no command line.
-     */
-    static Set<String> programs(Collection<Fragment> compiled) {
-        Set<String> programs = new TreeSet<>();
-        String prefix = Anchors.CLI + ":";
-        for (Fragment f : compiled) {
-            for (GraphNode n : f.nodes()) {
-                String id = n.id();
-                if (id.startsWith(prefix) && id.indexOf(' ') < 0) programs.add(id.substring(prefix.length()));
-            }
-        }
-        return programs;
-    }
-
-    /**
-     * What {@code rel}'s declarations key adds for {@code programs}: nothing for a file that reads no
-     * command line or a project that defines no program, else their digest, so its fragment is read
-     * again when the programs change.
-     */
-    static String commandLines(String rel, Set<String> programs) {
-        if (programs.isEmpty() || !Extractors.readsCommandLines(rel)) return "";
-        return "+cli:" + Hashing.sha256Hex(String.join("\n", programs)).substring(0, 16);
-    }
-
     /** Extracts one file from {@code bytes}, or from disk when the caller did not read it. */
-    private static Fragment extract(GraphSources.Source s, byte @Nullable [] bytes, Set<String> programs) {
+    private static Fragment extract(GraphSources.Source s, byte @Nullable [] bytes) {
         Extractor e = Extractors.forPath(s.rel());
         if (e == null) return Fragment.EMPTY;
         try {
             byte[] content = bytes != null ? bytes : Files.readAllBytes(s.path());
-            return e.extract(s.rel(), new String(content, StandardCharsets.UTF_8), programs);
+            return e.extract(s.rel(), new String(content, StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException failed) {
             Log.debug("graph: cannot extract " + s.rel(), failed);
             return Fragment.EMPTY;
