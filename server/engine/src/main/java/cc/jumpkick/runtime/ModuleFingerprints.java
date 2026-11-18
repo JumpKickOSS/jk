@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -78,6 +79,8 @@ final class ModuleFingerprints {
     /**
      * The guard rule, baseline and fixture files as a module input: an edit to any of them re-plans
      * every module, or the lanes and proofs never run again. Empty for a workspace without guards.
+     * A lock with rows a local install served adds who builds ({@link GuardKeys#localInstallToken}):
+     * a CI build or a release never reads a developer's memo, whose model lane took them.
      */
     static String guardSalt(Path root) {
         if (!PlannerGuards.enabledAt(root)) return "";
@@ -86,6 +89,8 @@ final class ModuleFingerprints {
             PreflightMemo.feedFile(md, GuardsPresence.rulesFile(root));
             PreflightMemo.feedFile(md, GuardsPresence.baselineFile(root));
             PreflightMemo.feed(md, GuardFixtures.digest(root));
+            String installs = GuardKeys.localInstallToken(root.resolve(ManifestPaths.LOCK));
+            if (installs != null) PreflightMemo.feed(md, installs);
             return "guards=" + Hashing.hex(md.digest());
         } catch (IOException e) {
             return "guards=unreadable";

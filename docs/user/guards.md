@@ -187,7 +187,7 @@ key can hold a rule back: one older than the key refuses it like any unknown key
 | depend | scopes |  | string list | scopes the rule reads; default all |
 | depend | convergence |  | bool | one version per artifact in each set of rows one classpath reads: the workspace's plain rows, then each partitioned member's view of the lock; a member's own row under its BOM beside the workspace's is not divergence |
 | depend | no-dynamic |  | bool | no floating selectors |
-| depend | no-snapshot |  | bool | no -SNAPSHOT versions |
+| depend | no-snapshot |  | bool | no -SNAPSHOT versions; a local install's is refused only under CI, release, publish |
 | toolchain | java |  | string | JDK release range, e.g. >=21 |
 | toolchain | kotlin |  | string | Kotlin version range |
 | toolchain | plugins |  | table | pinned = true: no floating plugin selector |

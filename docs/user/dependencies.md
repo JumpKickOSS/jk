@@ -407,9 +407,18 @@ Install A again and B's lock is stale by content: the next `jk build` of B re-lo
 and `jk explain` says so first. On a machine that never ran A's `jk install`, B's build stops naming
 the coordinate: run `jk install` in A there, or add a repository that serves it to `[repositories]`.
 
-A library you publish may not depend on a snapshot: the `library` guard pack's
-`no-snapshot-versions` rule refuses a `-SNAPSHOT` in its dependencies, as before. An application may
-pin one while you work across both projects; pin the release once A is published.
+While you work across both projects, B's build takes A's install and says so in one line:
+
+```text
+depends on a local install of com.example:liba:0.1.0-SNAPSHOT (jk install on this machine); jk release and jk publish refuse until it is a released version
+```
+
+The `no-snapshot` arm of a `depend` guard (the `no-snapshot-versions` rule of the `library` and
+`monorepo` packs, which the starter templates extend) lets a `-SNAPSHOT` an install served through
+there. What is shipped or checked for everyone may not use it, since no other machine has those
+bytes: `jk release` and `jk publish` stop before they build, and under `CI` the rule refuses it,
+each saying to release or publish A first and depend on that version. A `-SNAPSHOT` a repository
+serves is refused by the rule everywhere, as before. Pin A's release once it is published.
 
 ### An exact version the first catalog does not list
 

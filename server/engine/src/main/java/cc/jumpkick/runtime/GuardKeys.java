@@ -4,7 +4,9 @@ package cc.jumpkick.runtime;
 import static cc.jumpkick.config.WorkspaceModules.expand;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.guard.baseline.Baseline;
@@ -32,6 +34,8 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LocalInstallRows;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -491,7 +495,27 @@ final class GuardKeys {
             tokens.add(fileToken("manifest:" + m, ManifestPaths.manifestIn(root.resolve(m))));
         }
         tokens.add(fileToken("lock", root.resolve(ManifestPaths.LOCK)));
+        String installs = localInstallToken(root.resolve(ManifestPaths.LOCK));
+        if (installs != null) tokens.add(installs);
         return tokens;
+    }
+
+    /**
+     * A lock with rows this machine's installs served has two verdicts: a developer's build takes
+     * them, and a CI build, {@code jk release} and {@code jk publish} refuse them ({@link
+     * LocalInstallRows#shipping}). The key names which one this run asks for, so a CI build never
+     * reads a developer's green; a lock with no such row keys as it did, its verdict shared by both.
+     */
+    static @Nullable String localInstallToken(Path lock) {
+        try {
+            if (!Files.isRegularFile(lock)
+                    || LocalInstallRows.of(LockfileReader.read(lock)).isEmpty()) return null;
+        } catch (IOException | RuntimeException unreadable) {
+            return null; // the lane's own read of the lock reports it
+        }
+        String who = LocalInstallRows.shipping(
+                BuildEnv::get, SessionContext.current().releaseVerb());
+        return "local-install:" + (who == null ? "developer" : who);
     }
 
     /**

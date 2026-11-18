@@ -4,6 +4,8 @@ package cc.jumpkick.guard.eval;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.config.ReleaseVerb;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.rules.GuardRules;
@@ -15,6 +17,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.GuardsConfig;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -329,6 +332,62 @@ class DependEvaluatorTest {
                 .singleElement()
                 .extracting(Observation::key)
                 .isEqualTo("m [dependencies] junit:junit");
+    }
+
+    /**
+     * A {@code -SNAPSHOT} this machine's installs served ({@code source = "local-install"}) is the
+     * inner loop of a library built and consumed here: a developer's build takes it. A CI build,
+     * {@code jk release} and {@code jk publish} refuse it, saying to release or publish it first. A
+     * snapshot a repository served is refused everywhere, as before.
+     */
+    @Test
+    void a_snapshot_a_local_install_served_passes_a_developers_build_and_is_refused_where_it_ships(@TempDir Path root)
+            throws Exception {
+        String rules = """
+                [guards.no-snapshot-versions]
+                kind        = "depend"
+                no-snapshot = true
+                why         = "w"
+                """;
+        workspace(
+                root,
+                new Lockfile.Artifact(
+                        "zz.lib:liba:jar:",
+                        "0.1.0-SNAPSHOT",
+                        RepositorySpec.LOCAL_INSTALL,
+                        "sha256:" + "a".repeat(64),
+                        null,
+                        List.of(Scope.MAIN),
+                        List.of(),
+                        null),
+                artifact("acme:internal:jar:", "1.0-SNAPSHOT", Scope.MAIN));
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), rules);
+        var rule = GuardRules.load(root, GuardsConfig.ABSENT)
+                .rules()
+                .rule("no-snapshot-versions")
+                .orElseThrow();
+        Lockfile lock = LockfileReader.read(root.resolve(ManifestPaths.LOCK));
+
+        assertThat(DependEvaluator.evaluate(rule, List.of(), lock, null).observations())
+                .as("a developer's build")
+                .extracting(Observation::key, Observation::detail)
+                .containsExactly(tuple("snapshot lock acme:internal", "acme:internal@1.0-SNAPSHOT is a snapshot"));
+        assertThat(DependEvaluator.evaluate(rule, List.of(), lock, "a CI build").observations())
+                .extracting(Observation::key, Observation::detail)
+                .containsExactlyInAnyOrder(
+                        tuple(
+                                "snapshot lock zz.lib:liba",
+                                "zz.lib:liba@0.1.0-SNAPSHOT is a snapshot from a local install (jk install on this"
+                                        + " machine), which a CI build refuses: no other machine has it; release or"
+                                        + " publish zz.lib:liba first and depend on that version"),
+                        tuple("snapshot lock acme:internal", "acme:internal@1.0-SNAPSHOT is a snapshot"));
+        // The verb is the request's own: jk release's session refuses it whatever the shell says.
+        Map<String, Evaluation> released = SessionContext.where(
+                SessionContext.current().withReleaseVerb(ReleaseVerb.RELEASE), () -> evaluate(root, rules));
+        assertThat(ev(released, "no-snapshot-versions").observations())
+                .extracting(Observation::detail)
+                .anySatisfy(d ->
+                        assertThat(d).startsWith("zz.lib:liba@0.1.0-SNAPSHOT").contains("which jk release refuses"));
     }
 
     @Test

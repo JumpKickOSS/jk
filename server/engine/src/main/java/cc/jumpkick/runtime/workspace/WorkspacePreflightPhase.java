@@ -3,13 +3,17 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ReleaseVerb;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.JumpKickPins;
+import cc.jumpkick.lock.LocalInstallRows;
 import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
@@ -40,6 +44,7 @@ import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -122,6 +127,9 @@ public final class WorkspacePreflightPhase {
         warnPinsBehindClient(request, listener);
         Optional<Completed> lockFailure = freshenLock(request, entryBuild, listener, clock);
         if (lockFailure.isPresent()) return lockFailure.orElseThrow();
+        Optional<Completed> installRefusal =
+                localInstalls(request, listener, SessionContext.current().releaseVerb());
+        if (installRefusal.isPresent()) return installRefusal.orElseThrow();
 
         listener.onPreflight("graph", 0, 0, "Resolving module graph…");
         BuildGraph.Result graph;
@@ -323,6 +331,31 @@ public final class WorkspacePreflightPhase {
                 "lock",
                 PINS_BEHIND,
                 JumpKickPins.describe(owner, behind, client));
+    }
+
+    /**
+     * The lock's rows this machine's installs served ({@link LocalInstallRows}), asked once the lock
+     * is fresh: a developer's build takes them and says so in one note; {@code jk release} and {@code
+     * jk publish} stop on them before anything builds, since what they ship would name bytes no other
+     * machine has, and say to release or publish the dependency first. A lock that cannot be read is
+     * left to the build's own read of it.
+     */
+    static Optional<Completed> localInstalls(
+            WorkspaceRequest request, WorkspaceBuildListener listener, ReleaseVerb verb) {
+        Path lockFile = LockPaths.lockFile(LockPaths.lockOwnerDir(request.entryDir()));
+        List<Lockfile.Artifact> rows;
+        try {
+            rows = Files.isRegularFile(lockFile) ? LocalInstallRows.of(LockfileReader.read(lockFile)) : List.of();
+        } catch (IOException | RuntimeException unreadable) {
+            return Optional.empty();
+        }
+        if (rows.isEmpty()) return Optional.empty();
+        String releasing = LocalInstallRows.releasing(verb);
+        if (releasing != null) {
+            return Optional.of(completed(false, Exit.CONFIG, List.of(LocalInstallRows.refusal(rows, releasing))));
+        }
+        listener.onNote(LocalInstallRows.note(rows));
+        return Optional.empty();
     }
 
     private static Optional<Completed> freshenLock(

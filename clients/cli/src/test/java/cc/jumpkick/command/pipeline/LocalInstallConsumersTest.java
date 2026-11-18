@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.lock.Lockfile;
@@ -44,7 +45,12 @@ class LocalInstallConsumersTest {
     @AfterEach
     void removeInstalls() throws IOException {
         LockfileReader.clearCache();
-        for (Path dir : List.of(m2Dir("liba-m2"), m2Dir("liba-shelf"), m2Dir("liba-float"), shelfDir("liba-shelf"))) {
+        for (Path dir : List.of(
+                m2Dir("liba-m2"),
+                m2Dir("liba-shelf"),
+                m2Dir("liba-float"),
+                m2Dir("liba-new"),
+                shelfDir("liba-shelf"))) {
             if (Files.exists(dir)) PathUtil.deleteRecursivelyOrThrow(dir);
         }
     }
@@ -64,6 +70,20 @@ class LocalInstallConsumersTest {
             all[4] = dir.resolve("cache").toString();
         }
         System.arraycopy(args, 0, all, cache ? 5 : 3, args.length);
+        Capture.Streams streams = Capture.both(() -> exit[0] = Jk.execute(all));
+        if (exit[0] != 0) System.err.println("jk " + String.join(" ", all) + "\n" + streams.out() + streams.err());
+        return streams;
+    }
+
+    /**
+     * {@code jk <verb> -C dir args…} as a user types it, with no cache directory of the test's: a
+     * project as {@code jk new} writes it is built where every build is.
+     */
+    private static Capture.Streams plain(int[] exit, Path dir, String... args) {
+        String[] all = new String[args.length + 2];
+        all[0] = "-C";
+        all[1] = dir.toString();
+        System.arraycopy(args, 0, all, 2, args.length);
         Capture.Streams streams = Capture.both(() -> exit[0] = Jk.execute(all));
         if (exit[0] != 0) System.err.println("jk " + String.join(" ", all) + "\n" + streams.out() + streams.err());
         return streams;
@@ -189,6 +209,47 @@ class LocalInstallConsumersTest {
         assertThat(online.out() + online.err())
                 .contains(GROUP + ":" + name + ":0.1.0-SNAPSHOT came from this machine's installs (jk install)")
                 .contains("run jk install in that project on this machine, or add a repository that serves it");
+    }
+
+    /**
+     * The loop the feature is for, as {@code jk new} writes the consumer: its {@code jk-guards.toml}
+     * extends the {@code library} pack, whose {@code no-snapshot-versions} rule refused the installed
+     * snapshot, so a plain {@code jk build} (guards and tests on) failed where {@code -S} passed. A
+     * developer's build and test take it, with one note saying what jk release and jk publish will
+     * do; a CI build refuses it, saying to release or publish the library first.
+     */
+    @Test
+    void a_project_as_jk_new_writes_it_builds_and_tests_on_an_installed_snapshot(@TempDir Path tmp) throws Exception {
+        String name = "liba-new";
+        String gav = GROUP + ":" + name + ":0.1.0-SNAPSHOT";
+        assertThat(jk(library(tmp, name, "new"), "install")).isEqualTo(0);
+        Path app = tmp.resolve("app-new");
+        int[] exit = {0};
+        Capture.Streams created = Capture.both(() -> exit[0] = Jk.execute("new", app.toString()));
+        assertThat(exit[0]).as(created.out() + created.err()).isZero();
+        assertThat(Files.readString(app.resolve("jk-guards.toml")))
+                .as("the default template's guards extend the library pack")
+                .contains("cc.jumpkick.guards:library:");
+        assertThat(jk(app, "add", gav)).isEqualTo(0);
+        assertThat(row(app, name).source()).isEqualTo(RepositorySpec.LOCAL_INSTALL);
+
+        Capture.Streams build = plain(exit, app, "build");
+        String said = build.out() + build.err();
+        if (EnvValues.isCi(System::getenv)) {
+            assertThat(exit[0]).as("under CI the pack's rule refuses it").isNotZero();
+            assertThat(said)
+                    .contains(GROUP + ":" + name + "@0.1.0-SNAPSHOT is a snapshot from a local install")
+                    .contains("which a CI build refuses")
+                    .contains("release or publish " + GROUP + ":" + name + " first");
+            return;
+        }
+        assertThat(exit[0]).as("a plain jk build, guards and tests on").isZero();
+        assertThat(said)
+                .contains("depends on a local install of " + gav)
+                .contains("jk release and jk publish refuse until it is a released version")
+                .doesNotContain("is a snapshot");
+        plain(exit, app, "test");
+        assertThat(exit[0]).as("jk test").isZero();
     }
 
     @Test

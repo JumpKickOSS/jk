@@ -274,7 +274,10 @@ final class KindSchemas {
                                 BOOL,
                                 "one version per artifact in each set of rows one classpath reads: the workspace's plain rows, then each partitioned member's view of the lock; a member's own row under its BOM beside the workspace's is not divergence"),
                         optional("no-dynamic", BOOL, "no floating selectors"),
-                        optional("no-snapshot", BOOL, "no -SNAPSHOT versions")),
+                        optional(
+                                "no-snapshot",
+                                BOOL,
+                                "no -SNAPSHOT versions; a local install's is refused only under CI, release, publish")),
                 List.of(new KeyGroup(
                         List.of("ban", "coordinate", "require", "licenses", "convergence", "no-dynamic", "no-snapshot"),
                         false)),

@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.deny.PolicyChecker;
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
+import cc.jumpkick.lock.LocalInstallRows;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import java.io.IOException;
@@ -41,8 +45,10 @@ import org.tomlj.TomlTable;
  * <p>Arms: {@code ban} (declared or resolved coordinates that may not appear), {@code coordinate}
  * with {@code only-in} / {@code never-in} (scope placement), {@code require} (version floors over
  * the resolved lock), {@code convergence} (one version per artifact), {@code no-dynamic} (no floating
- * selector), {@code no-snapshot}, {@code licenses} ({@code forbid} globs over the licences the lock
- * records from each artifact's POM).
+ * selector), {@code no-snapshot} (a {@code -SNAPSHOT} a local install served passes a developer's
+ * build and is refused under {@code CI}, {@code jk release} and {@code jk publish}: {@link
+ * LocalInstallRows}), {@code licenses} ({@code forbid} globs over the licences the lock records from
+ * each artifact's POM).
  */
 final class DependEvaluator implements Evaluator {
 
@@ -111,6 +117,26 @@ final class DependEvaluator implements Evaluator {
     }
 
     static Evaluation evaluate(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock) {
+        // Asked of the request only when a local install's snapshot is met: no other row reads it.
+        return judge(
+                rule,
+                manifests,
+                lock,
+                () -> LocalInstallRows.shipping(
+                        BuildEnv::get, SessionContext.current().releaseVerb()));
+    }
+
+    /**
+     * As {@link #evaluate(Rule, List, Lockfile)}, {@code shipping} naming who may not take a
+     * snapshot a local install served ({@link LocalInstallRows#shipping}), null for a developer's
+     * build, which takes it: the inner loop of a library built and consumed on one machine.
+     */
+    static Evaluation evaluate(
+            Rule rule, List<Manifest> manifests, @Nullable Lockfile lock, @Nullable String shipping) {
+        return judge(rule, manifests, lock, () -> shipping);
+    }
+
+    private static Evaluation judge(Rule rule, List<Manifest> manifests, @Nullable Lockfile lock, Shipping shipping) {
         TomlTable t = rule.table();
         Policy policy = Policy.read(t);
         if (!policy.ban().isEmpty() && rule.instead() == null)
@@ -129,7 +155,7 @@ final class DependEvaluator implements Evaluator {
             }
         }
 
-        Scan scan = new Scan(rule, policy);
+        Scan scan = new Scan(rule, policy, shipping);
         scan.manifests(manifests);
         if (lock != null) {
             scan.lock(lock);
@@ -145,6 +171,13 @@ final class DependEvaluator implements Evaluator {
                             : "require/convergence/licenses read the lock, which is workspace-wide; drop `scope` from this rule");
         }
         return scan.finish();
+    }
+
+    /** Who may not take a snapshot a local install served: {@link LocalInstallRows#shipping}, asked when one is met. */
+    @FunctionalInterface
+    private interface Shipping {
+        @Nullable
+        String who();
     }
 
     /** The rule's arms as written. */
@@ -188,14 +221,16 @@ final class DependEvaluator implements Evaluator {
     private static final class Scan {
         private final Rule rule;
         private final Policy p;
+        private final Shipping shipping;
         private final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         private final List<Observation> out = new ArrayList<>();
         private long declared = 0;
         private long artifacts = 0;
 
-        Scan(Rule rule, Policy p) {
+        Scan(Rule rule, Policy p, Shipping shipping) {
             this.rule = rule;
             this.p = p;
+            this.shipping = shipping;
             for (Allow a : rule.allow()) allowUsed.put(a, false);
         }
 
@@ -376,8 +411,21 @@ final class DependEvaluator implements Evaluator {
                 }
             }
             if (p.noSnapshot() && a.version().toUpperCase(Locale.ROOT).endsWith("-SNAPSHOT") && allow == null) {
-                out.add(Observation.site(
-                        "snapshot lock " + ga, ManifestPaths.LOCK, 0, ga + "@" + a.version() + " is a snapshot"));
+                if (!RepositorySpec.LOCAL_INSTALL.equals(a.source())) {
+                    out.add(Observation.site(
+                            "snapshot lock " + ga, ManifestPaths.LOCK, 0, ga + "@" + a.version() + " is a snapshot"));
+                } else {
+                    // A developer's build takes a local install (the build says so once); what ships
+                    // or is checked for everyone may not, since no other machine has its bytes.
+                    String who = shipping.who();
+                    if (who != null) {
+                        out.add(Observation.site(
+                                "snapshot lock " + ga,
+                                ManifestPaths.LOCK,
+                                0,
+                                LocalInstallRows.snapshotRefusal(ga, a.version(), who)));
+                    }
+                }
             }
         }
 
