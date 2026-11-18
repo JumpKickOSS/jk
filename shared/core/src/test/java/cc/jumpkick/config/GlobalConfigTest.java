@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Settled;
@@ -58,6 +59,29 @@ class GlobalConfigTest {
                         Map.entry("kotlin", "https://nexus.corp/kotlin/"), Map.entry("gradle", "${NEXUS}/gradle"));
         assertThat(GlobalConfig.nodeSources(file).registry()).isEqualTo("https://nexus.corp/npm/");
         assertThat(GlobalConfig.mirrors(dir.resolve("absent.toml"))).isEmpty();
+    }
+
+    /** The user's own config means its own home: {@code file://~/…} is expanded, where it failed as a URI. */
+    @Test
+    void a_home_relative_file_repository_is_this_users_home(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, """
+                [repositories]
+                m2 = "file://~/.m2/repository"
+                other = { url = "file:~/repos/other/" }
+                """);
+
+        Path home = Path.of(System.getProperty("user.home"));
+        assertThat(GlobalConfig.repositories(file))
+                .extracting(r -> r.name(), r -> Path.of(r.url()))
+                .containsExactly(
+                        tuple(
+                                "m2",
+                                home.resolve(".m2/repository").toAbsolutePath().normalize()),
+                        tuple(
+                                "other",
+                                home.resolve("repos/other").toAbsolutePath().normalize()));
+        assertThat(GlobalConfig.repositories(file).get(1).url().toString()).endsWith("/repos/other/");
     }
 
     @Test

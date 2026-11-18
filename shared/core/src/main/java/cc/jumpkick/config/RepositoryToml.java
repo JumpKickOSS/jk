@@ -175,6 +175,7 @@ public final class RepositoryToml {
         }
         String url = t.getString("url");
         if (url == null) throw new JkBuildParseException(where + " requires a string `url` field");
+        if (homeRelative(url)) url = expandHome(url); // a mirror is the user's config alone
         URI uri;
         try {
             uri = URI.create(url);
@@ -278,6 +279,11 @@ public final class RepositoryToml {
             if (onBad == OnBad.SKIP) return null;
             throw new JkBuildParseException(where + " must be a URL string or an inline table with `url`");
         }
+        if (homeRelative(url)) {
+            // ~ is this machine's home: the user's config means it, a project's cannot.
+            if (onBad == OnBad.REJECT) throw new JkBuildParseException(homeInProject(where, url));
+            url = expandHome(url);
+        }
         if (RepositorySpec.CENTRAL.equals(name) && (allowInsecure || allowUnverified)) {
             if (onBad == OnBad.SKIP) return null;
             throw new JkBuildParseException(
@@ -315,6 +321,36 @@ public final class RepositoryToml {
                 snapshots,
                 blocked,
                 optional);
+    }
+
+    /**
+     * True for a {@code file:} URL under {@code ~} ({@code file://~/.m2/repository}, {@code
+     * file:~/repo}): read as a URI, the {@code ~} is a host and the path fails as one with an
+     * authority component.
+     */
+    static boolean homeRelative(String url) {
+        String u = url.strip();
+        return u.startsWith("file://~/") || u.equals("file://~") || u.startsWith("file:~/");
+    }
+
+    /** {@code url} with its leading {@code ~} as this machine's home, as a {@code file:} URI. */
+    static String expandHome(String url) {
+        String u = url.strip();
+        String rest = u.startsWith("file://~") ? u.substring("file://~".length()) : u.substring("file:~".length());
+        Path dir = Path.of(System.getProperty("user.home"), rest.replaceFirst("^/+", ""));
+        String uri = dir.toAbsolutePath().normalize().toUri().toString();
+        return u.endsWith("/") && !uri.endsWith("/") ? uri + "/" : uri;
+    }
+
+    /**
+     * The refusal of a home-relative {@code file:} URL in a project manifest: it names a
+     * different directory on every machine and in every account that builds the project.
+     */
+    static String homeInProject(String where, String url) {
+        return where + ": " + url + " names a directory under the home of whoever builds, a different place on"
+                + " every machine, so a project's jk.toml cannot carry it; declare it in ~/.jk/config.toml, where"
+                + " ~ is expanded, or use a URL every machine reaches. Another project's jk install needs no"
+                + " repository: see \"Using another project's install\" in dependencies.md";
     }
 
     /**

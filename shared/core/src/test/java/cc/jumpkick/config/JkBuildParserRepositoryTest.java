@@ -61,6 +61,25 @@ class JkBuildParserRepositoryTest {
         assertThat(central.groups()).isEmpty();
     }
 
+    /**
+     * {@code ~} is the home of whoever builds: a project manifest is refused with why and the fix,
+     * where it failed later as "URI has an authority component".
+     */
+    @Test
+    void a_home_relative_file_url_is_refused_in_a_project_naming_the_fix() {
+        for (String url : List.of("file://~/.m2/repository", "file:~/repo/")) {
+            assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+                    [repositories]
+                    mine = "%s"
+                    """.formatted(url)))
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining(
+                            "repositories.mine: " + url + " names a directory under the home of whoever builds")
+                    .hasMessageContaining("declare it in ~/.jk/config.toml")
+                    .hasMessageContaining("Using another project's install");
+        }
+    }
+
     @Test
     void repositories_local_install_is_reserved() {
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
