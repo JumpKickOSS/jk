@@ -767,10 +767,24 @@ public final class SuiteReads {
         return command;
     }
 
-    /** The command a kept line names, on this checkout and host. */
+    /** The command a kept line names, on this checkout and host, as {@link #executable} spells it. */
     static String unspellCommand(Path workspace, String kept) {
-        if (!spelledUnderRoot(kept)) return kept;
+        if (!spelledUnderRoot(kept)) return hostSpelling(kept);
         return unspell(workspace, kept).toString();
+    }
+
+    /**
+     * {@code program} as this host spells a path: an absolute one with its separators ({@code
+     * C:\Program Files\...} on Windows, where a kept line has {@code /}), anything else as written. A
+     * program read back is compared with one a run observed, so both take this one spelling.
+     */
+    static String hostSpelling(String program) {
+        try {
+            Path p = Path.of(program);
+            return p.isAbsolute() ? p.toString() : program;
+        } catch (InvalidPathException notAPath) {
+            return program;
+        }
     }
 
     /** Whether {@code kept} begins with a root word ({@code ws:}, {@code store:}, …) rather than naming a program itself. */
@@ -887,17 +901,18 @@ public final class SuiteReads {
      * spaces, so a program whose path holds a space ({@code C:/Program Files/...}) cannot be told
      * from its arguments by the first word: the program is the shortest run of words that names an
      * absolute file that is there (on Windows also with {@code .exe} added), else the first word.
-     * What this answers is a program, kept and read back whole; nothing downstream splits it again.
+     * What this answers is a program, kept and read back whole ({@link #hostSpelling}); nothing
+     * downstream splits it again.
      */
     static String executable(String command) {
         String c = command.strip();
         int space = c.indexOf(' ');
-        if (space < 0) return c;
+        if (space < 0) return hostSpelling(c);
         for (int at = space; at >= 0; at = c.indexOf(' ', at + 1)) {
             String words = c.substring(0, at);
-            if (namesProgram(words)) return words;
+            if (namesProgram(words)) return hostSpelling(words);
         }
-        return namesProgram(c) ? c : c.substring(0, space);
+        return hostSpelling(namesProgram(c) ? c : c.substring(0, space));
     }
 
     private static boolean namesProgram(String words) {

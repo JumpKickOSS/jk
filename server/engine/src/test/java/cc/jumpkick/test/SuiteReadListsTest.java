@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -87,7 +88,7 @@ class SuiteReadListsTest {
 
     /**
      * The programs a suite started travel with its list (JK-EV4F4): a tool by its bare name, a POSIX
-     * utility named by path as a system path, a workspace script and the store's node by their
+     * utility named by path as a system path (read back with this host's separators), a workspace script and the store's node by their
      * root, a program named relative to the test's directory as written; another checkout reads
      * each back as its own.
      */
@@ -98,9 +99,10 @@ class SuiteReadListsTest {
         Path b = workspace(tmp.resolve("elsewhere/b"));
         Path script = a.resolve("data/gen.sh");
         Path node = JkDirs.store().resolve("tools/node/24.22.0/bin/node");
+        Path system = Path.of(Os.isWindows() ? "C:/Windows/System32/cmd.exe" : "/bin/sh");
         SuiteReads.Discovered read = new SuiteReads.Discovered(
                 Set.of(a.resolve("data/fixture.txt")),
-                Set.of("git", "/bin/sh", "./jk", script.toString(), node.toString()),
+                Set.of("git", system.toString(), "./jk", script.toString(), node.toString()),
                 Set.of());
 
         List<String> names = requireNonNull(SuiteReadLists.portable(a.resolve("m"), read));
@@ -109,7 +111,7 @@ class SuiteReadListsTest {
                 .containsExactlyInAnyOrder(
                         "ws:data/fixture.txt",
                         "proc:git",
-                        "proc:sys:bin/sh",
+                        Os.isWindows() ? "proc:sys:C:/Windows/System32/cmd.exe" : "proc:sys:bin/sh",
                         "proc:rel:.%2Fjk",
                         "proc:ws:data/gen.sh",
                         "proc:store:tools/node/24.22.0/bin/node");
@@ -117,7 +119,11 @@ class SuiteReadListsTest {
         assertThat(requireNonNull(SuiteReadLists.fromPortable(b.resolve("m"), names))
                         .commands())
                 .containsExactlyInAnyOrder(
-                        "git", "/bin/sh", "./jk", b.resolve("data/gen.sh").toString(), node.toString());
+                        "git",
+                        system.toString(),
+                        "./jk",
+                        b.resolve("data/gen.sh").toString(),
+                        node.toString());
     }
 
     /**

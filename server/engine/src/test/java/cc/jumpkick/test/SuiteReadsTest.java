@@ -151,7 +151,14 @@ class SuiteReadsTest {
         Path module = Files.createDirectories(tmp.resolve("module"));
         SuiteReads.Discovered d = SuiteReads.Discovered.NONE.with(Set.of(), Set.of(tool.toString()), Set.of());
         SuiteReads.save(module, TestSelection.DEFAULT, d);
-        assertThat(SuiteReads.load(module, TestSelection.DEFAULT).commands()).containsExactly(tool.toString());
+        String slashed = tool.toString().replace('\\', '/');
+        assertThat(Files.readString(SuiteReads.discoveredFile(module, TestSelection.DEFAULT)))
+                .as("kept with forward slashes on every host")
+                .contains("command " + slashed + "\n");
+        assertThat(SuiteReads.load(module, TestSelection.DEFAULT).commands())
+                .as("read back as a run observes it, with this host's separators")
+                .containsExactly(tool.toString());
+        assertThat(SuiteReads.executable(slashed + " --flag")).isEqualTo(tool.toString());
         assertThat(SuiteReads.tokens(module, TestSelection.DEFAULT, tmp))
                 .as("a program in the workspace, by its workspace path")
                 .containsExactly("proc:Program Files/bin/tool=" + FileHashMemo.contentHash(tool));
