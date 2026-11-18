@@ -746,6 +746,9 @@ def grok(tool: str, sandbox: Path, model: str, max_turns: int, max_seconds: int,
                     break
                 stderr_parts.append(line)
         stderr = "".join(stderr_parts).strip()
+        if env.get("GROK_AUTH_PATH"):
+            # grok renews an expired login in the copy; without this the renewal dies with the throwaway home.
+            _keep_refreshed_login(Path(env["GROK_AUTH_PATH"]), Path.home() / ".grok" / "auth.json")
         # One `assistant` event per model response: the same count as claude-code's stream-json.
         turns = count_assistant_turns(events)
         unexpected = _unexpected_tools(advertised)
