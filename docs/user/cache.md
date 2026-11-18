@@ -137,6 +137,56 @@ by name only), so a suite that runs again says which of those moved, like any ot
 The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from
 repository downloads and uploads (`remoteUp`, `remoteDown`).
 
+## Shared cache
+
+A team can share one action cache through a cache server. CI builds a commit and stores its
+results there; a developer's machine or another runner building the same commit restores them
+instead of running the steps. JumpKick speaks the JumpKick cache protocol, version 0, over HTTPS.
+
+Point JumpKick at the server in your own settings. A project's `jk.toml` cannot name one: it is
+committed and read by every checkout, forks included, and the server is where a build sends its
+keys and its credential.
+
+```toml
+# ~/.jk/config.toml
+[cache]
+remote = "https://cache.example.com"
+remote-write = true          # optional; see below
+```
+
+`JK_CACHE_REMOTE=https://cache.example.com` does the same for one shell (`off` turns it off), and
+`JK_CACHE_REMOTE_WRITE` overrides `remote-write`. Plain `http` is taken only for a server on this
+machine.
+
+The credential is the [repository credential](repositories.md#credentials) for the server's
+`host[:port]`: `jk repo login cache.example.com -U https://cache.example.com` on your machine (kept in
+the keychain when there is one), `JK_REPO_CACHE_EXAMPLE_COM_TOKEN` in CI. It is sent to that origin
+only, never to the storage the server hands a large blob's transfer to, and never printed.
+
+**Reading.** When the local cache misses, the build asks the server, for many steps in one request,
+and restores what it holds. Each blob is checked against its digest as it lands, so a damaged or
+altered blob is a miss, and what was restored is kept in the local cache for the next build. Every
+record is read as untrusted, as a local one is, and judged by your own JDK policy (`[cache]
+jdk-match`, a `jdk` table with `required = true`): the server picks the record your policy would,
+and JumpKick checks it again. `jk explain` forecasts the hits the build would take.
+
+**Writing.** A build that writes uploads each result it can share (no red suite, no step of a kind
+it does not know) behind the build, its blobs before its record, and waits up to two minutes at
+its end for the uploads to land. CI writes by default (`CI` set) and a developer's machine reads;
+`remote-write` says otherwise. A pull or merge request's CI run never writes, whatever it sets (a
+GitHub `pull_request` or `pull_request_target` event, a GitLab merge-request pipeline, a Buildkite or
+CircleCI pull request): its code is its author's. The server has the last word: a credential it
+lets write nothing sends nothing.
+
+**Failures.** The server never fails a build. One that does not answer within 10 seconds, refuses
+the credential or speaks another protocol version is off for the rest of the build after one
+warning, and the build goes on locally (`remote-unreachable` above). An upload it refuses stops the
+build's uploads, noted in the engine log. `--offline` leaves it alone.
+
+What leaves the machine is what a record that leaves the machine holds (see [What is what](#what-is-what)),
+the blobs its outputs name, the action keys a build asks about, its platform (`macos-aarch64`) and the
+JDK it uses.
+
 ## Hygiene
 
 ```bash

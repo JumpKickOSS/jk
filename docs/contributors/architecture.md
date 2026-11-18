@@ -804,16 +804,26 @@ puts of blobs and records. The local disk (`LocalCacheBackend`: `keys/`, the cac
 CAS for promoted blobs) is the one implementation JumpKick ships. A request may bind a second one
 behind it: `RemoteCacheBinding.around` wraps every job's body and every read verb (`jk explain`)
 in `RemoteCaches.where`, one `RemoteTier`, so one circuit breaker, per request, and a writing
-request waits for its uploads before its job ends. Today the only store it can bind is a
-directory laid out as a cache directory and kept with the shared write rules
-(`DirectoryCacheBackend`), named by the experimental `JK_EXPERIMENTAL_REMOTE_CACHE_DIR` of the
-shell that ran the command (`JK_EXPERIMENTAL_REMOTE_CACHE_WRITE=true` to upload too): a way to
-exercise the tier between two homes, not a feature, and free to change or go. With neither set
-nothing is bound and the action cache is the local disk alone. `RemoteCacheE2eTest` runs two
+request waits for its uploads before its job ends. The store it binds is a cache server named by
+the user's own settings (`RemoteCacheSettings`: `JK_CACHE_REMOTE`, else `[cache] remote` in
+`~/.jk/config.toml`, never a project's `jk.toml`), reached by `HttpCacheBackend` over the JumpKick
+cache protocol, version 0 (capabilities, batched lookups carrying the reader's toolchain policy per
+key, blobs in batches or by the signed requests the server hands out, record puts with the
+protocol's problem codes), with the repository credential chain's credential for its
+`host[:port]`, sent to that origin only. A pull request's CI run never writes, and a server that
+gives the credential no write scope is sent nothing (`CacheBackend.writable`). `FakeCacheServer`
+(client-io test fixtures) is a stub of the protocol for tests. For exercising the tier between
+two homes without a server, a directory laid out as a cache directory and kept with the shared
+write rules (`DirectoryCacheBackend`) is named by the experimental
+`JK_EXPERIMENTAL_REMOTE_CACHE_DIR` of the shell that ran the command
+(`JK_EXPERIMENTAL_REMOTE_CACHE_WRITE=true` to upload too): not a feature, and free to change or
+go. With nothing set nothing is bound and the action cache is the local disk alone. `RemoteCacheE2eTest` runs two
 checkouts with their own caches through one engine and a shared directory: the second forecasts
 and builds from the first's records, a red suite is never shared, a record naming another
 `TARGET` is not taken, an unreachable store warns once and the build goes on, and the same sources
-at two checkout paths store every step under the same key. With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
+at two checkout paths store every step under the same key; through `FakeCacheServer` over HTTP, a
+reader's token and a pull request never write, an altered blob is a miss, and a server that is down
+warns once. With a tier bound, a key this disk cannot restore is asked of the tier: a record the tier
 holds whole is `restorable` without a download, so the forecast and `jk explain` price it as a
 hit, and the restore fetches the missing blobs (each verified by `Cas.putVerified`, a mismatch is
 a miss) and keeps the record locally. A record with no blob to fetch (a verdict, a test marker) is
@@ -837,8 +847,8 @@ A tier that fails is off for the rest of the build after one `remote-cache-unrea
 the step that met it, or on the run when the forecast met it before any step ran; the build goes on
 locally. No ACLs or REAPI execution in 1.0.
 
-**Non-goals for 1.0:** remote write-back, multi-tenant trust, full Bazel REAPI execution,
-cross-org sharing.
+**Non-goals for 1.0:** signed records and multi-tenant trust beyond the server's own scopes, full
+Bazel REAPI execution, cross-org sharing.
 
 **Compatibility:** if key material gains fields, version the action-key schema (prefix or
 schema byte) so old local entries are not silently reinterpreted.

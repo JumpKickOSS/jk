@@ -160,7 +160,8 @@ public final class RequestEnvNames {
 
     /**
      * The CI run a build came from, by exact name and never by prefix: what the run's record names
-     * as its CI provider, run id, run page, event, branch and repository. A CI server's prefix also
+     * as its CI provider, run id, run page, event, branch and repository, and whether it is a pull
+     * request's (a shared cache takes no results from one). A CI server's prefix also
      * holds its secrets (GitLab's {@code CI_JOB_TOKEN}, {@code CI_REGISTRY_PASSWORD}, CircleCI's
      * tokens), so only these reach the engine; none names a credential.
      */
@@ -184,11 +185,13 @@ public final class RequestEnvNames {
             "BUILDKITE_BUILD_URL",
             "BUILDKITE_SOURCE",
             "BUILDKITE_BRANCH",
+            "BUILDKITE_PULL_REQUEST",
             "CIRCLECI",
             "CIRCLE_WORKFLOW_ID",
             "CIRCLE_BUILD_NUM",
             "CIRCLE_BUILD_URL",
-            "CIRCLE_BRANCH");
+            "CIRCLE_BRANCH",
+            "CIRCLE_PULL_REQUEST");
 
     private static final Set<String> NAMES_SET = Set.copyOf(
             Stream.of(NAMES, CREDENTIALS, CI_RUN).flatMap(List::stream).toList());

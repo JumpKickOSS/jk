@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A place action records and the blobs they name are kept: the local disk cache, or a second
@@ -19,6 +20,9 @@ import java.util.Set;
  * every one as untrusted input, so a backend never vouches for a record. What a reader refuses is
  * a miss for that reader alone: there is no delete here, so no client can take a record from a
  * store it shares with others.
+ *
+ * <p>A blob is named by its sha256 and its byte count: a store across a network keys blobs by both,
+ * so a blob held at another size is one it does not hold.
  *
  * <p>Every method may throw {@link IOException} for a store it cannot reach. The caller treats
  * that as a miss, never as a failed build.
@@ -36,19 +40,19 @@ public interface CacheBackend {
      */
     Map<String, String> records(Lookup lookup) throws IOException;
 
-    /** Of {@code digests} (sha256 hex), those this backend does not hold. */
-    Set<String> missing(Collection<String> digests) throws IOException;
+    /** Of {@code blobs} (sha256 hex to byte count), those this backend does not hold at that size. */
+    Set<String> missing(Map<String, Long> blobs) throws IOException;
 
     /**
-     * The bytes of blob {@code digest}. The caller verifies them against the digest before it keeps
-     * them ({@link Cas#putVerified}).
+     * Hand {@code sink} the bytes of every blob of {@code blobs} (sha256 hex to byte count). The
+     * sink verifies them against the digest before it keeps them ({@link Cas#putVerified}).
      *
-     * @throws java.nio.file.NoSuchFileException when the backend does not hold it
+     * @throws java.nio.file.NoSuchFileException when the backend does not hold one of them
      */
-    InputStream open(String digest) throws IOException;
+    void fetch(Map<String, Long> blobs, BlobSink sink) throws IOException;
 
-    /** Keep {@code source}'s bytes as blob {@code digest}, which the caller has computed. */
-    void putBlob(String digest, Path source) throws IOException;
+    /** Keep the bytes of each file of {@code blobs} as the blob its key names, which the caller has computed. */
+    void putBlobs(Map<String, Path> blobs) throws IOException;
 
     /**
      * Keep {@code recordText} under {@code key}. Every blob the record names is put first, so a
@@ -57,14 +61,80 @@ public interface CacheBackend {
     void putRecord(String key, String recordText) throws IOException;
 
     /**
-     * One batched lookup: the action keys, and the platform asking. The platform is a dimension of
-     * the lookup, never of the key: a step whose outputs do not depend on the platform has one key
-     * everywhere, and a store holding records from several platforms may prefer the asker's.
+     * Whether this build may write here at all. A backend that learns from the store that the
+     * caller writes nothing (a read-only token) says so, and nothing is offered to it.
      */
-    record Lookup(List<String> keys, String platform) {
+    default boolean writable() {
+        return true;
+    }
+
+    /** Where {@link #fetch} hands each blob's bytes. */
+    @FunctionalInterface
+    interface BlobSink {
+        void accept(String digest, InputStream bytes) throws IOException;
+    }
+
+    /**
+     * One batched lookup: the action keys, the platform asking and, for some keys, which toolchains'
+     * records the reader takes ({@link Accept}). The platform and the toolchain are dimensions of the
+     * lookup, never of the key: a step whose outputs do not depend on the platform has one key
+     * everywhere, and a store holding records from several platforms or JDKs may prefer the asker's.
+     */
+    record Lookup(List<String> keys, String platform, Map<String, Accept> accept) {
         public Lookup {
             keys = List.copyOf(keys);
             Objects.requireNonNull(platform, "platform");
+            accept = Map.copyOf(accept);
+        }
+
+        public Lookup(List<String> keys, String platform) {
+            this(keys, platform, Map.of());
+        }
+    }
+
+    /**
+     * Which toolchains' records a reader takes for a key: the token of the toolchain it runs
+     * ({@code toolchain:jdk:<vendor>/<version>/…}), the module's level, the match ({@code major},
+     * {@code level} or {@code build}) and an organisation's requirement: a vendor word the record's
+     * vendor must contain ({@code eclipse} for Temurin) and a version (a major, an exact version or a
+     * {@code >=} floor), each null when the requirement names none. The reader checks every record it
+     * gets against its own policy regardless; a store that applies this only saves it the bytes.
+     */
+    record Accept(
+            String toolchain,
+            int level,
+            String match,
+            @Nullable String requireVendor,
+            @Nullable String requireVersion) {
+        public Accept {
+            Objects.requireNonNull(toolchain, "toolchain");
+            Objects.requireNonNull(match, "match");
+        }
+    }
+
+    /**
+     * A store's refusal of one record or blob batch that leaves the rest of the build's uploads
+     * standing: the record is not one it shares ({@code refused_kind}, {@code red_result}), not one it
+     * reads ({@code invalid}), or too large. The upload goes on with the next record.
+     */
+    final class Skipped extends IOException {
+        public Skipped(String message) {
+            super(message);
+        }
+    }
+
+    /** A record put refused because the store lacks blobs it names: upload {@link #missing} and put it again. */
+    final class BlobsMissing extends IOException {
+        private final Collection<String> missing;
+
+        public BlobsMissing(String message, Collection<String> missing) {
+            super(message);
+            this.missing = List.copyOf(missing);
+        }
+
+        /** The sha256 of every blob the store said it lacks. */
+        public Collection<String> missing() {
+            return missing;
         }
     }
 }

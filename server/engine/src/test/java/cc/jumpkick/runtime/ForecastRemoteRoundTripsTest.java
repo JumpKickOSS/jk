@@ -21,12 +21,10 @@ import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -122,19 +120,19 @@ class ForecastRemoteRoundTripsTest {
         }
 
         @Override
-        public Set<String> missing(Collection<String> digests) throws IOException {
-            return inner.missing(digests);
+        public Set<String> missing(Map<String, Long> blobs) throws IOException {
+            return inner.missing(blobs);
         }
 
         @Override
-        public InputStream open(String digest) throws IOException {
-            blobsOpened.incrementAndGet();
-            return inner.open(digest);
+        public void fetch(Map<String, Long> blobs, BlobSink sink) throws IOException {
+            blobsOpened.addAndGet(blobs.size());
+            inner.fetch(blobs, sink);
         }
 
         @Override
-        public void putBlob(String digest, Path source) throws IOException {
-            inner.putBlob(digest, source);
+        public void putBlobs(Map<String, Path> blobs) throws IOException {
+            inner.putBlobs(blobs);
         }
 
         @Override

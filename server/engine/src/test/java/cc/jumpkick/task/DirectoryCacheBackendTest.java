@@ -31,7 +31,7 @@ class DirectoryCacheBackendTest {
         DirectoryCacheBackend dir = new DirectoryCacheBackend(Files.createDirectories(tmp.resolve("remote")));
         Path blob = Files.writeString(tmp.resolve("A.class"), "class A");
         String sha = Hashing.sha256Hex(blob);
-        dir.putBlob(sha, blob);
+        dir.putBlobs(Map.of(sha, blob));
         dir.putRecord(KEY, outputs(sha, "first"));
         dir.putRecord(KEY, outputs(sha, "second"));
         assertThat(dir.records(new CacheBackend.Lookup(List.of(KEY), "linux-x86_64"))
@@ -53,7 +53,7 @@ class DirectoryCacheBackendTest {
         DirectoryCacheBackend dir = new DirectoryCacheBackend(tmp.resolve("absent"));
         assertThatThrownBy(() -> dir.records(new CacheBackend.Lookup(List.of(KEY), "linux-x86_64")))
                 .isInstanceOf(IOException.class);
-        assertThatThrownBy(() -> dir.missing(Set.of(KEY))).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> dir.missing(Map.of(KEY, 1L))).isInstanceOf(IOException.class);
     }
 
     @Test

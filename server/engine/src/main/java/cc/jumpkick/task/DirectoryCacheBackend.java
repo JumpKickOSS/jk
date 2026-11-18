@@ -6,12 +6,10 @@ import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.CacheTree;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.NotDirectoryException;
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -50,21 +48,21 @@ public final class DirectoryCacheBackend implements CacheBackend {
     }
 
     @Override
-    public Set<String> missing(Collection<String> digests) throws IOException {
+    public Set<String> missing(Map<String, Long> blobs) throws IOException {
         reachable();
-        return disk.missing(digests);
+        return disk.missing(blobs);
     }
 
     @Override
-    public InputStream open(String digest) throws IOException {
+    public void fetch(Map<String, Long> blobs, BlobSink sink) throws IOException {
         reachable();
-        return disk.open(digest);
+        disk.fetch(blobs, sink);
     }
 
     @Override
-    public void putBlob(String digest, Path source) throws IOException {
+    public void putBlobs(Map<String, Path> blobs) throws IOException {
         reachable();
-        disk.putBlob(digest, source);
+        disk.putBlobs(blobs);
     }
 
     @Override

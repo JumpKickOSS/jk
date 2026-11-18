@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.HttpCacheBackend;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.repo.RepoCredentialResolver;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
+import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -13,12 +23,15 @@ import org.jspecify.annotations.Nullable;
  * request, bound around the request's whole body ({@link RemoteCaches#where}) so its forecast, its
  * steps and {@code jk explain} ask the same tier.
  *
- * <p>The only store jk can bind today is a directory standing in for a shared cache ({@link
- * DirectoryCacheBackend}), named by the experimental {@value #DIR} setting of the shell that ran
- * the command; {@value #WRITE}{@code =true} also uploads what the request stores. Both are for
- * exercising the remote tier between two homes and are not a supported feature: the names and the
- * behaviour may change or go. With neither set, nothing is bound and the request is the local
- * cache alone.
+ * <p>A shared cache service is named by the user's own settings ({@link RemoteCacheSettings}) and
+ * reached over HTTP ({@link HttpCacheBackend}) with the repository credential chain's credential for
+ * its host. A request run {@code --offline} binds none.
+ *
+ * <p>For exercising the remote tier between two homes without a service, a directory standing in
+ * for a shared cache ({@link DirectoryCacheBackend}) is named by the experimental {@value #DIR}
+ * setting of the shell that ran the command; {@value #WRITE}{@code =true} also uploads what the
+ * request stores. Those two are not a supported feature: the names and the behaviour may change or
+ * go. With nothing set, nothing is bound and the request is the local cache alone.
  */
 public final class RemoteCacheBinding {
 
@@ -33,12 +46,46 @@ public final class RemoteCacheBinding {
 
     private RemoteCacheBinding() {}
 
+    /**
+     * How long a call to a shared cache service waits for its answer to start. A lookup is on the
+     * build's path; a service slower than this is off for the build, which goes on locally.
+     */
+    static final Duration TIMEOUT = Duration.ofSeconds(10);
+
     /** The tier the current request's settings name, or null when they name none. */
     static @Nullable RemoteTier forRequest() {
         String dir = EnvValues.string(BuildEnv::get, DIR).orElse(null);
-        if (dir == null) return null;
-        boolean writes = EnvValues.bool(BuildEnv::get, WRITE).orElse(false);
-        return new RemoteTier(new DirectoryCacheBackend(Path.of(dir)), writes);
+        if (dir != null) {
+            boolean writes = EnvValues.bool(BuildEnv::get, WRITE).orElse(false);
+            return new RemoteTier(new DirectoryCacheBackend(Path.of(dir)), writes);
+        }
+        RemoteCacheSettings settings = RemoteCacheSettings.resolve(BuildEnv::get, JkDirs.userConfigFile());
+        if (settings == null || SessionContext.current().config().offlineOr(false)) return null;
+        return new RemoteTier(service(settings.url()), settings.writes());
+    }
+
+    /** The service at {@code url}, with the credential the repository chain holds for its {@code host[:port]}. */
+    static HttpCacheBackend service(URI url) {
+        return new HttpCacheBackend(url, Clients.HTTP, () -> authorization(url));
+    }
+
+    /** One client for every request's service: no retries, a short wait. */
+    private static final class Clients {
+        static final Http HTTP = new Http().withoutRetries().withRequestTimeout(TIMEOUT);
+    }
+
+    private static Optional<String> authorization(URI url) {
+        String id = url.getHost() + (url.getPort() == -1 ? "" : ":" + url.getPort());
+        RepoCredential credential =
+                RepoCredentialResolver.withEnv(BuildEnv::get).resolve(id, url, Optional.empty());
+        return switch (credential) {
+            case RepoCredential.Bearer b -> Optional.of("Bearer " + b.token());
+            case RepoCredential.Basic b ->
+                Optional.of("Basic "
+                        + Base64.getEncoder()
+                                .encodeToString((b.username() + ":" + b.password()).getBytes(StandardCharsets.UTF_8)));
+            default -> Optional.empty();
+        };
     }
 
     /**

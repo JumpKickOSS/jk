@@ -4,14 +4,20 @@ package cc.jumpkick.task;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.Request;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.task.ToolchainPolicy.Expectation;
+import cc.jumpkick.task.ToolchainPolicy.Match;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -182,6 +188,82 @@ class RemoteTierTest {
         assertThat(cache(tmp.resolve("here")).lookup("stamp").orElseThrow().outputs())
                 .containsEntry(TestStamp.TOTAL, "3");
         assertThat(tier.hits()).isEqualTo(1);
+    }
+
+    @Test
+    void a_lookup_tells_the_backend_which_toolchains_the_reader_takes(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(storedElsewhere(tmp), "k1");
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+        String corretto = "toolchain:jdk:amazon.com-inc./25.0.3+9-LTS/cccccccccccccccc";
+
+        Request.of(1, new IoLedger()).run(() -> {
+            try {
+                ToolchainPolicy.expectForTests(
+                        "k1",
+                        new Expectation(corretto, 21, Match.MAJOR, new ToolchainPolicy.Requirement("temurin", "25")));
+                RemoteCaches.where(tier, () -> cache(tmp.resolve("here")).restorable("k1"));
+            } finally {
+                RequestScope.release();
+            }
+        });
+
+        assertThat(remote.lookups).singleElement().satisfies(l -> assertThat(l.accept())
+                .containsExactly(Map.entry("k1", new CacheBackend.Accept(corretto, 21, "major", "eclipse", "25"))));
+    }
+
+    @Test
+    void a_tier_built_to_write_sends_nothing_to_a_backend_that_says_this_caller_writes_nothing(@TempDir Path tmp)
+            throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.writable = false;
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true);
+
+        storeThrough(tier, tmp);
+
+        assertThat(tier.writes()).isFalse();
+        assertThat(remote.records).isEmpty();
+        assertThat(remote.blobs).isEmpty();
+        assertThat(remote.puts).isZero();
+    }
+
+    @Test
+    void a_record_the_store_does_not_take_is_skipped_and_the_next_still_goes(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.skip.add("k1");
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true);
+
+        storeThrough(tier, tmp);
+
+        assertThat(tier.writes()).as("a skipped record stops nothing").isTrue();
+        assertThat(remote.records).containsOnlyKeys("k2");
+        assertThat(tier.uploaded()).isEqualTo(1);
+    }
+
+    @Test
+    void blobs_the_store_lost_before_the_put_are_sent_again_once(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.loseBlobsBeforeFirstPut = true;
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true);
+
+        storeThrough(tier, tmp);
+
+        assertThat(remote.records).containsOnlyKeys("k1", "k2");
+        assertThat(tier.uploaded()).isEqualTo(2);
+    }
+
+    /** Store two records, k1 and k2, with the tier bound, and wait for their uploads. */
+    private static void storeThrough(RemoteTier tier, Path tmp) throws Exception {
+        Path out = tmp.resolve("built");
+        Files.createDirectories(out);
+        Files.writeString(out.resolve("A.class"), "class A");
+        RemoteCaches.where(tier, () -> {
+            ActionCache cache = cache(tmp.resolve("here"));
+            cache.store("compile-main@x", "k1", Map.of("src/A.java", "aaa"), out);
+            cache.store("compile-main@y", "k2", Map.of("src/A.java", "bbb"), out);
+            return null;
+        });
+        assertThat(tier.drain(Duration.ofSeconds(30))).isTrue();
     }
 
     private static ActionCache storedElsewhere(Path tmp) throws IOException {

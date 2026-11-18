@@ -123,6 +123,11 @@ public final class LocalCacheBackend implements CacheBackend {
     }
 
     @Override
+    public Set<String> missing(Map<String, Long> blobs) {
+        return missing(blobs.keySet());
+    }
+
+    /** Of {@code digests}, the blobs neither CAS on this disk holds; a marker scalar is no blob and never missing. */
     public Set<String> missing(Collection<String> digests) {
         Set<String> missing = new TreeSet<>();
         for (String sha : digests) {
@@ -143,15 +148,28 @@ public final class LocalCacheBackend implements CacheBackend {
         return p;
     }
 
-    @Override
+    /** Blob {@code digest}'s bytes, from whichever CAS holds it. */
     public InputStream open(String digest) throws IOException {
         return Files.newInputStream(blobPath(digest));
     }
 
-    /** Copies, never links: compilers rewrite outputs in place and must not mutate a blob ({@link Cas#putFile}). */
     @Override
+    public void fetch(Map<String, Long> blobs, BlobSink sink) throws IOException {
+        for (String digest : blobs.keySet()) {
+            try (InputStream in = open(digest)) {
+                sink.accept(digest, in);
+            }
+        }
+    }
+
+    /** Copies, never links: compilers rewrite outputs in place and must not mutate a blob ({@link Cas#putFile}). */
     public void putBlob(String digest, Path source) throws IOException {
         cas.putFile(source, digest);
+    }
+
+    @Override
+    public void putBlobs(Map<String, Path> blobs) throws IOException {
+        for (Map.Entry<String, Path> e : blobs.entrySet()) putBlob(e.getKey(), e.getValue());
     }
 
     /** Atomic temp and move: a concurrent reader never sees a truncated record. */

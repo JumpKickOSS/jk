@@ -5,7 +5,6 @@ import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.CacheBackend;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -28,6 +27,14 @@ final class MemoryCacheBackend implements CacheBackend {
     final Map<String, byte[]> blobs = new ConcurrentHashMap<>();
     final List<Lookup> lookups = new ArrayList<>();
     volatile boolean down;
+    /** What {@link #writable} answers: false for a caller the store lets write nothing. */
+    volatile boolean writable = true;
+    /** Keys whose put is refused as a record the store does not take. */
+    final Set<String> skip = ConcurrentHashMap.newKeySet();
+    /** Drop every blob on the first record put, as a sweep between the question and the put would. */
+    volatile boolean loseBlobsBeforeFirstPut;
+    /** Record puts asked, taken or not. */
+    volatile int puts;
 
     @Override
     public String name() {
@@ -56,7 +63,11 @@ final class MemoryCacheBackend implements CacheBackend {
     }
 
     @Override
-    public Set<String> missing(Collection<String> digests) throws IOException {
+    public Set<String> missing(Map<String, Long> sized) throws IOException {
+        return missing(sized.keySet());
+    }
+
+    private Set<String> missing(Collection<String> digests) throws IOException {
         if (down) throw new IOException("connection refused");
         Set<String> missing = new TreeSet<>();
         for (String d : digests) {
@@ -66,23 +77,41 @@ final class MemoryCacheBackend implements CacheBackend {
     }
 
     @Override
-    public InputStream open(String digest) throws IOException {
-        if (down) throw new IOException("connection refused");
-        byte[] bytes = blobs.get(digest);
-        if (bytes == null) throw new NoSuchFileException(digest);
-        return new ByteArrayInputStream(bytes);
+    public void fetch(Map<String, Long> sized, BlobSink sink) throws IOException {
+        for (String digest : sized.keySet()) {
+            if (down) throw new IOException("connection refused");
+            byte[] bytes = blobs.get(digest);
+            if (bytes == null) throw new NoSuchFileException(digest);
+            sink.accept(digest, new ByteArrayInputStream(bytes));
+        }
     }
 
     @Override
-    public void putBlob(String digest, Path source) throws IOException {
+    public void putBlobs(Map<String, Path> files) throws IOException {
         if (down) throw new IOException("connection refused");
-        blobs.put(digest, Files.readAllBytes(source));
+        for (Map.Entry<String, Path> e : files.entrySet()) blobs.put(e.getKey(), Files.readAllBytes(e.getValue()));
     }
 
     @Override
-    public void putRecord(String key, String recordText) throws IOException {
+    public synchronized void putRecord(String key, String recordText) throws IOException {
         if (down) throw new IOException("connection refused");
+        puts++;
+        if (skip.contains(key)) throw new Skipped("refused_kind: " + key);
+        if (loseBlobsBeforeFirstPut) {
+            loseBlobsBeforeFirstPut = false;
+            blobs.clear();
+        }
+        List<String> lacking = new ArrayList<>();
+        for (String sha : ActionRecordText.parse(recordText, key).outputs().values()) {
+            if (ActionRecordText.isSha256(sha) && !blobs.containsKey(sha)) lacking.add(sha);
+        }
+        if (!lacking.isEmpty()) throw new BlobsMissing("blobs_missing", lacking);
         records.put(key, recordText);
+    }
+
+    @Override
+    public boolean writable() {
+        return writable;
     }
 
     /** Copy what {@code cache} holds under {@code key}, record and blobs, as another machine's upload would. */

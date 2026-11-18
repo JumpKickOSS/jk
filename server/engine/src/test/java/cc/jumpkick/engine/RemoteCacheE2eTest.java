@@ -4,6 +4,7 @@ package cc.jumpkick.engine;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.testing.FakeCacheServer;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.journal.BuildJournal;
@@ -12,14 +13,17 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.task.CachePlatform;
 import cc.jumpkick.task.RemoteCacheBinding;
+import cc.jumpkick.task.RemoteCacheSettings;
 import cc.jumpkick.testing.TestCaches;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.BuildRequest;
@@ -224,6 +228,103 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     /**
+     * The same two machines through a cache service speaking the published protocol over HTTP: A, a
+     * CI run, writes; B, a fork's pull request whose token reads only, builds clean from what A left
+     * and asks the service for nothing but reads.
+     */
+    @Test
+    void a_second_home_builds_from_a_shared_cache_service_and_a_reader_never_writes() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            List<String> built = build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true));
+            assertThat(succeeded(built)).as("machine A builds: " + built).isTrue();
+            settled(a);
+            assertThat(service.recordsOf("outputs"))
+                    .as("A uploaded its outputs")
+                    .isNotEmpty();
+            assertThat(service.recordsOf("test-marker"))
+                    .as("A uploaded its green marker")
+                    .hasSize(1);
+            assertThat(service.calls()).anyMatch(c -> c.startsWith("PUT /v0/records/") && c.endsWith(" writer"));
+
+            List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, true));
+            assertThat(succeeded(again)).as("machine B builds: " + again).isTrue();
+            BuildRecord record = settled(b);
+            assertThat(b.resolve("app/target/classes/com/example/App.class")).isRegularFile();
+            assertThat(cacheOf(record))
+                    .as("no step ran: " + record.modules())
+                    .isNotEmpty()
+                    .noneMatch(c -> c.outcome() == StepCache.Outcome.MISS)
+                    .anyMatch(c -> c.outcome() == StepCache.Outcome.REMOTE_HIT && c.bytesIn() > 0);
+            assertThat(service.calls())
+                    .as("the reader looked up and read, and sent nothing")
+                    .filteredOn(c -> c.endsWith(" reader"))
+                    .isNotEmpty()
+                    .noneMatch(c -> c.startsWith("PUT ") || c.contains("upload") || c.contains("commit"));
+            assertThat(service.lookups())
+                    .as("a lookup names the reader's toolchain policy for the keys a step stated it for")
+                    .anyMatch(l -> !MiniJson.list(l, "accept").isEmpty());
+        }
+    }
+
+    @Test
+    void a_pull_requests_run_never_writes_even_with_a_token_that_may() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            Map<String, String> env = new HashMap<>(service(service, FakeCacheServer.WRITER, true));
+            env.put("CI", "true");
+            env.put("GITHUB_EVENT_NAME", "pull_request");
+            assertThat(succeeded(build(a, root.resolve("cache-a"), env))).isTrue();
+            settled(a);
+            assertThat(service.calls()).isNotEmpty().noneMatch(c -> c.startsWith("PUT ") || c.contains("upload"));
+            assertThat(service.records()).isEmpty();
+        }
+    }
+
+    @Test
+    void a_blob_the_service_serves_altered_is_a_miss_and_the_step_runs() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            assertThat(succeeded(build(a, root.resolve("cache-a"), service(service, FakeCacheServer.WRITER, true))))
+                    .isTrue();
+            settled(a);
+            for (String sha : service.blobs().keySet()) service.tamper(sha);
+
+            List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
+            assertThat(succeeded(again)).as("B builds locally: " + again).isTrue();
+            BuildRecord record = settled(b);
+            assertThat(cacheOf(record))
+                    .as("every step whose blobs came altered ran: " + record.modules())
+                    .filteredOn(c -> c.bytesIn() > 0)
+                    .noneMatch(c -> c.outcome() == StepCache.Outcome.REMOTE_HIT);
+            assertThat(cacheOf(record)).anyMatch(c -> c.outcome() == StepCache.Outcome.MISS);
+            assertThat(b.resolve("lib/target/classes/com/example/One.class")).isRegularFile();
+        }
+    }
+
+    @Test
+    void a_cache_service_that_is_down_leaves_the_build_green_with_one_warning() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        FakeCacheServer gone = FakeCacheServer.start();
+        Map<String, String> env = service(gone, FakeCacheServer.WRITER, true);
+        gone.close();
+
+        List<String> built = build(a, root.resolve("cache-a"), env);
+        assertThat(succeeded(built)).as("the build succeeds locally: " + built).isTrue();
+        BuildRecord record = settled(a);
+        assertThat(built.stream().filter(l -> l.contains("did not answer")).count())
+                .as("one warning for the build: " + record.diagnostics() + "\n" + built)
+                .isEqualTo(1);
+        assertThat(cacheOf(record)).isNotEmpty().allMatch(c -> c.outcome() == StepCache.Outcome.MISS);
+    }
+
+    /**
      * The property every shared hit rests on: the same sources at two checkout paths, each with its
      * own cache, store every step under the same action key.
      */
@@ -384,6 +485,17 @@ class RemoteCacheE2eTest extends EngineServerHarness {
             }
         }
         return to;
+    }
+
+    /** The shell of a request using {@code service} with {@code token}, writing when {@code writes}. */
+    private static Map<String, String> service(FakeCacheServer service, String token, boolean writes) {
+        return Map.of(
+                RemoteCacheSettings.URL_ENV,
+                service.url().toString(),
+                RepoCredentialResolver.envVarPrefix(service.hostId()) + "TOKEN",
+                token,
+                RemoteCacheSettings.WRITE_ENV,
+                String.valueOf(writes));
     }
 
     private static Map<String, String> writing(Path remote) {

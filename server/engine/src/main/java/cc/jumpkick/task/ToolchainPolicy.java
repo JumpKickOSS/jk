@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.TomlScan;
@@ -85,19 +86,26 @@ public final class ToolchainPolicy {
 
         private boolean vendorMatches(String tokenVendor) {
             String v = vendor.toLowerCase(Locale.ROOT);
-            String implementor =
-                    switch (v) {
-                        case "temurin" -> "eclipse";
-                        case "corretto" -> "amazon";
-                        case "zulu", "zulu-prime" -> "azul";
-                        case "liberica" -> "bellsoft";
-                        case "sapmachine" -> "sap";
-                        case "semeru" -> "ibm";
-                        case "microsoft" -> "microsoft";
-                        case "graalvm", "graalvm-ce", "openjdk", "oracle" -> "oracle";
-                        default -> v;
-                    };
-            return tokenVendor.startsWith(implementor) || tokenVendor.contains(v);
+            return tokenVendor.startsWith(implementor()) || tokenVendor.contains(v);
+        }
+
+        /**
+         * The word a JDK's implementor spells for this requirement's vendor ({@code eclipse} for
+         * Temurin, {@code amazon} for Corretto): what a {@link JdkToolchain} token's vendor starts with.
+         */
+        public String implementor() {
+            String v = vendor.toLowerCase(Locale.ROOT);
+            return switch (v) {
+                case "temurin" -> "eclipse";
+                case "corretto" -> "amazon";
+                case "zulu", "zulu-prime" -> "azul";
+                case "liberica" -> "bellsoft";
+                case "sapmachine" -> "sap";
+                case "semeru" -> "ibm";
+                case "microsoft" -> "microsoft";
+                case "graalvm", "graalvm-ce", "openjdk", "oracle" -> "oracle";
+                default -> v;
+            };
         }
 
         private boolean versionMatches(String tokenVersion) {
@@ -130,6 +138,16 @@ public final class ToolchainPolicy {
                 case MAJOR -> theirs.major() == mine.major();
                 case BUILD -> false;
             };
+        }
+
+        /**
+         * This expectation as a shared store's lookup states it: the toolchain, level and match, and
+         * the requirement's vendor as the implementor word a token names ({@link Requirement#implementor}).
+         */
+        public CacheBackend.Accept accept() {
+            String vendor = requirement == null || requirement.vendor().isEmpty() ? null : requirement.implementor();
+            String version = requirement == null || requirement.version().isEmpty() ? null : requirement.version();
+            return new CacheBackend.Accept(toolchain, level, match.word(), vendor, version);
         }
 
         /** Lower is closer: same build, same vendor and major, same major, then by major distance. */

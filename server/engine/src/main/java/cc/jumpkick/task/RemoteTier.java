@@ -10,17 +10,18 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -83,9 +84,21 @@ public final class RemoteTier {
         this.writes = writes;
     }
 
-    /** True when this build uploads what it stores. */
+    /**
+     * True when this build uploads what it stores: it was built to write, no upload has failed, and
+     * the backend says this caller may write (a read-only token never sends a record).
+     */
     public boolean writes() {
-        return writes && !writesOff.get();
+        return writes && !writesOff.get() && backendWrites();
+    }
+
+    private volatile @Nullable Boolean backendWrites;
+
+    /** Whether the backend lets this caller write, asked once per build. */
+    private boolean backendWrites() {
+        Boolean known = backendWrites;
+        if (known == null) backendWrites = known = backend.writable();
+        return known;
     }
 
     /** Records this build uploaded. */
@@ -109,21 +122,40 @@ public final class RemoteTier {
     private void upload(String key, String sharedText, Map<String, Path> blobs, IoLedger io) {
         if (!writes()) return;
         try {
-            for (String sha : backend.missing(blobs.keySet())) {
-                Path blob = blobs.get(sha);
-                if (blob == null) continue;
-                backend.putBlob(sha, blob);
-                io.cacheUp(IoLedger.sizeOf(blob));
+            Map<String, Long> sizes = new LinkedHashMap<>();
+            for (Map.Entry<String, Path> e : blobs.entrySet()) sizes.put(e.getKey(), IoLedger.sizeOf(e.getValue()));
+            putBlobs(backend.missing(sizes), blobs, io);
+            try {
+                backend.putRecord(key, sharedText);
+            } catch (CacheBackend.BlobsMissing lacking) {
+                // Gone from the store between the question and the put (a sweep): send them, once.
+                putBlobs(lacking.missing(), blobs, io);
+                backend.putRecord(key, sharedText);
             }
-            backend.putRecord(key, sharedText);
             io.cacheUp(sharedText.length());
             uploaded.incrementAndGet();
+        } catch (CacheBackend.Skipped refused) {
+            // This record is not one the store takes; the others still go.
+            Log.debug(
+                    "jk: remote cache " + backend.name() + " did not take record " + key + ": " + refused.getMessage());
         } catch (IOException | RuntimeException e) {
             if (writesOff.compareAndSet(false, true)) {
                 Log.warn("jk: remote cache " + backend.name() + " refused an upload (" + e.getMessage()
                         + "); uploading nothing more this build");
             }
         }
+    }
+
+    /** Send the blobs of {@code digests} that {@code blobs} holds a file for. */
+    private void putBlobs(Collection<String> digests, Map<String, Path> blobs, IoLedger io) throws IOException {
+        Map<String, Path> send = new LinkedHashMap<>();
+        for (String sha : digests) {
+            Path blob = blobs.get(sha);
+            if (blob != null) send.put(sha, blob);
+        }
+        if (send.isEmpty()) return;
+        backend.putBlobs(send);
+        for (Path blob : send.values()) io.cacheUp(IoLedger.sizeOf(blob));
     }
 
     /**
@@ -175,14 +207,28 @@ public final class RemoteTier {
      * for any of them answer from what this learned.
      */
     public void prefetch(Collection<String> keys) {
+        Map<String, CacheBackend.@Nullable Accept> asks = new LinkedHashMap<>();
+        for (String key : keys) asks.put(key, null);
+        prefetch(asks);
+    }
+
+    /**
+     * As {@link #prefetch(Collection)}, each key with the toolchains its reader takes ({@link
+     * CacheBackend.Accept}, null for any).
+     */
+    void prefetch(Map<String, CacheBackend.@Nullable Accept> keys) {
         List<String> ask = new ArrayList<>();
-        for (String key : keys) {
-            if (key != null && !key.isBlank() && !found.containsKey(key) && !absent.contains(key)) ask.add(key);
+        Map<String, CacheBackend.Accept> accept = new LinkedHashMap<>();
+        for (Map.Entry<String, CacheBackend.@Nullable Accept> e : keys.entrySet()) {
+            String key = e.getKey();
+            if (key == null || key.isBlank() || found.containsKey(key) || absent.contains(key)) continue;
+            ask.add(key);
+            if (e.getValue() != null) accept.put(key, e.getValue());
         }
         if (ask.isEmpty() || off.get()) return;
         Map<String, String> answer;
         try {
-            answer = backend.records(new CacheBackend.Lookup(ask, platform));
+            answer = backend.records(new CacheBackend.Lookup(ask, platform, accept));
         } catch (IOException | RuntimeException e) {
             failed("lookup", e);
             return;
@@ -203,6 +249,16 @@ public final class RemoteTier {
      */
     @Nullable
     String record(String key) {
+        return record(key, null);
+    }
+
+    /**
+     * As {@link #record(String)}, telling the backend which toolchains' records the reader takes
+     * ({@code accept}, null for any), so a store holding one per JDK sends the one this reader would
+     * choose. The reader still checks the record it gets against its own policy.
+     */
+    @Nullable
+    String record(String key, CacheBackend.@Nullable Accept accept) {
         String known = found.get(key);
         if (known != null || absent.contains(key) || off.get()) return known;
         Batch batch;
@@ -211,14 +267,14 @@ public final class RemoteTier {
             leads = open == null || open.keys.size() >= MAX_BATCH;
             if (leads) open = new Batch();
             batch = Objects.requireNonNull(open);
-            batch.keys.add(key);
+            batch.keys.putIfAbsent(key, accept);
         }
         if (leads) {
             LockSupport.parkNanos(BATCH_WINDOW_NANOS);
-            List<String> ask;
+            Map<String, CacheBackend.@Nullable Accept> ask;
             synchronized (batches) {
                 if (open == batch) open = null;
-                ask = List.copyOf(batch.keys);
+                ask = new LinkedHashMap<>(batch.keys);
             }
             try {
                 prefetch(ask);
@@ -252,7 +308,7 @@ public final class RemoteTier {
 
     /** Keys asked together, and when their lookup has answered. */
     private static final class Batch {
-        private final Set<String> keys = new LinkedHashSet<>();
+        private final Map<String, CacheBackend.@Nullable Accept> keys = new LinkedHashMap<>();
         private final CompletableFuture<@Nullable Void> done = new CompletableFuture<>();
     }
 
@@ -265,25 +321,44 @@ public final class RemoteTier {
     }
 
     /**
-     * Bring every blob of {@code digests} into {@code into}, each verified against its digest as it
-     * lands. False when any could not be fetched, which is a miss for the record that named it.
+     * Bring the blobs of {@code record} named by {@code digests} into {@code into}, each verified
+     * against its digest as it lands. False when any could not be fetched, which is a miss for the
+     * record: a blob whose bytes do not match its digest, or that the store no longer holds, is that
+     * record's miss alone; a store that does not answer is off for the build.
      */
-    boolean fetch(Collection<String> digests, Cas into) {
+    boolean fetch(ActionCache.ActionRecord record, Set<String> digests, Cas into) {
         if (off.get()) return false;
-        for (String sha : digests) {
-            try (InputStream in = backend.open(sha)) {
+        Map<String, Long> blobs = sizes(record, digests);
+        IoLedger io = SessionContext.current().io();
+        try {
+            backend.fetch(blobs, (sha, in) -> {
                 Cas.Stored stored = into.putVerified(in, sha);
                 bytesDown.addAndGet(stored.size());
-                SessionContext.current().io().cacheDown(stored.size());
-            } catch (Cas.DigestMismatch tampered) {
-                Log.warn("jk: remote cache blob refused", "digest", sha, "cause", tampered.getMessage());
-                return false;
-            } catch (IOException | RuntimeException e) {
-                failed("fetch", e);
-                return false;
-            }
+                io.cacheDown(stored.size());
+            });
+        } catch (Cas.DigestMismatch tampered) {
+            Log.warn("jk: remote cache blob refused", "cause", tampered.getMessage());
+            return false;
+        } catch (NoSuchFileException gone) {
+            Log.debug("jk: remote cache " + backend.name() + " no longer holds blob " + gone.getFile());
+            return false;
+        } catch (IOException | RuntimeException e) {
+            failed("fetch", e);
+            return false;
         }
         return true;
+    }
+
+    /** Each of {@code digests} with the byte count {@code record} states for it; {@code -1} where it states none. */
+    private static Map<String, Long> sizes(ActionCache.ActionRecord record, Set<String> digests) {
+        Map<String, Long> out = new TreeMap<>();
+        for (Map.Entry<String, String> e : record.outputs().entrySet()) {
+            if (!digests.contains(e.getValue())) continue;
+            Long size = record.meta().sizes().get(e.getKey());
+            out.merge(e.getValue(), size == null ? -1L : size, Math::max);
+        }
+        for (String sha : digests) out.putIfAbsent(sha, -1L);
+        return out;
     }
 
     /** Count one record restored or replayed from the backend. */

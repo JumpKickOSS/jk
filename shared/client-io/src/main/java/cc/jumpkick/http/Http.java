@@ -89,6 +89,9 @@ public final class Http {
      */
     static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(60);
 
+    /** How long a POST waits for its response to start: its body may name every artifact of a lockfile. */
+    private static final Duration POST_TIMEOUT = Duration.ofMinutes(2);
+
     /**
      * The longest {@code Retry-After} a 429 is waited out for within one request. A longer one is a
      * quota window: the request fails and {@link HostCooldown} keeps later ones from asking.
@@ -354,6 +357,28 @@ public final class Http {
     }
 
     /**
+     * This client making one attempt per request: a 5xx, a refused connection or a silent server is
+     * the answer, not a reason to wait and ask again. For a caller that goes without when a request
+     * fails (a shared build cache: the step runs locally), which must not hold a build up for the
+     * retry ladder.
+     */
+    public Http withoutRetries() {
+        return new Http(
+                client,
+                new Duration[0],
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                false,
+                authorization,
+                bodyIdle,
+                bodyLimit);
+    }
+
+    /**
      * This client sending the {@code Authorization} {@code authorization} answers for each request's
      * URI, a redirect's target included; a redirect to another origin never carries the first's.
      */
@@ -375,7 +400,9 @@ public final class Http {
 
     /**
      * This client waiting {@code timeout} rather than {@link #REQUEST_TIMEOUT} for a response to
-     * start, so a test proves a silent server in milliseconds.
+     * start, so a test proves a silent server in milliseconds. A timeout shorter than {@link
+     * #REQUEST_TIMEOUT} bounds a {@link #post} too, whose own default is longer: a caller that asks for
+     * a short wait (a shared build cache) gets it on every verb it asks with.
      */
     public Http withRequestTimeout(Duration timeout) {
         return new Http(
@@ -631,7 +658,7 @@ public final class Http {
         checkOffline(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-                .timeout(Duration.ofMinutes(2));
+                .timeout(requestTimeout.compareTo(REQUEST_TIMEOUT) < 0 ? requestTimeout : POST_TIMEOUT);
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
