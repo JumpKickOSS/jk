@@ -10,6 +10,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Project;
+import cc.jumpkick.repo.M2CompatWriter;
 import cc.jumpkick.repo.M2InstallMemo;
 import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
@@ -159,6 +160,74 @@ class InstallPlansPolicyTest {
 
         assertThat(install(project, layout).change()).isEqualTo(Change.UNCHANGED);
         assertThat(M2InstallMemo.read(memo)).isPresent();
+    }
+
+    private Path memoOf(String version) {
+        return M2InstallMemo.file(
+                tmp.resolve("store"), m2Dir.resolve("repository"), Coordinate.of("ex.acme", "money", version));
+    }
+
+    /** Write {@code name} with its {@code .sha1} and {@code .md5} sidecars, as Maven's checksum contract names them. */
+    private static void withSidecars(Path dir, String name, String content) throws IOException {
+        Path file = dir.resolve(name);
+        Files.writeString(file, content);
+        M2CompatWriter.MavenHashes hashes = M2CompatWriter.hashesOf(file);
+        Files.writeString(dir.resolve(name + ".sha1"), hashes.sha1());
+        Files.writeString(dir.resolve(name + ".md5"), hashes.md5());
+    }
+
+    @Test
+    void a_snapshot_slot_an_earlier_jk_install_left_with_no_memo_is_replaced() throws Exception {
+        JkBuild project = project("1.0.0-SNAPSHOT");
+        Path dir = Files.createDirectories(slotJar("1.0.0-SNAPSHOT").getParent());
+        withSidecars(dir, "money-1.0.0-SNAPSHOT.jar", "v1");
+        withSidecars(dir, "money-1.0.0-SNAPSHOT.pom", "<project/>");
+        Files.writeString(
+                dir.resolve("_remote.repositories"),
+                "#NOTE: This is a jk-written provenance hint for Maven tooling.\n"
+                        + "money-1.0.0-SNAPSHOT.jar>=\n"
+                        + "money-1.0.0-SNAPSHOT.pom>=\n");
+
+        ModuleOutcome.Installed out = install(project, built(project, "v2"));
+
+        assertThat(out.change()).isEqualTo(Change.REPLACED);
+        assertThat(Files.readString(slotJar("1.0.0-SNAPSHOT"))).isEqualTo("v2");
+        assertThat(M2InstallMemo.read(memoOf("1.0.0-SNAPSHOT")))
+                .as("the replaced slot is remembered again")
+                .isPresent();
+    }
+
+    @Test
+    void a_snapshot_maven_installed_is_refused_with_no_memo() throws Exception {
+        JkBuild project = project("1.0.0-SNAPSHOT");
+        Path dir = Files.createDirectories(slotJar("1.0.0-SNAPSHOT").getParent());
+        withSidecars(dir, "money-1.0.0-SNAPSHOT.jar", "from maven");
+        withSidecars(dir, "money-1.0.0-SNAPSHOT.pom", "<project/>");
+        Files.writeString(
+                dir.resolve("_remote.repositories"),
+                "#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without"
+                        + " prior notice.\n#Wed Nov 18 10:00:00 UTC 2026\n"
+                        + "money-1.0.0-SNAPSHOT.jar>=\n"
+                        + "money-1.0.0-SNAPSHOT.pom>=\n");
+
+        assertThatThrownBy(() -> install(project, built(project, "v1")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("JumpKick did not install it");
+        assertThat(Files.readString(slotJar("1.0.0-SNAPSHOT"))).isEqualTo("from maven");
+    }
+
+    @Test
+    void a_snapshot_overwritten_after_jk_wrote_it_is_refused_with_no_memo() throws Exception {
+        JkBuild project = project("1.0.0-SNAPSHOT");
+        install(project, built(project, "v1"));
+        Files.delete(memoOf("1.0.0-SNAPSHOT"));
+        Files.writeString(slotJar("1.0.0-SNAPSHOT"), "from gradle");
+
+        assertThatThrownBy(() -> install(project, built(project, "v2")))
+                .as("the jar no longer matches the .sha1 jk wrote beside it")
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("JumpKick did not install it");
+        assertThat(Files.readString(slotJar("1.0.0-SNAPSHOT"))).isEqualTo("from gradle");
     }
 
     // ---- the private repository (repos/jk-local) follows the same rules --------------------------

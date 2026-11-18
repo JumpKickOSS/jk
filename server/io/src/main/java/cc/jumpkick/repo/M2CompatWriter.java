@@ -8,6 +8,7 @@ import cc.jumpkick.util.FileLocks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -24,6 +25,28 @@ import java.util.List;
 public final class M2CompatWriter {
 
     private M2CompatWriter() {}
+
+    /** The first line of every {@code _remote.repositories} jk writes; Maven Resolver's opens with its own note. */
+    private static final String REMOTE_REPOSITORIES_HEADER =
+            "#NOTE: This is a jk-written provenance hint for Maven tooling.";
+
+    /**
+     * True when {@code file} in a Maven local repository is as a jk install left it: its {@code .sha1}
+     * sidecar matches its bytes, and its directory's {@code _remote.repositories} is jk's and names
+     * it with no repository. A Maven or Gradle install over it, or any edit since, fails one of the two.
+     */
+    public static boolean installedByJk(Path file) throws IOException {
+        Path sidecar = file.resolveSibling(file.getFileName() + ".sha1");
+        Path remotes = file.resolveSibling("_remote.repositories");
+        if (!Files.isRegularFile(file) || !Files.isRegularFile(sidecar) || !Files.isRegularFile(remotes)) return false;
+        List<String> lines = Files.readAllLines(remotes, StandardCharsets.UTF_8);
+        if (lines.isEmpty() || !lines.get(0).strip().equals(REMOTE_REPOSITORIES_HEADER)) return false;
+        String installed = file.getFileName() + ">=";
+        if (lines.stream().noneMatch(line -> line.strip().equals(installed))) return false;
+        return Files.readString(sidecar, StandardCharsets.UTF_8)
+                .strip()
+                .equalsIgnoreCase(hashesOf(file).sha1());
+    }
 
     /** Hashes and size from {@link #streamToM2}. */
     public record StreamResult(String sha256, String sha1, String md5, long size) {}
@@ -89,7 +112,7 @@ public final class M2CompatWriter {
         try {
             FileLocks.withLock(ProjectBuilds.ledgerLock(target), () -> {
                 List<String> lines = new ArrayList<>();
-                lines.add("#NOTE: This is a jk-written provenance hint for Maven tooling.");
+                lines.add(REMOTE_REPOSITORIES_HEADER);
                 if (Files.isRegularFile(target)) {
                     for (String line : Files.readAllLines(target)) {
                         String entry = line.strip();

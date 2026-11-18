@@ -409,7 +409,10 @@ public final class InstallPlans {
     /**
      * The install policy for a Maven-local slot, given the bytes about to be written. A slot with
      * other bytes than ours is refused unless the version is a snapshot and jk's own memo says the
-     * slot still holds what jk wrote; a slot jk did not write is never replaced.
+     * slot still holds what jk wrote; a slot jk did not write is never replaced. With no memo (the
+     * store that keeps it was wiped, or another jk home did the install) the slot's files speak for
+     * themselves: each still bears the sidecar and {@code _remote.repositories} line jk install writes
+     * ({@link M2CompatWriter#installedByJk}).
      *
      * @return {@code NEW} to write, {@code UNCHANGED} when both files already hold these bytes,
      *     {@code REPLACED} to overwrite a snapshot slot jk owns
@@ -425,7 +428,10 @@ public final class InstallPlans {
         if (differs) {
             M2InstallMemo memo = M2InstallMemo.read(M2InstallMemo.file(JkStores.store(), m2Root, coord))
                     .orElse(null);
-            boolean owned = memo != null && memo.owns(jarOnDisk, pomOnDisk);
+            boolean owned = memo != null
+                    ? memo.owns(jarOnDisk, pomOnDisk)
+                    : (jarOnDisk == null || M2CompatWriter.installedByJk(m2Jar))
+                            && (pomOnDisk == null || M2CompatWriter.installedByJk(m2Pom));
             Path dir = Objects.requireNonNull(m2Jar.getParent());
             if (!owned) throw new Refusal(foreignSlot(coord, dir));
             if (!isSnapshot(coord.version())) throw new Refusal(releaseSlot(coord, dir));
