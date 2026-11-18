@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.JkDirs;
@@ -72,7 +73,7 @@ final class SuiteDiscovery {
          */
         @Nullable
         String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey) throws Exception {
-            return settle(ctx, stampKey, rekey, SuiteEnvDelivery.Seen.NONE);
+            return settle(ctx, stampKey, rekey, SuiteEnvDelivery.Seen.NONE, null);
         }
 
         /**
@@ -80,10 +81,20 @@ final class SuiteDiscovery {
          * environment; a writing remote tier is told the read list of the key it settles.
          */
         @Nullable
-        String settle(TaskContext ctx, @Nullable String stampKey, Rekey rekey, SuiteEnvDelivery.Seen env)
+        String settle(
+                TaskContext ctx,
+                @Nullable String stampKey,
+                Rekey rekey,
+                SuiteEnvDelivery.Seen env,
+                @Nullable TestClassLedger ledger)
                 throws Exception {
             String settled = SuiteDiscovery.settle(ctx, this, stampKey, rekey, env);
-            RemoteSuiteReads.offer(moduleDir, selection, settled, rekey::key);
+            if (settled != null
+                    && ledger != null
+                    && SuiteEnvReads.localOnly(
+                                    SuiteReads.load(moduleDir, selection).env(), envPolicy, CallerEnv.current())
+                            != null) ledger.keptHere();
+            RemoteSuiteReads.offer(moduleDir, selection, settled, rekey::key, envPolicy);
             return settled;
         }
     }

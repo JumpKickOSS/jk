@@ -8,6 +8,7 @@ import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.RemoteCaches;
 import cc.jumpkick.task.RemoteTier;
 import cc.jumpkick.task.ToolchainPolicy;
+import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReadLists;
 import cc.jumpkick.test.SuiteReads;
 import java.nio.file.Path;
@@ -35,14 +36,23 @@ final class RemoteSuiteReads {
     /**
      * Before a writing build stores the green result settled under {@code settled}, note its read
      * list and base for the upload. Nothing when no writing tier is bound or the suite's reads have
-     * no portable list ({@link SuiteReadLists#portable}).
+     * no portable list ({@link SuiteReadLists#portable}). The list names the environment reads the
+     * module's {@code policy} keys and no other ({@link SuiteEnvReads.Record#under}).
      */
     static void offer(
-            Path moduleDir, TestSelection selection, @Nullable String settled, Callable<@Nullable String> rekey)
+            Path moduleDir,
+            TestSelection selection,
+            @Nullable String settled,
+            Callable<@Nullable String> rekey,
+            SuiteEnvReads.Policy policy)
             throws Exception {
         RemoteTier tier = RemoteCaches.current();
         if (tier == null || settled == null || !tier.writes()) return;
-        List<String> files = SuiteReadLists.portable(moduleDir, SuiteReads.load(moduleDir, selection));
+        SuiteReads.Discovered kept = SuiteReads.load(moduleDir, selection);
+        List<String> files = SuiteReadLists.portable(
+                moduleDir,
+                new SuiteReads.Discovered(
+                        kept.files(), kept.commands(), kept.hosts(), kept.env().under(policy)));
         if (files == null) return;
         String base =
                 SuiteReadLists.<@Nullable String, Exception>as(moduleDir, SuiteReads.Discovered.NONE, rekey::call);

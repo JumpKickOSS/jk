@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.engine.plugin.WorkerEnv;
@@ -44,7 +45,10 @@ import org.jspecify.annotations.Nullable;
  * may travel, and a plain digest of a short secret is guessed by trying values. So a result that
  * read an undeclared variable keys alike on this host alone. Under {@code [env] scope} the module
  * has said which names its suites may see, and those key by plain digest, as a declared name's
- * value does ({@link #localOnly}).
+ * value does, so the result may be shared ({@link #localOnly}). What the test JVM could not have been handed under the module's policy now (a name outside the scope, or
+ * one it declares since) keys nothing, whatever an earlier run under another policy kept ({@link
+ * Record#under}). A result keyed on this host alone carries {@link #HOST_TOKEN}, and never leaves it
+ * ({@code ActionRecordText.shareable}).
  */
 public final class SuiteEnvReads {
 
@@ -73,6 +77,20 @@ public final class SuiteEnvReads {
 
         public boolean isEmpty() {
             return names.isEmpty() && !listed && !whole;
+        }
+
+        /**
+         * This record as the test JVM could read it under {@code policy}: the names its broker would
+         * hand over now ({@link Policy#handed}). What a suite read only grows, so a run before a
+         * scope, or before the module declared a name, leaves names the JVM can no longer be handed:
+         * it sees them unset on every host, and they key nothing.
+         */
+        public Record under(Policy policy) {
+            Set<String> kept = new TreeSet<>();
+            for (String n : names) {
+                if (policy.handed(n)) kept.add(n);
+            }
+            return kept.size() == names.size() ? this : new Record(kept, listed, whole);
         }
 
         /** The lines {@link SuiteReads} keeps this record as. */
@@ -150,6 +168,14 @@ public final class SuiteEnvReads {
                 if (p.endsWith("*") ? k.startsWith(p.substring(0, p.length() - 1)) : k.equals(p)) return true;
             }
             return false;
+        }
+
+        /**
+         * Whether the broker hands a test JVM {@code name} of the caller's: one the JVM does not
+         * already hold ({@link #held}) and the module lets it see ({@link #visible}).
+         */
+        public boolean handed(String name) {
+            return !held(name) && visible(name);
         }
 
         /** Whether this policy keys values by plain digest: the module scoped what its suites may see. */
@@ -267,39 +293,113 @@ public final class SuiteEnvReads {
     static final String NAMES_TOKEN = "env-names=";
     static final String ALL_TOKEN = "env-all=";
 
+    /**
+     * The token of a key that holds a value only this jk home can key alike ({@link #localOnly}):
+     * the stamp's input {@link ActionRecordText#HOST_KEYED_INPUT}, which keeps its record on this host.
+     */
+    static final String HOST_TOKEN =
+            ActionRecordText.HOST_KEYED_INPUT.substring("x:".length()) + "=" + ActionRecordText.HOST_KEYED;
+
     /** Whether {@code token} is one {@link #tokens} makes. */
     static boolean isToken(String token) {
-        return token.startsWith(READ_TOKEN) || token.startsWith(NAMES_TOKEN) || token.startsWith(ALL_TOKEN);
+        return token.startsWith(READ_TOKEN)
+                || token.startsWith(NAMES_TOKEN)
+                || token.startsWith(ALL_TOKEN)
+                || token.equals(HOST_TOKEN);
     }
 
     /**
      * The key tokens of {@code record} for a run whose caller is {@code caller}: one per name read
-     * ({@code env-read:NAME=<digest>}, {@code =unset}, or {@code =unknown} when the run has no
-     * caller to say), and one for a listing ({@code env-names=}) and a whole environment ({@code
-     * env-all=}). A digest is an HMAC under this jk home's secret, or a plain digest under a scope.
+     * that the module's policy hands over ({@code env-read:NAME=<digest>}, {@code =unset}, or {@code
+     * =unknown} when the run has no caller to say), one for a listing ({@code env-names=}) and a
+     * whole environment ({@code env-all=}), and {@link #HOST_TOKEN} when the result keys alike on
+     * this host alone ({@link #localOnly}). A digest is an HMAC under this jk home's secret, or a
+     * plain digest under a scope.
      */
     public static List<String> tokens(Record record, Policy policy, CallerEnv caller) {
-        if (record.isEmpty() || policy.strict()) return List.of();
-        EnvReadKey key = policy.scoped() ? null : EnvReadKey.load();
+        return keyed(record, policy, caller).tokens();
+    }
+
+    /**
+     * Why a result keyed on {@code record} for {@code caller} stays on this host, or null when it may
+     * be shared: it read a variable the module neither declares nor scopes, listed or took the
+     * environment unscoped, or ran with no caller to answer for it. Every other value it read of a declared, scoped or allow-listed name is keyed alike
+     * everywhere, so only those results travel.
+     */
+    public static @Nullable String localOnly(Record record, Policy policy, CallerEnv caller) {
+        return keyed(record, policy, caller).localOnly();
+    }
+
+    /** The tokens of a record and why they key on this host alone (null when they do not). */
+    private record Keyed(List<String> tokens, @Nullable String localOnly) {}
+
+    private static Keyed keyed(Record found, Policy policy, CallerEnv caller) {
+        if (found.isEmpty() || policy.strict()) return new Keyed(List.of(), null);
+        Record record = found.under(policy);
+        if (record.isEmpty()) return new Keyed(List.of(), null);
+        Keying keying = new Keying(policy.scoped());
         List<String> out = new ArrayList<>();
+        String local = caller.attached() ? null : "ran with no caller to answer for the environment";
         Map<String, CallerEnv.Value> values = caller.values(record.names());
         for (String name : new TreeSet<>(record.names())) {
             CallerEnv.Value v = values.getOrDefault(name, CallerEnv.Value.UNKNOWN);
-            out.add(READ_TOKEN + name + "=" + digest(key, name, v));
+            out.add(READ_TOKEN + name + "=" + digest(keying, name, v));
+            if (local == null && !keying.shared(name) && v.state() == CallerEnv.State.SET)
+                local = "read " + name + ", which the module does not declare";
         }
         if (record.listed()) {
             Set<String> names = caller.names();
             List<String> keyed = names == null ? List.of() : keyedNames(names, policy);
-            out.add(NAMES_TOKEN + (names == null ? UNKNOWN : digest(key, "", String.join("\n", keyed))));
+            out.add(NAMES_TOKEN + (names == null ? UNKNOWN : keying.aggregate(String.join("\n", keyed))));
             if (KeyAudit.listening()) keyed.forEach(n -> KeyAudit.tap(NAME_DETAIL + n));
+            if (local == null && !policy.scoped()) local = "listed the environment's names with no [env] scope";
         }
         if (record.whole()) {
             Map<String, String> all = caller.all();
-            out.add(ALL_TOKEN + (all == null ? UNKNOWN : digest(key, "", keyedValues(all, policy))));
-            if (all != null && KeyAudit.listening())
-                visibleValues(all, policy).forEach((n, v) -> KeyAudit.tap(VALUE_DETAIL + n + "=" + digest(key, n, v)));
+            Map<String, String> visible = all == null ? Map.of() : visibleValues(all, policy);
+            out.add(ALL_TOKEN + (all == null ? UNKNOWN : keying.aggregate(keyedValues(visible))));
+            if (KeyAudit.listening())
+                visible.forEach((n, v) -> KeyAudit.tap(VALUE_DETAIL + n + "=" + keying.value(n, v)));
+            if (local == null && !policy.scoped()) local = "started a program, which sees the whole environment";
         }
-        return out;
+        if (local != null) out.add(HOST_TOKEN);
+        return new Keyed(out, local);
+    }
+
+    /**
+     * How a value enters a key: by HMAC under this jk home's secret ({@link EnvReadKey}, read only
+     * when a value needs it), or by plain digest under a scope, so another host keys alike.
+     */
+    private static final class Keying {
+        private final boolean scoped;
+        private @Nullable EnvReadKey home;
+
+        Keying(boolean scoped) {
+            this.scoped = scoped;
+        }
+
+        /** Whether {@code name}'s value keys alike on every host. */
+        boolean shared(String name) {
+            return scoped;
+        }
+
+        /** {@code name}'s {@code value} as a key holds it. */
+        String value(String name, String value) {
+            String text = name + "\u0000" + value;
+            return shared(name) ? Hashing.sha256Hex(text) : home().hmac(text);
+        }
+
+        /** A listing's names, or a whole environment as {@link #keyedValues} spells it. */
+        String aggregate(String text) {
+            String keyed = "\u0000" + text;
+            return scoped ? Hashing.sha256Hex(keyed) : home().hmac(keyed);
+        }
+
+        private EnvReadKey home() {
+            EnvReadKey k = home;
+            if (k == null) home = k = EnvReadKey.load();
+            return k;
+        }
     }
 
     /**
@@ -315,19 +415,13 @@ public final class SuiteEnvReads {
 
     private static final String UNKNOWN = "unknown";
 
-    private static String digest(@Nullable EnvReadKey key, String name, CallerEnv.Value v) {
+    private static String digest(Keying keying, String name, CallerEnv.Value v) {
         String value = v.value();
         return switch (v.state()) {
             case UNSET -> "unset";
             case UNKNOWN -> UNKNOWN;
-            case SET -> digest(key, name, value == null ? "" : value);
+            case SET -> keying.value(name, value == null ? "" : value);
         };
-    }
-
-    /** {@code name}'s {@code value} under {@code key}, or by plain digest under a scope ({@code key} null). */
-    private static String digest(@Nullable EnvReadKey key, String name, String value) {
-        String text = name + "\u0000" + value;
-        return key == null ? Hashing.sha256Hex(text) : key.hmac(text);
     }
 
     /** The names a listing keys on: those the module may see, less the volatile and the allow-listed, sorted. */
@@ -339,38 +433,20 @@ public final class SuiteEnvReads {
         return new ArrayList<>(out);
     }
 
-    /** The whole environment as a suite that starts programs keys on: what it may see, less the volatile. */
-    static String keyedValues(Map<String, String> all, Policy policy) {
+    /** The whole environment as a suite that starts programs keys on, from {@link #visibleValues}. */
+    private static String keyedValues(Map<String, String> visible) {
         StringBuilder sb = new StringBuilder();
-        visibleValues(all, policy)
-                .forEach((n, v) -> sb.append(n).append('=').append(v).append('\n'));
+        visible.forEach((n, v) -> sb.append(n).append('=').append(v).append('\n'));
         return sb.toString();
     }
 
-    /** What {@link #keyedValues} keys on, by name, sorted. */
+    /** What a whole environment keys on: what the test JVM may see, less the volatile, by name, sorted. */
     private static Map<String, String> visibleValues(Map<String, String> all, Policy policy) {
         Map<String, String> sorted = new TreeMap<>();
         all.forEach((n, v) -> {
             if (policy.visible(n) && !volatileName(n)) sorted.put(key(n), v);
         });
         return sorted;
-    }
-
-    /**
-     * Why a result keyed on {@code record} stays on this host, or null when it may be shared: it
-     * read a variable the module neither declares nor scopes, listed or took the environment
-     * unscoped, or ran with no caller to answer for it. Every value it read of a declared or allow-
-     * listed name is keyed alike everywhere, so only those results travel.
-     */
-    public static @Nullable String localOnly(Record record, Policy policy, boolean noCaller) {
-        if (record.isEmpty() || policy.strict()) return null;
-        if (noCaller) return "ran with no caller to answer for the environment";
-        for (String n : record.names()) {
-            if (!policy.scoped() || !policy.visible(n)) return "read " + n + ", which the module does not declare";
-        }
-        if (record.listed() && !policy.scoped()) return "listed the environment's names with no [env] scope";
-        if (record.whole() && !policy.scoped()) return "started a program, which sees the whole environment";
-        return null;
     }
 
     /**

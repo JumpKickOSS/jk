@@ -120,6 +120,32 @@ class SuiteReadListsTest {
                         "git", "/bin/sh", "./jk", b.resolve("data/gen.sh").toString(), node.toString());
     }
 
+    /**
+     * What a suite read of the caller's environment travels with its list by name alone (JK-2M8VG):
+     * a host that never ran a scoped Spring Boot suite keys its listing and the names it read as the
+     * writer did. A list from elsewhere names a variable only as a shell spells one.
+     */
+    @Test
+    void a_list_names_the_variables_a_suite_read_and_reads_them_back(@TempDir Path tmp) throws Exception {
+        Path a = workspace(tmp.resolve("a"));
+        SuiteReads.Discovered read = new SuiteReads.Discovered(
+                Set.of(),
+                Set.of(),
+                Set.of(),
+                new SuiteEnvReads.Record(Set.of("SPRING_PROFILES_ACTIVE", "PETCLINIC_MODE"), true, false));
+
+        List<String> names = requireNonNull(SuiteReadLists.portable(a.resolve("m"), read));
+
+        assertThat(names).containsExactly("env:PETCLINIC_MODE", "env:SPRING_PROFILES_ACTIVE", "env-list:names");
+        assertThat(requireNonNull(SuiteReadLists.fromPortable(a.resolve("m"), names)))
+                .isEqualTo(read);
+        for (String bad : List.of("env:", "env:A=B", "env:A B", "env:../x", "env-list:other")) {
+            assertThat(SuiteReadLists.fromPortable(a.resolve("m"), List.of("env:SPRING_X", bad)))
+                    .as(bad)
+                    .isNull();
+        }
+    }
+
     @Test
     void a_list_from_elsewhere_names_no_program_but_by_a_portable_name(@TempDir Path tmp) throws Exception {
         Path a = workspace(tmp.resolve("a"));

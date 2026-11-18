@@ -10,6 +10,7 @@ import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.test.JUnitLauncher;
+import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.TestProgressListener;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -84,6 +85,10 @@ final class TestClassLedger {
     private final Map<String, Entry> previous;
 
     private boolean whole;
+
+    /** Whether the key this ledger is stored under keys on this host alone ({@link #keptHere}). */
+    private volatile boolean keptHere;
+
     private volatile String launch = SuiteResources.ONE_LAUNCH;
     /** The settled classes the launches this run started left out, by {@link #entryKey}. */
     private final Set<String> leftOut = ConcurrentHashMap.newKeySet();
@@ -204,6 +209,20 @@ final class TestClassLedger {
             if (suiteRuns.test(suite)) return true;
         }
         return false;
+    }
+
+    /**
+     * Note that the suite settled under the key this ledger is stored under keys on this host alone
+     * ({@link SuiteEnvReads#localOnly}): no other host's stamp equals it, so the ledger stays here as
+     * the marker does ({@link ActionRecordText#HOST_KEYED_INPUT}).
+     */
+    void keptHere() {
+        keptHere = true;
+    }
+
+    /** The inputs this ledger's record names: the mark that keeps it on this host, or none. */
+    private Map<String, String> ledgerInputs() {
+        return keptHere ? Map.of(ActionRecordText.HOST_KEYED_INPUT, ActionRecordText.HOST_KEYED) : Map.of();
     }
 
     /** The action key the ledger of {@code stampKey} is stored under. */
@@ -415,7 +434,7 @@ final class TestClassLedger {
                     ActionRecordText.Writes.CLASS_LEDGER,
                     testTaskId + TASK_SUFFIX,
                     key(stampKey),
-                    Map.of(),
+                    ledgerInputs(),
                     outputs,
                     List.of());
         } catch (IOException | RuntimeException e) {

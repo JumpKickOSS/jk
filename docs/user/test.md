@@ -1060,11 +1060,12 @@ then how many more); the run that follows records the same names as the reason i
 show <id>`: `ran: inputs changed (x:env-read:MUST_BE_TRUE)`).
 
 **What never leaves your machine.** Values are HMAC'd under a secret of your JumpKick home before they
-enter a key, so a key that travels gives no way to test guesses at a short secret. They are held
-in the engine's and the test JVM's memory for the run, and are never written to the build's
-history, `jk results`, the logs, the dashboard or an MCP answer. A result that read a variable the
-module neither declares nor [scopes](#scoping-what-a-suite-may-see) stays on this host: only
-declared and allow-listed values are keyed alike everywhere.
+enter a key, so a key gives no way to test guesses at a short secret. They are held in the engine's
+and the test JVM's memory for the run, and are never written to the build's history, `jk results`,
+the logs, the dashboard or an MCP answer. A result that read a variable the module neither declares
+nor [scopes](#scoping-what-a-suite-may-see), or that listed or took the environment with no scope,
+stays on this host: its record says `x:env-keyed` (`this-host`) and is never uploaded to a shared
+cache. Only declared, scoped and allow-listed values are keyed alike everywhere.
 
 **A build with no terminal.** A build started by the web UI, an agent over MCP, `jk watch` or an IDE
 has no shell to ask: its test JVMs get the allow-list and the declared names from the engine, as
@@ -1079,6 +1080,21 @@ declared names. A suite that lists the environment then keys on a small, stable 
 an unrelated variable no longer reruns it and its result holds on another machine and may be
 shared. The cost: a test sees no other variable of your shell. Set at a workspace root, it holds
 for every member that sets none of its own.
+
+Under a scope a scoped value is keyed by its plain digest, so two homes key it alike. A name
+outside the scope keys nothing: the test saw it unset, as it does on every host, even when a run
+before the scope read it.
+
+The test JVM always gets what JumpKick hands every worker, scope or not: the machine's
+`PATH`, `HOME` and temp roots (and on Windows `USERPROFILE` and the system roots), the locale and
+zone `[test]` fixes (above), JumpKick's own roots and output switches (`JK_HOME`, `JK_STATE_DIR`,
+`JK_STORE_DIR`, `JK_CACHE_DIR`, `JK_JDKS_DIR`, `JK_M2_LOCAL`, `JK_COLOR`, `JK_QUIET` and the
+like), the proxy, display and container variables (`HTTP_PROXY`, `DISPLAY`, `DOCKER_HOST`,
+`TESTCONTAINERS_*` overrides…), `JAVA_HOME` naming the JDK it runs on, and the names the module
+declares. None of these is keyed as a read of your shell: the locale and zone key as
+`test-locale:` and `test-timezone:`, a declared name by its value, and the machine's paths, the
+proxy, display and container variables and JumpKick's roots not at all, so another home on the
+same commit keys alike.
 
 Spring Boot, Quarkus, Micronaut, Flyway and Testcontainers list the environment and read every
 value, so without a scope their suites are keyed on all of it. The first time a module's suite is
@@ -1205,7 +1221,9 @@ suite takes that key, gets the results filed under it, takes the key again over 
 the listed files, and replays the one whose key its tree gives, keeping the list as its own. A file
 that differs on that host makes the key differ, and the suite runs. A list travels only when every
 file in it lies in the workspace or under one of the roots above, named relative to it, and every
-program it started has a portable name (`proc:git`, `proc:sys:usr/libexec/java_home`); a suite
+program it started has a portable name (`proc:git`, `proc:sys:usr/libexec/java_home`). What it
+read of your shell travels by name alone (`env:SPRING_PROFILES_ACTIVE`, `env-list:names` for a
+listing, `env-list:all` for a whole environment), only the names the scope keys; a suite
 that reads a file elsewhere (`/etc/hostname`) or starts a program in your home directory runs once
 on each host before it replays. When the result on offer was made with another version of a
 program, the suite runs and its miss names it: `ran: inputs changed (x:proc:git)`, not `no-record`.

@@ -240,12 +240,14 @@ public final class ActionRecordText {
      * is green; a class ledger only when it holds at least one class and every class passed. A red
      * marker, a ledger holding a failure or cleared to nothing, and a record whose kind is unknown
      * stay on the machine that wrote them, and so does a record whose step kind this jk does not
-     * know ({@link StepKinds#known}): it is read and carried, never shared. The one place this is
-     * decided.
+     * know ({@link StepKinds#known}): it is read and carried, never shared, and so does a record whose
+     * key holds a value only this jk home keys alike ({@link #HOST_KEYED_INPUT}): no other host's key
+     * can equal it, so an upload would serve no one. The one place this is decided.
      */
     public static boolean shareable(Parsed record) {
         Writes writes = record.meta().writes();
         if (writes == null || !StepKinds.known(record.meta().kind())) return false;
+        if (HOST_KEYED.equals(record.inputs().get(HOST_KEYED_INPUT))) return false;
         return switch (writes) {
             case OUTPUTS, ALIAS ->
                 !record.outputs().isEmpty()
@@ -257,6 +259,17 @@ public final class ActionRecordText {
                         && record.outputs().values().stream().allMatch(ActionRecordText::greenClass);
         };
     }
+
+    /**
+     * The input of a run-tests stamp whose suite read the caller's environment in a way only this jk
+     * home keys alike, valued {@link #HOST_KEYED}: a variable its module neither declares nor scopes,
+     * a listing or whole environment with no scope, a credential's value, or a run with no caller
+     * (the engine's {@code SuiteEnvReads.localOnly}). Such a record stays on its host.
+     */
+    public static final String HOST_KEYED_INPUT = "x:env-keyed";
+
+    /** The value of {@link #HOST_KEYED_INPUT}. */
+    public static final String HOST_KEYED = "this-host";
 
     /** A count that reads as zero: a failure count no reader could take for a failure. */
     private static boolean zeroCount(@Nullable String count) {

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -17,8 +18,11 @@ import org.jspecify.annotations.Nullable;
  * <p>The list names each file portably: {@code ws:<workspace path>}, or under one of the roots
  * {@link PortablePath#underJkRoot} names ({@code store:}, {@code cache:}, {@code state:}, {@code
  * jdks:}, {@code m2:}, {@code jk-home:}), and each program it started as {@link SuitePrograms}
- * names it. A suite found to reach the network, or to read a file outside the workspace and those
- * roots, has no such list: its result is
+ * names it, then what it read of the caller's environment by name alone: {@code env:NAME} for a
+ * variable, {@code env-list:names} for a listing and {@code env-list:all} for a whole environment
+ * ({@link SuiteEnvReads.Record}), so a host that never ran the suite keys those reads too. A suite
+ * found to reach the network, or to read a file outside the workspace and those roots, has no such
+ * list: its result is
  * shared only with hosts that found the same reads themselves. A list read from elsewhere is held to
  * the same spellings, with no {@code ..} segment, so it can name nothing outside those roots.
  */
@@ -55,12 +59,16 @@ public final class SuiteReadLists {
 
     /**
      * {@code reads} as portable names, for {@code moduleDir}'s workspace: each file, then each
-     * program it started as {@link SuitePrograms#portable} names it; null when they hold what no
-     * such name carries (the network, a file outside the workspace and the roots, a program in the
-     * user's home), or nothing at all.
+     * program it started as {@link SuitePrograms#portable} names it, then its environment reads by
+     * name; null when they hold what no such name carries (the network, a file outside the workspace
+     * and the roots, a program in the user's home, a variable name a shell would not spell), or
+     * nothing at all.
      */
     public static @Nullable List<String> portable(Path moduleDir, SuiteReads.Discovered reads) {
-        if ((reads.files().isEmpty() && reads.commands().isEmpty()) || reads.network()) return null;
+        if ((reads.files().isEmpty()
+                        && reads.commands().isEmpty()
+                        && reads.env().isEmpty())
+                || reads.network()) return null;
         Path workspace = workspace(moduleDir);
         List<String> out = new ArrayList<>();
         for (Path f : reads.files()) {
@@ -73,8 +81,23 @@ public final class SuiteReadLists {
             if (name == null) return null;
             out.add(name);
         }
+        for (String name : new TreeSet<>(reads.env().names())) {
+            if (!ENV_NAME.matcher(name).matches()) return null;
+            out.add(ENV_PREFIX + name);
+        }
+        if (reads.env().listed()) out.add(ENV_LISTED);
+        if (reads.env().whole()) out.add(ENV_WHOLE);
         return out;
     }
+
+    /** The portable names of what a suite read of the caller's environment. */
+    static final String ENV_PREFIX = "env:";
+
+    static final String ENV_LISTED = "env-list:names";
+    static final String ENV_WHOLE = "env-list:all";
+
+    /** A variable name a list may carry: letters, digits and underscores, as a shell spells one. */
+    private static final Pattern ENV_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,255}");
 
     /**
      * The reads {@code names} spell, on this checkout and host; null when one is not a portable name
@@ -85,7 +108,21 @@ public final class SuiteReadLists {
         Path workspace = workspace(moduleDir);
         Set<Path> files = new TreeSet<>();
         Set<String> commands = new TreeSet<>();
+        Set<String> env = new TreeSet<>();
+        boolean listed = false;
+        boolean whole = false;
         for (String name : names) {
+            if (name.equals(ENV_LISTED) || name.equals(ENV_WHOLE)) {
+                listed |= name.equals(ENV_LISTED);
+                whole |= name.equals(ENV_WHOLE);
+                continue;
+            }
+            if (name.startsWith(ENV_PREFIX)) {
+                String variable = name.substring(ENV_PREFIX.length());
+                if (!ENV_NAME.matcher(variable).matches()) return null;
+                env.add(variable);
+                continue;
+            }
             if (name.startsWith(SuitePrograms.LIST_PREFIX)) {
                 String program = SuitePrograms.fromPortable(workspace, name);
                 if (program == null) return null;
@@ -95,7 +132,7 @@ public final class SuiteReadLists {
             if (!portableName(name)) return null;
             files.add(SuiteReads.unspell(workspace, name));
         }
-        return new SuiteReads.Discovered(files, commands, Set.of());
+        return new SuiteReads.Discovered(files, commands, Set.of(), new SuiteEnvReads.Record(env, listed, whole));
     }
 
     /**

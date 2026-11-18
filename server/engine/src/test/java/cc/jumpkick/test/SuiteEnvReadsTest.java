@@ -34,14 +34,18 @@ class SuiteEnvReadsTest {
         List<String> again = SuiteEnvReads.tokens(read, OPEN, caller(Map.of("MUST_BE_TRUE", "true", "X", "1")));
         List<String> banana = SuiteEnvReads.tokens(read, OPEN, caller(Map.of("MUST_BE_TRUE", "banana")));
         List<String> unset = SuiteEnvReads.tokens(read, OPEN, caller(Map.of("OTHER", "1")));
-        assertThat(t).hasSize(1).allMatch(tok -> tok.startsWith("env-read:MUST_BE_TRUE="));
+        assertThat(t)
+                .as("an undeclared value keys on this home alone")
+                .hasSize(2)
+                .contains(SuiteEnvReads.HOST_TOKEN)
+                .anyMatch(tok -> tok.startsWith("env-read:MUST_BE_TRUE="));
         assertThat(t.getFirst()).doesNotContain("true");
         assertThat(again).as("another variable never read").isEqualTo(t);
         assertThat(banana).isNotEqualTo(t);
         assertThat(unset).containsExactly("env-read:MUST_BE_TRUE=unset");
         assertThat(SuiteEnvReads.tokens(read, OPEN, CallerEnv.of(null, null)))
                 .as("no caller to answer")
-                .containsExactly("env-read:MUST_BE_TRUE=unknown");
+                .containsExactly("env-read:MUST_BE_TRUE=unknown", SuiteEnvReads.HOST_TOKEN);
     }
 
     @Test
@@ -79,11 +83,14 @@ class SuiteEnvReadsTest {
         assertThat(SuiteEnvReads.tokens(read, scoped, caller(Map.of("SPRING_PROFILES_ACTIVE", "test", "LAPTOP", "y"))))
                 .as("names outside the scope are not seen, so another host's keys alike")
                 .isEqualTo(here);
-        assertThat(SuiteEnvReads.localOnly(read, scoped, false)).isNull();
-        assertThat(SuiteEnvReads.localOnly(read, OPEN, false)).contains("SPRING_PROFILES_ACTIVE");
-        assertThat(SuiteEnvReads.localOnly(new SuiteEnvReads.Record(Set.of(), true, false), OPEN, false))
+        assertThat(SuiteEnvReads.localOnly(read, scoped, shell)).isNull();
+        assertThat(here).doesNotContain(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.localOnly(read, OPEN, shell)).contains("SPRING_PROFILES_ACTIVE");
+        assertThat(SuiteEnvReads.tokens(read, OPEN, shell)).contains(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.localOnly(new SuiteEnvReads.Record(Set.of(), true, false), OPEN, shell))
                 .contains("listed");
-        assertThat(SuiteEnvReads.localOnly(read, scoped, true)).contains("no caller");
+        assertThat(SuiteEnvReads.localOnly(read, scoped, CallerEnv.of(null, null)))
+                .contains("no caller");
         assertThat(scoped.visible("SPRING_X")).isTrue();
         assertThat(scoped.visible("AWS_SECRET")).isFalse();
     }

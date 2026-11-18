@@ -239,7 +239,7 @@ final class TestSteps {
         if (result.allPassed()) TestHomes.discard(in.dir());
         TestLaunch.writeCoverageReport(ctx, in, jacoco, coverageExec, moduleLabel);
         String startedKey = stampKey;
-        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey, env.seen());
+        stampKey = reads.settle(ctx, unlessMoved(ctx, suiteGuard, stampKey), rekey, env.seen(), ledger);
         // The marker is stored under the key that folds in what the suite was found to read.
         KeyAudit.used(in.dir(), TaskNames.RUN_TESTS, stampKey, rekey::key);
         result = ledger.finish(ctx, actionCache, testTaskId, startedKey, stampKey, result);

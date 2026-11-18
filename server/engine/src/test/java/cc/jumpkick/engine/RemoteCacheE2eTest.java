@@ -681,12 +681,12 @@ class RemoteCacheE2eTest extends EngineServerHarness {
 
     // ---- fixture -------------------------------------------------------------------------
 
-    private static Path checkout(Path ws, String test) throws Exception {
+    static Path checkout(Path ws, String test) throws Exception {
         return checkout(ws, test, "");
     }
 
     /** As {@link #checkout(Path, String)}, with {@code libToml} appended to lib's manifest. */
-    private static Path checkout(Path ws, String test, String libToml) throws Exception {
+    static Path checkout(Path ws, String test, String libToml) throws Exception {
         Files.createDirectories(ws);
         Files.writeString(ws.resolve("jk.toml"), """
                 group   = "com.example"
@@ -760,7 +760,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
      * Drop what {@code ws}'s suite was found to read from this JVM's jk cache, where every checkout
      * of the project finds it: the next checkout is then a host that shares only the remote tier.
      */
-    private static void forgetReads(Path ws) throws IOException {
+    static void forgetReads(Path ws) throws IOException {
         PathUtil.deleteRecursively(CacheTree.PROJECTS
                 .under(JkDirs.cache())
                 .resolve("m-" + ActionKey.taskTag(ws.resolve("lib")))
@@ -768,7 +768,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     /** What the action cache said for the run's one suite. */
-    private static StepCache suite(BuildRecord record) {
+    static StepCache suite(BuildRecord record) {
         StepCache found = null;
         for (BuildRecord.Module m : record.modules()) {
             for (BuildRecord.Task t : m.steps()) {
@@ -779,7 +779,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     /** {@code from}'s sources and lock at {@code to}: another checkout of the same commit. */
-    private static Path copy(Path from, Path to) throws IOException {
+    static Path copy(Path from, Path to) throws IOException {
         try (Stream<Path> files = Files.walk(from)) {
             for (Path src : files.toList()) {
                 Path rel = from.relativize(src);
@@ -793,7 +793,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     /** The shell of a request using {@code service} with {@code token}, writing when {@code writes}. */
-    private static Map<String, String> service(FakeCacheServer service, String token, boolean writes) {
+    static Map<String, String> service(FakeCacheServer service, String token, boolean writes) {
         return Map.of(
                 RemoteCacheSettings.URL_ENV,
                 service.url().toString(),
@@ -811,14 +811,22 @@ class RemoteCacheE2eTest extends EngineServerHarness {
         return Map.of(RemoteCacheBinding.DIR, remote.toString());
     }
 
-    /** The request's shell: the few variables a build here needs from this JVM's environment, and {@code extra}. */
-    private static String withShell(String request, Map<String, String> extra) {
+    /**
+     * The request's shell: the few variables a build here needs from this JVM's environment, and
+     * {@code extra}; sent as the caller's whole shell, names and all, as the CLI sends it, when
+     * {@code whole}.
+     */
+    private static String withShell(String request, Map<String, String> extra, boolean whole) {
         Map<String, String> shell = new HashMap<>();
         putIfSet(shell, "PATH", System.getenv("PATH"));
         putIfSet(shell, "HOME", System.getenv("HOME"));
         putIfSet(shell, "JAVA_HOME", System.getenv("JAVA_HOME"));
         shell.putAll(extra);
-        return ProtoSession.withShell(request, shell);
+        String line = ProtoSession.withShell(request, shell);
+        return whole
+                ? ProtoSession.withShellFacts(
+                        line, new ProtoSession.ShellFacts(List.of(), true, List.copyOf(shell.keySet()), false))
+                : line;
     }
 
     private static void putIfSet(Map<String, String> shell, String name, @Nullable String value) {
@@ -826,7 +834,16 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     private List<String> build(Path ws, Path cache, Map<String, String> env) throws IOException {
-        return runToWorkspaceFinish(engine, withShell(buildRequest(ws, cache), env));
+        return build(engine, ws, cache, env, false);
+    }
+
+    /**
+     * As {@link #build(Path, Path, Map)} through the engine at {@code engine}, sending {@code env} as
+     * the caller's whole shell, names and all, when {@code whole}.
+     */
+    static List<String> build(EnginePaths.Paths engine, Path ws, Path cache, Map<String, String> env, boolean whole)
+            throws IOException {
+        return runToWorkspaceFinish(engine, withShell(buildRequest(ws, cache), env, whole));
     }
 
     private static String buildRequest(Path ws, Path cache) {
@@ -865,7 +882,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     private List<String> buildToJobFinish(Path ws, Path cache, Map<String, String> env) throws IOException {
         List<String> lines = new ArrayList<>();
         try (Client c = new Client(EnginePaths.activeSocket(engine))) {
-            c.sendLine(withShell(buildRequest(ws, cache), env));
+            c.sendLine(withShell(buildRequest(ws, cache), env, false));
             String line;
             while ((line = c.readLine(Duration.ofMinutes(3))) != null) {
                 lines.add(line);
@@ -877,7 +894,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
         throw new IOException("disconnected before job-finish: " + lines);
     }
 
-    private static boolean succeeded(List<String> lines) {
+    static boolean succeeded(List<String> lines) {
         return Jsonl.bool(lines.getLast(), "success", false);
     }
 
@@ -901,7 +918,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                 .encode();
         Map<String, ExplainTaskEvent> steps = new TreeMap<>();
         try (Client c = new Client(EnginePaths.activeSocket(engine))) {
-            c.sendLine(withShell(request, env));
+            c.sendLine(withShell(request, env, false));
             String line;
             while ((line = c.readLine(Duration.ofMinutes(3))) != null) {
                 String type = EngineProtocol.typeOf(line);
@@ -926,7 +943,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
      * The finished journal record of {@code ws}'s latest build. A request's remote uploads land
      * before its record is finished, so after this the remote holds what the build shared.
      */
-    private static BuildRecord settled(Path ws) throws InterruptedException {
+    static BuildRecord settled(Path ws) throws InterruptedException {
         return settled(ws, 0);
     }
 

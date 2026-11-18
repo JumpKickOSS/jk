@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
@@ -161,6 +162,7 @@ public final class StampTokens {
         return name.startsWith(ENV_READ)
                 || name.startsWith(ENV_NAMES)
                 || name.startsWith(ENV_ALL)
+                || name.equals(ActionRecordText.HOST_KEYED_INPUT)
                 || name.startsWith(SuiteEnvReads.NAME_DETAIL)
                 || name.startsWith(SuiteEnvReads.VALUE_DETAIL);
     }
@@ -228,6 +230,8 @@ public final class StampTokens {
         if (name.startsWith("x:env-read:")) return path(name.substring(11)) + " changed";
         if (name.startsWith("x:env-names")) return "the environment's variable names changed";
         if (name.startsWith("x:env-all")) return "the environment changed (a test starts programs)";
+        if (name.equals(ActionRecordText.HOST_KEYED_INPUT))
+            return "what the environment keys on this host alone changed";
         if (name.startsWith("x:worker:")) return workerChanged(upTo(name.substring(9), '='));
         if (name.startsWith("x:test-jdk")) return "test JDK changed";
         if (name.startsWith("x:compile-test")) return "test compile changed";
