@@ -77,8 +77,8 @@ public final class JvmOptions {
         BATCH,
         /**
          * The platform defaults, as Surefire's and Gradle's test forks run: no {@code -Xss}, no
-         * metaspace cap, no {@code ExitOnOutOfMemoryError}, no {@code ActiveProcessorCount} and no
-         * collector flag. {@code [jvm] gc} does not reach it.
+         * metaspace cap, no {@code ExitOnOutOfMemoryError}, no {@code ActiveProcessorCount}, no
+         * collector flag and no IPv4 preference. {@code [jvm] gc} does not reach it.
          */
         SUITE
     }
@@ -229,8 +229,9 @@ public final class JvmOptions {
      * plugins' arguments, {@code [test] jvm-args} and system properties, the profile's {@code
      * jvm-args}). jk plans the heap and leaves everything else the JVM chooses for itself: no
      * {@code -Xss}, no metaspace cap, no {@code -XX:+ExitOnOutOfMemoryError}, no {@code
-     * -XX:ActiveProcessorCount} and no collector, so the suite runs the JVM's default GC (G1 on a
-     * host with two or more CPUs) and sees every core, as under Surefire and Gradle. A test may
+     * -XX:ActiveProcessorCount}, no collector and no {@code java.net.preferIPv4Stack}, so the suite
+     * runs the JVM's default GC (G1 on a host with two or more CPUs) and sees every core and both IP
+     * stacks, as under Surefire and Gradle. A test may
      * provoke an {@link OutOfMemoryError} and catch it. When {@code testJvmArgs} pin a heap ({@link
      * #pinsHeap}), jk adds no heap flag of its own. The user's {@code [jvm] args} still apply.
      */
@@ -673,8 +674,11 @@ public final class JvmOptions {
     static final int ZGC_UNCOMMIT_DELAY_SECONDS = 10;
 
     /**
-     * IPv4 preference, and for a batch worker the metaspace cap, the CPU share, the stack and {@code
-     * ExitOnOutOfMemoryError}, each unless already set in {@code extraArgs}. The CPU share is added
+     * For a batch worker the metaspace cap, the CPU share, the stack, the IPv4 preference and {@code
+     * ExitOnOutOfMemoryError}, each unless already set in {@code extraArgs}. A test JVM serves no
+     * listener of jk's, so it keeps the dual stack, as under Surefire and Gradle: a test whose server
+     * a name reaches only over IPv6 (Micronaut's calls go to the {@code HOSTNAME} the shell exports)
+     * connects there as it does under them. The CPU share is added
      * only when the fork's collector is named ({@code gc}, or a {@code -XX:+Use…GC} in {@code
      * extraArgs}): HotSpot picks SerialGC for one CPU, and the share bounds thread counts without
      * choosing the collector.
@@ -691,7 +695,7 @@ public final class JvmOptions {
         if (role == Role.BATCH && !hasArgPrefix(extra, "-Xss")) {
             out.add("-Xss" + DEFAULT_STACK_KB + "k");
         }
-        if (!hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {
+        if (role == Role.BATCH && !hasArgPrefix(extra, "-D" + PreferIpv4.PROPERTY)) {
             out.add(PreferIpv4.JVM_FLAG);
         }
         // jk's own forks keep their temporary files on disk (HostTemp). A test JVM keeps the per-run

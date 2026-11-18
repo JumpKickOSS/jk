@@ -37,7 +37,8 @@ import org.jspecify.annotations.Nullable;
  * SuiteEnvReads.Record}: delivery and recording are one act, so nothing is read unrecorded.
  *
  * <p>It listens on loopback, and admits a JVM that proves the run's token, which sits beside the
- * port in the probe's record directory, readable by the owner alone ({@link #FILE}). A name the
+ * port and the address it bound in the probe's record directory, readable by the owner alone
+ * ({@link #FILE}). A name the
  * JVM already holds when set (allow-listed or declared) and a name outside the module's {@code
  * [env] scope} are answered unset and not recorded: neither depends on the caller's shell. Values
  * pass through and are never kept here, logged or written.
@@ -82,7 +83,10 @@ public final class EnvBroker implements AutoCloseable {
             byte[] token = new byte[32];
             new SecureRandom().nextBytes(token);
             Path file = recordDir.resolve(FILE);
-            OwnerOnlyFiles.write(recordDir, file, server.getLocalPort() + " " + Hashing.hex(token) + "\n");
+            // The address it bound, not the JVM's loopback: a test JVM that prefers IPv6 answers ::1 for that.
+            String line = server.getLocalPort() + " " + Hashing.hex(token) + " "
+                    + server.getInetAddress().getHostAddress() + "\n";
+            OwnerOnlyFiles.write(recordDir, file, line);
             EnvBroker broker = new EnvBroker(server, token, file, caller, policy);
             SessionContext.startVirtual("jk-env-broker", broker::accept);
             return broker;

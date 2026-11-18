@@ -16,7 +16,8 @@ package cc.jumpkick.host;
  * JDK 25, {@code InetAddress.getLoopbackAddress()} then answers {@code ::1} while listeners bind
  * {@code 127.0.0.1}, so a client refuses connections to its own healthy engine. A JVM launched by
  * something other than jk (a {@code JK_ENGINE_EXE} wrapper) must carry the flag itself. User
- * {@code jk run} / {@code jk tool} JVMs are out of scope.
+ * {@code jk run} / {@code jk tool} JVMs are out of scope, and so are test JVMs: they open no
+ * listener of jk's and keep both stacks, as under Surefire and Gradle.
  */
 public final class PreferIpv4 {
 

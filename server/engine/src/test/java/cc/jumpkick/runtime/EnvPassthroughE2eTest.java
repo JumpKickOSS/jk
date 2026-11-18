@@ -368,6 +368,43 @@ class EnvPassthroughE2eTest {
 
     // ---- fixture ------------------------------------------------------------------------------------
 
+    /**
+     * Micronaut's shape (JK-Q8GEX): a test calls its own server at the {@code HOSTNAME} the shell
+     * exports, a name that reaches this host over IPv6 alone (here {@code ::1}; on the Fedora host
+     * where it was seen, link-local addresses). Under Surefire and Gradle that connects; jk's test
+     * JVM preferred the IPv4 stack, so the call never did. It keeps both stacks now, and where the
+     * host has no IPv6 loopback the call is skipped.
+     */
+    @Test
+    void a_test_reaches_its_own_server_at_a_hostname_the_shell_exports_that_resolves_to_ipv6_alone(@TempDir Path tmp)
+            throws Exception {
+        Path m = module(tmp, "HostnameTest", """
+                @Test
+                void callsItsServerAtTheShellsHostname() throws Exception {
+                    assertEquals(null, System.getProperty("java.net.preferIPv4Stack"), "the IPv4 stack is forced");
+                    String host = System.getenv("HOSTNAME");
+                    assertEquals("::1", host);
+                    org.junit.jupiter.api.Assumptions.assumeTrue(ipv6Loopback(), "this host has no ::1");
+                    try (java.net.ServerSocket server = new java.net.ServerSocket(0);
+                            java.net.Socket call = new java.net.Socket(host, server.getLocalPort());
+                            java.net.Socket answered = server.accept()) {
+                        assertEquals(call.getLocalPort(), answered.getPort());
+                    }
+                }
+
+                private static boolean ipv6Loopback() {
+                    try (java.net.ServerSocket s = new java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("::1"))) {
+                        return true;
+                    } catch (java.io.IOException none) {
+                        return false;
+                    }
+                }
+                """);
+        assertThat(new Shell(Map.of("HOSTNAME", "::1")).build(m).status())
+                .as("the call to the shell's HOSTNAME connects, as under Surefire and Gradle")
+                .isEqualTo(TaskStatus.SUCCESS);
+    }
+
     private static Path module(Path tmp, String test, String body) throws Exception {
         Path m = Files.createDirectories(tmp.resolve("ws").resolve("m"));
         Files.writeString(m.resolve("jk.toml"), MANIFEST);

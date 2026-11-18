@@ -940,6 +940,19 @@ recursive test that passes under Maven passes under JumpKick. JumpKick's own com
 with a smaller reserve (`-Xss512k`); the suite never inherits it. A suite that needs a deeper stack
 puts `-Xss` in `[test] jvm-args`.
 
+## The test JVM's network stack
+
+Every test JVM JumpKick forks has both IP stacks, as Surefire's and Gradle's do: JumpKick sets no
+`java.net.preferIPv4Stack` on it. (Its engine and its own workers do, so the listeners they open are
+plain IPv4 sockets that WSL forwards to Windows; a test JVM opens none of JumpKick's.) A test that
+calls its own server at a name reaching this host over IPv6 alone therefore connects, as under Maven.
+Micronaut's tests do that: an `@Client("/")` call goes to the `HOSTNAME` your shell exports, which on
+Fedora and RHEL can resolve to IPv6 link-local addresses only. Under JumpKick 0.53.0, whose test JVMs
+preferred IPv4, such a test failed (`Read Timeout`, or `Unable to resolve host`) until the project set
+`micronaut.server.host=localhost`; it needs nothing now, and a project that has the line keeps
+working. A suite that must run on IPv4 alone puts `-Djava.net.preferIPv4Stack=true` in `[test]
+jvm-args`.
+
 ## What the test classpath carries
 
 The forked test JVM sees the module's own test classes and resources, its main classes, and the

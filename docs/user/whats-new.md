@@ -10,6 +10,11 @@ JumpKick shows you this page's new entries after it updates itself.
   workers left idle by earlier modules now exit for a job whose heap would not fit beside theirs,
   instead of that job failing after ten minutes with most of the worker budget free.
 
+- **Micronaut tests pass where your shell exports `HOSTNAME`, as under Maven and Gradle.** On Fedora
+  and RHEL that name can reach the host over IPv6 alone, and 0.53.0's test JVMs, which preferred
+  IPv4, failed calling it. Test JVMs keep both IP stacks now: no `micronaut.server.host` line is
+  needed.
+
 ## 0.53.0
 
 - **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test, and a cached result

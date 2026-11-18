@@ -29,13 +29,14 @@ import org.jspecify.annotations.Nullable;
  */
 final class BrokerLink {
 
-    /** The file in the record directory that names the broker: {@code <port> <token>}. */
+    /** The file in the record directory that names the broker: {@code <port> <token> <address>}. */
     static final String FILE = "broker";
 
     static final byte GET = 'G';
     static final byte NAMES = 'N';
     static final byte ALL = 'A';
 
+    private final InetAddress address;
     private final int port;
     private final String token;
     private @Nullable Socket socket;
@@ -43,7 +44,8 @@ final class BrokerLink {
     private @Nullable DataOutputStream out;
     private boolean broken;
 
-    private BrokerLink(int port, String token) {
+    private BrokerLink(InetAddress address, int port, String token) {
+        this.address = address;
         this.port = port;
         this.token = token;
     }
@@ -55,8 +57,9 @@ final class BrokerLink {
             if (!Files.isRegularFile(file)) return null;
             String[] cells =
                     Files.readString(file, StandardCharsets.UTF_8).trim().split(" ");
-            if (cells.length != 2) return null;
-            return new BrokerLink(Integer.parseInt(cells[0]), cells[1]);
+            if (cells.length != 3) return null;
+            // A literal address: no name is looked up.
+            return new BrokerLink(InetAddress.getByName(cells[2]), Integer.parseInt(cells[0]), cells[1]);
         } catch (IOException | RuntimeException unreadable) {
             return null;
         }
@@ -125,7 +128,7 @@ final class BrokerLink {
         if (broken) throw new IOException("the broker went away");
         DataOutputStream o = out;
         if (o != null) return o;
-        Socket s = new Socket(InetAddress.getLoopbackAddress(), port);
+        Socket s = new Socket(address, port);
         s.setTcpNoDelay(true);
         socket = s;
         in = new DataInputStream(new BufferedInputStream(s.getInputStream()));

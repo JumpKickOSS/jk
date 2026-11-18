@@ -71,9 +71,10 @@ class JvmOptionsTest {
 
     @Test
     void suite_flags_keep_the_platform_thread_stack_metaspace_and_out_of_memory_handling() {
-        // Test suites run on the JVM's default stack and metaspace, as Surefire's and Gradle's
-        // forks do; the batch reserve, the metaspace cap and exit-on-OOM are for compilers and
-        // plugin tools. A test may provoke an OutOfMemoryError and catch it.
+        // Test suites run on the JVM's default stack, metaspace and IP stacks, as Surefire's and
+        // Gradle's forks do; the batch reserve, the metaspace cap, the IPv4 preference and
+        // exit-on-OOM are for compilers and plugin tools. A test may provoke an OutOfMemoryError
+        // and catch it.
         List<String> suite = JvmOptions.suiteFlags(1, List.of());
         assertThat(suite)
                 .noneMatch(f -> f.startsWith("-Xss"))
@@ -83,6 +84,7 @@ class JvmOptionsTest {
         expected.remove("-Xss512k");
         expected.remove("-XX:MaxMetaspaceSize=256m");
         expected.remove("-XX:+ExitOnOutOfMemoryError");
+        expected.remove(PreferIpv4.JVM_FLAG);
         if (TMPDIR != null) expected.remove(TMPDIR);
         assertThat(suite).containsExactlyElementsOf(expected);
     }
@@ -140,10 +142,30 @@ class JvmOptionsTest {
             HeapPlan.Plan plan = new HeapPlan.Plan(8, 64L << 20, 512L << 20, 800L << 20, null);
             PluginTuning zgc = new PluginTuning(null, "zgc", true, List.of());
             assertThat(JvmOptions.suiteAbsoluteFlags(plan, zgc, List.of()))
-                    .containsExactly("-Xms64m", "-Xmx800m", "-XX:SoftMaxHeapSize=512m", PreferIpv4.JVM_FLAG);
+                    .containsExactly("-Xms64m", "-Xmx800m", "-XX:SoftMaxHeapSize=512m");
         } finally {
             SessionContext.reset();
         }
+    }
+
+    /**
+     * A test JVM keeps both IP stacks, as Surefire's and Gradle's do: under {@code
+     * java.net.preferIPv4Stack} a Micronaut test's call to the {@code HOSTNAME} the shell exports
+     * never connected where that name resolves to IPv6 alone. jk's batch forks keep the preference,
+     * and the module's own flag still reaches its test JVM.
+     */
+    @Test
+    void a_suite_jvm_keeps_both_ip_stacks_and_a_batch_fork_prefers_ipv4() {
+        HeapPlan.Plan plan = new HeapPlan.Plan(2, 64L << 20, 512L << 20, 800L << 20, null);
+        assertThat(JvmOptions.suiteFlags(2, List.of())).noneMatch(f -> f.contains(PreferIpv4.PROPERTY));
+        assertThat(JvmOptions.suiteAbsoluteFlags(plan, PluginTuning.NONE, List.of()))
+                .noneMatch(f -> f.contains(PreferIpv4.PROPERTY));
+        assertThat(JvmOptions.flags(PluginTuning.NONE, 2)).contains(PreferIpv4.JVM_FLAG);
+        assertThat(JvmOptions.batchFlags(2)).contains(PreferIpv4.JVM_FLAG);
+        PluginTuning own = new PluginTuning(null, null, null, List.of(PreferIpv4.JVM_FLAG));
+        assertThat(JvmOptions.suiteAbsoluteFlags(plan, own, List.of()))
+                .as("the module's [jvm] args still pass")
+                .containsOnlyOnce(PreferIpv4.JVM_FLAG);
     }
 
     @Test
@@ -152,7 +174,7 @@ class JvmOptionsTest {
         for (String pin : List.of("-Xmx6g", "-XX:MaxHeapSize=6g", "-XX:MaxRAMPercentage=40", "-Xms1g")) {
             assertThat(JvmOptions.suiteAbsoluteFlags(plan, PluginTuning.NONE, List.of(pin)))
                     .as(pin)
-                    .containsExactly(PreferIpv4.JVM_FLAG);
+                    .isEmpty();
             assertThat(JvmOptions.suiteFlags(1, List.of("-ea", pin))).as(pin).noneMatch(JvmOptions::pinsHeap);
         }
         assertThat(JvmOptions.suiteAbsoluteFlags(plan, PluginTuning.NONE, List.of("-Dprobe=1")))

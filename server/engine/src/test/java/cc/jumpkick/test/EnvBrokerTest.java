@@ -37,7 +37,11 @@ class EnvBrokerTest {
         try (EnvBroker broker = Objects.requireNonNull(EnvBroker.start(tmp, caller, policy))) {
             String[] address =
                     Files.readString(tmp.resolve(EnvBroker.FILE)).trim().split(" ");
-            try (Socket s = new Socket(InetAddress.getLoopbackAddress(), Integer.parseInt(address[0]))) {
+            assertThat(address)
+                    .as("port, token and the address it bound, which a test JVM calls whatever its own loopback is")
+                    .hasSize(3)
+                    .endsWith(InetAddress.getLoopbackAddress().getHostAddress());
+            try (Socket s = new Socket(InetAddress.getByName(address[2]), Integer.parseInt(address[0]))) {
                 DataOutputStream out = new DataOutputStream(s.getOutputStream());
                 DataInputStream in = new DataInputStream(s.getInputStream());
                 write(out, address[1]);
