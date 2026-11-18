@@ -9,6 +9,8 @@ JumpKick shows you this page's new entries after it updates itself.
 - **A first build no longer gives up waiting for memory it has.** Kotlin, Groovy and plugin
   workers left idle by earlier modules now exit for a job whose heap would not fit beside theirs,
   instead of that job failing after ten minutes with most of the worker budget free.
+- **Tests start on a small CI runner.** On 2 vCPUs and 7 GiB the JVM that lists a suite's
+  classes asked for 3.5 GiB, half the runner, and waited ten minutes; it now takes the suite's heap.
 
 - **Micronaut tests pass where your shell exports `HOSTNAME`, as under Maven and Gradle.** On Fedora
   and RHEL that name can reach the host over IPv6 alone, and 0.53.0's test JVMs, which preferred

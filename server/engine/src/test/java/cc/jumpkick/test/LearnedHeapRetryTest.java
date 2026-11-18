@@ -149,6 +149,25 @@ class LearnedHeapRetryTest {
         }
     }
 
+    /**
+     * The JVM that lists a suite's classes is given the suite's heap, never more: on the plan's own
+     * it asked a 7 GiB runner for 3.5 GiB, past the most a test JVM is given.
+     */
+    @Test
+    void the_listing_jvm_takes_the_suites_heap_not_more(@TempDir Path dir) {
+        long ceiling = SuiteRetry.ceiling();
+        assumeTrue(ceiling > 0, "host memory known");
+        SessionContext.install(SessionContext.current().withWorkingDir(dir).withJvm(PluginTuning.NONE));
+        JUnitLauncher launcher = new JUnitLauncher()
+                .withModuleLabel("g:app")
+                .withHeaps(new LearnedHeaps(dir.resolve("state"), 1L << 42));
+        long suite = HeapFlags.parseXmx(launcher.jvmFlags(JvmRole.SUITE, 1, null));
+        assertThat(suite).isPositive().isLessThanOrEqualTo(ceiling);
+        assertThat(HeapFlags.parseXmx(launcher.jvmFlags(JvmRole.DISCOVERY, 1, null)))
+                .as("listing")
+                .isEqualTo(suite);
+    }
+
     /** A learned heap past a quarter of RAM is never asked for: the run takes the ceiling and says so, once. */
     @Test
     void a_learned_heap_past_the_ceiling_runs_at_the_ceiling(@TempDir Path dir) throws Exception {

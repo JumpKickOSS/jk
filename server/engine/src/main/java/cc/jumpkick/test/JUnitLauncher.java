@@ -325,13 +325,15 @@ public final class JUnitLauncher {
      */
     private List<String> runnerFlags(int concurrency, @Nullable Path tmpDir, JvmRole role) {
         List<String> planned = new ArrayList<>(JvmOptions.suiteFlags(concurrency, jvmArgs));
-        if (role != JvmRole.DISCOVERY && SuiteRetry.planned(jvmArgs)) {
+        // The listing JVM takes the suite's heap too: on the plan's alone it asked a 2 vCPU / 7 GiB
+        // runner for 3.5 GiB, past the most a test JVM is given, to list classes.
+        if (SuiteRetry.planned(jvmArgs)) {
             int jdk = launchJavaHome != null
                     ? JvmOptions.hostFeature(launchJavaHome)
                     : Runtime.version().feature();
             planned = SuiteRetry.tune(
                     planned, SuiteRetry.project(inferredModuleDir), moduleLabel, jdk, heapOverride, heaps);
-            String onOom = heapRun.flag();
+            String onOom = role == JvmRole.DISCOVERY ? null : heapRun.flag();
             if (onOom != null) planned.add(onOom);
         }
         List<String> flags = new ArrayList<>(planned);
