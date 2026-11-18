@@ -311,6 +311,11 @@ final class PlannerGuards {
         }
     }
 
+    /** {@link GuardKeys#laneKey(Lane, String, List, String, Path)} at the lane's directory. */
+    private static String laneKey(Lane lane, String taskId, List<String> tokens, String slice, LaneEnv env) {
+        return GuardKeys.laneKey(lane, taskId, tokens, slice, env.in().dir());
+    }
+
     private static void evaluateLane(
             TaskContext ctx,
             LaneEnv env,
@@ -359,13 +364,13 @@ final class PlannerGuards {
         List<String> tokens = new ArrayList<>(tokenSupplier.get());
         GuardKeys.addRuleTokens(tokens, load);
         String baselineSha = GuardKeys.slice(g, lane, ectx, load);
-        String key = GuardKeys.laneKey(taskId, tokens, baselineSha);
+        String key = laneKey(lane, taskId, tokens, baselineSha, env);
         if (Perf.enabled()) Perf.note("guard-lane " + taskId, "key", key, "X", tokens);
         EvalContext keyedCtx = ectx;
         KeyAudit.KeySource laneKey = () -> {
             List<String> now = new ArrayList<>(tokenSupplier.get());
             GuardKeys.addRuleTokens(now, load);
-            return GuardKeys.laneKey(taskId, now, GuardKeys.slice(g, lane, keyedCtx, load));
+            return laneKey(lane, taskId, now, GuardKeys.slice(g, lane, keyedCtx, load), env);
         };
         KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), key, laneKey);
         ActionCache cache = env.actionCache();
@@ -444,7 +449,7 @@ final class PlannerGuards {
         // Nor is a view missing modules: the run that builds them tightens the baseline, and until
         // then every run over the partial view says it left the baseline alone.
         if (tools.isEmpty() || !result.unseen().isEmpty()) return;
-        String storeKey = GuardKeys.laneKey(taskId, tokens, storedSlice);
+        String storeKey = laneKey(lane, taskId, tokens, storedSlice, env);
         // Stored under the baseline the lane tightened: the key the next build takes.
         KeyAudit.used(env.in().dir(), KeyAudit.stepOf(taskId), storeKey, laneKey);
         if (!tools.get().isEmpty()) {

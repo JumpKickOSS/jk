@@ -30,8 +30,9 @@ import org.jspecify.annotations.Nullable;
  * true }}). Among acceptable records the closest wins ({@link Expectation#closeness}).
  *
  * <p>The step that computes a key says what its reader expects ({@link #expect}), for the rest of
- * the request; the action cache consults that when it reads the key ({@link #of}). A key no step described (packaging, plugin
- * steps, guard lanes: their keys still name the JDK) is read as before, any record taken.
+ * the request; the action cache consults that when it reads the key ({@link #of}); a module guard
+ * lane states the engine's JDK major. A key no step described (packaging, plugin steps: their keys
+ * still name the JDK) is read as before, any record taken.
  */
 public final class ToolchainPolicy {
 
@@ -275,6 +276,24 @@ public final class ToolchainPolicy {
         } catch (RuntimeException unreadable) {
             return Runtime.version().feature();
         }
+    }
+
+    /**
+     * The major of the JDK the engine runs on: what a module guard lane's key names, since that
+     * JDK's platform classes answer every {@code java.*} supertype the lane resolves, and a patch or
+     * another vendor of the major answers the same hierarchy.
+     */
+    public static int engineMajor() {
+        return level(0, JavaHomes.runningJavaHome());
+    }
+
+    /**
+     * Say that a step keyed {@code key} on the engine's own JDK ({@link #engineMajor}) for the module
+     * at {@code moduleHint} takes a record made on that major, under the module's {@code jdk-match}
+     * ({@code build}: only the same build); its record names the JDK that made it.
+     */
+    public static void expectOnEngineMajor(String key, @Nullable Path moduleHint) {
+        expect(key, JavaHomes.runningJavaHome(), engineMajor(), true, moduleHint);
     }
 
     /** Whether {@code options} tie class files to one major. */

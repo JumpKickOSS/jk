@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * ({@code IMPLEMENTOR}), the full runtime version with its build ({@code JAVA_RUNTIME_VERSION},
  * {@code 25.0.4.1+1-LTS}) and the content of its {@code jdk.compiler} module ({@link
  * CompilerIdentity}). That is what makes two JDKs the same compiler and the same runtime, so the
- * javac, kotlinc, groovyc, KSP, javadoc, guard, script, plugin-step, packager and run-tests keys all
+ * javac, kotlinc, groovyc, KSP, javadoc, script, plugin-step, packager and run-tests keys all
  * carry this one token. It never holds the {@code release} file's {@code OS_NAME}, {@code OS_ARCH},
  * {@code LIBC} or {@code BUILD_INFO} lines, nor the install path: two machines on the same JDK build
  * share every one of those keys, and a patch, a rebuild or another vendor does not.

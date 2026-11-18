@@ -32,7 +32,6 @@ import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
-import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LocalInstallRows;
 import cc.jumpkick.lock.LockfileReader;
@@ -45,9 +44,9 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathAbi;
 import cc.jumpkick.task.FileHashMemo;
-import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ToolchainPolicy;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -79,6 +78,17 @@ final class GuardKeys {
         List<String> all = new ArrayList<>(tokens);
         all.add("baseline:" + baselineSlice);
         String key = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), all);
+        return key;
+    }
+
+    /**
+     * {@link #laneKey(String, List, String)} for a run of lane {@code lane} at {@code dir}; a module
+     * lane's key names the engine JDK's major, so its reader's expectation is stated with it ({@link
+     * ToolchainPolicy#expectOnEngineMajor}).
+     */
+    static String laneKey(Lane lane, String taskId, List<String> tokens, String baselineSlice, Path dir) {
+        String key = laneKey(taskId, tokens, baselineSlice);
+        if (lane == Lane.MODULE) ToolchainPolicy.expectOnEngineMajor(key, dir);
         return key;
     }
 
@@ -139,8 +149,6 @@ final class GuardKeys {
 
     static void addRuleTokens(List<String> tokens, LoadResult load) {
         for (var e : load.rules().sourceDigests().entrySet()) tokens.add("rules:" + e.getKey() + ":" + e.getValue());
-        // A guard that does not apply on one operating system leaves that platform its own verdict.
-        tokens.add("os:" + Os.name());
     }
 
     /**
@@ -163,6 +171,7 @@ final class GuardKeys {
             String key = probe.key();
             if (key == null) return Optional.of(run(probe.runReason()));
             String taskId = ActionKey.qualifiedTaskId(TaskNames.GUARD, dir);
+            ToolchainPolicy.expectOnEngineMajor(key, dir);
             Optional<ActionCache.ActionRecord> verdict = GuardVerdicts.lookup(actionCache, key, root);
             if (verdict.isPresent()) {
                 // A verdict that carries the lane's evidence is cached only where that evidence is
@@ -248,8 +257,9 @@ final class GuardKeys {
 
     /**
      * The head of a module lane's key: the module, its facts
-     * digest, and what its type hierarchy resolves through besides its own classes — the JDK the
-     * engine runs on, whose platform classes answer every {@code java.*} supertype, and the ABI of
+     * digest, and what its type hierarchy resolves through besides its own classes — the Java level
+     * of the JDK the engine runs on ({@link ToolchainPolicy#engineMajor}: a verdict is a record field
+     * the reader matches by {@code jdk-match}, never the build), and the ABI of
      * each compile-scope sibling's classes tree, in closure order. An override or a subtype check
      * moves with either, while the module's own facts do not. The siblings are read off the
      * manifest on disk, so the run and the forecast name the same ones.
@@ -259,7 +269,7 @@ final class GuardKeys {
         List<String> tokens = new ArrayList<>();
         tokens.add("module:" + module);
         tokens.add("facts:" + factsDigest);
-        tokens.add("jdk:" + JdkToolchain.token(JavaHomes.runningJavaHome()));
+        tokens.add("java:" + ToolchainPolicy.engineMajor());
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
         for (Path classes : siblings.siblingClosureClasses()) tokens.add("sibling:" + ClasspathAbi.token(classes));
@@ -270,13 +280,16 @@ final class GuardKeys {
      * What a module's {@code src/guard} suite adds to its lane's key, for the run and the forecast
      * alike: the suite's index digest, every module's facts when a guard reads the workspace, the
      * tree's text when a guard reads {@code Text}, so an edit to root text re-runs that suite, and
-     * every manifest and the lock when a guard reads {@code Model}.
+     * every manifest and the lock when a guard reads {@code Model}. A suite is code that may branch
+     * on the operating system ({@code Skipped.onThisPlatform}), so only a lane that runs one keys
+     * the OS: the declarative rules read facts, text and manifests, the same bytes on every host.
      */
     static List<String> suiteTokens(
             String suiteDigest, List<GuardSuites.Declared> declared, Path root, List<Path> workspaceModules)
             throws IOException {
         List<String> tokens = new ArrayList<>();
         tokens.add("guard-suite:" + suiteDigest);
+        tokens.add("os:" + Os.name());
         if (GuardSuites.anyWorkspace(declared)) {
             tokens.addAll(workspaceTokens(root, workspaceModules));
             tokens.addAll(workspaceTestTokens(root, workspaceModules));
