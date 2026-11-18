@@ -730,8 +730,10 @@ most 2 GiB, and never below the compiler estimate or the memory plan's share. Th
 ceiling, not its lease: it is leased at what its kind holds on this host, so a generous first
 heap costs neither RAM nor parallelism. The build-script host and other plugin workers start
 from the plan's heap: the memory free when the build starts, shared among the forks it expects
-at once. A test JVM's heap, first or learned, never passes a quarter of the host's RAM, and the
-JVM that lists a suite's classes takes the suite's heap.
+at once. A test JVM's heap, first or learned, never passes a quarter of the host's RAM; past it
+the suite runs at that without a word, and the JVM that lists a suite's classes takes the
+suite's heap. A record never sizes another machine's forks: it lives in this home's state,
+not in the cache, the store or `target/`.
 
 The next planned `-Xmx` is the largest of the last ten observed peaks times 1.3 (1.5 when
 `CI` is set, since a CI host sees the same suites grow run after run), rounded up to 64 MiB,

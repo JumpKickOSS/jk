@@ -4,13 +4,11 @@ package cc.jumpkick.test;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapFlags;
 import cc.jumpkick.engine.plugin.HeapLadder;
-import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerFate;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Path;
@@ -55,21 +53,25 @@ final class SuiteRetry {
      */
     static List<String> tune(
             List<String> flags, Path project, String module, int jdk, @Nullable Long override, LearnedHeaps heaps) {
+        return tune(flags, project, module, jdk, override, heaps, ceiling());
+    }
+
+    /** {@link #tune} under {@code ceiling}, the most a test JVM is given ({@code 0}: not known). */
+    static List<String> tune(
+            List<String> flags,
+            Path project,
+            String module,
+            int jdk,
+            @Nullable Long override,
+            LearnedHeaps heaps,
+            long ceiling) {
         long current = HeapFlags.parseXmx(flags);
         long chosen = override != null ? override : heaps.choose(project, module, HeapScope.TEST, jdk, current);
-        long ceiling = ceiling();
-        if (override == null && ceiling > 0 && chosen > ceiling) {
-            // A learned heap past what a test JVM is ever given would wait for memory that never
-            // frees; run at the ceiling and say which record to forget.
-            String said = module + " learned a test heap of ";
-            HeapNotes.noteOnce(
-                    said,
-                    said + WorkerLeases.format(chosen) + ", past the most a test JVM"
-                            + " is given (" + WorkerLeases.format(ceiling)
-                            + ", a quarter of RAM); ran at that. Forget it: delete"
-                            + " the '" + module + "\ttest' row of " + heaps.file(project));
-            chosen = ceiling;
-        }
+        // Past the most a test JVM is given, the heap runs at that, silently: with no record it is
+        // the plan's share of the host's free memory, and a record is already held under the ceiling,
+        // so only its headroom can pass it. Neither is anything the user could forget. The flag
+        // names whole MiB, so a ceiling that is not one runs at the whole MiB below it.
+        if (override == null && ceiling > 0 && chosen > ceiling) chosen = ceiling;
         if (chosen <= 0 || chosen == current) return flags;
         List<String> rewritten = new ArrayList<>(HeapFlags.rewriteHeap(flags, chosen));
         JvmOptions.notePlannedCommand(rewritten);

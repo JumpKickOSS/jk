@@ -168,33 +168,63 @@ class LearnedHeapRetryTest {
                 .isEqualTo(suite);
     }
 
-    /** A learned heap past a quarter of RAM is never asked for: the run takes the ceiling and says so, once. */
+    /**
+     * A heap past a quarter of RAM is never asked for, and the run takes the ceiling without a word:
+     * a brand-new 7 GiB runner, which had learned nothing, said once per module that it had
+     * "learned a test heap of 3.1 GiB", the plan's share of its free memory. {@code -Xmx} names
+     * whole MiB, and a quarter of RAM need not be one (a quarter of 34164060160 bytes is not): the
+     * heap is the whole MiB at or below the ceiling.
+     */
     @Test
-    void a_learned_heap_past_the_ceiling_runs_at_the_ceiling(@TempDir Path dir) throws Exception {
+    void a_heap_past_the_ceiling_runs_at_the_ceiling_and_says_nothing(@TempDir Path dir) throws Exception {
         long ceiling = SuiteRetry.ceiling();
         assumeTrue(ceiling > 0, "host memory known");
-        LearnedHeaps heaps = new LearnedHeaps(dir.resolve("state"), 1L << 42);
-        List<String> flags = SuiteRetry.tune(
+        long plan = ceiling + (1L << 30);
+        List<String> fresh = SuiteRetry.tune(
+                new ArrayList<>(List.of("-Xmx" + (plan >> 20) + "m")),
+                dir,
+                "g:app",
+                Runtime.version().feature(),
+                null,
+                new LearnedHeaps(dir.resolve("state")));
+        assertThat(HeapFlags.parseXmx(fresh))
+                .as("nothing learned, the plan above the ceiling")
+                .isEqualTo(wholeMib(ceiling));
+        List<String> learned = SuiteRetry.tune(
                 new ArrayList<>(List.of("-Xmx256m")),
                 dir,
                 "g:app",
                 Runtime.version().feature(),
                 null,
-                heaps);
-        assertThat(HeapFlags.parseXmx(flags)).isLessThanOrEqualTo(ceiling);
-        // Every fork of the step plans again, on what the forks before it learned: the note is the
-        // step's, said once.
-        SuiteRetry.tune(
-                new ArrayList<>(List.of("-Xmx256m")),
-                dir,
-                "g:app",
-                Runtime.version().feature(),
-                null,
-                new LearnedHeaps(dir.resolve("state"), 1L << 43));
-        assertThat(HeapNotes.drain())
-                .singleElement()
-                .asString()
-                .contains("g:app learned a test heap of", "a quarter of RAM", "Forget it");
+                new LearnedHeaps(dir.resolve("state"), 1L << 42));
+        assertThat(HeapFlags.parseXmx(learned)).as("a learned size above it").isLessThanOrEqualTo(ceiling);
+        assertThat(HeapNotes.drain()).isEmpty();
+    }
+
+    /**
+     * A ceiling that is not a whole MiB, as a quarter of a Windows host's RAM was, runs at the whole
+     * MiB below it, planned or learned, on any host.
+     */
+    @Test
+    void a_ceiling_that_is_no_whole_mib_runs_at_the_whole_mib_below_it(@TempDir Path dir) {
+        long ceiling = (256L << 20) + 12_345;
+        for (LearnedHeaps heaps :
+                List.of(new LearnedHeaps(dir.resolve("fresh")), new LearnedHeaps(dir.resolve("learned"), 1L << 42))) {
+            List<String> flags = SuiteRetry.tune(
+                    new ArrayList<>(List.of("-Xmx512m")),
+                    dir,
+                    "g:app",
+                    Runtime.version().feature(),
+                    null,
+                    heaps,
+                    ceiling);
+            assertThat(flags).contains("-Xmx256m");
+        }
+        assertThat(HeapNotes.drain()).isEmpty();
+    }
+
+    private static long wholeMib(long bytes) {
+        return (bytes >> 20) << 20;
     }
 
     @Test

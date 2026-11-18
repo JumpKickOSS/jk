@@ -11,6 +11,8 @@ JumpKick shows you this page's new entries after it updates itself.
   instead of that job failing after ten minutes with most of the worker budget free.
 - **Tests start on a small CI runner.** On 2 vCPUs and 7 GiB the JVM that lists a suite's
   classes asked for 3.5 GiB, half the runner, and waited ten minutes; it now takes the suite's heap.
+- **No "learned a test heap" line per module on a fresh machine.** Nothing was learned: the
+  figure was the build's own plan. Past a quarter of RAM a test JVM runs at that, silently.
 
 - **Micronaut tests pass where your shell exports `HOSTNAME`, as under Maven and Gradle.** On Fedora
   and RHEL that name can reach the host over IPv6 alone, and 0.53.0's test JVMs, which preferred
