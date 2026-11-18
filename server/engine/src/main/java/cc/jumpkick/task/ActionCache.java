@@ -197,8 +197,8 @@ public final class ActionCache {
     public Optional<ActionRecord> lookup(String actionKey) throws IOException {
         Expectation expected = ToolchainPolicy.of(actionKey);
         Optional<ActionRecord> here = lookupLocal(actionKey, expected);
-        boolean remote = here.isEmpty();
-        Optional<ActionRecord> found = remote ? lookupRemote(actionKey, expected) : here;
+        Optional<ActionRecord> found = here.isEmpty() ? lookupRemote(actionKey, expected) : here;
+        boolean remote = here.isEmpty() || fromRemote(actionKey);
         if (found.isPresent() && StepCacheNotes.inStep()) {
             ActionRecordText.Writes kind = found.get().meta().writes();
             // A marker or verdict is the result itself: reading it is the step's hit, unless the
@@ -282,10 +282,15 @@ public final class ActionCache {
     /** Keep the remote tier's record text for {@code actionKey} on this disk, its blobs already here. */
     private void adopt(String actionKey, String text) throws IOException {
         local.putRecord(actionKey, text);
-        if (remote != null) {
-            remote.forget(actionKey);
-            remote.hit();
-        }
+        if (remote != null) remote.adopted(actionKey);
+    }
+
+    /**
+     * Whether {@code actionKey}'s record came from the remote tier in this build: kept here by an
+     * earlier lookup (the forecast's), so a step that reads it locally is still the remote's hit.
+     */
+    private boolean fromRemote(@Nullable String actionKey) {
+        return remote != null && actionKey != null && remote.adoptedThisBuild(actionKey);
     }
 
     /**
@@ -884,7 +889,7 @@ public final class ActionCache {
             // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
             FileHashMemo.rememberContent(target, entry.getValue());
         }
-        noteRestored(record, fetched, blobs);
+        noteRestored(record, fetched || fromRemote(record.actionKey()), blobs);
         return true;
     }
 
@@ -1054,7 +1059,7 @@ public final class ActionCache {
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());
         }
-        noteRestored(record, fetched, blobs);
+        noteRestored(record, fetched || fromRemote(record.actionKey()), blobs);
         return true;
     }
 

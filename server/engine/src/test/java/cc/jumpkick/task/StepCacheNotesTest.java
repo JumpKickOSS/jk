@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -76,6 +77,26 @@ class StepCacheNotesTest {
         assertThat(hit.producerMillis())
                 .as("unknown: the record was stored outside a step")
                 .isEqualTo(-1);
+    }
+
+    @Test
+    void a_marker_the_forecast_kept_from_the_remote_is_the_steps_remote_hit(@TempDir Path tmp) throws Exception {
+        ActionCache elsewhere = new ActionCache(new Cas(tmp.resolve("e/cas")), tmp.resolve("e/actions"));
+        elsewhere.storeMarkers(
+                Writes.TEST_MARKER, "run-tests@x", "green", Map.of(), TestStamp.outcome(1, 1, 0, 0), List.of());
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(elsewhere, "green");
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+        // An action cache binds the tier in scope when it is made, as each step's does.
+        Supplier<ActionCache> here = () -> new ActionCache(new Cas(tmp.resolve("h/cas")), tmp.resolve("h/actions"));
+
+        // The forecast's lookup, outside any step, keeps the marker on this disk.
+        RemoteCaches.where(tier, () -> here.get().restorable("green").orElseThrow());
+        StepCache hit = step(() -> RemoteCaches.where(tier, () -> here.get().lookup("green")));
+
+        assertThat(hit.outcome())
+                .as("read here, but this build took it from the remote")
+                .isEqualTo(StepCache.Outcome.REMOTE_HIT);
     }
 
     @Test

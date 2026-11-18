@@ -312,6 +312,10 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                     .isNotEmpty()
                     .noneMatch(c -> c.outcome() == StepCache.Outcome.MISS)
                     .anyMatch(c -> c.outcome() == StepCache.Outcome.REMOTE_HIT && c.bytesIn() > 0);
+            assertThat(cacheOf(record))
+                    .as("a home whose cache started empty took every hit from the service, those the"
+                            + " forecast's lookup kept on this disk too: " + record.modules())
+                    .allMatch(c -> c.outcome() == StepCache.Outcome.REMOTE_HIT);
             assertThat(service.calls())
                     .as("the reader looked up and read, and sent nothing")
                     .filteredOn(c -> c.endsWith(" reader"))

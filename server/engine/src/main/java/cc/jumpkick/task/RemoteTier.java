@@ -555,10 +555,23 @@ public final class RemoteTier {
         return out;
     }
 
-    /** Count one record restored or replayed from the backend. */
-    void hit() {
+    /**
+     * Note that {@code key}'s record, which the backend served, is now kept on this disk: one hit,
+     * no further question about it this build, and every step that reads it here this build is a
+     * remote hit ({@link #adoptedThisBuild}).
+     */
+    void adopted(String key) {
+        forget(key);
         hits.incrementAndGet();
+        adopted.add(key);
     }
+
+    /** Whether {@code key}'s record came from the backend in this build (see {@link #adopted}). */
+    boolean adoptedThisBuild(String key) {
+        return adopted.contains(key);
+    }
+
+    private final Set<String> adopted = ConcurrentHashMap.newKeySet();
 
     /** Turn the backend off for the rest of the build, warning once on the step that met the failure. */
     private void failed(String what, Exception e) {
