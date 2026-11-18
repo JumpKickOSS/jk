@@ -427,6 +427,7 @@ public final class RemoteTier {
             return;
         }
         answer.byReads().forEach((base, candidates) -> byReads.put(base, List.copyOf(candidates)));
+        declined.putAll(answer.declined());
         for (String key : ask) {
             String text = answer.records().get(key);
             if (text != null) found.put(key, text);
@@ -505,6 +506,29 @@ public final class RemoteTier {
         private final Map<String, CacheBackend.@Nullable Accept> keys = new LinkedHashMap<>();
         private final CompletableFuture<@Nullable Void> done = new CompletableFuture<>();
     }
+
+    /**
+     * The record text the backend holds for {@code key} that a reader expecting {@code expected}
+     * may take, or null. A key whose records were all made on a JDK that reader's policy refuses
+     * (the backend said so, or this machine refused the one it sent, {@link #declined(String,
+     * String)}) is noted as the step's miss reason, in the step that asks, however often it asks.
+     */
+    @Nullable
+    String recordFor(String key, ToolchainPolicy.@Nullable Expectation expected) {
+        if (expected == null) return record(key, (CacheBackend.Accept) null);
+        String text = record(key, expected.accept());
+        String refused = text == null ? declined.get(key) : null;
+        if (refused != null) ToolchainChoice.mismatch(key, refused, expected);
+        return text;
+    }
+
+    /** Forget {@code key}'s record for this build: this machine's policy refused the one made on {@code toolchain}. */
+    void declined(String key, @Nullable String toolchain) {
+        forget(key);
+        if (toolchain != null) declined.put(key, toolchain);
+    }
+
+    private final Map<String, String> declined = new ConcurrentHashMap<>();
 
     /**
      * Forget {@code key}'s record for this build: this machine refused it, or it is now local. The

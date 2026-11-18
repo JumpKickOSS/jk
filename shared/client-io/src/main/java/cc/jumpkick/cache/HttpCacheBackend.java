@@ -157,13 +157,15 @@ public final class HttpCacheBackend implements CacheBackend {
 
     /**
      * The records found for the asked keys, and for an asked key with none, the test results the
-     * service holds under a read list whose base is that key ({@code by_reads}), best first.
+     * service holds under a read list whose base is that key ({@code by_reads}), best first, and the
+     * toolchain of a record it holds there that the reader's policy refused ({@code declined}).
      */
     @Override
     public Answer lookup(Lookup lookup) throws IOException {
         Capabilities caps = capabilities();
         Map<String, String> found = new LinkedHashMap<>();
         Map<String, List<Candidate>> byReads = new LinkedHashMap<>();
+        Map<String, String> declined = new LinkedHashMap<>();
         for (List<String> keys : chunks(lookup.keys(), caps.batchEntries())) {
             Object answer = post("records/lookup", lookupBody(keys, lookup), "lookup");
             Set<String> asked = Set.copyOf(keys);
@@ -180,8 +182,16 @@ public final class HttpCacheBackend implements CacheBackend {
                     byReads.computeIfAbsent(c.reads().base(), b -> new ArrayList<>())
                             .add(c);
             }
+            // Optional: a service that names the records the reader's policy refused lets the
+            // reader's miss say why. One that does not costs the reason, never a hit.
+            for (Object d : MiniJson.list(answer, "declined")) {
+                String key = MiniJson.str(d, "key");
+                String toolchain = MiniJson.str(d, "toolchain");
+                if (key != null && toolchain != null && asked.contains(key) && !found.containsKey(key))
+                    declined.put(key, toolchain);
+            }
         }
-        return new Answer(found, byReads);
+        return new Answer(found, byReads, declined);
     }
 
     /** A {@code by_reads} entry as a candidate, or null when it lacks a key, a record or a read list. */

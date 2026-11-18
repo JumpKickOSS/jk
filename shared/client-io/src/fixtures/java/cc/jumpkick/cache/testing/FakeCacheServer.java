@@ -413,11 +413,16 @@ public final class FakeCacheServer implements AutoCloseable {
         List<Object> found = new ArrayList<>();
         List<Object> missing = new ArrayList<>();
         List<Object> byReads = new ArrayList<>();
+        List<Object> declined = new ArrayList<>();
         for (Object k : MiniJson.list(body, "keys")) {
             String key = String.valueOf(k);
             Stored best = best(records.getOrDefault(key, List.of()), policies.get(key));
             if (best != null) found.add(found(key, best));
             else missing.add(key);
+            // A record held whole that the reader's policy refused: named, so the miss says why.
+            Stored refused = best == null ? best(records.getOrDefault(key, List.of()), null) : null;
+            if (refused != null && refused.toolchain() != null)
+                declined.add(Map.of("key", key, "toolchain", refused.toolchain()));
         }
         for (Object k : missing) {
             int taken = 0;
@@ -429,7 +434,20 @@ public final class FakeCacheServer implements AutoCloseable {
             }
         }
         byReadsServed.addAndGet(byReads.size());
-        json(ex, 200, Map.of("found", found, "missing", missing, "followed", List.of(), "by_reads", byReads));
+        json(
+                ex,
+                200,
+                Map.of(
+                        "found",
+                        found,
+                        "missing",
+                        missing,
+                        "followed",
+                        List.of(),
+                        "by_reads",
+                        byReads,
+                        "declined",
+                        declined));
     }
 
     /** The newest record of {@code under} whose blobs are all held and whose toolchain {@code policy} takes. */

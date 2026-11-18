@@ -175,6 +175,26 @@ class HttpCacheBackendTest {
     }
 
     @Test
+    void a_record_the_readers_policy_refused_is_named_with_the_toolchain_that_made_it() throws Exception {
+        try (FakeCacheServer server = FakeCacheServer.start()) {
+            String made = "toolchain:jdk:eclipse-adoptium/25.0.2+10-LTS/aaaa";
+            String text = record(KEY_A, FakeCacheServer.sha256(new byte[0]), 0)
+                    .replace("HOST linux-x86_64", "HOST linux-x86_64\nTOOLCHAIN " + made);
+            server.seed(KEY_A, text, Map.of(FakeCacheServer.sha256(new byte[0]), new byte[0]), null);
+            CacheBackend.Accept exact = new CacheBackend.Accept(
+                    "toolchain:jdk:eclipse-adoptium/25.0.5+8-LTS/bbbb", 25, "build", null, null);
+
+            CacheBackend.Answer got = client(server.url(), FakeCacheServer.READER)
+                    .lookup(new CacheBackend.Lookup(List.of(KEY_A, KEY_B), "linux-x86_64", Map.of(KEY_A, exact)));
+
+            assertThat(got.records()).isEmpty();
+            assertThat(got.declined())
+                    .as("the key held a record, made on another build; the key with none is not named")
+                    .containsExactly(Map.entry(KEY_A, made));
+        }
+    }
+
+    @Test
     void results_found_by_read_list_come_with_their_lists() throws Exception {
         // Section 6.2's by_reads entry, with keys and a record in place of its ellipses.
         String answer = """

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.ActionRecordText.Writes;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.Request;
+import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.StepScope;
@@ -15,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -123,6 +126,52 @@ class StepCacheNotesTest {
                 .as("the record the remote served is the one this miss is compared with")
                 .isEqualTo(StepCache.Reason.INPUTS_CHANGED);
         assertThat(miss.changed()).isEqualTo("src/A.java");
+    }
+
+    @Test
+    void a_remote_record_the_jdk_policy_refused_is_the_miss_reason_naming_its_jdk(@TempDir Path tmp) throws Exception {
+        String made = "toolchain:jdk:eclipse-adoptium/25.0.2+10-LTS/aaaaaaaaaaaaaaaa";
+        String mine = "toolchain:jdk:eclipse-adoptium/25.0.5+8-LTS/bbbbbbbbbbbbbbbb";
+        Path out = Files.createDirectories(tmp.resolve("out"));
+        Files.writeString(out.resolve("A.class"), "class A");
+        ActionCache elsewhere = new ActionCache(new Cas(tmp.resolve("e/cas")), tmp.resolve("e/actions"));
+        inRequest(() -> {
+            ToolchainPolicy.expectForTests(
+                    "k1", new ToolchainPolicy.Expectation(made, 25, ToolchainPolicy.Match.MAJOR, null));
+            return elsewhere.store("compile-main@x", "k1", Map.of("src/A.java", "a"), out);
+        });
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.seedFrom(elsewhere, "k1");
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64");
+        // An action cache binds the tier in scope when it is made, as each step's does.
+        Supplier<ActionCache> here = () -> new ActionCache(new Cas(tmp.resolve("h/cas")), tmp.resolve("h/actions"));
+
+        StepCache miss = inRequest(() -> {
+            ToolchainPolicy.expectForTests(
+                    "k1", new ToolchainPolicy.Expectation(mine, 25, ToolchainPolicy.Match.BUILD, null));
+            // The forecast meets the refusal outside the step; the step asks again and stores.
+            RemoteCaches.where(tier, () -> here.get().restorable("k1"));
+            return step(() -> RemoteCaches.where(tier, () -> {
+                assertThat(here.get().restorable("k1")).isEmpty();
+                return here.get().store("compile-main@x", "k1", Map.of("src/A.java", "a"), out);
+            }));
+        });
+
+        assertThat(miss.outcome()).isEqualTo(StepCache.Outcome.MISS);
+        assertThat(miss.reason()).as(String.valueOf(miss)).isEqualTo(StepCache.Reason.TOOLCHAIN_CHANGED);
+        assertThat(miss.changed())
+                .contains("made on eclipse-adoptium 25.0.2+10-LTS")
+                .contains("jdk-match is \"build\"");
+    }
+
+    private static <T> T inRequest(Callable<T> body) throws Exception {
+        return Request.of(1, new IoLedger()).call(() -> {
+            try {
+                return body.call();
+            } finally {
+                RequestScope.release();
+            }
+        });
     }
 
     @Test

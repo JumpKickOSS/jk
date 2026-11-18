@@ -154,12 +154,18 @@ public interface CacheBackend {
 
     /**
      * What a lookup found: record text by key, and for keys with none, the candidates stored under a
-     * read list on that key, best first.
+     * read list on that key, best first, and the toolchain of the closest record held under the key
+     * that the reader's policy refused ({@code declined}), so the reader can say why it missed.
      */
-    record Answer(Map<String, String> records, Map<String, List<Candidate>> byReads) {
+    record Answer(Map<String, String> records, Map<String, List<Candidate>> byReads, Map<String, String> declined) {
         public Answer {
             records = Map.copyOf(records);
             byReads = Map.copyOf(byReads);
+            declined = Map.copyOf(declined);
+        }
+
+        public Answer(Map<String, String> records, Map<String, List<Candidate>> byReads) {
+            this(records, byReads, Map.of());
         }
     }
 

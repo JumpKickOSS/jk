@@ -245,7 +245,7 @@ public final class ActionCache {
      */
     private Optional<ActionRecord> lookupRemote(String actionKey, @Nullable Expectation expected) throws IOException {
         if (remote == null || actionKey.isBlank()) return Optional.empty();
-        String text = remote.record(actionKey, expected == null ? null : expected.accept());
+        String text = remote.recordFor(actionKey, expected);
         if (text == null) return Optional.empty();
         ActionRecord record;
         try {
@@ -256,7 +256,7 @@ public final class ActionCache {
             return Optional.empty();
         }
         if (ToolchainChoice.refuses(actionKey, record.meta().toolchain(), expected)) {
-            remote.forget(actionKey); // a miss here, kept for the readers it suits
+            remote.declined(actionKey, record.meta().toolchain()); // a miss here, kept for the readers it suits
             return Optional.empty();
         }
         if (!forThisPlatform(record.meta().target(), remote.platform())) {
