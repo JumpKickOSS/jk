@@ -65,7 +65,7 @@ workflow "$WORK/ok-read-all.yml" "permissions: read-all" "$CHECKOUT"
 passes "$WORK/ok-read-all.yml"
 
 workflow "$WORK/ok-job-elevates.yml" "$READ" "$CHECKOUT"
-sed -i 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write/' "$WORK/ok-job-elevates.yml"
+perl -pi -e 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    permissions:\n      contents: write\n      id-token: write/' "$WORK/ok-job-elevates.yml"
 passes "$WORK/ok-job-elevates.yml"
 
 workflow "$WORK/floating-tag.yml" "$READ" "      - uses: actions/checkout@v4"
@@ -93,7 +93,7 @@ workflow "$WORK/top-write-all.yml" "permissions: write-all" "$CHECKOUT"
 refuses "$WORK/top-write-all.yml" "read-only"
 
 workflow "$WORK/job-write-all.yml" "$READ" "$CHECKOUT"
-sed -i 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    permissions: write-all/' "$WORK/job-write-all.yml"
+perl -pi -e 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    permissions: write-all/' "$WORK/job-write-all.yml"
 refuses "$WORK/job-write-all.yml" "write-all"
 
 # Two findings in one file are both reported, and the count is theirs.
