@@ -1,0 +1,437 @@
+2026-11-18T04:43:44 START tier=stR runs=150 pid=3900814 mem_avail_mb=9473
+2026-11-18T04:43:44 RUN 1/150 sonnet-5-5 load=9.79 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:44:09   ROW claude-code/claude-sonnet-5-5 petclinic-rename-telephone jk #1: green tokens=22191 turns=3 wall=12.9 cost=0.01909 
+2026-11-18T04:44:09 END 1 rc=0 25s wall=24.7 mono=24.7 mem_min_avail_mb=9063
+2026-11-18T04:44:09 RUN 2/150 sonnet-5-5 load=8.40 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:45:31   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-relaxed-env jk #1: green tokens=21855 turns=4 wall=57.4 cost=0.01798 
+2026-11-18T04:45:31 END 2 rc=0 82s wall=81.9 mono=81.9 mem_min_avail_mb=7355
+2026-11-18T04:45:31 RUN 3/150 sonnet-5-5 load=7.97 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:47:07   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-composed-route jk #1: green tokens=49787 turns=9 wall=69.2 cost=0.03906 
+2026-11-18T04:47:07 END 3 rc=0 96s wall=95.9 mono=95.9 mem_min_avail_mb=7437
+2026-11-18T04:47:07 RUN 4/150 sonnet-5-5 load=6.87 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:48:56   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-column-case jk #1: green tokens=84632 turns=27 wall=86.1 cost=0.11447 
+2026-11-18T04:48:56 END 4 rc=0 109s wall=108.9 mono=108.9 mem_min_avail_mb=7424
+2026-11-18T04:48:56 RUN 5/150 sonnet-5-5 load=6.80 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:49:10   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk #1: green tokens=22425 turns=3 wall=11.9 cost=0.01805 
+2026-11-18T04:49:10 END 5 rc=0 14s wall=14.1 mono=14.1 mem_min_avail_mb=9087
+2026-11-18T04:49:10 RUN 6/150 opus-5-5 load=5.29 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:50:32   ROW claude-code/claude-opus-5-5 petclinic-rename-telephone jk #1: green tokens=54628 turns=7 wall=70.1 cost=0.1257 
+2026-11-18T04:50:32 END 6 rc=0 82s wall=82.1 mono=82.1 mem_min_avail_mb=7426
+2026-11-18T04:50:32 RUN 7/150 opus-5-5 load=5.31 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:52:48   ROW claude-code/claude-opus-5-5 petclinic-anchor-relaxed-env jk #1: green tokens=37634 turns=6 wall=110.7 cost=0.059 
+2026-11-18T04:52:48 END 7 rc=0 136s wall=135.8 mono=135.8 mem_min_avail_mb=6869
+2026-11-18T04:52:48 RUN 8/150 opus-5-5 load=8.58 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:55:02   ROW claude-code/claude-opus-5-5 petclinic-anchor-composed-route jk #1: green tokens=57625 turns=9 wall=108.8 cost=0.07761 
+2026-11-18T04:55:02 END 8 rc=0 134s wall=134.2 mono=134.2 mem_min_avail_mb=7043
+2026-11-18T04:55:02 RUN 9/150 opus-5-5 load=7.98 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:56:41   ROW claude-code/claude-opus-5-5 petclinic-anchor-column-case jk #1: green tokens=70204 turns=13 wall=75.1 cost=0.12355 
+2026-11-18T04:56:41 END 9 rc=0 99s wall=99.1 mono=99.1 mem_min_avail_mb=7077
+2026-11-18T04:56:41 RUN 10/150 opus-5-5 load=10.21 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:56:54   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk #1: green tokens=21288 turns=3 wall=10.8 cost=0.03206 
+2026-11-18T04:56:54 END 10 rc=0 13s wall=12.9 mono=12.9 mem_min_avail_mb=8905
+2026-11-18T04:56:54 RUN 11/150 codex-terra load=8.64 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:57:16   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #1: green tokens=68429 turns=3 wall=10.9 cost=0.0298 
+2026-11-18T04:57:16 END 11 rc=0 23s wall=22.5 mono=22.5 mem_min_avail_mb=8327
+2026-11-18T04:57:16 RUN 12/150 codex-terra load=6.47 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T04:58:38   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #1: green tokens=111837 turns=3 wall=56.9 cost=0.02132 
+2026-11-18T04:58:38 END 12 rc=0 82s wall=81.8 mono=81.8 mem_min_avail_mb=7242
+2026-11-18T04:58:38 RUN 13/150 codex-terra load=5.76 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:01:03   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #1: green tokens=268175 turns=8 wall=118.7 cost=0.04414 
+2026-11-18T05:01:03 END 13 rc=0 144s wall=144.3 mono=144.3 mem_min_avail_mb=6886
+2026-11-18T05:01:03 RUN 14/150 codex-terra load=7.63 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:02:33   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #1: green tokens=189015 turns=6 wall=66.0 cost=0.02565 
+2026-11-18T05:02:33 END 14 rc=0 90s wall=90.0 mono=90.0 mem_min_avail_mb=7300
+2026-11-18T05:02:33 RUN 15/150 codex-terra load=7.64 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:02:45   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #1: green tokens=87749 turns=3 wall=9.8 cost=0.01703 
+2026-11-18T05:02:45 END 15 rc=0 12s wall=12.0 mono=12.0 mem_min_avail_mb=9031
+2026-11-18T05:02:45 RUN 16/150 codex-sol load=6.46 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:03:17   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #1: green tokens=89466 turns=4 wall=20.6 cost=0.04166 
+2026-11-18T05:03:17 END 16 rc=0 32s wall=32.2 mono=32.2 mem_min_avail_mb=8277
+2026-11-18T05:03:17 RUN 17/150 codex-sol load=4.29 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:04:42   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #1: green tokens=148847 turns=4 wall=60.4 cost=0.03861 
+2026-11-18T05:04:42 END 17 rc=0 85s wall=85.4 mono=85.4 mem_min_avail_mb=7500
+2026-11-18T05:04:42 RUN 18/150 codex-sol load=9.27 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:07:04   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #1: green tokens=262338 turns=9 wall=117.3 cost=0.07694 
+2026-11-18T05:07:04 END 18 rc=0 142s wall=142.2 mono=142.2 mem_min_avail_mb=7322
+2026-11-18T05:07:04 RUN 19/150 codex-sol load=8.42 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:08:40   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #1: green tokens=196390 turns=7 wall=72.3 cost=0.0531 
+2026-11-18T05:08:40 END 19 rc=0 96s wall=96.1 mono=96.1 mem_min_avail_mb=7709
+2026-11-18T05:08:40 RUN 20/150 codex-sol load=5.95 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:08:55   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #1: green tokens=88221 turns=4 wall=12.9 cost=0.03978 
+2026-11-18T05:08:55 END 20 rc=0 15s wall=15.0 mono=15.0 mem_min_avail_mb=9135
+2026-11-18T05:08:55 RUN 21/150 grok-4.7 load=4.63 :: --driver grok --model grok-4.7 --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:10:14   ROW grok/grok-4.7 petclinic-rename-telephone jk #1: green tokens=41348 turns=4 wall=66.4 cost=0.07439 
+2026-11-18T05:10:14 END 21 rc=0 78s wall=78.1 mono=78.1 mem_min_avail_mb=8573
+2026-11-18T05:10:14 RUN 22/150 grok-4.7 load=3.04 :: --driver grok --model grok-4.7 --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:11:53   ROW grok/grok-4.7 petclinic-anchor-relaxed-env jk #1: green tokens=32743 turns=4 wall=73.7 cost=0.02955 
+2026-11-18T05:11:53 END 22 rc=0 99s wall=99.0 mono=99.0 mem_min_avail_mb=7430
+2026-11-18T05:11:53 RUN 23/150 grok-4.7 load=7.71 :: --driver grok --model grok-4.7 --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:15:06   ROW grok/grok-4.7 petclinic-anchor-composed-route jk #1: green tokens=215617 turns=14 wall=168.5 cost=0.22774 
+2026-11-18T05:15:06 END 23 rc=0 193s wall=193.4 mono=193.4 mem_min_avail_mb=7321
+2026-11-18T05:15:06 RUN 24/150 grok-4.7 load=5.74 :: --driver grok --model grok-4.7 --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:18:05   ROW grok/grok-4.7 petclinic-anchor-column-case jk #1: green tokens=209148 turns=11 wall=155.4 cost=0.23723 
+2026-11-18T05:18:05 END 24 rc=0 179s wall=178.9 mono=178.9 mem_min_avail_mb=7864
+2026-11-18T05:18:05 RUN 25/150 grok-4.7 load=6.64 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:18:22   ROW grok/grok-4.7 petclinic-callers-addpet jk #1: green tokens=33402 turns=4 wall=14.9 cost=0.04726 
+2026-11-18T05:18:22 END 25 rc=0 17s wall=17.0 mono=17.0 mem_min_avail_mb=9732
+2026-11-18T05:18:22 RUN 26/150 cursor-composer load=4.94 :: --driver cursor --model composer-2.5 --effort default --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:19:00   ROW cursor/composer-2.5 petclinic-rename-telephone jk #1: green tokens=48842 turns=3 wall=26.4 cost=0.01611 
+2026-11-18T05:19:00 END 26 rc=0 38s wall=38.5 mono=38.5 mem_min_avail_mb=8791
+2026-11-18T05:19:00 RUN 27/150 cursor-composer load=4.54 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:21:54   ROW cursor/composer-2.5 petclinic-anchor-relaxed-env jk #1: green tokens=123542 turns=8 wall=149.7 cost=0.03575 
+2026-11-18T05:21:54 END 27 rc=0 174s wall=174.0 mono=174.0 mem_min_avail_mb=7436
+2026-11-18T05:21:54 RUN 28/150 cursor-composer load=6.92 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:24:32   ROW cursor/composer-2.5 petclinic-anchor-composed-route jk #1: green tokens=119856 turns=7 wall=133.3 cost=0.03451 
+2026-11-18T05:24:32 END 28 rc=0 158s wall=158.0 mono=158.0 mem_min_avail_mb=7204
+2026-11-18T05:24:32 RUN 29/150 cursor-composer load=8.78 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:26:51   ROW cursor/composer-2.5 petclinic-anchor-column-case jk #1: green tokens=105650 turns=6 wall=114.8 cost=0.03468 
+2026-11-18T05:26:51 END 29 rc=0 139s wall=139.0 mono=139.0 mem_min_avail_mb=7435
+2026-11-18T05:26:51 RUN 30/150 cursor-composer load=7.89 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:27:18   ROW cursor/composer-2.5 petclinic-callers-addpet jk #1: green tokens=35221 turns=2 wall=23.8 cost=0.01279 
+2026-11-18T05:27:18 END 30 rc=0 27s wall=26.7 mono=26.7 mem_min_avail_mb=8931
+2026-11-18T05:27:18 RUN 31/150 agy-hydrogen load=5.26 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:28:59   ROW agy/gemini-4-hydrogen-medium petclinic-rename-telephone jk #1: green tokens=56258 turns=6 wall=89.0 cost=0.05338 
+2026-11-18T05:28:59 END 31 rc=0 101s wall=101.3 mono=101.3 mem_min_avail_mb=7979
+2026-11-18T05:28:59 RUN 32/150 agy-hydrogen load=3.83 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:30:39   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-relaxed-env jk #1: green tokens=38665 turns=5 wall=74.5 cost=0.04072 
+2026-11-18T05:30:39 END 32 rc=0 100s wall=99.9 mono=99.9 mem_min_avail_mb=7874
+2026-11-18T05:30:39 RUN 33/150 agy-hydrogen load=5.93 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:32:32   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-composed-route jk #1: green tokens=71075 turns=8 wall=87.1 cost=0.05538 
+2026-11-18T05:32:32 END 33 rc=0 113s wall=113.2 mono=113.2 mem_min_avail_mb=7934
+2026-11-18T05:32:32 RUN 34/150 agy-hydrogen load=8.15 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:34:30   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-column-case jk #1: green tokens=69962 turns=7 wall=93.8 cost=0.05751 
+2026-11-18T05:34:30 END 34 rc=0 118s wall=118.0 mono=118.0 mem_min_avail_mb=7668
+2026-11-18T05:34:30 RUN 35/150 agy-hydrogen load=6.60 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:34:52   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk #1: green tokens=26013 turns=4 wall=18.8 cost=0.02715 
+2026-11-18T05:34:52 END 35 rc=0 21s wall=21.2 mono=21.2 mem_min_avail_mb=9462
+2026-11-18T05:34:52 RUN 36/150 muse-spark load=4.67 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:38:15   ROW muse/muse-spark-1.3-contributor petclinic-rename-telephone jk #1: green tokens=1604310 turns=34 wall=189.4 cost=0.01121 
+2026-11-18T05:38:15 END 36 rc=0 203s wall=203.1 mono=203.1 mem_min_avail_mb=7892
+2026-11-18T05:38:15 RUN 37/150 muse-spark load=1.94 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:39:34   ROW muse/muse-spark-1.3-contributor petclinic-anchor-relaxed-env jk #1: green tokens=267327 turns=12 wall=55.4 cost=0.00555 
+2026-11-18T05:39:34 END 37 rc=0 80s wall=79.8 mono=79.8 mem_min_avail_mb=7630
+2026-11-18T05:39:34 RUN 38/150 muse-spark load=4.74 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:43:15   ROW muse/muse-spark-1.3-contributor petclinic-anchor-composed-route jk #1: green tokens=772383 turns=26 wall=195.4 cost=0.01176 
+2026-11-18T05:43:15 END 38 rc=0 221s wall=221.0 mono=221.0 mem_min_avail_mb=7723
+2026-11-18T05:43:15 RUN 39/150 muse-spark load=5.22 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:46:43   ROW muse/muse-spark-1.3-contributor petclinic-anchor-column-case jk #1: green tokens=1608291 turns=38 wall=184.5 cost=0.01027 
+2026-11-18T05:46:43 END 39 rc=0 208s wall=207.9 mono=207.9 mem_min_avail_mb=7291
+2026-11-18T05:46:43 RUN 40/150 muse-spark load=4.65 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:47:08   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk #1: green tokens=56884 turns=3 wall=22.0 cost=0.00211 
+2026-11-18T05:47:08 END 40 rc=0 24s wall=24.4 mono=24.4 mem_min_avail_mb=9252
+2026-11-18T05:47:08 RUN 41/150 grok-4.5 load=3.06 :: --driver grok --model grok-4.5 --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:47:38   ROW grok/grok-4.5 petclinic-rename-telephone jk #1: green tokens=30428 turns=4 wall=18.7 cost=0.03828 
+2026-11-18T05:47:38 END 41 rc=0 30s wall=30.3 mono=30.3 mem_min_avail_mb=8889
+2026-11-18T05:47:38 RUN 42/150 grok-4.5 load=3.32 :: --driver grok --model grok-4.5 --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:49:00   ROW grok/grok-4.5 petclinic-anchor-relaxed-env jk #1: green tokens=29416 turns=4 wall=57.2 cost=0.02627 
+2026-11-18T05:49:00 END 42 rc=0 82s wall=81.7 mono=81.7 mem_min_avail_mb=7440
+2026-11-18T05:49:00 RUN 43/150 grok-4.5 load=6.66 :: --driver grok --model grok-4.5 --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:51:33   ROW grok/grok-4.5 petclinic-anchor-composed-route jk #1: green tokens=135985 turns=12 wall=127.5 cost=0.13028 
+2026-11-18T05:51:33 END 43 rc=0 153s wall=152.8 mono=152.8 mem_min_avail_mb=7484
+2026-11-18T05:51:33 RUN 44/150 grok-4.5 load=4.29 :: --driver grok --model grok-4.5 --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:53:34   ROW grok/grok-4.5 petclinic-anchor-column-case jk #1: green tokens=120059 turns=9 wall=98.1 cost=0.09602 
+2026-11-18T05:53:34 END 44 rc=0 122s wall=121.7 mono=121.7 mem_min_avail_mb=7986
+2026-11-18T05:53:34 RUN 45/150 grok-4.5 load=6.41 :: --driver grok --model grok-4.5 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:53:45   ROW grok/grok-4.5 petclinic-callers-addpet jk #1: green tokens=29273 turns=4 wall=8.9 cost=0.03495 
+2026-11-18T05:53:45 END 45 rc=0 11s wall=11.1 mono=11.1 mem_min_avail_mb=9725
+2026-11-18T05:53:45 RUN 46/150 cursor-grok-4.7 load=5.88 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T05:57:10   ROW cursor/grok-4.7-high petclinic-rename-telephone jk #1: green tokens=74085 turns=3 wall=193.2 cost=0.10857 
+2026-11-18T05:57:10 END 46 rc=0 205s wall=205.0 mono=205.0 mem_min_avail_mb=8802
+2026-11-18T05:57:10 RUN 47/150 cursor-grok-4.7 load=1.13 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:00:13   ROW cursor/grok-4.7-high petclinic-anchor-relaxed-env jk #1: green tokens=74804 turns=4 wall=159.4 cost=0.08184 
+2026-11-18T06:00:13 END 47 rc=0 183s wall=183.0 mono=183.0 mem_min_avail_mb=7352
+2026-11-18T06:00:13 RUN 48/150 cursor-grok-4.7 load=6.29 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:04:15   ROW cursor/grok-4.7-high petclinic-anchor-composed-route jk #1: green tokens=180510 turns=9 wall=217.5 cost=0.23784 
+2026-11-18T06:04:15 END 48 rc=0 242s wall=241.6 mono=241.6 mem_min_avail_mb=7436
+2026-11-18T06:04:15 RUN 49/150 cursor-grok-4.7 load=4.83 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:07:46   ROW cursor/grok-4.7-high petclinic-anchor-column-case jk #1: green tokens=165749 turns=6 wall=187.3 cost=0.22369 
+2026-11-18T06:07:46 END 49 rc=0 211s wall=211.3 mono=211.3 mem_min_avail_mb=7433
+2026-11-18T06:07:46 RUN 50/150 cursor-grok-4.7 load=4.83 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:08:44   ROW cursor/grok-4.7-high petclinic-callers-addpet jk #1: green tokens=41213 turns=2 wall=55.0 cost=0.03748 
+2026-11-18T06:08:44 END 50 rc=0 58s wall=57.5 mono=57.5 mem_min_avail_mb=8881
+2026-11-18T06:08:44 RUN 51/150 sonnet-5-5 load=1.90 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:08:57   ROW claude-code/claude-sonnet-5-5 petclinic-rename-telephone jk #2: green tokens=22195 turns=3 wall=12.4 cost=0.03663 
+2026-11-18T06:08:57 END 51 rc=0 13s wall=13.2 mono=13.2 mem_min_avail_mb=9704
+2026-11-18T06:08:57 RUN 52/150 sonnet-5-5 load=1.68 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:09:55   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-relaxed-env jk #2: green tokens=21049 turns=3 wall=57.0 cost=0.01583 
+2026-11-18T06:09:55 END 52 rc=0 58s wall=57.8 mono=57.8 mem_min_avail_mb=8020
+2026-11-18T06:09:55 RUN 53/150 sonnet-5-5 load=3.39 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:11:02   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-composed-route jk #2: green tokens=49699 turns=9 wall=66.6 cost=0.0387 
+2026-11-18T06:11:02 END 53 rc=0 67s wall=67.3 mono=67.3 mem_min_avail_mb=8101
+2026-11-18T06:11:02 RUN 54/150 sonnet-5-5 load=3.70 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:11:51   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-column-case jk #2: green tokens=57373 turns=14 wall=36.7 cost=0.09138 
+2026-11-18T06:11:51 END 54 rc=0 49s wall=48.9 mono=48.9 mem_min_avail_mb=7760
+2026-11-18T06:11:51 RUN 55/150 sonnet-5-5 load=4.40 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:12:04   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk #2: green tokens=22425 turns=3 wall=12.3 cost=0.01805 
+2026-11-18T06:12:04 END 55 rc=0 13s wall=12.9 mono=12.9 mem_min_avail_mb=9695
+2026-11-18T06:12:04 RUN 56/150 opus-5-5 load=3.43 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:12:41   ROW claude-code/claude-opus-5-5 petclinic-rename-telephone jk #2: green tokens=51654 turns=8 wall=31.3 cost=0.11544 
+2026-11-18T06:12:41 END 56 rc=0 37s wall=37.5 mono=37.5 mem_min_avail_mb=9098
+2026-11-18T06:12:41 RUN 57/150 opus-5-5 load=3.75 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:13:56   ROW claude-code/claude-opus-5-5 petclinic-anchor-relaxed-env jk #2: green tokens=21355 turns=3 wall=61.5 cost=0.03834 
+2026-11-18T06:13:56 END 57 rc=0 74s wall=74.4 mono=74.4 mem_min_avail_mb=8181
+2026-11-18T06:13:56 RUN 58/150 opus-5-5 load=7.73 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:16:04   ROW claude-code/claude-opus-5-5 petclinic-anchor-composed-route jk #2: green tokens=63651 turns=11 wall=128.0 cost=0.10762 
+2026-11-18T06:16:04 END 58 rc=0 129s wall=128.7 mono=128.7 mem_min_avail_mb=8161
+2026-11-18T06:16:04 RUN 59/150 opus-5-5 load=3.84 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:17:21   ROW claude-code/claude-opus-5-5 petclinic-anchor-column-case jk #2: green tokens=62698 turns=16 wall=76.2 cost=0.13969 
+2026-11-18T06:17:21 END 59 rc=0 77s wall=77.0 mono=77.0 mem_min_avail_mb=8533
+2026-11-18T06:17:21 RUN 60/150 opus-5-5 load=3.03 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:17:34   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk #2: green tokens=21288 turns=3 wall=11.9 cost=0.03206 
+2026-11-18T06:17:34 END 60 rc=0 13s wall=12.6 mono=12.6 mem_min_avail_mb=9709
+2026-11-18T06:17:34 RUN 61/150 codex-terra load=2.51 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:17:49   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #2: green tokens=68450 turns=3 wall=14.2 cost=0.01514 
+2026-11-18T06:17:49 END 61 rc=0 15s wall=14.9 mono=14.9 mem_min_avail_mb=9707
+2026-11-18T06:17:49 RUN 62/150 codex-terra load=1.95 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:18:48   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #2: green tokens=85454 turns=3 wall=58.6 cost=0.01124 
+2026-11-18T06:18:48 END 62 rc=0 59s wall=59.2 mono=59.2 mem_min_avail_mb=8218
+2026-11-18T06:18:48 RUN 63/150 codex-terra load=2.78 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:20:36   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #2: green tokens=214329 turns=7 wall=107.5 cost=0.03979 
+2026-11-18T06:20:36 END 63 rc=0 108s wall=108.2 mono=108.2 mem_min_avail_mb=8186
+2026-11-18T06:20:36 RUN 64/150 codex-terra load=3.39 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:21:41   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #2: green tokens=123223 turns=5 wall=64.1 cost=0.02078 
+2026-11-18T06:21:41 END 64 rc=0 65s wall=64.7 mono=64.7 mem_min_avail_mb=8208
+2026-11-18T06:21:41 RUN 65/150 codex-terra load=3.87 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:21:57   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #2: green tokens=87865 turns=3 wall=15.1 cost=0.01716 
+2026-11-18T06:21:57 END 65 rc=0 16s wall=15.6 mono=15.6 mem_min_avail_mb=9719
+2026-11-18T06:21:57 RUN 66/150 codex-sol load=3.16 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:22:12   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #2: green tokens=67199 turns=4 wall=14.7 cost=0.02009 
+2026-11-18T06:22:12 END 66 rc=0 15s wall=15.3 mono=15.3 mem_min_avail_mb=9693
+2026-11-18T06:22:12 RUN 67/150 codex-sol load=2.60 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:23:14   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #2: green tokens=115849 turns=4 wall=61.2 cost=0.03327 
+2026-11-18T06:23:14 END 67 rc=0 62s wall=61.9 mono=61.9 mem_min_avail_mb=8409
+2026-11-18T06:23:14 RUN 68/150 codex-sol load=3.27 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:25:16   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #2: green tokens=245925 turns=9 wall=121.7 cost=0.07882 
+2026-11-18T06:25:16 END 68 rc=0 122s wall=122.5 mono=122.5 mem_min_avail_mb=8197
+2026-11-18T06:25:16 RUN 69/150 codex-sol load=3.01 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:36   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #2: green tokens=292951 turns=7 wall=79.1 cost=0.09049 
+2026-11-18T06:26:36 END 69 rc=0 80s wall=79.8 mono=79.8 mem_min_avail_mb=8124
+2026-11-18T06:26:36 RUN 70/150 codex-sol load=3.07 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:52   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #2: green tokens=88111 turns=3 wall=15.0 cost=0.03427 
+2026-11-18T06:26:52 END 70 rc=0 16s wall=15.6 mono=15.6 mem_min_avail_mb=9711
+2026-11-18T06:26:52 RUN 71/150 grok-4.7 load=2.39 :: --driver grok --model grok-4.7 --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:52   ROW grok/grok-4.7 petclinic-rename-telephone jk #2: error tokens=None turns=0 wall=0.2 cost=None the grok CLI did not start: Not signed in. To authenticate without a browser, run:
+  grok login --device-code
+
+Alternatively, set the XAI_API_KEY environment va
+2026-11-18T06:26:52 END 71 rc=0 1s wall=0.8 mono=0.8 mem_min_avail_mb=9837
+2026-11-18T06:26:52 RUN 72/150 grok-4.7 load=2.39 :: --driver grok --model grok-4.7 --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:53   ROW grok/grok-4.7 petclinic-anchor-relaxed-env jk #2: error tokens=None turns=0 wall=0.2 cost=None the grok CLI did not start: Not signed in. To authenticate without a browser, run:
+  grok login --device-code
+
+Alternatively, set the XAI_API_KEY environment va
+2026-11-18T06:26:53 END 72 rc=0 1s wall=0.7 mono=0.7 mem_min_avail_mb=9817
+2026-11-18T06:26:53 RUN 73/150 grok-4.7 load=2.39 :: --driver grok --model grok-4.7 --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:54   ROW grok/grok-4.7 petclinic-anchor-composed-route jk #2: error tokens=None turns=0 wall=0.2 cost=None the grok CLI did not start: Not signed in. To authenticate without a browser, run:
+  grok login --device-code
+
+Alternatively, set the XAI_API_KEY environment va
+2026-11-18T06:26:54 END 73 rc=0 1s wall=0.7 mono=0.7 mem_min_avail_mb=9807
+2026-11-18T06:26:54 RUN 74/150 grok-4.7 load=2.36 :: --driver grok --model grok-4.7 --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:55   ROW grok/grok-4.7 petclinic-anchor-column-case jk #2: error tokens=None turns=0 wall=0.2 cost=None the grok CLI did not start: Not signed in. To authenticate without a browser, run:
+  grok login --device-code
+
+Alternatively, set the XAI_API_KEY environment va
+2026-11-18T06:26:55 END 74 rc=0 1s wall=0.7 mono=0.7 mem_min_avail_mb=9804
+2026-11-18T06:26:55 RUN 75/150 grok-4.7 load=2.36 :: --driver grok --model grok-4.7 --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --context 256000 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:26:55   ROW grok/grok-4.7 petclinic-callers-addpet jk #2: error tokens=None turns=0 wall=0.2 cost=None the grok CLI did not start: Not signed in. To authenticate without a browser, run:
+  grok login --device-code
+
+Alternatively, set the XAI_API_KEY environment va
+2026-11-18T06:26:55 END 75 rc=0 1s wall=0.8 mono=0.8 mem_min_avail_mb=9805
+2026-11-18T06:26:55 RUN 76/150 cursor-composer load=2.36 :: --driver cursor --model composer-2.5 --effort default --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:27:39   ROW cursor/composer-2.5 petclinic-rename-telephone jk #2: green tokens=47957 turns=3 wall=43.1 cost=0.01659 
+2026-11-18T06:27:39 END 76 rc=0 44s wall=44.0 mono=44.0 mem_min_avail_mb=8869
+2026-11-18T06:27:39 RUN 77/150 cursor-composer load=1.16 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:29:25   ROW cursor/composer-2.5 petclinic-anchor-relaxed-env jk #2: green tokens=171937 turns=11 wall=104.3 cost=0.04638 
+2026-11-18T06:29:25 END 77 rc=0 105s wall=105.3 mono=105.3 mem_min_avail_mb=7515
+2026-11-18T06:29:25 RUN 78/150 cursor-composer load=4.29 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:31:38   ROW cursor/composer-2.5 petclinic-anchor-composed-route jk #2: green tokens=163487 turns=10 wall=132.0 cost=0.0397 
+2026-11-18T06:31:38 END 78 rc=0 133s wall=133.1 mono=133.1 mem_min_avail_mb=7494
+2026-11-18T06:31:38 RUN 79/150 cursor-composer load=3.65 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:33:19   ROW cursor/composer-2.5 petclinic-anchor-column-case jk #2: green tokens=186623 turns=9 wall=100.5 cost=0.05041 
+2026-11-18T06:33:19 END 79 rc=0 101s wall=101.5 mono=101.5 mem_min_avail_mb=7412
+2026-11-18T06:33:19 RUN 80/150 cursor-composer load=2.79 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:34:15   ROW cursor/composer-2.5 petclinic-callers-addpet jk #2: green tokens=35589 turns=2 wall=55.1 cost=0.01361 
+2026-11-18T06:34:15 END 80 rc=0 56s wall=56.0 mono=56.0 mem_min_avail_mb=8843
+2026-11-18T06:34:15 RUN 81/150 agy-hydrogen load=1.15 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:35:50   ROW agy/gemini-4-hydrogen-medium petclinic-rename-telephone jk #2: green tokens=74897 turns=8 wall=87.0 cost=0.05746 
+2026-11-18T06:35:50 END 81 rc=0 94s wall=94.3 mono=94.3 mem_min_avail_mb=8293
+2026-11-18T06:35:50 RUN 82/150 agy-hydrogen load=2.20 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:37:05   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-relaxed-env jk #2: green tokens=51887 turns=6 wall=74.5 cost=0.04665 
+2026-11-18T06:37:05 END 82 rc=0 75s wall=75.3 mono=75.3 mem_min_avail_mb=8114
+2026-11-18T06:37:05 RUN 83/150 agy-hydrogen load=2.42 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:39:27   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-composed-route jk #2: green tokens=65588 turns=8 wall=141.0 cost=0.05803 
+2026-11-18T06:39:27 END 83 rc=0 142s wall=142.0 mono=142.0 mem_min_avail_mb=8188
+2026-11-18T06:39:27 RUN 84/150 agy-hydrogen load=3.07 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:41:14   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-column-case jk #2: green tokens=109934 turns=9 wall=105.9 cost=0.07866 
+2026-11-18T06:41:14 END 84 rc=0 107s wall=106.8 mono=106.8 mem_min_avail_mb=8168
+2026-11-18T06:41:14 RUN 85/150 agy-hydrogen load=2.41 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:42:01   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk #2: green tokens=24403 turns=4 wall=46.6 cost=0.02521 
+2026-11-18T06:42:01 END 85 rc=0 47s wall=47.4 mono=47.4 mem_min_avail_mb=9633
+2026-11-18T06:42:01 RUN 86/150 muse-spark load=1.12 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:45:04   ROW muse/muse-spark-1.3-contributor petclinic-rename-telephone jk #2: green tokens=409693 turns=12 wall=175.4 cost=0.0064 
+2026-11-18T06:45:04 END 86 rc=0 183s wall=182.8 mono=182.8 mem_min_avail_mb=8302
+2026-11-18T06:45:04 RUN 87/150 muse-spark load=2.16 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:47:48   ROW muse/muse-spark-1.3-contributor petclinic-anchor-relaxed-env jk #2: green tokens=482180 turns=20 wall=151.6 cost=0.00655 
+2026-11-18T06:47:48 END 87 rc=0 164s wall=164.3 mono=164.3 mem_min_avail_mb=8217
+2026-11-18T06:47:48 RUN 88/150 muse-spark load=5.46 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:50:38   ROW muse/muse-spark-1.3-contributor petclinic-anchor-composed-route jk #2: green tokens=413540 turns=19 wall=156.8 cost=0.00569 
+2026-11-18T06:50:38 END 88 rc=0 170s wall=169.9 mono=169.9 mem_min_avail_mb=7928
+2026-11-18T06:50:38 RUN 89/150 muse-spark load=6.66 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:53:08   ROW muse/muse-spark-1.3-contributor petclinic-anchor-column-case jk #2: green tokens=1123276 turns=29 wall=149.8 cost=0.01089 
+2026-11-18T06:53:08 END 89 rc=0 150s wall=150.4 mono=150.4 mem_min_avail_mb=8095
+2026-11-18T06:53:08 RUN 90/150 muse-spark load=2.22 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:53:29   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk #2: green tokens=57225 turns=3 wall=20.5 cost=0.00395 
+2026-11-18T06:53:29 END 90 rc=0 21s wall=21.0 mono=21.0 mem_min_avail_mb=9727
+2026-11-18T06:53:29 CUT 91 grok-4.5 arm=M repeat=2: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T06:53:29 CUT 92 grok-4.5 arm=M repeat=2: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T06:53:29 CUT 93 grok-4.5 arm=M repeat=2: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T06:53:29 CUT 94 grok-4.5 arm=M repeat=2: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T06:53:29 CUT 95 grok-4.5 arm=M repeat=2: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T06:53:29 RUN 96/150 cursor-grok-4.7 load=1.65 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:54:47   ROW cursor/grok-4.7-high petclinic-rename-telephone jk #2: green tokens=45440 turns=2 wall=77.1 cost=0.05392 
+2026-11-18T06:54:47 END 96 rc=0 78s wall=77.9 mono=77.9 mem_min_avail_mb=8853
+2026-11-18T06:54:47 RUN 97/150 cursor-grok-4.7 load=0.46 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T06:56:35   ROW cursor/grok-4.7-high petclinic-anchor-relaxed-env jk #2: green tokens=60490 turns=3 wall=106.3 cost=0.08666 
+2026-11-18T06:56:35 END 97 rc=0 107s wall=107.2 mono=107.2 mem_min_avail_mb=7391
+2026-11-18T06:56:35 RUN 98/150 cursor-grok-4.7 load=2.33 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:00:31   ROW cursor/grok-4.7-high petclinic-anchor-composed-route jk #2: green tokens=303213 turns=12 wall=235.3 cost=0.2843 
+2026-11-18T07:00:31 END 98 rc=0 236s wall=236.3 mono=236.3 mem_min_avail_mb=7419
+2026-11-18T07:00:31 RUN 99/150 cursor-grok-4.7 load=1.91 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:04:24   ROW cursor/grok-4.7-high petclinic-anchor-column-case jk #2: green tokens=354519 turns=14 wall=232.3 cost=0.41424 
+2026-11-18T07:04:24 END 99 rc=0 233s wall=233.3 mono=233.3 mem_min_avail_mb=7448
+2026-11-18T07:04:24 RUN 100/150 cursor-grok-4.7 load=2.82 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:05:32   ROW cursor/grok-4.7-high petclinic-callers-addpet jk #2: green tokens=41805 turns=2 wall=66.9 cost=0.05228 
+2026-11-18T07:05:32 END 100 rc=0 68s wall=67.8 mono=67.8 mem_min_avail_mb=8860
+2026-11-18T07:05:32 RUN 101/150 sonnet-5-5 load=0.90 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:05:50   ROW claude-code/claude-sonnet-5-5 petclinic-rename-telephone jk #3: green tokens=30953 turns=4 wall=17.2 cost=0.02356 
+2026-11-18T07:05:50 END 101 rc=0 18s wall=17.9 mono=17.9 mem_min_avail_mb=9681
+2026-11-18T07:05:50 RUN 102/150 sonnet-5-5 load=0.86 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:06:48   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-relaxed-env jk #3: green tokens=21717 turns=4 wall=57.1 cost=0.01796 
+2026-11-18T07:06:48 END 102 rc=0 58s wall=57.8 mono=57.8 mem_min_avail_mb=7954
+2026-11-18T07:06:48 RUN 103/150 sonnet-5-5 load=3.13 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:07:57   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-composed-route jk #3: green tokens=49784 turns=9 wall=69.1 cost=0.03904 
+2026-11-18T07:07:57 END 103 rc=0 70s wall=69.8 mono=69.8 mem_min_avail_mb=8290
+2026-11-18T07:07:57 RUN 104/150 sonnet-5-5 load=3.09 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:08:37   ROW claude-code/claude-sonnet-5-5 petclinic-anchor-column-case jk #3: green tokens=70616 turns=13 wall=39.0 cost=0.09253 
+2026-11-18T07:08:37 END 104 rc=0 40s wall=39.6 mono=39.6 mem_min_avail_mb=9656
+2026-11-18T07:08:37 RUN 105/150 sonnet-5-5 load=1.95 :: --driver claude-code --model claude-sonnet-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:08:49   ROW claude-code/claude-sonnet-5-5 petclinic-callers-addpet jk #3: green tokens=22425 turns=3 wall=11.2 cost=0.01805 
+2026-11-18T07:08:49 END 105 rc=0 12s wall=11.7 mono=11.7 mem_min_avail_mb=9671
+2026-11-18T07:08:49 RUN 106/150 opus-5-5 load=1.65 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:09:17   ROW claude-code/claude-opus-5-5 petclinic-rename-telephone jk #3: green tokens=41857 turns=7 wall=28.0 cost=0.07534 
+2026-11-18T07:09:17 END 106 rc=0 29s wall=28.6 mono=28.6 mem_min_avail_mb=9666
+2026-11-18T07:09:17 RUN 107/150 opus-5-5 load=1.12 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:10:17   ROW claude-code/claude-opus-5-5 petclinic-anchor-relaxed-env jk #3: green tokens=21293 turns=3 wall=58.8 cost=0.03707 
+2026-11-18T07:10:17 END 107 rc=0 59s wall=59.4 mono=59.4 mem_min_avail_mb=8028
+2026-11-18T07:10:17 RUN 108/150 opus-5-5 load=2.98 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:12:07   ROW claude-code/claude-opus-5-5 petclinic-anchor-composed-route jk #3: green tokens=57941 turns=10 wall=109.5 cost=0.08008 
+2026-11-18T07:12:07 END 108 rc=0 110s wall=110.1 mono=110.1 mem_min_avail_mb=8137
+2026-11-18T07:12:07 RUN 109/150 opus-5-5 load=4.05 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:13:32   ROW claude-code/claude-opus-5-5 petclinic-anchor-column-case jk #3: green tokens=94106 turns=17 wall=84.9 cost=0.15884 
+2026-11-18T07:13:32 END 109 rc=0 86s wall=85.6 mono=85.6 mem_min_avail_mb=8274
+2026-11-18T07:13:32 RUN 110/150 opus-5-5 load=3.15 :: --driver claude-code --model claude-opus-5-5 --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:13:44   ROW claude-code/claude-opus-5-5 petclinic-callers-addpet jk #3: green tokens=21288 turns=3 wall=11.2 cost=0.03206 
+2026-11-18T07:13:44 END 110 rc=0 12s wall=11.8 mono=11.8 mem_min_avail_mb=9691
+2026-11-18T07:13:44 RUN 111/150 codex-terra load=2.75 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:13:58   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #3: green tokens=68530 turns=3 wall=13.2 cost=0.01063 
+2026-11-18T07:13:58 END 111 rc=0 14s wall=13.9 mono=13.9 mem_min_avail_mb=9686
+2026-11-18T07:13:58 RUN 112/150 codex-terra load=2.75 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:15:04   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #3: green tokens=85453 turns=3 wall=65.1 cost=0.01124 
+2026-11-18T07:15:04 END 112 rc=0 66s wall=65.7 mono=65.7 mem_min_avail_mb=7980
+2026-11-18T07:15:04 RUN 113/150 codex-terra load=3.97 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:17:01   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #3: green tokens=262559 turns=7 wall=115.9 cost=0.03022 
+2026-11-18T07:17:01 END 113 rc=0 117s wall=116.7 mono=116.7 mem_min_avail_mb=8117
+2026-11-18T07:17:01 RUN 114/150 codex-terra load=3.41 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:18:06   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #3: green tokens=187730 turns=6 wall=64.9 cost=0.0276 
+2026-11-18T07:18:06 END 114 rc=0 66s wall=65.6 mono=65.6 mem_min_avail_mb=8441
+2026-11-18T07:18:06 RUN 115/150 codex-terra load=3.05 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:18:18   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #3: green tokens=87745 turns=3 wall=10.9 cost=0.01716 
+2026-11-18T07:18:18 END 115 rc=0 11s wall=11.5 mono=11.5 mem_min_avail_mb=9706
+2026-11-18T07:18:18 RUN 116/150 codex-sol load=2.73 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:18:33   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #3: green tokens=89437 turns=4 wall=14.6 cost=0.0415 
+2026-11-18T07:18:33 END 116 rc=0 15s wall=15.3 mono=15.3 mem_min_avail_mb=9674
+2026-11-18T07:18:33 RUN 117/150 codex-sol load=2.13 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:19:32   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #3: green tokens=123116 turns=4 wall=58.7 cost=0.04398 
+2026-11-18T07:19:32 END 117 rc=0 59s wall=59.3 mono=59.3 mem_min_avail_mb=8227
+2026-11-18T07:19:32 RUN 118/150 codex-sol load=4.34 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:21:28   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #3: green tokens=312908 turns=8 wall=115.2 cost=0.11476 
+2026-11-18T07:21:28 END 118 rc=0 116s wall=115.8 mono=115.8 mem_min_avail_mb=8132
+2026-11-18T07:21:28 RUN 119/150 codex-sol load=5.00 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:22:35   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #3: green tokens=159614 turns=7 wall=66.3 cost=0.04771 
+2026-11-18T07:22:35 END 119 rc=0 67s wall=67.0 mono=67.0 mem_min_avail_mb=8150
+2026-11-18T07:22:35 RUN 120/150 codex-sol load=3.65 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:22:48   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #3: green tokens=88003 turns=3 wall=12.1 cost=0.03432 
+2026-11-18T07:22:48 END 120 rc=0 13s wall=12.7 mono=12.7 mem_min_avail_mb=9710
+2026-11-18T07:22:48 CUT 121 grok-4.7 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:22:48 CUT 122 grok-4.7 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:22:48 CUT 123 grok-4.7 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:22:48 CUT 124 grok-4.7 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:22:48 CUT 125 grok-4.7 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:22:48 RUN 126/150 cursor-composer load=3.27 :: --driver cursor --model composer-2.5 --effort default --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:23:19   ROW cursor/composer-2.5 petclinic-rename-telephone jk #3: green tokens=36429 turns=2 wall=30.5 cost=0.01182 
+2026-11-18T07:23:19 END 126 rc=0 32s wall=31.6 mono=31.6 mem_min_avail_mb=8851
+2026-11-18T07:23:19 RUN 127/150 cursor-composer load=1.98 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:26:00   ROW cursor/composer-2.5 petclinic-anchor-relaxed-env jk #3: green tokens=173213 turns=11 wall=148.1 cost=0.04381 
+2026-11-18T07:26:00 END 127 rc=0 161s wall=161.1 mono=161.1 mem_min_avail_mb=7395
+2026-11-18T07:26:00 RUN 128/150 cursor-composer load=5.16 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:28:20   ROW cursor/composer-2.5 petclinic-anchor-composed-route jk #3: green tokens=303069 turns=14 wall=138.9 cost=0.07741 
+2026-11-18T07:28:20 END 128 rc=0 140s wall=139.9 mono=139.9 mem_min_avail_mb=7439
+2026-11-18T07:28:20 RUN 129/150 cursor-composer load=2.53 :: --driver cursor --model composer-2.5 --effort default --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:30:50   ROW cursor/composer-2.5 petclinic-anchor-column-case jk #3: green tokens=209441 turns=10 wall=148.4 cost=0.05917 
+2026-11-18T07:30:50 END 129 rc=0 149s wall=149.4 mono=149.4 mem_min_avail_mb=7354
+2026-11-18T07:30:50 RUN 130/150 cursor-composer load=2.40 :: --driver cursor --model composer-2.5 --effort default --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:32:03   ROW cursor/composer-2.5 petclinic-callers-addpet jk #3: green tokens=35566 turns=2 wall=72.7 cost=0.01281 
+2026-11-18T07:32:03 END 130 rc=0 74s wall=73.6 mono=73.6 mem_min_avail_mb=8867
+2026-11-18T07:32:03 RUN 131/150 agy-hydrogen load=0.83 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:32:51   ROW agy/gemini-4-hydrogen-medium petclinic-rename-telephone jk #3: green tokens=56917 turns=6 wall=46.4 cost=0.05377 
+2026-11-18T07:32:51 END 131 rc=0 48s wall=47.6 mono=47.6 mem_min_avail_mb=9646
+2026-11-18T07:32:51 RUN 132/150 agy-hydrogen load=0.39 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:34:12   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-relaxed-env jk #3: green tokens=61752 turns=7 wall=80.3 cost=0.05168 
+2026-11-18T07:34:12 END 132 rc=0 81s wall=81.2 mono=81.2 mem_min_avail_mb=8129
+2026-11-18T07:34:12 RUN 133/150 agy-hydrogen load=3.51 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:35:37   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-composed-route jk #3: green tokens=62836 turns=7 wall=84.3 cost=0.05596 
+2026-11-18T07:35:37 END 133 rc=0 85s wall=85.2 mono=85.2 mem_min_avail_mb=8267
+2026-11-18T07:35:37 RUN 134/150 agy-hydrogen load=2.95 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:37:12   ROW agy/gemini-4-hydrogen-medium petclinic-anchor-column-case jk #3: green tokens=71536 turns=7 wall=94.0 cost=0.05963 
+2026-11-18T07:37:12 END 134 rc=0 95s wall=94.9 mono=94.9 mem_min_avail_mb=8162
+2026-11-18T07:37:12 RUN 135/150 agy-hydrogen load=2.52 :: --driver agy --model gemini-4-hydrogen-medium --effort medium --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:37:31   ROW agy/gemini-4-hydrogen-medium petclinic-callers-addpet jk #3: green tokens=24818 turns=4 wall=18.3 cost=0.02561 
+2026-11-18T07:37:31 END 135 rc=0 19s wall=19.1 mono=19.1 mem_min_avail_mb=9655
+2026-11-18T07:37:31 RUN 136/150 muse-spark load=2.04 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:40:00   ROW muse/muse-spark-1.3-contributor petclinic-rename-telephone jk #3: green tokens=392793 turns=12 wall=147.9 cost=0.00608 
+2026-11-18T07:40:00 END 136 rc=0 149s wall=148.6 mono=148.6 mem_min_avail_mb=9387
+2026-11-18T07:40:00 RUN 137/150 muse-spark load=0.74 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:41:28   ROW muse/muse-spark-1.3-contributor petclinic-anchor-relaxed-env jk #3: green tokens=239587 turns=10 wall=86.9 cost=0.00588 
+2026-11-18T07:41:28 END 137 rc=0 88s wall=87.7 mono=87.7 mem_min_avail_mb=9741
+2026-11-18T07:41:28 RUN 138/150 muse-spark load=0.21 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:44:11   ROW muse/muse-spark-1.3-contributor petclinic-anchor-composed-route jk #3: green tokens=483398 turns=20 wall=162.3 cost=0.0069 
+2026-11-18T07:44:11 END 138 rc=0 163s wall=163.1 mono=163.1 mem_min_avail_mb=8140
+2026-11-18T07:44:11 RUN 139/150 muse-spark load=1.62 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:47:02   ROW muse/muse-spark-1.3-contributor petclinic-anchor-column-case jk #3: green tokens=1255859 turns=35 wall=171.2 cost=0.00926 
+2026-11-18T07:47:02 END 139 rc=0 172s wall=171.7 mono=171.7 mem_min_avail_mb=8263
+2026-11-18T07:47:02 RUN 140/150 muse-spark load=1.18 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:48:10   ROW muse/muse-spark-1.3-contributor petclinic-callers-addpet jk #3: claimed tokens=118724 turns=6 wall=67.3 cost=0.0026 
+2026-11-18T07:48:10 END 140 rc=0 68s wall=67.8 mono=67.8 mem_min_avail_mb=9730
+2026-11-18T07:48:10 CUT 141 grok-4.5 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:48:10 CUT 142 grok-4.5 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:48:10 CUT 143 grok-4.5 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:48:10 CUT 144 grok-4.5 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:48:10 CUT 145 grok-4.5 arm=M repeat=3: in /var/tmp/jk-bench/run/CUTS
+2026-11-18T07:48:10 RUN 146/150 cursor-grok-4.7 load=0.40 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:50:51   ROW cursor/grok-4.7-high petclinic-rename-telephone jk #3: green tokens=73437 turns=3 wall=159.8 cost=0.10608 
+2026-11-18T07:50:51 END 146 rc=0 161s wall=160.9 mono=160.9 mem_min_avail_mb=8739
+2026-11-18T07:50:51 RUN 147/150 cursor-grok-4.7 load=0.13 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:52:33   ROW cursor/grok-4.7-high petclinic-anchor-relaxed-env jk #3: green tokens=59397 turns=3 wall=101.4 cost=0.08787 
+2026-11-18T07:52:33 END 147 rc=0 102s wall=102.3 mono=102.3 mem_min_avail_mb=7060
+2026-11-18T07:52:33 RUN 148/150 cursor-grok-4.7 load=1.94 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T07:56:06   ROW cursor/grok-4.7-high petclinic-anchor-composed-route jk #3: green tokens=188951 turns=9 wall=212.0 cost=0.24454 
+2026-11-18T07:56:06 END 148 rc=0 213s wall=212.9 mono=212.9 mem_min_avail_mb=7182
+2026-11-18T07:56:06 RUN 149/150 cursor-grok-4.7 load=4.27 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T08:00:21   ROW cursor/grok-4.7-high petclinic-anchor-column-case jk #3: green tokens=273724 turns=11 wall=253.5 cost=0.23363 
+2026-11-18T08:00:21 END 149 rc=0 254s wall=254.4 mono=254.4 mem_min_avail_mb=7422
+2026-11-18T08:00:21 RUN 150/150 cursor-grok-4.7 load=2.29 :: --driver cursor --model grok-4.7-high --effort high --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/stR/out-M
+2026-11-18T08:01:32   ROW cursor/grok-4.7-high petclinic-callers-addpet jk #3: green tokens=41079 turns=2 wall=70.6 cost=0.04583 
+2026-11-18T08:01:32 END 150 rc=0 71s wall=71.3 mono=71.3 mem_min_avail_mb=8775
+2026-11-18T08:01:32 DONE

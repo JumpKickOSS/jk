@@ -9,7 +9,7 @@ moves it). Savings: positive means the first arm lower. A row with "1 run" has n
 Every table names its host. **daybreak** (Windows 11 + WSL Ubuntu 26.04, 12 GB) is the measurement host; tier 0
 was first run on **bocabox** (Fedora) and is kept below as a second host's table, never pooled with daybreak's.
 
-Status: tier 0 on daybreak complete (B redone with 0.51.1); tier 1 complete; sliver complete (A, B, C, F, all ten configs, codex from the catch-up). Stage R (main with the JK-3MF95 fix, arm M) next.
+Status: complete: tier 0, tier 1, sliver (A, B, C, F; all ten configs), stage R (arm M = origin/main 750848aea; grok one run per cell). Stage P (anchor push, 2026-11-18-anchor-push/) running.
 
 **Void rows are in no table** (README.md, "Defects found after tier 0"): daybreak's 40 tier-0 B rows ran 0.52.0
 (rows-tier0-daybreak-VOID-B-ran-0.52.0.jsonl), and its 36 tier-1 codex rows ran without a codex login
@@ -18,6 +18,9 @@ Status: tier 0 on daybreak complete (B redone with 0.51.1); tier 1 complete; sli
 
 **JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (30 of 30 runs) ended "compile skipped ...:
 search it for calls too" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliver answer carries it. README.md says more.
+
+**Stage R** compares arm M (main with the fix) with A, B, C and F on the same tasks; its section repeats their rows. grok's
+M cells have one run each (grok lost its login during the stage; rows-stageR-daybreak-VOID-grok-login.jsonl).
 
 ## Tier 0 on daybreak (smoke fixture, 1 run per cell)
 
@@ -58,28 +61,28 @@ search it for calls too" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliv
 
 Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
-|---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 91.8k → 146.2k | +37% | +54% | +23% | +46% | 1 run |
-| claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 91.8k → 137.0k | +33% | +66% | +34% | +60% | 1 run |
-| claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 114.9k → 187.3k | +39% | +49% | +31% | +51% | 1 run |
-| claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 114.9k → 166.9k | +31% | +55% | +38% | +55% | 1 run |
-| codex / gpt-6.1-terra low (default) | A vs B | 4 | 4/4 / 4/4 | 276.5k → 485.6k | +43% | +48% | +34% | +27% | 1 run |
-| codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 276.5k → 495.0k | +44% | +40% | +39% | +51% | 1 run |
-| codex / gpt-6.1-sol low (default) | A vs B | 4 | 4/4 / 4/4 | 312.9k → 384.4k | +19% | +53% | +27% | +26% | 1 run |
-| codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 312.9k → 598.4k | +48% | +56% | +37% | +42% | 1 run |
-| grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 169.7k → 940.2k | +82% | +61% | +2% | +72% | 1 run |
-| grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 169.7k → 1794.9k | +91% | +76% | +43% | +87% | 1 run |
-| grok / grok-4.5 high | A vs B | 4 | 4/4 / 4/4 | 129.0k → 931.7k | +86% | +65% | +77% | +74% | 1 run |
-| grok / grok-4.5 high | A vs C | 4 | 4/4 / 4/4 | 129.0k → 1143.7k | +89% | +77% | +87% | +82% | 1 run |
-| cursor / composer-2.5 | A vs B | 4 | 4/4 / 4/4 | 261.1k → 776.1k | +66% | +61% | +11% | +61% | 1 run |
-| cursor / composer-2.5 | A vs C | 4 | 4/4 / 4/4 | 261.1k → 1126.7k | +77% | +68% | +29% | +72% | 1 run |
-| cursor / grok-4.7-high | A vs B | 4 | 4/4 / 4/4 | 233.0k → 727.7k | +68% | +59% | +64% | +65% | 1 run |
-| cursor / grok-4.7-high | A vs C | 4 | 4/4 / 4/4 | 233.0k → 1037.7k | +78% | +73% | +74% | +79% | 1 run |
-| agy / gemini-4-hydrogen-medium | A vs B | 4 | 4/4 / 3/4 | 105.8k → 328.6k | +68% | +52% | +54% | +51% | 1 run |
-| agy / gemini-4-hydrogen-medium | A vs C | 4 | 4/4 / 4/4 | 105.8k → 485.9k | +78% | +67% | +69% | +68% | 1 run |
-| muse / spark-1.3-contributor high | A vs B | 4 | 4/4 / 4/4 | 563.5k → 1443.8k | +61% | +50% | +61% | +12% | 1 run |
-| muse / spark-1.3-contributor high | A vs C | 4 | 4/4 / 4/4 | 563.5k → 1804.8k | +69% | +62% | +52% | +4% | 1 run |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ jk s | Δ cost | Tokens noise |
+|---|---|---:|---|---|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 91.8k → 146.2k | +37% | +54% | +23% | -78% | +46% | 1 run |
+| claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 91.8k → 137.0k | +33% | +66% | +34% | -300% | +60% | 1 run |
+| claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 114.9k → 187.3k | +39% | +49% | +31% | -136% | +51% | 1 run |
+| claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 114.9k → 166.9k | +31% | +55% | +38% | -450% | +55% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 4/4 / 4/4 | 276.5k → 485.6k | +43% | +48% | +34% | -9% | +27% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 276.5k → 495.0k | +44% | +40% | +39% | -733% | +51% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 4/4 / 4/4 | 312.9k → 384.4k | +19% | +53% | +27% | -67% | +26% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 312.9k → 598.4k | +48% | +56% | +37% | -173% | +42% | 1 run |
+| grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 169.7k → 940.2k | +82% | +61% | +2% | -793% | +72% | 1 run |
+| grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 169.7k → 1794.9k | +91% | +76% | +43% | -606% | +87% | 1 run |
+| grok / grok-4.5 high | A vs B | 4 | 4/4 / 4/4 | 129.0k → 931.7k | +86% | +65% | +77% | +71% | +74% | 1 run |
+| grok / grok-4.5 high | A vs C | 4 | 4/4 / 4/4 | 129.0k → 1143.7k | +89% | +77% | +87% | +80% | +82% | 1 run |
+| cursor / composer-2.5 | A vs B | 4 | 4/4 / 4/4 | 261.1k → 776.1k | +66% | +61% | +11% | -7% | +61% | 1 run |
+| cursor / composer-2.5 | A vs C | 4 | 4/4 / 4/4 | 261.1k → 1126.7k | +77% | +68% | +29% | -131% | +72% | 1 run |
+| cursor / grok-4.7-high | A vs B | 4 | 4/4 / 4/4 | 233.0k → 727.7k | +68% | +59% | +64% | +14% | +65% | 1 run |
+| cursor / grok-4.7-high | A vs C | 4 | 4/4 / 4/4 | 233.0k → 1037.7k | +78% | +73% | +74% | -15% | +79% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 4/4 / 3/4 | 105.8k → 328.6k | +68% | +52% | +54% | +52% | +51% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs C | 4 | 4/4 / 4/4 | 105.8k → 485.9k | +78% | +67% | +69% | +33% | +68% | 1 run |
+| muse / spark-1.3-contributor high | A vs B | 4 | 4/4 / 4/4 | 563.5k → 1443.8k | +61% | +50% | +61% | -11% | +12% | 1 run |
+| muse / spark-1.3-contributor high | A vs C | 4 | 4/4 / 4/4 | 563.5k → 1804.8k | +69% | +62% | +52% | -55% | +4% | 1 run |
 
 ### Tier 0 on daybreak (smoke fixture, 1 run per cell): per task
 
@@ -235,18 +238,18 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 
 Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
-|---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.6k → 86.2k | +46% | +65% | +39% | +59% | separate |
-| claude2 / opus-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.9k → 131.7k | +64% | +77% | +52% | +66% | separate |
-| codex / gpt-6.1-terra low (default) | A vs C | 3 | 9/9 / 9/9 | 177.2k → 375.1k | +53% | +56% | +48% | +46% | separate |
-| codex / gpt-6.1-sol low (default) | A vs C | 3 | 9/9 / 9/9 | 215.9k → 358.4k | +40% | +57% | +21% | +41% | separate |
-| grok / grok-4.7 high 256k | A vs C | 3 | 9/9 / 9/9 | 99.5k → 883.5k | +89% | +77% | +88% | +85% | separate |
-| grok / grok-4.5 high | A vs C | 3 | 9/9 / 9/9 | 74.2k → 570.1k | +87% | +80% | +83% | +78% | separate |
-| cursor / composer-2.5 | A vs C | 3 | 9/9 / 9/9 | 160.8k → 242.7k | +34% | +33% | +0% | +32% | overlap (noise) |
-| cursor / grok-4.7-high | A vs C | 3 | 9/9 / 9/9 | 148.5k → 1627.2k | +91% | +86% | +85% | +91% | separate |
-| agy / gemini-4-hydrogen-medium | A vs C | 3 | 9/9 / 9/9 | 63.8k → 300.1k | +79% | +58% | +62% | +64% | separate |
-| muse / spark-1.3-contributor high | A vs C | 3 | 9/9 / 9/9 | 260.7k → 860.5k | +70% | +67% | +9% | -10% | separate |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ jk s | Δ cost | Tokens noise |
+|---|---|---:|---|---|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.6k → 86.2k | +46% | +65% | +39% | -175% | +59% | separate |
+| claude2 / opus-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.9k → 131.7k | +64% | +77% | +52% | -69% | +66% | separate |
+| codex / gpt-6.1-terra low (default) | A vs C | 3 | 9/9 / 9/9 | 177.2k → 375.1k | +53% | +56% | +48% | -130% | +46% | separate |
+| codex / gpt-6.1-sol low (default) | A vs C | 3 | 9/9 / 9/9 | 215.9k → 358.4k | +40% | +57% | +21% | -57% | +41% | separate |
+| grok / grok-4.7 high 256k | A vs C | 3 | 9/9 / 9/9 | 99.5k → 883.5k | +89% | +77% | +88% | +79% | +85% | separate |
+| grok / grok-4.5 high | A vs C | 3 | 9/9 / 9/9 | 74.2k → 570.1k | +87% | +80% | +83% | +90% | +78% | separate |
+| cursor / composer-2.5 | A vs C | 3 | 9/9 / 9/9 | 160.8k → 242.7k | +34% | +33% | +0% | -150% | +32% | overlap (noise) |
+| cursor / grok-4.7-high | A vs C | 3 | 9/9 / 9/9 | 148.5k → 1627.2k | +91% | +86% | +85% | +25% | +91% | separate |
+| agy / gemini-4-hydrogen-medium | A vs C | 3 | 9/9 / 9/9 | 63.8k → 300.1k | +79% | +58% | +62% | +53% | +64% | separate |
+| muse / spark-1.3-contributor high | A vs C | 3 | 9/9 / 9/9 | 260.7k → 860.5k | +70% | +67% | +9% | +67% | -10% | separate |
 
 ### Tier 1 on daybreak (3 runs per cell, interleaved): per task
 
@@ -362,38 +365,38 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 
 Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
-|---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | A vs B | 4 | 11/12 / 11/12 | 203.2k → 246.9k | +18% | +31% | +21% | +17% | separate |
-| claude2 / sonnet-5-5 medium | A vs C | 4 | 11/12 / 11/12 | 203.2k → 278.9k | +27% | +39% | +1% | +31% | separate |
-| claude2 / sonnet-5-5 medium | F vs A | 4 | 12/12 / 11/12 | 199.2k → 203.2k | +2% | +6% | -7% | +4% | overlap (noise) |
-| claude2 / opus-5-5 medium | A vs B | 4 | 12/12 / 12/12 | 271.3k → 325.1k | +17% | +18% | +12% | +24% | overlap (noise) |
-| claude2 / opus-5-5 medium | A vs C | 4 | 12/12 / 12/12 | 271.3k → 358.3k | +24% | +14% | -48% | +29% | overlap (noise) |
-| claude2 / opus-5-5 medium | F vs A | 4 | 12/12 / 12/12 | 250.0k → 271.3k | +8% | +2% | +7% | +5% | overlap (noise) |
-| codex / gpt-6.1-terra low (default) | A vs B | 4 | 10/12 / 9/12 | 573.5k → 731.7k | +22% | +24% | +68% | +14% | overlap (noise) |
-| codex / gpt-6.1-terra low (default) | A vs C | 4 | 10/12 / 10/12 | 573.5k → 705.6k | +19% | +15% | +49% | +9% | overlap (noise) |
-| codex / gpt-6.1-terra low (default) | F vs A | 4 | 12/12 / 10/12 | 626.4k → 573.5k | -9% | +0% | -138% | +0% | overlap (noise) |
-| codex / gpt-6.1-sol low (default) | A vs B | 4 | 9/12 / 11/12 | 747.9k → 973.4k | +23% | +18% | -1% | +20% | overlap (noise) |
-| codex / gpt-6.1-sol low (default) | A vs C | 4 | 9/12 / 10/12 | 747.9k → 729.9k | -2% | +6% | -80% | +6% | overlap (noise) |
-| codex / gpt-6.1-sol low (default) | F vs A | 4 | 12/12 / 9/12 | 1106.2k → 747.9k | -48% | +9% | -19% | -32% | overlap (noise) |
-| grok / grok-4.7 high 256k | A vs B | 4 | 12/12 / 9/12 | 1678.5k → 1169.2k | -44% | -39% | -59% | -54% | overlap (noise) |
-| grok / grok-4.7 high 256k | A vs C | 4 | 12/12 / 9/12 | 1678.5k → 2195.6k | +24% | +9% | -12% | +15% | overlap (noise) |
-| grok / grok-4.7 high 256k | F vs A | 4 | 12/12 / 12/12 | 630.5k → 1678.5k | +62% | +41% | +38% | +58% | overlap (noise) |
-| grok / grok-4.5 high | A vs B | 4 | 12/12 / 9/12 | 459.7k → 646.5k | +29% | +0% | +30% | +13% | overlap (noise) |
-| grok / grok-4.5 high | A vs C | 4 | 12/12 / 9/12 | 459.7k → 1618.1k | +72% | +45% | +15% | +62% | separate |
-| grok / grok-4.5 high | F vs A | 4 | 12/12 / 12/12 | 444.5k → 459.7k | +3% | +16% | +14% | +25% | overlap (noise) |
-| cursor / composer-2.5 | A vs B | 4 | 10/12 / 11/12 | 781.4k → 780.9k | -0% | +0% | +15% | +6% | overlap (noise) |
-| cursor / composer-2.5 | A vs C | 4 | 10/12 / 11/12 | 781.4k → 816.5k | +4% | +2% | -39% | +10% | overlap (noise) |
-| cursor / composer-2.5 | F vs A | 4 | 11/12 / 10/12 | 737.0k → 781.4k | +6% | +2% | +14% | +1% | overlap (noise) |
-| cursor / grok-4.7-high | A vs B | 4 | 12/12 / 10/12 | 1206.2k → 1326.3k | +9% | +0% | +13% | +16% | overlap (noise) |
-| cursor / grok-4.7-high | A vs C | 4 | 12/12 / 11/12 | 1206.2k → 1669.7k | +28% | +20% | +8% | +20% | overlap (noise) |
-| cursor / grok-4.7-high | F vs A | 4 | 12/12 / 12/12 | 737.2k → 1206.2k | +39% | +33% | +11% | +37% | overlap (noise) |
-| agy / gemini-4-hydrogen-medium | A vs B | 4 | 12/12 / 3/12 | 370.4k → 1208.8k | +69% | +38% | +63% | +56% | separate |
-| agy / gemini-4-hydrogen-medium | A vs C | 4 | 12/12 / 3/12 | 370.4k → 1281.2k | +71% | +35% | +58% | +56% | separate |
-| agy / gemini-4-hydrogen-medium | F vs A | 4 | 12/12 / 12/12 | 376.6k → 370.4k | -2% | +6% | -63% | -4% | overlap (noise) |
-| muse / spark-1.3-contributor high | A vs B | 4 | 11/12 / 8/12 | 5808.1k → 6249.9k | +7% | +0% | +9% | +20% | overlap (noise) |
-| muse / spark-1.3-contributor high | A vs C | 4 | 11/12 / 9/12 | 5808.1k → 5420.2k | -7% | -5% | -34% | -6% | overlap (noise) |
-| muse / spark-1.3-contributor high | F vs A | 4 | 12/12 / 11/12 | 5344.2k → 5808.1k | +8% | +7% | +6% | +4% | overlap (noise) |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ jk s | Δ cost | Tokens noise |
+|---|---|---:|---|---|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 11/12 / 11/12 | 203.2k → 246.9k | +18% | +31% | +21% | +22% | +17% | separate |
+| claude2 / sonnet-5-5 medium | A vs C | 4 | 11/12 / 11/12 | 203.2k → 278.9k | +27% | +39% | +1% | -46% | +31% | separate |
+| claude2 / sonnet-5-5 medium | F vs A | 4 | 12/12 / 11/12 | 199.2k → 203.2k | +2% | +6% | -7% | +1% | +4% | overlap (noise) |
+| claude2 / opus-5-5 medium | A vs B | 4 | 12/12 / 12/12 | 271.3k → 325.1k | +17% | +18% | +12% | +10% | +24% | overlap (noise) |
+| claude2 / opus-5-5 medium | A vs C | 4 | 12/12 / 12/12 | 271.3k → 358.3k | +24% | +14% | -48% | -196% | +29% | overlap (noise) |
+| claude2 / opus-5-5 medium | F vs A | 4 | 12/12 / 12/12 | 250.0k → 271.3k | +8% | +2% | +7% | +17% | +5% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 10/12 / 9/12 | 573.5k → 731.7k | +22% | +24% | +68% | +87% | +14% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | A vs C | 4 | 10/12 / 10/12 | 573.5k → 705.6k | +19% | +15% | +49% | +55% | +9% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | F vs A | 4 | 12/12 / 10/12 | 626.4k → 573.5k | -9% | +0% | -138% | -617% | +0% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 9/12 / 11/12 | 747.9k → 973.4k | +23% | +18% | -1% | -4% | +20% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | A vs C | 4 | 9/12 / 10/12 | 747.9k → 729.9k | -2% | +6% | -80% | -238% | +6% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | F vs A | 4 | 12/12 / 9/12 | 1106.2k → 747.9k | -48% | +9% | -19% | -18% | -32% | overlap (noise) |
+| grok / grok-4.7 high 256k | A vs B | 4 | 12/12 / 9/12 | 1678.5k → 1169.2k | -44% | -39% | -59% | -40% | -54% | overlap (noise) |
+| grok / grok-4.7 high 256k | A vs C | 4 | 12/12 / 9/12 | 1678.5k → 2195.6k | +24% | +9% | -12% | -27% | +15% | overlap (noise) |
+| grok / grok-4.7 high 256k | F vs A | 4 | 12/12 / 12/12 | 630.5k → 1678.5k | +62% | +41% | +38% | +46% | +58% | overlap (noise) |
+| grok / grok-4.5 high | A vs B | 4 | 12/12 / 9/12 | 459.7k → 646.5k | +29% | +0% | +30% | +56% | +13% | overlap (noise) |
+| grok / grok-4.5 high | A vs C | 4 | 12/12 / 9/12 | 459.7k → 1618.1k | +72% | +45% | +15% | -19% | +62% | separate |
+| grok / grok-4.5 high | F vs A | 4 | 12/12 / 12/12 | 444.5k → 459.7k | +3% | +16% | +14% | +18% | +25% | overlap (noise) |
+| cursor / composer-2.5 | A vs B | 4 | 10/12 / 11/12 | 781.4k → 780.9k | -0% | +0% | +15% | +36% | +6% | overlap (noise) |
+| cursor / composer-2.5 | A vs C | 4 | 10/12 / 11/12 | 781.4k → 816.5k | +4% | +2% | -39% | -130% | +10% | overlap (noise) |
+| cursor / composer-2.5 | F vs A | 4 | 11/12 / 10/12 | 737.0k → 781.4k | +6% | +2% | +14% | -2% | +1% | overlap (noise) |
+| cursor / grok-4.7-high | A vs B | 4 | 12/12 / 10/12 | 1206.2k → 1326.3k | +9% | +0% | +13% | +64% | +16% | overlap (noise) |
+| cursor / grok-4.7-high | A vs C | 4 | 12/12 / 11/12 | 1206.2k → 1669.7k | +28% | +20% | +8% | +44% | +20% | overlap (noise) |
+| cursor / grok-4.7-high | F vs A | 4 | 12/12 / 12/12 | 737.2k → 1206.2k | +39% | +33% | +11% | -173% | +37% | overlap (noise) |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 12/12 / 3/12 | 370.4k → 1208.8k | +69% | +38% | +63% | +73% | +56% | separate |
+| agy / gemini-4-hydrogen-medium | A vs C | 4 | 12/12 / 3/12 | 370.4k → 1281.2k | +71% | +35% | +58% | +66% | +56% | separate |
+| agy / gemini-4-hydrogen-medium | F vs A | 4 | 12/12 / 12/12 | 376.6k → 370.4k | -2% | +6% | -63% | -110% | -4% | overlap (noise) |
+| muse / spark-1.3-contributor high | A vs B | 4 | 11/12 / 8/12 | 5808.1k → 6249.9k | +7% | +0% | +9% | +7% | +20% | overlap (noise) |
+| muse / spark-1.3-contributor high | A vs C | 4 | 11/12 / 9/12 | 5808.1k → 5420.2k | -7% | -5% | -34% | -139% | -6% | overlap (noise) |
+| muse / spark-1.3-contributor high | F vs A | 4 | 12/12 / 11/12 | 5344.2k → 5808.1k | +8% | +7% | +6% | +9% | +4% | overlap (noise) |
 
 ### Tier-2 sliver on daybreak (3 runs per cell, interleaved; F: main's graph fixes): per task
 
@@ -560,10 +563,378 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | muse / spark-1.3-contributor high | petclinic-rename-telephone | C | 3 | 3 | 2679.8k (2455.7–2712.2k) | 58 | 221.8 | $0.0147 |
 | muse / spark-1.3-contributor high | petclinic-rename-telephone | F | 3 | 3 | 2770.2k (1043.1–2884.3k) | 57 | 197.3 | $0.0149 |
 
+## Stage R on daybreak (M: origin/main 750848aea, the JK-3MF95 fix; the sliver's tasks and tier 1's petclinic task, 3 runs per cell)
+
+| Config | Arm | Runs | Green | Errors | Median tokens | Turns | Wall s | jk s | Est. cost | CLI versions |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | M | 15 | 15/15 (100%) | 0 | 22.4k | 4 | 39.0 | 5.6 | $0.0236 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | F | 12 | 12/12 (100%) | 0 | 52.8k | 8 | 62.8 | 45.4 | $0.0495 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | A | 15 | 14/15 (93%) | 0 | 37.5k | 8 | 60.7 | 44.2 | $0.0435 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | B | 12 | 11/12 (92%) | 0 | 58.4k | 12.5 | 66.8 | 44.8 | $0.0656 | 2.1.326 (Claude Code) |
+| claude2 / sonnet-5-5 medium | C | 15 | 14/15 (93%) | 0 | 49.3k | 9 | 45.6 | 5.7 | $0.0509 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | M | 15 | 15/15 (100%) | 0 | 51.7k | 7 | 70.1 | 46.0 | $0.0776 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | F | 12 | 12/12 (100%) | 0 | 65.2k | 12 | 71.1 | 45.6 | $0.1124 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | A | 15 | 15/15 (100%) | 0 | 65.0k | 11 | 69.6 | 44.1 | $0.1113 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | B | 12 | 12/12 (100%) | 0 | 81.7k | 14 | 75.8 | 44.8 | $0.1460 | 2.1.326 (Claude Code) |
+| claude2 / opus-5-5 medium | C | 15 | 15/15 (100%) | 0 | 68.4k | 12 | 36.9 | 5.5 | $0.1153 | 2.1.326 (Claude Code) |
+| codex / gpt-6.1-terra low (default) | M | 15 | 15/15 (100%) | 0 | 87.9k | 3 | 58.6 | 44.8 | $0.0208 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | F | 12 | 12/12 (100%) | 0 | 149.5k | 6 | 68.2 | 48.4 | $0.0198 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | A | 15 | 13/15 (87%) | 0 | 141.5k | 5 | 32.5 | 7.2 | $0.0257 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | B | 12 | 9/12 (75%) | 0 | 200.3k | 7 | 117.5 | 91.1 | $0.0297 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | C | 15 | 13/15 (87%) | 0 | 163.3k | 6 | 38.8 | 6.2 | $0.0240 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | M | 15 | 15/15 (100%) | 0 | 123.1k | 4 | 60.4 | 44.9 | $0.0417 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | F | 12 | 12/12 (100%) | 0 | 233.3k | 8 | 102.3 | 85.9 | $0.0558 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | A | 15 | 12/15 (80%) | 0 | 162.5k | 6 | 41.1 | 11.8 | $0.0574 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | B | 12 | 11/12 (92%) | 0 | 240.0k | 9.5 | 79.3 | 55.6 | $0.0752 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | C | 15 | 13/15 (87%) | 0 | 144.5k | 8 | 38.2 | 6.6 | $0.0595 | codex-cli 0.166.0 |
+| grok / grok-4.7 high 256k | M | 5 | 5/5 (100%) | 0 | 41.3k | 4 | 73.7 | 6.3 | $0.0744 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | F | 12 | 12/12 (100%) | 0 | 165.6k | 10.5 | 138.8 | 9.8 | $0.1459 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | A | 15 | 15/15 (100%) | 0 | 209.9k | 12 | 167.0 | 12.5 | $0.1752 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | B | 12 | 9/12 (75%) | 0 | 234.8k | 12.5 | 112.4 | 8.6 | $0.2390 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.7 high 256k | C | 15 | 12/15 (80%) | 0 | 290.8k | 14 | 119.7 | 18.3 | $0.3101 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | M | 5 | 5/5 (100%) | 0 | 30.4k | 4 | 57.2 | 7.0 | $0.0383 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | F | 12 | 12/12 (100%) | 0 | 106.3k | 7 | 78.1 | 8.1 | $0.0843 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | A | 15 | 15/15 (100%) | 0 | 117.4k | 9 | 60.0 | 18.0 | $0.0933 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | B | 12 | 9/12 (75%) | 0 | 141.1k | 9.5 | 127.3 | 78.5 | $0.1237 | grok 1.0.77 (50ca579fa996) [stable] |
+| grok / grok-4.5 high | C | 15 | 12/15 (80%) | 0 | 227.9k | 18 | 75.6 | 23.5 | $0.1910 | grok 1.0.77 (50ca579fa996) [stable] |
+| cursor / composer-2.5 | M | 15 | 15/15 (100%) | 0 | 119.9k | 7 | 104.3 | 45.2 | $0.0347 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | F | 12 | 11/12 (92%) | 0 | 181.2k | 9 | 76.2 | 45.8 | $0.0501 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | A | 15 | 13/15 (87%) | 0 | 175.8k | 9 | 68.2 | 44.7 | $0.0444 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | B | 12 | 11/12 (92%) | 0 | 194.9k | 10 | 84.5 | 44.7 | $0.0528 | 2026.11.13-eacade1 |
+| cursor / composer-2.5 | C | 15 | 14/15 (93%) | 0 | 186.9k | 9 | 50.4 | 5.8 | $0.0503 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | M | 15 | 15/15 (100%) | 0 | 74.1k | 3 | 159.8 | 45.3 | $0.1061 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | F | 12 | 12/12 (100%) | 0 | 208.1k | 9 | 181.2 | 86.3 | $0.2195 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | A | 15 | 15/15 (100%) | 0 | 264.7k | 11 | 138.5 | 13.3 | $0.2887 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | B | 12 | 10/12 (83%) | 0 | 258.5k | 12.5 | 205.6 | 47.5 | $0.3263 | 2026.11.13-eacade1 |
+| cursor / grok-4.7-high | C | 15 | 14/15 (93%) | 0 | 337.1k | 12 | 163.4 | 43.8 | $0.3857 | 2026.11.13-eacade1 |
+| agy / gemini-4-hydrogen-medium | M | 15 | 15/15 (100%) | 0 | 61.8k | 7 | 84.3 | 51.4 | $0.0538 | 1.5.11 |
+| agy / gemini-4-hydrogen-medium | F | 12 | 12/12 (100%) | 0 | 83.3k | 8.5 | 107.8 | 59.7 | $0.0709 | 1.5.10, 1.5.11 |
+| agy / gemini-4-hydrogen-medium | A | 15 | 15/15 (100%) | 0 | 83.6k | 9 | 51.9 | 18.3 | $0.0647 | 1.5.10, 1.5.11 |
+| agy / gemini-4-hydrogen-medium | B | 12 | 3/12 (25%) | 0 | 297.6k | 13 | 179.1 | 105.8 | $0.1459 | 1.5.10, 1.5.11 |
+| agy / gemini-4-hydrogen-medium | C | 15 | 6/15 (40%) | 0 | 329.3k | 13 | 139.6 | 76.2 | $0.1578 | 1.5.10, 1.5.11 |
+| muse / spark-1.3-contributor high | M | 15 | 14/15 (93%) | 0 | 413.5k | 19 | 151.6 | 46.6 | $0.0064 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | F | 12 | 12/12 (100%) | 0 | 958.9k | 26.5 | 196.2 | 67.0 | $0.0098 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | A | 15 | 14/15 (93%) | 0 | 920.1k | 32 | 147.8 | 49.0 | $0.0084 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | B | 12 | 8/12 (67%) | 0 | 1087.5k | 38 | 214.3 | 93.0 | $0.0112 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+| muse / spark-1.3-contributor high | C | 15 | 12/15 (80%) | 0 | 819.7k | 24 | 142.2 | 6.7 | $0.0081 | Muse Code 1.4.23 (1.4.23-R8977.1) |
+
+### Stage R on daybreak (M: origin/main 750848aea, the JK-3MF95 fix; the sliver's tasks and tier 1's petclinic task, 3 runs per cell): savings of A against B, A against C, F against A, M against A, M against B, M against F, M against C
+
+Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
+
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ jk s | Δ cost | Tokens noise |
+|---|---|---:|---|---|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 11/12 / 11/12 | 203.2k → 246.9k | +18% | +31% | +21% | +22% | +17% | separate |
+| claude2 / sonnet-5-5 medium | A vs C | 5 | 14/15 / 14/15 | 223.9k → 314.4k | +29% | +39% | +4% | -47% | +32% | separate |
+| claude2 / sonnet-5-5 medium | F vs A | 4 | 12/12 / 11/12 | 199.2k → 203.2k | +2% | +6% | -7% | +1% | +4% | overlap (noise) |
+| claude2 / sonnet-5-5 medium | M vs A | 5 | 15/15 / 14/15 | 186.7k → 223.9k | +17% | +13% | +16% | +28% | +22% | separate |
+| claude2 / sonnet-5-5 medium | M vs B | 4 | 12/12 / 11/12 | 164.3k → 246.9k | +33% | +41% | +35% | +44% | +38% | separate |
+| claude2 / sonnet-5-5 medium | M vs F | 4 | 12/12 / 12/12 | 164.3k → 199.2k | +17% | +9% | +23% | +28% | +22% | separate |
+| claude2 / sonnet-5-5 medium | M vs C | 5 | 15/15 / 14/15 | 186.7k → 314.4k | +41% | +47% | +19% | -5% | +47% | separate |
+| claude2 / opus-5-5 medium | A vs B | 4 | 12/12 / 12/12 | 271.3k → 325.1k | +17% | +18% | +12% | +10% | +24% | overlap (noise) |
+| claude2 / opus-5-5 medium | A vs C | 5 | 15/15 / 15/15 | 292.0k → 387.6k | +25% | +16% | -43% | -196% | +29% | overlap (noise) |
+| claude2 / opus-5-5 medium | F vs A | 4 | 12/12 / 12/12 | 250.0k → 271.3k | +8% | +2% | +7% | +17% | +5% | overlap (noise) |
+| claude2 / opus-5-5 medium | M vs A | 5 | 15/15 / 15/15 | 222.4k → 292.0k | +24% | +26% | +1% | -3% | +25% | separate |
+| claude2 / opus-5-5 medium | M vs B | 4 | 12/12 / 12/12 | 201.2k → 325.1k | +38% | +41% | +13% | +7% | +43% | separate |
+| claude2 / opus-5-5 medium | M vs F | 4 | 12/12 / 12/12 | 201.2k → 250.0k | +20% | +27% | -6% | -24% | +22% | overlap (noise) |
+| claude2 / opus-5-5 medium | M vs C | 5 | 15/15 / 15/15 | 222.4k → 387.6k | +43% | +38% | -42% | -205% | +47% | separate |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 10/12 / 9/12 | 573.5k → 731.7k | +22% | +24% | +68% | +87% | +14% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | A vs C | 5 | 13/15 / 13/15 | 658.4k → 836.0k | +21% | +19% | +48% | +55% | +17% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | F vs A | 4 | 12/12 / 10/12 | 626.4k → 573.5k | -9% | +0% | -138% | -617% | +0% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | M vs A | 5 | 15/15 / 13/15 | 691.9k → 658.4k | -5% | +12% | -93% | -490% | -0% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | M vs B | 4 | 12/12 / 9/12 | 604.2k → 731.7k | +17% | +34% | +36% | +22% | +15% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | M vs F | 4 | 12/12 / 12/12 | 604.2k → 626.4k | +4% | +14% | +16% | +17% | +0% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | M vs C | 5 | 15/15 / 13/15 | 691.9k → 836.0k | +17% | +29% | -0% | -168% | +16% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 9/12 / 11/12 | 747.9k → 973.4k | +23% | +18% | -1% | -4% | +20% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | A vs C | 5 | 12/15 / 13/15 | 833.2k → 841.4k | +1% | +10% | -72% | -239% | +9% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | F vs A | 4 | 12/12 / 9/12 | 1106.2k → 747.9k | -48% | +9% | -19% | -18% | -32% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | M vs A | 5 | 15/15 / 12/15 | 759.4k → 833.2k | +9% | +25% | +16% | +22% | +7% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | M vs B | 4 | 12/12 / 11/12 | 671.3k → 973.4k | +31% | +40% | +15% | +19% | +25% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | M vs F | 4 | 12/12 / 12/12 | 671.3k → 1106.2k | +39% | +20% | +29% | +34% | +29% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | M vs C | 5 | 15/15 / 13/15 | 759.4k → 841.4k | +10% | +32% | -45% | -163% | +15% | overlap (noise) |
+| grok / grok-4.7 high 256k | A vs B | 4 | 12/12 / 9/12 | 1678.5k → 1169.2k | -44% | -39% | -59% | -40% | -54% | overlap (noise) |
+| grok / grok-4.7 high 256k | A vs C | 5 | 15/15 / 12/15 | 1711.4k → 2378.2k | +28% | +19% | -3% | -21% | +20% | overlap (noise) |
+| grok / grok-4.7 high 256k | F vs A | 4 | 12/12 / 12/12 | 630.5k → 1678.5k | +62% | +41% | +38% | +46% | +58% | overlap (noise) |
+| grok / grok-4.7 high 256k | M vs A | 5 | 5/5 / 15/15 | 532.3k → 1711.4k | +69% | +49% | +42% | +48% | +64% | 1 run |
+| grok / grok-4.7 high 256k | M vs B | 4 | 4/4 / 9/12 | 498.9k → 1169.2k | +57% | +33% | +10% | +28% | +46% | 1 run |
+| grok / grok-4.7 high 256k | M vs F | 4 | 4/4 / 12/12 | 498.9k → 630.5k | +21% | +18% | +8% | +6% | +18% | 1 run |
+| grok / grok-4.7 high 256k | M vs C | 5 | 5/5 / 12/15 | 532.3k → 2378.2k | +78% | +58% | +40% | +36% | +71% | 1 run |
+| grok / grok-4.5 high | A vs B | 4 | 12/12 / 9/12 | 459.7k → 646.5k | +29% | +0% | +30% | +56% | +13% | overlap (noise) |
+| grok / grok-4.5 high | A vs C | 5 | 15/15 / 12/15 | 488.2k → 1803.7k | +73% | +52% | +21% | -13% | +63% | separate |
+| grok / grok-4.5 high | F vs A | 4 | 12/12 / 12/12 | 444.5k → 459.7k | +3% | +16% | +14% | +18% | +25% | overlap (noise) |
+| grok / grok-4.5 high | M vs A | 5 | 5/5 / 15/15 | 345.2k → 488.2k | +29% | +20% | +19% | +40% | +34% | 1 run |
+| grok / grok-4.5 high | M vs B | 4 | 4/4 / 9/12 | 315.9k → 646.5k | +51% | +22% | +44% | +74% | +45% | 1 run |
+| grok / grok-4.5 high | M vs F | 4 | 4/4 / 12/12 | 315.9k → 444.5k | +29% | +6% | +6% | +28% | +15% | 1 run |
+| grok / grok-4.5 high | M vs C | 5 | 5/5 / 12/15 | 345.2k → 1803.7k | +81% | +62% | +36% | +33% | +75% | 1 run |
+| cursor / composer-2.5 | A vs B | 4 | 10/12 / 11/12 | 781.4k → 780.9k | -0% | +0% | +15% | +36% | +6% | overlap (noise) |
+| cursor / composer-2.5 | A vs C | 5 | 13/15 / 14/15 | 827.7k → 918.4k | +10% | +10% | -34% | -131% | +14% | overlap (noise) |
+| cursor / composer-2.5 | F vs A | 4 | 11/12 / 10/12 | 737.0k → 781.4k | +6% | +2% | +14% | -2% | +1% | overlap (noise) |
+| cursor / composer-2.5 | M vs A | 5 | 15/15 / 13/15 | 605.6k → 827.7k | +27% | +20% | -46% | -2% | +24% | overlap (noise) |
+| cursor / composer-2.5 | M vs B | 4 | 12/12 / 11/12 | 570.0k → 780.9k | +27% | +20% | -16% | +35% | +31% | overlap (noise) |
+| cursor / composer-2.5 | M vs F | 4 | 12/12 / 11/12 | 570.0k → 737.0k | +23% | +18% | -58% | -0% | +25% | overlap (noise) |
+| cursor / composer-2.5 | M vs C | 5 | 15/15 / 14/15 | 605.6k → 918.4k | +34% | +29% | -95% | -136% | +35% | separate |
+| cursor / grok-4.7-high | A vs B | 4 | 12/12 / 10/12 | 1206.2k → 1326.3k | +9% | +0% | +13% | +64% | +16% | overlap (noise) |
+| cursor / grok-4.7-high | A vs C | 5 | 15/15 / 14/15 | 1259.3k → 1820.1k | +31% | +25% | +13% | +43% | +24% | overlap (noise) |
+| cursor / grok-4.7-high | F vs A | 4 | 12/12 / 12/12 | 737.2k → 1206.2k | +39% | +33% | +11% | -173% | +37% | overlap (noise) |
+| cursor / grok-4.7-high | M vs A | 5 | 15/15 / 15/15 | 637.8k → 1259.3k | +49% | +45% | -11% | -120% | +48% | overlap (noise) |
+| cursor / grok-4.7-high | M vs B | 4 | 12/12 / 10/12 | 596.6k → 1326.3k | +55% | +46% | +9% | +21% | +57% | separate |
+| cursor / grok-4.7-high | M vs F | 4 | 12/12 / 12/12 | 596.6k → 737.2k | +19% | +19% | -18% | +19% | +18% | overlap (noise) |
+| cursor / grok-4.7-high | M vs C | 5 | 15/15 / 14/15 | 637.8k → 1820.1k | +65% | +59% | +3% | -25% | +60% | separate |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 12/12 / 3/12 | 370.4k → 1208.8k | +69% | +38% | +63% | +73% | +56% | separate |
+| agy / gemini-4-hydrogen-medium | A vs C | 5 | 15/15 / 6/15 | 395.2k → 1392.0k | +72% | +36% | +57% | +65% | +57% | separate |
+| agy / gemini-4-hydrogen-medium | F vs A | 4 | 12/12 / 12/12 | 376.6k → 370.4k | -2% | +6% | -63% | -110% | -4% | overlap (noise) |
+| agy / gemini-4-hydrogen-medium | M vs A | 5 | 15/15 / 15/15 | 270.7k → 395.2k | +31% | +21% | -21% | -66% | +21% | overlap (noise) |
+| agy / gemini-4-hydrogen-medium | M vs B | 4 | 12/12 / 3/12 | 245.9k → 1208.8k | +80% | +52% | +55% | +56% | +66% | separate |
+| agy / gemini-4-hydrogen-medium | M vs F | 4 | 12/12 / 12/12 | 245.9k → 376.6k | +35% | +18% | +26% | +20% | +25% | overlap (noise) |
+| agy / gemini-4-hydrogen-medium | M vs C | 5 | 15/15 / 6/15 | 270.7k → 1392.0k | +81% | +49% | +49% | +42% | +66% | separate |
+| muse / spark-1.3-contributor high | A vs B | 4 | 11/12 / 8/12 | 5808.1k → 6249.9k | +7% | +0% | +9% | +7% | +20% | overlap (noise) |
+| muse / spark-1.3-contributor high | A vs C | 5 | 14/15 / 12/15 | 5936.4k → 5500.6k | -8% | -6% | -37% | -139% | -8% | overlap (noise) |
+| muse / spark-1.3-contributor high | F vs A | 4 | 12/12 / 11/12 | 5344.2k → 5808.1k | +8% | +7% | +6% | +9% | +4% | overlap (noise) |
+| muse / spark-1.3-contributor high | M vs A | 5 | 14/15 / 14/15 | 2473.5k → 5936.4k | +58% | +48% | +31% | +29% | +29% | overlap (noise) |
+| muse / spark-1.3-contributor high | M vs B | 4 | 12/12 / 8/12 | 2416.3k → 6249.9k | +61% | +48% | +33% | +34% | +43% | separate |
+| muse / spark-1.3-contributor high | M vs F | 4 | 12/12 / 12/12 | 2416.3k → 5344.2k | +55% | +45% | +22% | +22% | +26% | overlap (noise) |
+| muse / spark-1.3-contributor high | M vs C | 5 | 14/15 / 12/15 | 2473.5k → 5500.6k | +55% | +45% | +6% | -70% | +23% | separate |
+
+### Stage R on daybreak (M: origin/main 750848aea, the JK-3MF95 fix; the sliver's tasks and tier 1's petclinic task, 3 runs per cell): per task
+
+| Config | Task | Arm | Runs | Green | Median tokens (min–max) | Turns | Wall s | Est. cost |
+|---|---|---|---:|---:|---|---:|---:|---:|
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | A | 3 | 2 | 77.7k (74.6–78.7k) | 15 | 76.5 | $0.1042 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | B | 3 | 3 | 87.8k (75.2–91.9k) | 15 | 78.4 | $0.0944 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | C | 3 | 2 | 103.1k (90.1–121.4k) | 16 | 88.3 | $0.1205 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | F | 3 | 3 | 75.1k (72.6–101.7k) | 15 | 87.5 | $0.1022 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-column-case | M | 3 | 3 | 70.6k (57.4–84.6k) | 14 | 39.0 | $0.0925 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | A | 3 | 3 | 62.6k (58.6–71.9k) | 9 | 65.7 | $0.0532 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | B | 3 | 3 | 49.0k (48.2–49.7k) | 9 | 61.4 | $0.0471 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | C | 3 | 3 | 49.3k (46.2–69.8k) | 9 | 21.3 | $0.0509 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | F | 3 | 3 | 69.7k (67.1–74.4k) | 10 | 69.2 | $0.0558 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-composed-route | M | 3 | 3 | 49.8k (49.7–49.8k) | 9 | 69.1 | $0.0390 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | A | 3 | 3 | 37.5k (37.4–39.6k) | 8 | 60.7 | $0.0301 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | B | 3 | 2 | 36.5k (29.9–39.0k) | 9 | 61.7 | $0.0349 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | C | 3 | 3 | 29.2k (28.7–35.7k) | 9 | 63.6 | $0.0355 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | F | 3 | 3 | 28.9k (28.9–38.5k) | 5 | 60.4 | $0.0203 |
+| claude2 / sonnet-5-5 medium | petclinic-anchor-relaxed-env | M | 3 | 3 | 21.7k (21.0–21.9k) | 4 | 57.1 | $0.0180 |
+| claude2 / sonnet-5-5 medium | petclinic-callers-addpet | A | 3 | 3 | 20.7k (20.6–20.7k) | 3 | 11.4 | $0.0151 |
+| claude2 / sonnet-5-5 medium | petclinic-callers-addpet | C | 3 | 3 | 35.6k (35.0–35.8k) | 5 | 16.6 | $0.0296 |
+| claude2 / sonnet-5-5 medium | petclinic-callers-addpet | M | 3 | 3 | 22.4k (22.4–22.4k) | 3 | 11.9 | $0.0181 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | A | 3 | 3 | 25.4k (25.3–26.6k) | 3 | 12.7 | $0.0435 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | B | 3 | 3 | 73.6k (67.2–74.3k) | 18 | 71.6 | $0.1033 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | C | 3 | 3 | 97.2k (73.3–117.6k) | 23 | 45.6 | $0.1254 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | F | 3 | 3 | 25.4k (25.4–25.5k) | 3 | 13.3 | $0.0435 |
+| claude2 / sonnet-5-5 medium | petclinic-rename-telephone | M | 3 | 3 | 22.2k (22.2–31.0k) | 3 | 12.9 | $0.0236 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | A | 3 | 3 | 83.6k (74.0–88.1k) | 17 | 74.4 | $0.1682 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | B | 3 | 3 | 89.6k (85.6–104.5k) | 18 | 77.4 | $0.1805 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | C | 3 | 3 | 101.5k (92.1–128.4k) | 17 | 79.3 | $0.2079 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | F | 3 | 3 | 60.3k (46.3–92.3k) | 16 | 79.0 | $0.1401 |
+| claude2 / opus-5-5 medium | petclinic-anchor-column-case | M | 3 | 3 | 70.2k (62.7–94.1k) | 16 | 76.2 | $0.1397 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | A | 3 | 3 | 65.6k (65.0–77.2k) | 11 | 63.1 | $0.0935 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | B | 3 | 3 | 71.8k (69.9–77.8k) | 11 | 69.1 | $0.1154 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | C | 3 | 3 | 68.4k (67.7–108.0k) | 10 | 28.9 | $0.1077 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | F | 3 | 3 | 78.4k (73.9–104.5k) | 12 | 72.1 | $0.1122 |
+| claude2 / opus-5-5 medium | petclinic-anchor-composed-route | M | 3 | 3 | 57.9k (57.6–63.7k) | 10 | 109.5 | $0.0801 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | A | 3 | 3 | 61.3k (57.3–73.7k) | 14 | 72.4 | $0.1113 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | B | 3 | 3 | 52.7k (52.2–53.2k) | 14 | 69.5 | $0.1082 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | C | 3 | 3 | 50.7k (49.3–60.6k) | 12 | 34.4 | $0.1061 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | F | 3 | 3 | 51.7k (50.1–83.9k) | 13 | 74.6 | $0.0979 |
+| claude2 / opus-5-5 medium | petclinic-anchor-relaxed-env | M | 3 | 3 | 21.4k (21.3–37.6k) | 3 | 61.5 | $0.0383 |
+| claude2 / opus-5-5 medium | petclinic-callers-addpet | A | 3 | 3 | 20.7k (20.7–28.3k) | 3 | 11.3 | $0.0375 |
+| claude2 / opus-5-5 medium | petclinic-callers-addpet | C | 3 | 3 | 29.3k (28.9–37.6k) | 5 | 13.6 | $0.0567 |
+| claude2 / opus-5-5 medium | petclinic-callers-addpet | M | 3 | 3 | 21.3k (21.3–21.3k) | 3 | 11.2 | $0.0321 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | A | 3 | 3 | 60.8k (59.4–82.9k) | 8 | 71.1 | $0.1295 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | B | 3 | 3 | 111.0k (98.4–120.5k) | 18 | 103.7 | $0.2533 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | C | 3 | 3 | 137.7k (110.0–272.4k) | 19 | 47.7 | $0.2848 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | F | 3 | 3 | 59.6k (36.1–70.1k) | 8 | 36.4 | $0.1259 |
+| claude2 / opus-5-5 medium | petclinic-rename-telephone | M | 3 | 3 | 51.7k (41.9–54.6k) | 7 | 31.3 | $0.1154 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | A | 3 | 3 | 163.1k (141.5–179.8k) | 6 | 31.4 | $0.0262 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | B | 3 | 3 | 159.0k (135.9–475.1k) | 9 | 74.1 | $0.0291 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | C | 3 | 3 | 184.6k (162.7–212.1k) | 7 | 64.3 | $0.0233 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | F | 3 | 3 | 164.0k (124.8–222.9k) | 6 | 65.9 | $0.0299 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | M | 3 | 3 | 187.7k (123.2–189.0k) | 6 | 64.9 | $0.0256 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | A | 3 | 3 | 173.0k (145.6–180.8k) | 7 | 33.8 | $0.0260 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | B | 3 | 3 | 197.0k (193.4–211.4k) | 6 | 67.9 | $0.0278 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | C | 3 | 3 | 163.3k (157.3–165.2k) | 5 | 75.7 | $0.0272 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | F | 3 | 3 | 229.3k (193.5–232.7k) | 7 | 110.3 | $0.0295 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | M | 3 | 3 | 262.6k (214.3–268.2k) | 7 | 115.9 | $0.0398 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | A | 3 | 1 | 150.8k (131.1–178.8k) | 5 | 38.6 | $0.0225 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | B | 3 | 0 | 167.7k (98.1–217.1k) | 6 | 129.6 | $0.0192 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | C | 3 | 1 | 193.8k (99.5–239.6k) | 7 | 68.5 | $0.0273 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | F | 3 | 3 | 135.0k (81.7–179.2k) | 5 | 100.7 | $0.0171 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | M | 3 | 3 | 85.5k (85.5–111.8k) | 3 | 58.6 | $0.0112 |
+| codex / gpt-6.1-terra low (default) | petclinic-callers-addpet | A | 3 | 3 | 84.9k (62.2–85.0k) | 3 | 10.4 | $0.0160 |
+| codex / gpt-6.1-terra low (default) | petclinic-callers-addpet | C | 3 | 3 | 130.4k (130.4–130.8k) | 5 | 17.0 | $0.0292 |
+| codex / gpt-6.1-terra low (default) | petclinic-callers-addpet | M | 3 | 3 | 87.7k (87.7–87.9k) | 3 | 10.9 | $0.0172 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | A | 3 | 3 | 86.5k (86.5–122.1k) | 4 | 22.1 | $0.0177 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | B | 3 | 3 | 208.1k (203.5–212.5k) | 8 | 122.3 | $0.0317 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | C | 3 | 3 | 163.9k (140.9–191.6k) | 7 | 37.0 | $0.0234 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | F | 3 | 3 | 98.1k (86.6–100.7k) | 4 | 22.6 | $0.0157 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | M | 3 | 3 | 68.5k (68.4–68.5k) | 3 | 13.2 | $0.0151 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | A | 3 | 3 | 188.7k (101.2–440.4k) | 9 | 65.6 | $0.0491 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | B | 3 | 3 | 296.7k (226.9–379.1k) | 8 | 78.1 | $0.0724 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | C | 3 | 3 | 111.5k (96.9–198.2k) | 7 | 26.7 | $0.0563 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | F | 3 | 3 | 191.7k (188.4–272.1k) | 9 | 70.8 | $0.0508 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | M | 3 | 3 | 196.4k (159.6–293.0k) | 7 | 72.3 | $0.0531 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | A | 3 | 3 | 223.6k (219.6–385.7k) | 13 | 112.6 | $0.0629 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | B | 3 | 3 | 258.6k (233.3–317.2k) | 11 | 83.4 | $0.0801 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | C | 3 | 3 | 216.2k (169.1–234.4k) | 9 | 39.5 | $0.0811 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | F | 3 | 3 | 413.4k (242.6–494.0k) | 9 | 115.7 | $0.1137 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | M | 3 | 3 | 262.3k (245.9–312.9k) | 9 | 117.3 | $0.0788 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | A | 3 | 0 | 190.4k (151.4–219.4k) | 6 | 101.2 | $0.0590 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | B | 3 | 2 | 171.5k (152.9–177.0k) | 9 | 64.7 | $0.0468 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | C | 3 | 1 | 132.3k (81.7–144.5k) | 8 | 34.1 | $0.0455 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | F | 3 | 3 | 223.6k (222.3–224.0k) | 5 | 106.1 | $0.0520 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | M | 3 | 3 | 123.1k (115.8–148.8k) | 4 | 60.4 | $0.0386 |
+| codex / gpt-6.1-sol low (default) | petclinic-callers-addpet | A | 3 | 3 | 85.3k (85.1–85.6k) | 3 | 13.9 | $0.0371 |
+| codex / gpt-6.1-sol low (default) | petclinic-callers-addpet | C | 3 | 3 | 111.5k (87.8–133.7k) | 5 | 16.8 | $0.0472 |
+| codex / gpt-6.1-sol low (default) | petclinic-callers-addpet | M | 3 | 3 | 88.1k (88.0–88.2k) | 3 | 12.9 | $0.0343 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | A | 3 | 3 | 145.3k (106.8–162.5k) | 5 | 36.6 | $0.0574 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | B | 3 | 3 | 246.7k (205.8–301.8k) | 12 | 86.8 | $0.0853 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | C | 3 | 3 | 269.9k (156.5–324.9k) | 11 | 74.8 | $0.0613 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | F | 3 | 3 | 277.4k (131.9–381.7k) | 7 | 82.3 | $0.0841 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | M | 3 | 3 | 89.4k (67.2–89.5k) | 4 | 14.7 | $0.0415 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | A | 3 | 3 | 664.2k (211.1–1112.1k) | 23 | 215.8 | $0.6323 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | B | 3 | 3 | 293.0k (263.2–345.9k) | 11 | 104.0 | $0.2203 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | C | 3 | 3 | 366.8k (271.5–673.6k) | 14 | 114.7 | $0.3917 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | F | 3 | 3 | 241.7k (181.2–259.0k) | 11 | 133.7 | $0.2709 |
+| grok / grok-4.7 high 256k | petclinic-anchor-column-case | M | 1 | 1 | 209.1k | 11 | 155.4 | $0.2372 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | A | 3 | 3 | 158.1k (141.4–228.7k) | 12 | 136.5 | $0.1699 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | B | 3 | 3 | 165.4k (150.7–232.8k) | 10 | 96.8 | $0.1757 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | C | 3 | 3 | 256.2k (217.7–407.7k) | 14 | 119.7 | $0.3166 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | F | 3 | 3 | 162.1k (102.3–180.0k) | 12 | 155.8 | $0.1474 |
+| grok / grok-4.7 high 256k | petclinic-anchor-composed-route | M | 1 | 1 | 215.6k | 14 | 168.5 | $0.2277 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | A | 3 | 3 | 184.9k (159.3–209.9k) | 12 | 179.0 | $0.2431 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | B | 3 | 0 | 234.0k (186.0–235.5k) | 13 | 117.7 | $0.1982 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | C | 3 | 0 | 290.8k (180.2–340.4k) | 15 | 143.1 | $0.2835 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | F | 3 | 3 | 132.9k (131.3–169.2k) | 10 | 141.9 | $0.1427 |
+| grok / grok-4.7 high 256k | petclinic-anchor-relaxed-env | M | 1 | 1 | 32.7k | 4 | 73.7 | $0.0295 |
+| grok / grok-4.7 high 256k | petclinic-callers-addpet | A | 3 | 3 | 32.9k (32.8–33.6k) | 4 | 13.4 | $0.0535 |
+| grok / grok-4.7 high 256k | petclinic-callers-addpet | C | 3 | 3 | 182.6k (173.4–200.1k) | 14 | 71.5 | $0.1848 |
+| grok / grok-4.7 high 256k | petclinic-callers-addpet | M | 1 | 1 | 33.4k | 4 | 14.9 | $0.0473 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | A | 3 | 3 | 671.3k (420.5–747.5k) | 21 | 283.8 | $0.5933 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | B | 3 | 3 | 476.8k (231.6–495.8k) | 15 | 194.5 | $0.4684 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | C | 3 | 3 | 1281.8k (986.7–2075.5k) | 32 | 353.2 | $0.9412 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | F | 3 | 3 | 93.8k (48.9–410.8k) | 7 | 75.3 | $0.1334 |
+| grok / grok-4.7 high 256k | petclinic-rename-telephone | M | 1 | 1 | 41.3k | 4 | 66.4 | $0.0744 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | A | 3 | 3 | 121.7k (117.4–230.7k) | 9 | 76.4 | $0.1793 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | B | 3 | 3 | 127.8k (113.5–168.7k) | 7 | 79.8 | $0.1099 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | C | 3 | 3 | 190.5k (133.4–829.2k) | 9 | 80.7 | $0.1629 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | F | 3 | 3 | 171.5k (143.8–179.3k) | 9 | 94.8 | $0.1307 |
+| grok / grok-4.5 high | petclinic-anchor-column-case | M | 1 | 1 | 120.1k | 9 | 98.1 | $0.0960 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | A | 3 | 3 | 105.6k (97.9–193.9k) | 9 | 113.1 | $0.0744 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | B | 3 | 3 | 116.8k (115.8–135.0k) | 8 | 124.3 | $0.0978 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | C | 3 | 3 | 227.9k (130.9–384.3k) | 13 | 70.1 | $0.1865 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | F | 3 | 3 | 171.9k (153.2–201.7k) | 12 | 134.9 | $0.1086 |
+| grok / grok-4.5 high | petclinic-anchor-composed-route | M | 1 | 1 | 136.0k | 12 | 127.5 | $0.1303 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | A | 3 | 3 | 136.3k (132.8–159.4k) | 12 | 138.7 | $0.1079 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | B | 3 | 0 | 146.7k (135.4–287.5k) | 11 | 190.0 | $0.1187 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | C | 3 | 0 | 229.5k (197.1–346.3k) | 15 | 75.0 | $0.2396 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | F | 3 | 3 | 44.9k (44.5–45.6k) | 5 | 63.3 | $0.0443 |
+| grok / grok-4.5 high | petclinic-anchor-relaxed-env | M | 1 | 1 | 29.4k | 4 | 57.2 | $0.0263 |
+| grok / grok-4.5 high | petclinic-callers-addpet | A | 3 | 3 | 28.5k (27.8–29.5k) | 4 | 9.2 | $0.0326 |
+| grok / grok-4.5 high | petclinic-callers-addpet | C | 3 | 3 | 185.6k (140.0–191.6k) | 19 | 43.7 | $0.1194 |
+| grok / grok-4.5 high | petclinic-callers-addpet | M | 1 | 1 | 29.3k | 4 | 8.9 | $0.0350 |
+| grok / grok-4.5 high | petclinic-rename-telephone | A | 3 | 3 | 96.2k (46.3–155.2k) | 7 | 45.7 | $0.0974 |
+| grok / grok-4.5 high | petclinic-rename-telephone | B | 3 | 3 | 255.2k (208.0–262.4k) | 11 | 142.6 | $0.2003 |
+| grok / grok-4.5 high | petclinic-rename-telephone | C | 3 | 3 | 970.2k (649.5–1298.3k) | 30 | 215.0 | $0.6111 |
+| grok / grok-4.5 high | petclinic-rename-telephone | F | 3 | 3 | 56.2k (43.5–68.7k) | 5 | 28.3 | $0.0600 |
+| grok / grok-4.5 high | petclinic-rename-telephone | M | 1 | 1 | 30.4k | 4 | 18.7 | $0.0383 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | A | 3 | 3 | 234.8k (206.1–422.0k) | 12 | 86.8 | $0.0606 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | B | 3 | 3 | 203.2k (186.6–228.4k) | 10 | 74.1 | $0.0566 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | C | 3 | 3 | 217.3k (186.9–255.7k) | 10 | 40.4 | $0.0612 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | F | 3 | 2 | 215.8k (175.3–226.4k) | 11 | 75.9 | $0.0547 |
+| cursor / composer-2.5 | petclinic-anchor-column-case | M | 3 | 3 | 186.6k (105.7–209.4k) | 9 | 114.8 | $0.0504 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | A | 3 | 3 | 226.8k (145.7–234.2k) | 11 | 91.3 | $0.0566 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | B | 3 | 3 | 186.4k (170.6–407.2k) | 10 | 120.0 | $0.0489 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | C | 3 | 3 | 140.5k (129.1–150.5k) | 8 | 50.4 | $0.0386 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | F | 3 | 3 | 218.7k (193.3–261.0k) | 12 | 82.7 | $0.0665 |
+| cursor / composer-2.5 | petclinic-anchor-composed-route | M | 3 | 3 | 163.5k (119.9–303.1k) | 10 | 133.3 | $0.0397 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | A | 3 | 1 | 144.1k (105.8–360.4k) | 9 | 68.2 | $0.0408 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | B | 3 | 2 | 166.4k (131.6–415.7k) | 11 | 73.7 | $0.0481 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | C | 3 | 2 | 234.3k (219.7–434.1k) | 14 | 72.1 | $0.0585 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | F | 3 | 3 | 125.9k (106.6–140.1k) | 8 | 76.5 | $0.0326 |
+| cursor / composer-2.5 | petclinic-anchor-relaxed-env | M | 3 | 3 | 171.9k (123.5–173.2k) | 11 | 148.1 | $0.0438 |
+| cursor / composer-2.5 | petclinic-callers-addpet | A | 3 | 3 | 46.3k (46.3–46.3k) | 3 | 18.7 | $0.0125 |
+| cursor / composer-2.5 | petclinic-callers-addpet | C | 3 | 3 | 101.9k (89.4–132.8k) | 7 | 22.7 | $0.0260 |
+| cursor / composer-2.5 | petclinic-callers-addpet | M | 3 | 3 | 35.6k (35.2–35.6k) | 2 | 55.1 | $0.0128 |
+| cursor / composer-2.5 | petclinic-rename-telephone | A | 3 | 3 | 175.8k (77.1–220.4k) | 9 | 66.1 | $0.0444 |
+| cursor / composer-2.5 | petclinic-rename-telephone | B | 3 | 3 | 224.9k (116.9–283.2k) | 10 | 100.1 | $0.0626 |
+| cursor / composer-2.5 | petclinic-rename-telephone | C | 3 | 3 | 224.4k (150.0–660.3k) | 10 | 61.4 | $0.0653 |
+| cursor / composer-2.5 | petclinic-rename-telephone | F | 3 | 3 | 176.6k (132.2–185.8k) | 9 | 34.9 | $0.0473 |
+| cursor / composer-2.5 | petclinic-rename-telephone | M | 3 | 3 | 48.0k (36.4–48.8k) | 3 | 30.5 | $0.0161 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | A | 3 | 3 | 304.3k (223.4–612.1k) | 11 | 206.6 | $0.3113 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | B | 3 | 3 | 227.8k (203.9–237.3k) | 8 | 120.6 | $0.2328 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | C | 3 | 3 | 337.1k (332.8–940.3k) | 12 | 155.6 | $0.4216 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | F | 3 | 3 | 265.6k (240.3–268.4k) | 9 | 174.2 | $0.2899 |
+| cursor / grok-4.7-high | petclinic-anchor-column-case | M | 3 | 3 | 273.7k (165.7–354.5k) | 11 | 232.3 | $0.2336 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | A | 3 | 3 | 264.7k (217.0–282.5k) | 12 | 138.5 | $0.2887 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | B | 3 | 3 | 340.8k (262.5–383.6k) | 15 | 210.4 | $0.3949 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | C | 3 | 3 | 268.6k (243.0–1894.4k) | 12 | 163.4 | $0.2770 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | F | 3 | 3 | 224.6k (206.2–271.0k) | 11 | 182.9 | $0.2491 |
+| cursor / grok-4.7-high | petclinic-anchor-composed-route | M | 3 | 3 | 189.0k (180.5–303.2k) | 9 | 217.5 | $0.2445 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | A | 3 | 3 | 329.4k (209.8–350.2k) | 14 | 147.7 | $0.3966 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | B | 3 | 1 | 182.0k (159.2–254.6k) | 9 | 200.8 | $0.2735 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | C | 3 | 2 | 341.9k (215.4–936.0k) | 14 | 212.2 | $0.3857 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | F | 3 | 3 | 183.5k (161.5–210.0k) | 9 | 194.9 | $0.1911 |
+| cursor / grok-4.7-high | petclinic-anchor-relaxed-env | M | 3 | 3 | 60.5k (59.4–74.8k) | 3 | 106.3 | $0.0867 |
+| cursor / grok-4.7-high | petclinic-callers-addpet | A | 3 | 3 | 53.1k (52.6–53.2k) | 3 | 25.2 | $0.0614 |
+| cursor / grok-4.7-high | petclinic-callers-addpet | C | 3 | 3 | 150.4k (150.1–188.1k) | 8 | 65.6 | $0.1660 |
+| cursor / grok-4.7-high | petclinic-callers-addpet | M | 3 | 3 | 41.2k (41.1–41.8k) | 2 | 66.9 | $0.0458 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | A | 3 | 3 | 307.9k (115.5–583.9k) | 11 | 190.0 | $0.3127 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | B | 3 | 3 | 575.7k (460.2–622.1k) | 16 | 257.1 | $0.6600 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | C | 3 | 3 | 722.1k (446.7–792.6k) | 22 | 214.1 | $0.5627 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | F | 3 | 3 | 63.5k (61.7–171.2k) | 3 | 55.9 | $0.0918 |
+| cursor / grok-4.7-high | petclinic-rename-telephone | M | 3 | 3 | 73.4k (45.4–74.1k) | 3 | 159.8 | $0.1061 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | A | 3 | 3 | 93.1k (71.0–116.8k) | 8 | 55.8 | $0.0709 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | B | 3 | 0 | 260.8k (234.9–336.2k) | 10 | 152.6 | $0.1253 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | C | 3 | 0 | 329.3k (256.2–541.5k) | 11 | 128.3 | $0.1660 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | F | 3 | 3 | 72.5k (72.2–82.6k) | 7 | 91.8 | $0.0689 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-column-case | M | 3 | 3 | 71.5k (70.0–109.9k) | 7 | 94.0 | $0.0596 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | A | 3 | 3 | 83.6k (82.5–94.0k) | 9 | 51.5 | $0.0646 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | B | 3 | 0 | 442.3k (334.0–869.9k) | 19 | 246.1 | $0.2244 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | C | 3 | 0 | 344.3k (327.5–695.7k) | 18 | 222.3 | $0.1910 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | F | 3 | 3 | 71.0k (70.5–84.0k) | 8 | 126.4 | $0.0559 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-composed-route | M | 3 | 3 | 65.6k (62.8–71.1k) | 8 | 87.1 | $0.0560 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | A | 3 | 3 | 124.5k (105.7–144.2k) | 11 | 125.5 | $0.0834 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | B | 3 | 0 | 216.1k (127.4–305.5k) | 14 | 171.1 | $0.1181 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | C | 3 | 0 | 196.3k (152.3–365.2k) | 11 | 136.2 | $0.1205 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | F | 3 | 3 | 101.1k (87.9–105.2k) | 9 | 124.8 | $0.0739 |
+| agy / gemini-4-hydrogen-medium | petclinic-anchor-relaxed-env | M | 3 | 3 | 51.9k (38.7–61.8k) | 6 | 74.5 | $0.0466 |
+| agy / gemini-4-hydrogen-medium | petclinic-callers-addpet | A | 3 | 3 | 24.8k (24.5–26.4k) | 4 | 17.1 | $0.0272 |
+| agy / gemini-4-hydrogen-medium | petclinic-callers-addpet | C | 3 | 3 | 110.8k (101.4–116.5k) | 7 | 27.5 | $0.0727 |
+| agy / gemini-4-hydrogen-medium | petclinic-callers-addpet | M | 3 | 3 | 24.8k (24.4–26.0k) | 4 | 18.8 | $0.0256 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | A | 3 | 3 | 69.1k (45.2–100.1k) | 7 | 50.0 | $0.0582 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | B | 3 | 3 | 289.6k (241.5–311.3k) | 13 | 190.2 | $0.1648 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | C | 3 | 3 | 411.3k (331.4–448.9k) | 14 | 191.2 | $0.1578 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | F | 3 | 3 | 132.0k (32.3–138.7k) | 9 | 118.1 | $0.0890 |
+| agy / gemini-4-hydrogen-medium | petclinic-rename-telephone | M | 3 | 3 | 56.9k (56.3–74.9k) | 6 | 87.0 | $0.0538 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | A | 3 | 2 | 1322.0k (1208.7–1480.8k) | 34 | 141.2 | $0.0110 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | B | 3 | 3 | 1936.6k (872.9–2524.6k) | 46 | 201.4 | $0.0156 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | C | 3 | 3 | 1461.8k (1220.5–2322.5k) | 43 | 142.2 | $0.0114 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | F | 3 | 3 | 1288.2k (1024.5–1772.9k) | 37 | 224.7 | $0.0107 |
+| muse / spark-1.3-contributor high | petclinic-anchor-column-case | M | 3 | 3 | 1255.9k (1123.3–1608.3k) | 35 | 171.2 | $0.0103 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | A | 3 | 3 | 619.0k (495.1–623.3k) | 24 | 183.4 | $0.0060 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | B | 3 | 3 | 600.0k (394.3–1024.1k) | 22 | 191.2 | $0.0087 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | C | 3 | 3 | 714.9k (639.1–819.7k) | 23 | 142.5 | $0.0064 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | F | 3 | 3 | 613.4k (447.0–893.2k) | 25 | 148.9 | $0.0064 |
+| muse / spark-1.3-contributor high | petclinic-anchor-composed-route | M | 3 | 3 | 483.4k (413.5–772.4k) | 20 | 162.3 | $0.0069 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | A | 3 | 3 | 920.1k (894.9–1242.7k) | 35 | 174.6 | $0.0080 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | B | 3 | 0 | 713.4k (444.1–1150.9k) | 26 | 181.4 | $0.0076 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | C | 3 | 0 | 563.6k (463.4–1046.3k) | 22 | 100.1 | $0.0066 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | F | 3 | 3 | 672.6k (553.6–829.3k) | 24 | 195.2 | $0.0077 |
+| muse / spark-1.3-contributor high | petclinic-anchor-relaxed-env | M | 3 | 3 | 267.3k (239.6–482.2k) | 12 | 86.9 | $0.0059 |
+| muse / spark-1.3-contributor high | petclinic-callers-addpet | A | 3 | 3 | 128.3k (78.2–178.4k) | 6 | 88.7 | $0.0034 |
+| muse / spark-1.3-contributor high | petclinic-callers-addpet | C | 3 | 3 | 80.4k (79.1–149.3k) | 4 | 49.6 | $0.0025 |
+| muse / spark-1.3-contributor high | petclinic-callers-addpet | M | 3 | 2 | 57.2k (56.9–118.7k) | 3 | 22.0 | $0.0026 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | A | 3 | 3 | 2947.1k (1754.2–2953.0k) | 60 | 312.4 | $0.0165 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | B | 3 | 2 | 2999.9k (2948.5–3391.5k) | 59 | 321.2 | $0.0201 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | C | 3 | 3 | 2679.8k (2455.7–2712.2k) | 58 | 221.8 | $0.0147 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | F | 3 | 3 | 2770.2k (1043.1–2884.3k) | 57 | 197.3 | $0.0149 |
+| muse / spark-1.3-contributor high | petclinic-rename-telephone | M | 3 | 3 | 409.7k (392.8–1604.3k) | 12 | 175.4 | $0.0064 |
+
 ## Totals on daybreak (all tiers so far)
 
 | Arm | Runs | Green | Tokens (sum) | Est. cost (sum) |
 |---|---:|---:|---:|---:|
+| M | 130 | 129 | 20.44M | $7.56 |
 | F | 120 | 119 | 30.32M | $10.61 |
 | A | 250 | 241 | 42.43M | $18.17 |
 | B | 160 | 132 | 48.49M | $19.54 |
@@ -617,28 +988,28 @@ between identical builds (README.md, Findings).
 
 Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the difference is inside run-to-run noise; with one run per cell there is no noise estimate.
 
-| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |
-|---|---|---:|---|---|---:|---:|---:|---:|---|
-| claude2 / sonnet-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 75.4k → 92.3k | +18% | +24% | +13% | +45% | 1 run |
-| claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 75.4k → 134.9k | +44% | +63% | +56% | +60% | 1 run |
-| claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 89.2k → 133.4k | +33% | +36% | +32% | +40% | 1 run |
-| claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 89.2k → 192.7k | +54% | +68% | +62% | +66% | 1 run |
-| codex / gpt-6.1-terra low (default) | A vs B | 4 | 4/4 / 4/4 | 349.5k → 331.3k | -6% | -7% | +8% | -12% | 1 run |
-| codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 349.5k → 524.6k | +33% | +32% | +19% | +30% | 1 run |
-| codex / gpt-6.1-sol low (default) | A vs B | 4 | 4/4 / 4/4 | 320.4k → 304.4k | -5% | +0% | -9% | +8% | 1 run |
-| codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 320.4k → 533.5k | +40% | +48% | +35% | +51% | 1 run |
-| grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 185.2k → 184.0k | -1% | -5% | -1% | -1% | 1 run |
-| grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 185.2k → 1582.4k | +88% | +74% | +88% | +87% | 1 run |
-| grok / grok-4.5 high | A vs B | 4 | 4/4 / 4/4 | 148.3k → 139.1k | -7% | -6% | -3% | -6% | 1 run |
-| grok / grok-4.5 high | A vs C | 4 | 4/4 / 4/4 | 148.3k → 1108.9k | +87% | +72% | +84% | +83% | 1 run |
-| cursor / composer-2.5 | A vs B | 4 | 4/4 / 4/4 | 319.2k → 301.0k | -6% | -5% | -10% | -8% | 1 run |
-| cursor / composer-2.5 | A vs C | 4 | 4/4 / 4/4 | 319.2k → 664.4k | +52% | +46% | +22% | +51% | 1 run |
-| cursor / grok-4.7-high | A vs B | 4 | 4/4 / 4/4 | 291.1k → 269.0k | -8% | -7% | -15% | -17% | 1 run |
-| cursor / grok-4.7-high | A vs C | 4 | 4/4 / 4/4 | 291.1k → 992.7k | +71% | +65% | +64% | +70% | 1 run |
-| agy / gemini-4-hydrogen-medium | A vs B | 4 | 4/4 / 4/4 | 95.9k → 112.3k | +15% | +12% | -22% | +16% | 1 run |
-| agy / gemini-4-hydrogen-medium | A vs C | 4 | 4/4 / 4/4 | 95.9k → 642.9k | +85% | +73% | +66% | +77% | 1 run |
-| muse / spark-1.3-contributor high | A vs B | 4 | 4/4 / 4/4 | 747.3k → 916.5k | +18% | +22% | +16% | +13% | 1 run |
-| muse / spark-1.3-contributor high | A vs C | 4 | 4/4 / 4/4 | 747.3k → 1882.9k | +60% | +57% | +59% | +33% | 1 run |
+| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ jk s | Δ cost | Tokens noise |
+|---|---|---:|---|---|---:|---:|---:|---:|---:|---|
+| claude2 / sonnet-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 75.4k → 92.3k | +18% | +24% | +13% | -127% | +45% | 1 run |
+| claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 75.4k → 134.9k | +44% | +63% | +56% | -150% | +60% | 1 run |
+| claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 89.2k → 133.4k | +33% | +36% | +32% | -9% | +40% | 1 run |
+| claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 89.2k → 192.7k | +54% | +68% | +62% | -118% | +66% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 4/4 / 4/4 | 349.5k → 331.3k | -6% | -7% | +8% | +4% | -12% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 349.5k → 524.6k | +33% | +32% | +19% | -85% | +30% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 4/4 / 4/4 | 320.4k → 304.4k | -5% | +0% | -9% | -6% | +8% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 320.4k → 533.5k | +40% | +48% | +35% | -162% | +51% | 1 run |
+| grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 185.2k → 184.0k | -1% | -5% | -1% | -7% | -1% | 1 run |
+| grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 185.2k → 1582.4k | +88% | +74% | +88% | +67% | +87% | 1 run |
+| grok / grok-4.5 high | A vs B | 4 | 4/4 / 4/4 | 148.3k → 139.1k | -7% | -6% | -3% | -23% | -6% | 1 run |
+| grok / grok-4.5 high | A vs C | 4 | 4/4 / 4/4 | 148.3k → 1108.9k | +87% | +72% | +84% | +66% | +83% | 1 run |
+| cursor / composer-2.5 | A vs B | 4 | 4/4 / 4/4 | 319.2k → 301.0k | -6% | -5% | -10% | -43% | -8% | 1 run |
+| cursor / composer-2.5 | A vs C | 4 | 4/4 / 4/4 | 319.2k → 664.4k | +52% | +46% | +22% | -136% | +51% | 1 run |
+| cursor / grok-4.7-high | A vs B | 4 | 4/4 / 4/4 | 291.1k → 269.0k | -8% | -7% | -15% | -10% | -17% | 1 run |
+| cursor / grok-4.7-high | A vs C | 4 | 4/4 / 4/4 | 291.1k → 992.7k | +71% | +65% | +64% | -18% | +70% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs B | 4 | 4/4 / 4/4 | 95.9k → 112.3k | +15% | +12% | -22% | +32% | +16% | 1 run |
+| agy / gemini-4-hydrogen-medium | A vs C | 4 | 4/4 / 4/4 | 95.9k → 642.9k | +85% | +73% | +66% | +62% | +77% | 1 run |
+| muse / spark-1.3-contributor high | A vs B | 4 | 4/4 / 4/4 | 747.3k → 916.5k | +18% | +22% | +16% | -3% | +13% | 1 run |
+| muse / spark-1.3-contributor high | A vs C | 4 | 4/4 / 4/4 | 747.3k → 1882.9k | +60% | +57% | +59% | -100% | +33% | 1 run |
 
 ### Tier 0 on bocabox (smoke fixture, 1 run per cell): per task
 

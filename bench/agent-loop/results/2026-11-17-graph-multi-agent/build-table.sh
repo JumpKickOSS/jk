@@ -18,6 +18,7 @@ args=()
 [ -f rows-tier0-daybreak.jsonl ] && args+=("Tier 0 on daybreak (smoke fixture, 1 run per cell)=rows-tier0-daybreak.jsonl")
 [ -f rows-tier1-daybreak.jsonl ] && args+=("Tier 1 on daybreak (3 runs per cell, interleaved)=rows-tier1-daybreak.jsonl")
 [ -f rows-tier2-daybreak.jsonl ] && args+=("Tier-2 sliver on daybreak (3 runs per cell, interleaved; F: main's graph fixes)=rows-tier2-daybreak.jsonl,rows-tier2-daybreak-F.jsonl@F")
+[ -f rows-stageR-daybreak-M.jsonl ] && args+=("Stage R on daybreak (M: origin/main 750848aea, the JK-3MF95 fix; the sliver's tasks and tier 1's petclinic task, 3 runs per cell)=rows-tier2-daybreak.jsonl,rows-tier2-daybreak-F.jsonl@F,rows-tier1-daybreak.jsonl:petclinic-callers-addpet,rows-stageR-daybreak-M.jsonl@M")
 echo; echo "Status: $(cat STATUS 2>/dev/null)"
 echo
 echo "**Void rows are in no table** (README.md, \"Defects found after tier 0\"): daybreak's 40 tier-0 B rows ran 0.52.0"
@@ -27,6 +28,9 @@ echo "(rows-tier0-daybreak-VOID-codex-login.jsonl, rows-tier2-daybreak-VOID-code
 echo
 echo "**JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (30 of 30 runs) ended \"compile skipped ...":
 echo "search it for calls too\" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliver answer carries it. README.md says more."
+echo
+echo "**Stage R** compares arm M (main with the fix) with A, B, C and F on the same tasks; its section repeats their rows. grok's"
+echo "M cells have one run each (grok lost its login during the stage; rows-stageR-daybreak-VOID-grok-login.jsonl)."
 python3 tabulate.py "${args[@]}" | sed 's/^## Totals (all tiers so far)/## Totals on daybreak (all tiers so far)/'
 echo; echo "# Second host: bocabox (Fedora), tier 0 only"; echo
 echo "The same 120 cells on bocabox, run before the bench moved. Not pooled with daybreak. The 55 tier-1 rows bocabox"

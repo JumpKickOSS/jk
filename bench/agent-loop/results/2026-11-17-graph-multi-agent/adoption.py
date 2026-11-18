@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Adoption per config and arm from the transcripts.   adoption.py [--map OLD=NEW] LABEL=ROWS.jsonl ... > md
+"""Adoption per config and arm from the transcripts.   adoption.py [--map OLD=NEW] LABEL=ROWS.jsonl[:TASK+TASK] ... > md
 
 calls.py (the graph-adoption investigation's extractor, copied here) reads each run's transcript.jsonl next to
 its sandbox; --map rewrites the sandbox path's prefix where the run directories were copied. Per config and arm,
@@ -76,11 +76,13 @@ def main():
     recs, missing = [], 0
     for spec in specs:
         label, path = spec.split("=", 1)
+        path, _, only = path.partition(":")
         keep = {}
         for line in open(path):
             if line.strip():
                 r = json.loads(line)
-                if r.get("arm") in ARM and (r.get("driver"), r.get("model")) in CFG:
+                if (r.get("arm") in ARM and (r.get("driver"), r.get("model")) in CFG
+                        and (not only or r["task"] in only.split("+"))):
                     r["_arm"] = label if label != "-" else ARM[r["arm"]]
                     keep[(r["driver"], r["model"], r["task"], r["_arm"], r.get("run"))] = r
         for r in keep.values():

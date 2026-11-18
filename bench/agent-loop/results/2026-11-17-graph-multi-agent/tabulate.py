@@ -5,7 +5,7 @@ Per config x tier x arm: runs, green, errors, median tokens, turns, wall s, jk s
 tier, each pair of PAIRS both present (A against B and C, F against A, M against A, B, F and C): sums of per-task
 medians over the tasks both arms have, and whether the ranges overlap (with repeats: one side's per-task max summed
 against the other's per-task min summed, both ways). ROWS@LABEL labels every row of that file with arm LABEL (arm F
-and M rows are `--arm jk` run by another jk, so their file names the arm)."""
+and M rows are `--arm jk` run by another jk, so their file names the arm); ROWS:T1+T2 keeps only those tasks' rows."""
 import json
 import statistics
 import sys
@@ -27,7 +27,7 @@ CFG = {
     ("muse", "muse-spark-1.3-contributor"): "muse / spark-1.3-contributor high",
 }
 ORDER = list(CFG.values())
-METRICS = [("tokens", "Tokens"), ("turns", "Turns"), ("wall_s", "Wall s"), ("cost_est_usd", "Cost")]
+METRICS = [("tokens", "Tokens"), ("turns", "Turns"), ("wall_s", "Wall s"), ("jk_s", "jk s"), ("cost_est_usd", "Cost")]
 
 
 def load(spec):
@@ -35,11 +35,12 @@ def load(spec):
     rows = []
     for p in paths.split(","):
         p, _, label = p.partition("@")
+        p, _, only = p.partition(":")
         with open(p) as fh:
             for x in fh:
                 if x.strip():
                     r = json.loads(x)
-                    if r.get("arm") in ARM:
+                    if r.get("arm") in ARM and (not only or r["task"] in only.split("+")):
                         r["_arm"] = label or ARM[r["arm"]]
                         rows.append(r)
     keep = {}
@@ -77,6 +78,7 @@ def main():
     tiers = [load(s) for s in sys.argv[1:]]
     out = []
     totals = defaultdict(lambda: defaultdict(float))
+    counted = set()
     for tier, rows in tiers:
         cells = defaultdict(list)
         for r in rows:
@@ -99,6 +101,10 @@ def main():
                            f"{fmt(vals['tokens'], 'tokens')} | {fmt(vals['turns'], 'turns')} | {fmt(vals['wall_s'], 'w')} | "
                            f"{fmt(vals['jk_s'], 'w')} | {fmt(vals['cost_est_usd'], 'cost_est_usd')} | {', '.join(vers)} |")
                 for r in rs:
+                    # A run that a later table repeats (stage R repeats A, B, C and F) counts once.
+                    if r["sandbox"] in counted:
+                        continue
+                    counted.add(r["sandbox"])
                     totals[arm]["runs"] += 1
                     totals[arm]["green"] += r.get("outcome") == "green"
                     totals[arm]["cost"] += r.get("cost_est_usd") or 0
@@ -109,8 +115,8 @@ def main():
         out.append("Per config, summed over the tasks both arms measured (sum of per-task medians); positive means the "
                    "first arm lower. Noise: with repeats, `overlap` means the arms' summed per-task ranges overlap, so the "
                    "difference is inside run-to-run noise; with one run per cell there is no noise estimate.\n")
-        out.append("| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ cost | Tokens noise |")
-        out.append("|---|---|---:|---|---|---:|---:|---:|---:|---|")
+        out.append("| Config | Arm vs | Tasks | Green arm / other | Tokens arm → other | Δ tokens | Δ turns | Δ wall | Δ jk s | Δ cost | Tokens noise |")
+        out.append("|---|---|---:|---|---|---:|---:|---:|---:|---:|---|")
         for cfg in ORDER:
             for first, other in pairs:
                 tasks = sorted({t for (c, t, a) in cells if c == cfg and a == first} &

@@ -67,7 +67,7 @@ petclinic-callers-addpet carries the same sentence). Counted from the transcript
   answering from the last build's classes" (an agent's own build still running when it asked): 6 answers in
   arm A, 6 in F, 1 in B, all grok-4.5 (`adoption-tier2-daybreak.md`). Codex's sliver runs carry none either.
 So tier 1's petclinic task is the one number that carries the defect for every graph arm; it is re-measured with
-main's fixed graph in stage R.
+main's fixed graph in stage R (below).
 
 ## Arms
 
@@ -193,6 +193,66 @@ Pauses: tier 0, 29 min before run 100.
 ## Reading the numbers
 
 See TABLE.md's notes; the honest reading per tier is in the next section.
+
+## Stage R: main today (arm M) against 0.52.0, 0.51.1, the earlier fixes and no graph — the headline
+
+**Arm M** is origin/main at **750848aea** (2026-11-18), `jk install`ed into a private home on daybreak (jk
+0.52.1-SNAPSHOT, engine sha256 5ab9c061…, jk_build `193531a77b30`, `self-update = "never"`; the harness is main's
+bench/agent-loop at the same commit plus the codex and grok login write-backs). Against F it adds the JK-3MF95
+fix (8f2e9732c), the three agent knobs (MCP instructions carry callers and rename with their arguments; AGENTS.md
+"a rename that says done is done"; rename's goal shown), the reworded rename closing (5e33df45f), the impact
+answer in `callers`, the anchor line with its push off by default (18b4ea910), and main's later test-environment
+keying (10c26f2da…750848aea: a suite is keyed on the variables it reads). Tasks: the sliver's four plus tier 1's
+petclinic-callers-addpet (the task that carried JK-3MF95), 3 interleaved runs per cell, ten configs, the same caps
+as their tiers, 2026-11-18 04:43 to 08:01 MST; compared with the banked A, B, C and F rows of the same tasks
+(B and F never ran petclinic-callers-addpet, so their comparisons cover the four sliver tasks).
+
+**grok lost its login during stage R** (06:26 MST: "Not signed in"): ~/.grok/auth.json dated from 2026-11-16 and
+the driver had renewed it only in throwaway copies (fixed: the grok driver now writes a renewed login back, as
+the codex driver does). So grok-4.7 and grok-4.5 have **one** M run per task (round 1); grok-4.7's five round-2
+rows are void (`rows-stageR-daybreak-VOID-grok-login.jsonl`) and their remaining cells were cut.
+
+| Config | Green M | vs A (0.52.0): Δ tokens, turns, wall, jk s, cost | vs B (0.51.1) Δ tokens | vs F Δ tokens | vs C (no graph) Δ tokens |
+|---|---|---|---|---|---|
+| claude2 / sonnet-5-5 medium | 15/15 (A 14/15) | **+17%** (separate), +13%, +16%, +28%, +22% | +33% (separate) | +17% (separate) | +41% (separate) |
+| claude2 / opus-5-5 medium | 15/15 (A 15/15) | **+24%** (separate), +26%, +1%, -3%, +25% | +38% (separate) | +20% (noise) | +43% (separate) |
+| codex / gpt-6.1-terra low (default) | 15/15 (A 13/15) | **-5%** (noise), +12%, -93%, -490%, -0% | +17% (noise) | +4% (noise) | +17% (noise) |
+| codex / gpt-6.1-sol low (default) | 15/15 (A 12/15) | **+9%** (noise), +25%, +16%, +22%, +7% | +31% (noise) | +39% (noise) | +10% (noise) |
+| grok / grok-4.7 high 256k | 5/5 (A 15/15) | **+69%** (1 run), +49%, +42%, +48%, +64% | +57% (1 run) | +21% (1 run) | +78% (1 run) |
+| grok / grok-4.5 high | 5/5 (A 15/15) | **+29%** (1 run), +20%, +19%, +40%, +34% | +51% (1 run) | +29% (1 run) | +81% (1 run) |
+| cursor / composer-2.5 | 15/15 (A 13/15) | **+27%** (noise), +20%, -46%, -2%, +24% | +27% (noise) | +23% (noise) | +34% (separate) |
+| cursor / grok-4.7-high | 15/15 (A 15/15) | **+49%** (noise), +45%, -11%, -120%, +48% | +55% (separate) | +19% (noise) | +65% (separate) |
+| agy / gemini-4-hydrogen-medium | 15/15 (A 15/15) | **+31%** (noise), +21%, -21%, -66%, +21% | +80% (separate) | +35% (noise) | +81% (separate) |
+| muse / spark-1.3-contributor high | 14/15 (A 14/15) | **+58%** (noise), +48%, +31%, +29%, +29% | +61% (separate) | +55% (noise) | +55% (separate) |
+
+Δ is the sum of per-task medians, positive = M lower; "noise" = the summed per-task ranges overlap; turns, wall,
+jk s and cost as Δ against A. Rows: `rows-stageR-daybreak-M.jsonl`; TABLE.md has every pair and every task.
+
+- **Green:** M 129/130 (muse one `claimed` on petclinic-callers-addpet), against A 141/150, F 119/120, C 125/150,
+  B 93/120 on the same tasks. M is green on petclinic-anchor-relaxed-env in every run, codex included (A missed
+  it 5 of 6 times for codex).
+- **Tokens, M against A:** lower for nine of ten configs, from 9% (codex sol) to 69% (grok-4.7, one run); outside
+  the noise for **Sonnet (17%) and Opus (24%)**; muse 58%, cursor grok-4.7-high 49%, agy 31%, composer 27% are
+  large but their ranges overlap on three runs. Codex terra used 5% more (noise). Turns fall with tokens.
+- **Against 0.51.1 (B):** fewer tokens for all ten, separate for Sonnet, Opus, cursor grok-4.7-high, agy and muse.
+  **Against no graph tools (C):** fewer for all ten, separate for six (Sonnet, Opus, composer, cursor grok, agy,
+  muse). **Against F:** fewer for all ten, separate only for Sonnet (17%).
+- **JK-3MF95 is gone:** no M answer carries its note (A: 30 of 30 petclinic-callers-addpet runs). The only
+  "compile skipped" in M is grok-4.5's "Build is already running" (2 answers, 1 run).
+- **What changed in how agents work** (`adoption-stageR-daybreak.md`): jk calls per run fall in M for every
+  config but Sonnet (grok-4.7 8.0 → 2.6, cursor grok 7.9 → 2.5, composer 3.8 → 2.5); `skill` card reads fall
+  for grok-4.7 (2.3 → 0.4) and cursor grok (2.1 → 0.2), stay at about 1 for grok-4.5 and rise for muse (0.3 →
+  0.9); reads and searches before the first graph answer fall to about zero for all but composer (3.7 → 0.7) and
+  muse (9.7 → 6.7); after it, grok-4.7 16.5 → 5.6, cursor grok 9.4 → 5.4, muse 7.8 → 5.4, composer about the
+  same (6.4 → 6.9). Sonnet answers with the graph in every M run (A: 8 of 15).
+- **Wall and time inside jk do not fall with tokens.** A run's wall is dominated by one run of petclinic's test
+  suite (about 45 s, its Docker-backed Postgres and MySQL tests included), started by the agent's gate or by
+  rename's own check; M runs it about as often as A (codex: 24 such calls over 20 s in 30 M runs, 18 in 24 A
+  runs). So wall is lower in M for six configs and higher for four (codex terra, composer, cursor grok, agy),
+  and Δ jk s swings both ways with whether a run's one suite run fell to the agent or replayed. Main's newer
+  test-environment keying is not the cause: F, built before it, spends the same ~40 s in a gate.
+- **Read with care:** M's rows were run a day after A's, B's, C's and F's, on the same host and corpus; the CLIs
+  are the same versions (agy 1.5.11 throughout M, 1.5.10/1.5.11 before). grok's M numbers are one run per task.
 
 ## Findings
 
