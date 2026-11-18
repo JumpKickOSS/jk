@@ -9,14 +9,14 @@ moves it). Savings: positive means the first arm lower. A row with "1 run" has n
 Every table names its host. **daybreak** (Windows 11 + WSL Ubuntu 26.04, 12 GB) is the measurement host; tier 0
 was first run on **bocabox** (Fedora) and is kept below as a second host's table, never pooled with daybreak's.
 
-Status: tier 0 on daybreak: A and C complete, B redone with 0.51.1 (codex B pending); tier 1 complete for 8 configs (codex pending); sliver complete for 8 configs (A, B, C, F; codex pending in the catch-up).
+Status: tier 0 on daybreak complete (B redone with 0.51.1); tier 1 complete; sliver complete (A, B, C, F, all ten configs, codex from the catch-up). Stage R (main with the JK-3MF95 fix, arm M) next.
 
 **Void rows are in no table** (README.md, "Defects found after tier 0"): daybreak's 40 tier-0 B rows ran 0.52.0
 (rows-tier0-daybreak-VOID-B-ran-0.52.0.jsonl), and its 36 tier-1 codex rows ran without a codex login
-(rows-tier1-daybreak-VOID-codex-login.jsonl); codex's tier-0 B and sliver rows failed fast on the same lost login
+(rows-tier1-daybreak-VOID-codex-login.jsonl); codex's first tier-0 B and sliver rows failed fast on the same lost login, and the codex catch-up replaced them
 (rows-tier0-daybreak-VOID-codex-login.jsonl, rows-tier2-daybreak-VOID-codex-login.jsonl). Redone rows replace them as they are run.
 
-**JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (24 of 24 runs) ended "compile skipped ...:
+**JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (30 of 30 runs) ended "compile skipped ...:
 search it for calls too" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliver answer carries it. README.md says more.
 
 ## Tier 0 on daybreak (smoke fixture, 1 run per cell)
@@ -30,8 +30,10 @@ search it for calls too" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliv
 | claude2 / opus-5-5 medium | B | 4 | 4/4 (100%) | 0 | 43.7k | 8 | 19.6 | 0.4 | $0.0870 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | C | 4 | 4/4 (100%) | 0 | 43.2k | 10.5 | 23.1 | 0.2 | $0.0938 | 2.1.326 (Claude Code) |
 | codex / gpt-6.1-terra low (default) | A | 4 | 4/4 (100%) | 0 | 72.8k | 3 | 12.8 | 0.8 | $0.0104 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | B | 4 | 4/4 (100%) | 0 | 115.6k | 5.5 | 18.0 | 0.6 | $0.0154 | codex-cli 0.166.0 |
 | codex / gpt-6.1-terra low (default) | C | 4 | 4/4 (100%) | 0 | 112.3k | 5 | 20.9 | 0.0 | $0.0198 | codex-cli 0.166.0 |
 | codex / gpt-6.1-sol low (default) | A | 4 | 4/4 (100%) | 0 | 80.9k | 3 | 15.0 | 0.9 | $0.0283 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | B | 4 | 4/4 (100%) | 0 | 100.6k | 7 | 19.9 | 0.5 | $0.0401 | codex-cli 0.166.0 |
 | codex / gpt-6.1-sol low (default) | C | 4 | 4/4 (100%) | 0 | 158.1k | 8.5 | 26.4 | 0.3 | $0.0495 | codex-cli 0.166.0 |
 | grok / grok-4.7 high 256k | A | 4 | 4/4 (100%) | 0 | 41.6k | 5 | 24.6 | 4.7 | $0.0491 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.7 high 256k | B | 4 | 4/4 (100%) | 0 | 107.2k | 8.5 | 69.5 | 8.2 | $0.1110 | grok 1.0.77 (50ca579fa996) [stable] |
@@ -62,7 +64,9 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / sonnet-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 91.8k → 137.0k | +33% | +66% | +34% | +60% | 1 run |
 | claude2 / opus-5-5 medium | A vs B | 4 | 4/4 / 4/4 | 114.9k → 187.3k | +39% | +49% | +31% | +51% | 1 run |
 | claude2 / opus-5-5 medium | A vs C | 4 | 4/4 / 4/4 | 114.9k → 166.9k | +31% | +55% | +38% | +55% | 1 run |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 4/4 / 4/4 | 276.5k → 485.6k | +43% | +48% | +34% | +27% | 1 run |
 | codex / gpt-6.1-terra low (default) | A vs C | 4 | 4/4 / 4/4 | 276.5k → 495.0k | +44% | +40% | +39% | +51% | 1 run |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 4/4 / 4/4 | 312.9k → 384.4k | +19% | +53% | +27% | +26% | 1 run |
 | codex / gpt-6.1-sol low (default) | A vs C | 4 | 4/4 / 4/4 | 312.9k → 598.4k | +48% | +56% | +37% | +42% | 1 run |
 | grok / grok-4.7 high 256k | A vs B | 4 | 4/4 / 4/4 | 169.7k → 940.2k | +82% | +61% | +2% | +72% | 1 run |
 | grok / grok-4.7 high 256k | A vs C | 4 | 4/4 / 4/4 | 169.7k → 1794.9k | +91% | +76% | +43% | +87% | 1 run |
@@ -106,20 +110,28 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / opus-5-5 medium | smoke-rename-field | B | 1 | 1 | 80.9k | 13 | 28.7 | $0.1116 |
 | claude2 / opus-5-5 medium | smoke-rename-field | C | 1 | 1 | 38.7k | 9 | 22.0 | $0.0836 |
 | codex / gpt-6.1-terra low (default) | smoke-callers | A | 1 | 1 | 84.8k | 3 | 14.3 | $0.0159 |
+| codex / gpt-6.1-terra low (default) | smoke-callers | B | 1 | 1 | 61.8k | 3 | 11.0 | $0.0104 |
 | codex / gpt-6.1-terra low (default) | smoke-callers | C | 1 | 1 | 130.8k | 5 | 16.0 | $0.0221 |
 | codex / gpt-6.1-terra low (default) | smoke-rename | A | 1 | 1 | 46.0k | 2 | 9.1 | $0.0064 |
+| codex / gpt-6.1-terra low (default) | smoke-rename | B | 1 | 1 | 45.9k | 2 | 9.7 | $0.0062 |
 | codex / gpt-6.1-terra low (default) | smoke-rename | C | 1 | 1 | 77.6k | 4 | 22.7 | $0.0105 |
 | codex / gpt-6.1-terra low (default) | smoke-rename-class | A | 1 | 1 | 64.3k | 3 | 14.1 | $0.0084 |
+| codex / gpt-6.1-terra low (default) | smoke-rename-class | B | 1 | 1 | 169.5k | 8 | 25.0 | $0.0204 |
 | codex / gpt-6.1-terra low (default) | smoke-rename-class | C | 1 | 1 | 192.8k | 6 | 20.7 | $0.0384 |
 | codex / gpt-6.1-terra low (default) | smoke-rename-field | A | 1 | 1 | 81.4k | 4 | 11.4 | $0.0125 |
+| codex / gpt-6.1-terra low (default) | smoke-rename-field | B | 1 | 1 | 208.4k | 10 | 28.7 | $0.0220 |
 | codex / gpt-6.1-terra low (default) | smoke-rename-field | C | 1 | 1 | 93.7k | 5 | 21.0 | $0.0175 |
 | codex / gpt-6.1-sol low (default) | smoke-callers | A | 1 | 1 | 85.0k | 3 | 15.5 | $0.0369 |
+| codex / gpt-6.1-sol low (default) | smoke-callers | B | 1 | 1 | 84.6k | 3 | 12.3 | $0.0520 |
 | codex / gpt-6.1-sol low (default) | smoke-callers | C | 1 | 1 | 110.4k | 5 | 16.4 | $0.0382 |
 | codex / gpt-6.1-sol low (default) | smoke-rename | A | 1 | 1 | 66.1k | 3 | 14.5 | $0.0185 |
+| codex / gpt-6.1-sol low (default) | smoke-rename | B | 1 | 1 | 47.9k | 3 | 11.6 | $0.0198 |
 | codex / gpt-6.1-sol low (default) | smoke-rename | C | 1 | 1 | 168.9k | 10 | 29.8 | $0.0497 |
 | codex / gpt-6.1-sol low (default) | smoke-rename-class | A | 1 | 1 | 81.1k | 3 | 13.9 | $0.0294 |
+| codex / gpt-6.1-sol low (default) | smoke-rename-class | B | 1 | 1 | 135.3k | 13 | 34.8 | $0.0441 |
 | codex / gpt-6.1-sol low (default) | smoke-rename-class | C | 1 | 1 | 171.9k | 9 | 27.9 | $0.0561 |
 | codex / gpt-6.1-sol low (default) | smoke-rename-field | A | 1 | 1 | 80.7k | 5 | 18.7 | $0.0272 |
+| codex / gpt-6.1-sol low (default) | smoke-rename-field | B | 1 | 1 | 116.5k | 11 | 27.5 | $0.0361 |
 | codex / gpt-6.1-sol low (default) | smoke-rename-field | C | 1 | 1 | 147.2k | 8 | 24.9 | $0.0492 |
 | grok / grok-4.7 high 256k | smoke-callers | A | 1 | 1 | 41.2k | 5 | 13.4 | $0.0330 |
 | grok / grok-4.7 high 256k | smoke-callers | B | 1 | 1 | 40.9k | 5 | 13.2 | $0.0447 |
@@ -202,6 +214,10 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / sonnet-5-5 medium | C | 9 | 9/9 (100%) | 0 | 30.3k | 7 | 16.6 | 0.4 | $0.0296 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | A | 9 | 9/9 (100%) | 0 | 13.1k | 2 | 9.9 | 0.6 | $0.0255 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | C | 9 | 9/9 (100%) | 0 | 49.9k | 12 | 21.4 | 0.6 | $0.0891 | 2.1.326 (Claude Code) |
+| codex / gpt-6.1-terra low (default) | A | 9 | 9/9 (100%) | 0 | 47.9k | 2 | 9.8 | 0.9 | $0.0091 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | C | 9 | 9/9 (100%) | 0 | 130.4k | 5 | 18.7 | 0.4 | $0.0196 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | A | 9 | 9/9 (100%) | 0 | 66.7k | 3 | 16.2 | 0.7 | $0.0256 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | C | 9 | 9/9 (100%) | 0 | 115.2k | 8 | 25.0 | 0.6 | $0.0415 | codex-cli 0.166.0 |
 | grok / grok-4.7 high 256k | A | 9 | 9/9 (100%) | 0 | 32.8k | 4 | 13.8 | 2.9 | $0.0466 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.7 high 256k | C | 9 | 9/9 (100%) | 0 | 202.5k | 15 | 80.6 | 12.2 | $0.2492 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.5 high | A | 9 | 9/9 (100%) | 0 | 23.0k | 3 | 8.2 | 1.6 | $0.0308 | grok 1.0.77 (50ca579fa996) [stable] |
@@ -223,6 +239,8 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 |---|---|---:|---|---|---:|---:|---:|---:|---|
 | claude2 / sonnet-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.6k → 86.2k | +46% | +65% | +39% | +59% | separate |
 | claude2 / opus-5-5 medium | A vs C | 3 | 9/9 / 9/9 | 46.9k → 131.7k | +64% | +77% | +52% | +66% | separate |
+| codex / gpt-6.1-terra low (default) | A vs C | 3 | 9/9 / 9/9 | 177.2k → 375.1k | +53% | +56% | +48% | +46% | separate |
+| codex / gpt-6.1-sol low (default) | A vs C | 3 | 9/9 / 9/9 | 215.9k → 358.4k | +40% | +57% | +21% | +41% | separate |
 | grok / grok-4.7 high 256k | A vs C | 3 | 9/9 / 9/9 | 99.5k → 883.5k | +89% | +77% | +88% | +85% | separate |
 | grok / grok-4.5 high | A vs C | 3 | 9/9 / 9/9 | 74.2k → 570.1k | +87% | +80% | +83% | +78% | separate |
 | cursor / composer-2.5 | A vs C | 3 | 9/9 / 9/9 | 160.8k → 242.7k | +34% | +33% | +0% | +32% | overlap (noise) |
@@ -246,6 +264,18 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / opus-5-5 medium | gs-uploading-rename-loadasresource | C | 3 | 3 | 52.5k (52.2–87.1k) | 14 | 28.1 | $0.1053 |
 | claude2 / opus-5-5 medium | petclinic-callers-addpet | A | 3 | 3 | 20.7k (20.7–28.3k) | 3 | 11.3 | $0.0375 |
 | claude2 / opus-5-5 medium | petclinic-callers-addpet | C | 3 | 3 | 29.3k (28.9–37.6k) | 5 | 13.6 | $0.0567 |
+| codex / gpt-6.1-terra low (default) | gs-multi-module-rename-message | A | 3 | 3 | 46.1k (45.8–64.5k) | 2 | 9.8 | $0.0087 |
+| codex / gpt-6.1-terra low (default) | gs-multi-module-rename-message | C | 3 | 3 | 132.6k (100.1–133.9k) | 6 | 21.1 | $0.0182 |
+| codex / gpt-6.1-terra low (default) | gs-uploading-rename-loadasresource | A | 3 | 3 | 46.2k (46.2–47.9k) | 2 | 9.4 | $0.0094 |
+| codex / gpt-6.1-terra low (default) | gs-uploading-rename-loadasresource | C | 3 | 3 | 112.1k (96.4–112.5k) | 5 | 18.9 | $0.0155 |
+| codex / gpt-6.1-terra low (default) | petclinic-callers-addpet | A | 3 | 3 | 84.9k (62.2–85.0k) | 3 | 10.4 | $0.0160 |
+| codex / gpt-6.1-terra low (default) | petclinic-callers-addpet | C | 3 | 3 | 130.4k (130.4–130.8k) | 5 | 17.0 | $0.0292 |
+| codex / gpt-6.1-sol low (default) | gs-multi-module-rename-message | A | 3 | 3 | 65.0k (62.9–66.7k) | 3 | 16.2 | $0.0222 |
+| codex / gpt-6.1-sol low (default) | gs-multi-module-rename-message | C | 3 | 3 | 146.1k (115.2–171.5k) | 8 | 29.9 | $0.0480 |
+| codex / gpt-6.1-sol low (default) | gs-uploading-rename-loadasresource | A | 3 | 3 | 65.6k (47.7–90.2k) | 3 | 26.0 | $0.0182 |
+| codex / gpt-6.1-sol low (default) | gs-uploading-rename-loadasresource | C | 3 | 3 | 100.9k (96.3–116.7k) | 8 | 23.9 | $0.0353 |
+| codex / gpt-6.1-sol low (default) | petclinic-callers-addpet | A | 3 | 3 | 85.3k (85.1–85.6k) | 3 | 13.9 | $0.0371 |
+| codex / gpt-6.1-sol low (default) | petclinic-callers-addpet | C | 3 | 3 | 111.5k (87.8–133.7k) | 5 | 16.8 | $0.0472 |
 | grok / grok-4.7 high 256k | gs-multi-module-rename-message | A | 3 | 3 | 34.7k (26.1–35.8k) | 4 | 14.8 | $0.0507 |
 | grok / grok-4.7 high 256k | gs-multi-module-rename-message | C | 3 | 3 | 498.4k (429.1–614.5k) | 24 | 198.4 | $0.5332 |
 | grok / grok-4.7 high 256k | gs-uploading-rename-loadasresource | A | 3 | 3 | 31.9k (23.7–32.7k) | 4 | 13.8 | $0.0354 |
@@ -295,6 +325,14 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / opus-5-5 medium | A | 12 | 12/12 (100%) | 0 | 69.7k | 13 | 71.8 | 45.0 | $0.1210 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | B | 12 | 12/12 (100%) | 0 | 81.7k | 14 | 75.8 | 44.8 | $0.1460 | 2.1.326 (Claude Code) |
 | claude2 / opus-5-5 medium | C | 12 | 12/12 (100%) | 0 | 96.8k | 14.5 | 46.7 | 5.7 | $0.1934 | 2.1.326 (Claude Code) |
+| codex / gpt-6.1-terra low (default) | F | 12 | 12/12 (100%) | 0 | 149.5k | 6 | 68.2 | 48.4 | $0.0198 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | A | 12 | 10/12 (83%) | 0 | 148.2k | 6 | 35.2 | 8.6 | $0.0259 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | B | 12 | 9/12 (75%) | 0 | 200.3k | 7 | 117.5 | 91.1 | $0.0297 | codex-cli 0.166.0 |
+| codex / gpt-6.1-terra low (default) | C | 12 | 10/12 (83%) | 0 | 164.5k | 6.5 | 64.6 | 7.3 | $0.0239 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | F | 12 | 12/12 (100%) | 0 | 233.3k | 8 | 102.3 | 85.9 | $0.0558 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | A | 12 | 9/12 (75%) | 0 | 189.5k | 7.5 | 75.7 | 52.5 | $0.0589 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | B | 12 | 11/12 (92%) | 0 | 240.0k | 9.5 | 79.3 | 55.6 | $0.0752 | codex-cli 0.166.0 |
+| codex / gpt-6.1-sol low (default) | C | 12 | 10/12 (83%) | 0 | 162.8k | 9 | 38.9 | 8.1 | $0.0670 | codex-cli 0.166.0 |
 | grok / grok-4.7 high 256k | F | 12 | 12/12 (100%) | 0 | 165.6k | 10.5 | 138.8 | 9.8 | $0.1459 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.7 high 256k | A | 12 | 12/12 (100%) | 0 | 219.9k | 13 | 189.4 | 16.9 | $0.2520 | grok 1.0.77 (50ca579fa996) [stable] |
 | grok / grok-4.7 high 256k | B | 12 | 9/12 (75%) | 0 | 234.8k | 12.5 | 112.4 | 8.6 | $0.2390 | grok 1.0.77 (50ca579fa996) [stable] |
@@ -332,6 +370,12 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / opus-5-5 medium | A vs B | 4 | 12/12 / 12/12 | 271.3k → 325.1k | +17% | +18% | +12% | +24% | overlap (noise) |
 | claude2 / opus-5-5 medium | A vs C | 4 | 12/12 / 12/12 | 271.3k → 358.3k | +24% | +14% | -48% | +29% | overlap (noise) |
 | claude2 / opus-5-5 medium | F vs A | 4 | 12/12 / 12/12 | 250.0k → 271.3k | +8% | +2% | +7% | +5% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | A vs B | 4 | 10/12 / 9/12 | 573.5k → 731.7k | +22% | +24% | +68% | +14% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | A vs C | 4 | 10/12 / 10/12 | 573.5k → 705.6k | +19% | +15% | +49% | +9% | overlap (noise) |
+| codex / gpt-6.1-terra low (default) | F vs A | 4 | 12/12 / 10/12 | 626.4k → 573.5k | -9% | +0% | -138% | +0% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | A vs B | 4 | 9/12 / 11/12 | 747.9k → 973.4k | +23% | +18% | -1% | +20% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | A vs C | 4 | 9/12 / 10/12 | 747.9k → 729.9k | -2% | +6% | -80% | +6% | overlap (noise) |
+| codex / gpt-6.1-sol low (default) | F vs A | 4 | 12/12 / 9/12 | 1106.2k → 747.9k | -48% | +9% | -19% | -32% | overlap (noise) |
 | grok / grok-4.7 high 256k | A vs B | 4 | 12/12 / 9/12 | 1678.5k → 1169.2k | -44% | -39% | -59% | -54% | overlap (noise) |
 | grok / grok-4.7 high 256k | A vs C | 4 | 12/12 / 9/12 | 1678.5k → 2195.6k | +24% | +9% | -12% | +15% | overlap (noise) |
 | grok / grok-4.7 high 256k | F vs A | 4 | 12/12 / 12/12 | 630.5k → 1678.5k | +62% | +41% | +38% | +58% | overlap (noise) |
@@ -387,6 +431,38 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 | claude2 / opus-5-5 medium | petclinic-rename-telephone | B | 3 | 3 | 111.0k (98.4–120.5k) | 18 | 103.7 | $0.2533 |
 | claude2 / opus-5-5 medium | petclinic-rename-telephone | C | 3 | 3 | 137.7k (110.0–272.4k) | 19 | 47.7 | $0.2848 |
 | claude2 / opus-5-5 medium | petclinic-rename-telephone | F | 3 | 3 | 59.6k (36.1–70.1k) | 8 | 36.4 | $0.1259 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | A | 3 | 3 | 163.1k (141.5–179.8k) | 6 | 31.4 | $0.0262 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | B | 3 | 3 | 159.0k (135.9–475.1k) | 9 | 74.1 | $0.0291 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | C | 3 | 3 | 184.6k (162.7–212.1k) | 7 | 64.3 | $0.0233 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-column-case | F | 3 | 3 | 164.0k (124.8–222.9k) | 6 | 65.9 | $0.0299 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | A | 3 | 3 | 173.0k (145.6–180.8k) | 7 | 33.8 | $0.0260 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | B | 3 | 3 | 197.0k (193.4–211.4k) | 6 | 67.9 | $0.0278 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | C | 3 | 3 | 163.3k (157.3–165.2k) | 5 | 75.7 | $0.0272 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-composed-route | F | 3 | 3 | 229.3k (193.5–232.7k) | 7 | 110.3 | $0.0295 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | A | 3 | 1 | 150.8k (131.1–178.8k) | 5 | 38.6 | $0.0225 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | B | 3 | 0 | 167.7k (98.1–217.1k) | 6 | 129.6 | $0.0192 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | C | 3 | 1 | 193.8k (99.5–239.6k) | 7 | 68.5 | $0.0273 |
+| codex / gpt-6.1-terra low (default) | petclinic-anchor-relaxed-env | F | 3 | 3 | 135.0k (81.7–179.2k) | 5 | 100.7 | $0.0171 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | A | 3 | 3 | 86.5k (86.5–122.1k) | 4 | 22.1 | $0.0177 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | B | 3 | 3 | 208.1k (203.5–212.5k) | 8 | 122.3 | $0.0317 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | C | 3 | 3 | 163.9k (140.9–191.6k) | 7 | 37.0 | $0.0234 |
+| codex / gpt-6.1-terra low (default) | petclinic-rename-telephone | F | 3 | 3 | 98.1k (86.6–100.7k) | 4 | 22.6 | $0.0157 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | A | 3 | 3 | 188.7k (101.2–440.4k) | 9 | 65.6 | $0.0491 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | B | 3 | 3 | 296.7k (226.9–379.1k) | 8 | 78.1 | $0.0724 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | C | 3 | 3 | 111.5k (96.9–198.2k) | 7 | 26.7 | $0.0563 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-column-case | F | 3 | 3 | 191.7k (188.4–272.1k) | 9 | 70.8 | $0.0508 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | A | 3 | 3 | 223.6k (219.6–385.7k) | 13 | 112.6 | $0.0629 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | B | 3 | 3 | 258.6k (233.3–317.2k) | 11 | 83.4 | $0.0801 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | C | 3 | 3 | 216.2k (169.1–234.4k) | 9 | 39.5 | $0.0811 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-composed-route | F | 3 | 3 | 413.4k (242.6–494.0k) | 9 | 115.7 | $0.1137 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | A | 3 | 0 | 190.4k (151.4–219.4k) | 6 | 101.2 | $0.0590 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | B | 3 | 2 | 171.5k (152.9–177.0k) | 9 | 64.7 | $0.0468 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | C | 3 | 1 | 132.3k (81.7–144.5k) | 8 | 34.1 | $0.0455 |
+| codex / gpt-6.1-sol low (default) | petclinic-anchor-relaxed-env | F | 3 | 3 | 223.6k (222.3–224.0k) | 5 | 106.1 | $0.0520 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | A | 3 | 3 | 145.3k (106.8–162.5k) | 5 | 36.6 | $0.0574 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | B | 3 | 3 | 246.7k (205.8–301.8k) | 12 | 86.8 | $0.0853 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | C | 3 | 3 | 269.9k (156.5–324.9k) | 11 | 74.8 | $0.0613 |
+| codex / gpt-6.1-sol low (default) | petclinic-rename-telephone | F | 3 | 3 | 277.4k (131.9–381.7k) | 7 | 82.3 | $0.0841 |
 | grok / grok-4.7 high 256k | petclinic-anchor-column-case | A | 3 | 3 | 664.2k (211.1–1112.1k) | 23 | 215.8 | $0.6323 |
 | grok / grok-4.7 high 256k | petclinic-anchor-column-case | B | 3 | 3 | 293.0k (263.2–345.9k) | 11 | 104.0 | $0.2203 |
 | grok / grok-4.7 high 256k | petclinic-anchor-column-case | C | 3 | 3 | 366.8k (271.5–673.6k) | 14 | 114.7 | $0.3917 |
@@ -488,10 +564,10 @@ Per config, summed over the tasks both arms measured (sum of per-task medians); 
 
 | Arm | Runs | Green | Tokens (sum) | Est. cost (sum) |
 |---|---:|---:|---:|---:|
-| F | 96 | 95 | 25.21M | $9.49 |
-| A | 208 | 204 | 36.97M | $16.71 |
-| B | 128 | 104 | 42.18M | $18.11 |
-| C | 208 | 187 | 69.75M | $38.68 |
+| F | 120 | 119 | 30.32M | $10.61 |
+| A | 250 | 241 | 42.43M | $18.17 |
+| B | 160 | 132 | 48.49M | $19.54 |
+| C | 250 | 225 | 76.12M | $40.34 |
 
 # Second host: bocabox (Fedora), tier 0 only
 

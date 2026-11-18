@@ -48,8 +48,8 @@ files named `*-VOID-*.jsonl` and are in no table.
    fail-fast missed them because they graded red, not error. Fixed: the driver writes a refreshed login back,
    and the runner counts a row with no tokens and an agent error as an error.
 
-Redone with the fixed harness: daybreak's tier-0 B for all ten configs, and codex's tier 1 (after a new codex
-login); see Findings.
+Redone with the fixed harness: daybreak's tier-0 B for all ten configs, and codex's tier 0 B, tier 1 and sliver
+(after a new codex login, the codex catch-up, `runlog-codex-catchup-daybreak.txt`); see Findings.
 
 ## JK-3MF95: petclinic's callers answers in every jk arm told the agent to search src/test
 
@@ -59,13 +59,13 @@ ended "compile skipped: the code does not compile (step 'compile-test' requires 
 has no compiled classes, so the calls made there are missing: search it for calls too". It invites exactly the
 verification a graph answer should save. **0.51.1 has it too** (a daybreak B warm-up transcript of
 petclinic-callers-addpet carries the same sentence). Counted from the transcripts (`adoption.py`):
-- **Tier 1, petclinic-callers-addpet, arm A: 24 of 24 runs, and every one of their 24 callers answers**, for all
-  eight configs (codex's rows are void, defect 4). Arm C's answers never carry it (no graph).
+- **Tier 1, petclinic-callers-addpet, arm A: 30 of 30 runs, and every one of their 30 callers answers**, for all
+  ten configs (codex's from the catch-up). Arm C's answers never carry it (no graph).
 - **The sliver: no answer carries it** in any arm (A, B, F; C has no graph). Its tasks ask callers about anchors
   (`route:`, `column:`, `env:`, `config:`) and renames, whose answers do not need the test compile. The only
   "compile skipped" notes in the sliver have another cause, "the compile was refused: Build is already running;
   answering from the last build's classes" (an agent's own build still running when it asked): 6 answers in
-  arm A, 6 in F, 1 in B, all grok-4.5 (`adoption-tier2-daybreak.md`).
+  arm A, 6 in F, 1 in B, all grok-4.5 (`adoption-tier2-daybreak.md`). Codex's sliver runs carry none either.
 So tier 1's petclinic task is the one number that carries the defect for every graph arm; it is re-measured with
 main's fixed graph in stage R.
 
@@ -198,26 +198,31 @@ See TABLE.md's notes; the honest reading per tier is in the next section.
 
 ### Tier-2 sliver on daybreak (4 petclinic tasks, 3 interleaved runs per cell, arms A, B, C, F)
 
-384 runs for the eight configs other than codex, 2026-11-17 11:01 to 2026-11-18 01:47 MST; codex's 96 runs
-failed fast on its lost login and are void (`rows-tier2-daybreak-VOID-codex-login.jsonl`, 4 rows), re-run in
-the codex catch-up. Every row's `jk_version` is its arm's (A and C 0.52.0, B 0.51.1, F 0.52.1-SNAPSHOT). No run
-was capped or spans a suspend; least free memory 6.8 GB of 12.
-- **Green:** F 95/96, A 92/96, C 75/96, B 73/96. Almost all of B's and C's misses are petclinic-anchor-relaxed-env
+480 runs: the eight configs other than codex 2026-11-17 11:01 to 2026-11-18 01:47 MST; codex's 96, which failed
+fast on its lost login then (`rows-tier2-daybreak-VOID-codex-login.jsonl`, 4 rows), in the codex catch-up
+02:07 to 04:25 MST after a new codex login. Every row's `jk_version` is its arm's (A and C 0.52.0, B 0.51.1, F
+0.52.1-SNAPSHOT). No run was capped or spans a suspend; least free memory 5.7 GB of 12.
+- **Green, all ten configs:** F 119/120, A 111/120, C 95/120, B 93/120. Without codex: F 95/96, A 92/96, C 75/96,
+  B 73/96. Almost all of B's and C's misses are petclinic-anchor-relaxed-env
   (`claimed`: the agent said done, the hidden check failed), the task whose other side only 0.52's env/config
   anchors name, and agy's: it reached green in 3 of 12 runs in B and in C, 12 of 12 in A and F. A's four misses:
-  composer 2 (relaxed-env, `claimed`), Sonnet 1 and muse 1 (column-case, `claimed`).
+  composer 2 (relaxed-env, `claimed`), Sonnet 1 and muse 1 (column-case, `claimed`). Codex misses relaxed-env in
+  every arm but F: A 5 of 6 runs (terra 2, sol 3), B 4, C 4, F none.
 - **A against B (0.52.0 against 0.51.1):** fewer tokens in A for six of eight; **separate** ranges only for
   Sonnet (18%) and agy (69%, where B also fails 9 of 12). Opus 17%, grok-4.5 29%, cursor grok-4.7-high 9% and
   muse 7% are inside the noise; composer is level (0%); **grok-4.7 used 44% more tokens in A** (inside the
   noise: two A runs of column-case and rename-telephone took 1.1M and 0.75M tokens), though A was green 12/12
   against B's 9/12. So: 0.52.0 is clearly better than 0.51.1 here for agy and Sonnet, and in green rate for
   every grok, cursor grok-4.7-high and muse; in tokens, for the rest, not shown.
+  Codex: A 22% (terra) and 23% (sol) fewer than B, inside the noise; sol green 9/12 in A against 11/12 in B.
 - **A against C:** fewer tokens in A for seven of eight, separate for Sonnet, grok-4.5 and agy; muse used 7%
-  fewer in C (noise).
+  fewer in C (noise). Codex: terra 19% fewer in A, sol 2% more (both noise).
 - **F against A (main's graph fixes against 0.52.0):** fewer tokens in F for seven of eight (agy +2% more,
   noise): grok-4.7 62%, cursor grok-4.7-high 39%, Opus 8%, muse 8%, composer 6%, grok-4.5 3%, Sonnet 2%. **Every
   range overlaps**, so none of it is outside run-to-run noise on three runs; grok-4.7's and cursor grok's are
   the large ones (grok-4.7's rename-telephone 94k against 671k median). Green F 95 against A 92.
+  **Codex goes the other way in tokens:** F used 9% (terra) and 48% (sol) *more* than A (noise; sol's
+  composed-route 413k against 224k), but was green 24/24 against A's 19/24.
 - **Adoption** (`adoption-tier2-daybreak.md`): every config answered with the graph in every A and F run except
   Sonnet (A 5/12, F 9/12: it often edits from a single grep) and composer's A (11/12). grok-4.7 made 9.8 jk calls a run in A
   (2.8 `skill` card reads) against 6.3 in F (1.4), and read or searched 20.6 times a run after its first graph
@@ -225,17 +230,19 @@ was capped or spans a suspend; least free memory 6.8 GB of 12.
 
 ### Tier 0 B redone on daybreak with 0.51.1 (one run per cell)
 
-32 rows for the eight configs other than codex (2026-11-17 10:27 to 11:00 MST, every row `jk_version` 0.51.1,
-after the warm-up checked the home online and with `JK_OFFLINE=1`); 31 green, one agy `claimed`. Codex's four
-failed fast on its login and are re-run in the catch-up (`rows-tier0-daybreak-VOID-codex-login.jsonl`).
-**A against B:** A uses fewer tokens for all eight, from 37% (Sonnet) to 86% (grok-4.5), and fewer turns and
-lower cost for all eight; one run per cell, so no noise estimate. Unlike the void B column, this is a real
+40 rows, every row `jk_version` 0.51.1 (after the warm-up checked the home online and with `JK_OFFLINE=1`): the
+eight configs other than codex 2026-11-17 10:27 to 11:00 MST, codex's eight in the catch-up (2026-11-18 01:47;
+the first four failed fast on the lost login: `rows-tier0-daybreak-VOID-codex-login.jsonl`). 39 green, one agy
+`claimed`. **A against B:** A uses fewer tokens for all ten, from 19% (codex sol) to 86% (grok-4.5), and fewer
+turns and lower cost for all ten; one run per cell, so no noise estimate. Unlike the void B column, this is a real
 0.51.1: its field and class renames leave the accessors, template and file move to the agent.
 
 ### Tier 1 on daybreak (3 interleaved runs per cell, arms A and C)
 
-144 of 144 green for the eight configs codex aside (codex's 36 rows are void, defect 4). No run was capped, none
-spans a suspend, and the least free memory in any run was 7.5 GB of 12.
+180 of 180 green: 144 for the eight configs other than codex, and codex's 36 re-run in the catch-up (2026-11-18
+01:50 to 02:07 MST; the first 36 are void, defect 4). No run was capped, none spans a suspend, and the least free
+memory in any run was 7.5 GB of 12. Codex: A 53% (terra) and 40% (sol) fewer tokens than C, separate. Every
+arm-A petclinic-callers-addpet answer carries JK-3MF95's note (above).
 - **A against C:** A uses fewer tokens for all eight, from 34% (cursor composer) to 91% (cursor grok-4.7-high),
   and fewer turns; the summed per-task token ranges are **separate for seven** and **overlap for cursor
   composer** (160.8k against 242.7k), which is therefore inside run-to-run noise. Wall: A lower for all but

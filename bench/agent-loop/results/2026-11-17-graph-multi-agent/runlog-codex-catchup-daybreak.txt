@@ -1,0 +1,428 @@
+2026-11-18T01:47:16 START tier=t0 runs=8 pid=3338455 mem_avail_mb=8677
+2026-11-18T01:47:16 RUN 1/8 codex-terra load=1.35 :: --driver codex --model gpt-6.1-terra --effort low --task smoke-callers --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:47:29   ROW codex/gpt-6.1-terra smoke-callers jk-before #1: green tokens=61758 turns=3 wall=11.0 cost=0.01044 
+2026-11-18T01:47:29 END 1 rc=0 13s wall=13.4 mono=13.4 mem_min_avail_mb=8469
+2026-11-18T01:47:29 RUN 2/8 codex-terra load=1.19 :: --driver codex --model gpt-6.1-terra --effort low --task smoke-rename --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:47:39   ROW codex/gpt-6.1-terra smoke-rename jk-before #1: green tokens=45889 turns=2 wall=9.7 cost=0.00623 
+2026-11-18T01:47:39 END 2 rc=0 10s wall=10.2 mono=10.2 mem_min_avail_mb=8351
+2026-11-18T01:47:39 RUN 3/8 codex-terra load=1.00 :: --driver codex --model gpt-6.1-terra --effort low --task smoke-rename-field --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:48:09   ROW codex/gpt-6.1-terra smoke-rename-field jk-before #1: green tokens=208438 turns=10 wall=28.7 cost=0.02197 
+2026-11-18T01:48:09 END 3 rc=0 30s wall=29.9 mono=29.9 mem_min_avail_mb=8135
+2026-11-18T01:48:09 RUN 4/8 codex-terra load=0.71 :: --driver codex --model gpt-6.1-terra --effort low --task smoke-rename-class --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:48:35   ROW codex/gpt-6.1-terra smoke-rename-class jk-before #1: green tokens=169506 turns=8 wall=25.0 cost=0.0204 
+2026-11-18T01:48:35 END 4 rc=0 25s wall=25.4 mono=25.4 mem_min_avail_mb=8209
+2026-11-18T01:48:35 RUN 5/8 codex-sol load=0.47 :: --driver codex --model gpt-6.1-sol --effort low --task smoke-callers --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:48:47   ROW codex/gpt-6.1-sol smoke-callers jk-before #1: green tokens=84585 turns=3 wall=12.3 cost=0.05195 
+2026-11-18T01:48:47 END 5 rc=0 13s wall=12.5 mono=12.5 mem_min_avail_mb=8277
+2026-11-18T01:48:47 RUN 6/8 codex-sol load=0.44 :: --driver codex --model gpt-6.1-sol --effort low --task smoke-rename --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:48:59   ROW codex/gpt-6.1-sol smoke-rename jk-before #1: green tokens=47918 turns=3 wall=11.6 cost=0.01981 
+2026-11-18T01:48:59 END 6 rc=0 12s wall=11.9 mono=11.9 mem_min_avail_mb=8293
+2026-11-18T01:48:59 RUN 7/8 codex-sol load=0.61 :: --driver codex --model gpt-6.1-sol --effort low --task smoke-rename-field --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:49:27   ROW codex/gpt-6.1-sol smoke-rename-field jk-before #1: green tokens=116543 turns=11 wall=27.5 cost=0.03607 
+2026-11-18T01:49:27 END 7 rc=0 28s wall=27.9 mono=27.9 mem_min_avail_mb=8255
+2026-11-18T01:49:27 RUN 8/8 codex-sol load=0.47 :: --driver codex --model gpt-6.1-sol --effort low --task smoke-rename-class --arm jk-before --max-minutes 8 --max-turns 30
+2026-11-18T01:50:02   ROW codex/gpt-6.1-sol smoke-rename-class jk-before #1: green tokens=135337 turns=13 wall=34.8 cost=0.04412 
+2026-11-18T01:50:02 END 8 rc=0 35s wall=35.2 mono=35.2 mem_min_avail_mb=8294
+2026-11-18T01:50:02 DONE
+
+2026-11-18T01:50:02 START tier=t1 runs=36 pid=3345289 mem_avail_mb=8897
+2026-11-18T01:50:02 RUN 1/36 codex-terra load=0.41 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:50:21   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk-nograph #1: green tokens=130761 turns=5 wall=16.4 cost=0.01963 
+2026-11-18T01:50:21 END 1 rc=0 18s wall=18.4 mono=18.4 mem_min_avail_mb=8753
+2026-11-18T01:50:21 RUN 2/36 codex-terra load=0.32 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:50:31   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #1: green tokens=62191 turns=3 wall=9.8 cost=0.00777 
+2026-11-18T01:50:31 END 2 rc=0 10s wall=10.1 mono=10.1 mem_min_avail_mb=8784
+2026-11-18T01:50:31 RUN 3/36 codex-terra load=0.65 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:50:55   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk-nograph #1: green tokens=133862 turns=6 wall=21.3 cost=0.02388 
+2026-11-18T01:50:55 END 3 rc=0 24s wall=23.9 mono=23.9 mem_min_avail_mb=8564
+2026-11-18T01:50:55 RUN 4/36 codex-terra load=1.21 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:51:05   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk #1: green tokens=45849 turns=2 wall=9.8 cost=0.00914 
+2026-11-18T01:51:05 END 4 rc=0 10s wall=10.2 mono=10.2 mem_min_avail_mb=8314
+2026-11-18T01:51:05 RUN 5/36 codex-terra load=1.10 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:51:26   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk-nograph #1: green tokens=96409 turns=5 wall=18.9 cost=0.01553 
+2026-11-18T01:51:26 END 5 rc=0 21s wall=20.8 mono=20.8 mem_min_avail_mb=8083
+2026-11-18T01:51:26 RUN 6/36 codex-terra load=0.79 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:51:35   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk #1: green tokens=47863 turns=2 wall=9.4 cost=0.00738 
+2026-11-18T01:51:35 END 6 rc=0 10s wall=9.8 mono=9.8 mem_min_avail_mb=8191
+2026-11-18T01:51:35 RUN 7/36 codex-sol load=0.67 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:51:51   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #1: green tokens=85149 turns=3 wall=13.9 cost=0.03712 
+2026-11-18T01:51:51 END 7 rc=0 16s wall=16.0 mono=16.0 mem_min_avail_mb=8268
+2026-11-18T01:51:51 RUN 8/36 codex-sol load=0.90 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:52:09   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk-nograph #1: green tokens=133723 turns=6 wall=16.8 cost=0.04718 
+2026-11-18T01:52:09 END 8 rc=0 17s wall=17.2 mono=17.2 mem_min_avail_mb=8360
+2026-11-18T01:52:09 RUN 9/36 codex-sol load=0.83 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:52:23   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk #1: green tokens=64953 turns=3 wall=13.2 cost=0.02565 
+2026-11-18T01:52:23 END 9 rc=0 14s wall=14.3 mono=14.3 mem_min_avail_mb=8390
+2026-11-18T01:52:23 RUN 10/36 codex-sol load=0.79 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:53:13   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk-nograph #1: green tokens=171479 turns=8 wall=49.7 cost=0.05107 
+2026-11-18T01:53:13 END 10 rc=0 50s wall=50.1 mono=50.1 mem_min_avail_mb=8321
+2026-11-18T01:53:13 RUN 11/36 codex-sol load=0.40 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:53:26   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk #1: green tokens=90250 turns=3 wall=12.2 cost=0.03584 
+2026-11-18T01:53:26 END 11 rc=0 13s wall=13.2 mono=13.2 mem_min_avail_mb=8386
+2026-11-18T01:53:26 RUN 12/36 codex-sol load=0.34 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:53:50   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk-nograph #1: green tokens=116668 turns=8 wall=23.9 cost=0.03688 
+2026-11-18T01:53:50 END 12 rc=0 24s wall=24.2 mono=24.2 mem_min_avail_mb=8351
+2026-11-18T01:53:50 RUN 13/36 codex-terra load=0.28 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:54:04   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #2: green tokens=85016 turns=3 wall=13.0 cost=0.01601 
+2026-11-18T01:54:04 END 13 rc=0 13s wall=13.3 mono=13.3 mem_min_avail_mb=8344
+2026-11-18T01:54:04 RUN 14/36 codex-terra load=0.42 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:54:22   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk-nograph #2: green tokens=130356 turns=5 wall=17.9 cost=0.0292 
+2026-11-18T01:54:22 END 14 rc=0 18s wall=18.3 mono=18.3 mem_min_avail_mb=8343
+2026-11-18T01:54:22 RUN 15/36 codex-terra load=0.45 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:54:35   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk #2: green tokens=64527 turns=3 wall=12.6 cost=0.00868 
+2026-11-18T01:54:35 END 15 rc=0 13s wall=12.9 mono=12.9 mem_min_avail_mb=8346
+2026-11-18T01:54:35 RUN 16/36 codex-terra load=0.38 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:54:54   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk-nograph #2: green tokens=132560 turns=6 wall=18.7 cost=0.01823 
+2026-11-18T01:54:54 END 16 rc=0 19s wall=19.1 mono=19.1 mem_min_avail_mb=8332
+2026-11-18T01:54:54 RUN 17/36 codex-terra load=0.27 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:55:04   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk #2: green tokens=46175 turns=2 wall=10.0 cost=0.00946 
+2026-11-18T01:55:04 END 17 rc=0 10s wall=10.3 mono=10.3 mem_min_avail_mb=8355
+2026-11-18T01:55:04 RUN 18/36 codex-terra load=0.39 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:55:23   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk-nograph #2: green tokens=112095 turns=5 wall=18.1 cost=0.01219 
+2026-11-18T01:55:23 END 18 rc=0 18s wall=18.4 mono=18.4 mem_min_avail_mb=8322
+2026-11-18T01:55:23 RUN 19/36 codex-sol load=0.28 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:55:39   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk-nograph #2: green tokens=87778 turns=4 wall=15.6 cost=0.05839 
+2026-11-18T01:55:39 END 19 rc=0 16s wall=15.9 mono=15.9 mem_min_avail_mb=8345
+2026-11-18T01:55:39 RUN 20/36 codex-sol load=0.22 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:55:56   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #2: green tokens=85284 turns=3 wall=16.9 cost=0.05323 
+2026-11-18T01:55:56 END 20 rc=0 17s wall=17.2 mono=17.2 mem_min_avail_mb=8352
+2026-11-18T01:55:56 RUN 21/36 codex-sol load=0.17 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:56:21   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk-nograph #2: green tokens=146085 turns=8 wall=25.0 cost=0.04799 
+2026-11-18T01:56:21 END 21 rc=0 25s wall=25.3 mono=25.3 mem_min_avail_mb=8336
+2026-11-18T01:56:21 RUN 22/36 codex-sol load=0.24 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:56:38   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk #2: green tokens=62930 turns=3 wall=16.2 cost=0.02225 
+2026-11-18T01:56:38 END 22 rc=0 17s wall=16.6 mono=16.6 mem_min_avail_mb=8350
+2026-11-18T01:56:38 RUN 23/36 codex-sol load=0.24 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:56:59   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk-nograph #2: green tokens=100887 turns=9 wall=21.2 cost=0.03534 
+2026-11-18T01:56:59 END 23 rc=0 22s wall=21.6 mono=21.6 mem_min_avail_mb=8319
+2026-11-18T01:56:59 RUN 24/36 codex-sol load=0.17 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:57:27   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk #2: green tokens=47669 turns=3 wall=27.4 cost=0.01446 
+2026-11-18T01:57:27 END 24 rc=0 28s wall=27.7 mono=27.7 mem_min_avail_mb=8430
+2026-11-18T01:57:27 RUN 25/36 codex-terra load=0.18 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:57:44   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk-nograph #3: green tokens=130433 turns=5 wall=17.0 cost=0.03037 
+2026-11-18T01:57:44 END 25 rc=0 17s wall=17.3 mono=17.3 mem_min_avail_mb=8448
+2026-11-18T01:57:44 RUN 26/36 codex-terra load=0.32 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:57:55   ROW codex/gpt-6.1-terra petclinic-callers-addpet jk #3: green tokens=84890 turns=3 wall=10.4 cost=0.02657 
+2026-11-18T01:57:55 END 26 rc=0 11s wall=10.8 mono=10.8 mem_min_avail_mb=8470
+2026-11-18T01:57:55 RUN 27/36 codex-terra load=0.27 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:58:17   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk-nograph #3: green tokens=100112 turns=5 wall=21.1 cost=0.01709 
+2026-11-18T01:58:17 END 27 rc=0 21s wall=21.5 mono=21.5 mem_min_avail_mb=8444
+2026-11-18T01:58:17 RUN 28/36 codex-terra load=0.19 :: --driver codex --model gpt-6.1-terra --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:58:25   ROW codex/gpt-6.1-terra gs-multi-module-rename-message jk #3: green tokens=46118 turns=2 wall=8.1 cost=0.00647 
+2026-11-18T01:58:25 END 28 rc=0 8s wall=8.4 mono=8.4 mem_min_avail_mb=8475
+2026-11-18T01:58:25 RUN 29/36 codex-terra load=0.16 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:58:46   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk-nograph #3: green tokens=112533 turns=5 wall=20.3 cost=0.01957 
+2026-11-18T01:58:46 END 29 rc=0 21s wall=20.6 mono=20.6 mem_min_avail_mb=8409
+2026-11-18T01:58:46 RUN 30/36 codex-terra load=0.11 :: --driver codex --model gpt-6.1-terra --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:58:55   ROW codex/gpt-6.1-terra gs-uploading-rename-loadasresource jk #3: green tokens=46168 turns=2 wall=8.7 cost=0.00944 
+2026-11-18T01:58:55 END 30 rc=0 9s wall=9.1 mono=9.1 mem_min_avail_mb=8449
+2026-11-18T01:58:55 RUN 31/36 codex-sol load=0.33 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:59:09   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk #3: green tokens=85610 turns=4 wall=13.9 cost=0.03261 
+2026-11-18T01:59:09 END 31 rc=0 14s wall=14.2 mono=14.2 mem_min_avail_mb=8445
+2026-11-18T01:59:09 RUN 32/36 codex-sol load=0.26 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-callers-addpet --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T01:59:50   ROW codex/gpt-6.1-sol petclinic-callers-addpet jk-nograph #3: green tokens=111462 turns=5 wall=40.6 cost=0.03796 
+2026-11-18T01:59:50 END 32 rc=0 41s wall=40.9 mono=40.9 mem_min_avail_mb=8436
+2026-11-18T01:59:50 RUN 33/36 codex-sol load=0.13 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T02:00:27   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk #3: green tokens=66680 turns=3 wall=36.4 cost=0.01894 
+2026-11-18T02:00:27 END 33 rc=0 37s wall=37.1 mono=37.1 mem_min_avail_mb=8771
+2026-11-18T02:00:27 RUN 34/36 codex-sol load=0.26 :: --driver codex --model gpt-6.1-sol --effort low --task gs-multi-module-rename-message --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T02:00:57   ROW codex/gpt-6.1-sol gs-multi-module-rename-message jk-nograph #3: green tokens=115232 turns=9 wall=29.9 cost=0.04148 
+2026-11-18T02:00:57 END 34 rc=0 30s wall=30.3 mono=30.3 mem_min_avail_mb=8800
+2026-11-18T02:00:57 RUN 35/36 codex-sol load=0.26 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T02:01:24   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk #3: green tokens=65617 turns=3 wall=26.0 cost=0.01822 
+2026-11-18T02:01:24 END 35 rc=0 26s wall=26.3 mono=26.3 mem_min_avail_mb=8814
+2026-11-18T02:01:24 RUN 36/36 codex-sol load=0.21 :: --driver codex --model gpt-6.1-sol --effort low --task gs-uploading-rename-loadasresource --arm jk-nograph --max-minutes 15 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t1cc/out
+2026-11-18T02:07:09   ROW codex/gpt-6.1-sol gs-uploading-rename-loadasresource jk-nograph #3: green tokens=96325 turns=8 wall=345.2 cost=0.02262 
+2026-11-18T02:07:09 END 36 rc=0 346s wall=345.6 mono=345.6 mem_min_avail_mb=8948
+2026-11-18T02:07:09 DONE
+
+2026-11-18T02:07:09 START tier=t2 runs=96 pid=3373946 mem_avail_mb=9429
+2026-11-18T02:07:09 RUN 1/96 codex-terra load=0.19 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:09:24   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk-before #1: green tokens=212455 turns=8 wall=121.6 cost=0.0302 
+2026-11-18T02:09:24 END 1 rc=0 135s wall=135.0 mono=135.0 mem_min_avail_mb=7466
+2026-11-18T02:09:24 RUN 2/96 codex-terra load=3.84 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:10:06   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk-nograph #1: green tokens=163872 turns=8 wall=38.8 cost=0.02345 
+2026-11-18T02:10:06 END 2 rc=0 41s wall=41.4 mono=41.4 mem_min_avail_mb=8803
+2026-11-18T02:10:06 RUN 3/96 codex-terra load=2.09 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:10:29   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #1: green tokens=86562 turns=4 wall=20.7 cost=0.01565 
+2026-11-18T02:10:29 END 3 rc=0 23s wall=23.0 mono=23.0 mem_min_avail_mb=8181
+2026-11-18T02:10:29 RUN 4/96 codex-terra load=1.65 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:11:46   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #1: green tokens=122056 turns=5 wall=71.4 cost=0.02672 
+2026-11-18T02:11:46 END 4 rc=0 77s wall=77.3 mono=77.3 mem_min_avail_mb=7024
+2026-11-18T02:11:46 RUN 5/96 codex-terra load=4.98 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:14:20   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk-before #1: claimed tokens=217057 turns=11 wall=129.6 cost=0.03178 
+2026-11-18T02:14:20 END 5 rc=0 154s wall=154.5 mono=154.5 mem_min_avail_mb=6358
+2026-11-18T02:14:20 RUN 6/96 codex-terra load=5.56 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:15:55   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk-nograph #1: claimed tokens=193825 turns=4 wall=68.5 cost=0.02733 
+2026-11-18T02:15:55 END 6 rc=0 95s wall=94.5 mono=94.5 mem_min_avail_mb=6009
+2026-11-18T02:15:55 RUN 7/96 codex-terra load=8.01 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:18:02   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #1: green tokens=135030 turns=6 wall=100.7 cost=0.01707 
+2026-11-18T02:18:02 END 7 rc=0 127s wall=126.8 mono=126.8 mem_min_avail_mb=5740
+2026-11-18T02:18:02 RUN 8/96 codex-terra load=7.87 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:18:51   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #1: green tokens=150818 turns=9 wall=36.7 cost=0.02619 
+2026-11-18T02:18:51 END 8 rc=0 49s wall=49.3 mono=49.3 mem_min_avail_mb=5725
+2026-11-18T02:18:51 RUN 9/96 codex-terra load=6.80 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:21:09   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk-before #1: green tokens=193408 turns=6 wall=113.4 cost=0.02783 
+2026-11-18T02:21:09 END 9 rc=0 138s wall=138.0 mono=138.0 mem_min_avail_mb=5704
+2026-11-18T02:21:09 RUN 10/96 codex-terra load=6.92 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:22:50   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk-nograph #1: green tokens=157348 turns=5 wall=75.7 cost=0.02722 
+2026-11-18T02:22:50 END 10 rc=0 101s wall=101.1 mono=101.1 mem_min_avail_mb=5843
+2026-11-18T02:22:50 RUN 11/96 codex-terra load=10.96 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:25:06   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #1: green tokens=232699 turns=7 wall=110.3 cost=0.02775 
+2026-11-18T02:25:06 END 11 rc=0 136s wall=135.7 mono=135.7 mem_min_avail_mb=5971
+2026-11-18T02:25:06 RUN 12/96 codex-terra load=7.24 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:25:40   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #1: green tokens=145594 turns=7 wall=33.8 cost=0.02991 
+2026-11-18T02:25:40 END 12 rc=0 34s wall=34.4 mono=34.4 mem_min_avail_mb=7849
+2026-11-18T02:25:40 RUN 13/96 codex-terra load=4.99 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:28:12   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk-before #1: green tokens=475116 turns=14 wall=127.1 cost=0.06055 
+2026-11-18T02:28:12 END 13 rc=0 152s wall=151.9 mono=151.9 mem_min_avail_mb=6383
+2026-11-18T02:28:12 RUN 14/96 codex-terra load=6.54 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:29:18   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk-nograph #1: green tokens=212070 turns=8 wall=64.3 cost=0.02387 
+2026-11-18T02:29:18 END 14 rc=0 66s wall=66.1 mono=66.1 mem_min_avail_mb=6566
+2026-11-18T02:29:18 RUN 15/96 codex-terra load=4.92 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:30:24   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #1: green tokens=222950 turns=6 wall=64.1 cost=0.02991 
+2026-11-18T02:30:24 END 15 rc=0 66s wall=65.7 mono=65.7 mem_min_avail_mb=6650
+2026-11-18T02:30:24 RUN 16/96 codex-terra load=4.65 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:30:55   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #1: green tokens=163139 turns=6 wall=30.9 cost=0.03618 
+2026-11-18T02:30:55 END 16 rc=0 32s wall=31.6 mono=31.6 mem_min_avail_mb=7995
+2026-11-18T02:30:55 RUN 17/96 codex-sol load=2.87 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:33:05   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk-nograph #1: green tokens=324853 turns=11 wall=122.0 cost=0.09923 
+2026-11-18T02:33:05 END 17 rc=0 129s wall=129.2 mono=129.2 mem_min_avail_mb=6430
+2026-11-18T02:33:05 RUN 18/96 codex-sol load=3.26 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:36:52   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #1: green tokens=381678 turns=8 wall=219.3 cost=0.09821 
+2026-11-18T02:36:52 END 18 rc=0 227s wall=227.3 mono=227.3 mem_min_avail_mb=5979
+2026-11-18T02:36:52 RUN 19/96 codex-sol load=3.83 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:38:25   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #1: green tokens=162459 turns=5 wall=85.8 cost=0.04863 
+2026-11-18T02:38:25 END 19 rc=0 93s wall=92.6 mono=92.6 mem_min_avail_mb=6535
+2026-11-18T02:38:25 RUN 20/96 codex-sol load=2.97 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:39:58   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk-before #1: green tokens=205837 turns=12 wall=80.6 cost=0.07066 
+2026-11-18T02:39:58 END 20 rc=0 93s wall=93.1 mono=93.1 mem_min_avail_mb=7227
+2026-11-18T02:39:58 RUN 21/96 codex-sol load=3.16 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:41:23   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk-nograph #1: claimed tokens=132268 turns=5 wall=60.7 cost=0.04548 
+2026-11-18T02:41:23 END 21 rc=0 85s wall=85.0 mono=85.0 mem_min_avail_mb=6982
+2026-11-18T02:41:23 RUN 22/96 codex-sol load=7.61 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:43:34   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #1: green tokens=223606 turns=8 wall=107.0 cost=0.05429 
+2026-11-18T02:43:34 END 22 rc=0 132s wall=131.6 mono=131.6 mem_min_avail_mb=6746
+2026-11-18T02:43:34 RUN 23/96 codex-sol load=4.79 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:44:18   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #1: claimed tokens=190386 turns=13 wall=37.4 cost=0.07824 
+2026-11-18T02:44:18 END 23 rc=0 43s wall=43.3 mono=43.3 mem_min_avail_mb=8469
+2026-11-18T02:44:18 RUN 24/96 codex-sol load=2.86 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:45:49   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk-before #1: green tokens=176974 turns=9 wall=67.3 cost=0.05013 
+2026-11-18T02:45:49 END 24 rc=0 91s wall=91.5 mono=91.5 mem_min_avail_mb=6862
+2026-11-18T02:45:49 RUN 25/96 codex-sol load=5.88 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:47:25   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk-nograph #1: green tokens=234372 turns=8 wall=69.4 cost=0.07356 
+2026-11-18T02:47:25 END 25 rc=0 96s wall=95.7 mono=95.7 mem_min_avail_mb=6887
+2026-11-18T02:47:25 RUN 26/96 codex-sol load=6.21 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:49:41   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #1: green tokens=242615 turns=9 wall=112.1 cost=0.04757 
+2026-11-18T02:49:41 END 26 rc=0 137s wall=136.7 mono=136.7 mem_min_avail_mb=7206
+2026-11-18T02:49:41 RUN 27/96 codex-sol load=6.47 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:50:23   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #1: green tokens=223585 turns=13 wall=41.1 cost=0.05888 
+2026-11-18T02:50:23 END 27 rc=0 42s wall=41.7 mono=41.7 mem_min_avail_mb=8896
+2026-11-18T02:50:23 RUN 28/96 codex-sol load=3.48 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:52:51   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk-before #1: green tokens=317191 turns=11 wall=122.0 cost=0.0902 
+2026-11-18T02:52:51 END 28 rc=0 148s wall=148.1 mono=148.1 mem_min_avail_mb=6884
+2026-11-18T02:52:51 RUN 29/96 codex-sol load=7.93 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:54:10   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk-nograph #1: green tokens=198239 turns=7 wall=76.6 cost=0.07274 
+2026-11-18T02:54:10 END 29 rc=0 79s wall=78.7 mono=78.7 mem_min_avail_mb=7635
+2026-11-18T02:54:10 RUN 30/96 codex-sol load=4.43 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:55:24   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #1: green tokens=272120 turns=10 wall=72.8 cost=0.0632 
+2026-11-18T02:55:24 END 30 rc=0 74s wall=74.3 mono=74.3 mem_min_avail_mb=7358
+2026-11-18T02:55:24 RUN 31/96 codex-sol load=3.78 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:55:54   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #1: green tokens=101181 turns=9 wall=29.1 cost=0.0422 
+2026-11-18T02:55:54 END 31 rc=0 30s wall=29.8 mono=29.8 mem_min_avail_mb=8914
+2026-11-18T02:55:54 RUN 32/96 codex-sol load=2.40 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:57:33   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk-before #1: green tokens=226931 turns=8 wall=76.5 cost=0.06427 
+2026-11-18T02:57:33 END 32 rc=0 99s wall=99.3 mono=99.3 mem_min_avail_mb=7182
+2026-11-18T02:57:33 RUN 33/96 codex-terra load=5.35 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:58:11   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk-nograph #2: green tokens=140898 turns=6 wall=35.8 cost=0.02191 
+2026-11-18T02:58:11 END 33 rc=0 37s wall=37.3 mono=37.3 mem_min_avail_mb=8885
+2026-11-18T02:58:11 RUN 34/96 codex-terra load=2.87 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T02:58:35   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #2: green tokens=100742 turns=4 wall=23.2 cost=0.01721 
+2026-11-18T02:58:35 END 34 rc=0 24s wall=23.9 mono=23.9 mem_min_avail_mb=8900
+2026-11-18T02:58:35 RUN 35/96 codex-terra load=2.12 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T02:59:03   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #2: green tokens=86509 turns=4 wall=22.1 cost=0.01438 
+2026-11-18T02:59:03 END 35 rc=0 28s wall=28.1 mono=28.1 mem_min_avail_mb=8141
+2026-11-18T02:59:03 RUN 36/96 codex-terra load=2.12 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:01:24   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk-before #2: green tokens=208095 turns=8 wall=129.3 cost=0.03246 
+2026-11-18T03:01:24 END 36 rc=0 142s wall=141.5 mono=141.5 mem_min_avail_mb=7047
+2026-11-18T03:01:24 RUN 37/96 codex-terra load=3.36 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:03:31   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk-nograph #2: green tokens=239621 turns=11 wall=100.5 cost=0.04677 
+2026-11-18T03:03:31 END 37 rc=0 127s wall=126.8 mono=126.8 mem_min_avail_mb=6798
+2026-11-18T03:03:31 RUN 38/96 codex-terra load=8.95 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:05:23   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #2: green tokens=179243 turns=5 wall=111.1 cost=0.02244 
+2026-11-18T03:05:23 END 38 rc=0 112s wall=112.0 mono=112.0 mem_min_avail_mb=6680
+2026-11-18T03:05:23 RUN 39/96 codex-terra load=3.93 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:06:15   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #2: claimed tokens=131123 turns=5 wall=38.6 cost=0.01909 
+2026-11-18T03:06:15 END 39 rc=0 52s wall=51.8 mono=51.8 mem_min_avail_mb=6719
+2026-11-18T03:06:15 RUN 40/96 codex-terra load=5.94 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:09:16   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk-before #2: claimed tokens=167661 turns=6 wall=156.4 cost=0.01724 
+2026-11-18T03:09:16 END 40 rc=0 181s wall=180.8 mono=180.8 mem_min_avail_mb=6736
+2026-11-18T03:09:16 RUN 41/96 codex-terra load=5.41 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:10:50   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk-nograph #2: green tokens=165215 turns=5 wall=69.4 cost=0.02396 
+2026-11-18T03:10:50 END 41 rc=0 94s wall=94.5 mono=94.5 mem_min_avail_mb=6728
+2026-11-18T03:10:50 RUN 42/96 codex-terra load=7.40 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:12:41   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #2: green tokens=229316 turns=7 wall=110.7 cost=0.03846 
+2026-11-18T03:12:41 END 42 rc=0 111s wall=111.5 mono=111.5 mem_min_avail_mb=6641
+2026-11-18T03:12:41 RUN 43/96 codex-terra load=3.41 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:13:15   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #2: green tokens=180847 turns=8 wall=32.5 cost=0.02349 
+2026-11-18T03:13:15 END 43 rc=0 33s wall=33.1 mono=33.1 mem_min_avail_mb=8478
+2026-11-18T03:13:15 RUN 44/96 codex-terra load=2.34 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:14:38   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk-before #2: green tokens=211434 turns=6 wall=58.9 cost=0.0257 
+2026-11-18T03:14:38 END 44 rc=0 84s wall=83.6 mono=83.6 mem_min_avail_mb=7046
+2026-11-18T03:14:38 RUN 45/96 codex-terra load=8.39 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:15:45   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk-nograph #2: green tokens=162662 turns=6 wall=64.9 cost=0.02105 
+2026-11-18T03:15:45 END 45 rc=0 66s wall=66.4 mono=66.4 mem_min_avail_mb=7341
+2026-11-18T03:15:45 RUN 46/96 codex-terra load=5.73 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:16:56   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #2: green tokens=163965 turns=6 wall=70.6 cost=0.03591 
+2026-11-18T03:16:56 END 46 rc=0 71s wall=71.5 mono=71.5 mem_min_avail_mb=7617
+2026-11-18T03:16:56 RUN 47/96 codex-terra load=3.95 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:17:28   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #2: green tokens=141525 turns=7 wall=31.4 cost=0.0257 
+2026-11-18T03:17:28 END 47 rc=0 32s wall=32.1 mono=32.1 mem_min_avail_mb=8893
+2026-11-18T03:17:28 RUN 48/96 codex-terra load=2.52 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:18:54   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk-before #2: green tokens=135918 turns=7 wall=62.0 cost=0.01875 
+2026-11-18T03:18:54 END 48 rc=0 86s wall=85.6 mono=85.6 mem_min_avail_mb=7341
+2026-11-18T03:18:54 RUN 49/96 codex-sol load=6.72 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:19:25   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #2: green tokens=131860 turns=6 wall=30.1 cost=0.05736 
+2026-11-18T03:19:25 END 49 rc=0 31s wall=30.9 mono=30.9 mem_min_avail_mb=8882
+2026-11-18T03:19:25 RUN 50/96 codex-sol load=4.23 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:20:03   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #2: green tokens=145282 turns=6 wall=36.6 cost=0.07826 
+2026-11-18T03:20:03 END 50 rc=0 38s wall=38.1 mono=38.1 mem_min_avail_mb=8875
+2026-11-18T03:20:03 RUN 51/96 codex-sol load=2.73 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:21:50   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk-before #2: green tokens=301829 turns=14 wall=95.7 cost=0.09511 
+2026-11-18T03:21:50 END 51 rc=0 107s wall=107.3 mono=107.3 mem_min_avail_mb=7429
+2026-11-18T03:21:50 RUN 52/96 codex-sol load=2.74 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:23:12   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk-nograph #2: green tokens=269943 turns=9 wall=74.8 cost=0.06129 
+2026-11-18T03:23:12 END 52 rc=0 82s wall=82.2 mono=82.2 mem_min_avail_mb=7430
+2026-11-18T03:23:12 RUN 53/96 codex-sol load=3.86 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:24:59   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #2: green tokens=224011 turns=5 wall=106.1 cost=0.05196 
+2026-11-18T03:24:59 END 53 rc=0 107s wall=106.8 mono=106.8 mem_min_avail_mb=7369
+2026-11-18T03:24:59 RUN 54/96 codex-sol load=5.80 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:27:07   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #2: claimed tokens=219428 turns=5 wall=102.1 cost=0.05899 
+2026-11-18T03:27:07 END 54 rc=0 128s wall=127.9 mono=127.9 mem_min_avail_mb=7163
+2026-11-18T03:27:07 RUN 55/96 codex-sol load=10.11 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:28:36   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk-before #2: claimed tokens=171454 turns=9 wall=64.7 cost=0.04682 
+2026-11-18T03:28:36 END 55 rc=0 89s wall=89.0 mono=89.0 mem_min_avail_mb=7233
+2026-11-18T03:28:36 RUN 56/96 codex-sol load=9.74 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:29:27   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk-nograph #2: claimed tokens=81661 turns=8 wall=27.1 cost=0.02765 
+2026-11-18T03:29:27 END 56 rc=0 51s wall=50.8 mono=50.8 mem_min_avail_mb=7084
+2026-11-18T03:29:27 RUN 57/96 codex-sol load=9.72 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:31:23   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #2: green tokens=413437 turns=9 wall=115.7 cost=0.11372 
+2026-11-18T03:31:23 END 57 rc=0 116s wall=116.5 mono=116.5 mem_min_avail_mb=7098
+2026-11-18T03:31:23 RUN 58/96 codex-sol load=3.82 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:33:42   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #2: green tokens=219573 turns=8 wall=112.6 cost=0.06291 
+2026-11-18T03:33:42 END 58 rc=0 139s wall=138.7 mono=138.7 mem_min_avail_mb=6956
+2026-11-18T03:33:42 RUN 59/96 codex-sol load=4.87 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:35:11   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk-before #2: green tokens=233289 turns=8 wall=64.0 cost=0.08009 
+2026-11-18T03:35:11 END 59 rc=0 89s wall=89.0 mono=89.0 mem_min_avail_mb=6911
+2026-11-18T03:35:11 RUN 60/96 codex-sol load=8.59 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:36:05   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk-nograph #2: green tokens=169117 turns=9 wall=29.5 cost=0.08109 
+2026-11-18T03:36:05 END 60 rc=0 54s wall=54.0 mono=54.0 mem_min_avail_mb=7100
+2026-11-18T03:36:05 RUN 61/96 codex-sol load=7.49 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:37:14   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #2: green tokens=191719 turns=7 wall=68.4 cost=0.05085 
+2026-11-18T03:37:14 END 61 rc=0 69s wall=69.1 mono=69.1 mem_min_avail_mb=7402
+2026-11-18T03:37:14 RUN 62/96 codex-sol load=4.83 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:38:21   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #2: green tokens=188655 turns=7 wall=65.6 cost=0.04908 
+2026-11-18T03:38:21 END 62 rc=0 67s wall=67.1 mono=67.1 mem_min_avail_mb=7415
+2026-11-18T03:38:21 RUN 63/96 codex-sol load=4.05 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:41:02   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk-before #2: green tokens=379129 turns=10 wall=134.1 cost=0.08597 
+2026-11-18T03:41:02 END 63 rc=0 161s wall=160.5 mono=160.5 mem_min_avail_mb=7308
+2026-11-18T03:41:02 RUN 64/96 codex-sol load=4.90 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:41:31   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk-nograph #2: green tokens=111483 turns=9 wall=26.7 cost=0.05631 
+2026-11-18T03:41:31 END 64 rc=0 29s wall=29.0 mono=29.0 mem_min_avail_mb=9220
+2026-11-18T03:41:31 RUN 65/96 codex-terra load=3.22 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:41:54   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #3: green tokens=98074 turns=4 wall=22.6 cost=0.01516 
+2026-11-18T03:41:54 END 65 rc=0 24s wall=23.8 mono=23.8 mem_min_avail_mb=9125
+2026-11-18T03:41:54 RUN 66/96 codex-terra load=2.25 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:42:17   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk #3: green tokens=86526 turns=4 wall=20.7 cost=0.01771 
+2026-11-18T03:42:17 END 66 rc=0 22s wall=22.2 mono=22.2 mem_min_avail_mb=9094
+2026-11-18T03:42:17 RUN 67/96 codex-terra load=2.01 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:44:31   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk-before #3: green tokens=203488 turns=7 wall=122.3 cost=0.03171 
+2026-11-18T03:44:31 END 67 rc=0 134s wall=134.2 mono=134.2 mem_min_avail_mb=7329
+2026-11-18T03:44:31 RUN 68/96 codex-terra load=4.60 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-rename-telephone --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:45:09   ROW codex/gpt-6.1-terra petclinic-rename-telephone jk-nograph #3: green tokens=191555 turns=7 wall=37.0 cost=0.04255 
+2026-11-18T03:45:09 END 68 rc=0 39s wall=38.6 mono=38.6 mem_min_avail_mb=9050
+2026-11-18T03:45:09 RUN 69/96 codex-terra load=2.66 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:46:08   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #3: green tokens=81681 turns=3 wall=57.6 cost=0.01393 
+2026-11-18T03:46:08 END 69 rc=0 58s wall=58.4 mono=58.4 mem_min_avail_mb=7321
+2026-11-18T03:46:08 RUN 70/96 codex-terra load=6.34 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:48:13   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk #3: claimed tokens=178750 turns=5 wall=100.4 cost=0.02251 
+2026-11-18T03:48:13 END 70 rc=0 125s wall=124.8 mono=124.8 mem_min_avail_mb=7269
+2026-11-18T03:48:13 RUN 71/96 codex-terra load=9.85 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:49:49   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk-before #3: claimed tokens=98089 turns=4 wall=72.4 cost=0.01924 
+2026-11-18T03:49:49 END 71 rc=0 97s wall=96.7 mono=96.7 mem_min_avail_mb=7327
+2026-11-18T03:49:49 RUN 72/96 codex-terra load=8.29 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-relaxed-env --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:50:40   ROW codex/gpt-6.1-terra petclinic-anchor-relaxed-env jk-nograph #3: claimed tokens=99458 turns=7 wall=26.1 cost=0.01368 
+2026-11-18T03:50:40 END 72 rc=0 50s wall=50.5 mono=50.5 mem_min_avail_mb=7535
+2026-11-18T03:50:40 RUN 73/96 codex-terra load=7.54 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:52:30   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #3: green tokens=193512 turns=7 wall=109.5 cost=0.02954 
+2026-11-18T03:52:30 END 73 rc=0 110s wall=110.3 mono=110.3 mem_min_avail_mb=7378
+2026-11-18T03:52:30 RUN 74/96 codex-terra load=4.33 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:54:49   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk #3: green tokens=172979 turns=7 wall=113.4 cost=0.02604 
+2026-11-18T03:54:49 END 74 rc=0 139s wall=139.1 mono=139.1 mem_min_avail_mb=7137
+2026-11-18T03:54:49 RUN 75/96 codex-terra load=9.72 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:56:23   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk-before #3: green tokens=197020 turns=4 wall=67.9 cost=0.03249 
+2026-11-18T03:56:23 END 75 rc=0 94s wall=93.9 mono=93.9 mem_min_avail_mb=6965
+2026-11-18T03:56:23 RUN 76/96 codex-terra load=8.42 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-composed-route --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T03:58:08   ROW codex/gpt-6.1-terra petclinic-anchor-composed-route jk-nograph #3: green tokens=163297 turns=6 wall=78.0 cost=0.03087 
+2026-11-18T03:58:08 END 76 rc=0 105s wall=105.0 mono=105.0 mem_min_avail_mb=6643
+2026-11-18T03:58:08 RUN 77/96 codex-terra load=7.73 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T03:59:15   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #3: green tokens=124803 turns=6 wall=65.9 cost=0.01634 
+2026-11-18T03:59:15 END 77 rc=0 67s wall=66.7 mono=66.7 mem_min_avail_mb=6940
+2026-11-18T03:59:15 RUN 78/96 codex-terra load=5.10 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:00:23   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk #3: green tokens=179809 turns=6 wall=66.2 cost=0.02617 
+2026-11-18T04:00:23 END 78 rc=0 68s wall=67.8 mono=67.8 mem_min_avail_mb=7121
+2026-11-18T04:00:23 RUN 79/96 codex-terra load=4.78 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:02:01   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk-before #3: green tokens=158957 turns=9 wall=74.1 cost=0.02915 
+2026-11-18T04:02:01 END 79 rc=0 99s wall=98.8 mono=98.8 mem_min_avail_mb=6565
+2026-11-18T04:02:01 RUN 80/96 codex-terra load=6.73 :: --driver codex --model gpt-6.1-terra --effort low --task petclinic-anchor-column-case --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:02:35   ROW codex/gpt-6.1-terra petclinic-anchor-column-case jk-nograph #3: green tokens=184598 turns=7 wall=32.1 cost=0.02327 
+2026-11-18T04:02:35 END 80 rc=0 34s wall=33.6 mono=33.6 mem_min_avail_mb=8595
+2026-11-18T04:02:35 RUN 81/96 codex-sol load=4.12 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:02:57   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #3: green tokens=106765 turns=5 wall=20.5 cost=0.05739 
+2026-11-18T04:02:57 END 81 rc=0 22s wall=22.0 mono=22.0 mem_min_avail_mb=8646
+2026-11-18T04:02:57 RUN 82/96 codex-sol load=3.17 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:04:36   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk-before #3: green tokens=246670 turns=12 wall=86.8 cost=0.08525 
+2026-11-18T04:04:36 END 82 rc=0 99s wall=98.6 mono=98.6 mem_min_avail_mb=7109
+2026-11-18T04:04:36 RUN 83/96 codex-sol load=3.24 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:05:15   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk-nograph #3: green tokens=156452 turns=12 wall=38.2 cost=0.05947 
+2026-11-18T04:05:15 END 83 rc=0 40s wall=39.7 mono=39.7 mem_min_avail_mb=8587
+2026-11-18T04:05:15 RUN 84/96 codex-sol load=1.88 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-rename-telephone --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T04:06:38   ROW codex/gpt-6.1-sol petclinic-rename-telephone jk #3: green tokens=277415 turns=7 wall=82.3 cost=0.08408 
+2026-11-18T04:06:38 END 84 rc=0 83s wall=83.1 mono=83.1 mem_min_avail_mb=6767
+2026-11-18T04:06:38 RUN 85/96 codex-sol load=3.14 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:08:44   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #3: claimed tokens=151392 turns=6 wall=101.2 cost=0.04963 
+2026-11-18T04:08:44 END 85 rc=0 125s wall=125.3 mono=125.3 mem_min_avail_mb=7233
+2026-11-18T04:08:44 RUN 86/96 codex-sol load=8.82 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:10:10   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk-before #3: green tokens=152940 turns=7 wall=62.7 cost=0.04291 
+2026-11-18T04:10:10 END 86 rc=0 87s wall=86.7 mono=86.7 mem_min_avail_mb=7278
+2026-11-18T04:10:10 RUN 87/96 codex-sol load=8.14 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:11:09   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk-nograph #3: green tokens=144541 turns=9 wall=34.1 cost=0.07269 
+2026-11-18T04:11:09 END 87 rc=0 58s wall=58.4 mono=58.4 mem_min_avail_mb=7584
+2026-11-18T04:11:09 RUN 88/96 codex-sol load=10.21 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-relaxed-env --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T04:12:48   ROW codex/gpt-6.1-sol petclinic-anchor-relaxed-env jk #3: green tokens=222343 turns=5 wall=98.5 cost=0.05125 
+2026-11-18T04:12:48 END 88 rc=0 99s wall=99.4 mono=99.4 mem_min_avail_mb=7383
+2026-11-18T04:12:48 RUN 89/96 codex-sol load=5.92 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:15:11   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #3: green tokens=385729 turns=13 wall=117.8 cost=0.09791 
+2026-11-18T04:15:11 END 89 rc=0 143s wall=143.1 mono=143.1 mem_min_avail_mb=7094
+2026-11-18T04:15:11 RUN 90/96 codex-sol load=8.70 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:17:01   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk-before #3: green tokens=258559 turns=11 wall=83.4 cost=0.07797 
+2026-11-18T04:17:01 END 90 rc=0 110s wall=110.1 mono=110.1 mem_min_avail_mb=7026
+2026-11-18T04:17:01 RUN 91/96 codex-sol load=9.15 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:18:07   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk-nograph #3: green tokens=216237 turns=10 wall=39.5 cost=0.08174 
+2026-11-18T04:18:07 END 91 rc=0 66s wall=65.7 mono=65.7 mem_min_avail_mb=7624
+2026-11-18T04:18:07 RUN 92/96 codex-sol load=8.29 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-composed-route --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T04:20:14   ROW codex/gpt-6.1-sol petclinic-anchor-composed-route jk #3: green tokens=493996 turns=13 wall=125.6 cost=0.12393 
+2026-11-18T04:20:14 END 92 rc=0 127s wall=127.1 mono=127.1 mem_min_avail_mb=7656
+2026-11-18T04:20:14 RUN 93/96 codex-sol load=3.93 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:22:10   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #3: green tokens=440360 turns=12 wall=114.6 cost=0.11945 
+2026-11-18T04:22:10 END 93 rc=0 116s wall=116.1 mono=116.1 mem_min_avail_mb=7667
+2026-11-18T04:22:10 RUN 94/96 codex-sol load=3.85 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk-before --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:23:52   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk-before #3: green tokens=296671 turns=8 wall=78.1 cost=0.07238 
+2026-11-18T04:23:52 END 94 rc=0 102s wall=102.1 mono=102.1 mem_min_avail_mb=7454
+2026-11-18T04:23:52 RUN 95/96 codex-sol load=4.49 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk-nograph --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out
+2026-11-18T04:24:19   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk-nograph #3: green tokens=96876 turns=7 wall=25.1 cost=0.03193 
+2026-11-18T04:24:19 END 95 rc=0 27s wall=26.7 mono=26.7 mem_min_avail_mb=8996
+2026-11-18T04:24:19 RUN 96/96 codex-sol load=2.83 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-anchor-column-case --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 3 --out /var/tmp/jk-bench/run/t2sc/out-F
+2026-11-18T04:25:31   ROW codex/gpt-6.1-sol petclinic-anchor-column-case jk #3: green tokens=188372 turns=9 wall=70.8 cost=0.04867 
+2026-11-18T04:25:31 END 96 rc=0 72s wall=71.6 mono=71.6 mem_min_avail_mb=7490
+2026-11-18T04:25:31 DONE

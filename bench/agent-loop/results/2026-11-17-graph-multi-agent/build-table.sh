@@ -22,10 +22,10 @@ echo; echo "Status: $(cat STATUS 2>/dev/null)"
 echo
 echo "**Void rows are in no table** (README.md, \"Defects found after tier 0\"): daybreak's 40 tier-0 B rows ran 0.52.0"
 echo "(rows-tier0-daybreak-VOID-B-ran-0.52.0.jsonl), and its 36 tier-1 codex rows ran without a codex login"
-echo "(rows-tier1-daybreak-VOID-codex-login.jsonl); codex's tier-0 B and sliver rows failed fast on the same lost login"
+echo "(rows-tier1-daybreak-VOID-codex-login.jsonl); codex's first tier-0 B and sliver rows failed fast on the same lost login, and the codex catch-up replaced them"
 echo "(rows-tier0-daybreak-VOID-codex-login.jsonl, rows-tier2-daybreak-VOID-codex-login.jsonl). Redone rows replace them as they are run."
 echo
-echo "**JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (24 of 24 runs) ended \"compile skipped ...":
+echo "**JK-3MF95:** every arm-A callers answer of tier 1's petclinic-callers-addpet (30 of 30 runs) ended \"compile skipped ...":
 echo "search it for calls too\" (a defect of 0.51.1 and 0.52.x, fixed on main); no sliver answer carries it. README.md says more."
 python3 tabulate.py "${args[@]}" | sed 's/^## Totals (all tiers so far)/## Totals on daybreak (all tiers so far)/'
 echo; echo "# Second host: bocabox (Fedora), tier 0 only"; echo
