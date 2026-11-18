@@ -103,14 +103,26 @@ public final class RemoteCacheBinding {
         }
     }
 
-    private static void drain(RemoteTier tier) {
+    /** The run notice that says, once at its end, which of the build's uploads did not land and why. */
+    public static final String NOT_STORED = "remote-cache-not-stored";
+
+    /**
+     * Wait for the request's uploads, then say in one line what was not stored ({@link
+     * RemoteTier#notStoredLine}); the counts are also the run's {@code cache*NotStored} totals.
+     * A tier that stopped writing mid-build still drains what it queued.
+     */
+    static void drain(RemoteTier tier) {
         try {
-            if (tier.writes() && !tier.drain(DRAIN)) {
+            if (!tier.drain(DRAIN)) {
                 Log.warn("jk: remote cache " + tier.name() + " uploads still pending after " + DRAIN.toSeconds()
                         + " s; left unfinished");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        String line = tier.notStoredLine();
+        // The run's own notices: the build's body, which bound its session, has returned.
+        IoLedger run = tier.ledger();
+        if (line != null && run != null) RunNotices.warnOnce(run, NOT_STORED, () -> "jk: " + line);
     }
 }

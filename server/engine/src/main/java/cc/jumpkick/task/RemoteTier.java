@@ -27,11 +27,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -81,10 +85,21 @@ public final class RemoteTier {
     }
 
     RemoteTier(CacheBackend backend, String platform, boolean writes) {
+        this(backend, platform, writes, BACKOFF);
+    }
+
+    /** As {@link #RemoteTier(CacheBackend, String, boolean)}, waiting {@code backoff} before an upload's first retry. */
+    RemoteTier(CacheBackend backend, String platform, boolean writes, Duration backoff) {
         this.backend = Objects.requireNonNull(backend, "backend");
         this.platform = Objects.requireNonNull(platform, "platform");
         this.writes = writes;
+        this.backoff = Objects.requireNonNull(backoff, "backoff");
     }
+
+    /** The wait before an upload's first retry; each later one waits four times the last. */
+    static final Duration BACKOFF = Duration.ofMillis(500);
+
+    private final Duration backoff;
 
     /**
      * True when this build uploads what it stores: it was built to write, no upload has failed, and
@@ -92,6 +107,15 @@ public final class RemoteTier {
      */
     public boolean writes() {
         return writes && !writesOff.get() && backendWrites();
+    }
+
+    /**
+     * True when this build offers its records to the tier: it was built to write and the backend
+     * lets this caller write. Still true after the uploads stopped, so what the build stores after
+     * that is counted as not stored.
+     */
+    public boolean offers() {
+        return writes && backendWrites();
     }
 
     private volatile @Nullable Boolean backendWrites;
@@ -112,41 +136,163 @@ public final class RemoteTier {
      * Queue {@code sharedText}, the form of record {@code key} that may leave the machine, for
      * upload with its blobs ({@code blobs}, digest to the local file holding it): the blobs the
      * backend lacks first, then the record, so the backend never holds a record without its
-     * payload. Returns at once. A failed upload stops this build's uploads with one warning in the
-     * engine log; reads go on.
+     * payload. Returns at once. An upload that fails is that record's alone: one the store could not
+     * take now is tried again behind the build ({@link #ATTEMPTS}, within {@link #RETRY_BUDGET}),
+     * the others go on, and the run says at its end what was not stored ({@link #notStoredLine}).
      */
     void offer(String key, String sharedText, Map<String, Path> blobs) {
-        if (!writes() || drained.get()) return;
+        if (!writes || drained.get()) return;
         IoLedger io = SessionContext.current().io();
+        String stopped = stoppedBecause;
+        if (stopped != null) {
+            notStored(io, "uploads stopped: " + stopped, 0);
+            return;
+        }
+        if (!offers()) return;
+        ledger = io;
         uploads.add(JkThreads.platform().submit(() -> upload(key, sharedText, blobs, io)));
     }
 
+    private volatile @Nullable IoLedger ledger;
+
+    /** The ledger of the run that offered this tier its uploads, or null when it offered none. */
+    @Nullable
+    IoLedger ledger() {
+        return ledger;
+    }
+
+    /** Tries one upload gets: the first and up to three more for a failure worth retrying. */
+    static final int ATTEMPTS = 4;
+
+    /** Retries one build spends at most, across its uploads: a store that keeps failing is not retried for long. */
+    static final int RETRY_BUDGET = 64;
+
+    /** Uploads in a row that fail every try before the build stops uploading: the store is down. */
+    static final int GIVE_UP_AFTER = 3;
+
+    private final AtomicInteger retriesLeft = new AtomicInteger(RETRY_BUDGET);
+    private final AtomicInteger failedInARow = new AtomicInteger();
+    private final Map<String, AtomicInteger> notStored = new ConcurrentHashMap<>();
+    private final AtomicInteger recordsNotStored = new AtomicInteger();
+    private final AtomicInteger blobsNotStored = new AtomicInteger();
+    private volatile @Nullable String stoppedBecause;
+
     private void upload(String key, String sharedText, Map<String, Path> blobs, IoLedger io) {
-        if (!writes()) return;
-        try {
-            Map<String, Long> sizes = new LinkedHashMap<>();
-            for (Map.Entry<String, Path> e : blobs.entrySet()) sizes.put(e.getKey(), IoLedger.sizeOf(e.getValue()));
-            putBlobs(backend.missing(sizes), blobs, io);
-            CacheBackend.Reads reads = readLists.get(key);
+        String stopped = stoppedBecause;
+        if (stopped != null) {
+            notStored(io, "uploads stopped: " + stopped, 0);
+            return;
+        }
+        int[] sending = {0};
+        for (int attempt = 1; ; attempt++) {
             try {
-                backend.putRecord(key, sharedText, reads);
-            } catch (CacheBackend.BlobsMissing lacking) {
-                // Gone from the store between the question and the put (a sweep): send them, once.
-                putBlobs(lacking.missing(), blobs, io);
-                backend.putRecord(key, sharedText, reads);
-            }
-            io.cacheUp(sharedText.length());
-            uploaded.incrementAndGet();
-        } catch (CacheBackend.Skipped refused) {
-            // This record is not one the store takes; the others still go.
-            Log.debug(
-                    "jk: remote cache " + backend.name() + " did not take record " + key + ": " + refused.getMessage());
-        } catch (IOException | RuntimeException e) {
-            if (writesOff.compareAndSet(false, true)) {
-                Log.warn("jk: remote cache " + backend.name() + " refused an upload (" + e.getMessage()
-                        + "); uploading nothing more this build");
+                uploadOnce(key, sharedText, blobs, io, sending);
+                failedInARow.set(0);
+                return;
+            } catch (CacheBackend.Skipped refused) {
+                // This record is not one the store takes; the others still go.
+                Log.debug("jk: remote cache " + backend.name() + " did not take record " + key + ": "
+                        + refused.getMessage());
+                notStored(io, reason(refused), sending[0]);
+                return;
+            } catch (CacheBackend.WritesRefused refused) {
+                stop(reason(refused));
+                notStored(io, reason(refused), sending[0]);
+                return;
+            } catch (IOException e) {
+                if (attempt < ATTEMPTS && stoppedBecause == null && retriesLeft.getAndDecrement() > 0) {
+                    Log.debug("jk: remote cache " + backend.name() + " upload of " + key + " failed (" + e.getMessage()
+                            + "); trying again");
+                    pause(attempt);
+                    continue;
+                }
+                Log.debug("jk: remote cache " + backend.name() + " did not store " + key + ": " + e.getMessage());
+                notStored(io, reason(e) + (attempt > 1 ? " after " + attempt + " tries" : ""), sending[0]);
+                if (failedInARow.incrementAndGet() >= GIVE_UP_AFTER)
+                    stop(GIVE_UP_AFTER + " uploads in a row failed (" + reason(e) + ")");
+                return;
+            } catch (RuntimeException e) {
+                Log.debug("jk: remote cache " + backend.name() + " upload of " + key + " threw", e);
+                notStored(io, e.getClass().getSimpleName(), sending[0]);
+                return;
             }
         }
+    }
+
+    private void uploadOnce(String key, String sharedText, Map<String, Path> blobs, IoLedger io, int[] sending)
+            throws IOException {
+        Map<String, Long> sizes = new LinkedHashMap<>();
+        for (Map.Entry<String, Path> e : blobs.entrySet()) sizes.put(e.getKey(), IoLedger.sizeOf(e.getValue()));
+        putBlobs(backend.missing(sizes), blobs, io, sending);
+        CacheBackend.Reads reads = readLists.get(key);
+        try {
+            backend.putRecord(key, sharedText, reads);
+        } catch (CacheBackend.BlobsMissing lacking) {
+            // Gone from the store between the question and the put (a sweep): send them, once.
+            putBlobs(lacking.missing(), blobs, io, sending);
+            backend.putRecord(key, sharedText, reads);
+        }
+        io.cacheUp(sharedText.length());
+        uploaded.incrementAndGet();
+    }
+
+    /** Wait before try {@code attempt + 1}: {@link #backoff} times 1, 4, 16, each with up to a quarter more. */
+    private void pause(int attempt) {
+        long nanos = backoff.toNanos() << (2 * (attempt - 1));
+        nanos += (long) (nanos * 0.25 * ThreadLocalRandom.current().nextDouble());
+        LockSupport.parkNanos(nanos);
+    }
+
+    private void stop(String why) {
+        if (stoppedBecause != null) return;
+        stoppedBecause = why;
+        writesOff.set(true);
+        Log.warn("jk: remote cache " + backend.name() + ": " + why + "; uploading nothing more this build");
+    }
+
+    private void notStored(IoLedger io, String reason, int blobs) {
+        recordsNotStored.incrementAndGet();
+        blobsNotStored.addAndGet(blobs);
+        notStored.computeIfAbsent(reason, r -> new AtomicInteger()).incrementAndGet();
+        io.cacheNotStored(1, blobs);
+    }
+
+    /**
+     * A failure as the run's closing line names it: the store's status and code ({@code 503
+     * unavailable}) when it gave them, else the kind of failure ({@code HttpTimeoutException}).
+     */
+    static String reason(IOException e) {
+        String m = e.getMessage() == null ? "" : e.getMessage();
+        Matcher status = STATUS.matcher(m);
+        if (status.find()) return status.group(1);
+        return e.getClass().getSimpleName();
+    }
+
+    private static final Pattern STATUS = Pattern.compile(": (\\d{3}(?: from the (?:store|service)| [a-z_]+))");
+
+    /** Records offered and not stored, by reason; empty when every one landed. */
+    public Map<String, Integer> notStored() {
+        Map<String, Integer> out = new TreeMap<>();
+        notStored.forEach((reason, n) -> out.put(reason, n.get()));
+        return out;
+    }
+
+    /**
+     * The run's one closing line when an upload did not land, else null: {@code remote cache dojo: 2
+     * records and 5 blobs not stored (1 503 unavailable after 4 tries, 1 422 invalid)}.
+     */
+    public @Nullable String notStoredLine() {
+        int records = recordsNotStored.get();
+        if (records == 0) return null;
+        int blobs = blobsNotStored.get();
+        StringBuilder why = new StringBuilder();
+        notStored().forEach((reason, n) -> why.append(why.isEmpty() ? "" : ", ")
+                .append(n)
+                .append(' ')
+                .append(reason));
+        return "remote cache " + backend.name() + ": " + records + (records == 1 ? " record" : " records")
+                + (blobs == 0 ? "" : " and " + blobs + (blobs == 1 ? " blob" : " blobs")) + " not stored (" + why
+                + ")";
     }
 
     /**
@@ -187,15 +333,21 @@ public final class RemoteTier {
         found.put(candidate.key(), candidate.recordText());
     }
 
-    /** Send the blobs of {@code digests} that {@code blobs} holds a file for. */
-    private void putBlobs(Collection<String> digests, Map<String, Path> blobs, IoLedger io) throws IOException {
+    /**
+     * Send the blobs of {@code digests} that {@code blobs} holds a file for; {@code sending[0]} holds
+     * how many are in flight, so a failure knows how many it left unstored.
+     */
+    private void putBlobs(Collection<String> digests, Map<String, Path> blobs, IoLedger io, int[] sending)
+            throws IOException {
         Map<String, Path> send = new LinkedHashMap<>();
         for (String sha : digests) {
             Path blob = blobs.get(sha);
             if (blob != null) send.put(sha, blob);
         }
         if (send.isEmpty()) return;
+        sending[0] = send.size();
         backend.putBlobs(send);
+        sending[0] = 0;
         for (Path blob : send.values()) io.cacheUp(IoLedger.sizeOf(blob));
     }
 

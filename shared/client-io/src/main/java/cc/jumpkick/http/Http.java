@@ -908,8 +908,9 @@ public final class Http {
         }
         // An address that answered at least once is up: a fault on another attempt is that
         // request's, not the address's.
-        IOException failed = new IOException(
-                verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts");
+        IOException failed = new StatusException(
+                verb + " " + shown + " returned " + lastStatus + " after " + (backoffs.length + 1) + " attempts",
+                lastStatus);
         if (lastIo != null) failed.initCause(lastIo);
         throw failed;
     }
@@ -993,6 +994,21 @@ public final class Http {
     public static final class NoAnswerException extends IOException {
         NoAnswerException(String message, Throwable cause) {
             super(message, cause);
+        }
+    }
+
+    /** A request whose every attempt was answered with a status this client retries (a 5xx), the last one {@link #status}. */
+    public static final class StatusException extends IOException {
+        private final int status;
+
+        StatusException(String message, int status) {
+            super(message);
+            this.status = status;
+        }
+
+        /** The status of the last answer. */
+        public int status() {
+            return status;
         }
     }
 

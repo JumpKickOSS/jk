@@ -301,10 +301,14 @@ class HttpCacheBackendTest {
                     .isInstanceOf(CacheBackend.Skipped.class);
             assertThatThrownBy(
                             () -> client(server.url(), FakeCacheServer.READER).putRecord(KEY_A, text))
-                    .as("403 forbidden")
-                    .isInstanceOf(IOException.class)
-                    .isNotInstanceOf(CacheBackend.Skipped.class)
+                    .as("403 forbidden: no later write would be taken")
+                    .isInstanceOf(CacheBackend.WritesRefused.class)
                     .hasMessageContaining("forbidden");
+            server.unavailableFor(1);
+            assertThatThrownBy(() -> writer.putRecord(KEY_B, text.replace("KEY " + KEY_A, "KEY " + KEY_B)))
+                    .as("503 unavailable: worth trying again")
+                    .isInstanceOf(CacheBackend.Unavailable.class)
+                    .hasMessageContaining("503 from the service");
             assertThatThrownBy(() -> client(server.url(), "not-a-token")
                             .records(new CacheBackend.Lookup(List.of(KEY_A), "linux-x86_64")))
                     .hasMessageContaining("401 unauthenticated")

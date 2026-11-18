@@ -65,6 +65,8 @@ public final class FakeCacheServer implements AutoCloseable {
     private final AtomicLong byReadsServed = new AtomicLong();
     private volatile long directMin = 1024 * 1024;
     private volatile long stallMillis;
+    private final AtomicLong unavailablePuts = new AtomicLong();
+    private volatile @Nullable String unavailableKey;
 
     /** One record under a key: its text, write class, toolchain and read list. */
     public record Stored(
@@ -111,6 +113,21 @@ public final class FakeCacheServer implements AutoCloseable {
     public FakeCacheServer stall(long millis) {
         stallMillis = millis;
         return this;
+    }
+
+    /**
+     * Answer {@code 503 unavailable} to the next {@code times} puts of one record, the first one put
+     * from now on; every other record is taken as usual.
+     */
+    public FakeCacheServer unavailableFor(long times) {
+        unavailableKey = null;
+        unavailablePuts.set(times);
+        return this;
+    }
+
+    /** The record {@link #unavailableFor} answered 503 to, or null before any put. */
+    public @Nullable String unavailableKey() {
+        return unavailableKey;
     }
 
     /** Serve blob {@code hash} with its first byte flipped from now on. */
@@ -495,6 +512,16 @@ public final class FakeCacheServer implements AutoCloseable {
         if (!writer) {
             problem(ex, 403, "forbidden", "ci-fork callers write nothing", List.of());
             return;
+        }
+        synchronized (unavailablePuts) {
+            if (unavailablePuts.get() > 0) {
+                if (unavailableKey == null) unavailableKey = key;
+                if (key.equals(unavailableKey)) {
+                    unavailablePuts.decrementAndGet();
+                    problem(ex, 503, "unavailable", "the index is not answering", List.of());
+                    return;
+                }
+            }
         }
         String text = MiniJson.str(body, "record");
         if (text == null || !key.equals(header(text, "KEY"))) {

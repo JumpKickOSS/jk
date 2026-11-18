@@ -745,11 +745,12 @@ public final class ActionCache {
 
     /**
      * Hand {@code record} to the build's remote tier for upload behind the build, in the form that
-     * may leave the machine, when the tier writes and the record is one this jk would replay
+     * may leave the machine, when the tier takes uploads (one it stopped counts what it was not
+     * given) and the record is one this jk would replay
      * ({@link ActionRecordText#shareable}). Nothing waits for it here.
      */
     private void offer(ActionRecord record) {
-        if (remote == null || !remote.writes()) return;
+        if (remote == null || !remote.offers()) return;
         ActionRecordText.Parsed parsed = new ActionRecordText.Parsed(
                 Objects.requireNonNull(record.taskId()),
                 Objects.requireNonNull(record.actionKey()),

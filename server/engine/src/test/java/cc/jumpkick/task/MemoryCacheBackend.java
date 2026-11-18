@@ -32,6 +32,10 @@ final class MemoryCacheBackend implements CacheBackend {
     volatile boolean writable = true;
     /** Keys whose put is refused as a record the store does not take. */
     final Set<String> skip = ConcurrentHashMap.newKeySet();
+    /** True to refuse every record put as a store that takes no write from this caller. */
+    volatile boolean readOnly;
+    /** Keys whose next puts answer 503 unavailable, how many times each. */
+    final Map<String, Integer> unavailable = new ConcurrentHashMap<>();
     /** Drop every blob on the first record put, as a sweep between the question and the put would. */
     volatile boolean loseBlobsBeforeFirstPut;
     /** Record puts asked, taken or not. */
@@ -121,6 +125,12 @@ final class MemoryCacheBackend implements CacheBackend {
         if (down) throw new IOException("connection refused");
         puts++;
         if (skip.contains(key)) throw new Skipped("refused_kind: " + key);
+        if (readOnly) throw new WritesRefused("record " + key + ": 403 read_only");
+        Integer left = unavailable.get(key);
+        if (left != null && left > 0) {
+            unavailable.put(key, left - 1);
+            throw new Unavailable("record " + key + ": 503 unavailable");
+        }
         if (loseBlobsBeforeFirstPut) {
             loseBlobsBeforeFirstPut = false;
             blobs.clear();

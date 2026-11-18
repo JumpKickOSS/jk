@@ -101,18 +101,7 @@ final class Json {
             o.put("benefit", b);
         }
 
-        if (r.io() == null) {
-            o.put("io", null);
-        } else {
-            Map<String, Object> io = new LinkedHashMap<>();
-            io.put("remoteUp", r.io().remoteUp());
-            io.put("remoteDown", r.io().remoteDown());
-            io.put("localUp", r.io().localUp());
-            io.put("localDown", r.io().localDown());
-            if (r.io().cacheUp() > 0) io.put("cacheUp", r.io().cacheUp());
-            if (r.io().cacheDown() > 0) io.put("cacheDown", r.io().cacheDown());
-            o.put("io", io);
-        }
+        o.put("io", r.io() == null ? null : ioMap(r.io()));
 
         if (r.publish() != null) o.put("publish", publishMap(r.publish()));
         if (r.delta() != null) o.put("delta", deltaMap(r.delta()));
@@ -398,17 +387,7 @@ final class Json {
                     lng(b, "coveredSkips"), lng(b, "totalSkips"));
         }
 
-        BuildRecord.Io io = null;
-        if (o.get("io") instanceof Map<?, ?> im) {
-            Map<String, Object> i = (Map<String, Object>) im;
-            io = new BuildRecord.Io(
-                    lng(i, "remoteUp"),
-                    lng(i, "remoteDown"),
-                    lng(i, "localUp"),
-                    lng(i, "localDown"),
-                    lng(i, "cacheUp"),
-                    lng(i, "cacheDown"));
-        }
+        BuildRecord.Io io = o.get("io") instanceof Map<?, ?> im ? readIo(im) : null;
 
         BuildRecord.Publish publish = null;
         if (o.get("publish") instanceof Map<?, ?> pm) {
@@ -517,6 +496,33 @@ final class Json {
 
     private static @Nullable String str(Map<?, ?> o, String key) {
         return o.get(key) instanceof String s ? s : null;
+    }
+
+    /** A run's byte totals and not-stored counts as {@code record.json} writes them; the cache rows only when non-zero. */
+    private static Map<String, Object> ioMap(BuildRecord.Io r) {
+        Map<String, Object> io = new LinkedHashMap<>();
+        io.put("remoteUp", r.remoteUp());
+        io.put("remoteDown", r.remoteDown());
+        io.put("localUp", r.localUp());
+        io.put("localDown", r.localDown());
+        if (r.cacheUp() > 0) io.put("cacheUp", r.cacheUp());
+        if (r.cacheDown() > 0) io.put("cacheDown", r.cacheDown());
+        if (r.cacheRecordsNotStored() > 0) io.put("cacheRecordsNotStored", r.cacheRecordsNotStored());
+        if (r.cacheBlobsNotStored() > 0) io.put("cacheBlobsNotStored", r.cacheBlobsNotStored());
+        return io;
+    }
+
+    /** {@link #ioMap} read back; an absent row is 0. */
+    private static BuildRecord.Io readIo(Map<?, ?> i) {
+        return new BuildRecord.Io(
+                lng(i, "remoteUp"),
+                lng(i, "remoteDown"),
+                lng(i, "localUp"),
+                lng(i, "localDown"),
+                lng(i, "cacheUp"),
+                lng(i, "cacheDown"),
+                lng(i, "cacheRecordsNotStored"),
+                lng(i, "cacheBlobsNotStored"));
     }
 
     private static long lng(Map<?, ?> o, String key) {

@@ -91,7 +91,21 @@ public final class RunNotices {
     public static void warnOnce(String key, Supplier<String> message) {
         if (key == null || message == null) return;
         try {
-            Run run = SessionContext.current().io().notices(); // never null: Session's constructor sees to it
+            warnOnce(SessionContext.current().io(), key, message); // never null: Session's constructor sees to it
+        } catch (RuntimeException e) {
+            Log.debug("warnOnce: Unreadable session", e);
+        }
+    }
+
+    /**
+     * As {@link #warnOnce(String, Supplier)} for the run whose ledger is {@code ledger}: for code
+     * that outlives the session it was handed work in (a remote cache's uploads, drained after the
+     * build's body returned).
+     */
+    public static void warnOnce(IoLedger ledger, String key, Supplier<String> message) {
+        if (ledger == null || key == null || message == null) return;
+        try {
+            Run run = ledger.notices();
             if (!claim(run, key)) return;
             String text = message.get();
             if (text == null || text.isEmpty()) return;

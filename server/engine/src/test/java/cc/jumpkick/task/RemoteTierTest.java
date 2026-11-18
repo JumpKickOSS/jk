@@ -14,6 +14,7 @@ import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ToolchainPolicy.Expectation;
 import cc.jumpkick.task.ToolchainPolicy.Match;
 import java.io.IOException;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -238,6 +239,62 @@ class RemoteTierTest {
         assertThat(tier.writes()).as("a skipped record stops nothing").isTrue();
         assertThat(remote.records).containsOnlyKeys("k2");
         assertThat(tier.uploaded()).isEqualTo(1);
+    }
+
+    @Test
+    void a_record_the_store_could_not_take_now_is_tried_again_and_lands(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.unavailable.put("k1", 2);
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true, Duration.ZERO);
+
+        storeThrough(tier, tmp);
+
+        assertThat(remote.records).containsOnlyKeys("k1", "k2");
+        assertThat(tier.uploaded()).isEqualTo(2);
+        assertThat(tier.notStoredLine()).as("everything landed").isNull();
+    }
+
+    @Test
+    void a_record_that_fails_every_try_is_not_stored_the_others_go_and_the_run_says_why(@TempDir Path tmp)
+            throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.unavailable.put("k1", 1_000);
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true, Duration.ZERO);
+
+        storeThrough(tier, tmp);
+
+        assertThat(remote.records).as("one record's failure stops no other").containsOnlyKeys("k2");
+        assertThat(tier.writes()).isTrue();
+        assertThat(remote.unavailable.get("k1"))
+                .as("tried " + RemoteTier.ATTEMPTS + " times, no more")
+                .isEqualTo(1_000 - RemoteTier.ATTEMPTS);
+        assertThat(tier.notStored()).containsExactly(Map.entry("503 unavailable after 4 tries", 1));
+        assertThat(tier.notStoredLine())
+                .isEqualTo("remote cache memory: 1 record not stored (1 503 unavailable after 4 tries)");
+    }
+
+    @Test
+    void a_store_that_refuses_this_callers_writes_stops_the_builds_uploads(@TempDir Path tmp) throws Exception {
+        MemoryCacheBackend remote = new MemoryCacheBackend();
+        remote.readOnly = true;
+        RemoteTier tier = new RemoteTier(remote, "linux-x86_64", true, Duration.ZERO);
+
+        storeThrough(tier, tmp);
+
+        assertThat(tier.writes()).as("no later put would be taken").isFalse();
+        assertThat(tier.notStoredLine())
+                .startsWith("remote cache memory: 2 records not stored (")
+                .contains("403 read_only");
+    }
+
+    @Test
+    void a_failure_is_named_by_the_stores_status_and_code() {
+        assertThat(RemoteTier.reason(new CacheBackend.Unavailable("record abc: 503 unavailable (index down)")))
+                .isEqualTo("503 unavailable");
+        assertThat(RemoteTier.reason(new IOException("blob abc: 500 from the store")))
+                .isEqualTo("500 from the store");
+        assertThat(RemoteTier.reason(new HttpTimeoutException("request timed out")))
+                .isEqualTo("HttpTimeoutException");
     }
 
     @Test

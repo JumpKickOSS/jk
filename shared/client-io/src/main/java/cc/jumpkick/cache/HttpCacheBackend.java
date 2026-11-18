@@ -317,8 +317,12 @@ public final class HttpCacheBackend implements CacheBackend {
                 if (file == null) continue;
                 URI url = signedUrl(r);
                 HttpResponse<byte[]> put = call(() -> direct.putFile(url, file, signedHeaders(r)));
-                if (put.statusCode() / 100 != 2)
-                    throw new IOException("the store refused blob " + hash + " (" + put.statusCode() + ")");
+                if (put.statusCode() / 100 != 2) {
+                    String m = "blob " + hash + ": " + put.statusCode() + " from the store";
+                    throw put.statusCode() == 429 || put.statusCode() / 100 == 5
+                            ? new Unavailable(m)
+                            : new IOException(m);
+                }
             }
             Object committed = post("blobs/commit", Map.of("blobs", digests(chunk, large)), "commit");
             List<?> absent = MiniJson.list(committed, "absent");
@@ -362,7 +366,7 @@ public final class HttpCacheBackend implements CacheBackend {
             case "blobs_missing" -> throw new BlobsMissing(p.message("record " + key), p.missing());
             case "too_large", "invalid", "refused_kind", "red_result", "signature_invalid" ->
                 throw new Skipped(p.message("record " + key));
-            default -> throw new IOException(p.message("record " + key));
+            default -> throw p.failure("record " + key);
         }
     }
 
@@ -377,7 +381,7 @@ public final class HttpCacheBackend implements CacheBackend {
         if (response.statusCode() / 100 != 2) {
             Problem p = Problem.of(response);
             if (p.code().equals("too_large") || p.code().equals("digest_mismatch")) throw new Skipped(p.message(what));
-            throw new IOException(p.message(what));
+            throw p.failure(what);
         }
         try {
             return MiniJson.parse(new String(response.body(), StandardCharsets.UTF_8));
@@ -410,6 +414,20 @@ public final class HttpCacheBackend implements CacheBackend {
                     missing);
         }
 
+        /**
+         * This problem as the failure a caller acts on: {@link WritesRefused} for a refusal every
+         * later write would meet, {@link Unavailable} for one worth retrying (section 7), else a plain
+         * failure.
+         */
+        IOException failure(String what) {
+            String m = message(what);
+            return switch (code) {
+                case "forbidden", "read_only", "unauthenticated", "unsupported_protocol" -> new WritesRefused(m);
+                case "unavailable", "rate_limited" -> new Unavailable(m);
+                default -> status == 429 || status / 100 == 5 ? new Unavailable(m) : new IOException(m);
+            };
+        }
+
         String message(String what) {
             return what + ": " + status + " " + code + (detail.isEmpty() ? "" : " (" + detail + ")");
         }
@@ -428,6 +446,12 @@ public final class HttpCacheBackend implements CacheBackend {
     private static <T> HttpResponse<T> call(Request<T> request) throws IOException {
         try {
             return request.send();
+        } catch (Http.StatusException answered) {
+            // The client hands a 5xx back as a failure, not a response: one the protocol retries.
+            Unavailable retryable =
+                    new Unavailable(answered.getMessage() + ": " + answered.status() + " from the service");
+            retryable.initCause(answered);
+            throw retryable;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted", e);

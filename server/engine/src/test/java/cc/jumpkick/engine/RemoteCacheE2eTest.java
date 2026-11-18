@@ -379,6 +379,50 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     /**
+     * One record the service will not take (503 on every put) is tried a bounded number of times
+     * behind the build and left; every other record is stored, and the run says once, at its end,
+     * what was not stored and why, with the counts in its history.
+     */
+    @Test
+    void a_record_the_service_keeps_refusing_is_left_and_the_rest_are_stored_and_said() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), GREEN);
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer whole = FakeCacheServer.start();
+                FakeCacheServer flaky = FakeCacheServer.start().unavailableFor(Long.MAX_VALUE)) {
+            assertThat(succeeded(build(a, root.resolve("cache-a"), service(whole, FakeCacheServer.WRITER, true))))
+                    .isTrue();
+            settled(a);
+            int all = whole.records().size();
+
+            List<String> built =
+                    buildToJobFinish(b, root.resolve("cache-b"), service(flaky, FakeCacheServer.WRITER, true));
+            assertThat(built)
+                    .as("the build is green: " + built)
+                    .anyMatch(l -> EngineProtocol.WORKSPACE_FINISH.equals(EngineProtocol.typeOf(l))
+                            && Jsonl.bool(l, "success", false));
+            BuildRecord record = settled(b);
+            String refused = requireNonNull(flaky.unavailableKey(), "a record was put");
+            assertThat(flaky.records())
+                    .as("every record but the refused one is stored")
+                    .hasSize(all - 1)
+                    .doesNotContainKey(refused);
+            assertThat(flaky.calls())
+                    .as("the refused record was tried four times")
+                    .filteredOn(c -> c.startsWith("PUT /v0/records/" + refused))
+                    .hasSize(4);
+            assertThat(built.stream().filter(l -> l.contains("not stored")).toList())
+                    .as("one line, after the terminal and before the job's end, says what was not stored and why: "
+                            + built)
+                    .singleElement()
+                    .satisfies(
+                            l -> assertThat(l).contains("1 record not stored (1 503 from the service after 4 tries)"));
+            assertThat(requireNonNull(record.io(), "io").cacheRecordsNotStored())
+                    .isEqualTo(1);
+        }
+    }
+
+    /**
      * A suite keyed by a file it was found to read: a host that never ran it computes its stamp
      * without that file, finds A's result by the read list filed under that stamp, recomputes the
      * stamp from its own copy of the file, and replays the result without starting a test JVM.
@@ -778,7 +822,11 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     }
 
     private List<String> build(Path ws, Path cache, Map<String, String> env) throws IOException {
-        String request = new BuildRequest(
+        return runToWorkspaceFinish(engine, withShell(buildRequest(ws, cache), env));
+    }
+
+    private static String buildRequest(Path ws, Path cache) {
+        return new BuildRequest(
                         ws.toString(),
                         cache.toString(),
                         null,
@@ -804,7 +852,25 @@ class RemoteCacheE2eTest extends EngineServerHarness {
                         null,
                         null)
                 .encode();
-        return runToWorkspaceFinish(engine, withShell(request, env));
+    }
+
+    /**
+     * As {@link #build}, reading on past the terminal to {@code job-finish} as the CLI does: what the
+     * job says as it winds down (its uploads draining) comes in between.
+     */
+    private List<String> buildToJobFinish(Path ws, Path cache, Map<String, String> env) throws IOException {
+        List<String> lines = new ArrayList<>();
+        try (Client c = new Client(EnginePaths.activeSocket(engine))) {
+            c.sendLine(withShell(buildRequest(ws, cache), env));
+            String line;
+            while ((line = c.readLine(Duration.ofMinutes(3))) != null) {
+                lines.add(line);
+                String type = EngineProtocol.typeOf(line);
+                if (EngineProtocol.JOB_FINISH.equals(type)) return lines;
+                if (EngineProtocol.ERROR.equals(type)) throw new IOException("request failed: " + line);
+            }
+        }
+        throw new IOException("disconnected before job-finish: " + lines);
     }
 
     private static boolean succeeded(List<String> lines) {

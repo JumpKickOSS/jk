@@ -12,6 +12,7 @@ import cc.jumpkick.wire.protocol.JobFinishFrame;
 import cc.jumpkick.wire.protocol.JobQueuedFrame;
 import cc.jumpkick.wire.protocol.JobStartFrame;
 import cc.jumpkick.wire.protocol.SuspendedEvent;
+import cc.jumpkick.wire.protocol.WarnEvent;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.SocketChannel;
@@ -315,6 +316,9 @@ public final class WireStream {
      * the end of the request rather than a disconnect that cancels it. Our read side stays open for
      * the line we are waiting for.
      */
+    /** The code a run notice carries on the wire (the engine's {@code RunNotices.CODE}). */
+    private static final String RUN_NOTICE = "notice";
+
     private static void awaitJobFinish(BufferedReader reader, @Nullable SocketChannel ch) {
         if (ch != null) {
             try {
@@ -334,6 +338,12 @@ public final class WireStream {
                 // The engine sends the run's final download state as the job winds down, after the
                 // body's terminal: it closes the burst for whoever shows the downloads.
                 if (EngineProtocol.DOWNLOADS.equals(type)) showDownloads(line);
+                // A run notice the job makes as it winds down, after the terminal: what a writing
+                // build's uploads did not store, known only once they drained. Its last word.
+                if (EngineProtocol.WARN.equals(type)) {
+                    WarnEvent notice = WarnEvent.decode(line);
+                    if (RUN_NOTICE.equals(notice.code())) CliOutput.err(notice.message());
+                }
             }
         } catch (IOException ignored) {
             // Outcome already decided; a broken stream now tells us nothing new.

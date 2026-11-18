@@ -174,6 +174,27 @@ public interface CacheBackend {
         }
     }
 
+    /**
+     * A put the store could not take now ({@code unavailable}, {@code rate_limited}, a 5xx): the
+     * protocol marks it retryable for uploads, so the writer tries it again behind the build.
+     */
+    final class Unavailable extends IOException {
+        public Unavailable(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * The store takes no write from this caller for the rest of the build ({@code forbidden},
+     * {@code read_only}, {@code unauthenticated}, {@code unsupported_protocol}): every later put would
+     * be refused alike, so the writer stops; reads go on.
+     */
+    final class WritesRefused extends IOException {
+        public WritesRefused(String message) {
+            super(message);
+        }
+    }
+
     /** A record put refused because the store lacks blobs it names: upload {@link #missing} and put it again. */
     final class BlobsMissing extends IOException {
         private final Collection<String> missing;

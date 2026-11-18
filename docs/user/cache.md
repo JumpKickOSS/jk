@@ -189,8 +189,14 @@ lets write nothing sends nothing.
 
 **Failures.** The server never fails a build. One that does not answer within 10 seconds, refuses
 the credential or speaks another protocol version is off for the rest of the build after one
-warning, and the build goes on locally (`remote-unreachable` above). An upload it refuses stops the
-build's uploads, noted in the engine log. `--offline` leaves it alone.
+warning, and the build goes on locally (`remote-unreachable` above). An upload that fails is that
+record's alone: one the server cannot take now (`503 unavailable`, `429`, another 5xx, no answer) is
+tried again behind the build, up to four tries half a second, two and eight seconds apart and 64
+retries per build; a record it refuses (`invalid`, `too_large`) is skipped; a refusal of this
+credential's writes (`forbidden`, `read_only`), or three uploads in a row that fail every try, stop
+the build's uploads. Whatever was not stored is said once at the end, `jk: remote cache cache.example.com: 1
+record and 3 blobs not stored (1 503 from the service after 4 tries)`, and counted in the run's history
+(`cacheRecordsNotStored`, `cacheBlobsNotStored`). `--offline` leaves it alone.
 
 What leaves the machine is what a record that leaves the machine holds (see [What is what](#what-is-what)),
 the blobs its outputs name, the action keys a build asks about, its platform (`macos-aarch64`) and the

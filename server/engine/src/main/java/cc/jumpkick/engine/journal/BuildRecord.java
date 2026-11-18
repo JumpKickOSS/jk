@@ -597,12 +597,34 @@ public record BuildRecord(
      * is network traffic — {@code down} fetched from repositories / toolchain downloads, {@code up}
      * published to a remote; {@code local} is build-cache traffic — {@code up} stored into the cache,
      * {@code down} restored back out of it. Every number is stat'ed off files at rest, never counted
-     * through a stream. See {@link cc.jumpkick.task.IoLedger}.
+     * through a stream. {@code cache*NotStored} count the records and blobs a writing run offered a
+     * shared cache that it did not store. See {@link cc.jumpkick.task.IoLedger}.
      */
-    public record Io(long remoteUp, long remoteDown, long localUp, long localDown, long cacheUp, long cacheDown) {
+    public record Io(
+            long remoteUp,
+            long remoteDown,
+            long localUp,
+            long localDown,
+            long cacheUp,
+            long cacheDown,
+            long cacheRecordsNotStored,
+            long cacheBlobsNotStored) {
+
+        public Io(long remoteUp, long remoteDown, long localUp, long localDown, long cacheUp, long cacheDown) {
+            this(remoteUp, remoteDown, localUp, localDown, cacheUp, cacheDown, 0, 0);
+        }
+
         /** The row for a run's {@code totals}. */
         static Io of(IoLedger.Totals t) {
-            return new Io(t.remoteUp(), t.remoteDown(), t.localUp(), t.localDown(), t.cacheUp(), t.cacheDown());
+            return new Io(
+                    t.remoteUp(),
+                    t.remoteDown(),
+                    t.localUp(),
+                    t.localDown(),
+                    t.cacheUp(),
+                    t.cacheDown(),
+                    t.cacheRecordsNotStored(),
+                    t.cacheBlobsNotStored());
         }
     }
 

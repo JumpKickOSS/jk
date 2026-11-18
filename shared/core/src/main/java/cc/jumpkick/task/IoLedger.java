@@ -43,6 +43,8 @@ public final class IoLedger {
     private final LongAdder localDown = new LongAdder();
     private final LongAdder cacheUp = new LongAdder();
     private final LongAdder cacheDown = new LongAdder();
+    private final LongAdder cacheRecordsNotStored = new LongAdder();
+    private final LongAdder cacheBlobsNotStored = new LongAdder();
 
     /** This run's downloads as they stream, for a live display; see {@link TransferBoard}. */
     private final TransferBoard transfers;
@@ -63,7 +65,15 @@ public final class IoLedger {
      * One run's totals, in bytes. {@code remote*} is repository traffic; {@code cache*} is traffic
      * with a remote build cache, kept apart from it.
      */
-    public record Totals(long remoteUp, long remoteDown, long localUp, long localDown, long cacheUp, long cacheDown) {
+    public record Totals(
+            long remoteUp,
+            long remoteDown,
+            long localUp,
+            long localDown,
+            long cacheUp,
+            long cacheDown,
+            long cacheRecordsNotStored,
+            long cacheBlobsNotStored) {
 
         public static final Totals ZERO = new Totals(0, 0, 0, 0, 0, 0);
 
@@ -71,9 +81,20 @@ public final class IoLedger {
             this(remoteUp, remoteDown, localUp, localDown, 0, 0);
         }
 
+        public Totals(long remoteUp, long remoteDown, long localUp, long localDown, long cacheUp, long cacheDown) {
+            this(remoteUp, remoteDown, localUp, localDown, cacheUp, cacheDown, 0, 0);
+        }
+
         /** True when the run moved no bytes at all — nothing worth showing. */
         public boolean isEmpty() {
-            return remoteUp == 0 && remoteDown == 0 && localUp == 0 && localDown == 0 && cacheUp == 0 && cacheDown == 0;
+            return remoteUp == 0
+                    && remoteDown == 0
+                    && localUp == 0
+                    && localDown == 0
+                    && cacheUp == 0
+                    && cacheDown == 0
+                    && cacheRecordsNotStored == 0
+                    && cacheBlobsNotStored == 0;
         }
     }
 
@@ -95,6 +116,15 @@ public final class IoLedger {
     /** Bytes uploaded to a remote build cache (records and blobs this run shared). */
     public void cacheUp(long bytes) {
         if (bytes > 0) cacheUp.add(bytes);
+    }
+
+    /**
+     * Records and blobs this run offered a remote build cache that it did not store: refused, or
+     * failed past their retries. Counts, not bytes; the run's closing line says why.
+     */
+    public void cacheNotStored(int records, int blobs) {
+        if (records > 0) cacheRecordsNotStored.add(records);
+        if (blobs > 0) cacheBlobsNotStored.add(blobs);
     }
 
     /** Bytes fetched from a remote build cache (blobs of records this run restored). */
@@ -132,7 +162,14 @@ public final class IoLedger {
     /** A snapshot of the totals so far; consistent enough for reporting, not an atomic read. */
     public Totals totals() {
         return new Totals(
-                remoteUp.sum(), remoteDown.sum(), localUp.sum(), localDown.sum(), cacheUp.sum(), cacheDown.sum());
+                remoteUp.sum(),
+                remoteDown.sum(),
+                localUp.sum(),
+                localDown.sum(),
+                cacheUp.sum(),
+                cacheDown.sum(),
+                cacheRecordsNotStored.sum(),
+                cacheBlobsNotStored.sum());
     }
 
     /** A file's size on disk, or {@code 0} when it can't be stat'ed (vanished, unreadable, null). */
