@@ -596,6 +596,12 @@ public final class CodeFormatter implements Plugin {
                 return new FileResult(ref.file(), "error", rememberedTimeout(timedOutAt, original));
             }
 
+            // A generator's output is the generator's to shape: formatting it is churn its next run
+            // undoes. Stamped like a clean file, so the next run does not read it again.
+            if (GeneratedSource.isGenerated(original)) {
+                return new FileResult(ref.file(), "skipped", null, null, stampKey);
+            }
+
             if (ref.kind() == Kind.JAVA && isUnnamedClass(original)) {
                 return new FileResult(ref.file(), "skipped", null, null, stampKey);
             }
