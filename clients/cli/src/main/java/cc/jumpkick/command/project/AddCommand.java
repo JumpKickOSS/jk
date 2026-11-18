@@ -7,6 +7,7 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.api.PathDisplay;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Coords;
@@ -162,9 +163,9 @@ public final class AddCommand implements CliCommand {
         if (!Files.exists(file)) return ManifestEditRefusal.print("Add", dir);
         Scope scope = resolveScope();
         if (scope == null) return Exit.USAGE;
-        String version;
+        EngineClient.EditOutcome edit;
         try {
-            version = EngineEdits.applyDetail(
+            edit = EngineEdits.applyOutcome(
                     file,
                     "add-dependency",
                     List.of(
@@ -178,6 +179,7 @@ public final class AddCommand implements CliCommand {
             CommandWedge.printFail("Add", e.getMessage());
             return 1;
         }
+        String version = edit.detail();
         boolean managed = Dependency.MANAGED_KEYWORD.equals(version);
         String msg = "Added "
                 + Coords.shortName(parsed.library())
@@ -205,8 +207,20 @@ public final class AddCommand implements CliCommand {
         }
         CommandWedge.printOk("Add", msg);
         CliOutput.out();
-        CliOutput.out(settleLine(version));
+        CliOutput.out(edit.locked() ? settleLine(version) : unlockedLine(version));
         return 0;
+    }
+
+    /**
+     * The settle line when the relock after the edit did not resolve (its reason was printed above
+     * it): the version is written and nothing is locked, so the line says what moves it next.
+     */
+    static String unlockedLine(String version) {
+        String lock = Theme.colorize("jk lock", Theme.active().warning());
+        if (Dependency.MANAGED_KEYWORD.equals(version)) {
+            return "Version managed by the platform BOM; not locked: " + lock + " once it resolves";
+        }
+        return "Written as " + version + "; not locked: " + lock + " once it resolves";
     }
 
     /**

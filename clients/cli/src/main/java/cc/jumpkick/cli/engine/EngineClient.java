@@ -108,10 +108,17 @@ public final class EngineClient {
         return EngineReads.edit(paths, file, op, args);
     }
 
-    public static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args)
+    public static EditOutcome editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args)
             throws IOException {
         return EngineReads.editDetail(paths, file, op, args);
     }
+
+    /**
+     * An edit the engine wrote: its detail (the version written, a digest, a URL), and whether the
+     * relock after it resolved. When it did not, the engine's warning was printed and nothing may
+     * say the lock was written.
+     */
+    public record EditOutcome(String detail, boolean locked) {}
 
     public static CacheInventoryAck cacheInventory(
             EnginePaths.Paths paths,

@@ -173,7 +173,8 @@ final class EngineReads {
         return changed;
     }
 
-    static String editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args) throws IOException {
+    static EngineClient.EditOutcome editDetail(EnginePaths.Paths paths, Path file, String op, List<String> args)
+            throws IOException {
         return request(
                 paths,
                 new EditRequest(
@@ -189,7 +190,9 @@ final class EngineReads {
                     if (ack.error() != null) throw new IOException(ack.error());
                     warn(ack);
                     String detail = ack.detail();
-                    return detail == null ? "" : detail;
+                    String warning = ack.warning();
+                    return new EngineClient.EditOutcome(
+                            detail == null ? "" : detail, warning == null || warning.isBlank());
                 });
     }
 

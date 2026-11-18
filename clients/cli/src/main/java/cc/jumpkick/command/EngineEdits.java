@@ -22,6 +22,11 @@ public final class EngineEdits {
     }
 
     public static String applyDetail(Path file, String op, List<String> args) throws IOException {
+        return applyOutcome(file, op, args).detail();
+    }
+
+    /** As {@link #applyDetail}, with whether the relock after the edit resolved. */
+    public static EngineClient.EditOutcome applyOutcome(Path file, String op, List<String> args) throws IOException {
         return EngineClient.editDetail(EnginePaths.current(), file, op, args);
     }
 }
