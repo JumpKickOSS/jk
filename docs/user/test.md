@@ -1103,7 +1103,9 @@ A result whose reads were all unset keys no value and is shared as any other.
 hands its clients a key seed, or your team [sets its own](cache.md#results-that-read-your-environment),
 JumpKick also keys such a result a second way, each value HMAC'd under the seed, and asks and
 uploads it by that form. Another machine with the same seed and the same values replays it, with
-no `[env]` configuration; another value, or no seed, runs the suite. Credentials included: a
+no `[env]` configuration; another value, or no seed, runs the suite. With no cache server, your
+team's seed does the same through a cache directory a CI runner restores
+([Cache](cache.md#a-ci-runners-own-cache-with-no-cache-server)). Credentials included: a
 CI runner whose environment carries a token still shares its results, unless you keep those on
 the machine (`[cache] credential-env = "local"`). The names of the variables a suite read travel
 with the result (never a value), so a machine that never ran the suite knows which to read. A suite

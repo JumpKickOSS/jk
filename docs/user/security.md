@@ -106,6 +106,14 @@ names behind a listing. The names of the variables a suite read travel with its 
   it; and never prints it, logs it, puts it in a key, a record, the history or `jk explain`, or
   sends it anywhere. An issued seed is kept per credential, so a credential the server hands no
   seed is never answered with another's. A new seed makes shared results that read the environment miss once.
+- **A team seed with no cache server**: the result is also kept in your cache directory under
+  the seed's key, so a CI runner that restores that directory and sets the same seed replays it
+  ([Cache](cache.md#a-ci-runners-own-cache-with-no-cache-server)). A run without the seed cannot
+  make a record a run with it takes for its own values. The seed does not authenticate a record's
+  contents: whoever can write the restored archive can change any record in it, this one
+  included, as for every record of a restored cache, so restore it only from runs you trust. Whoever
+  holds the seed and the archive can test guesses of a weak value. Cache `~/.jk/cache` alone, never
+  `~/.jk/state`, which holds your home's secret.
 - Whatever its key, a suite that talks to anything but this host is never replayed.
 - Not yet covered: a value a module hands its compilers and plugin steps through `[env]` or a
   plugin table's `env:NAME` (rather than its tests) still enters those steps' keys by plain

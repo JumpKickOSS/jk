@@ -209,8 +209,10 @@ A test suite's result is keyed on the values of the variables it read
 key never shows a value and gives no way to test a guess. On your machine the HMAC's secret is one
 of your JumpKick home, so that key matches there alone. Such a result is shared only under a **key
 seed** every client of the cache holds: the seed the server hands its authenticated clients, or
-one your team sets, which wins. Without either, a result that read your environment stays on the
-machine that ran it, `[env] scope` or not. A result whose reads were all unset keys no value and is
+one your team sets, which wins. With no cache server, your team's seed also shares it through a
+cache directory a CI runner restores ([below](#a-ci-runners-own-cache-with-no-cache-server)).
+Without a seed, a result that read your environment stays on the machine that ran it, `[env]
+scope` or not. A result whose reads were all unset keys no value and is
 shared as before.
 
 ```toml
@@ -266,6 +268,37 @@ read list. Whoever holds the seed and a checkout of the repository can test gues
 against that key: every client the cache hands the seed to (read-only ones too, unless the server
 withholds it from them), and the server when it issued the seed. A team seed keeps the server blind. [Security](security.md#what-a-shared-cache-learns-of-your-environment)
 says the same.
+
+#### A CI runner's own cache, with no cache server
+
+With your team's seed set (`JK_CACHE_KEY_SEED` or `[cache] key-seed-file`) and no shared cache
+(no `JK_CACHE_REMOTE` or `[cache] remote`, or `--offline`), JumpKick keeps a result that read your
+environment in your cache directory twice: under its own key, and beside it under the key the seed
+gives, in the form it would send a cache server (no value, no digest of one). A runner that
+restores `~/.jk/cache` with the CI system's own cache (`actions/cache`, say) and sets the same seed
+replays it without running the suite; a runner with no seed, another seed or another value runs it.
+That takes:
+
+- the same seed in every run that saves or restores the cache directory, from a CI secret;
+- a committed `jk-lock.toml`: without one the project's id comes from the checkout's path, so a
+  runner whose checkout lies elsewhere keys every result apart and replays none of them, silently,
+  as with a cache server;
+- `~/.jk/cache` alone. The names of the variables a suite read (never their values) are kept there
+  too, under `projects/`, so a fresh runner keys the suite as the run before it did. Never cache
+  `~/.jk/state`: it holds your home's secret and the credentials JumpKick keeps.
+
+Such a replay reads as a `remote-hit` in `jk history`: the result was made on another machine.
+Without a cache server the seed is derived under a fixed word, not a URL, so it keys alike on every
+runner whatever its paths, home or user, and apart from the keys it gives for any cache server. An
+issued seed never keys these copies, and with a cache server named, the server alone shares. `off`,
+a seed under 16 characters and `credential-env = "local"` do here what they do with a server, and a
+suite that talks to another host is still never replayed.
+
+A restored cache directory is trusted as it comes, every record in it, so restore one only from
+runs you trust: on GitHub a pull request's run cannot save into the default branch's cache, but
+other CI systems differ. The seed keeps a run without it from making a record that a run with it
+would take for its own values; it does not prove a record's contents, and whoever holds the seed
+and the archive can test guesses of a short value against its key.
 
 ## Hygiene
 

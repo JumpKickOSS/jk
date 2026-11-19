@@ -28,6 +28,12 @@ JumpKick shows you this page's new entries after it updates itself.
   `~/.jk/config.toml`), another machine with the same values replays the result, with no `[env]`
   configuration, credentials included (`[cache] credential-env = "local"` keeps those on the
   machine). Only one combined key leaves the machine, never a value.
+- **A CI runner's own cache replays those tests too, with no cache server.** With your team's
+  seed set and no shared cache, a result that read your shell is also kept under the seed's key in
+  `~/.jk/cache`, so a runner that restores that directory (`actions/cache`, say) and sets the same
+  `JK_CACHE_KEY_SEED` replays it; no seed, another seed or another value runs the suite. It needs a
+  committed `jk-lock.toml`; cache `~/.jk/cache`, never `~/.jk/state`
+  ([Cache](cache.md#a-ci-runners-own-cache-with-no-cache-server)).
 - **Without a seed, a result keyed on a value of your environment stays on its machine, `[env]
   scope` included.** A scoped or declared value no longer keys by its plain digest, which anyone
   holding the key and a checkout could test guesses against. If you share scoped suites through a
