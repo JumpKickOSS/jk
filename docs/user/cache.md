@@ -222,10 +222,14 @@ key-seed-file = "~/team-cache-seed"   # a file holding your team's seed, at leas
 `JK_CACHE_KEY_SEED=<seed>` does the same for one shell (a CI secret, say from `openssl rand -base64
 32`); `off` takes no seed, the issued one included. Never put the seed in `jk.toml` or the
 repository. JumpKick never hands `JK_CACHE_KEY_SEED` to a test, a compiler or any other worker
-(`[env] inherit` and a declared name included), keys nothing on it, and never prints it, logs it or
-sends it anywhere. The seed is scoped to the cache URL, so point every machine at the same URL. JumpKick
-keeps an issued seed in its home, readable by you alone, and asks for it again after an hour, so a
-seed the server rotates reaches every machine within the hour; rotating makes the shared results
+(`[env] inherit` included), nor to any other program the engine starts (npm, `git`, the AOT trainer),
+even when the shell that started the engine exported it; keys nothing on it; and never prints it,
+logs it or sends it anywhere. A `jk.toml` that names it (in `[env]`, `[test] env`, a `${…}` value or
+a plugin table's `env:`) is refused, naming the place. The seed is scoped to the cache URL, so point
+every machine at the same URL. JumpKick keeps an issued seed in its home, readable by you alone, one
+copy per cache and credential (named by a digest under your home's secret, never by the token), and
+asks for it again after an hour, so a seed the server rotates reaches every machine within the hour
+and a machine that changes to a credential the server hands less asks again at once; rotating makes the shared results
 that read the environment miss once, and nothing else. A server that issues none answers 404, and
 then only a team's seed shares. A server may also hand its seed only to credentials that write and
 answer 404 to one that may only read: a fork's CI build may be given no seed, and then it says

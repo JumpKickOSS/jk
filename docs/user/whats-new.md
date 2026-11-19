@@ -26,6 +26,10 @@ JumpKick shows you this page's new entries after it updates itself.
   holding the key and a checkout could test guesses against. If you share scoped suites through a
   cache that issues no seed, set the same `JK_CACHE_KEY_SEED` on every machine to keep sharing
   ([Cache](cache.md#results-that-read-your-environment)).
+- **The key seed stays inside JumpKick.** No program the engine starts (npm, `git`, the AOT
+  trainer) is handed a `JK_CACHE_KEY_SEED` the engine's shell exported, a `jk.toml` that names it
+  is refused, and a machine that changes to a credential the server hands no seed stops using
+  the one it was handed before.
 
 ## 0.53.1
 

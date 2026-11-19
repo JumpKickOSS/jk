@@ -65,8 +65,11 @@ names behind a listing. The names of the variables a suite read travel with its 
   (read-only ones too, unless it withholds the seed from them, as from a fork's CI build), and the
   server when it issued the seed. A team-set seed keeps the server blind.
 - The seed lives in your JumpKick home or your shell, never in the repository; JumpKick never hands
-  it to a test, a compiler or any other worker (`[env] inherit` included), prints it, logs it, puts it in a key, a record, the history or `jk explain`, or
-  sends it anywhere. A new seed makes shared results that read the environment miss once.
+  it to a test, a compiler or any other worker (`[env] inherit` included) or to any other program
+  its engine starts, even one started from a shell that exported it; refuses a `jk.toml` that names
+  it; and never prints it, logs it, puts it in a key, a record, the history or `jk explain`, or
+  sends it anywhere. An issued seed is kept per credential, so a credential the server hands no
+  seed is never answered with another's. A new seed makes shared results that read the environment miss once.
 - Whatever its key, a suite that talks to anything but this host is never replayed.
 - Not yet covered: a value a module hands its compilers and plugin steps through `[env]` (rather
   than its tests) still enters those steps' keys by plain digest, and those keys may be shared.
