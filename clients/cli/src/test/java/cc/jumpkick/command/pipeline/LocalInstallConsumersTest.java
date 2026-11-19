@@ -56,7 +56,9 @@ class LocalInstallConsumersTest {
                 m2Dir("liba-shelf"),
                 m2Dir("liba-float"),
                 m2Dir("liba-new"),
-                shelfDir("liba-shelf"))) {
+                m2Dir("liba-again"),
+                shelfDir("liba-shelf"),
+                shelfDir("liba-again"))) {
             if (Files.exists(dir)) PathUtil.deleteRecursivelyOrThrow(dir);
         }
     }
@@ -308,6 +310,38 @@ class LocalInstallConsumersTest {
         assertThat(row.source()).isEqualTo(RepositorySpec.LOCAL_INSTALL);
         assertThat(row.checksumHex())
                 .isEqualTo(Hashing.sha256Hex(shelf.resolve("0.1.0-SNAPSHOT/" + name + "-0.1.0-SNAPSHOT.jar")));
+    }
+
+    /**
+     * The default install goes to the shelf, and B's build reads the shelved jar where it is, so the
+     * engine's lingering compiler still has that file open when A is installed again: on Windows
+     * the rename onto it is refused until the engine lets the idle worker go.
+     */
+    @Test
+    void a_snapshot_reinstalled_to_the_shelf_by_default_replaces_the_jar_another_build_compiled_against(
+            @TempDir Path tmp) throws Exception {
+        String name = "liba-again";
+        Path lib = library(tmp, name, "one");
+        assertThat(jk(lib, "install", "-S")).isEqualTo(0);
+        Path jar = shelfDir(name).resolve("0.1.0-SNAPSHOT").resolve(name + "-0.1.0-SNAPSHOT.jar");
+        assertThat(jar).as("the default install goes to the shelf").isRegularFile();
+        assertThat(m2Jar(name)).doesNotExist();
+        Path app = consumer(tmp, name, "0.1.0-SNAPSHOT");
+        assertThat(jk(app, "build", "-S")).isEqualTo(0);
+        String first = row(app, name).checksumHex();
+        assertThat(first).isEqualTo(Hashing.sha256Hex(jar));
+
+        library(tmp, name, "two");
+        assertThat(jk(lib, "install", "-S"))
+                .as("installed again within the compiler's linger")
+                .isEqualTo(0);
+        String again = Hashing.sha256Hex(jar);
+        assertThat(again).isNotEqualTo(first);
+
+        assertThat(jk(app, "build", "-S")).isEqualTo(0);
+        assertThat(row(app, name).checksumHex())
+                .as("the build re-locked onto the re-installed jar")
+                .isEqualTo(again);
     }
 
     /**

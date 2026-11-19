@@ -69,10 +69,19 @@ public final class JavaCompilerHost {
     /**
      * How warm the resident compiler is for the next build: the compiles its lingering worker has
      * answered, 0 when none lingers (after an engine start, or once the linger ran out), so the
-     * build's first compiles start a JVM and a cold JIT (JK-D3785).
+     * build's first compiles start a JVM and a cold JIT.
      */
     public static int warmth() {
         return CompilerPool.lingeringWarmth();
+    }
+
+    /**
+     * Stop every resident compiler worker with nothing to compile and wait for it to exit: a worker
+     * keeps the jars on its classpaths open, which Windows will not let anything replace. Returns how
+     * many compiler pools are still busy with a build.
+     */
+    public static int retireIdle() {
+        return CompilerPool.retireIdleNow();
     }
 
     static ForkedJavac.Result compile(ForkedJavac.Request req) {

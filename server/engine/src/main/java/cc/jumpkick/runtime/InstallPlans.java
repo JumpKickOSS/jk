@@ -2,13 +2,16 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkInstallConfig;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceResolve;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.HeldOpen;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
@@ -44,6 +47,7 @@ import cc.jumpkick.run.Task;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.runtime.base.BuildLogicKtsHost;
 import cc.jumpkick.task.ModuleIdentity;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.io.IOException;
@@ -228,7 +232,7 @@ public final class InstallPlans {
         ctx.label("install " + coord.group() + ":" + coord.artifact() + ":" + coord.version() + " to local repo");
         try {
             installed = cacheInstallArtifact(project, layout, cache, m2Dir, override);
-        } catch (Refusal refused) {
+        } catch (Refusal | HeldOpen.Held refused) {
             ctx.error(TaskNames.CACHE_INSTALL, Errors.text(refused));
             throw new RuntimeException(refused);
         } catch (IOException e) {
@@ -381,8 +385,15 @@ public final class InstallPlans {
         if (destination == InstallDestination.JK) {
             ModuleOutcome.Installed.Change change =
                     checkShelfSlot(coord, Hashing.sha256Hex(jar), Hashing.sha256Hex(pomBytes));
-            String jarSha = writeToLocalStore(cacheDir, jarRelPath, jar);
-            String pomSha = writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes);
+            Path shelf = shelfRoot();
+            String jarSha = HeldOpen.replace(
+                    shelf.resolve(jarRelPath),
+                    () -> writeToLocalStore(cacheDir, jarRelPath, jar),
+                    InstallPlans::releaseHeldJars);
+            String pomSha = HeldOpen.replace(
+                    shelf.resolve(pomRelPath),
+                    () -> writeBytesToLocalStore(cacheDir, pomRelPath, pomBytes),
+                    InstallPlans::releaseHeldJars);
             if (PluginModule.isWorker(layout.moduleRoot())) stageWorkerClosure(coord, cacheDir, jarRelPath);
             return new ModuleOutcome.Installed(coord.toGav(), jarSha, pomSha, destination, change);
         }
@@ -394,9 +405,11 @@ public final class InstallPlans {
         String pomSha = Hashing.sha256Hex(pomBytes);
         ModuleOutcome.Installed.Change change = checkSlot(coord, m2Root, jarSha, pomSha);
         if (change != ModuleOutcome.Installed.Change.UNCHANGED) {
-            M2CompatWriter.MavenHashes jarH = M2CompatWriter.copyToM2AndHash(jar, m2Jar);
+            M2CompatWriter.MavenHashes jarH = HeldOpen.replace(
+                    m2Jar, () -> M2CompatWriter.copyToM2AndHash(jar, m2Jar), InstallPlans::releaseHeldJars);
             M2CompatWriter.writeMavenSidecars(m2Jar, jarH.sha1(), jarH.md5());
-            M2CompatWriter.MavenHashes pomH = M2CompatWriter.writeBytesToM2(pomBytes, m2Pom);
+            M2CompatWriter.MavenHashes pomH = HeldOpen.replace(
+                    m2Pom, () -> M2CompatWriter.writeBytesToM2(pomBytes, m2Pom), InstallPlans::releaseHeldJars);
             M2CompatWriter.writeMavenSidecars(m2Pom, pomH.sha1(), pomH.md5());
             // Maven marks what its own install wrote with an empty repository id; any other id makes
             // a build without that repository refuse the file as one it cannot re-verify.
@@ -500,6 +513,24 @@ public final class InstallPlans {
         return slot.jar() != null && slot.pom() != null
                 ? ModuleOutcome.Installed.Change.UNCHANGED
                 : ModuleOutcome.Installed.Change.NEW;
+    }
+
+    /**
+     * Stop this engine's idle compiler, plugin and build-script workers, whose classpaths keep jars
+     * open, and wait for them to exit. The holder named is a worker still busy with another build,
+     * else a program outside this engine.
+     */
+    static HeldOpen.Holder releaseHeldJars() {
+        BuildLogicKtsHost.retireIdle();
+        int compilers = JavaCompilerHost.retireIdle();
+        List<String> plugins = WarmWorkers.retireIdle();
+        String later = "run jk install again when that build ends";
+        if (compilers > 0) return new HeldOpen.Holder("the Java compiler of a jk build still running", later);
+        if (!plugins.isEmpty()) {
+            return new HeldOpen.Holder("the " + plugins.getFirst() + " worker of a jk build still running", later);
+        }
+        return new HeldOpen.Holder(
+                "another program, such as an IDE or another jk engine", "close it, or run jk engine stop -A");
     }
 
     /** Remember that jk wrote {@code coord}'s files in {@code m2Root} with these bytes. */

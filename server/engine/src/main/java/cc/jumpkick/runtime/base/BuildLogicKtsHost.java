@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.run.SessionCancel;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.function.BooleanSupplier;
 
 /**
@@ -49,6 +50,14 @@ public final class BuildLogicKtsHost {
         // The owning step's cancel — a sibling step's failure or a Ctrl-C mid-script — stops the
         // script, not just the build waiting on it, and frees the shared host for the next build.
         return KtsSession.run(script, projectDir, outDir, cancelled);
+    }
+
+    /**
+     * Stop the shared host once no script is running on it and wait for it to exit: a script's
+     * {@code @file:DependsOn} jars stay open for as long as the host lives.
+     */
+    public static void retireIdle() {
+        KtsSession.shedIdle(Duration.ZERO);
     }
 
     /**

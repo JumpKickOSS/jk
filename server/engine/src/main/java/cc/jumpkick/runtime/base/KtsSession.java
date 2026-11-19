@@ -266,12 +266,12 @@ final class KtsSession {
         clock = c;
     }
 
-    /** Ask the child to exit and wait briefly; a child that does not go is killed. */
+    /** Ask the child to exit and wait briefly; a child that does not go is killed and waited for. */
     private void exit() {
         dismissReaper();
         try {
             toChild.send("EXIT");
-            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly();
+            if (!process.waitFor(5, TimeUnit.SECONDS)) process.destroyForcibly().waitFor(5, TimeUnit.SECONDS);
         } catch (RuntimeException | InterruptedException e) {
             process.destroyForcibly();
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();

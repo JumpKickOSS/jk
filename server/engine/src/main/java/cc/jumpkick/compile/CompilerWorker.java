@@ -185,6 +185,17 @@ final class CompilerWorker {
         process = forked;
     }
 
+    /** Wait up to {@code millis} for the forked process to be gone; the files it had open close with it. */
+    void awaitExit(long millis) {
+        Process p = process;
+        if (p == null) return;
+        try {
+            p.waitFor(millis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     /** Test seam: how {@link #kill} stops a worker that has no process. */
     void killWith(Runnable stop) {
         killer = stop;

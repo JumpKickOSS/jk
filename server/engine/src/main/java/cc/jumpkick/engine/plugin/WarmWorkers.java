@@ -162,6 +162,19 @@ public final class WarmWorkers {
         return shed.size();
     }
 
+    /**
+     * End every idle worker now and wait for each to exit, which closes the jars it had open; the
+     * names of the workers still running a plugin, which are left to finish.
+     */
+    public static List<String> retireIdle() {
+        shedIdle(Duration.ZERO);
+        List<String> busy = new ArrayList<>();
+        for (Worker w : LIVE) {
+            if (w.process.isAlive() && w.busy.get()) busy.add(w.name);
+        }
+        return busy;
+    }
+
     /** Stop every worker now: the engine's shutdown, and the test seam. */
     public static void shutdown() {
         synchronized (IDLE) {

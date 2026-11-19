@@ -733,13 +733,41 @@ final class CompilerPool {
 
     /** Retire when no item is on this pool, and say whether it did. Closed off the caller's thread. */
     boolean retireIfIdle() {
+        boolean retired = unlistIfIdle();
+        if (retired) CompilerWorker.detached("jk-javac-retire", this::close);
+        return retired;
+    }
+
+    /**
+     * Retire every resident pool with no item on it, on the caller's thread, and wait for its
+     * workers' processes to be gone, so every file they had open is closed. Returns how many pools
+     * are still compiling: resident ones with items, and every job's own.
+     */
+    static int retireIdleNow() {
+        int busy = 0;
+        for (CompilerPool pool : List.copyOf(POOLS.values())) {
+            if (pool.job != null || !pool.unlistIfIdle()) {
+                busy++;
+                continue;
+            }
+            List<CompilerWorker> live;
+            synchronized (pool) {
+                live = List.copyOf(pool.workers);
+            }
+            pool.close();
+            for (CompilerWorker w : live) w.awaitExit(closeWaitMillis);
+        }
+        return busy;
+    }
+
+    /** Take this pool off {@link #POOLS} when no item is on it; whether it did. */
+    private boolean unlistIfIdle() {
         boolean[] retired = {false};
         POOLS.computeIfPresent(key, (k, p) -> {
             if (p != this || busy()) return p;
             retired[0] = true;
             return null;
         });
-        if (retired[0]) CompilerWorker.detached("jk-javac-retire", this::close);
         return retired[0];
     }
 
