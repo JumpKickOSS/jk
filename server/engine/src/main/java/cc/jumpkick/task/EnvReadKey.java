@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.task;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
@@ -15,13 +15,14 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * The secret a suite's environment reads are keyed under ({@link SuiteEnvReads}): 32 random bytes
+ * The secret a suite's environment reads are keyed under ({@code SuiteEnvReads}), and the copies of
+ * an issued key seed are named under ({@link CacheSeeds}): 32 random bytes
  * made once per jk home, kept in its state directory readable by the owner alone. A key carries an
  * HMAC of each value under it rather than a plain digest, so a key that leaves this host gives no
  * way to test guesses at a short secret it hashes. A home whose secret is lost or replaced keys
  * every such suite anew: it runs once more, never takes a wrong result.
  */
-final class EnvReadKey {
+public final class EnvReadKey {
 
     private static final String FILE = "env-read.key";
 
@@ -35,12 +36,12 @@ final class EnvReadKey {
      * This jk home's key, read from its state directory, or made and kept there when there is none.
      * Read again for each key taken: a home is free to change under a resident engine.
      */
-    static EnvReadKey load() {
+    public static EnvReadKey load() {
         return new EnvReadKey(readOrMake(JkDirs.state().resolve(FILE)));
     }
 
     /** The HMAC-SHA256 of {@code text} under this key, hex. */
-    String hmac(String text) {
+    public String hmac(String text) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret, "HmacSHA256"));

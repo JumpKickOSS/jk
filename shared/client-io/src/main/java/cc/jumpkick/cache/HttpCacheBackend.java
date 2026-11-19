@@ -27,6 +27,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -62,6 +63,9 @@ public final class HttpCacheBackend implements CacheBackend {
     private final Http direct;
     private volatile @Nullable Known known;
 
+    /** The {@code Authorization} this client sends, read once; only its digest leaves ({@link #caller}). */
+    private final Optional<String> authorization;
+
     /**
      * A backend for the service at {@code base} ({@code https://cache.example.com}, or under a path
      * prefix), reached through {@code http} (whose retries and timeouts the caller chose), sending
@@ -73,6 +77,7 @@ public final class HttpCacheBackend implements CacheBackend {
         if (this.base.getHost() == null) throw new IllegalArgumentException("a cache URL needs a host: " + base);
         Optional<String> auth =
                 Objects.requireNonNull(authorization, "authorization").get();
+        this.authorization = auth;
         this.direct = Objects.requireNonNull(http, "http");
         this.api = http.withAuthorization(uri -> RepositorySpec.sameOrigin(uri, this.base) ? auth : Optional.empty());
     }
@@ -157,6 +162,11 @@ public final class HttpCacheBackend implements CacheBackend {
                 + base.getHost().toLowerCase(Locale.ROOT)
                 + (base.getPort() == -1 ? "" : ":" + base.getPort())
                 + (base.getRawPath() == null ? "" : base.getRawPath());
+    }
+
+    @Override
+    public String caller(UnaryOperator<String> digest) {
+        return digest.apply(authorization.orElse(""));
     }
 
     /** The version of the {@code key-seed} answer this client reads. */

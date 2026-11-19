@@ -5,6 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.CacheBackend;
+import cc.jumpkick.cache.HttpCacheBackend;
+import cc.jumpkick.cache.testing.FakeCacheServer;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.Http;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,7 +17,9 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -26,6 +32,9 @@ import org.junit.jupiter.api.io.TempDir;
 class CacheSeedsTest {
 
     private static final String TEAM = "made-up-team-seed-0123";
+
+    /** A stand-in for the home's HMAC: what a kept copy's name is taken under. */
+    private static final UnaryOperator<String> MAC = text -> Hashing.sha256Hex("made-up-home-secret\u0000" + text);
 
     private static CacheBackend.IssuedSeed issued(String id) {
         return new CacheBackend.IssuedSeed(id, "made-up-issued-seed-0123456789abc".getBytes(StandardCharsets.UTF_8));
@@ -70,8 +79,8 @@ class CacheSeedsTest {
         backend.issued = issued("proj:1");
         Path dir = tmp.resolve("cache-seeds");
 
-        KeySeed first = CacheSeeds.issued(backend, dir);
-        KeySeed again = CacheSeeds.issued(backend, dir);
+        KeySeed first = CacheSeeds.issued(backend, dir, MAC);
+        KeySeed again = CacheSeeds.issued(backend, dir, MAC);
 
         assertThat(first).isNotNull().isEqualTo(again);
         assertThat(first).isEqualTo(KeySeed.derive(issued("proj:1").seed(), "issued\u0000memory\u0000proj:1"));
@@ -87,9 +96,49 @@ class CacheSeedsTest {
         // An hour on, the cache is asked again and its rotated seed taken.
         Files.writeString(kept, Files.readString(kept).replaceFirst("fetched \\d+", "fetched 0"));
         backend.issued = issued("proj:2");
-        KeySeed rotated = CacheSeeds.issued(backend, dir);
+        KeySeed rotated = CacheSeeds.issued(backend, dir, MAC);
         assertThat(backend.seedAsks).isEqualTo(2);
         assertThat(rotated).isNotEqualTo(first);
+    }
+
+    /**
+     * The kept copy is the answer to one credential: a home that changes to a token the cache hands
+     * no seed (a reader, a fork's CI identity) asks again and takes none, rather than keep the
+     * writer's for the rest of its hour, and the writer's own copy still answers the writer. No
+     * file names or holds a token.
+     */
+    @Test
+    void a_kept_seed_answers_the_credential_it_was_issued_to_and_no_other(@TempDir Path tmp) throws Exception {
+        byte[] seed = "made-up-issued-seed-0123456789abcdef".getBytes(StandardCharsets.UTF_8);
+        Path dir = tmp.resolve("cache-seeds");
+        try (FakeCacheServer service = FakeCacheServer.start().issueSeedToWritersOnly("proj:1", seed)) {
+            HttpCacheBackend writer = new HttpCacheBackend(
+                    service.url(), new Http(), () -> Optional.of("Bearer " + FakeCacheServer.WRITER));
+            HttpCacheBackend reader = new HttpCacheBackend(
+                    service.url(), new Http(), () -> Optional.of("Bearer " + FakeCacheServer.READER));
+
+            KeySeed written = CacheSeeds.issued(writer, dir, MAC);
+            assertThat(written).isNotNull();
+            assertThat(CacheSeeds.issued(reader, dir, MAC))
+                    .as("the reader is asked for itself, and handed none")
+                    .isNull();
+            assertThat(CacheSeeds.issued(writer, dir, MAC)).isEqualTo(written);
+            assertThat(service.calls().stream()
+                            .filter(c -> c.contains("key-seed"))
+                            .count())
+                    .as("asked once per credential")
+                    .isEqualTo(2);
+            try (var files = Files.list(dir)) {
+                for (Path kept : files.toList()) {
+                    assertThat(kept.getFileName().toString())
+                            .doesNotContain(FakeCacheServer.WRITER)
+                            .doesNotContain(FakeCacheServer.READER);
+                    assertThat(Files.readString(kept))
+                            .doesNotContain(FakeCacheServer.WRITER)
+                            .doesNotContain(FakeCacheServer.READER);
+                }
+            }
+        }
     }
 
     @Test
@@ -97,14 +146,14 @@ class CacheSeedsTest {
         MemoryCacheBackend backend = new MemoryCacheBackend();
         Path dir = tmp.resolve("cache-seeds");
 
-        assertThat(CacheSeeds.issued(backend, dir)).isNull();
-        assertThat(CacheSeeds.issued(backend, dir)).isNull();
+        assertThat(CacheSeeds.issued(backend, dir, MAC)).isNull();
+        assertThat(CacheSeeds.issued(backend, dir, MAC)).isNull();
         assertThat(backend.seedAsks).isEqualTo(1);
 
         MemoryCacheBackend failing = new MemoryCacheBackend();
         failing.scope = "another";
         failing.seedFailure = new IOException("key seed: 503 unavailable");
-        assertThatThrownBy(() -> CacheSeeds.issued(failing, dir)).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> CacheSeeds.issued(failing, dir, MAC)).isInstanceOf(IOException.class);
     }
 
     @Test

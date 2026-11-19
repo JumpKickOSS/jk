@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -106,6 +107,16 @@ public interface CacheBackend {
      */
     default @Nullable IssuedSeed keySeed() throws IOException {
         return null;
+    }
+
+    /**
+     * Who this store answers {@link #keySeed} for, as {@code digest} of the credential this client
+     * sends ({@code ""} for none): a store may hand one caller a seed and a lesser one none, so what
+     * a home keeps of the answer is kept per caller. Only the digest leaves this object, never the
+     * credential.
+     */
+    default String caller(UnaryOperator<String> digest) {
+        return digest.apply("");
     }
 
     /**

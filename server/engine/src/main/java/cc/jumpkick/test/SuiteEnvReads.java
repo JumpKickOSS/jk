@@ -10,6 +10,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.EnvReadKey;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeySeed;
 import cc.jumpkick.wire.protocol.ProjectInfo;

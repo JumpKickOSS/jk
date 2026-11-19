@@ -20,6 +20,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,8 +34,9 @@ import org.jspecify.annotations.Nullable;
  * takes no seed at all. A team seed shorter than {@value #MIN_CHARS} characters is refused, said once:
  * a seed is what keeps a short value from being guessed.
  *
- * <p>An issued seed is kept in this jk home's state, readable by its owner alone, one file per cache,
- * and asked again once it is {@link #KEEP} old, so a cache that rotates its seed reaches every client
+ * <p>An issued seed is kept in this jk home's state, readable by its owner alone, one file per cache
+ * and caller (named by an HMAC under the home's secret of the cache and the credential, never the
+ * credential), and asked again once it is {@link #KEEP} old, so a cache that rotates its seed reaches every client
  * within that. The answer that the cache issues none is kept as long. Neither seed is ever printed,
  * logged or sent anywhere.
  *
@@ -62,6 +64,9 @@ public final class CacheSeeds {
 
     /** The fewest characters a team seed is taken with. */
     static final int MIN_CHARS = 16;
+
+    /** What a kept copy's name is an HMAC of, before the cache's scope and the caller's credential. */
+    private static final String KEPT_DOMAIN = "jk kept key seed 1\u0000";
 
     /** How long an issued seed, or the answer that there is none, is kept before the cache is asked again. */
     static final Duration KEEP = Duration.ofHours(1);
@@ -153,14 +158,21 @@ public final class CacheSeeds {
         return switch (source) {
             case Team t -> KeySeed.derive(t.seed(), "team\u0000" + backend.seedScope());
             case Off o -> null;
-            case Issued i -> issued(backend, JkDirs.state().resolve("cache-seeds"));
+            case Issued i -> issued(backend, JkDirs.state().resolve("cache-seeds"), EnvReadKey.load()::hmac);
         };
     }
 
-    /** The cache's issued seed as a key, from what this home keeps when it is fresh, else asked. */
-    static @Nullable KeySeed issued(CacheBackend backend, Path dir) throws IOException {
+    /**
+     * The cache's issued seed as a key, from what this home keeps when it is fresh, else asked. The
+     * kept copy is the answer to one caller: its file is named by {@code mac}, an HMAC under this
+     * home's secret, of the cache's scope and the credential this client sends ({@link
+     * CacheBackend#caller}), so a home that changes to a credential the cache hands less is asked
+     * again rather than keep the other's seed, and no file names or holds the credential.
+     */
+    static @Nullable KeySeed issued(CacheBackend backend, Path dir, UnaryOperator<String> mac) throws IOException {
         String scope = backend.seedScope();
-        Path file = dir.resolve(Hashing.sha256Hex(scope).substring(0, 32));
+        Path file = dir.resolve(backend.caller(credential -> mac.apply(KEPT_DOMAIN + scope + "\u0000" + credential))
+                .substring(0, 32));
         CacheBackend.IssuedSeed seed;
         Kept kept = Kept.read(file);
         if (kept != null && Clock.SYSTEM.millis() - kept.fetchedMillis() < KEEP.toMillis()) {
@@ -169,6 +181,8 @@ public final class CacheSeeds {
             seed = backend.keySeed();
             try {
                 OwnerOnlyFiles.write(dir, file, Kept.render(Clock.SYSTEM.millis(), seed));
+                // The copy a jk before per-caller copies kept for every caller of this cache.
+                Files.deleteIfExists(dir.resolve(Hashing.sha256Hex(scope).substring(0, 32)));
             } catch (IOException unwritable) {
                 Log.debug("cache key seed not kept; asked again next build", unwritable);
             }
