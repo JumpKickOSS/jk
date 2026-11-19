@@ -53,12 +53,20 @@ class SelfUpdateClientTest {
     }
 
     @Test
-    void the_updated_line_names_both_versions_and_the_release_notes() {
+    void the_updated_line_names_both_versions_within_78_columns() {
         var ctx = new RenderContext(Theme.active(), false, NerdFontCaps.NONE, 200, 0);
         assertThat(SelfUpdatePrompt.announcement(ctx, "0.50.3", "0.51.0"))
-                .contains("Updated")
-                .contains("JumpKick was updated to 0.51.0 (from 0.50.3). What's new: "
-                        + "https://github.com/JumpKickOSS/jk/releases/tag/v0.51.0");
+                .isEqualTo("jk: ^ Updated > JumpKick was updated to 0.51.0 (from 0.50.3)")
+                .hasSizeLessThanOrEqualTo(78);
+    }
+
+    @Test
+    void the_shell_hooks_are_never_followed_by_the_notice() {
+        for (String hook : List.of("hook-env", "activate", "deactivate")) {
+            assertThat(SelfUpdatePrompt.eligible(hook, List.of(hook, "-s", "zsh"), 0))
+                    .as(hook)
+                    .isFalse();
+        }
     }
 
     @Test

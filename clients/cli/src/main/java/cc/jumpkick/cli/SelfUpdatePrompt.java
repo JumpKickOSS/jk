@@ -43,7 +43,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>The first such command after an install says so, once:
  *
- * <pre> ↑ Updated  JumpKick was updated to 0.51.0 (from 0.50.3). What's new: https://… </pre>
+ * <pre> ↑ Updated  JumpKick was updated to 0.51.0 (from 0.50.3) </pre>
  *
  * <p>The offer comes whenever updating is on and a newer release is staged ({@link UpdateOffer}):
  * before 1.0 that is always, and the engine installs the update at its next quiet spell anyway, so
@@ -55,8 +55,12 @@ final class SelfUpdatePrompt {
     /** How stale the "a person was here" stamp may get before it is written again. */
     static final Duration SEEN_REFRESH = Duration.ofHours(1);
 
-    /** Commands after which jk never prompts: jk managing itself, and long-lived protocol servers. */
-    static final Set<String> QUIET_COMMANDS = Set.of("self", "engine", "mcp", "lsp", "completion", "shell");
+    /**
+     * Commands after which jk never prompts: jk managing itself, long-lived protocol servers, and
+     * the shell hooks, whose stdout the shell captures, so their chrome would render plain.
+     */
+    static final Set<String> QUIET_COMMANDS =
+            Set.of("self", "engine", "mcp", "lsp", "completion", "shell", "hook-env", "activate", "deactivate");
 
     /** The question on the yellow chip. */
     static final String QUESTION = "A new version of JumpKick is available. Update Now?";
@@ -118,9 +122,9 @@ final class SelfUpdatePrompt {
         }
     }
 
-    /** The yellow {@code ↑ Updated} line: what changed and where its highlights are. */
+    /** The yellow {@code ↑ Updated} line: what changed. */
     static String announcement(RenderContext ctx, @Nullable String from, String to) {
-        String text = WhatsNew.headline(from == null ? to : from, to) + ". What's new: " + WhatsNew.releaseUrl(to);
+        String text = WhatsNew.headline(from == null ? to : from, to);
         return JkWedge.update("Updated", RichText.plain(text)).renderLine(ctx);
     }
 

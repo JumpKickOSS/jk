@@ -20,6 +20,9 @@ import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.GlobalCancel;
 import cc.jumpkick.cli.tui.GlyphProbe;
 import cc.jumpkick.cli.tui.Interactivity;
+import cc.jumpkick.cli.tui.JkWedge;
+import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.watch.ProcessTrees;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
@@ -544,7 +547,7 @@ public final class SelfCommand extends GroupCommand {
                     CommandWedge.printOk("Self", version + " downloaded; `jk self update " + version + "` installs it");
                     return 0;
                 }
-                CommandWedge.printOk("Self", version + " installed (" + installed.get() + ")");
+                CommandWedge.printOk("Self", "JumpKick " + version + " installed");
                 // The new engine's bell and the next terminal command each say so once.
                 SelfUpdateState.update(s -> s.withUpdated(running, version, Clock.SYSTEM.instant()));
                 if (downgrade) {
@@ -561,9 +564,22 @@ public final class SelfCommand extends GroupCommand {
                     EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
                 }
                 Path newJk = EngineInstall.pathClient(JkDirs.binDir());
-                if (!Files.isRegularFile(newJk)) return 0;
-                return handOver(newJk, version, in.isSet("now"));
+                int handed = Files.isRegularFile(newJk) ? handOver(newJk, version, in.isSet("now")) : 0;
+                if (handed == 0) announce(running, version);
+                return handed;
             }
+        }
+
+        /**
+         * The yellow {@code ↑ Updated} line at a terminal, marked as said so the next command does
+         * not repeat it. Unattended (the engine's own update) it is left to that next command.
+         */
+        static void announce(String from, String to) throws IOException {
+            if (!Interactivity.canPrompt()) return;
+            CliOutput.out();
+            CliOutput.out(JkWedge.update("Updated", RichText.plain(WhatsNew.headline(from, to)))
+                    .renderLine(RenderContext.current()));
+            SelfUpdateState.update(s -> s.withAnnouncedCli(to));
         }
 
         /**
@@ -575,11 +591,14 @@ public final class SelfCommand extends GroupCommand {
                     CliOutput.handOffTerminal(new ProcessBuilder(newJk.toString(), "engine", "start")));
             if (started != 0) {
                 CommandWedge.printFail(
-                        "Self", version + " is installed but its engine did not start; `jk engine start` retries");
+                        "Self", version + " installed but its engine did not start; run `jk engine start`");
                 return started;
             }
-            CliOutput.out("engine " + version + " is taking over"
-                    + (now ? "" : " (running builds finish on the old engine)"));
+            CommandWedge.printOk(
+                    "Engine",
+                    now
+                            ? "Engine " + version + " has taken over"
+                            : "Engine " + version + " will take over after all running jobs finish");
             return 0;
         }
 

@@ -48,8 +48,9 @@ public final class EngineStartCommand implements CliCommand {
         try {
             EngineProbe.Handshake hs = EngineClient.ensureRunning(paths, JkVersion.VERSION);
             String pid = pidStyled(hs.pid());
-            String message =
-                    alreadyUp ? "Engine already running (pid " + pid + ")" : "Build engine started (pid " + pid + ")";
+            String message = alreadyUp
+                    ? "Engine already running (pid " + pid + ")"
+                    : "JumpKick build engine started (pid " + pid + ")";
             CommandWedge.printOk("Engine", message);
             return Exit.SUCCESS;
         } catch (IOException e) {

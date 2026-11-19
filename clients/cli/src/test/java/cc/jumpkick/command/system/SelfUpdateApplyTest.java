@@ -16,7 +16,9 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.PropertyRoots;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -244,6 +246,24 @@ class SelfUpdateApplyTest {
         assertThat(jk.toFile().setExecutable(true)).isTrue();
 
         assertThat(SelfCommand.UpdateSub.handOver(jk, "0.18.0", false)).isEqualTo(3);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_started_engine_says_when_it_takes_over(@TempDir Path tmp) throws Exception {
+        Path jk = Files.writeString(tmp.resolve("jk"), "#!/bin/sh\nexit 0\n");
+        assertThat(jk.toFile().setExecutable(true)).isTrue();
+        var buf = new ByteArrayOutputStream();
+        PrintStream orig = System.out;
+        System.setOut(new PrintStream(buf, true, StandardCharsets.UTF_8));
+        try {
+            assertThat(SelfCommand.UpdateSub.handOver(jk, "0.18.0", false)).isZero();
+        } finally {
+            System.setOut(orig);
+        }
+        assertThat(buf.toString(StandardCharsets.UTF_8))
+                .contains("Engine 0.18.0 will take over after all running jobs finish")
+                .doesNotContain(tmp.toString());
     }
 
     @Test
