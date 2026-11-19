@@ -3,17 +3,27 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.host.ChildEnv;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.SearchPath;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.run.StepScope;
+import cc.jumpkick.run.TaskContext;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -35,7 +45,9 @@ import org.jspecify.annotations.Nullable;
  * would ask it: a toolchain manager's shim ({@code mise}, {@code asdf}, {@code volta}) answers
  * with the version the directory and the shell select, which can change without the binary
  * changing. So the answer is remembered for one request only; a tool that exited without a version
- * line is asked again, and one that hung is not asked again while its file is unchanged.
+ * line is asked again. A tool that hangs twice in a row is not asked again for {@link #HUNG_FOR}
+ * while its file is unchanged, unless the request redoes its work; the first such verdict is a
+ * warning. A tool with no version line keys by its bytes, so an upgrade still retests.
  */
 public final class ToolIdentity {
 
@@ -56,14 +68,37 @@ public final class ToolIdentity {
 
     private static final Versions VERSIONS = new Versions();
 
+    /** How long a hung verdict stands before the tool is asked again. */
+    static final Duration HUNG_FOR = Duration.ofMinutes(30);
+
+    /** The run-warning code of a tool recorded hung. */
+    static final String HUNG_CODE = "tool-hung";
+
+    private record Hung(StampedMemo.FileStamp stamp, long sinceNanos) {}
+
     /**
-     * The executables that hung on {@code --version}, while the file keeps its stat. A hang is the
-     * binary's, not the directory's or the request's: remembered per request and per directory, it
-     * cost every module whose suite starts it the whole timeout on every build, as two Testcontainers
-     * modules of hotel-reservations paid 5.1 s each on every replayed {@code jk test -g} on WSL.
+     * The executables that hung on {@code --version}, by path, while the file keeps its stat. A hang
+     * is the binary's, not the directory's or the request's: asked again per request, a hung tool
+     * costs every module whose suite starts it the whole timeout on every build.
      */
-    private static final StampedMemo<Path, StampedMemo.FileStamp, Boolean> HUNG =
-            StampedMemo.<Path, StampedMemo.FileStamp, Boolean>bounded(64).keeping(Boolean::booleanValue);
+    private static final Map<Path, Hung> HUNG = Collections.synchronizedMap(new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Path, Hung> eldest) {
+            return size() > 64;
+        }
+    });
+
+    /** One lock per executable, so concurrent suites asking one hung tool pay its timeout once. */
+    private static final Map<Path, Object> ASKING = new ConcurrentHashMap<>();
+
+    /** The executables already warned about in this engine's life. */
+    private static final Set<Path> WARNED = ConcurrentHashMap.newKeySet();
+
+    /** What a tool with no version line keys by: its bytes' digest, while its file keeps its stat. */
+    private static final StampedMemo<Path, StampedMemo.FileStamp, String> DIGESTS =
+            StampedMemo.<Path, StampedMemo.FileStamp, String>bounded(64).keeping(d -> true);
+
+    private static volatile Clock clock = Clock.SYSTEM;
 
     /**
      * The version line of each binary, while its file keeps its stat: what a real binary (not a
@@ -117,7 +152,7 @@ public final class ToolIdentity {
      */
     public static String ofProgram(Path exe, Path dir) {
         if (!Files.isRegularFile(exe) || !PathUtil.isRunnable(exe)) return MISSING;
-        return normalized(versionOfBinary(exe, dir, BuildEnv.machine().get("PATH")), exe);
+        return keyed(normalized(versionOfBinary(exe, dir, BuildEnv.machine().get("PATH")), exe), exe);
     }
 
     /**
@@ -127,7 +162,31 @@ public final class ToolIdentity {
     public static String of(String tool, @Nullable String path, Path dir) {
         Path exe = resolve(tool, path);
         if (exe == null) return MISSING;
-        return normalized(versionOfBinary(exe, dir, path), exe);
+        return keyed(normalized(versionOfBinary(exe, dir, path), exe), exe);
+    }
+
+    /**
+     * {@code line}, or for {@link #NO_VERSION} the digest of the executable's bytes beside it: two
+     * machines with the same binary share the key, and a new binary that still says nothing retests.
+     */
+    static String keyed(String line, Path exe) {
+        if (!line.equals(NO_VERSION)) return line;
+        try {
+            Path real = exe.toRealPath();
+            StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(real);
+            if (stamp == null) return line;
+            return line + " sha256:" + DIGESTS.get(real, stamp, () -> digest(real));
+        } catch (IOException | RuntimeException unreadable) {
+            return line;
+        }
+    }
+
+    private static String digest(Path file) {
+        try {
+            return Hashing.sha256Hex(file).substring(0, 16);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /**
@@ -207,17 +266,61 @@ public final class ToolIdentity {
         return a.line();
     }
 
-    /** {@link #probe}, unless the file at {@code exe} hung on it before and has not changed since. */
+    /**
+     * {@link #probeTwice}, unless the file at {@code exe} hung on it within {@link #HUNG_FOR} and has
+     * not changed since, and the request does not redo its work ({@code -r}, {@code -F}).
+     */
     static Answer probeOnce(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
         StampedMemo.FileStamp stamp = StampedMemo.FileStamp.of(exe);
-        if (stamp == null) return probe(exe, dir, path, timeoutMillis);
-        Answer[] asked = {null};
-        boolean hung = HUNG.get(exe, stamp, () -> {
-            asked[0] = probe(exe, dir, path, timeoutMillis);
-            return asked[0].timedOut();
-        });
-        if (asked[0] != null) return asked[0];
-        return hung ? new Answer(NO_VERSION, true) : probe(exe, dir, path, timeoutMillis);
+        if (stamp == null) return probeTwice(exe, dir, path, timeoutMillis);
+        synchronized (ASKING.computeIfAbsent(exe, k -> new Object())) {
+            Hung had = HUNG.get(exe);
+            boolean fresh =
+                    had != null && had.stamp().equals(stamp) && clock.nanos() - had.sinceNanos() < HUNG_FOR.toNanos();
+            if (fresh && !redo()) return new Answer(NO_VERSION, true);
+            Answer a = probeTwice(exe, dir, path, timeoutMillis);
+            if (!a.timedOut()) {
+                HUNG.remove(exe);
+                return a;
+            }
+            HUNG.put(exe, new Hung(stamp, clock.nanos()));
+            if (WARNED.size() < 256 && WARNED.add(exe)) warn(exe);
+            return a;
+        }
+    }
+
+    /**
+     * {@link #probe}, and once more at once when it timed out: security software may scan a new
+     * executable on its first run for longer than the budget, and does not scan it again.
+     */
+    static Answer probeTwice(Path exe, Path dir, @Nullable String path, long timeoutMillis) {
+        Answer first = probe(exe, dir, path, timeoutMillis);
+        return first.timedOut() ? probe(exe, dir, path, timeoutMillis) : first;
+    }
+
+    /** Whether this request redoes its work, so a remembered hang is asked again. */
+    private static boolean redo() {
+        Session s = SessionContext.current();
+        return s.force() || s.config().rebuildOr(false);
+    }
+
+    private static void warn(Path exe) {
+        String line =
+                "`" + toolName(exe.toString()) + " --version` did not respond in time. It has been flagged as hung.";
+        TaskContext ctx = StepScope.current();
+        if (ctx != null) ctx.warn(HUNG_CODE, line);
+        else Log.warn("jk engine: " + line);
+    }
+
+    /** Test seam: the clock a hung verdict ages on; {@code null} restores the system's. */
+    static void clockForTests(@Nullable Clock c) {
+        clock = c == null ? Clock.SYSTEM : c;
+    }
+
+    /** Test seam: forget every hung verdict and warning. */
+    static void forgetForTests() {
+        HUNG.clear();
+        WARNED.clear();
     }
 
     /** What {@code --version} gave: its first line or {@link #NO_VERSION}, and whether it hung. */

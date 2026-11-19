@@ -652,6 +652,13 @@ losing the tool from the PATH (`missing`) changes the stamp and re-runs the suit
 `jk test`, no `--redo` needed; a tool left alone costs one `--version` per engine lifetime. The
 key is test-scoped like `env`: nothing about it enters the compile or package keys.
 
+A tool that prints no version line keys by a digest of its file instead, so a new binary still
+re-runs the suite. A tool that does not answer `--version` within 5 s is asked once more at once
+(security software may hold a new program's first run); if it times out again it is flagged as
+hung, with one warning, and keys as having no version line. It is asked again after 30 minutes,
+when its file changes, or on `-r` / `-F`. A hung tool never fails the build: the question is
+JumpKick's, to key the result, and the suite may use the tool in ways `--version` does not.
+
 Node.js needs no entry here. A JVM module that declares `node = 24` (its tests shell out to `node`,
 say) runs its test JVMs with the locked Node.js first on `PATH` and `NODE_HOME` naming it, and the
 lock's pin is part of the stamp: a Node upgrade re-runs the suites. See [Node.js](node.md).

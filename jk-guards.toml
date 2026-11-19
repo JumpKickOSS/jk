@@ -2623,6 +2623,18 @@ reason = "stamped: one inventory per JDK root and state file; each snapshot re-s
 in     = "cc.jumpkick.wire.protocol.CliSessionIdentity#current"
 reason = "engine-process fact: this process's own session identity, worked out once"
 
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.ToolIdentity#HUNG"
+reason = "TTL 1800s: a tool that hung on --version twice, by path and file stat, at most 64; a verdict lapses after thirty minutes or when the file changes"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.ToolIdentity#ASKING"
+reason = "lock registry: one lock per tool executable a suite declares, so concurrent suites asking one hung tool pay its timeout once; the declared tools of the engine's projects"
+
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.task.ToolIdentity#WARNED"
+reason = "log-once: the tools already warned about as hung in this engine's life, at most 256"
+
 # G130. A request's values reach other threads only as ScopedValues the propagator carries. An
 # InheritableThreadLocal copies whichever request happened to create a pool's thread into every task
 # that thread runs later, for the engine's life; there is no reason left to hold one.

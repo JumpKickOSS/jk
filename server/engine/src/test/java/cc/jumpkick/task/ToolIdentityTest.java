@@ -4,17 +4,28 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.host.Settled;
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.run.StepScope;
+import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.testing.Symlinks;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -55,12 +66,14 @@ class ToolIdentityTest {
             try {
                 // On this thread: the request is bound here, not on a timeout helper's thread.
                 long start = System.nanoTime();
-                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo("no-version");
+                assertThat(ToolIdentity.of("node", path, tmp)).startsWith("no-version sha256:");
                 assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(20));
                 assertThat(ToolIdentity.of("node", path, tmp))
                         .as("the hang is remembered for the request")
-                        .isEqualTo("no-version");
-                assertThat(Files.readString(count).strip()).isEqualTo("1");
+                        .startsWith("no-version sha256:");
+                assertThat(Files.readString(count).strip())
+                        .as("asked twice, then remembered")
+                        .isEqualTo("2");
             } finally {
                 RequestScope.release();
             }
@@ -135,7 +148,7 @@ class ToolIdentityTest {
 
         Request.of(1, new IoLedger()).run(() -> {
             try {
-                assertThat(ToolIdentity.of("node", path, tmp)).isEqualTo("no-version");
+                assertThat(ToolIdentity.of("node", path, tmp)).startsWith("no-version sha256:");
                 assertThat(ToolIdentity.of("node", path, tmp)).as("asked again").isEqualTo("v2");
                 assertThat(ToolIdentity.of("node", path, tmp)).as("remembered").isEqualTo("v2");
             } finally {
@@ -226,20 +239,167 @@ class ToolIdentityTest {
                 .as("another directory, another build: the hang stands")
                 .isTrue();
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofMillis(250));
-        assertThat(Files.readString(count).strip()).isEqualTo("1");
+        assertThat(Files.readString(count).strip())
+                .as("asked twice, then remembered")
+                .isEqualTo("2");
 
-        Files.writeString(helper, "#!/bin/sh\n# upgraded\n" + body + "\n");
+        Files.writeString(helper, "#!/bin/sh\n" + WARM + "# upgraded\n" + body + "\n");
+        warm(helper);
         assertThat(ToolIdentity.probeOnce(helper, rest, bin.toString(), 300).timedOut())
                 .isTrue();
         assertThat(Files.readString(count).strip())
                 .as("a changed file is asked again")
-                .isEqualTo("2");
+                .isEqualTo("4");
     }
 
+    /** A fake tool's first line: {@code --jk-warm} exits at once, before the body counts or hangs. */
+    private static final String WARM = "[ \"$1\" = --jk-warm ] && exit 0\n";
+
+    /**
+     * A fake tool, run once untimed: security software that scans a new executable's first run must
+     * not spend a test's timed window.
+     */
     private static Path tool(Path bin, String name, String body) throws Exception {
         Path exe = bin.resolve(name);
-        Files.writeString(exe, "#!/bin/sh\n" + body + "\n");
+        Files.writeString(exe, "#!/bin/sh\n" + WARM + body + "\n");
         assertThat(exe.toFile().setExecutable(true)).isTrue();
+        warm(exe);
         return exe;
+    }
+
+    private static void warm(Path exe) throws Exception {
+        Process p = new ProcessBuilder(exe.toString(), "--jk-warm")
+                .redirectErrorStream(true)
+                .start();
+        p.getOutputStream().close();
+        assertThat(p.waitFor(30, TimeUnit.SECONDS)).as("warm run of " + exe).isTrue();
+    }
+
+    /** A tool that counts its runs into {@code count} and hangs on the first {@code hangs} of them. */
+    private static Path flaky(Path bin, Path count, int hangs) throws Exception {
+        String file = "'" + count + "'";
+        return tool(
+                bin,
+                "flaky",
+                "n=0; [ -f " + file + " ] && read n < " + file + "; n=$((n + 1)); echo $n > " + file + "; [ $n -le "
+                        + hangs + " ] && exec /bin/sleep 120; echo flaky 9.9");
+    }
+
+    private static int runs(Path count) throws Exception {
+        return Integer.parseInt(Files.readString(count).strip());
+    }
+
+    @Test
+    void a_probe_that_times_out_once_and_then_answers_records_the_version(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        ToolIdentity.forgetForTests();
+        Path count = tmp.resolve("count");
+        Path exe = flaky(Files.createDirectories(tmp.resolve("bin")), count, 1);
+        ToolIdentity.Answer a = ToolIdentity.probeOnce(exe, tmp, null, 1000);
+        assertThat(a.timedOut()).isFalse();
+        assertThat(a.line()).isEqualTo("flaky 9.9");
+        assertThat(ToolIdentity.probeOnce(exe, tmp, null, 1000).line())
+                .as("not remembered as hung")
+                .isEqualTo("flaky 9.9");
+        assertThat(runs(count)).isEqualTo(3);
+    }
+
+    @Test
+    void two_timeouts_flag_a_tool_hung_for_thirty_minutes_and_warn_once(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        ToolIdentity.forgetForTests();
+        FakeClock clock = new FakeClock();
+        ToolIdentity.clockForTests(clock);
+        List<String> warnings = new ArrayList<>();
+        try {
+            Path count = tmp.resolve("count");
+            Path exe = flaky(Files.createDirectories(tmp.resolve("bin")), count, 1000);
+            StepScope.run(warnings(warnings), () -> {
+                assertThat(ToolIdentity.probeOnce(exe, tmp, null, 300).timedOut())
+                        .isTrue();
+                assertThat(ToolIdentity.probeOnce(exe, tmp, null, 300).timedOut())
+                        .isTrue();
+            });
+            assertThat(runs(count)).as("asked twice, then remembered").isEqualTo(2);
+            assertThat(warnings)
+                    .containsExactly(ToolIdentity.HUNG_CODE + " `flaky --version` did not respond in time. It has"
+                            + " been flagged as hung.");
+
+            clock.advance(ToolIdentity.HUNG_FOR.minusSeconds(1));
+            assertThat(ToolIdentity.probeOnce(exe, tmp, null, 300).timedOut()).isTrue();
+            assertThat(runs(count)).as("within thirty minutes").isEqualTo(2);
+            clock.advance(Duration.ofSeconds(2));
+            StepScope.run(warnings(warnings), () -> ToolIdentity.probeOnce(exe, tmp, null, 300));
+            assertThat(runs(count)).as("asked again after thirty minutes").isEqualTo(4);
+            assertThat(warnings).as("one warning per tool per engine life").hasSize(1);
+        } finally {
+            ToolIdentity.clockForTests(null);
+        }
+    }
+
+    @Test
+    void a_redo_or_a_force_asks_a_hung_tool_again(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        ToolIdentity.forgetForTests();
+        Path count = tmp.resolve("count");
+        Path exe = flaky(Files.createDirectories(tmp.resolve("bin")), count, 2);
+        assertThat(ToolIdentity.probeOnce(exe, tmp, null, 300).timedOut()).isTrue();
+        assertThat(ToolIdentity.probeOnce(exe, tmp, null, 300).timedOut()).isTrue();
+        assertThat(runs(count)).isEqualTo(2);
+        for (JkConfig config :
+                List.of(JkConfig.empty().withRebuild(true), JkConfig.empty().withForce(true))) {
+            Session plain = SessionContext.current();
+            SessionContext.install(plain.withConfig(config));
+            try {
+                assertThat(ToolIdentity.probeOnce(exe, tmp, null, 1000).line()).isEqualTo("flaky 9.9");
+            } finally {
+                SessionContext.install(plain);
+            }
+        }
+        assertThat(runs(count)).isEqualTo(4);
+    }
+
+    @Test
+    void a_tool_with_no_version_line_keys_by_its_bytes(@TempDir Path tmp) throws Exception {
+        assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
+        Path exe = tool(Files.createDirectories(tmp.resolve("bin")), "quiet", "exit 0");
+        String first = ToolIdentity.keyed(ToolIdentity.NO_VERSION, exe);
+        assertThat(first).startsWith("no-version sha256:").hasSize("no-version sha256:".length() + 16);
+        assertThat(ToolIdentity.keyed("quiet 1.0", exe)).isEqualTo("quiet 1.0");
+        Files.writeString(exe, "#!/bin/sh\n# another build\nexit 0\n");
+        assertThat(ToolIdentity.keyed(ToolIdentity.NO_VERSION, exe))
+                .as("new bytes, new key")
+                .startsWith("no-version sha256:")
+                .isNotEqualTo(first);
+    }
+
+    /** A step that records its warnings as {@code code message}. */
+    private static TaskContext warnings(List<String> into) {
+        return (TaskContext) Proxy.newProxyInstance(
+                TaskContext.class.getClassLoader(), new Class<?>[] {TaskContext.class}, (proxy, m, args) -> {
+                    if (m.getName().equals("warn") && args != null && args.length == 2)
+                        into.add(args[0] + " " + args[1]);
+                    if (m.getReturnType() == boolean.class) return false;
+                    if (m.getReturnType() == Optional.class) return Optional.empty();
+                    return null;
+                });
+    }
+
+    private static final class FakeClock implements Clock {
+        private long nanos;
+
+        @Override
+        public long millis() {
+            return nanos / 1_000_000;
+        }
+
+        @Override
+        public long nanos() {
+            return nanos;
+        }
+
+        void advance(Duration d) {
+            nanos += d.toNanos();
+        }
     }
 }
