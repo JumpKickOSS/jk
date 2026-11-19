@@ -82,13 +82,29 @@ class LearnedHeapsTest {
     }
 
     @Test
+    void an_unseen_worker_starts_at_the_first_heap_however_large_the_plans_share(@TempDir Path dir) {
+        LearnedHeaps heaps = new LearnedHeaps(dir);
+        long budget = WorkerLeases.engine().capacityBytes();
+        long first = LearnedHeaps.firstHeap(LearnedHeaps.FLOOR_BYTES, budget);
+        // A host with two cores plans most of its free memory for each of two JVMs.
+        long share = budget / 2;
+        assertThat(heaps.choose(dir, "g:app", HeapScope.KOTLIN_COMPILE, 25, share))
+                .isEqualTo(first);
+        assertThat(first).isLessThanOrEqualTo(LearnedHeaps.FIRST_CAP_BYTES);
+        heaps.note(dir, "g:app", HeapScope.KOTLIN_COMPILE, 25, 100L << 20);
+        assertThat(heaps.choose(dir, "g:app", HeapScope.KOTLIN_COMPILE, 25, share))
+                .as("once seen, its peaks size it")
+                .isEqualTo(LearnedHeaps.size(100L << 20, budget));
+    }
+
+    @Test
     void only_retried_kinds_start_generously(@TempDir Path dir) {
         LearnedHeaps heaps = new LearnedHeaps(dir);
         long budget = WorkerLeases.engine().capacityBytes();
         assertThat(heaps.choose(dir, "g:app", HeapScope.TEST, 25, 128L << 20))
-                .isEqualTo(LearnedHeaps.firstHeap(128L << 20, budget));
+                .isEqualTo(LearnedHeaps.firstHeap(LearnedHeaps.FLOOR_BYTES, budget));
         assertThat(heaps.choose(dir, "g:app", HeapScope.KOTLIN_COMPILE, 25, 128L << 20))
-                .isEqualTo(LearnedHeaps.firstHeap(128L << 20, budget));
+                .isEqualTo(LearnedHeaps.firstHeap(LearnedHeaps.FLOOR_BYTES, budget));
         assertThat(heaps.choose(dir, "g:app", HeapScope.PLUGIN, 25, 128L << 20)).isEqualTo(128L << 20);
         assertThat(heaps.choose(dir, "g:app", HeapScope.KTS_HOST, 25, 128L << 20))
                 .isEqualTo(128L << 20);
@@ -152,8 +168,8 @@ class LearnedHeapsTest {
         assertThat(sized)
                 .isEqualTo(LearnedHeaps.size(200L << 20, WorkerLeases.engine().capacityBytes()));
         assertThat(heaps.choose(project, "g:other", HeapScope.TEST, 25, 512L << 20))
-                .isEqualTo(
-                        LearnedHeaps.firstHeap(512L << 20, WorkerLeases.engine().capacityBytes()));
+                .isEqualTo(LearnedHeaps.firstHeap(
+                        LearnedHeaps.FLOOR_BYTES, WorkerLeases.engine().capacityBytes()));
 
         for (int i = 1; i <= LearnedHeaps.WINDOW; i++) {
             heaps.note(project, "g:app", HeapScope.TEST, 25, i * (1L << 20));

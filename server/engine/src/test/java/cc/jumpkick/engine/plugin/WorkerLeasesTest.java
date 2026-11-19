@@ -249,7 +249,7 @@ class WorkerLeasesTest {
         WorkerLeases.Ledger ledger = ledger(8L << 30, 1);
         List<String> helper = List.of("java", "-Xmx64m", "-version");
         try (WorkerLeases.Grant resident = ledger.acquireResident(
-                helper, JvmOptions.HeapChoice.inspect(helper), new WorkerLeases.Resident("helper", () -> {}))) {
+                helper, JvmOptions.HeapChoice.inspect(helper), new LeaseResident("helper", () -> {}))) {
             assertThat(ledger.snapshot().leasedBytes()).isEqualTo(resident.bytes());
             CompletableFuture<WorkerLeases.Grant> work = new CompletableFuture<>();
             Thread.ofVirtual().start(() -> {
@@ -277,7 +277,7 @@ class WorkerLeasesTest {
         CountDownLatch asked = new CountDownLatch(1);
         CountDownLatch exited = new CountDownLatch(1);
         AtomicReference<WorkerLeases.Grant> resident = new AtomicReference<>();
-        WorkerLeases.Resident idle = new WorkerLeases.Resident("build-script host", () -> {
+        LeaseResident idle = new LeaseResident("build-script host", () -> {
             asked.countDown();
             try {
                 exited.await();
@@ -325,7 +325,7 @@ class WorkerLeasesTest {
         try (WorkerLeases.Grant resident = ledger.acquireResident(
                         host,
                         JvmOptions.HeapChoice.inspect(host),
-                        new WorkerLeases.Resident("build-script host", asked::incrementAndGet));
+                        new LeaseResident("build-script host", asked::incrementAndGet));
                 WorkerLeases.Grant working = ledger.acquireBytes(512L << 20, true, 3L)) {
             CompletableFuture<WorkerLeases.Grant> head = acquireLater(ledger, 600L << 20, 7L);
             awaitQueued(ledger, 1);

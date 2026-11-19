@@ -94,7 +94,7 @@ class WorkerLeasesPriceTest {
         try {
             for (int i = 0; i < fit; i++) {
                 AtomicReference<WorkerLeases.Grant> self = new AtomicReference<>();
-                self.set(ledger.acquireResident(COMMAND, priced(256 * MIB), new WorkerLeases.Resident("kotlinc", () -> {
+                self.set(ledger.acquireResident(COMMAND, priced(256 * MIB), new LeaseResident("kotlinc", () -> {
                     asked.incrementAndGet();
                     self.get().close();
                 })));

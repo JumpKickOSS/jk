@@ -7,6 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.KeepWarm;
+import cc.jumpkick.engine.plugin.LeaseResident;
 import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
@@ -167,7 +168,7 @@ public final class JavaCompilerHost {
      * request that made the pool, and serve it until it exits. Its heap ceiling and cgroup cap come
      * from {@link CompilerBudget}; its lease starts at {@link CompilerWorker#FIRST_LEASE_BYTES} and
      * follows the heap it reports, charged to {@code owner}'s job or, for a resident worker, held as a
-     * {@linkplain WorkerLeases.Resident resident} lease that gives its memory back when a fork needs it.
+     * {@linkplain LeaseResident resident} lease that gives its memory back when a fork needs it.
      */
     private static void converse(
             CompilerWorker worker,
@@ -204,7 +205,9 @@ public final class JavaCompilerHost {
                             CompilerWorker.FIRST_LEASE_BYTES,
                             heap.capBytes(),
                             owner,
-                            owner == null ? new WorkerLeases.Resident(WORKER_NAME, worker::yieldLease) : null,
+                            owner == null
+                                    ? new LeaseResident(WORKER_NAME, worker::yieldLease, worker.inflight::isEmpty)
+                                    : null,
                             WORKER_NAME,
                             true,
                             worker::leased);

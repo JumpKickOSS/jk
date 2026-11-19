@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
 import org.jspecify.annotations.Nullable;
@@ -139,6 +140,7 @@ public final class WarmWorkers {
             keep = !outcome.died();
             return outcome;
         } finally {
+            worker.busy.set(false);
             release(worker, keep);
         }
     }
@@ -175,6 +177,15 @@ public final class WarmWorkers {
             for (Deque<Worker> d : IDLE.values()) n += d.size();
             return n;
         }
+    }
+
+    /** Test seam: live workers with a run in flight, the ones whose heap the lease ledger counts. */
+    static int busyCount() {
+        int n = 0;
+        for (Worker w : LIVE) {
+            if (w.process.isAlive() && w.busy.get()) n++;
+        }
+        return n;
     }
 
     /** Test seam: workers the engine still holds, dead or alive. */
@@ -218,7 +229,10 @@ public final class WarmWorkers {
                 if (!fits(w.heap, heap)) continue;
                 if (best == null || w.heap < best.heap) best = w;
             }
-            if (best != null) idle.remove(best);
+            if (best != null) {
+                idle.remove(best);
+                best.busy.set(true);
+            }
             if (idle.isEmpty()) IDLE.remove(key);
         }
         for (Worker w : dead) w.abandonDead();
@@ -278,7 +292,8 @@ public final class WarmWorkers {
         YieldHook hook = new YieldHook();
         // Bound for the start only: the scope is what files the worker's peak when it exits.
         HeapScope.Key heapKey = launch.heapKey();
-        WorkerLeases.Resident resident = new WorkerLeases.Resident(launch.name(), hook);
+        AtomicBoolean busy = new AtomicBoolean(true);
+        LeaseResident resident = new LeaseResident(launch.name(), hook, () -> !busy.get());
         Process process;
         try {
             process = heapKey != null
@@ -289,7 +304,7 @@ public final class WarmWorkers {
             throw e;
         }
         PluginProcess.closeStdin(process);
-        Worker w = new Worker(launch.name(), key, launch.heap(), process, commands);
+        Worker w = new Worker(launch.name(), key, launch.heap(), process, commands, busy);
         LIVE.add(w);
         hook.bind(w::yieldLease);
         registerShutdownHook();
@@ -409,6 +424,9 @@ public final class WarmWorkers {
         /** The lease ledger wants this worker's memory; it exits after the run in flight. */
         volatile boolean yielding;
 
+        /** A run is in flight; the ledger counts the heap of a busy worker only. */
+        final AtomicBoolean busy;
+
         /**
          * A run has ended on this worker: the chatter it prints before its next protocol line came
          * after that run's {@code exited} and belongs to no run, least of all the next one, which may
@@ -418,8 +436,9 @@ public final class WarmWorkers {
 
         private @Nullable Thread reaper;
 
-        Worker(String name, String key, long heap, Process process, WorkerCommands commands) {
+        Worker(String name, String key, long heap, Process process, WorkerCommands commands, AtomicBoolean busy) {
             this.name = name;
+            this.busy = busy;
             this.key = key;
             this.heap = heap;
             this.process = process;

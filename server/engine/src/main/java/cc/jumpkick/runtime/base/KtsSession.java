@@ -6,11 +6,11 @@ import cc.jumpkick.engine.plugin.HostPressure;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.LeaseResident;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.engine.plugin.WorkerCommands;
 import cc.jumpkick.engine.plugin.WorkerContainment;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
@@ -444,7 +444,7 @@ final class KtsSession {
         commands.attach(pb);
         Process p;
         try {
-            p = JobWorkers.startResident(pb, new WorkerLeases.Resident(LEASE_NAME, () -> yieldLease(started)));
+            p = JobWorkers.startResident(pb, new LeaseResident(LEASE_NAME, () -> yieldLease(started)));
         } catch (IOException | RuntimeException e) {
             commands.close();
             throw e;

@@ -29,6 +29,9 @@ public final class HeapScope {
     /** A module's test suite, one-shot or pull. */
     public static final String TEST = "test";
 
+    /** The JVM that lists a module's test classes before a parallel run. Its own row: it holds far less than the suite. */
+    public static final String TEST_LIST = "test-list";
+
     /** A GraalVM native-image build; its heap is the builder's. */
     public static final String NATIVE_IMAGE = TaskNames.NATIVE_IMAGE;
 

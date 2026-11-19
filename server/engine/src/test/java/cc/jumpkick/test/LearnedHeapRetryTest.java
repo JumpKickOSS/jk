@@ -15,6 +15,7 @@ import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.LearnedHeaps;
+import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.run.TestSummary;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +23,7 @@ import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -168,12 +170,22 @@ class LearnedHeapRetryTest {
                 .isEqualTo(suite);
     }
 
+    /** The listing JVM files under its own key, so it is priced as a listing and never sizes the suite. */
+    @Test
+    void the_listing_jvm_has_its_own_heap_key(@TempDir Path dir) {
+        HeapScope.Key suite = Objects.requireNonNull(SuiteRetry.key(dir, "g:app", 25));
+        HeapScope.Key list = SuiteRetry.listKey(suite);
+        assertThat(list.kind()).isEqualTo(HeapScope.TEST_LIST);
+        assertThat(list.module()).isEqualTo("g:app");
+        assertThat(list.project()).isEqualTo(suite.project());
+    }
+
     /**
-     * A heap past a quarter of RAM is never asked for, and the run takes the ceiling without a word:
-     * a brand-new 7 GiB runner, which had learned nothing, said once per module that it had
-     * "learned a test heap of 3.1 GiB", the plan's share of its free memory. {@code -Xmx} names
-     * whole MiB, and a quarter of RAM need not be one (a quarter of 34164060160 bytes is not): the
-     * heap is the whole MiB at or below the ceiling.
+     * A heap past a quarter of RAM is never asked for, and the run takes the ceiling without a word.
+     * With nothing learned the plan's share of the free memory does not size the suite at all: it
+     * starts at the first heap, under the ceiling. {@code -Xmx} names whole MiB, and a quarter of RAM
+     * need not be one (a quarter of 34164060160 bytes is not): a heap at the ceiling is the whole MiB
+     * at or below it.
      */
     @Test
     void a_heap_past_the_ceiling_runs_at_the_ceiling_and_says_nothing(@TempDir Path dir) throws Exception {
@@ -187,9 +199,11 @@ class LearnedHeapRetryTest {
                 Runtime.version().feature(),
                 null,
                 new LearnedHeaps(dir.resolve("state")));
+        long first = LearnedHeaps.firstHeap(
+                LearnedHeaps.FLOOR_BYTES, WorkerLeases.engine().capacityBytes());
         assertThat(HeapFlags.parseXmx(fresh))
                 .as("nothing learned, the plan above the ceiling")
-                .isEqualTo(wholeMib(ceiling));
+                .isEqualTo(first > ceiling ? wholeMib(ceiling) : first);
         List<String> learned = SuiteRetry.tune(
                 new ArrayList<>(List.of("-Xmx256m")),
                 dir,

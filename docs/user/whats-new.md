@@ -38,11 +38,12 @@ JumpKick shows you this page's new entries after it updates itself.
   the dashboard keep answering at 8910 in your own sessions. When something still holds 8910,
   `jk engine status` names the home whose engine holds it.
 
-- **A first build no longer gives up waiting for memory it has.** Kotlin, Groovy and plugin
-  workers left idle by earlier modules now exit for a job whose heap would not fit beside theirs,
-  instead of that job failing after ten minutes with most of the worker budget free.
-- **Tests start on a small CI runner.** On 2 vCPUs and 7 GiB the JVM that lists a suite's
-  classes asked for 3.5 GiB, half the runner, and waited ten minutes; it now takes the suite's heap.
+- **A first build no longer gives up waiting for memory it has.** Compiler and plugin workers
+  left idle by earlier modules no longer count toward the bound on what heaps may grow to, and
+  exit when a job needs their memory, instead of that job failing after ten minutes.
+- **Tests start at once on a small CI runner.** On 2 vCPUs and 7 GiB an unseen worker's heap was
+  the plan's 3.1 GiB share and its class listing leased all of it; first heaps now stop at a
+  quarter of the budget and the listing is leased at what a listing holds.
 - **No "learned a test heap" line per module on a fresh machine.** Nothing was learned: the
   figure was the build's own plan. Past a quarter of RAM a test JVM runs at that, silently.
 - **A memory wait that gives up says how long nothing moved.** Ten minutes with no lease granted

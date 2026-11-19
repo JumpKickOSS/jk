@@ -173,27 +173,29 @@ public final class LearnedHeaps {
 
     /**
      * The heap of a worker jk has not seen: a quarter of the worker budget, at most {@link
-     * #FIRST_CAP_BYTES}, never below {@code plannedBytes} and never more than the budget can lease.
-     * The ledger admits against {@code -Xmx}, while the worker's resident memory tracks what it
-     * uses, so a generous first heap costs parallelism, not RAM.
+     * #FIRST_CAP_BYTES}, never below {@code leastBytes} and never more than the budget can lease.
+     * The worker is leased at what its kind is expected to hold ({@link #price}), and its resident
+     * memory tracks what it uses, so a generous first heap costs neither RAM nor parallelism.
      */
-    public static long firstHeap(long plannedBytes, long budgetBytes) {
-        if (budgetBytes <= 0) return plannedBytes;
+    public static long firstHeap(long leastBytes, long budgetBytes) {
+        if (budgetBytes <= 0) return leastBytes;
         long quarter = (Math.min(budgetBytes / 4, FIRST_CAP_BYTES) / STEP_BYTES) * STEP_BYTES;
-        return fit(Math.max(plannedBytes, quarter), budgetBytes);
+        return fit(Math.max(leastBytes, quarter), budgetBytes);
     }
 
     /**
      * The heap a planned worker should start with: the sizing override when one was given, else
-     * {@link #size} of the stored maximum raised to the known-good heap, else {@link #firstHeap} of
-     * {@code fallback}. The build-script host and plugin workers, which are not re-run on a larger
-     * heap, start an unseen key at {@code fallback} as it is.
+     * {@link #size} of the stored maximum raised to the known-good heap, else {@link #firstHeap}.
+     * {@code fallback}, the plan's share of the free memory, is how many JVMs may run at once and
+     * not what this one needs (on a host with two cores it is most of the host), so an unseen key
+     * starts at the first heap whatever the plan. The build-script host and plugin workers, which
+     * are not re-run on a larger heap, start an unseen key at {@code fallback} as it is.
      */
     public long choose(Path project, String module, String kind, int jdk, long fallback) {
         long budget = budget();
         if (forcedBytes != null) return fit(forcedBytes, budget);
         Row row = stored(project, module, kind, jdk);
-        if (row == null) return generousFirst(kind) ? firstHeap(fallback, budget) : fallback;
+        if (row == null) return generousFirst(kind) && budget > 0 ? firstHeap(FLOOR_BYTES, budget) : fallback;
         if (HeapScope.TEST.equals(kind)) {
             // A row written before the cap held on what is stored: bring it under, once.
             long ceiling = testCeiling();

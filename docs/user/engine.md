@@ -510,8 +510,10 @@ module's worker of that kind reached lately on this host, else 512 MiB (3 GiB fo
 times 1.25 (1.3 for native-image), rounded up to 64 MiB, at least 160 MiB (2 GiB for
 native-image). A worker that grows past that is charged its resident set, as below. Ceilings
 are not reserved, but they are bounded: the ceiling leases of the running forks and the next one
-stay at or under twice the budget, so a fork waits when the workers already running could
-together grow past that, however little they hold now. A process that is not a JVM leases
+stay at or under twice the budget (one and a half times under `CI`), so a fork waits when the
+workers already running could together grow past that, however little they hold now. A warm
+helper between builds counts none of its ceiling: an idle worker does not grow, and it is the
+first to give its memory back. A process that is not a JVM leases
 64 MiB. A JVM that names no heap leases what it likely uses: its
 learned peak, else a quarter of the budget up to 2 GiB, never more than its `-XX:MaxRAMPercentage`
 (25% by default) of memory; it keeps its own ceiling, and the ledger charges its measured resident
@@ -550,9 +552,9 @@ A lease that does not fit waits, first in line first. The first in line waits on
 forks that are working: when it would fit once a warm helper let go of its lease (the
 build-script host, a warm plugin worker, a lingering Kotlin, Groovy or Java compiler worker),
 the helper is asked to exit, finishes what it is running, and starts again on its next use.
-That holds for both bounds: the budget, and the twice-the-budget bound on what the workers'
-heaps may grow to, which idle helpers with generous first heaps can fill while they hold
-little of the budget. A fork also
+Idle helpers never stop a fork at the bound on what the workers' heaps may grow to, since they
+count none of it there; a helper that is working does, and is asked to exit after its run when
+the first in line needs that room. A fork also
 waits when every JVM slot is taken (one per logical processor); that is ordinary queueing
 and writes nothing. A warm helper takes no JVM slot, so only forks that are working fill
 them. While none of a step's forks runs and its next one
@@ -743,14 +745,18 @@ peaks across every project are kept in `<state>/worker-heaps/host`, which prices
 first run.
 
 A compile, test or format worker JumpKick has not seen before starts at a quarter of the worker budget, at
-most 2 GiB, and never below the compiler estimate or the memory plan's share. That is its
-ceiling, not its lease: it is leased at what its kind holds on this host, so a generous first
-heap costs neither RAM nor parallelism. The build-script host and other plugin workers start
+most 2 GiB, and never below the compiler estimate. The memory plan's share (the free memory over
+the forks the host's cores allow) does not raise it: on a host with two cores that is most of
+the host. The first heap is its ceiling, not its lease: it is leased at what its kind holds on
+this host, so a generous first heap costs neither RAM nor parallelism. The build-script host and other plugin workers start
 from the plan's heap: the memory free when the build starts, shared among the forks it expects
 at once. A test JVM's heap, first or learned, never passes a quarter of the host's RAM; past it
-the suite runs at that without a word, and the JVM that lists a suite's classes takes the
-suite's heap. A record never sizes another machine's forks: it lives in this home's state,
-not in the cache, the store or `target/`.
+the suite runs at that without a word. The JVM that lists a suite's classes takes the suite's
+heap and is leased at what a listing holds, under a row of its own. A record never sizes another
+machine's forks: it lives in this home's state, not in the cache, the store or `target/`. A CI
+runner starts with none, so every fork prices at its kind's estimate; a job that caches
+`~/.jk/state/worker-heaps` with its other JumpKick caches starts from what its last run learned (the
+file names are the project's id, the same on every runner of one repository).
 
 The next planned `-Xmx` is the largest of the last ten observed peaks times 1.3 (1.5 when
 `CI` is set, since a CI host sees the same suites grow run after run), rounded up to 64 MiB,

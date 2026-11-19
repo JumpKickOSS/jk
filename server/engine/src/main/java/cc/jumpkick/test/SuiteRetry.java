@@ -11,6 +11,7 @@ import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.run.TestSummary;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -81,6 +82,20 @@ final class SuiteRetry {
     static HeapScope.@Nullable Key key(Path project, String module, int jdk) {
         if (project == null || module == null || module.isBlank()) return null;
         return new HeapScope.Key(project, module, HeapScope.TEST, jdk);
+    }
+
+    /**
+     * Run the class listing of the suite keyed {@code suite} under a row of its own, so the ledger
+     * leases it at what a listing holds and the suite's learned heap stays the suite's.
+     */
+    static <T extends @Nullable Object> T listing(HeapScope.@Nullable Key suite, HeapScope.Fork<T> list)
+            throws IOException, InterruptedException {
+        if (suite == null) return list.run();
+        return HeapScope.fork(listKey(suite), list);
+    }
+
+    static HeapScope.Key listKey(HeapScope.Key suite) {
+        return new HeapScope.Key(suite.project(), suite.module(), HeapScope.TEST_LIST, suite.jdk());
     }
 
     static Path project(@Nullable Path moduleDir) {

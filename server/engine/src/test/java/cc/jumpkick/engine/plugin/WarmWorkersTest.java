@@ -182,6 +182,37 @@ class WarmWorkersTest {
     }
 
     @Test
+    void a_worker_is_busy_while_its_run_is_in_flight_and_idle_between_runs() throws Exception {
+        WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
+        run(launch("a"), "ok", out);
+        assertThat(WarmWorkers.idleCount()).isEqualTo(1);
+        assertThat(WarmWorkers.busyCount()).as("between runs").isZero();
+        Path spec = Files.createTempFile(dir, "spec", ".txt");
+        Files.writeString(spec, "hang\n");
+        Seen hanging = new Seen();
+        AtomicBoolean cancel = new AtomicBoolean();
+        Thread running = Thread.ofVirtual().start(() -> {
+            try {
+                WarmWorkers.run(launch("a"), spec, hanging, cancel::get);
+            } catch (Exception e) {
+                // the run ends with the test
+            }
+        });
+        try {
+            for (int i = 0; i < 200 && hanging.pid < 0; i++) Thread.sleep(25);
+            assertThat(hanging.pid).isPositive();
+            assertThat(WarmWorkers.busyCount())
+                    .as("the idle worker taken for a run")
+                    .isEqualTo(1);
+            assertThat(WarmWorkers.idleCount()).isZero();
+        } finally {
+            cancel.set(true);
+            running.join();
+        }
+        assertThat(WarmWorkers.busyCount()).as("after its run").isZero();
+    }
+
+    @Test
     void host_memory_pressure_ends_idle_workers_and_leaves_a_busy_one() throws Exception {
         WarmWorkers.Outcome[] out = new WarmWorkers.Outcome[1];
         long idle = run(launch("a"), "ok", out).pid;

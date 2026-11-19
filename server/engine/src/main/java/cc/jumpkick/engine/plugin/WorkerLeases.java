@@ -49,12 +49,13 @@ import org.jspecify.annotations.Nullable;
  * (metaspace, thread stacks, direct buffers) outgrows its lease holds back new grants by what it
  * really uses, and is named in the run's warnings, {@code jk engine status} and the engine log.
  *
- * <p>A {@linkplain Resident resident} helper (the build-script host, a warm plugin worker, a
- * lingering Java compiler worker) holds its lease between requests and takes no JVM slot. When the head of the
- * queue would fit once residents let go, in the budget and under the bound on what the held heaps may
- * grow to, the ledger asks them to exit; they finish the request in
- * flight, exit, and start again on their next use. So the head waits only on forks that are doing
- * work, never on an idle holder.
+ * <p>A {@linkplain LeaseResident resident} helper (the build-script host, a warm plugin worker, a
+ * lingering Java compiler worker) holds its lease between requests and takes no JVM slot. While it
+ * is {@linkplain LeaseResident#idle idle} its heap does not count toward the bound on what the held heaps
+ * may grow to: an idle worker does not grow, and it is the first asked to give memory back. When the
+ * head of the queue would fit the budget once residents let go, the ledger asks them to exit; they
+ * finish the request in flight, exit, and start again on their next use. So the head waits only on
+ * forks that are doing work, never on an idle holder.
  *
  * <p>The queue and the counters live on a {@link Ledger}. {@link #engine()} is the one this process
  * uses: its capacity supplier is {@link WorkerContainment#budgetBytes()}, so {@code
@@ -207,18 +208,6 @@ public final class WorkerLeases {
             String overLease) {}
 
     /**
-     * A helper that stays resident between requests. {@code yield} is called
-     * off the ledger's lock when the head of the queue needs this lease back; it lets the request in
-     * flight finish, then makes the process exit, which closes the grant. It may block.
-     */
-    public record Resident(String name, Runnable yield) {
-        public Resident {
-            Objects.requireNonNull(name, "name");
-            Objects.requireNonNull(yield, "yield");
-        }
-    }
-
-    /**
      * One queue of waiters and the bytes and JVM slots currently handed out. {@code capacityBytes}
      * and {@code cpuCap} are read when a lease is granted, so a supplier may change what fits
      * without replacing the ledger.
@@ -240,8 +229,6 @@ public final class WorkerLeases {
         private final LinkedHashSet<Waiter> held = new LinkedHashSet<>();
         private final Set<TaskContext> warnedSteps = Collections.newSetFromMap(new WeakHashMap<>());
         private long leased;
-        /** Sum over held workers of what each may grow to; at most twice the budget. */
-        private long ceilings;
         /** When this ledger last granted a lease: a waiter gives up only once the line stood still. */
         private long lastGrant = Long.MIN_VALUE;
         /** Sum over held workers of the resident bytes above their lease. */
@@ -479,7 +466,7 @@ public final class WorkerLeases {
          * back a fork that has work to run, and {@code resident} is asked to give the memory back
          * when the head of the queue needs it.
          */
-        public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice, Resident resident)
+        public Grant acquireResident(List<String> command, JvmOptions.HeapChoice choice, LeaseResident resident)
                 throws InterruptedException {
             return acquire(
                     new Waiter(demand(command, choice).resident(), null, Objects.requireNonNull(resident, "resident")));
@@ -498,7 +485,7 @@ public final class WorkerLeases {
          * takes no JVM slot, belongs to no request, and {@code resident} is asked to give the lease
          * back when the head of the queue needs its memory.
          */
-        public Grant acquireResidentBytes(long bytes, Resident resident) throws InterruptedException {
+        public Grant acquireResidentBytes(long bytes, LeaseResident resident) throws InterruptedException {
             long leasedBytes = Math.min(Math.max(1, bytes), Math.max(1, capacityBytes()));
             Demand demand = new Demand(leasedBytes, 0, true, leasedBytes < bytes, false, false).resident();
             return acquire(new Waiter(demand, null, Objects.requireNonNull(resident, "resident")));
@@ -678,28 +665,31 @@ public final class WorkerLeases {
             if (head.demand.cpuSlot && hostJvms() >= cpuCap()) return;
             long cap = capacityBytes();
             long bytesShort = head.demand.bytes - (cap - hostCharged());
-            long heapsShort = ceilings + head.demand.worstBytes - ceiling(cap);
+            long heapsShort = heaps() + head.demand.worstBytes - ceiling(cap);
             long bytesLeft = 0;
             long heapsLeft = 0;
             for (Waiter w : held) {
                 if (w.resident == null) continue;
+                long heap = heapOf(w);
                 bytesShort -= w.yieldAsked ? w.demand.bytes : 0;
-                heapsShort -= w.yieldAsked ? w.demand.worstBytes : 0;
+                heapsShort -= w.yieldAsked ? heap : 0;
                 bytesLeft += w.yieldAsked ? 0 : w.demand.bytes;
-                heapsLeft += w.yieldAsked ? 0 : w.demand.worstBytes;
+                heapsLeft += w.yieldAsked ? 0 : heap;
             }
             if (bytesShort > bytesLeft || heapsShort > heapsLeft) return;
             List<Waiter> ask = new ArrayList<>();
             for (Waiter w : held) {
                 if (bytesShort <= 0 && heapsShort <= 0) break;
-                if (w.resident == null || w.yieldAsked) continue;
+                long heap = heapOf(w);
+                // Asking helps only with what it gives back: an idle resident holds no room under the bound.
+                if (w.resident == null || w.yieldAsked || (bytesShort <= 0 && heap == 0)) continue;
                 w.yieldAsked = true;
                 bytesShort -= w.demand.bytes;
-                heapsShort -= w.demand.worstBytes;
+                heapsShort -= heap;
                 ask.add(w);
             }
             for (Waiter w : ask) {
-                Resident r = Objects.requireNonNull(w.resident);
+                LeaseResident r = Objects.requireNonNull(w.resident);
                 Log.info("jk engine: asking the " + r.name() + " to exit: " + ownerOf(head) + " needs "
                         + format(head.demand.bytes) + " and the " + r.name() + " holds " + format(w.demand.bytes));
                 SessionContext.startVirtual("jk-lease-yield", () -> {
@@ -749,7 +739,7 @@ public final class WorkerLeases {
                         .append(" free")
                         .append(nameBudget ? " of the " + format(budget) + " worker budget" : "");
                 if (heaps)
-                    line.append(", but the held workers' heaps may grow to " + format(ceilings) + " of the "
+                    line.append(", but the held workers' heaps may grow to " + format(heaps()) + " of the "
                             + format(ceiling(budget)) + " allowed together");
                 line.append(')');
             }
@@ -803,7 +793,18 @@ public final class WorkerLeases {
          * budget is free.
          */
         private boolean ceilingBlocks(Waiter waiter, long cap) {
-            return ceilings > ceiling(cap) - waiter.demand.worstBytes;
+            return heaps() > ceiling(cap) - waiter.demand.worstBytes;
+        }
+
+        /** Under the lock: what the held forks may grow to, each its {@code -Xmx} lease; idle residents count none. */
+        private long heaps() {
+            return held.stream().mapToLong(Ledger::heapOf).sum();
+        }
+
+        /** Under the lock: {@code w}'s {@code -Xmx} lease, or none while it is a resident between requests. */
+        private static long heapOf(Waiter w) {
+            LeaseResident r = w.resident;
+            return r != null && r.idle().getAsBoolean() ? 0 : w.demand.worstBytes;
         }
 
         private static boolean refused(Waiter waiter, WaitReason reason) {
@@ -837,7 +838,6 @@ public final class WorkerLeases {
         private void take(Waiter waiter) {
             held.add(waiter);
             leased += waiter.demand.bytes;
-            ceilings += waiter.demand.worstBytes;
             lastGrant = Clock.SYSTEM.nanos();
             if (waiter.demand.cpuSlot) jvmRunning++;
             waiter.granted = true;
@@ -855,7 +855,6 @@ public final class WorkerLeases {
             waiter.released = true;
             held.remove(waiter);
             leased = Math.max(0, leased - waiter.demand.bytes);
-            ceilings = Math.max(0, ceilings - waiter.demand.worstBytes);
             excess = Math.max(0, excess - waiter.excess());
             if (waiter.overLease) overLeaseCount = Math.max(0, overLeaseCount - 1);
             if (waiter.demand.cpuSlot) jvmRunning = Math.max(0, jvmRunning - 1);
@@ -979,7 +978,6 @@ public final class WorkerLeases {
                 if (next == waiter.demand.bytes) return;
                 excess = Math.max(0, excess - waiter.excess());
                 leased = Math.max(0, leased + next - waiter.demand.bytes);
-                ceilings = Math.max(0, ceilings + next - waiter.demand.worstBytes);
                 waiter.demand = waiter.demand.withBytes(next);
                 excess += waiter.excess();
                 boolean over = WorkerRss.farOverLease(next, waiter.rss);
@@ -1073,7 +1071,7 @@ public final class WorkerLeases {
         Demand demand;
 
         final @Nullable Long requestId;
-        final @Nullable Resident resident;
+        final @Nullable LeaseResident resident;
         /** The resident has been asked to exit for the head of the queue. */
         boolean yieldAsked;
 
@@ -1115,7 +1113,7 @@ public final class WorkerLeases {
         /** Named in the engine log, and on its step, for going far over its lease. */
         boolean named;
 
-        Waiter(Demand demand, @Nullable Long requestId, @Nullable Resident resident) {
+        Waiter(Demand demand, @Nullable Long requestId, @Nullable LeaseResident resident) {
             this.demand = demand;
             this.requestId = requestId;
             this.resident = resident;

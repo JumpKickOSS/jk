@@ -328,9 +328,7 @@ public final class JUnitLauncher {
         // The listing JVM takes the suite's heap too: on the plan's alone it asked a 2 vCPU / 7 GiB
         // runner for 3.5 GiB, past the most a test JVM is given, to list classes.
         if (SuiteRetry.planned(jvmArgs)) {
-            int jdk = launchJavaHome != null
-                    ? JvmOptions.hostFeature(launchJavaHome)
-                    : Runtime.version().feature();
+            int jdk = launchJavaHome == null ? Runtime.version().feature() : JvmOptions.hostFeature(launchJavaHome);
             planned = SuiteRetry.tune(
                     planned, SuiteRetry.project(inferredModuleDir), moduleLabel, jdk, heapOverride, heaps);
             String onOom = role == JvmRole.DISCOVERY ? null : heapRun.flag();
@@ -1175,18 +1173,20 @@ public final class JUnitLauncher {
         List<String> args = withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir), List.of());
         int exit;
         try {
-            exit = PluginLoader.run(
-                    javaHome,
-                    classpath,
-                    flags,
-                    PROTOCOL_PREFIX,
-                    args,
-                    testEnv,
-                    workDir(),
-                    listing.handler(listener),
-                    line -> crash.add(secrets().redact(line)),
-                    0L,
-                    heaps);
+            exit = SuiteRetry.listing(
+                    filledKey(javaHome),
+                    () -> PluginLoader.run(
+                            javaHome,
+                            classpath,
+                            flags,
+                            PROTOCOL_PREFIX,
+                            args,
+                            testEnv,
+                            workDir(),
+                            listing.handler(listener),
+                            line -> crash.add(secrets().redact(line)),
+                            0L,
+                            heaps));
         } catch (PluginProcess.HandlerFailure e) {
             // The parent's own decoder ended the listing: a handler row, and no trust in the list.
             return listing.handlerFailed(crash.text(), e.handler());

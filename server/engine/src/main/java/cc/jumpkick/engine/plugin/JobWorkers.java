@@ -134,7 +134,7 @@ public final class JobWorkers {
      * host). Its lease takes no CPU slot, and {@code resident} is asked to exit when the head of the
      * lease queue needs the memory.
      */
-    public static Process startResident(ProcessBuilder pb, WorkerLeases.Resident resident) throws IOException {
+    public static Process startResident(ProcessBuilder pb, LeaseResident resident) throws IOException {
         return launch(
                 pb,
                 false,
@@ -160,7 +160,7 @@ public final class JobWorkers {
             long bytes,
             long capBytes,
             @Nullable Long leaseRequest,
-            WorkerLeases.@Nullable Resident resident,
+            @Nullable LeaseResident resident,
             String what,
             boolean track,
             Consumer<WorkerLeases.Grant> onGrant)
@@ -202,7 +202,7 @@ public final class JobWorkers {
     private static Process launch(
             ProcessBuilder pb,
             boolean track,
-            WorkerLeases.@Nullable Resident resident,
+            @Nullable LeaseResident resident,
             WorkerLeases.Ledger leases,
             JvmOptions.HeapChoice choice,
             LearnedHeaps heaps)
