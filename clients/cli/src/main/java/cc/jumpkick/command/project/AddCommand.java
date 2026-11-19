@@ -369,9 +369,8 @@ public final class AddCommand implements CliCommand {
     }
 
     /**
-     * Add an arbitrary local file as a dependency. The file is immediately stored in the CAS and
-     * mirrored into the m2 local repo so {@code jk lock} can resolve it without re-reading the
-     * original path.
+     * Add an arbitrary local file as a dependency. The engine stores the file in the store's CAS
+     * under its digest, so {@code jk lock} can resolve it without re-reading the original path.
      *
      * <p>For {@code .jar} files, Maven coordinate metadata is auto-detected from {@code
      * META-INF/maven/.../pom.properties}; flag overrides win. Non-JAR files, or JARs without embedded
