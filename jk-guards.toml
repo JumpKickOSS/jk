@@ -631,6 +631,14 @@ reason = "fixture for a retired LOCALAPPDATA layout"
 in     = "clients/cli/src/test/java/cc/jumpkick/command/WrapperTemplateTest.java"
 reason = "asserts the wrapper template does not contain the retired variables"
 
+[[guards.single-home-root.allow]]
+in     = "bench/agent-loop/results/2026-11-18-anchor-push/chain5.sh"
+reason = "a banked bench script, kept as it ran: its PATH names the directory the agent CLIs under test install into, which is not a jk layout"
+
+[[guards.single-home-root.allow]]
+in     = "bench/agent-loop/results/2026-11-18-anchor-push/chain6.sh"
+reason = "a banked bench script, kept as it ran: its PATH names the directory the agent CLIs under test install into, which is not a jk layout"
+
 # G50. A ticket id names a tracker this repository's readers do not have. Extension-blind on
 # purpose: every scope this rule was given by extension is where it was missed next.
 [guards.no-ticket-ids]
