@@ -20,6 +20,7 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.repo.RepoCredentialResolver;
 import cc.jumpkick.run.StepCache;
+import cc.jumpkick.task.CacheSeeds;
 import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
 import cc.jumpkick.wire.EnginePaths;
@@ -37,9 +38,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A suite that reads the caller's whole shell, as a Spring Boot suite does, between two homes and
- * jk's {@code FakeCacheServer} (JK-2M8VG): under {@code [env] scope} another user with another
- * token replays it, and with no scope its result stays on the host that ran it. The workspace,
- * shells and helpers are {@link RemoteCacheE2eTest}'s.
+ * jk's {@code FakeCacheServer} (JK-2M8VG): under {@code [env] scope} and a team's key seed another
+ * user with another token replays it; with no seed its result stays on the host that ran it, scoped
+ * or not. The workspace, shells and helpers are {@link RemoteCacheE2eTest}'s; the seed
+ * is made up.
  */
 @Tag("integration")
 class ScopedEnvShareE2eTest extends EngineServerHarness {
@@ -69,6 +71,9 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
             }
             """;
 
+    /** The team's seed both homes set. */
+    private static final String SEED = "made-up-team-seed-for-the-scoped-e2e";
+
     private EnginePaths.Paths engine;
     private EngineServer server;
     private Thread serverThread;
@@ -92,7 +97,7 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
      * A scoped suite that reads the whole shell is shared and replayed by a home with another user,
      * token file and cache token (JK-2M8VG): the names its module's scope hides key nothing, even
      * the ones a run before the scope kept, and its read list names what it did read so the other
-     * home keys it alike. The dojo-5 study's spring-petclinic, in small.
+     * home keys it alike under the team's seed. The dojo-5 study's spring-petclinic, in small.
      */
     @Test
     void a_scoped_suite_that_reads_the_whole_shell_is_replayed_by_another_user_with_another_token() throws Exception {
@@ -111,7 +116,8 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
                             Set.of(),
                             new SuiteEnvReads.Record(Set.of("USER", "TOKFILE", token), true, false)));
             Map<String, String> writer = new HashMap<>(service(service, FakeCacheServer.WRITER, true));
-            writer.putAll(Map.of("USER", "alice", "TOKFILE", "/var/tmp/a/tok", "JKSCOPE_MODE", "on"));
+            writer.putAll(
+                    Map.of("USER", "alice", "TOKFILE", "/var/tmp/a/tok", "JKSCOPE_MODE", "on", CacheSeeds.ENV, SEED));
             List<String> built = build(engine, a, root.resolve("cache-a"), writer, true);
             assertThat(succeeded(built)).as("A builds: " + built).isTrue();
             settled(a);
@@ -122,6 +128,7 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
                         .doesNotContain("x:env-read:USER")
                         .doesNotContain("x:env-read:TOKFILE")
                         .doesNotContain(token)
+                        .doesNotContain(SEED)
                         .doesNotContain("x:env-keyed");
                 assertThat(MiniJson.list(m.reads(), "files"))
                         .map(String::valueOf)
@@ -131,7 +138,8 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
             forgetReads(a);
 
             Map<String, String> reader = new HashMap<>(service(service, FakeCacheServer.READER, false));
-            reader.putAll(Map.of("USER", "bob", "TOKFILE", "/var/tmp/b/tok", "JKSCOPE_MODE", "on"));
+            reader.putAll(
+                    Map.of("USER", "bob", "TOKFILE", "/var/tmp/b/tok", "JKSCOPE_MODE", "on", CacheSeeds.ENV, SEED));
             List<String> again = build(engine, b, root.resolve("cache-b"), reader, true);
             assertThat(succeeded(again)).as("B builds: " + again).isTrue();
             BuildRecord record = settled(b);
@@ -167,6 +175,37 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
 
             Map<String, String> reader = new HashMap<>(service(service, FakeCacheServer.READER, false));
             reader.putAll(Map.of("USER", "bob", "TOKFILE", "/var/tmp/b/tok", "JKSCOPE_MODE", "on"));
+            List<String> again = build(engine, b, root.resolve("cache-b"), reader, true);
+            assertThat(succeeded(again)).as("B builds: " + again).isTrue();
+            assertThat(suite(settled(b)).outcome()).isEqualTo(StepCache.Outcome.MISS);
+        }
+    }
+
+    /**
+     * The scoped suite with no seed, set or issued: its values key on this home's secret, as an
+     * unscoped one's do, so its result is not uploaded and another user runs it. Before,
+     * a scoped value keyed by plain digest and the result went up with no seed at all.
+     */
+    @Test
+    void a_scoped_suite_with_no_seed_stays_on_its_host_and_is_not_uploaded() throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), READS_SHELL, "\n[env]\nscope = [\"JKSCOPE_*\"]\n");
+        Path b = copy(a, root.resolve("b"));
+        try (FakeCacheServer service = FakeCacheServer.start()) {
+            Map<String, String> writer = new HashMap<>(service(service, FakeCacheServer.WRITER, true));
+            writer.putAll(Map.of("USER", "alice", "JKSCOPE_MODE", "on"));
+            List<String> built = build(engine, a, root.resolve("cache-a"), writer, true);
+            assertThat(succeeded(built)).as("A builds: " + built).isTrue();
+            settled(a);
+            assertThat(service.recordsOf("test-marker"))
+                    .as("no seed: nothing keyed on a value leaves")
+                    .isEmpty();
+            assertThat(service.recordsOf("class-ledger")).isEmpty();
+            assertThat(service.calls()).as("asked whether the cache issues one").contains("GET /v0/key-seed writer");
+            forgetReads(a);
+
+            Map<String, String> reader = new HashMap<>(service(service, FakeCacheServer.READER, false));
+            reader.putAll(Map.of("USER", "bob", "JKSCOPE_MODE", "on"));
             List<String> again = build(engine, b, root.resolve("cache-b"), reader, true);
             assertThat(succeeded(again)).as("B builds: " + again).isTrue();
             assertThat(suite(settled(b)).outcome()).isEqualTo(StepCache.Outcome.MISS);

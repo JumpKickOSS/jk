@@ -57,7 +57,9 @@ final class RemoteSuiteReads {
         String base =
                 SuiteReadLists.<@Nullable String, Exception>as(moduleDir, SuiteReads.Discovered.NONE, rekey::call);
         if (base == null || base.equals(settled)) return;
-        tier.noteReads(settled, new CacheBackend.Reads(base, files));
+        // Uploaded under its key's shared form when it has one (SharedStampKeys): the list goes with
+        // it, filed under the base's shared form, which a host that never ran the suite asks by.
+        tier.noteReads(tier.asShared(settled), new CacheBackend.Reads(tier.asShared(base), files));
     }
 
     /**
@@ -86,7 +88,8 @@ final class RemoteSuiteReads {
             KeyAudit.Keyed keyed = KeyAudit.tapped(
                     () -> SuiteReadLists.<@Nullable String, Exception>as(moduleDir, reads, rekey::call));
             String key = keyed == null ? null : keyed.key();
-            if (!c.key().equals(key)) {
+            // A result that read the environment is held by its key's shared form (SharedStampKeys).
+            if (key == null || !c.key().equals(tier.asShared(key))) {
                 if (keyed != null) differed.addAll(programsDiffering(c, keyed.tokens()));
                 continue;
             }

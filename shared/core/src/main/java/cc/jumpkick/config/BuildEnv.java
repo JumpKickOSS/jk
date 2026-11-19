@@ -296,9 +296,24 @@ public final class BuildEnv {
         Map<String, String> all = shell != null ? shell.vars() : ProcessEnv.all();
         Map<String, String> out = new LinkedHashMap<>();
         all.forEach((name, value) -> {
-            if (!perInvocation(name)) out.put(name, value);
+            if (!perInvocation(name) && !withheld(name)) out.put(name, value);
         });
         return Collections.unmodifiableMap(out);
+    }
+
+    /**
+     * The team's remote cache key seed, read from the shell that runs jk. jk alone reads it: no
+     * worker is handed it and no key holds it, so a test that logs its environment cannot carry it
+     * into an output a remote cache stores, and a new seed reruns nothing.
+     */
+    public static final String CACHE_KEY_SEED = "JK_CACHE_KEY_SEED";
+
+    /**
+     * Whether {@code name} of the caller's is kept from every worker and every key: {@link
+     * #CACHE_KEY_SEED}, in any case, since a Windows name matches so.
+     */
+    public static boolean withheld(String name) {
+        return CACHE_KEY_SEED.equalsIgnoreCase(name);
     }
 
     /**

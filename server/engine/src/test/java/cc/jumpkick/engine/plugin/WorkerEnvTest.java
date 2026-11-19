@@ -285,6 +285,35 @@ class WorkerEnvTest {
     }
 
     /**
+     * The team's cache key seed reaches no worker: not from the engine's environment, not inherited
+     * from the caller's shell, not declared in {@code [env]}, not laid on by a fork, in any case on
+     * Windows; a compiler no more than a test JVM.
+     */
+    @Test
+    void the_cache_key_seed_reaches_no_worker(@TempDir Path dir) throws Exception {
+        String seed = "made-up-team-seed-0123456789";
+        Map<String, String> shell = Map.of("PATH", "/caller/bin", "JK_CACHE_KEY_SEED", seed, "APP_MODE", "a");
+        WorkerEnv inherit = WorkerEnv.policy(new EnvConfig(true, List.of()));
+        assertThat(RequestShell.where(shell, inherit::environment))
+                .containsEntry("APP_MODE", "a")
+                .doesNotContainKey("JK_CACHE_KEY_SEED");
+        assertThat(RequestShell.where(shell, inherit::compilerEnvironment)).doesNotContainKey("JK_CACHE_KEY_SEED");
+
+        EnvConfig declares = new EnvConfig(false, List.of(), List.of("JK_CACHE_KEY_SEED"), List.of(), Map.of());
+        assertThat(RequestShell.where(shell, () -> WorkerEnv.declared(declares, dir, null)))
+                .as("a declared forward of it resolves unset")
+                .isEmpty();
+        assertThat(WorkerEnv.withEngineEnvironment(
+                        Map.of("PATH", "/usr/bin", "JK_CACHE_KEY_SEED", seed),
+                        WorkerEnv.strict().with(Map.of("JK_CACHE_KEY_SEED", seed))::environment))
+                .as("neither the engine's nor one a fork lays on")
+                .doesNotContainKey("JK_CACHE_KEY_SEED");
+        assertThat(WorkerEnv.compose(Map.of("jk_cache_key_seed", seed), Map.of(), true, Map.of(), true))
+                .as("on Windows, whatever its case")
+                .isEmpty();
+    }
+
+    /**
      * Every worker finds its tools on the PATH of the shell running jk, as a test JVM does: the
      * guard suite's JVM is one, and a tool installed into a new PATH entry reaches it without an
      * engine restart.

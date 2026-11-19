@@ -72,7 +72,8 @@ aot-cache = true
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -156,7 +157,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -266,7 +268,8 @@ SERVER_PORT = "0"
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -365,7 +368,8 @@ SERVER_PORT = "0"
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -460,7 +464,8 @@ aot-cache = true
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -552,7 +557,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -644,7 +650,8 @@ SERVER_PORT = "0"
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -738,7 +745,8 @@ aot-cache = true
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -825,7 +833,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -911,7 +920,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 
@@ -998,7 +1008,8 @@ hamcrest-all = { group = "org.hamcrest", name = "hamcrest-all" }
 [nullness]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["<YOURAPP>_*"]
 

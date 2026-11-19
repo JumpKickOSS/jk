@@ -131,6 +131,16 @@ public final class KeyAudit {
         return key == null ? null : new Keyed(key, lines("", lines));
     }
 
+    /**
+     * {@code source}'s key, its lines heard by no tap: a second form of a key a step takes beside
+     * the one it names ({@code SharedStampKeys}), which must not stand in the tokens a forecast or a
+     * miss compares.
+     */
+    public static @Nullable String untapped(KeySource source) throws Exception {
+        List<String> nowhere = Collections.synchronizedList(new ArrayList<>());
+        return ScopedValue.where(TAP, nowhere).<String, Exception>call(source::key);
+    }
+
     /** One token that differs: absent before ({@code was} null), gone after ({@code now} null), or changed. */
     public record Token(
             String name, @Nullable String was, @Nullable String now) {

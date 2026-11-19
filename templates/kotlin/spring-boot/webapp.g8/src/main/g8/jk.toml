@@ -9,7 +9,8 @@ kotlin = "2.4.21"
 modules = ["web", "app"]
 
 # Tests see every variable of your shell. Uncommented, this keeps them to these names: results
-# stay cached across unrelated variable changes and can be shared, but tests see no other variable.
+# stay cached across unrelated variable changes and, with a cache key seed, can be shared, but
+# tests see no other variable.
 # [env]
 # scope = ["SPRING_*", "<YOURAPP>_*"]
 

@@ -283,7 +283,8 @@ public final class WorkerEnv {
      * the engine's spawning shell did; {@code extras} on top in their own order. Windows variable
      * names are case-insensitive, so there {@code Path} passes the {@code PATH} rule and lands under
      * its own spelling, a later {@code PATH} replaces it rather than standing beside it (the child
-     * would read whichever the OS meets first), and a lookup by either spelling finds it.
+     * would read whichever the OS meets first), and a lookup by either spelling finds it. The
+     * cache key seed ({@link BuildEnv#withheld}) reaches no worker, inherited, declared or laid on.
      */
     static Map<String, String> compose(
             Map<String, String> engine,
@@ -297,6 +298,7 @@ public final class WorkerEnv {
         }
         out.putAll(request);
         out.putAll(extras);
+        out.keySet().removeIf(BuildEnv::withheld);
         return out;
     }
 

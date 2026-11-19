@@ -124,6 +124,29 @@ class EnvBrokerTest {
         }
     }
 
+    /**
+     * The team's cache key seed is never handed over, even to a module that declares it: asked by
+     * name it reads unset, and a listing and the whole environment leave it out.
+     */
+    @Test
+    void the_cache_key_seed_is_never_handed_over(@TempDir Path tmp) throws IOException {
+        CallerEnv caller = CallerEnv.of(
+                RequestShell.of(
+                        Map.of("JK_CACHE_KEY_SEED", "made-up-team-seed-0123456789", "APP", "1"), Set.of(), true, null),
+                null);
+        List<SuiteEnvReads.Policy> policies = List.of(
+                SuiteEnvReads.Policy.NONE, new SuiteEnvReads.Policy(false, List.of(), Set.of("JK_CACHE_KEY_SEED")));
+        for (int i = 0; i < policies.size(); i++) {
+            Path dir = Files.createDirectories(tmp.resolve("run" + i));
+            try (EnvBroker broker = Objects.requireNonNull(EnvBroker.start(dir, caller, policies.get(i)))) {
+                assertThat(broker.values(List.of("JK_CACHE_KEY_SEED", "APP"))).isEqualTo(Map.of("APP", "1"));
+                assertThat(broker.names()).contains("APP").doesNotContain("JK_CACHE_KEY_SEED");
+                assertThat(broker.all()).containsEntry("APP", "1").doesNotContainKey("JK_CACHE_KEY_SEED");
+                assertThat(broker.record().names()).doesNotContain("JK_CACHE_KEY_SEED");
+            }
+        }
+    }
+
     private static void write(DataOutputStream out, String s) throws IOException {
         byte[] b = s.getBytes(StandardCharsets.UTF_8);
         out.writeInt(b.length);

@@ -255,6 +255,7 @@ class EnvPassthroughE2eTest {
         Path m = module(tmp, "UnhookedTest", """
                 @Test
                 void child() throws Exception {
+                    assertEquals(null, System.getenv("JK_CACHE_KEY_SEED"));
                     Process p = COMMAND.redirectErrorStream(true).start();
                     String out = new String(p.getInputStream().readAllBytes()).strip();
                     assertEquals(0, p.waitFor());
@@ -263,10 +264,11 @@ class EnvPassthroughE2eTest {
                 """.replace("COMMAND", command));
         EnvProbeHook.pretendForTests("a JDK that starts programs another way");
         try {
-            Shell shell = new Shell(Map.of("CHILD_VAR", "from-the-shell", "OTHER", "1"));
+            Shell shell = new Shell(Map.of(
+                    "CHILD_VAR", "from-the-shell", "OTHER", "1", "JK_CACHE_KEY_SEED", "made-up-team-seed-0123456789"));
             Steps first = shell.build(m);
             assertThat(first.status())
-                    .as("the program saw the shell's variable")
+                    .as("the program saw the shell's variable, and the JVM not the cache key seed")
                     .isEqualTo(TaskStatus.SUCCESS);
             assertThat(first.warnings)
                     .as("one line says why")
@@ -344,6 +346,40 @@ class EnvPassthroughE2eTest {
                 .isEqualTo(TaskStatus.FAIL);
         assertThat(new Shell(Map.of("Must_Be_True", "true")).build(m).status())
                 .as("the same value under another spelling: the same key")
+                .isIn(null, TaskStatus.SKIPPED);
+    }
+
+    /**
+     * The team's cache key seed in the shell that runs jk reaches no test JVM: a test asking for it
+     * by name reads it unset, a listing of the environment leaves it out, a program the test starts
+     * does not see it. It keys nothing: another seed takes the green result. (On a JDK the probe
+     * cannot hook, {@code on_a_jdk_the_probe_cannot_hook_the_test_jvm_gets_the_whole_environment}
+     * holds it too.)
+     */
+    @Test
+    void the_cache_key_seed_reaches_no_test_jvm_and_keys_nothing(@TempDir Path tmp) throws Exception {
+        String command = Os.isWindows()
+                ? "new ProcessBuilder(\"cmd\", \"/c\", \"echo [%JK_CACHE_KEY_SEED%]\")"
+                : "new ProcessBuilder(\"sh\", \"-c\", \"printf [%s] \\\"$JK_CACHE_KEY_SEED\\\"\")";
+        String unset = Os.isWindows() ? "[%JK_CACHE_KEY_SEED%]" : "[]";
+        Path m = module(tmp, "SeedTest", """
+                @Test
+                void seed() throws Exception {
+                    assertEquals(null, System.getenv("JK_CACHE_KEY_SEED"));
+                    assertEquals(false, System.getenv().containsKey("JK_CACHE_KEY_SEED"));
+                    Process p = COMMAND.redirectErrorStream(true).start();
+                    String out = new String(p.getInputStream().readAllBytes()).strip();
+                    assertEquals(0, p.waitFor());
+                    assertEquals("UNSET", out);
+                }
+                """.replace("COMMAND", command).replace("UNSET", unset));
+        Shell shell = new Shell(Map.of("JK_CACHE_KEY_SEED", "made-up-team-seed-0123456789", "OTHER", "1"));
+        assertThat(shell.build(m).status()).as("the test JVM saw no seed").isEqualTo(TaskStatus.SUCCESS);
+        assertThat(shell.asked).as("nothing asked the client for it").doesNotContain("JK_CACHE_KEY_SEED");
+        assertThat(shell.with("JK_CACHE_KEY_SEED", "made-up-other-seed-0123456789")
+                        .build(m)
+                        .status())
+                .as("another seed: the green result holds")
                 .isIn(null, TaskStatus.SKIPPED);
     }
 

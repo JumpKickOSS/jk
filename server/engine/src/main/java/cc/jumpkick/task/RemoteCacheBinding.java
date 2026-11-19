@@ -57,11 +57,21 @@ public final class RemoteCacheBinding {
         String dir = EnvValues.string(BuildEnv::get, DIR).orElse(null);
         if (dir != null) {
             boolean writes = EnvValues.bool(BuildEnv::get, WRITE).orElse(false);
-            return new RemoteTier(new DirectoryCacheBackend(Path.of(dir)), writes);
+            return new RemoteTier(new DirectoryCacheBackend(Path.of(dir)), writes).seededBy(seed(), credentialsLocal());
         }
         RemoteCacheSettings settings = RemoteCacheSettings.resolve(BuildEnv::get, JkDirs.userConfigFile());
         if (settings == null || SessionContext.current().config().offlineOr(false)) return null;
-        return new RemoteTier(service(settings.url()), settings.writes());
+        return new RemoteTier(service(settings.url()), settings.writes()).seededBy(seed(), credentialsLocal());
+    }
+
+    /** Whether the request keeps results keyed on a credential's value here even under a seed. */
+    private static boolean credentialsLocal() {
+        return CacheSeeds.credentialsLocal(BuildEnv::get, JkDirs.userConfigFile());
+    }
+
+    /** Where the request's key seed comes from: the team's, set in its shell or the user's settings, else the cache's. */
+    private static CacheSeeds.Source seed() {
+        return CacheSeeds.resolve(BuildEnv::get, JkDirs.userConfigFile());
     }
 
     /** The service at {@code url}, with the credential the repository chain holds for its {@code host[:port]}. */

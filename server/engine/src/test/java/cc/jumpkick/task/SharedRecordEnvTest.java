@@ -57,7 +57,8 @@ class SharedRecordEnvTest {
 
     /**
      * The names behind a suite's listing and whole-environment tokens, which its record keeps so a
-     * miss can name the variable that came or went, stay on this host.
+     * miss can name the variable that came or went, stay on this host, and so does the listing's
+     * own digest.
      */
     @Test
     void the_shared_form_leaves_out_the_callers_variable_names_behind_a_listing() {
@@ -82,7 +83,10 @@ class SharedRecordEnvTest {
         assertThat(shared)
                 .doesNotContain("MY_APP_FOO")
                 .doesNotContain("MY_APP_BAR")
-                .contains("x:env-names");
+                .doesNotContain("v".repeat(64))
+                .as("the listing's digest is withheld like every other: one combined key leaves, nothing per name")
+                .doesNotContain("n".repeat(64))
+                .contains("INPUT - x:env-names\n");
     }
     /**
      * A run-tests record as jk 0.52 wrote it for a module whose {@code [test] env} forwards an unset

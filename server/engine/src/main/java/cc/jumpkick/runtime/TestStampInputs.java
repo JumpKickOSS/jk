@@ -244,6 +244,16 @@ public record TestStampInputs(
         String key = TestStamp.computeKey(sources, mainClasses, main, resources, runtimeClasspath, extras, identity);
         if (key != null) {
             ToolchainPolicy.expect(key, facts.javaHome(), level(), ToolchainPolicy.tiedToMajor(jvmArgs), facts.dir());
+            String held = main;
+            SharedStampKeys.note(
+                    key,
+                    extras,
+                    facts.project(),
+                    facts.dir(),
+                    selection,
+                    SuiteEnvReads.Policy.of(facts.project()),
+                    shared -> TestStamp.computeKey(
+                            sources, mainClasses, held, resources, runtimeClasspath, shared, identity));
         }
         return key;
     }
@@ -507,8 +517,10 @@ public record TestStampInputs(
         // Whether a suite that reaches past the host may replay at all: a marker stored while it
         // could must not replay once it may not, or the suite never runs again until a file moves.
         if (build.testNetworkAllowed()) extras.add("network:allowed");
-        // What the test JVM is handed of the environment changes what the suite sees, so it retests.
-        extras.addAll(ModuleEnvKeys.testJvm(project, moduleDir));
+        // What the test JVM is handed of the environment changes what the suite sees, so it retests;
+        // a value the caller's environment answered keys under this home's secret, and the result
+        // stays here unless a remote cache's seed gives the key a shared form (SharedStampKeys).
+        extras.addAll(SharedStampKeys.declaredTokens(project, moduleDir, null));
         // [test] tools by what they say to --version on the PATH the test JVM gets, never where they
         // are installed, so a node or git upgrade retests the suites that shell out to it.
         String path = BuildEnv.machine().get("PATH");

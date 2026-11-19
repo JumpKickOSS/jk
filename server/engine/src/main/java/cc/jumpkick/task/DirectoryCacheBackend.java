@@ -41,6 +41,12 @@ public final class DirectoryCacheBackend implements CacheBackend {
         return "dir:" + root;
     }
 
+    /** The directory's absolute path: the scope a team's key seed is derived under. */
+    @Override
+    public String seedScope() {
+        return "dir:" + root.toAbsolutePath().normalize();
+    }
+
     @Override
     public Map<String, String> records(Lookup lookup) throws IOException {
         reachable();

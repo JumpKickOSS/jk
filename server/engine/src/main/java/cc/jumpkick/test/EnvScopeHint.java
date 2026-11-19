@@ -89,7 +89,7 @@ public record EnvScopeHint(List<String> frameworks, List<String> scope) {
                         ? "the tests read your whole environment"
                         : String.join(" and ", frameworks) + " reads your whole environment";
         return who + ", so changing any variable runs these tests again; " + scopeLine()
-                + " in jk.toml keeps them to those names (and lets the result be shared)";
+                + " in jk.toml keeps them to those names (and, with a cache key seed, shared)";
     }
 
     /** Whether the module at {@code moduleDir} has not heard the line yet; it has, once this returns true. */

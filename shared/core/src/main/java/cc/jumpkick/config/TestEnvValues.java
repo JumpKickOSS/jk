@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -94,11 +95,25 @@ public final class TestEnvValues {
          * @param lookup resolves {@code ${VAR}} and says which values came from a {@code .env}
          * @param secrets {@link SecretRedactor#from} that same {@code lookup} — a redactor built
          * from a different environment would mask the wrong values
+         * @param environmental what a value the environment answered becomes in the key: a plain
+         * digest ({@link #digested}), or for a suite's key an HMAC under a secret, so that no key
+         * that leaves the machine holds a digest a guessed value could be checked against
          */
-        record CacheKey(EnvLookup lookup, SecretRedactor secrets) implements Mode {
+        record CacheKey(EnvLookup lookup, SecretRedactor secrets, UnaryOperator<String> environmental) implements Mode {
             public CacheKey {
                 Objects.requireNonNull(lookup, "lookup");
                 Objects.requireNonNull(secrets, "secrets");
+                Objects.requireNonNull(environmental, "environmental");
+            }
+
+            /** A key that takes a value the environment answered as its plain digest. */
+            public CacheKey(EnvLookup lookup, SecretRedactor secrets) {
+                this(lookup, secrets, CacheKey::digested);
+            }
+
+            /** {@code value} as {@link SecretRedactor#KEY_PREFIX} and its SHA-256. */
+            public static String digested(String value) {
+                return SecretRedactor.KEY_PREFIX + Hashing.sha256Hex(value);
             }
         }
     }
@@ -114,6 +129,9 @@ public final class TestEnvValues {
      * <p>Order is the manifest's: later entries win, and a {@link EnvDecl.Forward} of a
      * variable the caller does not have <em>removes</em> what an earlier entry set, so a manifest
      * reads top to bottom with no precedence rule to memorise.
+     *
+     * <p>The cache key seed ({@link BuildEnv#withheld}) reads as unset in both modes: declaring it,
+     * or naming it in a value, hands it to no worker and keys nothing.
      *
      * @param at the position named in messages — {@code [test].env} or {@code [env].vars}
      * @throws JkBuildParseException if a {@link EnvDecl.Set} value references an
@@ -141,7 +159,10 @@ public final class TestEnvValues {
                                     Interpolation.expand(set.value(), where, name -> switch (name) {
                                         case TARGET -> absolute(target, TARGET);
                                         case MODULE -> absolute(moduleDir, MODULE);
-                                        default -> launch.env().apply(name);
+                                        default ->
+                                            BuildEnv.withheld(name)
+                                                    ? null
+                                                    : launch.env().apply(name);
                                     });
                                 case Mode.CacheKey key -> keyed(set.value(), where, key);
                             });
@@ -158,14 +179,14 @@ public final class TestEnvValues {
      */
     private static @Nullable String forwarded(String name, Mode mode) {
         return switch (mode) {
-            case Mode.Launch launch -> launch.env().apply(name);
+            case Mode.Launch launch ->
+                BuildEnv.withheld(name) ? null : launch.env().apply(name);
             case Mode.CacheKey key -> {
-                String value = key.lookup().get(name);
+                String value = BuildEnv.withheld(name) ? null : key.lookup().get(name);
                 if (value == null) yield ABSENT;
-                String masked = key.secrets().forCacheKey(value);
                 // Hashed, never written out: a forwarded value is by definition the machine's, and
                 // an action key may be read on another one.
-                yield masked.equals(value) ? SecretRedactor.KEY_PREFIX + Hashing.sha256Hex(value) : masked;
+                yield key.environmental().apply(value);
             }
         };
     }
@@ -176,7 +197,7 @@ public final class TestEnvValues {
         String expanded = Interpolation.expand(raw, where, name -> switch (name) {
             case TARGET, MODULE -> "${" + name + "}";
             default -> {
-                String value = mode.lookup().get(name);
+                String value = BuildEnv.withheld(name) ? null : mode.lookup().get(name);
                 if (value != null) fromEnvironment[0] = true;
                 yield value;
             }
@@ -186,9 +207,7 @@ public final class TestEnvValues {
         // A non-secret reference (${HOME}, a CI build id) still keys by VALUE — a changed
         // environment must retest — but the literal is an absolute path or an identifier and must
         // not land in a key that may be shared between machines.
-        if (fromEnvironment[0] && masked.equals(expanded)) {
-            return SecretRedactor.KEY_PREFIX + Hashing.sha256Hex(expanded);
-        }
+        if (fromEnvironment[0]) return mode.environmental().apply(expanded);
         return masked;
     }
 

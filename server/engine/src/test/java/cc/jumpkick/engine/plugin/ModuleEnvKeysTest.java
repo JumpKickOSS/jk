@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
@@ -48,8 +49,14 @@ class ModuleEnvKeysTest {
                 [test]
                 env = ["SUITE_MODE"]
                 """);
-        assertThat(under("SUITE_MODE", "a", () -> ModuleEnvKeys.testJvm(project, tmp)))
-                .isNotEqualTo(under("SUITE_MODE", "b", () -> ModuleEnvKeys.testJvm(project, tmp)));
+        assertThat(under(
+                        "SUITE_MODE",
+                        "a",
+                        () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested)))
+                .isNotEqualTo(under(
+                        "SUITE_MODE",
+                        "b",
+                        () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested)));
         assertThat(under("SUITE_MODE", "a", () -> ModuleEnvKeys.plugin(project, tmp)))
                 .isEmpty();
     }
@@ -65,7 +72,8 @@ class ModuleEnvKeysTest {
                 [test]
                 env = ["JK_ANWXB_UNSET", "SUITE_MODE", { CI = "false" }]
                 """);
-        List<String> tokens = under("SUITE_MODE", "fast", () -> ModuleEnvKeys.testJvm(project, tmp));
+        List<String> tokens = under(
+                "SUITE_MODE", "fast", () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested));
 
         assertThat(tokens)
                 .hasSize(3)
@@ -86,9 +94,32 @@ class ModuleEnvKeysTest {
         for (Callable<List<String>> reader : List.<Callable<List<String>>>of(
                 () -> ModuleEnvKeys.worker(project, tmp),
                 () -> ModuleEnvKeys.plugin(project, tmp),
-                () -> ModuleEnvKeys.testJvm(project, tmp),
+                () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested),
                 () -> ModuleEnvKeys.module(project, tmp))) {
             assertThat(under("GEN_MODE", "A", reader)).isNotEqualTo(under("GEN_MODE", "B", reader));
+        }
+    }
+
+    /** The cache key seed keys no reader: declared for every worker, for the test JVM, or inherited with the shell. */
+    @Test
+    void the_cache_key_seed_keys_nothing() throws Exception {
+        JkBuild project = project("""
+                [env]
+                inherit = true
+                optional = ["JK_CACHE_KEY_SEED"]
+
+                [test]
+                env = ["JK_CACHE_KEY_SEED"]
+                """);
+        for (Callable<List<String>> reader : List.<Callable<List<String>>>of(
+                () -> ModuleEnvKeys.worker(project, tmp),
+                () -> ModuleEnvKeys.plugin(project, tmp),
+                () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested),
+                () -> ModuleEnvKeys.module(project, tmp))) {
+            assertThat(under("JK_CACHE_KEY_SEED", "made-up-seed-a-0123456789", reader))
+                    .isNotEmpty()
+                    .isEqualTo(under("JK_CACHE_KEY_SEED", "made-up-seed-b-0123456789", reader))
+                    .isEqualTo(RequestShell.where(Map.of("PATH", "/bin"), reader));
         }
     }
 
@@ -96,7 +127,8 @@ class ModuleEnvKeysTest {
     void a_module_that_reads_nothing_has_no_tokens() throws Exception {
         JkBuild project = project("");
         assertThat(ModuleEnvKeys.module(project, tmp)).isEmpty();
-        assertThat(ModuleEnvKeys.testJvm(project, tmp)).isEmpty();
+        assertThat(ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested))
+                .isEmpty();
     }
 
     private static List<String> under(String name, String value, Callable<List<String>> reader) throws Exception {

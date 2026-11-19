@@ -43,9 +43,33 @@ final class MemoryCacheBackend implements CacheBackend {
     /** The read list each record was put with. */
     final Map<String, Reads> reads = new ConcurrentHashMap<>();
 
+    /** The key seed this store issues, null for none; {@link #seedFailure} when set answers instead. */
+    volatile @Nullable IssuedSeed issued;
+
+    volatile @Nullable IOException seedFailure;
+
+    /** How many times the seed was asked for. */
+    volatile int seedAsks;
+
+    /** What names this store as a seed's scope. */
+    volatile String scope = "memory";
+
+    @Override
+    public String seedScope() {
+        return scope;
+    }
+
     @Override
     public String name() {
         return "memory";
+    }
+
+    @Override
+    public synchronized @Nullable IssuedSeed keySeed() throws IOException {
+        seedAsks++;
+        IOException failure = seedFailure;
+        if (failure != null) throw failure;
+        return issued;
     }
 
     @Override

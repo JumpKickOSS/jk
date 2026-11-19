@@ -7,16 +7,19 @@ import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.task.KeySeed;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * Under {@code [env] scope} a suite keys on what its test JVM could be handed and nothing else, a
- * credential's value never by a plain digest, and a result only this home keys alike stays here
- * (JK-2M8VG, JK-1QNSV). The names are the dojo-5 study's scoped spring-petclinic record's: the
+ * Under {@code [env] scope} a suite keys on what its test JVM could be handed and nothing else, and
+ * no value by a plain digest: without a remote cache's seed the result stays here, under one two
+ * homes key alike (JK-2M8VG, JK-1QNSV). The names are the dojo-5 study's scoped spring-petclinic record's: the
  * writer's suite had read them before the module scoped, and kept them.
  */
 class ScopedEnvKeysTest {
@@ -65,29 +68,43 @@ class ScopedEnvKeysTest {
         return caller(vars);
     }
 
+    /** A made-up team seed, as two homes of one cache hold it. */
+    private static final KeySeed SEED = KeySeed.derive(
+            "made-up-team-seed-0123456789".getBytes(StandardCharsets.UTF_8), "team\u0000https://cache.example.com");
+
     @Test
-    void a_scoped_suite_keys_alike_in_two_homes_whatever_names_an_earlier_run_kept() {
+    void a_scoped_suite_keys_on_this_homes_secret_and_stays_here_without_a_seed() {
+        CallerEnv a = home("alice", "/var/tmp/a/tok", "made-up-writer-token");
+
+        List<String> inA = SuiteEnvReads.tokens(STUDY, PETCLINIC, a);
+
+        assertThat(inA)
+                .as("no plain digest a guessed value could be checked against, scoped or not")
+                .noneMatch(t -> t.contains(Hashing.sha256Hex("SPRING_PROFILES_ACTIVE\u0000test")))
+                .anyMatch(t -> t.startsWith("env-read:SPRING_PROFILES_ACTIVE="))
+                .contains(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.localOnly(STUDY, PETCLINIC, a)).isEqualTo("read the value of SPRING_PROFILES_ACTIVE");
+        assertThat(STUDY.under(PETCLINIC).names()).containsExactly("SPRING_PROFILES_ACTIVE");
+    }
+
+    @Test
+    void under_a_seed_a_scoped_suite_keys_alike_in_two_homes_whatever_names_an_earlier_run_kept() {
         CallerEnv a = home("alice", "/var/tmp/a/tok", "made-up-writer-token");
         CallerEnv b = home("bob", "/var/tmp/b/tok", "made-up-reader-token");
 
-        List<String> inA = SuiteEnvReads.tokens(STUDY, PETCLINIC, a);
-        List<String> inB = SuiteEnvReads.tokens(STUDY, PETCLINIC, b);
+        List<String> inA = SuiteEnvReads.sharedTokens(STUDY, PETCLINIC, a, SEED, false);
 
-        assertThat(inB).as("another user, token file and token key alike").isEqualTo(inA);
+        assertThat(SuiteEnvReads.sharedTokens(STUDY, PETCLINIC, b, SEED, false))
+                .as("another user, token file and token key alike: the scope hides them")
+                .isEqualTo(inA);
         assertThat(inA)
-                .as("the names the scope hides key nothing")
                 .noneMatch(t -> t.contains("USER")
                         || t.contains("LOGNAME")
                         || t.contains("TOKFILE")
                         || t.contains("SDKMAN")
                         || t.contains(TOKEN_VAR))
-                .anyMatch(t -> t.startsWith(
-                        "env-read:SPRING_PROFILES_ACTIVE=" + Hashing.sha256Hex("SPRING_PROFILES_ACTIVE\u0000test")))
+                .contains("env-read:SPRING_PROFILES_ACTIVE=" + SEED.hmac("SPRING_PROFILES_ACTIVE\u0000test"))
                 .doesNotContain(SuiteEnvReads.HOST_TOKEN);
-        assertThat(SuiteEnvReads.localOnly(STUDY, PETCLINIC, a))
-                .as("the result may be shared")
-                .isNull();
-        assertThat(STUDY.under(PETCLINIC).names()).containsExactly("SPRING_PROFILES_ACTIVE");
     }
 
     @Test
@@ -100,31 +117,29 @@ class ScopedEnvKeysTest {
         assertThat(SuiteEnvReads.tokens(STUDY, SuiteEnvReads.Policy.NONE, b)).isNotEqualTo(inA);
         assertThat(inA).anyMatch(t -> t.startsWith("env-read:USER=")).contains(SuiteEnvReads.HOST_TOKEN);
         assertThat(SuiteEnvReads.localOnly(STUDY, SuiteEnvReads.Policy.NONE, a))
-                .isEqualTo("read " + TOKEN_VAR + ", which the module does not declare");
+                .isEqualTo("read the value of " + TOKEN_VAR);
     }
 
     @Test
-    void a_credential_the_scope_lets_through_keys_by_this_homes_secret_and_stays_here() {
+    void a_credential_the_scope_lets_through_keys_under_the_seed_and_never_plainly() {
         String password = "made-up-password";
         SuiteEnvReads.Record read =
                 new SuiteEnvReads.Record(Set.of("SPRING_DATASOURCE_PASSWORD", "SPRING_PROFILES_ACTIVE"), false, false);
         CallerEnv shell = caller(Map.of("SPRING_DATASOURCE_PASSWORD", password, "SPRING_PROFILES_ACTIVE", "test"));
-
-        List<String> tokens = SuiteEnvReads.tokens(read, PETCLINIC, shell);
-
         String plain = Hashing.sha256Hex("SPRING_DATASOURCE_PASSWORD\u0000" + password);
-        assertThat(tokens)
-                .as("no plain digest a guessed password could be checked against")
+
+        assertThat(SuiteEnvReads.tokens(read, PETCLINIC, shell))
                 .noneMatch(t -> t.contains(plain) || t.contains(password))
-                .anyMatch(t -> t.startsWith("env-read:SPRING_DATASOURCE_PASSWORD="))
                 .contains(SuiteEnvReads.HOST_TOKEN);
-        assertThat(SuiteEnvReads.localOnly(read, PETCLINIC, shell))
-                .contains("SPRING_DATASOURCE_PASSWORD")
-                .contains("credential");
-        assertThat(SuiteEnvReads.tokens(read, PETCLINIC, caller(Map.of("SPRING_PROFILES_ACTIVE", "test"))))
-                .as("unset, it keys as unset everywhere")
-                .contains("env-read:SPRING_DATASOURCE_PASSWORD=unset")
-                .doesNotContain(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.sharedTokens(read, PETCLINIC, shell, SEED, false))
+                .noneMatch(t -> t.contains(plain) || t.contains(password))
+                .contains("env-read:SPRING_DATASOURCE_PASSWORD="
+                        + SEED.hmac("SPRING_DATASOURCE_PASSWORD\u0000" + password));
+        assertThat(SuiteEnvReads.sharedTokens(read, PETCLINIC, shell, SEED, true))
+                .isNull();
+        assertThat(SuiteEnvReads.tokens(read, PETCLINIC, caller(Map.of())))
+                .as("both unset: they key as unset everywhere, no secret involved")
+                .containsExactly("env-read:SPRING_DATASOURCE_PASSWORD=unset", "env-read:SPRING_PROFILES_ACTIVE=unset");
     }
 
     @Test
@@ -133,26 +148,21 @@ class ScopedEnvKeysTest {
         String token = "made-up-cache-token";
         SuiteEnvReads.Record read = new SuiteEnvReads.Record(Set.of(TOKEN_VAR), false, true);
         CallerEnv shell = caller(Map.of(TOKEN_VAR, token, "MODE", "fast"));
+        String whole = Hashing.sha256Hex("\u0000" + TOKEN_VAR + "=" + token + "\nMODE=fast\n");
 
-        List<String> tokens = SuiteEnvReads.tokens(read, everything, shell);
-
-        assertThat(tokens)
-                .noneMatch(t -> t.contains(Hashing.sha256Hex(TOKEN_VAR + "\u0000" + token)))
-                .contains(SuiteEnvReads.HOST_TOKEN);
-        assertThat(SuiteEnvReads.tokens(
-                        new SuiteEnvReads.Record(Set.of(), false, true),
-                        everything,
-                        caller(Map.of(TOKEN_VAR, token, "MODE", "fast"))))
-                .as("a program started with the token set keys on this host alone")
-                .contains(SuiteEnvReads.HOST_TOKEN)
-                .noneMatch(t ->
-                        t.equals("env-all=" + Hashing.sha256Hex("\u0000" + TOKEN_VAR + "=" + token + "\nMODE=fast\n")));
+        for (List<String> tokens : List.of(
+                SuiteEnvReads.tokens(read, everything, shell),
+                SuiteEnvReads.sharedTokens(read, everything, shell, SEED, false))) {
+            assertThat(tokens)
+                    .noneMatch(t -> t.contains(Hashing.sha256Hex(TOKEN_VAR + "\u0000" + token)))
+                    .noneMatch(t -> t.equals("env-all=" + whole));
+        }
     }
 
     /**
-     * The study's scoped record as this jk writes it now, and as it wrote it unscoped: the scoped one
-     * goes to the shared cache with every value withheld, the unscoped one, keyed on this home's
-     * secret, stays here.
+     * The study's scoped record as this jk writes it now: its local form, keyed on this home's
+     * secret, stays here; its shared form under a seed goes to the shared cache with every value,
+     * digest and name behind a listing withheld.
      */
     @Test
     void a_record_keyed_on_this_host_alone_never_leaves_it() {
@@ -160,16 +170,23 @@ class ScopedEnvKeysTest {
         CallerEnv a = home("alice", "/var/tmp/a/tok", "made-up-writer-token");
         String scoped = record(key, SuiteEnvReads.tokens(STUDY, PETCLINIC, a));
         String open = record(key, SuiteEnvReads.tokens(STUDY, SuiteEnvReads.Policy.NONE, a));
+        List<String> sharedTokens =
+                Objects.requireNonNull(SuiteEnvReads.sharedTokens(STUDY, PETCLINIC, a, SEED, false));
+        String shared = record(key, sharedTokens);
 
-        assertThat(open).contains("INPUT this-host x:env-keyed\n");
-        assertThat(ActionRecordText.shareable(ActionRecordText.parse(open, key)))
-                .isFalse();
-        assertThat(scoped).doesNotContain("x:env-keyed").doesNotContain("USER").doesNotContain(TOKEN_VAR);
-        assertThat(ActionRecordText.shareable(ActionRecordText.parse(scoped, key)))
+        for (String local : List.of(scoped, open)) {
+            assertThat(local).contains("INPUT this-host x:env-keyed\n");
+            assertThat(ActionRecordText.shareable(ActionRecordText.parse(local, key)))
+                    .isFalse();
+        }
+        assertThat(ActionRecordText.shareable(ActionRecordText.parse(shared, key)))
                 .isTrue();
-        assertThat(ActionRecordText.renderShared(ActionRecordText.parse(scoped, key)))
-                .contains("INPUT - x:env-read:SPRING_PROFILES_ACTIVE\n")
-                .doesNotContain(Hashing.sha256Hex("SPRING_PROFILES_ACTIVE\u0000test"));
+        String leaving = ActionRecordText.renderShared(ActionRecordText.parse(shared, key));
+        assertThat(leaving).contains("INPUT - x:env-read:SPRING_PROFILES_ACTIVE\n");
+        for (String t : sharedTokens) {
+            String digest = t.substring(t.indexOf('=') + 1);
+            if (digest.length() == 64) assertThat(leaving).doesNotContain(digest);
+        }
     }
 
     /** A green run-tests marker whose stamp extras are {@code tokens}, as the cache writes it. */

@@ -746,28 +746,9 @@ public final class ActionCache {
         return name.equals("jdk") || name.equals("jk") || name.equals("worker") || name.startsWith("worker:");
     }
 
-    /**
-     * Hand {@code record} to the build's remote tier for upload behind the build, in the form that
-     * may leave the machine, when the tier takes uploads (one it stopped counts what it was not
-     * given) and the record is one this jk would replay
-     * ({@link ActionRecordText#shareable}). Nothing waits for it here.
-     */
+    /** Hand {@code record} to the build's remote tier, which uploads what may leave the machine behind the build. */
     private void offer(ActionRecord record) {
-        if (remote == null || !remote.offers()) return;
-        ActionRecordText.Parsed parsed = new ActionRecordText.Parsed(
-                Objects.requireNonNull(record.taskId()),
-                Objects.requireNonNull(record.actionKey()),
-                record.inputs(),
-                record.outputs(),
-                record.executables(),
-                record.said(),
-                record.meta());
-        if (!ActionRecordText.shareable(parsed)) return;
-        Map<String, Path> blobs = new TreeMap<>();
-        for (String sha : record.outputs().values()) {
-            if (isSha256Hex(sha)) blobs.put(sha, local.blobPath(sha));
-        }
-        remote.offer(parsed.actionKey(), ActionRecordText.renderShared(parsed), blobs);
+        if (remote != null) remote.offer(record, local::blobPath);
     }
 
     /**

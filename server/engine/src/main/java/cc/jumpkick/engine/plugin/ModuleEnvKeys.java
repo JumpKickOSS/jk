@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -59,7 +60,7 @@ public final class ModuleEnvKeys {
      * declares nothing has none.
      */
     public static List<String> worker(JkBuild project, Path moduleDir) {
-        return tokens(project, moduleDir, Reader.WORKER);
+        return tokens(project, moduleDir, Reader.WORKER, TestEnvValues.Mode.CacheKey::digested);
     }
 
     /**
@@ -70,17 +71,20 @@ public final class ModuleEnvKeys {
      * rest remain here.
      */
     public static List<String> plugin(JkBuild project, Path moduleDir) {
-        return tokens(project, moduleDir, Reader.PLUGIN);
+        return tokens(project, moduleDir, Reader.PLUGIN, TestEnvValues.Mode.CacheKey::digested);
     }
 
     /**
      * What the test JVM is handed, as run-tests stamp tokens: {@code test-env:<name>=<digest>} for
      * the {@code [env]} entries with {@code [test] env} laid on top, resolved in the stamp's key mode
      * (path tokens literal, anything the environment answered hashed) and then hashed whole ({@link
-     * #testEnvValue}), and {@link #inheritedToken} under {@code [env] inherit}.
+     * #testEnvValue}), and {@link #inheritedToken} under {@code [env] inherit}. A value the
+     * environment answered (a forwarded name, a {@code ${VAR}} in a value) enters as {@code
+     * environmental} makes it: a suite's key takes it by HMAC under a secret, never by plain digest
+     * ({@code SuiteEnvReads.declaredValue}).
      */
-    public static List<String> testJvm(JkBuild project, Path moduleDir) {
-        return tokens(project, moduleDir, Reader.TEST_JVM);
+    public static List<String> testJvm(JkBuild project, Path moduleDir, UnaryOperator<String> environmental) {
+        return tokens(project, moduleDir, Reader.TEST_JVM, environmental);
     }
 
     /**
@@ -103,7 +107,8 @@ public final class ModuleEnvKeys {
                 + Hashing.sha256Hex(BuildEnv.inheritedFingerprintEnv().toString());
     }
 
-    private static List<String> tokens(JkBuild project, Path moduleDir, Reader reader) {
+    private static List<String> tokens(
+            JkBuild project, Path moduleDir, Reader reader, UnaryOperator<String> environmental) {
         List<EnvRead> reads = EnvRead.of(project);
         if (reads.isEmpty()) return List.of();
         List<EnvDecl> worker = new ArrayList<>();
@@ -123,7 +128,7 @@ public final class ModuleEnvKeys {
         EnvLookup lookup = BuildEnv.lookupFor(moduleDir);
         // The fork's own expansion in its key mode: ${target}/${module} stay tokens so two
         // checkouts key alike.
-        var mode = new TestEnvValues.Mode.CacheKey(lookup, SecretRedactor.from(lookup));
+        var mode = new TestEnvValues.Mode.CacheKey(lookup, SecretRedactor.from(lookup), environmental);
         List<String> out = new ArrayList<>();
         if (reader == Reader.TEST_JVM) {
             Map<String, String> resolved =

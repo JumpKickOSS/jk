@@ -262,9 +262,11 @@ public final class ActionRecordText {
 
     /**
      * The input of a run-tests stamp whose suite read the caller's environment in a way only this jk
-     * home keys alike, valued {@link #HOST_KEYED}: a variable its module neither declares nor scopes,
-     * a listing or whole environment with no scope, a credential's value, or a run with no caller
-     * (the engine's {@code SuiteEnvReads.localOnly}). Such a record stays on its host.
+     * home keys alike, valued {@link #HOST_KEYED}: a variable's value, declared or not, scoped or
+     * not, a listing, a whole environment, or a run with no caller (the engine's {@code
+     * SuiteEnvReads.localOnly}). Such a record stays on its host; it is shared only under its key's
+     * shared form, keyed under the remote cache's seed, which drops this input (the engine's {@code
+     * RemoteTier.shareAs}).
      */
     public static final String HOST_KEYED_INPUT = "x:env-keyed";
 
@@ -420,6 +422,20 @@ public final class ActionRecordText {
     }
 
     /**
+     * {@code text}, a record held under {@code from}, as the record of {@code to}: its {@code KEY}
+     * line rewritten, nothing else. A suite's result is asked of a remote store by the shared form of
+     * its key and kept here under the key this host took; the reader parses it as untrusted after,
+     * so a text whose {@code KEY} is not {@code from} comes back as it was and is refused there.
+     */
+    public static String rekeyed(String text, String from, String to) {
+        String line = "KEY " + from + "\n";
+        int at = text.startsWith(line) ? 0 : text.indexOf("\n" + line);
+        if (at < 0) return text;
+        int start = at == 0 ? 0 : at + 1;
+        return text.substring(0, start) + "KEY " + to + "\n" + text.substring(start + line.length());
+    }
+
+    /**
      * Whether {@code input} names one variable of the caller's environment behind a suite's listing
      * or whole-environment token ({@code env-name:NAME}, {@code env-value:NAME}): the names a shell
      * holds, which no key hashes one by one and which say nothing to another host. They stay home.
@@ -448,8 +464,8 @@ public final class ActionRecordText {
         return null;
     }
 
-    private static final List<String> ENV_INPUTS =
-            List.of("x:test-env:", "x:env:", "x:plugin-env:", "x:profile-env:", "x:env-read:", "x:env-all");
+    private static final List<String> ENV_INPUTS = List.of(
+            "x:test-env:", "x:env:", "x:plugin-env:", "x:profile-env:", "x:env-read:", "x:env-all", "x:env-names");
 
     /** What a shared record holds in place of an environment value or its digest. */
     static final String WITHHELD = "-";

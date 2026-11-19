@@ -48,7 +48,8 @@ class FrameworkTemplateEnvScopeTest {
                             assertThat(manifest)
                                     .as(repo.relativize(tree).toString())
                                     .contains("# [env]\n" + e.getValue() + "\n")
-                                    .contains("stay cached across unrelated variable changes and can be shared")
+                                    .contains(
+                                            "stay cached across unrelated variable changes and, with a cache key seed, can be shared")
                                     .contains("tests see no other variable")
                                     .doesNotContainPattern("(?m)^\\[env\\]");
                             seen++;

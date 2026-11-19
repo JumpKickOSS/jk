@@ -39,6 +39,7 @@ class EnvScopeHintTest {
         assertThat(hint.message(LISTED, SuiteEnvReads.Policy.of(b)))
                 .startsWith("Spring Boot reads your whole environment")
                 .contains("[env] scope = [\"SPRING_*\", \"<YOURAPP>_*\"]")
+                .endsWith("keeps them to those names (and, with a cache key seed, shared)")
                 .doesNotContain("\n");
     }
 

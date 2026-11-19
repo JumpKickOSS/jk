@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -127,6 +129,85 @@ public final class RemoteTier {
         return known;
     }
 
+    private volatile CacheSeeds.Source seedSource = CacheSeeds.Source.ISSUED;
+    private final Object seedLock = new Object();
+    private boolean seedKnown;
+    private @Nullable KeySeed seed;
+
+    private volatile boolean credentialsLocal;
+
+    /**
+     * Take the key seed from {@code source} ({@link CacheSeeds#resolve}) rather than the backend's
+     * issued one; {@code credentialsLocal} keeps a result keyed on a credential's value on this host
+     * even under it ({@link CacheSeeds#credentialsLocal}).
+     */
+    public RemoteTier seededBy(CacheSeeds.Source source, boolean credentialsLocal) {
+        seedSource = Objects.requireNonNull(source, "source");
+        this.credentialsLocal = credentialsLocal;
+        return this;
+    }
+
+    /** Whether a result keyed on a credential's value stays on this host even under the seed. */
+    public boolean credentialsLocal() {
+        return credentialsLocal;
+    }
+
+    /** The warning a build gets, once, when its remote cache did not hand out its key seed. */
+    public static final String SEED_UNAVAILABLE = "remote-cache-key-seed";
+
+    /**
+     * The key this build's suite keys take their shared form under ({@link KeySeed}), or null for
+     * none: no seed set or issued, the tier off, or the cache did not hand it out (said once, the
+     * build goes on and such results stay here). Settled once per build, when a key first needs it.
+     */
+    public @Nullable KeySeed keySeed() {
+        synchronized (seedLock) {
+            if (!seedKnown) {
+                seedKnown = true;
+                try {
+                    seed = off.get() ? null : CacheSeeds.keySeed(seedSource, backend);
+                } catch (IOException | RuntimeException e) {
+                    seed = null;
+                    warn(
+                            SEED_UNAVAILABLE,
+                            "remote cache " + backend.name() + " did not hand out its key seed (" + e.getMessage()
+                                    + "); results that read your environment stay on this machine this build");
+                }
+            }
+            return seed;
+        }
+    }
+
+    private final Map<String, String> sharedForms = new ConcurrentHashMap<>();
+
+    /**
+     * Ask and store {@code local}'s record here by {@code shared}, the form of its key every host
+     * holding the build's seed takes alike ({@code SuiteEnvReads.sharedTokens}): a lookup asks the
+     * backend for {@code shared} and hands the record back as {@code local}'s, and an upload of
+     * {@code local}'s record goes under {@code shared} ({@code ActionCache}). The local key, and so
+     * this host's own replay, never depends on the seed. {@code shared} equal to {@code local} notes
+     * a key on this home's secret with no shared form: its record is uploaded nowhere.
+     */
+    public void shareAs(String local, String shared) {
+        sharedForms.put(local, shared);
+    }
+
+    /** Whether this build noted what {@code local}'s shared form is ({@link #shareAs}), itself included. */
+    public boolean noted(String local) {
+        return sharedForms.containsKey(local);
+    }
+
+    /** The shared form of {@code local} this build noted ({@link #shareAs}), or null when it noted none other than itself. */
+    public @Nullable String sharedForm(String local) {
+        String shared = sharedForms.get(local);
+        return shared == null || shared.equals(local) ? null : shared;
+    }
+
+    /** {@code key} as the backend is asked it and stores it: its shared form when it has one. */
+    public String asShared(String key) {
+        return sharedForms.getOrDefault(key, key);
+    }
+
     /** Records this build uploaded. */
     public long uploaded() {
         return uploaded.get();
@@ -151,6 +232,41 @@ public final class RemoteTier {
         if (!offers()) return;
         ledger = io;
         uploads.add(JkThreads.platform().submit(() -> upload(key, sharedText, blobs, io)));
+    }
+
+    /**
+     * Queue {@code record}, stored here, for upload in the form that may leave the machine, with the
+     * blobs its outputs name ({@code blobPath}, digest to the local file), when this tier takes
+     * uploads (one it stopped counts what it was not given) and the record is one this jk would
+     * replay ({@link ActionRecordText#shareable}). A suite result keyed on this home's secret goes
+     * under its key's shared form when the build's seed gives one ({@link #shareAs}), where no host
+     * mark holds it back, and nowhere when it was noted as its own. Nothing waits for it here.
+     */
+    void offer(ActionCache.ActionRecord record, Function<String, Path> blobPath) {
+        if (!offers()) return;
+        String key = Objects.requireNonNull(record.actionKey());
+        // Noted as its own shared form: keyed on this home's secret with no seed to share it under.
+        if (key.equals(sharedForms.get(key))) return;
+        String shared = sharedForm(key);
+        Map<String, String> inputs = record.inputs();
+        if (shared != null) {
+            inputs = new TreeMap<>(inputs);
+            inputs.remove(ActionRecordText.HOST_KEYED_INPUT);
+        }
+        ActionRecordText.Parsed parsed = new ActionRecordText.Parsed(
+                Objects.requireNonNull(record.taskId()),
+                shared != null ? shared : key,
+                inputs,
+                record.outputs(),
+                record.executables(),
+                record.said(),
+                record.meta());
+        if (!ActionRecordText.shareable(parsed)) return;
+        Map<String, Path> blobs = new TreeMap<>();
+        for (String sha : record.outputs().values()) {
+            if (ActionRecordText.isSha256(sha)) blobs.put(sha, blobPath.apply(sha));
+        }
+        offer(parsed.actionKey(), ActionRecordText.renderShared(parsed), blobs);
     }
 
     private volatile @Nullable IoLedger ledger;
@@ -321,7 +437,7 @@ public final class RemoteTier {
      */
     public List<CacheBackend.Candidate> candidates(String base, CacheBackend.@Nullable Accept accept) {
         if (record(base, accept) != null) return List.of();
-        return byReads.getOrDefault(base, List.of());
+        return byReads.getOrDefault(asShared(base), List.of());
     }
 
     /**
@@ -413,7 +529,7 @@ public final class RemoteTier {
         List<String> ask = new ArrayList<>();
         Map<String, CacheBackend.Accept> accept = new LinkedHashMap<>();
         for (Map.Entry<String, CacheBackend.@Nullable Accept> e : keys.entrySet()) {
-            String key = e.getKey();
+            String key = e.getKey() == null ? null : asShared(e.getKey());
             if (key == null || key.isBlank() || found.containsKey(key) || absent.contains(key)) continue;
             ask.add(key);
             if (e.getValue() != null) accept.put(key, e.getValue());
@@ -454,6 +570,17 @@ public final class RemoteTier {
      */
     @Nullable
     String record(String key, CacheBackend.@Nullable Accept accept) {
+        String shared = sharedForm(key);
+        if (shared != null) {
+            // Asked by its shared form, kept here by the key this host took.
+            String text = held(shared, accept);
+            return text == null ? null : ActionRecordText.rekeyed(text, shared, key);
+        }
+        return held(key, accept);
+    }
+
+    /** The record text the backend holds for {@code key} as asked: {@link #record}'s batch. */
+    private @Nullable String held(String key, CacheBackend.@Nullable Accept accept) {
         String known = found.get(key);
         if (known != null || absent.contains(key) || off.get()) return known;
         Batch batch;
@@ -517,7 +644,7 @@ public final class RemoteTier {
     String recordFor(String key, ToolchainPolicy.@Nullable Expectation expected) {
         if (expected == null) return record(key, (CacheBackend.Accept) null);
         String text = record(key, expected.accept());
-        String refused = text == null ? declined.get(key) : null;
+        String refused = text == null ? declined.get(asShared(key)) : null;
         if (refused != null) ToolchainChoice.mismatch(key, refused, expected);
         return text;
     }
@@ -525,7 +652,7 @@ public final class RemoteTier {
     /** Forget {@code key}'s record for this build: this machine's policy refused the one made on {@code toolchain}. */
     void declined(String key, @Nullable String toolchain) {
         forget(key);
-        if (toolchain != null) declined.put(key, toolchain);
+        if (toolchain != null) declined.put(asShared(key), toolchain);
     }
 
     private final Map<String, String> declined = new ConcurrentHashMap<>();
@@ -535,7 +662,8 @@ public final class RemoteTier {
      * backend keeps it; a refusal is a miss here, never a deletion there.
      */
     void forget(String key) {
-        if (found.remove(key) != null) absent.add(key);
+        String asked = asShared(key);
+        if (found.remove(asked) != null) absent.add(asked);
     }
 
     /**
@@ -604,12 +732,17 @@ public final class RemoteTier {
     /** Turn the backend off for the rest of the build, warning once on the step that met the failure. */
     private void failed(String what, Exception e) {
         if (!off.compareAndSet(false, true)) return;
-        String message = "remote cache " + backend.name() + " did not answer (" + what + ": " + e.getMessage()
-                + "); building locally for the rest of this build";
+        warn(
+                UNREACHABLE,
+                "remote cache " + backend.name() + " did not answer (" + what + ": " + e.getMessage()
+                        + "); building locally for the rest of this build");
+    }
+
+    /** Say {@code message} as {@code code}, on the step that met it, or, met by the forecast before any step ran, on the run. */
+    private static void warn(String code, String message) {
         Log.warn("jk: " + message);
-        // On the step that met it, or, met by the forecast before any step ran, on the run.
         TaskContext ctx = StepScope.current();
-        if (ctx != null) ctx.warn(UNREACHABLE, message);
-        else RunNotices.warnOnce(UNREACHABLE, () -> "jk: " + message);
+        if (ctx != null) ctx.warn(code, message);
+        else RunNotices.warnOnce(code, () -> "jk: " + message);
     }
 }

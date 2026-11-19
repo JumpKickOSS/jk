@@ -73,7 +73,7 @@ class SuiteEnvReadsTest {
     }
 
     @Test
-    void a_strict_module_keys_nothing_and_a_scoped_one_keys_by_plain_digest_and_may_be_shared() {
+    void a_strict_module_keys_nothing_and_a_scoped_one_keys_on_this_homes_secret() {
         SuiteEnvReads.Record read = new SuiteEnvReads.Record(Set.of("SPRING_PROFILES_ACTIVE"), true, false);
         SuiteEnvReads.Policy strict = new SuiteEnvReads.Policy(true, List.of(), Set.of());
         SuiteEnvReads.Policy scoped = new SuiteEnvReads.Policy(false, List.of("SPRING_*"), Set.of());
@@ -81,10 +81,10 @@ class SuiteEnvReadsTest {
         assertThat(SuiteEnvReads.tokens(read, strict, shell)).isEmpty();
         List<String> here = SuiteEnvReads.tokens(read, scoped, shell);
         assertThat(SuiteEnvReads.tokens(read, scoped, caller(Map.of("SPRING_PROFILES_ACTIVE", "test", "LAPTOP", "y"))))
-                .as("names outside the scope are not seen, so another host's keys alike")
+                .as("names outside the scope are not seen")
                 .isEqualTo(here);
-        assertThat(SuiteEnvReads.localOnly(read, scoped, shell)).isNull();
-        assertThat(here).doesNotContain(SuiteEnvReads.HOST_TOKEN);
+        assertThat(SuiteEnvReads.localOnly(read, scoped, shell)).contains("SPRING_PROFILES_ACTIVE");
+        assertThat(here).contains(SuiteEnvReads.HOST_TOKEN);
         assertThat(SuiteEnvReads.localOnly(read, OPEN, shell)).contains("SPRING_PROFILES_ACTIVE");
         assertThat(SuiteEnvReads.tokens(read, OPEN, shell)).contains(SuiteEnvReads.HOST_TOKEN);
         assertThat(SuiteEnvReads.localOnly(new SuiteEnvReads.Record(Set.of(), true, false), OPEN, shell))
