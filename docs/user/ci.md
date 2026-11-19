@@ -13,7 +13,6 @@ limit less its working set — see [Engine](engine.md#worker-memory).
       ~/.jk/cache
       ~/.jk/store
       ~/.jk/state/worker-heaps
-      ~/.m2/repository
       **/target/.jk
     key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml', '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}-${{ github.run_id }}
     restore-keys: |
@@ -34,7 +33,7 @@ project id every key names ([below](#sharing-a-cache-across-checkouts-and-agents
 |------|----------------|------------------|
 | Platform **cache** | Action index + cache CAS | **Yes** |
 | Platform **store** | `repos/` + `.jk` memos | **Yes** |
-| Maven **local repo** | Central's and your `settings.xml` repositories' artifacts when `[m2] integration` is on, used in place | **Yes** — a warm-fetch win; `[m2] auto-clean = true` keeps it bounded on a long-lived runner |
+| Maven **local repo** | Nothing of JumpKick's by default: its downloads are in the store above, and a file Maven left here is used in place. Under `[m2] integration = "share"`, the downloads of Central and your `settings.xml` repositories | Only under `"share"`, or when a `mvn` step fills it — then **yes**; `[m2] auto-clean = true` keeps it bounded on a long-lived runner |
 | Shared **JDKs** | Managed JDKs | Yes if jobs share the same pin / OS |
 | `store/tools/node`, `store/tools/<pnpm\|yarn\|bun>` | Provisioned Node.js and package managers ([Node.js](node.md)) | **Yes** — inside the store above |
 | `cache/npm`, `cache/bun`, `cache/yarn`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |

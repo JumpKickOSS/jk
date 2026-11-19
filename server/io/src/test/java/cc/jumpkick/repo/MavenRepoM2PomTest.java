@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
@@ -60,6 +61,7 @@ class MavenRepoM2PomTest {
     void stop() {
         server.stop(0);
         SessionContext.reset();
+        System.clearProperty("jk.m2.integration");
     }
 
     private void serve(String path, byte[] body) {
@@ -71,9 +73,30 @@ class MavenRepoM2PomTest {
     }
 
     @Test
-    void a_forked_pom_in_the_local_repository_is_not_the_repositorys(@TempDir Path tmp) throws Exception {
+    void a_forked_pom_in_the_local_repository_is_passed_over_for_the_repositorys(@TempDir Path tmp) throws Exception {
         Path m2 = tmp.resolve("m2");
         System.setProperty("jk.m2.local", m2.toString());
+        Files.createDirectories(m2.resolve(REL).getParent());
+        Files.write(m2.resolve(REL), FORK);
+        serve("/" + REL, REAL);
+        serve("/" + REL + ".sha1", Hashing.hashHex("SHA-1", REAL).getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("stub", base, new Http(), new Cas(tmp.resolve("store")));
+
+        var pom = RepoGroup.of(repo).tryFetchPom(Coordinate.of("com.example", "widget", "1.0"));
+
+        // The repository's POM is read from jk's own store; the fork stays where its owner put it.
+        assertThat(pom).isPresent();
+        assertThat(Files.readAllBytes(pom.get().fetched().cachePath())).isEqualTo(REAL);
+        assertThat(pom.get().fetched().cachePath())
+                .doesNotHaveToString(m2.resolve(REL).toString());
+        assertThat(Files.readAllBytes(m2.resolve(REL))).isEqualTo(FORK);
+    }
+
+    @Test
+    void sharing_a_forked_pom_in_the_local_repository_is_not_the_repositorys(@TempDir Path tmp) throws Exception {
+        Path m2 = tmp.resolve("m2");
+        System.setProperty("jk.m2.local", m2.toString());
+        System.setProperty("jk.m2.integration", "share");
         Files.createDirectories(m2.resolve(REL).getParent());
         Files.write(m2.resolve(REL), FORK);
         serve("/" + REL, REAL);

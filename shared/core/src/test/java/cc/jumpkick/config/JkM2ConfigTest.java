@@ -24,6 +24,46 @@ class JkM2ConfigTest {
     }
 
     @Test
+    void the_default_reads_the_local_repository_and_downloads_into_the_store(@TempDir Path tmp) {
+        assertThat(JkM2Config.DEFAULTS.mode()).isEqualTo(JkM2Config.Mode.READ);
+        assertThat(JkM2Config.DEFAULTS.share()).isFalse();
+    }
+
+    @Test
+    void the_file_and_the_environment_name_a_mode(@TempDir Path tmp) throws Exception {
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\nintegration = \"share\"\n"))
+                        .mode())
+                .isEqualTo(JkM2Config.Mode.SHARE);
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\nintegration = \"off\"\n"))
+                        .integration())
+                .isFalse();
+        Path read = toml(tmp, "[m2]\nintegration = \"read\"\n");
+        assertThat(JkM2Config.fromToml(read).mode()).isEqualTo(JkM2Config.Mode.READ);
+        assertThat(JkM2Config.resolve(read, Map.of("JK_M2_INTEGRATION", "share")::get)
+                        .share())
+                .isTrue();
+        assertThat(JkM2Config.resolve(read, Map.of("JK_M2_INTEGRATION", "off")::get)
+                        .mode())
+                .isEqualTo(JkM2Config.Mode.OFF);
+    }
+
+    /** A boolean was the whole setting before the modes had names, and {@code true} then wrote downloads through. */
+    @Test
+    void a_boolean_keeps_what_it_meant(@TempDir Path tmp) throws Exception {
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\nintegration = true\n")).mode())
+                .isEqualTo(JkM2Config.Mode.SHARE);
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\nintegration = false\n")).mode())
+                .isEqualTo(JkM2Config.Mode.OFF);
+        Path absent = tmp.resolve("absent.toml");
+        assertThat(JkM2Config.resolve(absent, Map.of("JK_M2_INTEGRATION", "true")::get)
+                        .mode())
+                .isEqualTo(JkM2Config.Mode.SHARE);
+        assertThat(JkM2Config.resolve(absent, Map.of("JK_M2_INTEGRATION", "0")::get)
+                        .mode())
+                .isEqualTo(JkM2Config.Mode.OFF);
+    }
+
+    @Test
     void the_lookup_can_be_switched_off(@TempDir Path tmp) throws Exception {
         assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\nintegration = false\n")).integration())
                 .isFalse();

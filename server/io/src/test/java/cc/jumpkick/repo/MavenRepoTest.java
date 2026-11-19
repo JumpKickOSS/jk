@@ -53,6 +53,7 @@ class MavenRepoTest {
     void stop() {
         server.stop(0);
         SessionContext.reset();
+        System.clearProperty("jk.m2.integration");
     }
 
     private static void goOffline() {
@@ -209,10 +210,36 @@ class MavenRepoTest {
         assertThat(m2.resolve(MavenLayout.artifactPath(coord))).doesNotExist();
     }
 
+    /** The default: a repository Maven shares is read from the local repository, and jk's own downloads stay in its store. */
+    @Test
+    void by_default_a_shared_repository_downloads_into_the_store_and_writes_nothing_into_m2(
+            @TempDir Path tempDir, @TempDir Path m2, @TempDir Path settingsDir) throws Exception {
+        System.setProperty("jk.m2.local", m2.toString());
+        declareShared(settingsDir);
+        byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
+        serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir), RepoCredential.ANONYMOUS, true);
+
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        MavenRepo.Fetched fetched = repo.fetchArtifact(coord);
+
+        String rel = MavenLayout.artifactPath(coord);
+        Path tree = Objects.requireNonNull(
+                RepoArtifactStore.forRepository(tempDir, "test", base).root());
+        assertThat(fetched.cachePath()).isEqualTo(tree.resolve(rel));
+        assertThat(Files.readAllBytes(tree.resolve(rel))).isEqualTo(jar);
+        try (var written = Files.walk(m2)) {
+            assertThat(written.filter(Files::isRegularFile))
+                    .as("no jar, sidecar or _remote.repositories in the local repository")
+                    .isEmpty();
+        }
+    }
+
     @Test
     void a_shared_repository_downloads_into_m2_and_keeps_only_its_memo_in_the_store(
             @TempDir Path tempDir, @TempDir Path m2, @TempDir Path settingsDir) throws Exception {
         System.setProperty("jk.m2.local", m2.toString());
+        System.setProperty("jk.m2.integration", "share");
         declareShared(settingsDir);
         byte[] jar = "fake-jar-bytes".getBytes(StandardCharsets.UTF_8);
         serveArtifact("/com/example/widget/1.0/widget-1.0.jar", jar);
@@ -234,6 +261,10 @@ class MavenRepoTest {
         assertThat(m2Jar.resolveSibling("widget-1.0.jk"))
                 .as("the local repository holds no jk file")
                 .doesNotExist();
+        assertThat(m2Jar.resolveSibling("widget-1.0.jar.sha1"))
+                .as("Maven's checksum sidecar beside a download jk shares")
+                .exists();
+        assertThat(m2Jar.resolveSibling("_remote.repositories")).exists();
     }
 
     @Test

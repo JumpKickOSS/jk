@@ -143,7 +143,8 @@ The segment flag picks what moves **after** the release. In order, `jk release`:
    (`[release] tag`, default `v{version}`) does not exist, and the `[publish]` repository does not
    already hold the version (an unreachable repository is no objection); outside git only the last
    two apply;
-2. builds, tests and installs the version into `~/.m2` once;
+2. builds, tests and installs the version once, where `jk install` would (`--destination m2` names
+   the Maven local repository);
 3. with `--publish`, runs `jk publish` against the `[publish]` target — a failed upload leaves no
    tag and no bump, and a re-run finishes what is missing;
 4. tags the commit (annotated), then rewrites the version in `jk.toml` (and in every workspace

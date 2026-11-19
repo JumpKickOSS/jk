@@ -71,6 +71,7 @@ class MavenRepoM2LookupTest {
     void stop() {
         server.stop(0);
         SessionContext.reset();
+        System.clearProperty("jk.m2.integration");
     }
 
     private void serve(String path, int status, byte[] body) {
@@ -171,11 +172,35 @@ class MavenRepoM2LookupTest {
     }
 
     @Test
-    void bytes_that_do_not_match_the_remote_checksum_are_refused_and_left_alone(@TempDir Path tmp) throws Exception {
-        // The case the whole design exists for: something at the right coordinate that is not the right
-        // artifact. It is never used. It is also never replaced or removed: the file is Maven's or the
-        // user's (a local `mvn install` of a patched build looks exactly like this), so the fetch
-        // fails and names it.
+    void bytes_that_do_not_match_the_remote_checksum_are_left_alone_and_the_download_goes_to_the_store(
+            @TempDir Path tmp) throws Exception {
+        // Something at the right coordinate that is not the right artifact is never used, replaced or
+        // removed: the file is Maven's or the user's (a local `mvn install` of a patched build looks
+        // exactly like this). The genuine bytes are downloaded into jk's own store, where the file
+        // in the local repository is not in the way.
+        seedM2(tmp.resolve("m2"), "a hand-built impostor".getBytes(StandardCharsets.UTF_8));
+        serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
+        serve("/" + REL, 200, REAL);
+        Path store = tmp.resolve("store");
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(store));
+
+        MavenRepo.Fetched got = repo.fetchArtifact(coord());
+
+        Path own = Objects.requireNonNull(
+                        RepoArtifactStore.forRepository(store, "test", base).root())
+                .resolve(REL);
+        assertThat(got.cachePath()).isEqualTo(own);
+        assertThat(Files.readAllBytes(own)).isEqualTo(REAL);
+        assertThat(Files.readAllBytes(tmp.resolve("m2").resolve(REL)))
+                .isEqualTo("a hand-built impostor".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void sharing_bytes_that_do_not_match_the_remote_checksum_are_refused_and_left_alone(@TempDir Path tmp)
+            throws Exception {
+        // On a machine that downloads into the local repository the impostor holds the slot the
+        // genuine artifact would take. It is not replaced, so the fetch fails and names it.
+        System.setProperty("jk.m2.integration", "share");
         seedM2(tmp.resolve("m2"), "a hand-built impostor".getBytes(StandardCharsets.UTF_8));
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
         serve("/" + REL, 200, REAL);

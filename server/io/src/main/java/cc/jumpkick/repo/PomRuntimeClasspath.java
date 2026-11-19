@@ -296,16 +296,18 @@ public final class PomRuntimeClasspath {
         Cas cas = Cas.tracked(storeRoot);
         Http http = new Http();
         List<RepoArtifactStore> firstParty = RepoArtifactStore.firstParty(storeRoot);
-        MavenRepo local = storeOnlyRepo(RepoArtifactResolver.JK_LOCAL, storeUri(firstParty.get(0)), http, cas);
+        List<MavenRepo> leading = new ArrayList<>();
+        for (URI uri : storeUris(firstParty.get(0), null)) {
+            leading.add(storeOnlyRepo(RepoArtifactResolver.JK_LOCAL, uri, http, cas));
+        }
         // Launch-time resolution is overwhelmingly store-resident, but for unclaimed groups the
         // jumpkick specialist's warm mirror is only consulted at last resort — after central's
         // network leg. Prepending it as a priority store keeps warm forks off the network
         // entirely (and hermetic tests hermetic); a true miss still walks the remotes below.
-        MavenRepo jumpkickStore = storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, storeUri(firstParty.get(1)), http, cas);
+        for (URI uri : storeUris(firstParty.get(1), null)) {
+            leading.add(storeOnlyRepo(RepositorySpec.JUMPKICK_NAME, uri, http, cas));
+        }
         RepoGroup remotes = workerRemotes(RepositorySpec.officialUrl(), http, cas);
-        List<MavenRepo> leading = new ArrayList<>();
-        leading.add(local);
-        leading.add(jumpkickStore);
         if (extraStore != null && !extraStore.equals(storeRoot.toAbsolutePath().normalize())) {
             // Read from the host store, written to this one: the memos, origin records and staged
             // copies a resolve leaves belong to the store that asked, never to the host's.
@@ -367,20 +369,24 @@ public final class PomRuntimeClasspath {
         List<RepoArtifactStore> stores = workerStores(storeRoot);
         List<MavenRepo> repos = new ArrayList<>(stores.size());
         for (int i = 0; i < stores.size(); i++) {
-            repos.add(storeOnlyRepo(names.get(i), storeUri(stores.get(i), hostM2), http, cas));
+            for (URI uri : storeUris(stores.get(i), hostM2)) repos.add(storeOnlyRepo(names.get(i), uri, http, cas));
         }
         return repos;
     }
 
-    /** A store's artifacts as a {@code file:} repository; reading it through {@link MavenRepo} writes nothing elsewhere. */
-    private static URI storeUri(RepoArtifactStore store) {
-        return storeUri(store, null);
-    }
-
-    /** As {@link #storeUri(RepoArtifactStore)}; an m2-backed store is read from {@code hostM2} when given. */
-    private static URI storeUri(RepoArtifactStore store, @Nullable Path hostM2) {
-        if (hostM2 != null && store.m2Backed()) return hostM2.toUri();
-        return Objects.requireNonNull(store.artifactRoot(), "store root").toUri();
+    /**
+     * A store's artifacts as {@code file:} repositories, in the order the store looks: its own
+     * tree, then the Maven local repository when the store may be read from it ({@code hostM2} when
+     * given, for a store that is another home's). Reading them through {@link MavenRepo} writes
+     * nothing there.
+     */
+    private static List<URI> storeUris(RepoArtifactStore store, @Nullable Path hostM2) {
+        List<Path> roots = store.artifactRoots();
+        if (roots.isEmpty()) throw new IllegalStateException("store root");
+        List<URI> uris = new ArrayList<>(roots.size());
+        uris.add(roots.get(0).toUri());
+        if (roots.size() > 1) uris.add((hostM2 != null ? hostM2 : roots.get(1)).toUri());
+        return uris;
     }
 
     /** A worker-closure repository: anonymous, with Central and the declared repositories kept where {@link M2Backing} says. */
@@ -807,10 +813,10 @@ public final class PomRuntimeClasspath {
      */
     private static Optional<Path> present(Path storeRoot, String relativePath) {
         for (RepoArtifactStore store : RepoArtifactStore.firstParty(storeRoot)) {
-            Path root = store.artifactRoot();
-            if (root == null) continue;
-            Path file = root.resolve(relativePath);
-            if (Files.isRegularFile(file)) return Optional.of(file);
+            for (Path root : store.artifactRoots()) {
+                Path file = root.resolve(relativePath);
+                if (Files.isRegularFile(file)) return Optional.of(file);
+            }
         }
         return Optional.empty();
     }

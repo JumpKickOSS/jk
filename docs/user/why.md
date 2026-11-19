@@ -141,7 +141,7 @@ SHA-pinned in the lock; a workspace has one root lockfile ([Workspaces](workspac
 `jk mvn` runs the real Maven build and writes the same `jk-results.md`; `jk build` and
 `jk test` work in a directory with a `pom.xml` and no `jk.toml`. `jk import` reads the effective
 POM — parents, profiles, plugin mapping — and writes a fidelity report; `jk export` goes back.
-`jk gradle` and Gradle import cover the other side ([Migration](migration.md)). JumpKick shares
+`jk gradle` and Gradle import cover the other side ([Migration](migration.md)). JumpKick reads
 `~/.m2`, installs JDKs where IntelliJ already looks, and honours `settings.xml`
 ([Comparison](comparison.md#sharing-the-machine)).
 

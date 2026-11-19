@@ -13,9 +13,9 @@ import org.jspecify.annotations.Nullable;
  * repository the lock row's {@code source} names — keyed by that repository's origin, so two
  * projects that call different origins by one name never read each other's bytes.
  *
- * <p>Where the artifact is depends on the repository ({@link M2Backing}): the Maven local
- * repository for Central and the repositories {@code settings.xml} declares, the store's own tree
- * for the rest. Either way the answer is a file whose digest matches the lock row, checked through
+ * <p>The artifact is in the store's own tree for that repository, or, for Central and the
+ * repositories {@code settings.xml} declares ({@link M2Backing}), in the Maven local repository
+ * when the tree does not hold it. Either way the answer is a file whose digest matches the lock row, checked through
  * the memo jk keeps in the store, so another writer of {@code ~/.m2} replacing a jar changes the
  * answer from a path to a miss, never to different bytes.
  */
@@ -24,7 +24,7 @@ public final class ArtifactLocator {
     private final Path storeRoot;
     private final boolean m2integration;
 
-    /** {@code m2integration} false means every repository's artifacts live in its own store tree. */
+    /** {@code m2integration} false means no repository's artifacts are read from the Maven local repository. */
     public ArtifactLocator(Path storeRoot, boolean m2integration) {
         this.storeRoot = Objects.requireNonNull(storeRoot, "storeRoot");
         this.m2integration = m2integration;

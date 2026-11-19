@@ -4,7 +4,7 @@ Who runs which verb, and how a release travels from a laptop to a repository.
 
 | Verb | Who runs it | What it does |
 |------|-------------|--------------|
-| `jk install` | the developer, every edit | installs `<version>-SNAPSHOT` into `~/.m2` for sibling projects, and an application or tool on this machine; offline |
+| `jk install` | the developer, every edit | installs `<version>-SNAPSHOT` on this machine for sibling projects (`--destination m2` for Maven and Gradle ones), and an application or tool on this machine; offline |
 | `jk release` | the developer, once per version | builds, tests, installs and tags the declared version, then starts the next one |
 | `jk publish` | CI on the tag, or `jk release --publish` | uploads the release to the `[publish]` repository; in git, only from a clean checkout of the tag |
 

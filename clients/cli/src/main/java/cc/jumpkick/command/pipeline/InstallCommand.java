@@ -689,7 +689,10 @@ public final class InstallCommand {
      */
     private static Optional<String> pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
         return ShelfPinning.record(
-                liveEngineSha(), EngineInstall.current().shelfFile(), pass.wsRoot(), ShelfPinning.shelved(result));
+                liveEngineSha(),
+                EngineInstall.current().shelfFile(),
+                pass.wsRoot(),
+                ShelfPinning.shelved(result, ShelfPinning.engineRuns(pass.infoByDir())));
     }
 
     /** The directory each install target writes under, for the settle line. */

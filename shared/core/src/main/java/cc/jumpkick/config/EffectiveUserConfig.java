@@ -186,7 +186,7 @@ public final class EffectiveUserConfig {
     private static void addM2(List<Row> out, Path file, Function<String, @Nullable String> env) {
         JkM2Config d = JkM2Config.DEFAULTS;
         JkM2Config e = JkM2Config.resolve(file, env);
-        add(out, "m2.integration", d.integration(), e.integration());
+        add(out, "m2.integration", d.mode().spelling(), e.mode().spelling());
         add(out, "m2.auto-clean", d.autoClean(), e.autoClean());
         add(out, "m2.clean-after-days", d.cleanAfterDays(), e.cleanAfterDays());
     }

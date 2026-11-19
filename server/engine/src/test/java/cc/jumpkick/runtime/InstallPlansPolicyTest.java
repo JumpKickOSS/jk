@@ -18,6 +18,7 @@ import cc.jumpkick.wire.runtime.ModuleOutcome.Installed.Change;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,6 +39,11 @@ class InstallPlansPolicyTest {
         System.setProperty(STORE_PROPERTY, tmp.resolve("store").toAbsolutePath().toString());
         m2Dir = tmp.resolve("m2");
         cache = tmp.resolve("cache");
+    }
+
+    @AfterEach
+    void forgetTheMode() {
+        System.clearProperty("jk.m2.integration");
     }
 
     private JkBuild project(String version) {
@@ -291,6 +297,8 @@ class InstallPlansPolicyTest {
 
     @Test
     void a_snapshot_whose_release_is_installed_is_refused_as_invisible() throws Exception {
+        // A machine that shares with Maven installs into the local repository when nothing names a destination.
+        System.setProperty("jk.m2.integration", "share");
         JkBuild release = project("1.0.0");
         install(release, built(release, "v1"));
         JkBuild snapshot = project("1.0.0-SNAPSHOT");
@@ -311,7 +319,7 @@ class InstallPlansPolicyTest {
     }
 
     @Test
-    void the_destination_is_the_flag_then_the_project_then_the_maven_local_repository() {
+    void the_destination_is_the_flag_then_the_project_then_what_the_machines_m2_integration_implies() {
         Path moduleDir = tmp.resolve("mod");
         JkBuild unset = project("1.0.0");
         JkBuild declared = JkBuild.builder(Project.builder("ex.acme", "money", "1.0.0")
@@ -321,6 +329,13 @@ class InstallPlansPolicyTest {
                         .build())
                 .build();
 
+        assertThat(InstallPlans.destinationOf(unset, moduleDir, null))
+                .as("nothing is written into ~/.m2 unasked")
+                .isEqualTo(InstallDestination.JK);
+        assertThat(InstallPlans.destinationOf(unset, moduleDir, InstallDestination.M2))
+                .as("the flag targets the Maven local repository without a config change")
+                .isEqualTo(InstallDestination.M2);
+        System.setProperty("jk.m2.integration", "share");
         assertThat(InstallPlans.destinationOf(unset, moduleDir, null)).isEqualTo(InstallDestination.M2);
         assertThat(InstallPlans.destinationOf(declared, moduleDir, null)).isEqualTo(InstallDestination.JK);
         assertThat(InstallPlans.destinationOf(declared, moduleDir, InstallDestination.M2))

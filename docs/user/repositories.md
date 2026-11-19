@@ -8,19 +8,41 @@ jk repo login | logout | search | refresh
 Credentials: env, `jk repo login`, or Maven `settings.xml` — see [Credentials](#credentials) for
 the order and for why a credential only travels to the origin its name is bound to. Prefer
 `${VAR}` references in your own `~/.jk/config.toml` over secrets in TOML. Corporate mirrors, forge
-package registries, S3/MinIO, and GCS are supported. After lock, a build reads the repository's artifacts where they live: Maven Central, and every
-repository an active profile of your `~/.m2/settings.xml` declares, keep their artifacts in the
-Maven local repository (`~/.m2/repository`), once, shared with Maven; every other origin keeps a
-tree under `JK_STORE_DIR/repos/` (see below). JumpKick's `.jk` memos for the former live in the store,
-never in `~/.m2`. A file already in the local repository is used where it is once it verifies,
-not copied and not downloaded. Set `[m2] integration = false` to keep every origin's artifacts in
-its own store tree and leave the Maven local repository alone. `jk install` writes the Maven local repo
-by default; `[install] destination = "jk"` keeps a project's artifacts in `repos/jk-local` instead
+package registries, S3/MinIO, and GCS are supported. Everything JumpKick downloads is kept in a tree
+of its own under `JK_STORE_DIR/repos/`, one per origin (see below), so `~/.jk` alone holds what a
+build needs. For Maven Central, and every repository an active profile of your `~/.m2/settings.xml`
+declares, JumpKick also looks in the Maven local repository (`~/.m2/repository`): a file already
+there is used where it is once it verifies, not copied and not downloaded, and nothing is written
+there. The store's tree is looked in first, then the local repository. [Sharing with Maven](#sharing-with-maven)
+has the other two settings. `jk install` puts a project's artifacts in `repos/jk-local`;
+`--destination m2` puts them in the Maven local repository instead
 ([Install](packaging.md#jk-install-project)). Both are asked for a version a project pins by name,
 so another project's install needs no `[repositories]` entry
 ([Using another project's install](dependencies.md#using-another-projects-install)). First-party
 workers always live in `repos/jk-local` (`jk-local` and `local-install` are reserved;
 `[repositories.local]` is a normal user remote name).
+
+## Sharing with Maven
+
+`[m2] integration` in `~/.jk/config.toml` (or `JK_M2_INTEGRATION`) says how far JumpKick goes into the
+Maven local repository for the artifacts of Central and of the repositories your `settings.xml`
+declares:
+
+| Value | Reads `~/.m2/repository` | Where a download lands |
+|---|---|---|
+| `"read"` (default) | Yes: a file that verifies is used where it is | `JK_STORE_DIR/repos/<origin>/` |
+| `"share"` | Yes | `~/.m2/repository`, with Maven's `.sha1` / `.md5` sidecars and its `_remote.repositories` line, so the next `mvn` finds it |
+| `"off"` | No | `JK_STORE_DIR/repos/<origin>/` |
+
+`true` and `false` are still read: `false` is `"off"`, and `true`, which wrote downloads through
+before the modes had names, is `"share"`. A project's own `[m2] integration = false` keeps that
+project out of the local repository whatever the machine says. Changing the value moves nothing: a
+file is found in either place, and only where the next download lands changes. Under `"share"`,
+`jk install` also defaults to the Maven local repository.
+
+Cache `~/.jk/store` on a CI runner and a later run has every artifact JumpKick fetched. Under
+`"share"` the runner needs `~/.m2/repository` cached as well ([CI](ci.md)). JumpKick's `.jk` memos
+are always in the store, never in `~/.m2`.
 
 ## Store layout: one tree per origin
 
@@ -38,8 +60,8 @@ first name it was filled under in `.origin`; `jk storage usage` and `jk doctor` 
 A `repos/<name>` tree from before this rule carries no origin anyone can vouch for, so nothing
 reads it; `jk storage usage` flags it and `jk storage clean` removes it. The next resolve
 re-fetches into the identity-keyed tree. The cost of that upgrade is bounded: the reserved trees
-(`central`, `google`, `jumpkick`) and the `jk-local` shelf are kept as they are, and with
-`[m2] integration` on (the default) third-party jars already in `~/.m2/repository` are used
+(`central`, `google`, `jumpkick`) and the `jk-local` shelf are kept as they are, and unless
+`[m2] integration` is off third-party jars already in `~/.m2/repository` are used
 where they are rather than downloaded, so what is fetched again is the POMs and jars of the
 repositories you named yourself. Lockfile `source`
 fields are unchanged (`"<name>+<url>"`): the URL in the row is what the lookup keys on.

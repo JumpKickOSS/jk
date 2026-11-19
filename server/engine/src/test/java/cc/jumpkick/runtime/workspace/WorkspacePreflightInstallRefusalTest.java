@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -32,6 +34,17 @@ class WorkspacePreflightInstallRefusalTest {
 
     @TempDir
     Path tmp;
+
+    /** These installs name no destination; the machine shares with Maven, so they go to the local repository. */
+    @BeforeEach
+    void shareWithMaven() {
+        System.setProperty("jk.m2.integration", "share");
+    }
+
+    @AfterEach
+    void forgetTheMode() {
+        System.clearProperty("jk.m2.integration");
+    }
 
     private BuildGraph.BuildUnit module(String version) throws Exception {
         Path dir = tmp.resolve("lib");

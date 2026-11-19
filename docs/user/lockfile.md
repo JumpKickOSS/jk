@@ -348,8 +348,8 @@ a pre-release belong on `jk update`.
 `jk lock` is the trust boundary. For each POM/artifact download JumpKick:
 
 1. Streams bytes, computes SHA-256 locally, and stores a Maven-layout `*.jar` under the
-   store's `repos/<origin>/` (written through to the Maven local repo too when `[m2] integration`
-   is on and the slot is empty or already equal).
+   store's `repos/<origin>/` (or, under `[m2] integration = "share"`, in the Maven local repo for
+   Central and your `settings.xml` repositories, when the slot is empty or already equal).
 2. Fetches the repository’s published sidecar (`.sha256`, else `.sha1`, else `.md5` as the last
    resort) and **fails closed** on mismatch. An artifact only an `.md5` vouches for (Central holds
    POMs published that way, `org.jetbrains.kotlin:kotlin-bom:1.9.20` among them) is accepted, and
@@ -586,7 +586,7 @@ offline one there refuses it). Two modules that resolve alike each carry their r
 repositories on disk are one.
 
 Each step that reads a closure receives it as a repository of exactly those files, built from the
-store (or the Maven local repository, where JumpKick keeps Central's artifacts) and verified against
+store (or the Maven local repository, for a file JumpKick uses in place there) and verified against
 their digests; bytes that disagree with a row fail the step naming the closure. A step whose
 result is cached keys on the repository's name, a hash of every file and digest, without building
 it. The repository is kept under `tools/plugin-tools/` and reclaimed a month after its last use

@@ -110,7 +110,7 @@ public final class LocalInstall {
                 M2Dirs.localRepository().toAbsolutePath().normalize(), relativePath);
         if (Files.isRegularFile(m2)) return Optional.of(m2);
         Path shelf =
-                RepoArtifactStore.forStoreId(storeRoot, RepositorySpec.JK_LOCAL).artifactRoot();
+                RepoArtifactStore.forStoreId(storeRoot, RepositorySpec.JK_LOCAL).root();
         if (shelf == null) return Optional.empty();
         Path shelved = MavenLayout.safeResolve(shelf, relativePath);
         return Files.isRegularFile(shelved) ? Optional.of(shelved) : Optional.empty();

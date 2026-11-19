@@ -37,9 +37,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One Maven-style repository: fetch into where its store keeps artifacts (Maven layout + {@code .jk}
- * memo): the Maven local repository for Central and the repositories {@code settings.xml}
- * declares, {@code repos/<id>/} for the rest ({@link M2Backing}). A file already in the local
- * repository is used where it is, with no download, once its bytes verify as the lock's pin or,
+ * memo): {@code repos/<id>/}, or the Maven local repository for Central and the repositories
+ * {@code settings.xml} declares when the machine shares its downloads with Maven ({@link
+ * M2Backing}). For those repositories a file already in the local repository is used where it is, with no download, once its bytes verify as the lock's pin or,
  * unpinned, as the checksum the repository publishes; one the repository disowns is evicted
  * (removed only if jk put it there) and downloaded again. Offline means no network, not no
  * repositories: a repository whose requests open on this machine's disk ({@code file:}, itself or
@@ -1036,9 +1036,10 @@ public final class MavenRepo {
     }
 
     /**
-     * Put verified bytes on disk where this repository keeps them — the Maven local repository for
-     * Central and the repositories {@code settings.xml} declares, its own store tree for the rest —
-     * and write the memo that says jk downloaded them. A slot in the local repository holding other
+     * Put verified bytes on disk where this repository keeps its downloads — its own store tree, or
+     * under {@code [m2] integration = "share"} the Maven local repository for Central and the
+     * repositories {@code settings.xml} declares, with Maven's sidecars beside them — and write the
+     * memo that says jk downloaded them. A slot in the local repository holding other
      * bytes that jk did not put there is left alone, and the placement fails rather than replace it.
      */
     private Path placeArtifact(Coordinate coord, String relativePath, Path source, String sha256) throws IOException {
@@ -1055,7 +1056,7 @@ public final class MavenRepo {
                     + coord.artifact() + ":" + coord.version() + " and JumpKick did not write it; remove the file, or"
                     + " point JK_M2_LOCAL elsewhere");
         }
-        if (repoStore.m2Backed() && repoStore.fetchedByJk(relativePath)) writeMavenSidecars(placed);
+        if (repoStore.inM2(relativePath) && repoStore.fetchedByJk(relativePath)) writeMavenSidecars(placed);
         return placed;
     }
 
@@ -1100,7 +1101,7 @@ public final class MavenRepo {
         try (KeyedLocks.Held held = MovingSnapshots.hold(coord, repoStore.root(), relativePath)) {
             // A file in the Maven local repository that jk has never verified is only a candidate: the
             // repository's published checksum is the authority, and none published means no vouching.
-            boolean unvouched = repoStore.m2Backed()
+            boolean unvouched = repoStore.inM2(relativePath)
                     && expectedSha256 == null
                     && repoStore.readSha256Sidecar(relativePath).isEmpty();
             // An unvouched copy gets no memo until it is confirmed: a memo is what makes it vouched.

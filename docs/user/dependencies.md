@@ -377,8 +377,8 @@ refusal says so, naming each repository asked and its policy:
 
 ### Using another project's install
 
-`jk install` in project A puts A's jar and POM in the Maven local repository (`~/.m2/repository`,
-the default) or in JumpKick's shelf (`--destination jk`), at A's version plus `-SNAPSHOT`
+`jk install` in project A puts A's jar and POM in JumpKick's shelf (`repos/jk-local`, the default)
+or in the Maven local repository (`--destination m2`), at A's version plus `-SNAPSHOT`
 ([Install](packaging.md#jk-install-project)). Project B on the same machine pins that version and
 builds; it declares no repository:
 

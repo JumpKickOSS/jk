@@ -305,12 +305,15 @@ Where `jk install` puts a project's thin jar and POM when neither `--destination
 ```toml
 # ~/.jk/config.toml
 [install]
-destination = "jk"      # default "m2": the Maven local repository, ~/.m2/repository
+destination = "m2"      # the Maven local repository, ~/.m2/repository; "jk" is JumpKick's own
 ```
 
-`"jk"` is JumpKick's private `repos/jk-local`, for a machine that keeps `~/.m2` clean. The first to
-answer: `--destination`, the project's `jk.toml`, `JK_INSTALL_DESTINATION`, this file, then `m2`. An unknown
-word is skipped. See [Install](packaging.md#jk-install-project).
+`"jk"` is JumpKick's private `repos/jk-local`, and `"m2"` is where a Maven or Gradle build on the
+machine finds the artifact. The first to answer: `--destination`, the project's `jk.toml`,
+`JK_INSTALL_DESTINATION`, this file, then what `[m2] integration` implies: `m2` under `"share"`, else
+`jk`, so nothing is written into `~/.m2` unasked
+([Sharing with Maven](repositories.md#sharing-with-maven)). An unknown word is skipped. See
+[Install](packaging.md#jk-install-project).
 
 ## Tool mirrors
 

@@ -33,6 +33,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -88,8 +89,22 @@ class CacheSyncTest {
         assertThat(report.errors()).singleElement().asString().contains("checksum mismatch");
     }
 
-    /** The stub is Maven's to share, as Central is: a user's settings.xml declares it in an active profile. */
+    @AfterEach
+    void forgetTheMode() {
+        System.clearProperty("jk.m2.integration");
+    }
+
+    /**
+     * The stub is Maven's to share, as Central is: a user's settings.xml declares it in an active
+     * profile. The machine downloads into the local repository ({@code [m2] integration = "share"}).
+     */
     private void declareStubShared(Path tempDir) throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        declareStub(tempDir);
+    }
+
+    /** As {@link #declareStubShared}, on a machine left at the default: the local repository is read, not written. */
+    private void declareStub(Path tempDir) throws Exception {
         System.setProperty("jk.m2.local", tempDir.resolve("m2").toString());
         Path xml = tempDir.resolve("settings.xml");
         Files.writeString(xml, """
@@ -105,6 +120,46 @@ class CacheSyncTest {
 
     private static Path m2Jar() {
         return Path.of(System.getProperty("jk.m2.local")).resolve("com/foo/leaf/1.0/leaf-1.0.jar");
+    }
+
+    @Test
+    void by_default_a_download_stays_in_the_store_whatever_the_local_repository_holds(@TempDir Path tempDir)
+            throws Exception {
+        byte[] jar = "genuine-bytes".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        registerJar("com.foo", "leaf", "1.0", jar);
+        declareStub(tempDir);
+        Files.createDirectories(m2Jar().getParent());
+        Files.write(m2Jar(), "poisoned".getBytes(StandardCharsets.UTF_8));
+
+        CacheSync.Report report = newSync(tempDir, true).sync(lockOf(pkg("com.foo:leaf", "1.0", "sha256:" + hex)));
+
+        assertThat(report.errors()).isEmpty();
+        assertThat(report.fetched()).isEqualTo(1);
+        assertThat(Files.readAllBytes(Objects.requireNonNull(
+                                centralStore(tempDir.resolve("cache")).root())
+                        .resolve("com/foo/leaf/1.0/leaf-1.0.jar")))
+                .isEqualTo(jar);
+        assertThat(Files.readAllBytes(m2Jar())).isEqualTo("poisoned".getBytes(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void by_default_a_matching_file_in_the_local_repository_is_used_and_nothing_is_downloaded(@TempDir Path tempDir)
+            throws Exception {
+        byte[] jar = "genuine-bytes".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        declareStub(tempDir);
+        Files.createDirectories(m2Jar().getParent());
+        Files.write(m2Jar(), jar);
+
+        CacheSync.Report report = newSync(tempDir, true).sync(lockOf(pkg("com.foo:leaf", "1.0", "sha256:" + hex)));
+
+        assertThat(report.errors()).isEmpty();
+        assertThat(report.fetched()).isZero();
+        assertThat(Objects.requireNonNull(centralStore(tempDir.resolve("cache")).root())
+                        .resolve("com/foo/leaf/1.0/leaf-1.0.jar"))
+                .as("not copied into the store")
+                .doesNotExist();
     }
 
     @Test

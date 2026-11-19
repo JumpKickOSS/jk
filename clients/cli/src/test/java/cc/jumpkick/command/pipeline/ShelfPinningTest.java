@@ -44,6 +44,27 @@ class ShelfPinningTest {
                 .allSatisfy(key -> assertThat(ShelfManifest.isCoordinate(key)).isTrue());
     }
 
+    /** A project's own library on the shelf is an install, not something an engine launches. */
+    @Test
+    void a_shelved_module_no_engine_runs_pins_nothing() {
+        Path library = Path.of("/app/lib");
+        Path worker = Path.of("/app/worker");
+        WorkspaceResult result = new WorkspaceResult(
+                true,
+                0,
+                List.of(
+                        new ModuleOutcome("ex:lib:1.0", library, true, 0, 10)
+                                .withInstalled(shelved("ex:lib:1.0", "1".repeat(64), "2".repeat(64))),
+                        new ModuleOutcome("ex:worker:1.0", worker, true, 0, 10)
+                                .withInstalled(shelved("ex:worker:1.0", "3".repeat(64), "4".repeat(64)))),
+                List.of());
+
+        ShelfPinning.Pins pins = ShelfPinning.shelved(result, worker::equals);
+
+        assertThat(pins.jars()).containsExactly(Map.entry("ex:worker:1.0", "3".repeat(64)));
+        assertThat(pins.poms()).containsExactly(Map.entry("ex:worker:1.0", "4".repeat(64)));
+    }
+
     @Test
     void a_module_whose_outcome_shelved_nothing_pins_nothing() {
         // A coordinator root builds as a unit but carries no cache-install step.

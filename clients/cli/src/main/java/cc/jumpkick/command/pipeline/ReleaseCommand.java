@@ -25,6 +25,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -95,6 +96,10 @@ public final class ReleaseCommand implements CliCommand {
                 Opt.flag(
                         "Take back a release cut here and not pushed: its tag, the version commit, its installed jars.",
                         "--undo"),
+                Opt.value(
+                        "<m2|jk>",
+                        "Install the release into m2 (the Maven local repository) or jk (JumpKick's own repository).",
+                        "--destination"),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the bin directory.", "--bin-dir").hide(),
@@ -159,6 +164,14 @@ public final class ReleaseCommand implements CliCommand {
         boolean publish = in.isSet("publish");
         boolean push = in.isSet("push");
         boolean undo = in.isSet("undo");
+        String destinationWord = in.value(InstallDestination.KEY).orElse(null);
+        InstallDestination destination = destinationWord == null
+                ? null
+                : InstallDestination.parse(destinationWord).orElse(null);
+        if (destinationWord != null && destination == null) {
+            CommandWedge.printFail(CHIP, "--destination must be m2 or jk, not `" + destinationWord + "`");
+            return Exit.USAGE;
+        }
         if (undo && (publish || push || segments > 0)) {
             CommandWedge.printFail(CHIP, "--undo takes no --publish, --push or version segment");
             return Exit.USAGE;
@@ -242,6 +255,7 @@ public final class ReleaseCommand implements CliCommand {
         install.binDirOverride = in.value("bin-dir").map(CliPaths::abs).orElse(null);
         install.libDirOverride = in.value("lib-dir").map(CliPaths::abs).orElse(null);
         install.m2DirOverride = in.value("m2-dir").map(CliPaths::abs).orElse(null);
+        install.destinationOverride = destination;
         install.jdksDir = CommonOpts.jdksDirValue(in);
         int built = install.runProjectInstallBuildPlan(dir);
         if (built != 0) return built;

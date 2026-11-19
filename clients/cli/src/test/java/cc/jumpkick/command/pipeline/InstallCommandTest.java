@@ -203,7 +203,9 @@ class InstallCommandTest {
                 "--lib-dir",
                 tempDir.resolve("lib").toString(),
                 "--m2-dir",
-                m2.toString());
+                m2.toString(),
+                "--destination",
+                "m2");
         assertThat(exit).isEqualTo(0);
 
         Path repo = m2.resolve("repository/com/example/lib-m2/0.1.0-SNAPSHOT");

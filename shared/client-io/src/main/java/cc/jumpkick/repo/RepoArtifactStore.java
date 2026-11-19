@@ -45,11 +45,16 @@ import org.jspecify.annotations.Nullable;
  * storage} and {@code jk doctor} to show.
  *
  * <p>Each artifact is a real {@code .jar}/{@code .pom}/… file plus one {@link ArtifactMemo}
- * {@code .jk} file. Writers use temp + atomic replace. The memos always live in this tree. The
- * artifacts live here too, except for a repository {@link M2Backing} says Maven shares (Central,
- * or one {@code settings.xml} declares): its artifacts live in the Maven local repository, once,
- * and this tree holds only their memos. The memo is how jk knows a file there is the one it
- * verified or downloaded; the local repository itself never holds a {@code .jk} file.
+ * {@code .jk} file. Writers use temp + atomic replace. The memos always live in this tree, and so
+ * does every artifact jk downloads, unless the machine shares its downloads with Maven.
+ *
+ * <p>For a repository {@link M2Backing} says Maven shares (Central, or one {@code settings.xml}
+ * declares) an artifact may instead be in the Maven local repository: a file there that this tree
+ * does not hold is used where it is, with only its memo here, and under {@code [m2] integration =
+ * "share"} a download is written there too. An artifact is looked for in this tree first, then
+ * there, so a reader never needs to know which of the two a fetch chose. The memo is how jk knows a
+ * file in the local repository is the one it verified or downloaded; the local repository itself
+ * never holds a {@code .jk} file.
  *
  * <p>The first-party shelf {@code repos/jk-local} is not a remote and has no origin; the three
  * public origins jk ships with keep their reserved directories ({@code central}, {@code google},
@@ -60,7 +65,7 @@ import org.jspecify.annotations.Nullable;
 public final class RepoArtifactStore {
 
     /** No-op store for callers that don't participate in per-repo storage. */
-    public static final RepoArtifactStore NONE = new RepoArtifactStore(null, null, null, null, false);
+    public static final RepoArtifactStore NONE = new RepoArtifactStore(null, null, false, null, null, false);
 
     /**
      * Beside each identity-keyed tree: {@code origin = "<canonical origin>"} and {@code name =
@@ -68,8 +73,9 @@ public final class RepoArtifactStore {
      */
     public static final String ORIGIN_FILE = ManifestPaths.REPO_ORIGIN;
 
-    private final @Nullable Path root; // <store>/repos/<id>/ — the memos, and the artifacts unless m2-backed
-    private final @Nullable Path m2; // the Maven local repository holding the artifacts, else null
+    private final @Nullable Path root; // <store>/repos/<id>/ — the memos, and the artifacts jk keeps
+    private final @Nullable Path m2; // the Maven local repository an artifact may be read from, else null
+    private final boolean share; // a download is written into m2, not root
     private final @Nullable String label;
     private final @Nullable String origin;
 
@@ -87,9 +93,15 @@ public final class RepoArtifactStore {
     private static final ConcurrentHashMap<Path, Boolean> CLAIMS = new ConcurrentHashMap<>();
 
     private RepoArtifactStore(
-            @Nullable Path root, @Nullable Path m2, @Nullable String label, @Nullable String origin, boolean loopback) {
+            @Nullable Path root,
+            @Nullable Path m2,
+            boolean share,
+            @Nullable String label,
+            @Nullable String origin,
+            boolean loopback) {
         this.root = root;
         this.m2 = m2;
+        this.share = share && m2 != null;
         this.label = label;
         this.origin = origin;
         this.loopback = loopback;
@@ -101,7 +113,7 @@ public final class RepoArtifactStore {
      * and for walking ids {@link #storeIds} listed.
      */
     public RepoArtifactStore(Path cacheRoot, String storeId) {
-        this(dirFor(cacheRoot, storeId), null, null, null, false);
+        this(dirFor(cacheRoot, storeId), null, false, null, null, false);
     }
 
     private static Path dirFor(Path cacheRoot, String storeId) {
@@ -144,6 +156,7 @@ public final class RepoArtifactStore {
             return new RepoArtifactStore(
                     dirFor(cacheRoot, RepoIdentity.storeId(origin)),
                     null,
+                    false,
                     name,
                     RepoIdentity.canonicalOrigin(origin),
                     false);
@@ -152,10 +165,12 @@ public final class RepoArtifactStore {
         if (self != null) return new RepoArtifactStore(cacheRoot, self);
         if (isM2View(origin)) {
             // The local repository read as a file: repository is Central's view of it; the memos
-            // are keyed by path, so a second name for the same tree shares them.
+            // are keyed by path, so a second name for the same tree shares them. Its files are the
+            // local repository's own, so that is where they stay.
             return new RepoArtifactStore(
                     dirFor(cacheRoot, RepositorySpec.CENTRAL),
                     M2Dirs.localRepository(),
+                    true,
                     name,
                     RepoIdentity.canonicalOrigin(RepositorySpec.MAVEN_CENTRAL.url()),
                     false);
@@ -165,6 +180,7 @@ public final class RepoArtifactStore {
         RepoArtifactStore store = new RepoArtifactStore(
                 dirFor(cacheRoot, RepoIdentity.storeId(origin)),
                 M2Backing.rootFor(origin, m2integration).orElse(null),
+                M2Backing.writesThrough(origin, m2integration),
                 name,
                 canonical,
                 loopback);
@@ -227,7 +243,12 @@ public final class RepoArtifactStore {
             return forRepository(cacheRoot, Objects.requireNonNull(name), new URI(url.strip()), m2integration);
         } catch (URISyntaxException | IllegalArgumentException malformed) {
             return new RepoArtifactStore(
-                    dirFor(cacheRoot, RepoIdentity.storeId(url)), null, name, RepoIdentity.canonicalOrigin(url), false);
+                    dirFor(cacheRoot, RepoIdentity.storeId(url)),
+                    null,
+                    false,
+                    name,
+                    RepoIdentity.canonicalOrigin(url),
+                    false);
         }
     }
 
@@ -334,7 +355,7 @@ public final class RepoArtifactStore {
         Path artifact = artifactPath(relativePath);
         if (!Files.isRegularFile(artifact)) return Optional.empty();
         Path sidecar = sidecarPath(relativePath);
-        if (m2 == null && !Files.isRegularFile(sidecar)) {
+        if (!inM2(artifact) && !Files.isRegularFile(sidecar)) {
             try {
                 writeMemo(relativePath, artifact, Hashing.sha256Hex(artifact));
             } catch (IOException ignored) {
@@ -436,15 +457,17 @@ public final class RepoArtifactStore {
      * As {@link #materialize(String, Path, String)}; {@code fetched} says {@code source} is a
      * download jk just made (not an adoption or a copy), which the memo records.
      *
-     * <p>In the Maven local repository a file jk did not download is not jk's to replace: a slot
-     * holding other bytes stays as it is, and {@link #verify} then says it does not match. A file
-     * jk downloaded and that no longer verifies is its own damage, and is replaced.
+     * <p>The bytes land in this store's tree, or in the Maven local repository when the machine
+     * shares its downloads with Maven and this tree does not already hold the artifact. In the Maven
+     * local repository a file jk did not download is not jk's to replace: a slot holding other bytes
+     * stays as it is, and {@link #verify} then says it does not match. A file jk downloaded and that
+     * no longer verifies is its own damage, and is replaced.
      */
     public void materialize(String relativePath, Path source, String sha256, boolean fetched) {
         if (root == null || source == null || !Files.isRegularFile(source)) return;
-        Path artifact = MavenLayout.safeResolve(artifactDir(), relativePath);
+        Path artifact = writePath(relativePath, source);
         try {
-            if (m2 != null && Files.isRegularFile(artifact) && !Files.isSameFile(artifact, source)) {
+            if (inM2(artifact) && Files.isRegularFile(artifact) && !Files.isSameFile(artifact, source)) {
                 boolean same = Hashing.sha256Hex(artifact).equalsIgnoreCase(sha256);
                 boolean ours = ArtifactMemo.read(sidecarPath(relativePath))
                         .map(memo -> memo.fetched())
@@ -871,12 +894,13 @@ public final class RepoArtifactStore {
         try {
             // In the Maven local repository the file is removed only when jk put it there: the
             // memo is read before it goes, since it is the proof.
-            boolean ours = m2 == null
+            Path artifact = artifactPath(relativePath);
+            boolean ours = !inM2(artifact)
                     || ArtifactMemo.read(sidecarPath(relativePath))
                             .map(ArtifactMemo::fetched)
                             .orElse(false);
             removed = Files.deleteIfExists(sidecarPath(relativePath));
-            if (ours) removed |= Files.deleteIfExists(artifactPath(relativePath));
+            if (ours) removed |= Files.deleteIfExists(artifact);
         } catch (IOException e) {
             return removed;
         }
@@ -885,32 +909,57 @@ public final class RepoArtifactStore {
 
     // -------------------------------------------------------------------------
 
-    /** The artifact's file; its version directory is stamped as in use in a pooled tree ({@link PoolUse}). */
+    /**
+     * The artifact's file: the one in this store's tree when it is there, else the one in the Maven
+     * local repository when this repository may be read from it, else where a write would put it. A
+     * version directory in this tree is stamped as in use in a pooled tree ({@link PoolUse}).
+     */
     private Path artifactPath(String relativePath) {
-        Path dir = artifactDir();
-        Path artifact = MavenLayout.safeResolve(dir, relativePath);
-        if (m2 == null) PoolUse.touch(dir, artifact.getParent());
-        return artifact;
-    }
-
-    /** Where this store's artifacts are: the Maven local repository when it keeps them, else its own tree. */
-    private Path artifactDir() {
-        return m2 != null ? m2 : rootOf(this);
-    }
-
-    /** True when this store's artifacts live in the Maven local repository, not its own tree. */
-    public boolean m2Backed() {
-        return m2 != null;
+        Path dir = rootOf(this);
+        Path own = MavenLayout.safeResolve(dir, relativePath);
+        if (m2 != null && !Files.isRegularFile(own)) {
+            Path shared = MavenLayout.safeResolve(m2, relativePath);
+            if (share || Files.isRegularFile(shared)) return shared;
+        }
+        PoolUse.touch(dir, own.getParent());
+        return own;
     }
 
     /**
-     * The directory the {@code relativePath}s of this store's artifacts resolve under: the Maven
-     * local repository for an {@linkplain #m2Backed m2-backed} one, else {@link #root()}. Readers
-     * that build a path to a jar start here, never at {@link #root()}, which holds only memos for
-     * the former.
+     * Where {@code source}'s bytes are stored for {@code relativePath}: the file that already answers
+     * for it when {@code source} is that file (a memo refresh), else the Maven local repository when
+     * downloads are shared with it, else this store's tree.
      */
-    public @Nullable Path artifactRoot() {
-        return root == null ? null : artifactDir();
+    private Path writePath(String relativePath, Path source) {
+        Path own = MavenLayout.safeResolve(rootOf(this), relativePath);
+        if (m2 == null) return own;
+        Path shared = MavenLayout.safeResolve(m2, relativePath);
+        try {
+            if (Files.isRegularFile(shared) && Files.isSameFile(shared, source)) return shared;
+        } catch (IOException unreadable) {
+            // not the same file as far as anyone can tell: store the bytes as a download's
+        }
+        return share && !Files.isRegularFile(own) ? shared : own;
+    }
+
+    /** True when {@code artifact} is a path in the Maven local repository, not in this store's tree. */
+    private boolean inM2(Path artifact) {
+        return m2 != null && artifact.startsWith(m2) && !artifact.startsWith(rootOf(this));
+    }
+
+    /** True when the artifact at {@code relativePath} is a file in the Maven local repository. */
+    public boolean inM2(String relativePath) {
+        return root != null && m2 != null && inM2(artifactPath(relativePath));
+    }
+
+    /**
+     * The directories the {@code relativePath}s of this store's artifacts resolve under, in the
+     * order they are looked in: {@link #root()}, then the Maven local repository for a repository
+     * that may be read from it. Readers that build a path to a jar try each.
+     */
+    public List<Path> artifactRoots() {
+        if (root == null) return List.of();
+        return m2 == null ? List.of(root) : List.of(root, m2);
     }
 
     /** True when jk downloaded the artifact at {@code relativePath} and it is still the file it downloaded. */

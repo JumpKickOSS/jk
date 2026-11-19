@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -434,13 +435,101 @@ class RepoArtifactStoreTest {
         }
     }
 
-    // ---- a store whose artifacts live in the Maven local repository --------------------------
+    // ---- a store that may read the Maven local repository -----------------------------------
 
     private static final URI CENTRAL = URI.create("https://repo.maven.apache.org/maven2/");
     private static final String JAR = "com/example/lib/1.0/lib-1.0.jar";
 
+    @AfterEach
+    void forgetTheMode() {
+        System.clearProperty("jk.m2.integration");
+    }
+
+    /** Central on a machine left at the default: the local repository is read, and downloads stay in the store. */
+    private static RepoArtifactStore readingOver(Path cache, Path m2) {
+        System.setProperty("jk.m2.local", m2.toString());
+        System.clearProperty("jk.m2.integration");
+        return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
+    }
+
+    @Test
+    void by_default_a_download_lands_in_the_store_and_the_local_repository_is_not_written(@TempDir Path dir)
+            throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = readingOver(cache, m2);
+        Path download = Files.writeString(dir.resolve("dl.jar"), "bytes");
+        String sha = Hashing.sha256Hex(download);
+
+        store.materialize(JAR, download, sha, true);
+
+        Path own = cache.resolve("repos/central").resolve(JAR);
+        assertThat(own).hasContent("bytes");
+        assertThat(m2).as("nothing is written into the local repository").doesNotExist();
+        assertThat(store.locate(JAR, sha)).contains(own);
+        assertThat(store.inM2(JAR)).isFalse();
+    }
+
+    @Test
+    void by_default_a_file_already_in_the_local_repository_is_used_where_it_is(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = readingOver(cache, m2);
+        Path theirs = m2.resolve(JAR);
+        Files.createDirectories(theirs.getParent());
+        Files.writeString(theirs, "maven-fetched");
+
+        assertThat(store.locate(JAR, Hashing.sha256Hex(theirs))).contains(theirs);
+
+        assertThat(store.inM2(JAR)).isTrue();
+        assertThat(cache.resolve("repos/central").resolve(JAR))
+                .as("not copied into the store")
+                .doesNotExist();
+        assertThat(ArtifactMemo.jkPath(cache.resolve("repos/central"), JAR)).exists();
+        assertThat(store.evict(JAR)).isTrue();
+        assertThat(theirs).as("a file jk only verified is not jk's to remove").exists();
+    }
+
+    @Test
+    void by_default_other_bytes_in_the_local_repository_do_not_stop_a_download(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = readingOver(cache, m2);
+        Path theirs = m2.resolve(JAR);
+        Files.createDirectories(theirs.getParent());
+        Files.writeString(theirs, "maven-wrote-this");
+        Path download = Files.writeString(dir.resolve("dl.jar"), "different-bytes");
+        String sha = Hashing.sha256Hex(download);
+
+        store.materialize(JAR, download, sha, true);
+
+        assertThat(theirs).hasContent("maven-wrote-this");
+        assertThat(store.locate(JAR, sha))
+                .as("the store's own copy answers before the local repository's")
+                .contains(cache.resolve("repos/central").resolve(JAR));
+    }
+
+    /** A machine that began to share keeps reading what it downloaded into the store before. */
+    @Test
+    void a_store_copy_answers_on_a_machine_that_shares(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("store");
+        Path m2 = dir.resolve("m2");
+        Path download = Files.writeString(dir.resolve("dl.jar"), "bytes");
+        String sha = Hashing.sha256Hex(download);
+        readingOver(cache, m2).materialize(JAR, download, sha, true);
+
+        RepoArtifactStore sharing = centralOver(cache, m2);
+
+        assertThat(sharing.locate(JAR, sha))
+                .contains(cache.resolve("repos/central").resolve(JAR));
+        assertThat(m2.resolve(JAR)).doesNotExist();
+    }
+
+    // ---- a store whose downloads go to the Maven local repository ([m2] integration = "share") ----
+
     private static RepoArtifactStore centralOver(Path cache, Path m2) {
         System.setProperty("jk.m2.local", m2.toString());
+        System.setProperty("jk.m2.integration", "share");
         return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
     }
 
@@ -455,7 +544,7 @@ class RepoArtifactStoreTest {
 
         store.materialize(JAR, download, sha, true);
 
-        assertThat(store.m2Backed()).isTrue();
+        assertThat(store.inM2(JAR)).isTrue();
         assertThat(m2.resolve(JAR)).hasContent("bytes");
         assertThat(cache.resolve("repos/central").resolve(JAR)).doesNotExist();
         Path memo = ArtifactMemo.jkPath(cache.resolve("repos/central"), JAR);

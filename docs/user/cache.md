@@ -18,7 +18,7 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 | Tier | Holds | Wipe |
 |------|--------|------|
 | **Cache** (`JK_CACHE_DIR`) | Action index + cache CAS (classes, tests, jars, natives, OCI, stamps, the [code graph](graph.md)'s fragments), and compiled build-logic `.kts` under `kts/` | `jk cache nuke` |
-| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). With `[m2] integration` on (default) Maven Central's and your `settings.xml` repositories' artifacts live in the Maven local repo instead (one copy, shared with Maven), with only their `.jk` memos here; a digest-matching file already there is used where it is. | `jk storage nuke` (does **not** delete `~/.m2`) |
+| **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). A digest-matching file already in the Maven local repo is used where it is for Maven Central and your `settings.xml` repositories, with only its `.jk` memo here; under `[m2] integration = "share"` their downloads go to the Maven local repo too ([Repositories](repositories.md#sharing-with-maven)). | `jk storage nuke` (does **not** delete `~/.m2`) |
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 
 `jk clean` does **not** force a full recompute: unchanged inputs restore from the action
@@ -320,8 +320,9 @@ closure jars stay: they are shared with project resolution and are re-walked, no
 current project's `jk-lock.toml` names and compares it with the `.sha1` Maven wrote beside it. A
 mismatch is a warning naming the file: something rewrote it after Maven verified it, and every
 build that reads it fails until it is deleted and fetched again. JumpKick never replaces or removes a file in `~/.m2` that it did not download: a slot that holds
-other bytes than the lock pins fails the fetch and names the file, and a file JumpKick fetched that
-has since been damaged is replaced by temp and rename.
+other bytes than the lock pins is passed over and the artifact is downloaded into the store, or,
+under `[m2] integration = "share"`, fails the fetch and names the file; a file JumpKick fetched
+into `~/.m2` that has since been damaged is replaced by temp and rename.
 
 ## Budgets
 
@@ -505,7 +506,8 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   go on the heavy window from when they were pulled, and the tree resets past 2 GiB. The JRE an AOT
   image build extracts from its base image (`base-jre/`, 50–200 MB each, two at most) goes on the
   heavy window from its last use.
-- **The Maven local repository** (`~/.m2/repository`): JumpKick never removes from it on its own
+- **The Maven local repository** (`~/.m2/repository`): JumpKick downloads into it only under
+  `[m2] integration = "share"`, and never removes from it on its own
   account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for
   `--older-than` days (default `[m2] clean-after-days`, 60) that JumpKick's own memo proves it
   downloaded and nothing has changed since, and keeps what the current project's lockfile pins;

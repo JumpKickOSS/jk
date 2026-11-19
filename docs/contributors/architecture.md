@@ -658,7 +658,7 @@ may be an older build's.
 
 | Tier | Root | Contents |
 |------|------|----------|
-| **Artifact store** | `~/.jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<origin-id>/…` plus `.jk` memos — one tree per repository origin (`RepoIdentity`: reserved `central`/`google`/`jumpkick`, else `<host>-<digest>`), the project's name for it only a label in `.origin`; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. The Maven local repository (`~/.m2/repository` by default) is the primary blob store when `[m2] integration` is on. |
+| **Artifact store** | `~/.jk/store/` (`JK_STORE_DIR`) | Maven-layout jars under `repos/<origin-id>/…` plus `.jk` memos — one tree per repository origin (`RepoIdentity`: reserved `central`/`google`/`jumpkick`, else `<host>-<digest>`), the project's name for it only a label in `.origin`; first-party workers under `repos/jk-local/`; `libs.global.toml`; cloned Giter8 catalogs under `templates/`. A file already in the Maven local repository (`~/.m2/repository` by default) is read in place for Central and the `settings.xml` repositories unless `[m2] integration` is `"off"`, and is where their downloads land under `"share"` (`M2Backing`); a lookup tries the store tree first, then the local repository. |
 | **Cache** | `~/.jk/cache/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
 
 **Three sharing tiers**, one rule for where a byte lives. *Content* — action keys and their
@@ -684,8 +684,8 @@ rule a download does. Action-cache restore stays copy-not-link so compilers cann
 outputs. `jk storage nuke` does not delete `~/.m2`.
 
 **Installed slots.** `jk install` writes a project's thin jar and POM to one place:
-`~/.m2/repository` (the default `[install] destination = "m2"`) or the store's `repos/jk-local`
-(`"jk"`; always for a plugin worker). For `~/.m2`, `M2InstallMemo` records what JumpKick wrote under
+the store's `repos/jk-local` (`[install] destination = "jk"`, the default unless `[m2] integration`
+is `"share"`; always for a plugin worker) or `~/.m2/repository` (`"m2"`). For `~/.m2`, `M2InstallMemo` records what JumpKick wrote under
 `<store>/m2-installs/<repository id>/<g>/<a>/<v>/install.jk` — three lines: `g:a:v`, the jar sha256,
 the POM sha256 — and never inside the repository. `InstallPlans` decides every install against it: a
 slot holding other bytes is replaced only when the version is a `-SNAPSHOT` and the files still hold

@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Breaking: `~/.jk` holds everything JumpKick downloads.** Central's jars no longer go into
+  `~/.m2/repository`, so a CI runner that caches `~/.jk/store` has all of them. A jar Maven already
+  fetched is still used where it is. `[m2] integration = "share"` in `~/.jk/config.toml` restores
+  downloading into `~/.m2` ([Repositories](repositories.md#sharing-with-maven)).
+- **Breaking: `jk install` and `jk release` stay out of `~/.m2` unless asked.** They install into
+  JumpKick's own repository, where every JumpKick project finds the result; `--destination m2` on
+  either command, or `[install] destination = "m2"`, installs for Maven and Gradle builds too.
 - **Keep a workspace member out of a release.** `[publish] skip = true` in a member's `jk.toml`
   keeps tests, examples and tools out of `jk publish` and `jk install`; `jk explain` names them, and
   a shipped member that depends on one stops before it builds.

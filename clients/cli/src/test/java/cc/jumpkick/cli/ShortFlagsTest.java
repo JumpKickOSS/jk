@@ -34,6 +34,7 @@ class ShortFlagsTest {
             "release --push",
             "release --dry-run",
             "release --undo",
+            "release --destination",
             "tool install --with",
             "tool install --ver",
             "tool install --bin",

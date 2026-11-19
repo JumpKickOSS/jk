@@ -169,7 +169,7 @@ class LocalInstallConsumersTest {
             @TempDir Path tmp) throws Exception {
         String name = "liba-m2";
         Path lib = library(tmp, name, "one");
-        assertThat(jk(lib, "install", "-S")).isEqualTo(0);
+        assertThat(jk(lib, "install", "-S", "--destination", "m2")).isEqualTo(0);
         Path app = consumer(tmp, name, "0.1.0-SNAPSHOT");
 
         assertThat(jk(app, "build", "-S")).as("B builds with no [repositories]").isEqualTo(0);
@@ -184,7 +184,7 @@ class LocalInstallConsumersTest {
 
         // A is rebuilt and installed again: B's lock is stale by content, before and as the build sees it.
         library(tmp, name, "two");
-        assertThat(jk(lib, "install", "-S")).isEqualTo(0);
+        assertThat(jk(lib, "install", "-S", "--destination", "m2")).isEqualTo(0);
         assertThat(AutoLock.staleReason(app, lockFile))
                 .as("the forecast's reason, the build's freshen")
                 .startsWith("jk-lock.toml is stale: the local install of " + GROUP + ":" + name
@@ -318,7 +318,8 @@ class LocalInstallConsumersTest {
     @Test
     void a_floating_selector_never_lands_on_an_installed_snapshot(@TempDir Path tmp) throws Exception {
         String name = "liba-float";
-        assertThat(jk(library(tmp, name, "float"), "install", "-S")).isEqualTo(0);
+        assertThat(jk(library(tmp, name, "float"), "install", "-S", "--destination", "m2"))
+                .isEqualTo(0);
         assertThat(m2Jar(name)).exists();
         Path app = consumer(tmp, name, "latest");
 

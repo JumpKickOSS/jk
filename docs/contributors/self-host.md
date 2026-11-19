@@ -318,8 +318,9 @@ jk install           # or -S; the install runs the suite like `jk build`
 | `clients/cli` — declares `[install] product-bin = "jk"` | Native binary replaces `~/.jk/bin/jk` (previous client parked as `.old`, `jkx` re-linked), the same swap `jk self update` performs — and `~/.jk/bin/jk-jvm` (`jk-jvm.cmd` on Windows) is written beside it: `cc.jumpkick.cli.Jk` on a JVM over the shelf's `jk-cli` closure. On a machine that built no native client (no GraalVM) the launcher is the whole install and the PATH client is left alone |
 
 JumpKick's own tree declares `[install] destination = "jk"` at the workspace root, so every module installs to the
-shelf and nothing is written to `~/.m2`; a project outside the tree installs to `~/.m2` by default and
-is not pinned to an engine. The two `[install]` product keys exist
+shelf and nothing is written to `~/.m2`; a project outside the tree installs to the shelf by default
+too, and is not pinned to an engine: only a tree that declares a product layout, and a plugin
+worker, are. The two `[install]` product keys exist
 only because JumpKick installs itself — no other project should declare them. The shelf is also what
 `scripts/publish-maven-repo.sh` stages for `jumpkick.build/repo/` ([maven-repo](maven-repo.md)).
 

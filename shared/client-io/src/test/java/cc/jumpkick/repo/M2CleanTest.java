@@ -12,11 +12,13 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -38,7 +40,37 @@ class M2CleanTest {
         store = tmp.resolve("store");
         m2 = tmp.resolve("m2");
         System.setProperty("jk.m2.local", m2.toString());
+        // The files this cleans are the ones jk downloaded into the local repository, which it does only when sharing.
+        System.setProperty("jk.m2.integration", "share");
         central = RepoArtifactStore.forRepository(store, "central", CENTRAL);
+    }
+
+    @AfterEach
+    void forgetTheMode() {
+        System.clearProperty("jk.m2.integration");
+    }
+
+    @Test
+    void a_download_the_store_keeps_for_itself_is_not_the_local_repositorys_to_clean() throws Exception {
+        System.clearProperty("jk.m2.integration");
+        RepoArtifactStore reading = RepoArtifactStore.forRepository(store, "central", CENTRAL);
+        String rel = "com/example/kept/1.0/kept-1.0.jar";
+        Path source = Files.writeString(tmp.resolve("kept"), "kept-bytes");
+        reading.materialize(rel, source, Hashing.sha256Hex(source), true);
+        Path own = store.resolve("repos/central").resolve(rel);
+        Path memo = ArtifactMemo.jkPath(store.resolve("repos/central"), rel);
+        Files.setLastModifiedTime(memo, FileTime.fromMillis(System.currentTimeMillis() - 90 * 86_400_000L));
+        // Maven's own copy of the same bytes, stat for stat: still not what the memo describes.
+        Path twin = m2.resolve(rel);
+        Files.createDirectories(twin.getParent());
+        Files.copy(own, twin, StandardCopyOption.COPY_ATTRIBUTES);
+
+        M2Clean.Report report = run(Set.of(), false);
+
+        assertThat(report.removed()).isEmpty();
+        assertThat(twin).exists();
+        assertThat(own).exists();
+        assertThat(memo).exists();
     }
 
     /** A file jk downloaded and last used {@code daysAgo} days ago: in the local repository, with a memo that says so. */

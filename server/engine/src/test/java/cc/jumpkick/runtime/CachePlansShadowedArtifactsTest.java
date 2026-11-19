@@ -10,6 +10,7 @@ import cc.jumpkick.repo.RepoIdentity;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -43,9 +44,43 @@ class CachePlansShadowedArtifactsTest {
         return jar;
     }
 
+    @AfterEach
+    void forgetTheMode() {
+        System.clearProperty("jk.m2.integration");
+    }
+
+    /** The local repository's own copy of {@link #REL}, holding {@code content}. */
+    private void twin(String content) throws Exception {
+        Path twin = tmp.resolve("m2").resolve(REL);
+        Files.createDirectories(twin.getParent());
+        Files.writeString(twin, content);
+    }
+
     @Test
-    void the_jars_beside_a_central_trees_memos_go_and_the_memos_stay() throws Exception {
+    void by_default_the_store_keeps_its_own_downloads() throws Exception {
         Path jar = leave("https://repo.maven.apache.org/maven2", "central");
+        twin("stale-copy");
+
+        assertThat(CachePlans.reclaimShadowedArtifacts(false).files()).isZero();
+        assertThat(jar).exists();
+    }
+
+    @Test
+    void sharing_a_store_copy_with_no_twin_or_another_twin_is_the_only_one_and_stays() throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        Path jar = leave("https://repo.maven.apache.org/maven2", "central");
+
+        assertThat(CachePlans.reclaimShadowedArtifacts(false).files()).isZero();
+        twin("other-copy");
+        assertThat(CachePlans.reclaimShadowedArtifacts(false).files()).isZero();
+        assertThat(jar).exists();
+    }
+
+    @Test
+    void sharing_the_jars_the_local_repository_also_holds_go_and_the_memos_stay() throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        Path jar = leave("https://repo.maven.apache.org/maven2", "central");
+        twin("stale-copy");
 
         CachePlans.SweepReport dry = CachePlans.reclaimShadowedArtifacts(true);
         assertThat(dry.files()).isEqualTo(1);
@@ -62,7 +97,9 @@ class CachePlansShadowedArtifactsTest {
 
     @Test
     void the_use_ledger_beside_the_memos_is_not_a_stray_artifact() throws Exception {
+        System.setProperty("jk.m2.integration", "share");
         leave("https://repo.maven.apache.org/maven2", "central");
+        twin("stale-copy");
         Path journal = store.resolve("repos/central").resolve(RepoArtifactStore.ACCESS_DIR + "/journal");
         Files.createDirectories(journal.getParent());
         Files.writeString(journal, "1\tm2:x\n");
@@ -74,7 +111,9 @@ class CachePlansShadowedArtifactsTest {
 
     @Test
     void a_tree_that_keeps_its_own_artifacts_is_left_alone() throws Exception {
+        System.setProperty("jk.m2.integration", "share");
         Path jar = leave("https://private.example/maven/", "private");
+        twin("stale-copy");
 
         assertThat(CachePlans.reclaimShadowedArtifacts(false).files()).isZero();
         assertThat(jar).exists();

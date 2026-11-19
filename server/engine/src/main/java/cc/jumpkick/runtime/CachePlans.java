@@ -17,6 +17,7 @@ import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ManifestNames;
@@ -422,11 +423,14 @@ public final class CachePlans {
     }
 
     /**
-     * Artifacts a store tree holds that the Maven local repository now owns. A repository whose
-     * artifacts live in {@code ~/.m2} ({@link M2Backing}) keeps only {@code .jk} memos under {@code
-     * repos/<id>/}; the jars an earlier layout left beside them are never read again, and are the
-     * largest thing in the store. Trees that do keep their own artifacts, and a tree that <em>is</em>
-     * the local repository (a test sandbox), are left alone.
+     * Artifacts a store tree holds that the Maven local repository holds too, on a machine that
+     * shares its downloads with Maven ({@code [m2] integration = "share"}). There a repository
+     * Maven shares ({@link M2Backing}) keeps its artifacts in {@code ~/.m2}, and a store copy with
+     * the same bytes — left by an earlier layout, or downloaded before the machine began to share —
+     * is a second copy of what a build can read from the local repository. A copy with no twin
+     * there, or with other bytes, is the only one and stays. On any other machine the store tree is
+     * where jk's downloads live and nothing is reclaimed. Trees of origins Maven does not share, and
+     * a tree that <em>is</em> the local repository (a test sandbox), are left alone.
      */
     public static SweepReport reclaimShadowedArtifacts(boolean dryRun) throws IOException {
         return reclaimShadowedArtifacts(dryRun, PruneYield.NEVER);
@@ -436,6 +440,7 @@ public final class CachePlans {
     private static SweepReport reclaimShadowedArtifacts(boolean dryRun, PruneYield yield) throws IOException {
         long files = 0;
         long bytes = 0;
+        if (!JkM2Config.resolve().share()) return new SweepReport(files, bytes);
         Path m2 = M2Dirs.localRepository();
         Path m2Real =
                 Files.isDirectory(m2) ? m2.toRealPath() : m2.toAbsolutePath().normalize();
@@ -443,17 +448,21 @@ public final class CachePlans {
             yield.check();
             String canonical = origin.origin();
             if (origin.isLegacy() || canonical == null) continue;
-            if (M2Backing.rootFor(URI.create(canonical), true).isEmpty()) continue;
+            if (!M2Backing.writesThrough(URI.create(canonical), true)) continue;
             Path tree = JkStores.resolve("repos").resolve(origin.id());
             if (tree.toRealPath().equals(m2Real)) continue;
             List<Path> stray = new ArrayList<>();
             PathUtil.forEachRegularFile(tree, RepoArtifactStore::isAccessDir, (file, attrs) -> {
                 yield.check();
                 String name = file.getFileName().toString();
-                if (!name.endsWith(".jk") && !RepoArtifactStore.ORIGIN_FILE.equals(name)) stray.add(file);
+                if (name.endsWith(".jk") || RepoArtifactStore.ORIGIN_FILE.equals(name)) return;
+                Path twin = m2Real.resolve(tree.relativize(file).toString());
+                if (Files.isRegularFile(twin) && Files.size(twin) == attrs.size()) stray.add(file);
             });
             for (Path file : stray) {
                 yield.check();
+                Path twin = m2Real.resolve(tree.relativize(file).toString());
+                if (!Hashing.sha256Hex(twin).equalsIgnoreCase(Hashing.sha256Hex(file))) continue;
                 files++;
                 bytes += Files.size(file);
                 if (!dryRun) Files.deleteIfExists(file);

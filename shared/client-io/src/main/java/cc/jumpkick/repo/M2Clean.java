@@ -142,6 +142,8 @@ public final class M2Clean {
         var memo = ArtifactMemo.read(memoFile);
         if (memo.isEmpty() || !memo.get().fetched()) return;
         Path relativeMemo = tree.relativize(memoFile);
+        // A memo whose artifact is beside it describes the store's own copy, which is the store's to age.
+        if (artifactFor(tree, relativeMemo) != null) return;
         Path artifact = artifactFor(m2, relativeMemo);
         if (artifact == null) return;
         // The proof: the file is the one jk downloaded, byte for byte.

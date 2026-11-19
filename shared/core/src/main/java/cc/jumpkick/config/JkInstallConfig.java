@@ -12,11 +12,14 @@ import org.jspecify.annotations.Nullable;
  * Machine-scoped {@code [install]} policy from {@code ~/.jk/config.toml}: where {@code jk install}
  * puts a project's jar and POM when neither the command line nor the project's {@code jk.toml}
  * says. Precedence: JVM system property &gt; {@code JK_INSTALL_DESTINATION} env &gt; user file &gt;
- * {@code m2}, laid out in rank order by {@link MachineConfig}. An unknown word falls through.
+ * what {@code [m2] integration} implies, laid out in rank order by {@link MachineConfig}: the Maven
+ * local repository on a machine that shares its downloads with Maven ({@code "share"}), else jk's
+ * own {@code repos/jk-local}, so that nothing is written into {@code ~/.m2} unasked. An unknown word
+ * falls through.
  */
 public record JkInstallConfig(InstallDestination destination) {
 
-    public static final JkInstallConfig DEFAULTS = new JkInstallConfig(InstallDestination.M2);
+    public static final JkInstallConfig DEFAULTS = new JkInstallConfig(InstallDestination.JK);
 
     private static final MachineConfig<InstallDestination> DESTINATION = MachineConfig.of(DEFAULTS.destination());
 
@@ -32,7 +35,10 @@ public record JkInstallConfig(InstallDestination destination) {
     static JkInstallConfig resolve(
             Path userConfig, Function<String, @Nullable String> env, Function<String, @Nullable String> property) {
         TomlScan scan = TomlScan.scan(userConfig, "install.destination");
-        return new JkInstallConfig(DESTINATION.layer(
+        InstallDestination implied =
+                JkM2Config.resolve(userConfig, env, property).share() ? InstallDestination.M2 : InstallDestination.JK;
+        return new JkInstallConfig(DESTINATION.layerOver(
+                implied,
                 word(property.apply("jk.install.destination")),
                 word(EnvValues.string(env, "JK_INSTALL_DESTINATION").orElse(null)),
                 word(scan.get("install.destination"))));
@@ -40,8 +46,9 @@ public record JkInstallConfig(InstallDestination destination) {
 
     /** The {@code [install]} table of {@code file}; missing or malformed gives {@link #DEFAULTS}. */
     public static JkInstallConfig fromToml(Path file) {
-        return new JkInstallConfig(DESTINATION.layer(
-                word(TomlScan.scan(file, "install.destination").get("install.destination"))));
+        InstallDestination implied = JkM2Config.fromToml(file).share() ? InstallDestination.M2 : InstallDestination.JK;
+        return new JkInstallConfig(DESTINATION.layerOver(
+                implied, word(TomlScan.scan(file, "install.destination").get("install.destination"))));
     }
 
     private static @Nullable InstallDestination word(@Nullable String raw) {

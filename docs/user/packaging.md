@@ -567,8 +567,10 @@ as `1.0.0-SNAPSHOT`, and a snapshot JumpKick wrote is replaced each time. `jk.to
 the release version, so there is nothing to edit; `jk release` installs the declared version once and
 tags it ([Releasing](release.md)).
 
-The install writes the thin jar and POM once, to the Maven local repository (`~/.m2/repository`),
-with Maven's checksum sidecars, so Maven and Gradle builds on the machine see the artifact. An
+The install writes the thin jar and POM once, to JumpKick's private `repos/jk-local`, where every
+JumpKick project on the machine finds it. `jk install --destination m2` writes them to the Maven
+local repository (`~/.m2/repository`) instead, with Maven's checksum sidecars, so Maven and Gradle
+builds on the machine see the artifact; nothing goes into `~/.m2` unasked. An
 application then also gets a launcher: a native binary in `~/.jk/bin` if one exists, else a
 minified/fat jar under `~/.jk/lib/<name>/` plus a `java -jar` script, else a thin `java -cp` script
 over the repo jars. The settle line names the coordinate and where it went. Another JumpKick project on the
@@ -587,9 +589,11 @@ A member with `[publish] skip = true` builds and tests but is not installed, and
 a member that is installed may not depend on it outside its test tables
 ([Publish](publish.md#keeping-a-member-out-of-a-release)).
 
-`[install] destination = "jk"` (or `jk install --destination jk`, or the same key in `~/.jk/config.toml`)
-puts the jar and POM in JumpKick's private `repos/jk-local` instead. Plugin workers (`jk-plugin.toml`)
-are always installed there: the engine rebuilds their runtime classpath from the installed POM.
+`[install] destination = "m2"` in `jk.toml` or `~/.jk/config.toml` makes the Maven local repository
+the destination without the flag, and so does `[m2] integration = "share"`, the setting for a
+machine that shares its downloads with Maven; `--destination jk` then names `repos/jk-local` for
+one run ([Config](config.md#install-target)). Plugin workers (`jk-plugin.toml`)
+are always installed in `repos/jk-local`: the engine rebuilds their runtime classpath from the installed POM.
 Outside a project, pass a coordinate (`jkx` mode). `jk snapshot` was this verb's name before
 JumpKick 0.51.1; it is refused now, naming `jk install`.
 

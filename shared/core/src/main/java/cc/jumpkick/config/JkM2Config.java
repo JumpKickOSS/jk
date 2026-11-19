@@ -4,15 +4,18 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.ProcessEnv;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Machine-scoped {@code [m2]} policy from {@code ~/.jk/config.toml}.
  *
- * <p>{@code integration} is the global kill switch for Maven local-repository lookup /
- * write-through of third-party jars. A project can still set {@code [m2] integration = false} to
- * host those jars only under {@code JK_STORE_DIR}.
+ * <p>{@code integration} says how far jk goes into the Maven local repository for third-party
+ * jars ({@link Mode}): {@code "read"} (the default) uses a verified file already there and keeps
+ * its own downloads under {@code JK_STORE_DIR}; {@code "share"} also downloads into it; {@code
+ * "off"} leaves it alone. A project can still set {@code [m2] integration = false} to keep its
+ * jars only under {@code JK_STORE_DIR}.
  *
  * <p>{@code auto-clean} lets the engine's maintenance remove files from the Maven local repository
  * on its own — a build server where the admin wants {@code ~/.m2} bounded. It is off by default and
@@ -23,12 +26,57 @@ import org.jspecify.annotations.Nullable;
  * <p>Precedence: JVM system property &gt; {@code JK_*} env &gt; user file &gt; defaults, laid out
  * in rank order by {@link MachineConfig}. Malformed values fall back to defaults.
  */
-public record JkM2Config(boolean integration, boolean autoClean, int cleanAfterDays) {
+public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
 
-    public static final JkM2Config DEFAULTS = new JkM2Config(true, false, 60);
+    /** What {@code [m2] integration} allows in the Maven local repository. */
+    public enum Mode {
+        /** The local repository is neither read nor written for third-party jars. */
+        OFF("off"),
+        /** A verified file already there is used where it is; what jk downloads goes to its own store. */
+        READ("read"),
+        /** As {@link #READ}, and what jk downloads is written there, with Maven's sidecars, for Maven to use. */
+        SHARE("share");
 
-    /** {@code [m2] integration}: a boolean's decode is its validation, so no range rule. */
-    private static final MachineConfig<Boolean> INTEGRATION = MachineConfig.of(DEFAULTS.integration());
+        private final String spelling;
+
+        Mode(String spelling) {
+            this.spelling = spelling;
+        }
+
+        /** The word {@code config.toml} and {@code JK_M2_INTEGRATION} spell this mode with. */
+        public String spelling() {
+            return spelling;
+        }
+
+        /**
+         * The mode {@code raw} names, or null. A boolean keeps what it meant before the modes had
+         * names: {@code false} is {@link #OFF} and {@code true}, which then wrote downloads through,
+         * is {@link #SHARE}.
+         */
+        static @Nullable Mode parse(@Nullable String raw) {
+            if (raw == null) return null;
+            String word = raw.strip().toLowerCase(Locale.ROOT);
+            for (Mode mode : values()) {
+                if (mode.spelling.equals(word)) return mode;
+            }
+            return EnvValues.parseBool(raw).map(on -> on ? SHARE : OFF).orElse(null);
+        }
+    }
+
+    public static final JkM2Config DEFAULTS = new JkM2Config(Mode.READ, false, 60);
+
+    /** {@code [m2] integration}: a mode's decode is its validation, so no range rule. */
+    private static final MachineConfig<Mode> INTEGRATION = MachineConfig.of(DEFAULTS.mode());
+
+    /** True unless the mode is {@link Mode#OFF}: the local repository may be read. */
+    public boolean integration() {
+        return mode != Mode.OFF;
+    }
+
+    /** True when what jk downloads is written into the local repository ({@link Mode#SHARE}). */
+    public boolean share() {
+        return mode == Mode.SHARE;
+    }
 
     /** {@code [m2] auto-clean}. */
     private static final MachineConfig<Boolean> AUTO_CLEAN = MachineConfig.of(DEFAULTS.autoClean());
@@ -56,11 +104,11 @@ public record JkM2Config(boolean integration, boolean autoClean, int cleanAfterD
         TomlScan scan = scan(userConfig);
         return new JkM2Config(
                 INTEGRATION.layer(
-                        EnvValues.parseBool(property.apply("jk.m2.integration")).orElse(null),
-                        EnvValues.parseBool(property.apply("jk.m2.lookup")).orElse(null),
-                        EnvValues.bool(env, "JK_M2_INTEGRATION").orElse(null),
-                        EnvValues.bool(env, "JK_M2_LOOKUP").orElse(null),
-                        tomlBool(scan, "m2.integration")),
+                        Mode.parse(property.apply("jk.m2.integration")),
+                        Mode.parse(property.apply("jk.m2.lookup")),
+                        Mode.parse(EnvValues.string(env, "JK_M2_INTEGRATION").orElse(null)),
+                        Mode.parse(EnvValues.string(env, "JK_M2_LOOKUP").orElse(null)),
+                        tomlMode(scan)),
                 AUTO_CLEAN.layer(
                         EnvValues.parseBool(property.apply("jk.m2.auto-clean")).orElse(null),
                         EnvValues.bool(env, "JK_M2_AUTO_CLEAN").orElse(null),
@@ -74,7 +122,7 @@ public record JkM2Config(boolean integration, boolean autoClean, int cleanAfterD
     public static JkM2Config fromToml(Path file) {
         TomlScan scan = scan(file);
         return new JkM2Config(
-                INTEGRATION.layer(tomlBool(scan, "m2.integration")),
+                INTEGRATION.layer(tomlMode(scan)),
                 AUTO_CLEAN.layer(tomlBool(scan, "m2.auto-clean")),
                 CLEAN_AFTER_DAYS.layer(scanInt(scan, "m2.clean-after-days")));
     }
@@ -95,6 +143,18 @@ public record JkM2Config(boolean integration, boolean autoClean, int cleanAfterD
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    /** {@code [m2] integration} as the file spells it: a mode's word, or TOML's {@code true} / {@code false}. */
+    private static @Nullable Mode tomlMode(TomlScan scan) {
+        String raw = scan.get("m2.integration");
+        Boolean bool = tomlBool(scan, "m2.integration");
+        if (bool != null) return bool ? Mode.SHARE : Mode.OFF;
+        if (raw == null) return null;
+        for (Mode mode : Mode.values()) {
+            if (mode.spelling.equals(raw.strip())) return mode;
+        }
+        return null;
     }
 
     private static @Nullable Boolean tomlBool(TomlScan scan, String key) {

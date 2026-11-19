@@ -32,7 +32,8 @@ the pitch in [Why JumpKick](why.md).
    a language. `jk build` does not re-resolve a valid `jk-lock.toml`, and every row carries a
    checksum. Tests have named rungs, and the report says what was not run.
 7. **The machine's Maven repository and IntelliJ JDK directory are shared, not duplicated.**
-   Fetched jars are written through to `~/.m2/repository`. JDKs JumpKick installs go in
+   A jar already in `~/.m2/repository` is used where it is, and one setting has JumpKick download
+   into it too. JDKs JumpKick installs go in
    IntelliJ's shared root (`~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS), after
    probes that cover what Gradle's auto-detection, Maven's `toolchains.xml`, and Mill's Coursier
    JVM cache would find. `java = 17` does not download a JDK 17.
@@ -46,7 +47,7 @@ directories it does not own as shared infrastructure.
 
 | | JumpKick | Maven | Gradle |
 |---|---|---|---|
-| **Third-party jars** | Own store under `~/.jk/store`, **and** `~/.m2/repository` by default. A digest-matching file already in the Maven local repository is copied in instead of downloaded. A fetch is written back through. `[m2] integration = false` turns the sharing off. | `~/.m2/repository` is Maven's local repository. | Dependencies live in the Gradle user home (`~/.gradle/caches`). `mavenLocal()` is a repository a build can add. Gradle does not read or fill `~/.m2` unless the build asks. |
+| **Third-party jars** | Own store under `~/.jk/store`. A digest-matching file already in `~/.m2/repository` is used where it is instead of downloaded. `[m2] integration = "share"` also downloads into `~/.m2/repository`, with Maven's sidecars, and `"off"` leaves it alone. | `~/.m2/repository` is Maven's local repository. | Dependencies live in the Gradle user home (`~/.gradle/caches`). `mavenLocal()` is a repository a build can add. Gradle does not read or fill `~/.m2` unless the build asks. |
 | **Where a JDK JumpKick (or the tool) installs lands** | IntelliJ's shared root: `~/.jdks`, or `~/Library/Java/JavaVirtualMachines` on macOS. Inventory and fingerprints stay in `~/.jk/state`, because the directory is shared. | Maven does not install JDKs. The toolchain plugin points at JDKs listed in `toolchains.xml`. | Detects an IntelliJ-installed JDK, then **installs its own** under the Gradle user home (`<gradle-user-home>/jdks`) when a toolchain resolver is configured. |
 | **Looks for a JDK before downloading** | A miss installs into the shared root. Probes: `JAVA_HOME`, JumpKick's own, IntelliJ, Gradle's provisioned JDKs, SDKMAN, JBang, mise, asdf, jenv, Homebrew, Jabba, the Coursier JVM cache, Linux `/usr/lib/jvm`, `/usr/java`, `/usr/lib64/jvm`, `/usr/local/java`, and `/opt/java`, macOS `/Library/Java/JavaVirtualMachines` and every home `/usr/libexec/java_home -V` lists, the Windows registry's JavaSoft `JavaHome` and Adoptium MSI `Path` entries, every `jdkHome` in Maven's `~/.m2/toolchains.xml`, and homes named by Gradle's `org.gradle.java.installations.paths`, `fromEnv`, and `maven-toolchains-file` (user-home and build-root `gradle.properties`) or by `JK_JDK_PATHS` and `JK_JDK_FROM_ENV`. | The JDK that launched Maven, plus every `jdkHome` in `toolchains.xml`. No download. | OS locations, `JAVA_HOME`, asdf, Jabba (`JABBA_HOME`), SDKMAN, Maven `toolchains.xml`, IntelliJ's JDK directory, and any path or env var named in Gradle properties. A miss provisions into the Gradle user home. |
 | **Older bytecode** | `java = 17` or `21` compiles with the host JDK 25 via `--release`. No second JDK. | `--release` on whatever JDK is running Maven. | A toolchain `languageVersion` of 17 selects or downloads a JDK 17. `--release` is a separate setting. |
@@ -54,8 +55,9 @@ directories it does not own as shared infrastructure.
 | **Corporate Maven settings** | Mirrors, proxies, and server credentials in `~/.m2/settings.xml` apply. The lock still records Central's own URL. | This is Maven's file. | A Gradle build declares its own repositories. It does not read `settings.xml` as a default. |
 
 The distinction that matters: Gradle already **finds** a JDK IntelliJ installed. JumpKick
-**installs into the directory IntelliJ and Gradle both scan**, and it **fills the repository
-Maven already builds from**. A jar JumpKick fetched is there for the next `mvn`. A JDK
+**installs into the directory IntelliJ and Gradle both scan**, and it **reads the repository
+Maven already builds from**: a jar `mvn` fetched is not fetched again, and under
+`[m2] integration = "share"` a jar JumpKick fetched is there for the next `mvn`. A JDK
 JumpKick installed is there for IntelliJ's SDK list and for Gradle's toolchain detection.
 Mill and Bazel are further down this page.
 
@@ -170,7 +172,7 @@ claim is sharper against Mill and Bazel than against Gradle.
 
 | | JumpKick | Mill | Bazel |
 |---|---|---|---|
-| **Dependency cache** | `~/.jk/store`, written through to `~/.m2` by default | [Coursier](https://get-coursier.io/docs/cache)'s cache (`~/.cache/coursier` on Linux). Mill's own docs treat `~/.m2/repository` as a repository you can add and do not recommend. | Isolated, in the Bazel output base. `rules_jvm_external` can consult `~/.m2`; the default is not to. |
+| **Dependency cache** | `~/.jk/store`; reads `~/.m2` in place, and writes through to it under `[m2] integration = "share"` | [Coursier](https://get-coursier.io/docs/cache)'s cache (`~/.cache/coursier` on Linux). Mill's own docs treat `~/.m2/repository` as a repository you can add and do not recommend. | Isolated, in the Bazel output base. `rules_jvm_external` can consult `~/.m2`; the default is not to. |
 | **JDK it installs** | `~/.jdks` (IntelliJ's root) | Coursier's JVM cache (`~/.cache/coursier/jvm` on Linux), via the Coursier JVM index | A hermetic JDK in the Bazel cache |
 | **JDK it looks for first** | The probes in the table above, the Coursier JVM cache among them | Coursier checks `JAVA_HOME`, then a platform default (`java_home` on macOS, `java` on `PATH`), and reads JDKs it installed under its JVM cache | The declared toolchain. Hermetic is the point. Scanning a Bazel output base is not a goal. |
 

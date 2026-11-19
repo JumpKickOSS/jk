@@ -47,6 +47,21 @@ class InstallWorkspaceTest {
     }
 
     @Test
+    void an_install_that_names_no_destination_stays_out_of_the_maven_local_repository(@TempDir Path tmp)
+            throws Exception {
+        Path cache = workspace(tmp, "public final class Lib { }");
+        // A group of its own: the sandbox store is the module's, and its neighbours look for ex:lib there.
+        Path root = tmp.resolve("jk.toml");
+        Files.writeString(root, Files.readString(root).replace("group = \"ex\"", "group = \"ex.unasked\""));
+
+        assertThat(installAsGiven(tmp, cache)).isEqualTo(0);
+
+        assertThat(JkStores.resolve("repos").resolve("jk-local/ex/unasked/lib/1.0-SNAPSHOT/lib-1.0-SNAPSHOT.jar"))
+                .exists();
+        assertThat(tmp.resolve("m2")).doesNotExist();
+    }
+
+    @Test
     void a_failing_install_names_the_module_instead_of_exiting_silently(@TempDir Path tmp) throws Exception {
         Path cache = workspace(tmp, "public final class Lib { this is not java }");
 
@@ -126,7 +141,16 @@ class InstallWorkspaceTest {
         assertThat(TestAnsi.strip(streams.out())).contains("Install successful. Installed ex:lib:1.0");
     }
 
+    /** An install into the Maven local repository, which is named: nothing goes into {@code ~/.m2} unasked. */
     private static int install(Path ws, Path cache, String... extra) {
+        String[] named = new String[extra.length + 2];
+        named[0] = "--destination";
+        named[1] = "m2";
+        System.arraycopy(extra, 0, named, 2, extra.length);
+        return installAsGiven(ws, cache, named);
+    }
+
+    private static int installAsGiven(Path ws, Path cache, String... extra) {
         String[] base = {
             "install",
             "-C",

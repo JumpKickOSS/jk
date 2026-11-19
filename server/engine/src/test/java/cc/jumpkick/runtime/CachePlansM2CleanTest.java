@@ -40,11 +40,14 @@ class CachePlansM2CleanTest {
         m2 = tmp.resolve("m2");
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", m2.toString());
+        // What a clean of the local repository removes is what jk downloaded into it, which it does when sharing.
+        System.setProperty("jk.m2.integration", "share");
         downloadedLongAgo();
     }
 
     @AfterEach
     void tearDown() {
+        System.clearProperty("jk.m2.integration");
         System.clearProperty("jk.m2.auto-clean");
     }
 

@@ -46,7 +46,10 @@ class ReleaseCommandTest {
                 "--lib-dir",
                 dir.resolve("lib").toString(),
                 "--m2-dir",
-                m2.toString()));
+                m2.toString(),
+                // These releases are checked in the Maven local repository, which an install targets by name.
+                "--destination",
+                "m2"));
         return Jk.execute(args.toArray(String[]::new));
     }
 

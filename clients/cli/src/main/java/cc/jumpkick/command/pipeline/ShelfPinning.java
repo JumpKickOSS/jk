@@ -6,6 +6,8 @@ import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.InstallDestination;
+import cc.jumpkick.plugin.manifest.PluginModule;
+import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.IOException;
@@ -13,6 +15,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * What a workspace install pins in {@link ShelfManifest} after its pass: the thin jar and the
@@ -56,11 +59,39 @@ final class ShelfPinning {
      * repository, or one with no install step (a coordinator root) contributes nothing.
      */
     static Pins shelved(WorkspaceResult result) {
+        return shelved(result, dir -> true);
+    }
+
+    /**
+     * The modules of a workspace an engine launches from the shelf, by directory: every module of a
+     * tree that installs JumpKick itself (one of its modules declares a product layout), and a
+     * plugin worker of any tree.
+     */
+    static Predicate<Path> engineRuns(Map<Path, ProjectInfo> infoByDir) {
+        boolean installsJumpKick = infoByDir.values().stream()
+                .anyMatch(info ->
+                        !info.productLib().isBlank() || !info.productBin().isBlank());
+        return dir -> {
+            ProjectInfo info = infoByDir.get(dir);
+            return installsJumpKick
+                    || PluginModule.isWorker(dir)
+                    || (info != null && "cc.jumpkick.plugin.process.PluginMain".equals(info.mainClass()));
+        };
+    }
+
+    /**
+     * As {@link #shelved(WorkspaceResult)}, for the modules {@code engineRuns} admits by directory:
+     * the ones the engine launches from the shelf. A library a project merely installed into {@code
+     * repos/jk-local} is read there by path like any other install; pinning it would name that
+     * project as the checkout the engine was installed from.
+     */
+    static Pins shelved(WorkspaceResult result, Predicate<Path> engineRuns) {
         Map<String, String> jars = new LinkedHashMap<>();
         Map<String, String> poms = new LinkedHashMap<>();
         for (ModuleOutcome m : result.modules()) {
             ModuleOutcome.Installed shelf = m.installed();
             if (!m.success() || shelf == null || shelf.destination() != InstallDestination.JK) continue;
+            if (!engineRuns.test(m.dir())) continue;
             jars.put(shelf.coordinate(), shelf.jarSha256());
             poms.put(shelf.coordinate(), shelf.pomSha256());
         }
