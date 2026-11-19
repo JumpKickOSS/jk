@@ -48,7 +48,16 @@ class LocalRepoConsumersTest {
         Files.writeString(
                 lib.resolve("src/main/java/com/example/Lib.java"),
                 "package com.example; public final class Lib { public static String hi() { return \"hi\"; } }\n");
-        assertThat(jk(lib, "install", "--cache-dir", lib.resolve("cache").toString(), "--m2-dir", m2.toString()))
+        // Maven and Gradle read the Maven local repository, which an install targets by name.
+        assertThat(jk(
+                        lib,
+                        "install",
+                        "--cache-dir",
+                        lib.resolve("cache").toString(),
+                        "--m2-dir",
+                        m2.toString(),
+                        "--destination",
+                        "m2"))
                 .isEqualTo(0);
     }
 

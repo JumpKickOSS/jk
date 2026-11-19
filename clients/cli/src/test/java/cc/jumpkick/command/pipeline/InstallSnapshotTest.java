@@ -3,6 +3,7 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,7 +12,10 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code jk install}: the inner-loop install at the declared version plus {@code -SNAPSHOT}. */
+/**
+ * {@code jk install}: the inner-loop install at the declared version plus {@code -SNAPSHOT}, into
+ * the store's {@code repos/jk-local}, where an install goes unless it names the Maven local repository.
+ */
 @Tag("integration")
 class InstallSnapshotTest {
 
@@ -57,6 +61,11 @@ class InstallSnapshotTest {
         return Jk.execute(args);
     }
 
+    /** Where {@code com.example}'s installs land: the store's {@code repos/jk-local}. */
+    private static Path installed() {
+        return JkStores.resolve("repos").resolve("jk-local/com/example");
+    }
+
     /**
      * A build between two installs must not let the build's memo skip the second install's steps,
      * which would install the -SNAPSHOT jar the first one left.
@@ -65,7 +74,7 @@ class InstallSnapshotTest {
     void an_install_after_a_build_packages_its_own_jar(@TempDir Path tmp) throws Exception {
         application(tmp, "snap-built", "");
         Path m2 = tmp.resolve("m2");
-        Path jar = m2.resolve("repository/com/example/snap-built/1.0.0-SNAPSHOT/snap-built-1.0.0-SNAPSHOT.jar");
+        Path jar = installed().resolve("snap-built/1.0.0-SNAPSHOT/snap-built-1.0.0-SNAPSHOT.jar");
         assertThat(jk(tmp, m2, "install", "-S")).isEqualTo(0);
         byte[] first = Files.readAllBytes(jar);
 
@@ -88,8 +97,8 @@ class InstallSnapshotTest {
     void a_snapshot_is_installed_and_replaced_by_each_install(@TempDir Path tmp) throws Exception {
         application(tmp, "snap-lib", "");
         Path m2 = tmp.resolve("m2");
-        Path snapshots = m2.resolve("repository/com/example/snap-lib/1.0.0-SNAPSHOT");
-        Path release = m2.resolve("repository/com/example/snap-lib/1.0.0");
+        Path snapshots = installed().resolve("snap-lib/1.0.0-SNAPSHOT");
+        Path release = installed().resolve("snap-lib/1.0.0");
         String declared = Files.readString(tmp.resolve("jk.toml"));
 
         assertThat(jk(tmp, m2, "install")).isEqualTo(0);
@@ -97,6 +106,9 @@ class InstallSnapshotTest {
         assertThat(Files.readString(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.pom")))
                 .contains("<version>1.0.0-SNAPSHOT</version>");
         assertThat(release).as("a snapshot is not a release").doesNotExist();
+        assertThat(m2.resolve("repository/com/example/snap-lib"))
+                .as("an install that names no destination leaves the Maven local repository alone")
+                .doesNotExist();
         byte[] first = Files.readAllBytes(snapshots.resolve("snap-lib-1.0.0-SNAPSHOT.jar"));
 
         // The inner loop: change the source, install again, and the slot holds the new jar.
@@ -144,7 +156,7 @@ class InstallSnapshotTest {
 
         assertThat(jk(tmp, m2, "install")).isEqualTo(0);
 
-        Path repo = m2.resolve("repository/com/example");
+        Path repo = installed();
         assertThat(repo.resolve("snap-core/1.0.0-SNAPSHOT/snap-core-1.0.0-SNAPSHOT.jar"))
                 .exists();
         String appPom = Files.readString(repo.resolve("snap-app/1.0.0-SNAPSHOT/snap-app-1.0.0-SNAPSHOT.pom"));
@@ -159,7 +171,7 @@ class InstallSnapshotTest {
 
         assertThat(jk(tmp, m2, "install")).isEqualTo(0);
 
-        Path snapshots = m2.resolve("repository/com/example/snap-flag/1.0.0-SNAPSHOT");
+        Path snapshots = installed().resolve("snap-flag/1.0.0-SNAPSHOT");
         assertThat(snapshots.resolve("snap-flag-1.0.0-SNAPSHOT.jar")).exists();
         assertThat(snapshots.resolve("snap-flag-1.0.0-SNAPSHOT.pom")).exists();
         assertThat(tmp.resolve("bin/snap-flag"))
