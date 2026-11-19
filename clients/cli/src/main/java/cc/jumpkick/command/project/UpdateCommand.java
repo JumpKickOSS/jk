@@ -386,16 +386,21 @@ public final class UpdateCommand implements CliCommand {
 
     /**
      * One package the relock changed: {@code   g:a  1.0 → 1.1}, {@code new → 1.1} when added,
-     * {@code 1.0 → removed} when dropped; a member-override row names its members.
+     * {@code 1.0 → removed} when dropped; a member-override row names its members. A row the relock
+     * moved down is no update: an update never lowers a package unless the manifest rules its
+     * version out (a lower pin, a range's ceiling, a platform BOM), and the line says so.
      */
     static void printChange(Moved m) {
         String from = m.from() == null ? "[dim]new[/]" : RichText.escape(m.from());
         String to = m.to() == null ? "[dim]removed[/]" : "[yellow]" + RichText.escape(m.to()) + "[/]";
         String members =
                 m.members().isEmpty() ? "" : "  [dim](" + RichText.escape(String.join(", ", m.members())) + ")[/]";
-        CliOutput.out(
-                RichText.parse("  [bold]" + RichText.escape(m.coordinate()) + "[/]  " + from + " → " + to + members)
-                        .render());
+        String lowered = m.from() != null && m.to() != null && Versions.compare(m.to(), m.from()) < 0
+                ? "  [dim](lowered: the manifest rules " + RichText.escape(m.from()) + " out)[/]"
+                : "";
+        CliOutput.out(RichText.parse(
+                        "  [bold]" + RichText.escape(m.coordinate()) + "[/]  " + from + " → " + to + members + lowered)
+                .render());
     }
 
     /**

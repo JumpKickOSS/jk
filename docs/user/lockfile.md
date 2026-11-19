@@ -158,7 +158,8 @@ A pin you wrote lower takes its whole graph down with it, in every relock (`jk b
 `jk lock -F`, `jk update`): the pinned module's classified jars (the `${javafx.platform}` jar an
 OpenJFX POM names) and every package only the old version pulled in resolve as a fresh lock
 resolves them, so the lock holds one version per module. A package another dependency still
-reaches keeps its locked version.
+reaches keeps its locked version. `jk update` lists such a row as
+`org.openjfx:javafx-controls  27.0.1.1 → 27.0.1  (lowered: the manifest rules 27.0.1.1 out)`.
 
 ## `jk outdated`
 

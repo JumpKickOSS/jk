@@ -103,6 +103,25 @@ class UpdateCommandSettleTest {
                 .contains("  com.acme:d  1.0 → 1.2  (api, web)");
     }
 
+    /**
+     * The row a pin written lower takes down reads as lowered, not as an update: OpenJFX's
+     * javafx-controls moved from 27.0.1.1 to 27.0.1 under a pin put back to 27.0.1.
+     */
+    @Test
+    void printChange_says_a_row_the_relock_moved_down_was_lowered() {
+        String out = TestAnsi.strip(Capture.stdout(() -> {
+            UpdateCommand.printChange(
+                    new UpdateCommand.Moved("org.openjfx:javafx-controls", "27.0.1.1", "27.0.1", List.of()));
+            UpdateCommand.printChange(
+                    new UpdateCommand.Moved("org.openjfx:javafx-base", "27.0.1", "27.0.1.1", List.of()));
+        }));
+        assertThat(out)
+                .contains(
+                        "  org.openjfx:javafx-controls  27.0.1.1 → 27.0.1  (lowered: the manifest rules 27.0.1.1 out)")
+                .contains("  org.openjfx:javafx-base  27.0.1 → 27.0.1.1")
+                .doesNotContainPattern("javafx-base.*lowered");
+    }
+
     @Test
     void a_lock_change_matching_a_pin_line_is_the_same_move() {
         UpdateCommand.Moved pin = new UpdateCommand.Moved("com.acme:a", "1.0", "1.1", List.of());
