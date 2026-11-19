@@ -5,11 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.EngineInstall;
-import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineSpawn;
 import cc.jumpkick.config.SnapshotQualifier;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,10 +24,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Two consecutive {@code jk install}s of one tree reach a fixed point: the second re-shelves
- * nothing, the home names the same engine before and after it, and the shelf manifest pins the
- * tree's jars to that engine. The property spans the whole
- * install — packagers, artifact keys carrying the engine identity, the second pass's handoff — so
- * it is proven on a forked client against a private {@code JK_HOME}, not in-process.
+ * nothing, and the home names the same engine before and after it. The tree is a plain project,
+ * not JumpKick and no plugin worker, so neither install pins its jars to that engine or names it as
+ * the checkout the engine was installed from. The property spans the whole install — packagers,
+ * artifact keys carrying the engine identity, the second pass's handoff — so it is proven on a
+ * forked client against a private {@code JK_HOME}, not in-process.
  *
  * <p>The forked client is this test JVM's own classpath ({@code cc.jumpkick.cli.Jk}), the home
  * is seeded with the sandbox's engine (jar + pointer), and every wait is bounded. Slow tier: it
@@ -75,17 +74,13 @@ class InstallFixedPointE2eTest {
                             .map(EngineInstall.Materialized::engineSha))
                     .contains(sandboxEngine.get().engineSha());
 
-            // The shelf is pinned to that engine: both module jars by sha, and the checkout named.
-            ShelfManifest pins = ShelfManifest.read(engineHome.resolve(EngineInstall.SHELF_NAME))
-                    .orElseThrow();
-            assertThat(pins.pins(sandboxEngine.get().engineSha())).isTrue();
-            assertThat(pins.source()).isEqualTo(ws.toAbsolutePath().normalize().toString());
-            assertThat(pins.jars()).containsOnlyKeys("com.example:lib:" + STAMPED, "com.example:app:" + STAMPED);
-            assertThat(pins.sha("com.example:lib:" + STAMPED))
-                    .contains(Hashing.sha256Hex(ws.resolve("lib/target/lib-" + STAMPED + ".jar")));
+            // A project's own jars on the shelf are an install, not the engine's: nothing is pinned.
+            assertThat(first.output()).doesNotContain("Pinned");
+            assertThat(engineHome.resolve(EngineInstall.SHELF_NAME)).doesNotExist();
             Run status = jk(home, ws, "engine", "status");
             assertThat(status.exit()).as(status.output()).isZero();
-            assertThat(status.output()).contains("Source").contains(pins.source());
+            assertThat(status.output())
+                    .doesNotContain(ws.toAbsolutePath().normalize().toString());
         } finally {
             jk(home, ws, "engine", "stop", "--now");
         }
