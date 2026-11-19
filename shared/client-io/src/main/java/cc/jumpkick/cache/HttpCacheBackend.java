@@ -150,6 +150,41 @@ public final class HttpCacheBackend implements CacheBackend {
         }
     }
 
+    /** The service's URL: the scope its key seed is derived under, so two services never share one's key. */
+    @Override
+    public String seedScope() {
+        return base.getScheme().toLowerCase(Locale.ROOT) + "://"
+                + base.getHost().toLowerCase(Locale.ROOT)
+                + (base.getPort() == -1 ? "" : ":" + base.getPort())
+                + (base.getRawPath() == null ? "" : base.getRawPath());
+    }
+
+    /** The version of the {@code key-seed} answer this client reads. */
+    static final long SEED_VERSION = 1;
+
+    /**
+     * The seed the service hands this caller ({@code GET /v0/key-seed}): {@code {"version": 1,
+     * "seed_id": "...", "seed": "<base64>"}}. A 404 is a service that issues none; any other
+     * refusal, or an answer of another version or shape, is a failure.
+     */
+    @Override
+    public @Nullable IssuedSeed keySeed() throws IOException {
+        HttpResponse<byte[]> response = call(() -> api.get(endpoint("key-seed"), headers()));
+        if (response.statusCode() == 404) return null;
+        Object json = answer(response, "key seed");
+        Object version = MiniJson.get(json, "version");
+        if (!(version instanceof Number n) || n.longValue() != SEED_VERSION)
+            throw new IOException("key seed: an answer of version " + version + ", not " + SEED_VERSION);
+        String id = MiniJson.str(json, "seed_id");
+        String seed = MiniJson.str(json, "seed");
+        try {
+            return new IssuedSeed(id == null ? "" : id, Base64.getDecoder().decode(seed == null ? "" : seed));
+        } catch (IllegalArgumentException malformed) {
+            // Said without the cause, whose message may quote a character of the seed.
+            throw new IOException("key seed: not a seed id and at least 32 bytes of base64");
+        }
+    }
+
     @Override
     public Map<String, String> records(Lookup lookup) throws IOException {
         return lookup(lookup).records();

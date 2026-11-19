@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +86,63 @@ public interface CacheBackend {
      */
     default boolean writable() {
         return true;
+    }
+
+    /**
+     * What names this store as a scope of the key seed its clients share ({@link #keySeed}): the
+     * service's URL, a directory's path. Two stores never share a seed's key by accident, since the
+     * key is derived under this.
+     */
+    default String seedScope() {
+        return name();
+    }
+
+    /**
+     * The key seed this store hands its authenticated clients, so that the environment values a test
+     * suite read key alike on every host holding it ({@link IssuedSeed}); null when it issues none.
+     *
+     * @throws IOException when the store did not answer, refused the caller, or answered in a form
+     *     this jk does not read: no seed for now, which keeps such results on their host
+     */
+    default @Nullable IssuedSeed keySeed() throws IOException {
+        return null;
+    }
+
+    /**
+     * A key seed as a store issued it: its id, which changes whenever the seed does, and at least 32
+     * bytes. Never printed: {@link #toString} names the id alone.
+     */
+    record IssuedSeed(String id, byte[] seed) {
+        /** The fewest bytes a seed is taken with. */
+        public static final int MIN_BYTES = 32;
+
+        public IssuedSeed {
+            Objects.requireNonNull(id, "id");
+            if (!id.matches("[A-Za-z0-9._:-]{1,64}")) throw new IllegalArgumentException("not a seed id");
+            if (seed.length < MIN_BYTES)
+                throw new IllegalArgumentException("a seed of fewer than " + MIN_BYTES + " bytes");
+            seed = seed.clone();
+        }
+
+        @Override
+        public byte[] seed() {
+            return seed.clone();
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof IssuedSeed other && id.equals(other.id) && Arrays.equals(seed, other.seed);
+        }
+
+        @Override
+        public int hashCode() {
+            return id.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            return "IssuedSeed[" + id + "]";
+        }
     }
 
     /** Where {@link #fetch} hands each blob's bytes. */

@@ -130,6 +130,62 @@ public final class FakeCacheServer implements AutoCloseable {
         return unavailableKey;
     }
 
+    /**
+     * Answer {@code GET /v0/key-seed} from now on with {@code seed} under {@code id}, to the writer
+     * and the reader alike: the seed the cache's clients key environment values under.
+     */
+    public FakeCacheServer issueSeed(String id, byte[] seed) {
+        keySeed = new Issued(id, seed.clone());
+        seedFailure = 0;
+        seedWritersOnly = false;
+        return this;
+    }
+
+    /**
+     * As {@link #issueSeed}, to the writer alone: the reader, an identity that may only read as an
+     * untrusted party (a fork's CI build), is answered {@code 404 not_found}, as the service answers
+     * one not entitled to the seed.
+     */
+    public FakeCacheServer issueSeedToWritersOnly(String id, byte[] seed) {
+        issueSeed(id, seed);
+        seedWritersOnly = true;
+        return this;
+    }
+
+    /** Answer {@code GET /v0/key-seed} with {@code 404 not_found} from now on, as a service that issues none. */
+    public FakeCacheServer issueNoSeed() {
+        keySeed = null;
+        seedFailure = 0;
+        return this;
+    }
+
+    /** Answer {@code GET /v0/key-seed} with {@code status} and a problem document from now on. */
+    public FakeCacheServer failSeed(int status) {
+        seedFailure = status;
+        return this;
+    }
+
+    private record Issued(String id, byte[] seed) {}
+
+    private volatile @Nullable Issued keySeed;
+    private volatile int seedFailure;
+    private volatile boolean seedWritersOnly;
+
+    /** The key-seed answer: the seed issued, a 404 before any or to a caller not entitled to it, or the failure set. */
+    private void keySeed(HttpExchange ex, boolean writer) throws IOException {
+        Issued issued = keySeed;
+        if (seedFailure != 0) problem(ex, seedFailure, "unavailable", "the seed is not to be had now", List.of());
+        else if (issued == null || (seedWritersOnly && !writer))
+            problem(ex, 404, "not_found", "this cache issues no key seed", List.of());
+        else {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("version", 1);
+            body.put("seed_id", issued.id());
+            body.put("seed", Base64.getEncoder().encodeToString(issued.seed()));
+            json(ex, 200, body);
+        }
+    }
+
     /** Serve blob {@code hash} with its first byte flipped from now on. */
     public void tamper(String hash) {
         tampered.add(hash);
@@ -221,6 +277,7 @@ public final class FakeCacheServer implements AutoCloseable {
             Object body = readJson(ex);
             switch (ex.getRequestMethod() + " " + path) {
                 case "GET /v0/capabilities" -> json(ex, 200, capabilities(writer));
+                case "GET /v0/key-seed" -> keySeed(ex, writer);
                 case "POST /v0/blobs/missing" ->
                     json(ex, 200, Map.of("missing", absent(MiniJson.list(body, "digests"))));
                 case "POST /v0/blobs/batch-upload" -> batchUpload(ex, writer, body);
