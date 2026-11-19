@@ -12,6 +12,7 @@ limit less its working set — see [Engine](engine.md#worker-memory).
     path: |
       ~/.jk/cache
       ~/.jk/store
+      ~/.jk/state/worker-heaps
       ~/.m2/repository
       **/target/.jk
     key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml', '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}-${{ github.run_id }}
@@ -38,6 +39,7 @@ project id every key names ([below](#sharing-a-cache-across-checkouts-and-agents
 | `store/tools/node`, `store/tools/<pnpm\|yarn\|bun>` | Provisioned Node.js and package managers ([Node.js](node.md)) | **Yes** — inside the store above |
 | `cache/npm`, `cache/bun`, `cache/yarn`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |
 | `target/.jk/` | Project-local engine state, including **preflight memos** | **Yes** with the workspace |
+| Platform **state** `worker-heaps/` | [Learned heaps](engine.md#learned-heaps): heap and resident-set peaks per module, task and JDK | **Yes** — a fresh runner otherwise learns every heap again |
 | Platform **state** `builds/` | Run history | Optional |
 | The rest of platform **state** | Engine sockets and tokens, the home's secret, kept key seeds | **Never** |
 | `~/.jk/creds` | Repository and forge credentials | **Never** |
@@ -47,6 +49,15 @@ project id every key names ([below](#sharing-a-cache-across-checkouts-and-agents
 engine's sockets and live process state, the state directory holds the engine's HTTP token, the
 secret this home keys environment values under (`env-read.key`) and the key seeds a shared cache
 issued (`cache-seeds/`), and a pull request's run can restore what the default branch saved.
+Of the state directory, cache `~/.jk/state/worker-heaps`, and `builds/` only if you want the run
+history; nothing else under it. `worker-heaps` holds the
+[learned heaps](engine.md#learned-heaps), one file per project named by its project id and a
+`host` file of each kind's resident-set peaks: sizes and an input fingerprint, no token or
+credential. A runner that starts with none prices every fork at its kind's estimate and starts each
+compile, test and format worker at the first heap, learning the peaks again; one that restores it
+starts from what its last run learned. Every size is held to this runner's worker budget, and a
+test JVM's to a quarter of its RAM, when it is used, so a record saved on a larger runner never
+makes a smaller one ask for more than it has.
 
 A suite whose result read a value of the environment
 ([Tests](test.md#environment-variables-a-suite-reads)) is keyed under that home secret, so a fresh

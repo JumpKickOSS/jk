@@ -752,11 +752,13 @@ this host, so a generous first heap costs neither RAM nor parallelism. The build
 from the plan's heap: the memory free when the build starts, shared among the forks it expects
 at once. A test JVM's heap, first or learned, never passes a quarter of the host's RAM; past it
 the suite runs at that without a word. The JVM that lists a suite's classes takes the suite's
-heap and is leased at what a listing holds, under a row of its own. A record never sizes another
-machine's forks: it lives in this home's state, not in the cache, the store or `target/`. A CI
-runner starts with none, so every fork prices at its kind's estimate; a job that caches
-`~/.jk/state/worker-heaps` with its other JumpKick caches starts from what its last run learned (the
-file names are the project's id, the same on every runner of one repository).
+heap and is leased at what a listing holds, under a row of its own. A record lives in this home's
+state, not in the cache, the store or `target/`, so it reaches another machine only when you copy
+it there. A CI runner starts with none, so every fork prices at its kind's estimate; a job that
+caches `~/.jk/state/worker-heaps` with its other JumpKick caches starts from what its last run
+learned (the file names are the project's id, the same on every runner of one repository), and
+every size it reads is still held to that runner's worker budget and, for a test JVM, a quarter of
+its RAM ([CI](ci.md)).
 
 The next planned `-Xmx` is the largest of the last ten observed peaks times 1.3 (1.5 when
 `CI` is set, since a CI host sees the same suites grow run after run), rounded up to 64 MiB,
