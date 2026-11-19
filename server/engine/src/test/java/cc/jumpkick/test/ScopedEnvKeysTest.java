@@ -117,7 +117,9 @@ class ScopedEnvKeysTest {
         assertThat(SuiteEnvReads.tokens(STUDY, SuiteEnvReads.Policy.NONE, b)).isNotEqualTo(inA);
         assertThat(inA).anyMatch(t -> t.startsWith("env-read:USER=")).contains(SuiteEnvReads.HOST_TOKEN);
         assertThat(SuiteEnvReads.localOnly(STUDY, SuiteEnvReads.Policy.NONE, a))
-                .isEqualTo("read the value of " + TOKEN_VAR);
+                .as("jk's own token, withheld from every test JVM, keys nothing however the record named it")
+                .isEqualTo("read the value of LOGNAME");
+        assertThat(inA).noneMatch(t -> t.contains(TOKEN_VAR));
     }
 
     @Test

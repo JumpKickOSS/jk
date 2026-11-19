@@ -77,8 +77,9 @@ public final class WorkerEnv {
 
     /**
      * The {@code JK_*} variables a worker reads. Everything else in the {@code JK_} namespace stays
-     * with the engine — including {@code JK_REPO_*_TOKEN}, which is a credential, and {@code JK_JDK},
-     * which describes how the daemon was started rather than this build.
+     * with the engine — including {@code JK_REPO_*_TOKEN}, which is a credential ({@link
+     * BuildEnv#withheld}), and {@code JK_JDK}, which describes how the daemon was started rather
+     * than this build.
      */
     static final Set<String> JK = Set.of(
             // product roots — nested engines and suites resolve their layout from these
@@ -283,8 +284,13 @@ public final class WorkerEnv {
      * the engine's spawning shell did; {@code extras} on top in their own order. Windows variable
      * names are case-insensitive, so there {@code Path} passes the {@code PATH} rule and lands under
      * its own spelling, a later {@code PATH} replaces it rather than standing beside it (the child
-     * would read whichever the OS meets first), and a lookup by either spelling finds it. The
-     * cache key seed ({@link BuildEnv#withheld}) reaches no worker, inherited, declared or laid on.
+     * would read whichever the OS meets first), and a lookup by either spelling finds it.
+     *
+     * <p>jk's withheld names ({@link BuildEnv#withheld}: the cache key seed and jk's own
+     * credentials) never come from {@code engine} or {@code request}, {@code inherit} or not. One in
+     * {@code extras} was asked for by name (a manifest's {@code [env]} or {@code [test] env}, a fork
+     * site's own value), and passes, the seed excepted; {@link ChildEnv#FORWARDED} then names it,
+     * so {@link ChildEnv#withhold} keeps it for this worker and for a program it starts.
      */
     static Map<String, String> compose(
             Map<String, String> engine,
@@ -297,8 +303,11 @@ public final class WorkerEnv {
             if (inherit || allowed(e.getKey(), caseInsensitive)) out.put(e.getKey(), e.getValue());
         }
         out.putAll(request);
+        out.keySet().removeIf(name -> BuildEnv.withheld(name) || ChildEnv.FORWARDED.equalsIgnoreCase(name));
         out.putAll(extras);
-        out.keySet().removeIf(BuildEnv::withheld);
+        out.keySet().removeIf(name -> BuildEnv.refused(name) || ChildEnv.FORWARDED.equalsIgnoreCase(name));
+        String forwarded = ChildEnv.forwardedValue(extras.keySet());
+        if (forwarded != null) out.put(ChildEnv.FORWARDED, forwarded);
         return out;
     }
 

@@ -29,7 +29,7 @@ These are current facts, not a promise that they will never change.
 | **Client** | Native `jk` or the thin JVM launcher. Runs as you. Owns the terminal. Does not interpret plugin schemas. |
 | **Engine** | Resident JVM. Resolve, plan, cache, HTTP/MCP. Same user. Does **not** classload plugin code. |
 | **Engine socket** | POSIX: the engine socket is protected by the `0700` state directory; any process running as you can drive the engine. `~/.jk` and `~/.jk/state` are created owner-only and re-tightened on every `jk` run; `jk doctor` reports a mode that stayed loose. Windows: loopback TCP gated by an owner-only token; on NTFS, owner-only is an ACL that allows only you and inherits nothing from the parent, on the token file and on the directories JumpKick creates for its state, whatever `JK_HOME` or `JK_STATE_DIR` would otherwise inherit. Java cannot switch off inheritance on these ACLs, so pushing permissions down from a parent folder later can add inherited entries back. |
-| **Plugin workers** | Forked processes for compilers, tests, and first-party plugins. Same user. They start from an environment allow-list, not the engine's environment, so a token exported in the shell that started the engine does not reach a compiler or plugin unless the module's `[env]` asks for it. A test JVM also reads a variable of the shell running `jk` when a test looks it up (never in a strict module, `[env] inherit = false`), and its result is keyed on what it read, each value HMAC'd under a secret of your JumpKick home, or for a shared cache under the cache's key seed, never digested plainly ([below](#what-a-shared-cache-learns-of-your-environment)) — [Build](build.md#worker-environment-env), [Test](test.md#environment-variables-a-suite-reads), [Cache](cache.md#results-that-read-your-environment). |
+| **Plugin workers** | Forked processes for compilers, tests, and first-party plugins. Same user. They start from an environment allow-list, not the engine's environment, so a token exported in the shell that started the engine does not reach a compiler or plugin unless the module's `[env]` asks for it. JumpKick's own credentials reach none of them, nor any program the engine starts, unless the manifest names them ([below](#jumpkicks-own-credentials)). A test JVM also reads a variable of the shell running `jk` when a test looks it up (never in a strict module, `[env] inherit = false`), and its result is keyed on what it read, each value HMAC'd under a secret of your JumpKick home, or for a shared cache under the cache's key seed, never digested plainly ([below](#what-a-shared-cache-learns-of-your-environment)) — [Build](build.md#worker-environment-env), [Test](test.md#environment-variables-a-suite-reads), [Cache](cache.md#results-that-read-your-environment). |
 | **`jk run` / `jk tool` / `jkx`** | Runs your app or an installed tool on the host, as you. |
 | **`.jk/scripts/` scripts** | Project-local generate/prep. Treated as code you trust. |
 | **HTTP / MCP** | Default bind **`127.0.0.1`**. Every `/api/*` and `/mcp` call needs a bearer token, including loopback. On Windows with WSL, port 8910 takes one front-door token (`~/.jk/state/engine/front-door.token`, the host engine's own token) whichever engine holds it; the front door forwards to another engine with that engine's own token, never its own, and `jk engine rotate-token` replaces both. Static dashboard shell stays open (CSP). The engine serves only the dashboard shipped in its jar; a directory is read only if you name one with `web-root` ([Web dashboard](web.md#serve-the-dashboard-from-a-directory)). |
@@ -47,6 +47,42 @@ there.
 Details: [Engine](engine.md), [MCP](mcp.md), [Web](web.md), [Install](install.md),
 [Cache](cache.md), [Publish](publish.md), [Plugins](plugins.md). Contributor HTTP and
 signing: [HTTP](../contributors/http.md), [Releases](../contributors/releases.md).
+
+## JumpKick's own credentials
+
+The credentials JumpKick reads for itself are JumpKick's: no test, compiler, plugin step or other
+program it starts gets one from your shell unless the module's `jk.toml` names it.
+
+| Variable | What JumpKick reads it for |
+|----------|----------------------------|
+| `JK_REPO_<ID>_TOKEN`, `JK_REPO_<ID>_USERNAME`, `JK_REPO_<ID>_PASSWORD`, an S3 repository's `JK_REPO_<ID>_ACCESS_KEY` and `JK_REPO_<ID>_SECRET_KEY`, any other `JK_REPO_<ID>_` name ending in `KEY`, `SECRET`, `PASSPHRASE` or `CREDENTIALS`, and each with `_FILE` | a repository's credential, a shared cache's token (`JK_REPO_<HOST>_TOKEN`), the Central Portal login ([Repositories](repositories.md#credentials)). `JK_REPO_<ID>_HOST` and other names, such as a region, are not credentials and follow the ordinary rules |
+| `JK_GITHUB_TOKEN`, `JK_GITLAB_TOKEN`, `JK_GITEA_TOKEN`, `JK_BITBUCKET_TOKEN` | a forge's token for its package registry and git remotes |
+| `JK_GPG_PASSPHRASE` | `jk publish --sign` |
+| `JK_CACHE_KEY_SEED` | the shared cache's key seed ([below](#what-a-shared-cache-learns-of-your-environment)) |
+
+A test that looks one up reads it unset, and a program the test starts doesn't get it.
+`[env] inherit = true` and `[env] scope = ["*"]` don't hand it over either. A variable a test
+looked up and found withheld keys nothing, so the result is shared as if the test had never looked.
+Names other tools read too, such as `GITHUB_TOKEN`, `GH_TOKEN`, the `AWS_*` chain and `jk publish`'s
+`PUBLISH_USER` and `PUBLISH_PASSWORD`, belong to your shell, not to JumpKick, and follow the
+ordinary rules ([Test](test.md#environment-variables-a-suite-reads)).
+
+**Naming one in `jk.toml` is your consent.** An integration test that publishes to a private
+repository needs the token, and a manifest line hands it over:
+
+```toml
+[test]
+env = ["JK_REPO_CORP_TOKEN"]      # the test JVMs, and the programs they start
+
+[env]
+optional = ["JK_REPO_CORP_TOKEN"] # every worker of the module: compilers, plugin steps, tests
+```
+
+A value forwarded this way is masked as `***` in output when its name looks like a credential, and
+it keys the work like any other forwarded value. For a test result that means an HMAC under a
+secret of your JumpKick home, or the cache's key seed for a shared result. For a compile or plugin
+step it still means a plain digest (see the last point of the next section). The key seed is the
+one exception to the consent rule: a `jk.toml` that names it is refused.
 
 ## What a shared cache learns of your environment
 
@@ -71,8 +107,9 @@ names behind a listing. The names of the variables a suite read travel with its 
   sends it anywhere. An issued seed is kept per credential, so a credential the server hands no
   seed is never answered with another's. A new seed makes shared results that read the environment miss once.
 - Whatever its key, a suite that talks to anything but this host is never replayed.
-- Not yet covered: a value a module hands its compilers and plugin steps through `[env]` (rather
-  than its tests) still enters those steps' keys by plain digest, and those keys may be shared.
+- Not yet covered: a value a module hands its compilers and plugin steps through `[env]` or a
+  plugin table's `env:NAME` (rather than its tests) still enters those steps' keys by plain
+  digest, and those keys may be shared. That includes a JumpKick credential forwarded this way.
 
 [Cache § Results that read your environment](cache.md#results-that-read-your-environment) says how
 to set a seed.

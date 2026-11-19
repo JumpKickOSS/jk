@@ -383,6 +383,51 @@ class EnvPassthroughE2eTest {
                 .isIn(null, TaskStatus.SKIPPED);
     }
 
+    /**
+     * jk's own repository token in the shell that runs jk reaches no test JVM unasked: a test asking
+     * for it by name reads it unset, a program it starts does not see it, nothing asks the client
+     * for it, and another value takes the green result. Forwarded by name ({@code [test] env}), the
+     * test and the program it starts see it.
+     */
+    @Test
+    void jks_own_token_reaches_a_test_jvm_only_when_forwarded_by_name(@TempDir Path tmp) throws Exception {
+        String command = Os.isWindows()
+                ? "new ProcessBuilder(\"cmd\", \"/c\", \"echo [%JK_REPO_X_TOKEN%]\")"
+                : "new ProcessBuilder(\"sh\", \"-c\", \"printf [%s] \\\"$JK_REPO_X_TOKEN\\\"\")";
+        String unset = Os.isWindows() ? "[%JK_REPO_X_TOKEN%]" : "[]";
+        String body = """
+                @Test
+                void token() throws Exception {
+                    assertEquals(EXPECTED, System.getenv("JK_REPO_X_TOKEN"));
+                    Process p = COMMAND.redirectErrorStream(true).start();
+                    String out = new String(p.getInputStream().readAllBytes()).strip();
+                    assertEquals(0, p.waitFor());
+                    assertEquals("SEEN", out);
+                }
+                """.replace("COMMAND", command);
+        Path m = module(tmp, "TokenTest", body.replace("EXPECTED", "null").replace("SEEN", unset));
+        // The CLI carries every JK_REPO_* with each request, for the engine's own resolvers.
+        Shell shell = new Shell(
+                Map.of("JK_REPO_X_TOKEN", "made-up-repo-token-0123456789", "OTHER", "1"), Set.of("JK_REPO_X_TOKEN"));
+        assertThat(shell.build(m).status()).as("the test JVM saw no token").isEqualTo(TaskStatus.SUCCESS);
+        assertThat(shell.asked).as("nothing asked the client for it").doesNotContain("JK_REPO_X_TOKEN");
+        assertThat(shell.with("JK_REPO_X_TOKEN", "made-up-other-token-0123456789")
+                        .build(m)
+                        .status())
+                .as("another token: the green result holds")
+                .isIn(null, TaskStatus.SKIPPED);
+
+        Path f = module(
+                tmp.resolve("forwarded"),
+                "TokenTest",
+                body.replace("EXPECTED", "\"made-up-repo-token-0123456789\"")
+                        .replace("SEEN", "[made-up-repo-token-0123456789]"));
+        Files.writeString(f.resolve("jk.toml"), MANIFEST + "\n[test]\nenv = [\"JK_REPO_X_TOKEN\"]\n");
+        assertThat(shell.build(f).status())
+                .as("forwarded by name: the test and its program saw it")
+                .isEqualTo(TaskStatus.SUCCESS);
+    }
+
     /** A strict module ({@code [env] inherit = false}) keeps its test JVMs to the allow-list, as before. */
     @Test
     void a_strict_module_reads_nothing_it_does_not_declare(@TempDir Path tmp) throws Exception {
@@ -470,25 +515,33 @@ class EnvPassthroughE2eTest {
      */
     static final class Shell implements CallerAsker {
         final Map<String, String> vars;
+        /** The names the request carries beside PATH, as the CLI carries every {@code JK_REPO_*}. */
+        final Set<String> carried;
+
         final List<String> asked = new ArrayList<>();
         final AtomicInteger questions = new AtomicInteger();
 
         Shell(Map<String, String> vars) {
+            this(vars, Set.of());
+        }
+
+        Shell(Map<String, String> vars, Set<String> carried) {
             // A shell's names have no case on Windows, as the process environment's do not.
             this.vars = Os.isWindows() ? new TreeMap<>(String.CASE_INSENSITIVE_ORDER) : new TreeMap<>();
             this.vars.putAll(vars);
+            this.carried = carried;
         }
 
         Shell with(String name, String value) {
             Map<String, String> next = new LinkedHashMap<>(vars);
             next.put(name, value);
-            return new Shell(next);
+            return new Shell(next, carried);
         }
 
         Shell without(String name) {
             Map<String, String> next = new LinkedHashMap<>(vars);
             next.remove(name);
-            return new Shell(next);
+            return new Shell(next, carried);
         }
 
         Steps build(Path m) throws Exception {
@@ -497,7 +550,10 @@ class EnvPassthroughE2eTest {
             Map<String, String> carried = new LinkedHashMap<>();
             String path = System.getenv("PATH");
             if (path != null) carried.put("PATH", path);
-            RequestShell requestShell = RequestShell.of(carried, Set.of("PATH"), false, null);
+            for (String name : this.carried) {
+                if (vars.containsKey(name)) carried.put(name, vars.get(name));
+            }
+            RequestShell requestShell = RequestShell.of(carried, carried.keySet(), false, null);
             return Request.detached()
                     .withShell(requestShell)
                     .with(CallerAsker.SLOT, this)

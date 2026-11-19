@@ -218,12 +218,12 @@ final class ManifestEnv {
     }
 
     /**
-     * Refuses a manifest that names the remote cache key seed ({@link BuildEnv#withheld}) at {@code
+     * Refuses a manifest that names the remote cache key seed ({@link BuildEnv#refused}) at {@code
      * where}: jk reads it from the shell that runs {@code jk} alone, and a manifest that forwarded it
      * would hand it to a worker, or key a plugin's config on it, where it could reach an output.
      */
     public static void refuseWithheld(String name, String where) {
-        if (!BuildEnv.withheld(name)) return;
+        if (!BuildEnv.refused(name)) return;
         throw new JkBuildParseException(where + " names " + name + ", the remote cache key seed: jk reads it from"
                 + " the shell that runs jk and hands it to no build step, plugin or test, so jk.toml may not name it");
     }

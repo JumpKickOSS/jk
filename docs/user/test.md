@@ -1052,6 +1052,17 @@ exactly, and the next `jk` sends those values with the request, with no question
 shell is never copied into the engine or into the test JVM's process environment whole: a JVM
 gets the variables it reads.
 
+**JumpKick's own credentials stay with JumpKick.** A test doesn't see the credentials JumpKick
+reads for itself unless the module forwards them by name. Those are `JK_REPO_<ID>_TOKEN`,
+`_USERNAME`, `_PASSWORD`, `_ACCESS_KEY`, `_SECRET_KEY` and their `_FILE` forms (a shared cache's token is one of these),
+`JK_<FORGE>_TOKEN`, `JK_GPG_PASSPHRASE` and the cache key seed. A test that looks one up reads it
+unset, and a program the test starts doesn't get it. `[env] inherit` and `[env] scope` don't
+hand it over either. The lookup keys nothing, so the result stays shareable. A test that needs one,
+such as an integration test that publishes to a private repository, names it:
+`[test] env = ["JK_REPO_CORP_TOKEN"]` hands it to the test JVMs and to what they start, and it keys
+the result as any forwarded value does. The key seed is the exception: it is never handed over
+([Security](security.md#jumpkicks-own-credentials)).
+
 **How the result is keyed.** Each variable a suite read keys its green result by its value, or by
 being unset: a test that passes with `MUST_BE_TRUE=true` replays where it is `true`, and runs
 again (and fails) where it is unset, `false` or `banana`. A variable it never read changing moves

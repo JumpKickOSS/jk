@@ -7,9 +7,13 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.ChildEnv;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.EnvConfig;
 import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -212,9 +216,11 @@ class WorkerEnvTest {
     }
 
     @Test
-    void inherit_hands_over_the_whole_environment() {
+    void inherit_hands_over_the_whole_environment_less_jks_own_credentials() {
+        Map<String, String> expected = new LinkedHashMap<>(ENGINE);
+        expected.remove("JK_REPO_NEXUS_TOKEN");
         assertThat(WorkerEnv.compose(ENGINE, Map.of(), true, Map.of(), false))
-                .containsExactlyInAnyOrderEntriesOf(ENGINE);
+                .containsExactlyInAnyOrderEntriesOf(expected);
         assertThat(WorkerEnv.compose(ENGINE, Map.of("no_proxy", "*"), true, Map.of(), false))
                 .as("the request's proxy still wins over an inherited environment")
                 .containsEntry("no_proxy", "*");
@@ -311,6 +317,62 @@ class WorkerEnvTest {
         assertThat(WorkerEnv.compose(Map.of("jk_cache_key_seed", seed), Map.of(), true, Map.of(), true))
                 .as("on Windows, whatever its case")
                 .isEmpty();
+    }
+
+    /**
+     * jk's own credentials reach a worker only when the module forwards them by name: a token in
+     * the shell running jk or in the engine's own environment reaches no worker ({@code [env]
+     * inherit} included) and no program a plugin step starts; {@code [env] require} hands it to the
+     * worker and, through {@link ChildEnv#FORWARDED}, to what it starts, and to nothing else.
+     */
+    @Test
+    void jks_own_credentials_reach_a_worker_only_when_forwarded_by_name(@TempDir Path dir) throws Exception {
+        String token = "made-up-repo-token-0123456789";
+        Map<String, String> shell = Map.of(
+                "PATH",
+                "/caller/bin",
+                "JK_REPO_X_TOKEN",
+                token,
+                "JK_REPO_Y_TOKEN",
+                token,
+                "APP_MODE",
+                "a",
+                ChildEnv.FORWARDED,
+                "JK_REPO_Y_TOKEN");
+        WorkerEnv inherit = WorkerEnv.policy(new EnvConfig(true, List.of()));
+        assertThat(RequestShell.where(shell, inherit::environment))
+                .as("[env] inherit hands the shell on, but not jk's credentials, whatever the shell says forwarded")
+                .containsEntry("APP_MODE", "a")
+                .doesNotContainKeys("JK_REPO_X_TOKEN", "JK_REPO_Y_TOKEN", ChildEnv.FORWARDED);
+        assertThat(WorkerEnv.withEngineEnvironment(
+                        Map.of("PATH", "/usr/bin", "JK_REPO_X_TOKEN", token), inherit::environment))
+                .doesNotContainKey("JK_REPO_X_TOKEN");
+        assertThat(seen(shell, WorkerEnv.policy(new EnvConfig(true, List.of()))))
+                .as("a plugin step's worker, unforwarded")
+                .doesNotContain(token);
+
+        EnvConfig forwards = new EnvConfig(false, List.of("JK_REPO_X_TOKEN"), List.of(), List.of(), Map.of());
+        WorkerEnv module = RequestShell.where(shell, () -> WorkerEnv.forModule(forwards, dir, null));
+        Map<String, String> env = RequestShell.where(shell, module::environment);
+        assertThat(env)
+                .containsEntry("JK_REPO_X_TOKEN", token)
+                .containsEntry(ChildEnv.FORWARDED, "JK_REPO_X_TOKEN")
+                .doesNotContainKey("JK_REPO_Y_TOKEN");
+        assertThat(seen(shell, module)).as("the worker, forwarded").contains("JK_REPO_X_TOKEN=" + token);
+        ProcessBuilder grandchild =
+                Os.isWindows() ? new ProcessBuilder("cmd.exe", "/c", "set") : new ProcessBuilder("/usr/bin/env");
+        grandchild.environment().putAll(env);
+        assertThat(Processes.capture(ChildEnv.start(grandchild.redirectErrorStream(true)), Duration.ofSeconds(30))
+                        .output())
+                .as("a program the worker starts (TaskExec), which inherits its environment")
+                .contains("JK_REPO_X_TOKEN=" + token);
+    }
+
+    /** What a worker forked through {@link PluginProcess#builder} for a request from {@code shell} sees. */
+    private static String seen(Map<String, String> shell, WorkerEnv env) throws Exception {
+        List<String> command = Os.isWindows() ? List.of("cmd.exe", "/c", "set") : List.of("/usr/bin/env");
+        ProcessBuilder pb = RequestShell.where(shell, () -> PluginProcess.builder(command, env));
+        return Processes.capture(ChildEnv.start(pb), Duration.ofSeconds(30)).output();
     }
 
     /**

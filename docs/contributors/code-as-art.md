@@ -1065,7 +1065,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | central-through-the-group | text | a repository built over Central by hand skips the user's repositories and mirrors, so a firewalled resolve fails and an open one goes around the mirror |
 | child-env-owner | forbid | a child's environment copied from the daemon is the engine's shell, not the `jk` command being served |
-| child-start-owner | forbid | a process started from the engine's own environment is handed the cache key seed the shell that started the engine exported |
+| child-start-owner | forbid | a process started from the engine's own environment is handed the cache key seed and the credentials the shell that started the engine exported |
 | cli-runtime-classpath | depend | the CLI runtime is the native image; a test or build-time library there is a mis-scoped dependency |
 | cli-runtime-modules | layers | a CLI edge to an engine-side module puts engine code in the native image; shared/ide is client-side by construction (the IDE file generators the CLI and the engine both link) |
 | clock-owner | forbid | a wall-clock read the caller cannot move is a test that has to sleep, and a sleep asserts a duration instead of a condition |

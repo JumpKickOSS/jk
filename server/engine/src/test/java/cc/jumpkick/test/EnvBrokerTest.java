@@ -147,6 +147,38 @@ class EnvBrokerTest {
         }
     }
 
+    /**
+     * jk's own credentials are handed over only when the module forwards them by name. Unforwarded,
+     * a read by name answers unset and is not recorded, and a listing and the whole environment
+     * leave it out, as for the seed, so the result keys on nothing of it and stays shareable;
+     * forwarded, the JVM holds it from launch, so the broker is never asked for it.
+     */
+    @Test
+    void jks_own_credentials_are_handed_over_only_when_forwarded(@TempDir Path tmp) throws IOException {
+        CallerEnv caller = CallerEnv.of(
+                RequestShell.of(
+                        Map.of("JK_REPO_X_TOKEN", "made-up-repo-token-0123456789", "APP", "1"), Set.of(), true, null),
+                null);
+        Path dir = Files.createDirectories(tmp.resolve("unforwarded"));
+        try (EnvBroker broker = Objects.requireNonNull(EnvBroker.start(dir, caller, SuiteEnvReads.Policy.NONE))) {
+            assertThat(broker.values(List.of("JK_REPO_X_TOKEN", "APP"))).isEqualTo(Map.of("APP", "1"));
+            assertThat(broker.names()).contains("APP").doesNotContain("JK_REPO_X_TOKEN");
+            assertThat(broker.all()).containsEntry("APP", "1").doesNotContainKey("JK_REPO_X_TOKEN");
+            assertThat(broker.record().names()).containsExactly("APP");
+        }
+        SuiteEnvReads.Policy forwards = new SuiteEnvReads.Policy(false, List.of(), Set.of("JK_REPO_X_TOKEN"));
+        assertThat(forwards.held("JK_REPO_X_TOKEN"))
+                .as("forwarded: in the JVM from launch")
+                .isTrue();
+        assertThat(SuiteEnvReads.Policy.NONE.held("JK_REPO_X_TOKEN")).isFalse();
+        assertThat(SuiteEnvReads.Policy.NONE.visible("JK_REPO_X_TOKEN")).isFalse();
+        assertThat(new SuiteEnvReads.Record(Set.of("JK_REPO_X_TOKEN", "APP"), false, false)
+                        .under(SuiteEnvReads.Policy.NONE)
+                        .names())
+                .as("an earlier run's read of it keys nothing now")
+                .containsExactly("APP");
+    }
+
     private static void write(DataOutputStream out, String s) throws IOException {
         byte[] b = s.getBytes(StandardCharsets.UTF_8);
         out.writeInt(b.length);

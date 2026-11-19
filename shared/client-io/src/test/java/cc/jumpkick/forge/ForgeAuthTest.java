@@ -4,6 +4,7 @@ package cc.jumpkick.forge;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.ChildEnv;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -112,5 +113,16 @@ class ForgeAuthTest {
         };
         var auth = new ForgeAuth(new TokenStore(dir), env(Map.of()), failing);
         assertThat(auth.resolveSilently(ForgeKind.BITBUCKET, null)).isEmpty();
+    }
+
+    /** Every forge's own token variable is one of jk's withheld credentials: no child jk starts inherits it. */
+    @Test
+    void every_forges_jk_token_variable_is_withheld_from_children() {
+        for (ForgeKind kind : ForgeKind.values()) {
+            assertThat(ChildEnv.withheld(kind.jkEnvVar())).as(kind.jkEnvVar()).isTrue();
+            for (String nativeVar : kind.nativeEnvVars()) {
+                assertThat(ChildEnv.withheld(nativeVar)).as(nativeVar).isFalse();
+            }
+        }
     }
 }

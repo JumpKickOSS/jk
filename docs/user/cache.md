@@ -224,8 +224,10 @@ key-seed-file = "~/team-cache-seed"   # a file holding your team's seed, at leas
 repository. JumpKick never hands `JK_CACHE_KEY_SEED` to a test, a compiler or any other worker
 (`[env] inherit` included), nor to any other program the engine starts (npm, `git`, the AOT trainer),
 even when the shell that started the engine exported it; keys nothing on it; and never prints it,
-logs it or sends it anywhere. A `jk.toml` that names it (in `[env]`, `[test] env`, a `${…}` value or
-a plugin table's `env:`) is refused, naming the place. The seed is scoped to the cache URL, so point
+logs it or sends it anywhere. It is one of [JumpKick's own credentials](security.md#jumpkicks-own-credentials),
+with the cache's token (`JK_REPO_<HOST>_TOKEN`), but unlike the others it can't be forwarded: a `jk.toml`
+that names it (in `[env]`, `[test] env`, a `${…}` value or a plugin table's `env:`) is refused,
+naming the place. The seed is scoped to the cache URL, so point
 every machine at the same URL. JumpKick keeps an issued seed in its home, readable by you alone, one
 copy per cache and credential (named by a digest under your home's secret, never by the token), and
 asks for it again after an hour, so a seed the server rotates reaches every machine within the hour

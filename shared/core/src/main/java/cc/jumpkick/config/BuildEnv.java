@@ -297,7 +297,9 @@ public final class BuildEnv {
         Map<String, String> all = shell != null ? shell.vars() : ProcessEnv.all();
         Map<String, String> out = new LinkedHashMap<>();
         all.forEach((name, value) -> {
-            if (!perInvocation(name) && !withheld(name)) out.put(name, value);
+            if (!perInvocation(name) && !withheld(name) && !ChildEnv.FORWARDED.equalsIgnoreCase(name)) {
+                out.put(name, value);
+            }
         });
         return Collections.unmodifiableMap(out);
     }
@@ -310,12 +312,18 @@ public final class BuildEnv {
     public static final String CACHE_KEY_SEED = ChildEnv.CACHE_KEY_SEED;
 
     /**
-     * Whether {@code name} of the caller's is kept from every worker and every key: {@link
-     * #CACHE_KEY_SEED}, in any case, since a Windows name matches so. {@link ChildEnv#withheld} is
-     * the rule, so a child the engine starts that is no worker is kept from it alike.
+     * Whether {@code name} of the caller's is kept from every worker and every key unless the
+     * module's manifest forwards it by name: {@link #CACHE_KEY_SEED} and jk's own credentials, in
+     * any case, since a Windows name matches so. {@link ChildEnv#withheld} is the rule, so a child
+     * the engine starts that is no worker is kept from them alike.
      */
     public static boolean withheld(String name) {
         return ChildEnv.withheld(name);
+    }
+
+    /** Whether {@code name} is withheld even when a manifest names it, the seed: {@link ChildEnv#refused}. */
+    public static boolean refused(String name) {
+        return ChildEnv.refused(name);
     }
 
     /**

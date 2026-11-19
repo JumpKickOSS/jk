@@ -58,8 +58,10 @@ import org.jspecify.annotations.Nullable;
  * under the seed, so every host holding it keys alike, and the result is asked and uploaded by that
  * form ({@code SharedStampKeys}, {@code RemoteTier.shareAs}). A credential's value keys under the
  * seed too, unless the user keeps those on the host ({@code [cache] credential-env = "local"}); a
- * run with no caller has none. The local form never depends on the seed. jk's own seed
- * variable ({@link BuildEnv#withheld}) is never handed to a test JVM and keys nothing.
+ * run with no caller has none. The local form never depends on the seed. jk's own seed variable
+ * and credentials ({@link BuildEnv#withheld}) are never handed to a test JVM from the caller's
+ * shell and key nothing: a read of one reads unset and is not recorded. A credential the module
+ * forwards by name is held from launch, as any declared name is.
  */
 public final class SuiteEnvReads {
 
@@ -165,7 +167,7 @@ public final class SuiteEnvReads {
          * shell: it is keyed as the declaration says, or deliberately not at all.
          */
         public boolean held(String name) {
-            if (BuildEnv.withheld(name)) return false;
+            if (BuildEnv.refused(name)) return false;
             return declared.contains(key(name))
                     || WorkerEnv.allowed(name, Os.isWindows())
                     || WorkerEnv.alwaysComposed(name);

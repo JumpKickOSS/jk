@@ -130,8 +130,9 @@ public final class TestEnvValues {
      * variable the caller does not have <em>removes</em> what an earlier entry set, so a manifest
      * reads top to bottom with no precedence rule to memorise.
      *
-     * <p>The cache key seed ({@link BuildEnv#withheld}) reads as unset in both modes: declaring it,
-     * or naming it in a value, hands it to no worker and keys nothing.
+     * <p>The cache key seed ({@link BuildEnv#refused}) reads as unset in both modes: naming it hands
+     * it to no worker and keys nothing. jk's other withheld names ({@link BuildEnv#withheld}, its
+     * own credentials) resolve as any name does: the manifest naming one is the consent.
      *
      * @param at the position named in messages — {@code [test].env} or {@code [env].vars}
      * @throws JkBuildParseException if a {@link EnvDecl.Set} value references an
@@ -160,7 +161,7 @@ public final class TestEnvValues {
                                         case TARGET -> absolute(target, TARGET);
                                         case MODULE -> absolute(moduleDir, MODULE);
                                         default ->
-                                            BuildEnv.withheld(name)
+                                            BuildEnv.refused(name)
                                                     ? null
                                                     : launch.env().apply(name);
                                     });
@@ -180,9 +181,9 @@ public final class TestEnvValues {
     private static @Nullable String forwarded(String name, Mode mode) {
         return switch (mode) {
             case Mode.Launch launch ->
-                BuildEnv.withheld(name) ? null : launch.env().apply(name);
+                BuildEnv.refused(name) ? null : launch.env().apply(name);
             case Mode.CacheKey key -> {
-                String value = BuildEnv.withheld(name) ? null : key.lookup().get(name);
+                String value = BuildEnv.refused(name) ? null : key.lookup().get(name);
                 if (value == null) yield ABSENT;
                 // Hashed, never written out: a forwarded value is by definition the machine's, and
                 // an action key may be read on another one.
@@ -197,7 +198,7 @@ public final class TestEnvValues {
         String expanded = Interpolation.expand(raw, where, name -> switch (name) {
             case TARGET, MODULE -> "${" + name + "}";
             default -> {
-                String value = BuildEnv.withheld(name) ? null : mode.lookup().get(name);
+                String value = BuildEnv.refused(name) ? null : mode.lookup().get(name);
                 if (value != null) fromEnvironment[0] = true;
                 yield value;
             }

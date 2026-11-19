@@ -30,6 +30,11 @@ JumpKick shows you this page's new entries after it updates itself.
   trainer) is handed a `JK_CACHE_KEY_SEED` the engine's shell exported, a `jk.toml` that names it
   is refused, and a machine that changes to a credential the server hands no seed stops using
   the one it was handed before.
+- **JumpKick's own credentials stay out of your tests.** A `JK_REPO_<ID>_TOKEN` (a shared cache's
+  token included), `JK_REPO_<ID>_PASSWORD`, `JK_GITHUB_TOKEN` or `JK_GPG_PASSPHRASE` in the shell
+  that runs `jk` no longer reaches a test, a compiler, a plugin step or any program the engine
+  starts, even under `[env] inherit`. A test that needs one names it, for example
+  `[test] env = ["JK_REPO_CORP_TOKEN"]` ([Security](security.md#jumpkicks-own-credentials)).
 
 ## 0.53.1
 

@@ -448,7 +448,9 @@ variable of the shell running `jk` when it looks it up, and its suite is keyed o
 Everything else — `SSH_AUTH_SOCK`, `GITHUB_TOKEN`, a repository's `JK_REPO_*_TOKEN` — reaches a
 compiler, a plugin step or a code generator only when the module declares it, and a test JVM only
 when a test looks it up (in a strict module, only when declared; on a JDK whose process launch
-JumpKick's agent cannot reach, the test JVM gets the whole environment at start):
+JumpKick's agent cannot reach, the test JVM gets the whole environment at start). JumpKick's own
+credentials (`JK_REPO_*_TOKEN` and the rest, [Security](security.md#jumpkicks-own-credentials))
+reach a worker only when declared, never by a test looking them up or through `inherit`:
 
 ```toml
 [env]

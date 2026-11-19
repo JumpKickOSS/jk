@@ -2,10 +2,15 @@
 package cc.jumpkick.host;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -20,14 +25,21 @@ import org.jspecify.annotations.Nullable;
  * a process with {@link #replace} or {@link #putAll}, which keep one entry per name whatever its
  * case.
  *
- * <p>It is also where the one variable jk keeps from every child is kept out ({@link #withheld}):
- * the remote cache key seed, which jk alone reads. A child starts from a copy of whichever
- * environment its parent had, and the engine's is the shell that started it, so a seed exported
- * there would otherwise reach every program the engine starts that is not a worker (npm installing
- * jk's graph scripts, the AOT trainer, {@code git}, {@code jlink}, a notifier). {@link #replace},
- * {@link #put} and {@link #putAll} leave it out of what they hand over, and {@link #start} takes it
- * out of what the child would inherit; the engine starts every process through {@link #start} (the
- * {@code child-start-owner} guard).
+ * <p>It is also where jk's own secrets are kept out ({@link #withheld}): the remote cache key seed
+ * and the credentials jk reads for itself ({@link #credential}: repository and cache tokens, forge
+ * tokens, the signing passphrase). A child starts from a copy of whichever environment its
+ * parent had, and the engine's is the shell that started it, so a token exported there would
+ * otherwise reach every program the engine starts that is not a worker (npm installing jk's graph
+ * scripts, the AOT trainer, {@code git}, {@code jlink}, a notifier). {@link #replace}, {@link #put}
+ * and {@link #putAll} leave them out of what they hand over, and {@link #start} takes them out of
+ * what the child would inherit; the engine starts every process through {@link #start} (the {@code
+ * child-start-owner} guard).
+ *
+ * <p>A credential a module's manifest forwards by name is the one exception, and the environment
+ * itself carries the consent: the engine composing a worker's environment names such a credential
+ * in {@link #FORWARDED}, and every {@link #withhold} keeps a credential that environment names, so
+ * a program a plugin step starts gets it too. The seed is never kept ({@link #refused}): a manifest
+ * may not name it at all.
  */
 public final class ChildEnv {
 
@@ -37,20 +49,91 @@ public final class ChildEnv {
      */
     public static final String CACHE_KEY_SEED = "JK_CACHE_KEY_SEED";
 
+    /**
+     * The jk credentials a manifest forwarded by name into this environment, comma-separated: set
+     * by the engine on the environment it composes for a worker, never by a shell. {@link #withhold}
+     * keeps a {@link #credential} this names.
+     */
+    public static final String FORWARDED = "JK_ENV_FORWARDED";
+
+    /**
+     * jk's own credentials, by name: a repository's or remote cache's {@code JK_REPO_<ID>_TOKEN},
+     * {@code _USERNAME} and {@code _PASSWORD}, and any other {@code JK_REPO_<ID>_} name whose last
+     * word says it is one (an S3 repository's {@code _ACCESS_KEY} and {@code _SECRET_KEY}, which a
+     * manifest names as {@code ${JK_REPO_<ID>_…}}), each with its {@code _FILE} form; a forge's
+     * {@code JK_<FORGE>_TOKEN}; {@code JK_GPG_PASSPHRASE}: the names in jk's own namespace that
+     * hold its credentials. {@code JK_REPO_<ID>_HOST} and other words ({@code _REGION}) are not. A
+     * name other tools read too ({@code GITHUB_TOKEN}, the AWS chain, {@code jk publish}'s {@code
+     * PUBLISH_PASSWORD}) is the shell's, not jk's, and is left alone. Matched in any case, since a
+     * Windows name matches so.
+     */
+    private static final Pattern CREDENTIAL = Pattern.compile(
+            "JK_REPO_.+_(TOKEN|USERNAME|USER|PASSWORD|PASSWD|PASSPHRASE|SECRET|KEY|CREDENTIALS?)(_FILE)?"
+                    + "|JK_(GITHUB|GITLAB|GITEA|BITBUCKET)_TOKEN"
+                    + "|JK_GPG_PASSPHRASE",
+            Pattern.CASE_INSENSITIVE);
+
     private ChildEnv() {}
 
     /**
-     * Whether {@code name} is kept from every child jk starts and from every key: {@link
-     * #CACHE_KEY_SEED}, in any case, since a Windows name matches so. The one rule; {@code
-     * BuildEnv.withheld} is this.
+     * Whether {@code name} is kept from every child jk starts and from every key unless a manifest
+     * forwards it by name: the {@link #refused} seed, or one of jk's own {@link #credential}s. The
+     * one rule; {@code BuildEnv.withheld} is this.
      */
     public static boolean withheld(String name) {
+        return refused(name) || credential(name);
+    }
+
+    /**
+     * Whether {@code name} is withheld even from a manifest that names it: {@link #CACHE_KEY_SEED},
+     * in any case. A manifest that names it is refused at parse.
+     */
+    public static boolean refused(String name) {
         return CACHE_KEY_SEED.equalsIgnoreCase(name);
     }
 
-    /** Takes every {@link #withheld} name out of what {@code pb}'s child would get, under any spelling. */
+    /**
+     * Whether {@code name} is one of jk's own credentials: {@code JK_REPO_<ID>_TOKEN}, {@code
+     * _USERNAME}, {@code _PASSWORD}, {@code _ACCESS_KEY}, {@code _SECRET_KEY} and the like, each
+     * with its {@code _FILE} form, {@code JK_<FORGE>_TOKEN}, {@code JK_GPG_PASSPHRASE}.
+     */
+    public static boolean credential(String name) {
+        return CREDENTIAL.matcher(name).matches();
+    }
+
+    /**
+     * The {@link #FORWARDED} value naming {@code names}' credentials, upper-cased and sorted, or
+     * null when none of them is one.
+     */
+    public static @Nullable String forwardedValue(Collection<String> names) {
+        Set<String> out = new TreeSet<>();
+        for (String name : names) {
+            if (credential(name)) out.add(name.toUpperCase(Locale.ROOT));
+        }
+        return out.isEmpty() ? null : String.join(",", out);
+    }
+
+    /** Whether {@code env} keeps {@code name}: not {@link #withheld}, or a credential its {@link #FORWARDED} names. */
+    public static boolean kept(Map<String, String> env, String name) {
+        if (!withheld(name)) return true;
+        if (refused(name)) return false;
+        String forwarded = get(env, FORWARDED);
+        if (forwarded == null) return false;
+        String upper = name.toUpperCase(Locale.ROOT);
+        for (String asked : forwarded.split(",")) {
+            if (asked.strip().equalsIgnoreCase(upper)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Takes every {@link #withheld} name out of what {@code pb}'s child would get, under any
+     * spelling, but a credential its environment's {@link #FORWARDED} names.
+     */
     public static ProcessBuilder withhold(ProcessBuilder pb) {
-        pb.environment().keySet().removeIf(ChildEnv::withheld);
+        Map<String, String> env = pb.environment();
+        Map<String, String> asked = Map.copyOf(env);
+        env.keySet().removeIf(name -> !kept(asked, name));
         return pb;
     }
 
