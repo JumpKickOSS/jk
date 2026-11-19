@@ -260,14 +260,13 @@ class CacheSeedShareE2eTest extends EngineServerHarness {
     }
 
     /**
-     * A module that inherits the caller's whole shell and declares the seed's name still hands its
-     * compiler and test JVM no seed, and a new seed reruns nothing: no key holds it.
+     * A module that inherits the caller's whole shell hands its compiler and test JVM no seed, and a
+     * new seed reruns nothing: no key holds it. (A manifest that names the seed is refused at parse.)
      */
     @Test
     void the_team_seed_reaches_no_worker_of_an_inheriting_module_and_keys_nothing() throws Exception {
         Path root = shortTempDir();
-        Path a = checkout(
-                root.resolve("a"), SEES_NO_SEED, "\n[env]\ninherit = true\noptional = [\"JK_CACHE_KEY_SEED\"]\n");
+        Path a = checkout(root.resolve("a"), SEES_NO_SEED, "\n[env]\ninherit = true\n");
         try (FakeCacheServer service = FakeCacheServer.start()) {
             runAt(
                     a,

@@ -190,7 +190,9 @@ final class ManifestEnv {
                 out.add(new EnvDecl.Forward(forwardName(name, where)));
             } else if (element instanceof TomlTable values) {
                 for (String name : values.keySet()) {
-                    out.add(new EnvDecl.Set(name, scalar(values.get(List.of(name)), where + "." + name)));
+                    String value = scalar(values.get(List.of(name)), where + "." + name);
+                    refuseWithheld(name, where + "." + name);
+                    out.add(new EnvDecl.Set(name, value));
                 }
             } else {
                 throw new JkBuildParseException(where + " must be a variable name or a table of values");
@@ -211,6 +213,18 @@ final class ManifestEnv {
         if (name.indexOf('$') >= 0) {
             throw new JkBuildParseException(where + ": \"" + raw + "\" is not a name; ${…} works only in a table");
         }
+        refuseWithheld(name, where);
         return name;
+    }
+
+    /**
+     * Refuses a manifest that names the remote cache key seed ({@link BuildEnv#withheld}) at {@code
+     * where}: jk reads it from the shell that runs {@code jk} alone, and a manifest that forwarded it
+     * would hand it to a worker, or key a plugin's config on it, where it could reach an output.
+     */
+    public static void refuseWithheld(String name, String where) {
+        if (!BuildEnv.withheld(name)) return;
+        throw new JkBuildParseException(where + " names " + name + ", the remote cache key seed: jk reads it from"
+                + " the shell that runs jk and hands it to no build step, plugin or test, so jk.toml may not name it");
     }
 }

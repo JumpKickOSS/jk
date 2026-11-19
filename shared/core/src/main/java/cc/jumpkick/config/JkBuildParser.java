@@ -29,6 +29,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
 import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.Workspace;
+import cc.jumpkick.plugin.manifest.EnvRead;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.plugin.manifest.PluginDescriptor;
 import cc.jumpkick.plugin.manifest.PluginDescriptorStore;
@@ -570,7 +571,7 @@ public final class JkBuildParser {
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
             throw new JkBuildParseException("workspace root cannot use `workspace = true`; set the values");
         }
-        return new JkBuild(
+        JkBuild parsed = new JkBuild(
                 project,
                 deps,
                 repos,
@@ -589,6 +590,12 @@ public final class JkBuildParser {
                 publish,
                 ManifestImage.parse(result),
                 library);
+        for (EnvRead read : EnvRead.of(parsed)) {
+            if (read instanceof EnvRead.PluginValue value) {
+                ManifestEnv.refuseWithheld(value.name(), "a plugin table's " + EnvRead.PLUGIN_PREFIX + value.name());
+            }
+        }
+        return parsed;
     }
 
     /** The {@link Scope} whose toml section is {@code name}, or null. */

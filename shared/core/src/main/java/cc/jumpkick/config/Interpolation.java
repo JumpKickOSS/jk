@@ -194,6 +194,8 @@ public final class Interpolation {
         boolean envAllowed = allowed(path);
         boolean machineAllowed = allowed(path, MACHINE_REFERENCE_POSITIONS);
         for (ConfigReference ref : found) {
+            // A reference to the cache key seed is refused wherever it stands, a credential included.
+            if (ref.isEnv()) ManifestEnv.refuseWithheld(ref.body(), spell(path) + " (" + ref.spelling() + ")");
             if (ref.scheme() == ConfigReference.Scheme.CMD) {
                 offenders.commands().add(spell(path) + " (" + ref.spelling() + ")");
             } else if (ref.isEnv()) {

@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.plugin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.TestEnvValues;
@@ -10,6 +12,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -100,16 +103,12 @@ class ModuleEnvKeysTest {
         }
     }
 
-    /** The cache key seed keys no reader: declared for every worker, for the test JVM, or inherited with the shell. */
+    /** The cache key seed keys no reader of a module that inherits the caller's whole shell. */
     @Test
     void the_cache_key_seed_keys_nothing() throws Exception {
         JkBuild project = project("""
                 [env]
                 inherit = true
-                optional = ["JK_CACHE_KEY_SEED"]
-
-                [test]
-                env = ["JK_CACHE_KEY_SEED"]
                 """);
         for (Callable<List<String>> reader : List.<Callable<List<String>>>of(
                 () -> ModuleEnvKeys.worker(project, tmp),
@@ -120,6 +119,46 @@ class ModuleEnvKeysTest {
                     .isNotEmpty()
                     .isEqualTo(under("JK_CACHE_KEY_SEED", "made-up-seed-b-0123456789", reader))
                     .isEqualTo(RequestShell.where(Map.of("PATH", "/bin"), reader));
+        }
+    }
+
+    /**
+     * A manifest that names the cache key seed, in any place that hands a named variable on, keys a
+     * plugin on it or sends it as a credential, is refused with the place and the reason: it would
+     * otherwise reach a worker, a plugin's config or a repository server.
+     */
+    @Test
+    void a_manifest_that_names_the_cache_key_seed_is_refused_where_it_names_it() {
+        Map<String, String> places = new LinkedHashMap<>();
+        places.put("[env]\noptional = [\"JK_CACHE_KEY_SEED\"]\n", "[env].optional[0]");
+        places.put("[env]\nrequire = [\"jk_cache_key_seed\"]\n", "[env].require[0]");
+        places.put("[env]\nvars = [\"JK_CACHE_KEY_SEED\"]\n", "[env].vars[0]");
+        places.put(
+                "[test]\nenv = [{ SEED = \"x-${JK_CACHE_KEY_SEED}\" }]\n", "test.env[0].SEED (${JK_CACHE_KEY_SEED})");
+        places.put(
+                "[repositories.corp]\nurl = \"https://repo.example.com\"\npassword = \"${env:JK_CACHE_KEY_SEED}\"\n",
+                "repositories.corp.password (${env:JK_CACHE_KEY_SEED})");
+        places.put("[test]\nenv = [\"JK_CACHE_KEY_SEED\"]\n", "[test].env[0]");
+        places.put("[test]\nenv = [{ JK_CACHE_KEY_SEED = \"x\" }]\n", "[test].env[0].JK_CACHE_KEY_SEED");
+        places.put("""
+                [android]
+                namespace   = "t.app"
+                compile-sdk = 34
+                min-sdk     = 24
+
+                [android.signing.release]
+                store-file = "env:JK_CACHE_KEY_SEED"
+                key-alias  = "upload"
+                """, "a plugin table's env:JK_CACHE_KEY_SEED");
+        int i = 0;
+        for (Map.Entry<String, String> place : places.entrySet()) {
+            Path dir = tmp.resolve("refused-" + i++);
+            assertThatThrownBy(() -> projectIn(dir, place.getKey()))
+                    .as(place.getKey())
+                    .isInstanceOf(JkBuildParseException.class)
+                    .hasMessageContaining(place.getValue() + " names ")
+                    .hasMessageContaining("the remote cache key seed")
+                    .hasMessageContaining("so jk.toml may not name it");
         }
     }
 
@@ -136,12 +175,17 @@ class ModuleEnvKeysTest {
     }
 
     private JkBuild project(String extra) throws Exception {
-        Files.writeString(tmp.resolve("jk.toml"), """
+        return projectIn(tmp, extra);
+    }
+
+    private static JkBuild projectIn(Path dir, String extra) throws Exception {
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("jk.toml"), """
                 group   = "com.example"
                 name    = "m"
                 version = "1.0.0"
 
                 """ + extra);
-        return JkBuildParser.parse(tmp.resolve("jk.toml"));
+        return JkBuildParser.parse(dir.resolve("jk.toml"));
     }
 }
