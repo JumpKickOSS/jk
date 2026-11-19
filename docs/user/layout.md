@@ -56,6 +56,18 @@ Other names (`contract`, `mutation`, …) are discovered the same way. Do not pu
 Playwright or compose stacks in `src/test`. Cost (`slow`, `network`) is a JUnit
 tag, not a fourth canonical directory. [Test](test.md) · [Why](why.md#test-rungs).
 
+Committed generated sources (a code generator's output you keep in the repository, such as
+`src/generated/java`) go under `[build] generated-src`. Such a root compiles with the main sources
+as an `extra-src` root does, and JumpKick never formats or checks a file under it, header or not:
+
+```toml
+[build]
+generated-src = ["src/generated/java"]
+```
+
+A plugin that writes such a root declares it itself (`generated = true` on its
+`[[contribute.source-roots]]` entry), so the module needs no setting. [Format](format.md)
+
 A symbolic link to a file in any of these trees is read through: the target's bytes are compiled,
 keyed and packaged, and an edit to the target rebuilds the module. A link to a directory is not
 followed; a build that meets one fails, naming it. Point `[build] extra-src` or `[resources]

@@ -158,15 +158,15 @@ class PluginContributionsTest {
     void grails_contributes_the_grails_app_roots() {
         assertThat(PluginContributions.sourceRoots(grails(""), null))
                 .containsExactly(
-                        new PluginContributions.SourceRoot("grails-app/domain", false),
-                        new PluginContributions.SourceRoot("grails-app/controllers", false),
-                        new PluginContributions.SourceRoot("grails-app/services", false),
-                        new PluginContributions.SourceRoot("grails-app/taglib", false),
-                        new PluginContributions.SourceRoot("grails-app/init", false),
-                        new PluginContributions.SourceRoot("grails-app/jobs", false),
-                        new PluginContributions.SourceRoot("grails-app/conf", true),
-                        new PluginContributions.SourceRoot("grails-app/i18n", true),
-                        new PluginContributions.SourceRoot("grails-app/views", true));
+                        new PluginContributions.SourceRoot("grails-app/domain", false, false),
+                        new PluginContributions.SourceRoot("grails-app/controllers", false, false),
+                        new PluginContributions.SourceRoot("grails-app/services", false, false),
+                        new PluginContributions.SourceRoot("grails-app/taglib", false, false),
+                        new PluginContributions.SourceRoot("grails-app/init", false, false),
+                        new PluginContributions.SourceRoot("grails-app/jobs", false, false),
+                        new PluginContributions.SourceRoot("grails-app/conf", true, false),
+                        new PluginContributions.SourceRoot("grails-app/i18n", true, false),
+                        new PluginContributions.SourceRoot("grails-app/views", true, false));
         assertThat(PluginContributions.sourceRoots(boot(""), null)).isEmpty();
     }
 
@@ -221,9 +221,37 @@ class PluginContributionsTest {
                 """, "p.toml");
         assertThat(parsed.contributions().sourceRoots())
                 .containsExactly(
-                        new PluginDescriptor.SourceRoot("extra/src", false, null),
+                        new PluginDescriptor.SourceRoot("extra/src", false, false, null),
                         new PluginDescriptor.SourceRoot(
-                                "extra/res", true, new PluginDescriptor.Condition.NativeDeclared()));
+                                "extra/res", true, false, new PluginDescriptor.Condition.NativeDeclared()));
+    }
+
+    @Test
+    void a_source_root_a_plugin_generates_is_marked_generated() {
+        var parsed = PluginDescriptors.parse("""
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.source-roots]]
+                dir = "src/generated/java"
+                kind = "source"
+                generated = true
+                """, "p.toml");
+        assertThat(parsed.contributions().sourceRoots())
+                .containsExactly(new PluginDescriptor.SourceRoot("src/generated/java", false, true, null));
+        assertThatThrownBy(() -> PluginDescriptors.parse("""
+                        [plugin]
+                        id = "p"
+                        table = "p"
+
+                        [[contribute.source-roots]]
+                        dir = "g"
+                        kind = "source"
+                        generated = "yes"
+                        """, "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("generated must be true or false");
     }
 
     // ---- [[contribute.command-dependency]] — the command-only tool lane ------------------------

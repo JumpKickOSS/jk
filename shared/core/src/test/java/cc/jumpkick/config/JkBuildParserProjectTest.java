@@ -803,4 +803,46 @@ class JkBuildParserProjectTest {
         assertThat(parsed.format().enforce()).isTrue();
         assertThat(parsed.format().ratchetFrom()).isEqualTo("origin/main");
     }
+
+    @Test
+    void parses_format_exclude_globs() {
+        JkBuild parsed = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+
+                [format]
+                exclude = ["vendor/**", "**/legacy/*.java"]
+                """);
+        assertThat(parsed.format().exclude()).containsExactly("vendor/**", "**/legacy/*.java");
+        assertThat(JkBuild.FormatConfig.EMPTY.exclude()).isEmpty();
+    }
+
+    @Test
+    void a_generated_source_root_compiles_as_an_extra_source_root_and_is_known_as_generated() {
+        JkBuild parsed = JkBuildParser.parse("""
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+
+                [build]
+                extra-src     = ["src/extra/java"]
+                generated-src = ["src/generated/java"]
+                """);
+        assertThat(parsed.build().extraSrc()).containsExactly("src/extra/java", "src/generated/java");
+        assertThat(parsed.build().generatedSrc()).containsExactly("src/generated/java");
+    }
+
+    @Test
+    void a_generated_source_root_must_be_a_directory_string() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                        group    = "com.example"
+                        name     = "widget"
+                        version  = "1.0.0"
+
+                        [build]
+                        generated-src = [1]
+                        """))
+                .hasMessageContaining("[build].generated-src must be an array of directory strings");
+    }
 }

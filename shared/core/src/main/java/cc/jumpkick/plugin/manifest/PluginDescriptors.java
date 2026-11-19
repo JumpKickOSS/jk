@@ -458,7 +458,12 @@ public final class PluginDescriptors {
                 throw new JkBuildParseException(where + ": classpath-has cannot gate a source-root (roots are"
                         + " resolved before resolution)");
             }
-            sourceRoots.add(new PluginDescriptor.SourceRoot(normalized, "resource".equals(kind), when));
+            Object generated = t.get("generated");
+            if (generated != null && !(generated instanceof Boolean)) {
+                throw new JkBuildParseException(where + ".generated must be true or false — got: " + generated);
+            }
+            sourceRoots.add(new PluginDescriptor.SourceRoot(
+                    normalized, "resource".equals(kind), Boolean.TRUE.equals(generated), when));
         }
         return sourceRoots;
     }

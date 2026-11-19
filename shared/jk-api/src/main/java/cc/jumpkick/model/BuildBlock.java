@@ -34,6 +34,12 @@ public record BuildBlock(
         JavacConfig javac,
         List<String> extraSrc,
         /**
+         * {@code [build] generated-src}: the {@link #extraSrc} roots whose files a tool writes and
+         * the repository commits (generated sources). They compile like any other root, and are
+         * never formatted.
+         */
+        List<String> generatedSrc,
+        /**
          * {@code [test] extra-src}: extra module-relative source roots (or single files) compiled
          * with the test tier into test classes. The test-scoped twin of {@code extraSrc}. Use
          * {@link #fixtures} for a sibling-consumed helper source set.
@@ -221,6 +227,7 @@ public record BuildBlock(
             JavacConfig.EMPTY,
             List.of(),
             List.of(),
+            List.of(),
             null,
             null,
             List.of(),
@@ -267,6 +274,7 @@ public record BuildBlock(
         if (testFastMethodBudgetMs < 0) testFastMethodBudgetMs = 0;
         if (testIdleTimeoutMs < 0) testIdleTimeoutMs = 0;
         extraSrc = extraSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(extraSrc));
+        generatedSrc = generatedSrc == null ? List.of() : List.copyOf(new LinkedHashSet<>(generatedSrc));
         testExtraSrc = testExtraSrc == null ? List.of() : List.copyOf(testExtraSrc);
         if (fixtures != null && fixtures.isBlank()) fixtures = null;
         if (testWorkers != null && testWorkers < 0) testWorkers = 0;

@@ -169,6 +169,7 @@ ksp    = ["room.schemaLocation=…"]
 [[contribute.source-roots]]
 dir  = "grails-app/domain"    # module-relative; absolute or ..-escaping dirs fail at load
 kind = "source"               # source | resource — joins roots()/compile/IDE/BSP/fingerprints
+# generated = true            # the plugin writes these files (committed generated code): never formatted
 
 [contribute.jvm-modules]             # one table: runtime jars whose module-info names a module
 module-prefix = "javafx."             # under the prefix join --module-path of the test JVM and

@@ -1031,9 +1031,15 @@ public record JkBuild(
             @Nullable Boolean importOrder,
             @Nullable Boolean removeUnusedImports,
             boolean enforce,
-            @Nullable String ratchetFrom) {
+            @Nullable String ratchetFrom,
+            /**
+             * {@code [format] exclude}: globs, relative to the workspace root, of sources jk never
+             * formats or checks (vendored code, generated code with no header).
+             */
+            List<String> exclude) {
 
-        public static final FormatConfig EMPTY = new FormatConfig(null, null, null, null, null, null, false, null);
+        public static final FormatConfig EMPTY =
+                new FormatConfig(null, null, null, null, null, null, false, null, List.of());
 
         /** The style and import toggles alone: what {@code jk format} reads. */
         public FormatConfig(
@@ -1043,7 +1049,7 @@ public record JkBuild(
                 @Nullable Boolean optimizeImports,
                 @Nullable Boolean importOrder,
                 @Nullable Boolean removeUnusedImports) {
-            this(style, java, kotlin, optimizeImports, importOrder, removeUnusedImports, false, null);
+            this(style, java, kotlin, optimizeImports, importOrder, removeUnusedImports, false, null, List.of());
         }
 
         public FormatConfig {
@@ -1051,6 +1057,7 @@ public record JkBuild(
             if (java != null && java.isBlank()) java = null;
             if (kotlin != null && kotlin.isBlank()) kotlin = null;
             if (ratchetFrom != null && ratchetFrom.isBlank()) ratchetFrom = null;
+            exclude = exclude == null ? List.of() : List.copyOf(exclude);
         }
     }
 

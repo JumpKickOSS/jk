@@ -22,6 +22,9 @@ JumpKick shows you this page's new entries after it updates itself.
 - **Breaking: `jk install` and `jk release` stay out of `~/.m2` unless asked.** They install into
   JumpKick's own repository, where every JumpKick project finds the result; `--destination m2` on
   either command, or `[install] destination = "m2"`, installs for Maven and Gradle builds too.
+- **Mark committed generated code, and JumpKick never formats it.** `[build] generated-src` names a
+  generated source root that compiles like `extra-src`; `[format] exclude` takes globs for vendored
+  code. A plugin can mark the root it writes, so a generator's output needs no setting at all.
 - **Keep a workspace member out of a release.** `[publish] skip = true` in a member's `jk.toml`
   keeps tests, examples and tools out of `jk publish` and `jk install`; `jk explain` names them, and
   a shipped member that depends on one stops before it builds.

@@ -14,6 +14,7 @@ import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.RepoGroupBuilder;
+import cc.jumpkick.runtime.base.FormatExclusions;
 import cc.jumpkick.runtime.base.FormatPlans;
 import cc.jumpkick.runtime.base.Perf;
 import java.nio.file.Path;
@@ -62,9 +63,12 @@ final class GuardFormat {
         long t0 = Perf.start();
         Path root = entryDir.toAbsolutePath().normalize();
         List<Path> sources = new ArrayList<>();
+        FormatExclusions exclusions = FormatExclusions.of(root, config);
         for (BuildGraph.BuildUnit unit : units) {
             sources.addAll(InputTrees.moduleSources(unit.dir(), ".java", ".kt", ".groovy", ".scala"));
+            exclusions.module(unit.dir(), unit.manifest());
         }
+        sources = new ArrayList<>(exclusions.filter(sources));
         Set<Path> only = config.ratchetFrom() == null ? null : changedSince(root, config.ratchetFrom());
         FormatStyles.Resolved styles = FormatStyles.resolve(null, null, null, null, null, null, config);
         List<Path> changed = new ArrayList<>();

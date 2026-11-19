@@ -4,7 +4,10 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.baseline.Baselines;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.base.FormatExclusions;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +35,29 @@ class GuardFormatTest {
                         "not formatted: a/src/main/java/A.java"
                                 + " ([format] enforce: jk guard outside CI, or jk format, formats it)",
                         "not formatted: b/src/B.java");
+    }
+
+    /** What a guard run leaves out of its sources: the units' generated roots and the entry's excluded globs. */
+    @Test
+    void a_guard_leaves_out_generated_roots_and_excluded_globs(@TempDir Path root) {
+        JkBuild app = JkBuildParser.parse("""
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                [build]
+                generated-src = ["src/generated/java"]
+                [format]
+                exclude = ["**/vendored/**"]
+                """);
+        FormatExclusions exclusions = FormatExclusions.of(root, app.format()).module(root.resolve("app"), app);
+        Path keep = root.resolve("app/src/main/java/Keep.java");
+        assertThat(exclusions.filter(List.of(
+                        keep,
+                        root.resolve("app/src/generated/java/Gen.java"),
+                        root.resolve("app/src/main/java/vendored/V.java"))))
+                .containsExactly(keep);
+        assertThat(exclusions.excludes(root.resolve("app/src/generated/java/deep/Gen.java")))
+                .isTrue();
     }
 
     @Test

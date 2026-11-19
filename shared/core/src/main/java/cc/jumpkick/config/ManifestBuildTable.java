@@ -50,6 +50,7 @@ final class ManifestBuildTable {
         String kspVersion;
 
         final List<String> extraSrc = new ArrayList<>();
+        final List<String> generatedSrc = new ArrayList<>();
         final List<String> testExtraSrc = new ArrayList<>();
 
         @Nullable
@@ -86,6 +87,7 @@ final class ManifestBuildTable {
             "ksp-options",
             "ksp-version",
             "extra-src",
+            "generated-src",
             TaskNames.MODULE_SERVICES,
             "cache-heavy-outputs",
             "logic");
@@ -165,6 +167,18 @@ final class ManifestBuildTable {
                 if (!(val instanceof String str) || str.isBlank())
                     throw new JkBuildParseException("[build].extra-src must be an array of directory strings");
                 s.extraSrc.add(str);
+            }
+        }
+        // [build] generated-src — committed generated source roots: compiled as extra-src roots
+        // are, and never formatted.
+        TomlArray gs = build.getArray("generated-src");
+        if (gs != null) {
+            for (int i = 0; i < gs.size(); i++) {
+                Object val = gs.get(i);
+                if (!(val instanceof String str) || str.isBlank())
+                    throw new JkBuildParseException("[build].generated-src must be an array of directory strings");
+                s.generatedSrc.add(str);
+                if (!s.extraSrc.contains(str)) s.extraSrc.add(str);
             }
         }
         // [build] module-services — write META-INF/services from module-info's provides, as

@@ -155,7 +155,8 @@ public final class ManifestTables {
                 optionalBool(format, "import-order"),
                 optionalBool(format, "remove-unused-imports"),
                 Boolean.TRUE.equals(optionalBool(format, "enforce")),
-                stringOrThrow(format, "ratchet-from", "format.ratchet-from"));
+                stringOrThrow(format, "ratchet-from", "format.ratchet-from"),
+                format.contains("exclude") ? requireStringList(format, "exclude", "[format].exclude") : List.of());
     }
 
     /**

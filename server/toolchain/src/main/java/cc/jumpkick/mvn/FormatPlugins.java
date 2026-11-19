@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.model.JkBuild;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.apache.maven.model.Model;
@@ -82,7 +83,7 @@ final class FormatPlugins {
     }
 
     private static JkBuild.FormatConfig enforced(@Nullable String java, @Nullable String kotlin) {
-        return new JkBuild.FormatConfig(null, java, kotlin, null, null, null, true, null);
+        return new JkBuild.FormatConfig(null, java, kotlin, null, null, null, true, null, List.of());
     }
 
     private static @Nullable String text(@Nullable Xpp3Dom dom) {

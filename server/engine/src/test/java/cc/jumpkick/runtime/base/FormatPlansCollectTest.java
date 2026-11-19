@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -43,6 +44,40 @@ class FormatPlansCollectTest {
         assertThat(found.groovyFiles()).containsExactly(keepGroovy);
         assertThat(found.scalaFiles()).containsExactly(keepScala);
         assertThat(found.total()).isEqualTo(4);
+    }
+
+    /**
+     * A module's {@code [build] generated-src} roots and the root's {@code [format] exclude} globs
+     * are never collected: the files there compile but are not jk's to format.
+     */
+    @Test
+    void generated_roots_and_excluded_globs_are_not_collected(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "com.example"
+                name = "root"
+                version = "1.0.0"
+                [workspace]
+                modules = ["app"]
+                [format]
+                exclude = ["vendor/**"]
+                """);
+        Path app = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                name = "app"
+                [build]
+                generated-src = ["src/generated/java"]
+                """);
+        Path keep = app.resolve("src/main/java/Keep.java");
+        Path generated = app.resolve("src/generated/java/Gen.java");
+        Path vendored = tmp.resolve("vendor/lib/src/main/java/Vendored.java");
+        for (Path f : List.of(keep, generated, vendored)) {
+            Files.createDirectories(f.getParent());
+            Files.writeString(f, "class X {}");
+        }
+
+        FormatSources.CollectedSources found = FormatSources.collectSources(tmp);
+
+        assertThat(found.javaFiles()).containsExactly(keep);
     }
 
     /**

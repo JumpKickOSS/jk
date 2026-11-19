@@ -52,9 +52,13 @@ final class FormatSources {
      * One walk, skipping excluded directories entirely ({@code target/}, Gradle's {@code build/},
      * {@code .git/}, …) instead of descending and filtering files afterwards. Gradle's build dir is
      * known by the script beside it, so a package named {@code build} is formatted like any other.
+     * Each module met on the way adds its generated roots to the {@link FormatExclusions}, so a
+     * generated root is skipped the same way, and the root's {@code [format] exclude} globs drop
+     * the files they match.
      */
     static CollectedSources collectSources(Path root) throws IOException {
         if (!Files.isDirectory(root)) return new CollectedSources(List.of(), List.of(), List.of(), List.of());
+        FormatExclusions exclusions = FormatExclusions.forRoot(root).moduleIn(root);
         List<Path> java = new ArrayList<>();
         List<Path> kotlin = new ArrayList<>();
         List<Path> groovy = new ArrayList<>();
@@ -65,9 +69,9 @@ final class FormatSources {
                 if (dir.equals(root)) return FileVisitResult.CONTINUE;
                 // A nested checkout's files are another branch's: formatting them rewrites work in
                 // progress somewhere else and reports it under this root's paths.
-                return WalkSkip.formatSkip(dir) || WalkSkip.nestedCheckout(dir)
-                        ? FileVisitResult.SKIP_SUBTREE
-                        : FileVisitResult.CONTINUE;
+                if (WalkSkip.formatSkip(dir) || WalkSkip.nestedCheckout(dir)) return FileVisitResult.SKIP_SUBTREE;
+                exclusions.moduleIn(dir);
+                return exclusions.excludes(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
             }
 
             @Override
@@ -78,7 +82,7 @@ final class FormatSources {
                 } catch (IllegalArgumentException e) {
                     rel = file;
                 }
-                if (!notExcluded(rel)) return FileVisitResult.CONTINUE;
+                if (!notExcluded(rel) || exclusions.excludes(file)) return FileVisitResult.CONTINUE;
                 String name = file.getFileName().toString();
                 if (name.endsWith(".java")) java.add(file);
                 else if (name.endsWith(".kt")) kotlin.add(file);

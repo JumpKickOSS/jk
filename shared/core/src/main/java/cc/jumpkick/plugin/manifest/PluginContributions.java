@@ -139,8 +139,11 @@ public final class PluginContributions {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::groovy);
     }
 
-    /** One resolved plugin-contributed module input root (relative dir + resource/source kind). */
-    public record SourceRoot(String dir, boolean resource) {}
+    /**
+     * One resolved plugin-contributed module input root: relative dir, resource/source kind, and
+     * whether the plugin generates its files (never formatted).
+     */
+    public record SourceRoot(String dir, boolean resource, boolean generated) {}
 
     /**
      * The active plugins' {@code [[contribute.source-roots]]} entries with conditions evaluated —
@@ -163,7 +166,7 @@ public final class PluginContributions {
                         manifest.id())) {
                     continue;
                 }
-                out.add(new SourceRoot(root.dir(), root.resource()));
+                out.add(new SourceRoot(root.dir(), root.resource(), root.generated()));
             }
         }
         return out;

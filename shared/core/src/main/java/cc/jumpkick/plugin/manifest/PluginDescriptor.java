@@ -311,11 +311,16 @@ public record PluginDescriptor(
     /**
      * One {@code [[contribute.source-roots]]} entry: a module-relative directory the plugin adds
      * to the module's input roots (Grails' {@code grails-app/domain}). {@code resource} = the
-     * {@code kind = "resource"} spelling; source otherwise. Always relative and non-escaping —
-     * the parser rejects absolute or {@code ..} dirs at manifest load.
+     * {@code kind = "resource"} spelling; source otherwise. {@code generated}: the plugin writes
+     * the files under it (committed generated sources), so they compile but are never formatted.
+     * Always relative and non-escaping — the parser rejects absolute or {@code ..} dirs at
+     * manifest load.
      */
     public record SourceRoot(
-            String dir, boolean resource, @Nullable Condition when) {
+            String dir,
+            boolean resource,
+            boolean generated,
+            @Nullable Condition when) {
         public SourceRoot {
             Objects.requireNonNull(dir, "dir");
         }

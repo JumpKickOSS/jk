@@ -32,6 +32,7 @@ final class BuildFields {
 
     JavacConfig javac;
     List<String> extraSrc;
+    List<String> generatedSrc;
     List<String> testExtraSrc;
 
     @Nullable
@@ -93,6 +94,7 @@ final class BuildFields {
         kspVersion = b.kspVersion();
         javac = b.javac();
         extraSrc = b.extraSrc();
+        generatedSrc = b.generatedSrc();
         testExtraSrc = b.testExtraSrc();
         fixtures = b.fixtures();
         testWorkers = b.testWorkers();
@@ -140,6 +142,7 @@ final class BuildFields {
                 kspVersion,
                 javac,
                 extraSrc,
+                generatedSrc,
                 testExtraSrc,
                 fixtures,
                 testWorkers,
