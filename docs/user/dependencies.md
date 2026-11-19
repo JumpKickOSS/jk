@@ -214,7 +214,8 @@ Three places pick otherwise, each on purpose:
 - **An enforced platform governs.** A module a platform BOM manages takes the BOM's version, even
   below a floor a dependency declares ([Platforms](platforms.md)).
 - **The lock holds.** Relocking prefers each module's locked version while it still satisfies every
-  edge ([Lockfile](lockfile.md)).
+  edge, except what a pin you wrote lower alone pulled in, which follows the pin
+  ([Lockfile](lockfile.md)).
 
 A dependency that only transitive POMs name resolves to the **highest version any of those
 POMs declares** (not Maven nearest-wins), never to a newer release the

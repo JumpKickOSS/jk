@@ -58,6 +58,11 @@ JumpKick shows you this page's new entries after it updates itself.
   the old name, an MCP `run` that builds and passes ends with those places, in five files at
   most; it says nothing otherwise, and the CLI never prints it. `[graph] anchor-tail = "off"` turns
   it off ([After a hand edit](graph.md#after-a-hand-edit)).
+- **A pin written lower relocks the whole artifact to it.** Putting OpenJFX back from 27.0.1.1 to
+  27.0.1 over an existing lock left javafx-controls at both versions (its platform jar kept
+  27.0.1.1) and javafx-graphics and javafx-base at 27.0.1.1, and the converge-versions guard failed
+  the build. The relock now gives what a fresh lock gives: 27.0.1 everywhere. A package something
+  else still pulls in keeps its locked version.
 
 ## 0.53.0
 

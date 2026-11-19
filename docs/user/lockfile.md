@@ -154,6 +154,12 @@ in name an older release, and moves up when one of them asks for a newer one. On
 that rules the old version out lowers it: an exact pin you wrote lower, a range's ceiling, or a
 platform BOM that manages the package down.
 
+A pin you wrote lower takes its whole graph down with it, in every relock (`jk build`, `jk lock`,
+`jk lock -F`, `jk update`): the pinned module's classified jars (the `${javafx.platform}` jar an
+OpenJFX POM names) and every package only the old version pulled in resolve as a fresh lock
+resolves them, so the lock holds one version per module. A package another dependency still
+reaches keeps its locked version.
+
 ## `jk outdated`
 
 ```bash

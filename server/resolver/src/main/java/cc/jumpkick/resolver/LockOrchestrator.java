@@ -379,7 +379,8 @@ public final class LockOrchestrator {
      * {@code existing} as <em>soft preferences</em>. The solver selects each locked version first; if
      * a new or changed dep's constraint rules it out, the solver backtracks to the next candidate
      * automatically. Only versions that genuinely conflict with new constraints are bumped
-     * everything else stays pinned. A member partition row seeds only the member it lists.
+     * everything else stays pinned. A member partition row seeds only the member it lists. A module
+     * pinned below its locked version takes down what that version alone held ({@link LoweredPins}).
      */
     public Lockfile lockConservative(
             JkBuild project,
@@ -395,14 +396,15 @@ public final class LockOrchestrator {
                 featuresRequested,
                 withDefaults,
                 observer,
-                PriorVersions.of(existing),
+                PriorVersions.of(LoweredPins.held(existing, project)),
                 PriorVersions.NONE);
     }
 
     /**
      * Floating re-lock: same as {@link #lock}, but no package resolves below the version {@code
      * existing} held for it unless a constraint rules that version out (an exact pin, a range's
-     * ceiling, a platform BOM). A package the old lock did not carry resolves as in {@link #lock}.
+     * ceiling, a platform BOM). A package the old lock did not carry resolves as in {@link #lock}, as
+     * does what a module pinned below its locked version alone held ({@link LoweredPins}).
      */
     public Lockfile lockFloating(
             JkBuild project,
@@ -419,7 +421,7 @@ public final class LockOrchestrator {
                 withDefaults,
                 observer,
                 PriorVersions.NONE,
-                existing == null ? PriorVersions.NONE : PriorVersions.of(existing));
+                existing == null ? PriorVersions.NONE : PriorVersions.of(LoweredPins.held(existing, project)));
     }
 
     /**
