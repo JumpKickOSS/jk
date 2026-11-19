@@ -51,7 +51,7 @@ public final class Processes {
 
     /** As {@link #capture(List, Duration)} for a builder the caller configured (directory, environment, redirects). */
     public static Captured capture(ProcessBuilder builder, Duration timeout) throws IOException {
-        return capture(builder.start(), null, timeout, Integer.MAX_VALUE);
+        return capture(ChildEnv.start(builder), null, timeout, Integer.MAX_VALUE);
     }
 
     /** As {@link #capture(List, Duration)} for a child the caller started through its own launcher. */
@@ -106,7 +106,10 @@ public final class Processes {
     public static byte @Nullable [] bytesIfOk(List<String> command, Duration timeout) {
         try {
             Ran ran = run(
-                    new ProcessBuilder(command).redirectErrorStream(true).start(), null, timeout, Integer.MAX_VALUE);
+                    ChildEnv.start(new ProcessBuilder(command).redirectErrorStream(true)),
+                    null,
+                    timeout,
+                    Integer.MAX_VALUE);
             return ran.timedOut() || ran.exit() != 0 ? null : ran.out().bytes();
         } catch (IOException | RuntimeException e) {
             return null;

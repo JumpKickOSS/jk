@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.power;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Processes;
 import java.io.IOException;
 import java.util.List;
@@ -23,10 +24,9 @@ final class ChildHold implements PowerHost.Hold {
     /** The real starter: output discarded, stdin a pipe the engine never writes. */
     static final Starter PROCESSES = argv -> {
         try {
-            return new ProcessBuilder(argv)
+            return ChildEnv.start(new ProcessBuilder(argv)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
         } catch (IOException e) {
             return null;
         }

@@ -7,6 +7,7 @@ import cc.jumpkick.config.UiAsk;
 import cc.jumpkick.desktop.DesktopIdentity;
 import cc.jumpkick.desktop.PowerShell;
 import cc.jumpkick.desktop.WslWindowsDesktop;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
@@ -459,10 +460,9 @@ public final class DecisionAlerts implements AutoCloseable {
         @Override
         public boolean launch(List<String> argv) {
             try {
-                WslInterop.builder(argv)
+                ChildEnv.start(WslInterop.builder(argv)
                         .redirectOutput(Redirect.DISCARD)
-                        .redirectError(Redirect.DISCARD)
-                        .start();
+                        .redirectError(Redirect.DISCARD));
                 return true;
             } catch (IOException | RuntimeException e) {
                 return false;
@@ -498,7 +498,7 @@ public final class DecisionAlerts implements AutoCloseable {
         public @Nullable Watch watch(List<String> argv, Consumer<String> lines, Runnable exited) {
             Process p;
             try {
-                p = new ProcessBuilder(argv).redirectError(Redirect.DISCARD).start();
+                p = ChildEnv.start(new ProcessBuilder(argv).redirectError(Redirect.DISCARD));
             } catch (IOException | RuntimeException e) {
                 return null;
             }

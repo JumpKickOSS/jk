@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.winhost;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Executables;
 import java.io.IOException;
 import java.util.List;
@@ -29,10 +30,8 @@ public interface UserCommands {
 
     private static boolean run(List<String> argv) {
         try {
-            Process p = new ProcessBuilder(argv)
-                    .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+            Process p = ChildEnv.start(
+                    new ProcessBuilder(argv).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD));
             p.getOutputStream().close();
             if (!p.waitFor(30, TimeUnit.SECONDS)) {
                 p.destroyForcibly();

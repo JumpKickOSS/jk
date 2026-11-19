@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
 import java.io.IOException;
@@ -142,10 +143,9 @@ public final class JdkToolUninstaller {
         List<String> argv = resolved(command);
         if (argv == null) return false;
         try {
-            Process p = new ProcessBuilder(argv)
+            Process p = ChildEnv.start(new ProcessBuilder(argv)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
             // Close stdin immediately so any unexpected prompt sees EOF
             // (most tools default to "no" on EOF, which is fine here since
             // we still verify via the dir-exists check afterwards).

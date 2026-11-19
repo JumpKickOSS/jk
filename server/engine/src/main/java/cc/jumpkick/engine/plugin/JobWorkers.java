@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.Request;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.StepScope;
@@ -181,7 +182,7 @@ public final class JobWorkers {
         }
         Process process;
         try {
-            process = pb.start();
+            process = ChildEnv.start(pb);
         } catch (IOException | RuntimeException e) {
             grant.close();
             throw e;
@@ -236,7 +237,7 @@ public final class JobWorkers {
         if (command != pb.command()) pb.command(command);
         Process started;
         try {
-            started = pb.start();
+            started = ChildEnv.start(pb);
         } catch (IOException | RuntimeException e) {
             grant.close();
             gc.finish();

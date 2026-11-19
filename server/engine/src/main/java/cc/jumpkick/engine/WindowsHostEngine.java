@@ -5,6 +5,7 @@ import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.engine.http.FrontDoor;
 import cc.jumpkick.engine.http.GuestPairing;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Guest;
 import cc.jumpkick.host.WslInterop;
 import cc.jumpkick.host.time.Clock;
@@ -193,11 +194,10 @@ final class WindowsHostEngine {
         Path out = null;
         try {
             out = Files.createTempFile("jk-interop-", ".out");
-            Process p = fromWindowsFolder(argv)
+            Process p = ChildEnv.start(fromWindowsFolder(argv)
                     .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
                     .redirectOutput(out.toFile())
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
             if (!p.waitFor(seconds, TimeUnit.SECONDS)) return null;
             return new Ran(p.exitValue(), Files.readString(out));
         } catch (IOException | RuntimeException e) {

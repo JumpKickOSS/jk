@@ -5,6 +5,7 @@ import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.EnvLookup;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -168,7 +169,7 @@ public final class ToolLauncher {
     private static Process start(List<String> command, Map<String, String> dotEnv) throws IOException {
         ProcessBuilder pb = new ProcessBuilder(command).inheritIO();
         EnvLookup.layerUnder(pb.environment(), dotEnv);
-        return pb.start();
+        return ChildEnv.start(pb);
     }
 
     private static String renderPosixLauncher(ToolEnv env, Path javaHome, List<String> jvmArgs) {

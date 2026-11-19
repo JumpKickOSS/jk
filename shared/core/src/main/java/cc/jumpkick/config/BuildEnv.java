@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import java.nio.file.Path;
@@ -306,14 +307,15 @@ public final class BuildEnv {
      * worker is handed it and no key holds it, so a test that logs its environment cannot carry it
      * into an output a remote cache stores, and a new seed reruns nothing.
      */
-    public static final String CACHE_KEY_SEED = "JK_CACHE_KEY_SEED";
+    public static final String CACHE_KEY_SEED = ChildEnv.CACHE_KEY_SEED;
 
     /**
      * Whether {@code name} of the caller's is kept from every worker and every key: {@link
-     * #CACHE_KEY_SEED}, in any case, since a Windows name matches so.
+     * #CACHE_KEY_SEED}, in any case, since a Windows name matches so. {@link ChildEnv#withheld} is
+     * the rule, so a child the engine starts that is no worker is kept from it alike.
      */
     public static boolean withheld(String name) {
-        return CACHE_KEY_SEED.equalsIgnoreCase(name);
+        return ChildEnv.withheld(name);
     }
 
     /**

@@ -3,6 +3,7 @@ package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -68,5 +69,49 @@ class ChildEnvTest {
         ChildEnv.put(env, "PATH", "b", false);
 
         assertThat(env).containsEntry("Path", "a").containsEntry("PATH", "b");
+    }
+
+    /**
+     * The cache key seed, the one name kept from every child, under any spelling: what replace, put
+     * and putAll hand over leaves it out, and a child started through start does not inherit it.
+     */
+    @Test
+    void the_cache_key_seed_is_kept_from_every_child() throws Exception {
+        assertThat(ChildEnv.withheld("JK_CACHE_KEY_SEED")).isTrue();
+        assertThat(ChildEnv.withheld("jk_cache_key_seed")).isTrue();
+        assertThat(ChildEnv.withheld("JK_CACHE_KEY_SEED_FILE")).isFalse();
+
+        ProcessBuilder pb = new ProcessBuilder("unused");
+        pb.environment().put("JK_CACHE_KEY_SEED", "made-up-seed-0123456789");
+        ChildEnv.putAll(pb, Map.of("A", "1"));
+        assertThat(pb.environment()).containsEntry("A", "1").doesNotContainKey("JK_CACHE_KEY_SEED");
+        ChildEnv.put(pb, "JK_CACHE_KEY_SEED", "made-up-seed-0123456789");
+        assertThat(pb.environment()).doesNotContainKey("JK_CACHE_KEY_SEED");
+        ChildEnv.replace(pb, Map.of("B", "2", "Jk_Cache_Key_Seed", "made-up-seed-0123456789"));
+        assertThat(pb.environment()).containsOnlyKeys("B");
+    }
+
+    @Test
+    void a_child_started_through_start_or_captured_inherits_no_seed() throws Exception {
+        for (boolean captured : new boolean[] {false, true}) {
+            ProcessBuilder pb = (Os.isWindows()
+                            ? new ProcessBuilder("cmd.exe", "/c", "set")
+                            : new ProcessBuilder("env"))
+                    .redirectErrorStream(true);
+            // What a child of an engine started from a shell that exported the seed would inherit.
+            pb.environment().put("JK_CACHE_KEY_SEED", "made-up-seed-0123456789");
+            pb.environment().put("JK_SEED_NEIGHBOUR", "kept");
+            String out;
+            if (captured) {
+                out = Processes.capture(pb, Duration.ofSeconds(30)).output();
+            } else {
+                out = Processes.capture(ChildEnv.start(pb), Duration.ofSeconds(30))
+                        .output();
+            }
+            assertThat(out)
+                    .as(captured ? "Processes.capture" : "ChildEnv.start")
+                    .contains("JK_SEED_NEIGHBOUR=kept")
+                    .doesNotContain("made-up-seed");
+        }
     }
 }

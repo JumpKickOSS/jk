@@ -3,6 +3,7 @@ package cc.jumpkick.winhost;
 
 import cc.jumpkick.desktop.PowerShell;
 import cc.jumpkick.desktop.WslWindowsDesktop;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.WslInterop;
 import cc.jumpkick.host.time.Clock;
@@ -302,11 +303,10 @@ public final class WindowsFromGuest {
         Path out = null;
         try {
             out = Files.createTempFile("jk-interop-", ".out");
-            Process p = fromWindowsFolder(argv)
+            Process p = ChildEnv.start(fromWindowsFolder(argv)
                     .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
                     .redirectOutput(out.toFile())
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
             if (!p.waitFor(10, TimeUnit.SECONDS) || p.exitValue() != 0) return null;
             return Files.readString(out);
         } catch (IOException | RuntimeException e) {
@@ -327,11 +327,10 @@ public final class WindowsFromGuest {
         Path out = null;
         try {
             out = Files.createTempFile("jk-windows-setup-", ".out");
-            Process p = fromWindowsFolder(argv)
+            Process p = ChildEnv.start(fromWindowsFolder(argv)
                     .redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")))
                     .redirectOutput(out.toFile())
-                    .redirectErrorStream(true)
-                    .start();
+                    .redirectErrorStream(true));
             long until = Clock.SYSTEM.nanos() + wait.toNanos();
             int[] read = {0};
             boolean ended = false;

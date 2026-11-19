@@ -4,6 +4,7 @@ package cc.jumpkick.templates;
 import cc.jumpkick.config.JkTemplatesConfig;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
@@ -298,7 +299,7 @@ public final class OfficialTemplatesFreshen {
         try {
             Process proc;
             try {
-                proc = pb.start();
+                proc = ChildEnv.start(pb);
             } catch (IOException e) {
                 throw new IOException(failure("git not on PATH", args, stderr), e);
             }
@@ -364,10 +365,9 @@ public final class OfficialTemplatesFreshen {
         try {
             Path out = Files.createTempFile("jk-git-version-", ".txt");
             try {
-                Process proc = new ProcessBuilder(exe, "--version")
+                Process proc = ChildEnv.start(new ProcessBuilder(exe, "--version")
                         .redirectErrorStream(true)
-                        .redirectOutput(out.toFile())
-                        .start();
+                        .redirectOutput(out.toFile()));
                 if (!proc.waitFor(5, TimeUnit.SECONDS)) {
                     kill(proc);
                     return Optional.empty();

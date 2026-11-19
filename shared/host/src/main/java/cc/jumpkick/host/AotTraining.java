@@ -57,7 +57,7 @@ public final class AotTraining {
 
         /** Start {@code pb}; a host that tracks its children starts it through its own registry. */
         default Process start(ProcessBuilder pb) throws IOException {
-            return pb.start();
+            return ChildEnv.start(pb);
         }
 
         /** SIGTERM, and nothing harsher, waiting at most {@code grace}. */

@@ -314,10 +314,10 @@ public interface TaskExec {
                     .redirectInput(ProcessBuilder.Redirect.from(new File(Os.isWindows() ? "NUL" : "/dev/null")));
             if (cwd != null) pb.directory(cwd.toFile());
             ChildEnv.putAll(pb, env);
-            if (argFile == null) return pb.start();
+            if (argFile == null) return ChildEnv.start(pb);
             Path written = argFile;
             try {
-                Process process = pb.start();
+                Process process = ChildEnv.start(pb);
                 process.onExit().whenComplete((p, e) -> deleteQuietly(written));
                 return process;
             } catch (IOException | RuntimeException e) {

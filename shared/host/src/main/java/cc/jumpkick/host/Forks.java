@@ -5,7 +5,7 @@ import java.io.IOException;
 
 /**
  * The one subprocess start a jk process uses once a fork policy is installed. Until {@link
- * #install}, this is {@link ProcessBuilder#start()}.
+ * #install}, this is {@link ChildEnv#start}, which keeps the withheld names from the child.
  */
 public final class Forks {
 
@@ -15,7 +15,7 @@ public final class Forks {
         Process open(ProcessBuilder command) throws IOException;
     }
 
-    private static volatile Opener opener = ProcessBuilder::start;
+    private static volatile Opener opener = ChildEnv::start;
 
     private Forks() {}
 

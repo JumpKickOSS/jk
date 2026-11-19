@@ -2,6 +2,7 @@
 package cc.jumpkick.desktop;
 
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import java.io.IOException;
@@ -331,10 +332,9 @@ public final class DesktopIdentity {
     private static boolean runProcess(List<String> argv) {
         Process p;
         try {
-            p = new ProcessBuilder(argv)
+            p = ChildEnv.start(new ProcessBuilder(argv)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .redirectError(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectError(ProcessBuilder.Redirect.DISCARD));
         } catch (IOException | RuntimeException e) {
             return false;
         }

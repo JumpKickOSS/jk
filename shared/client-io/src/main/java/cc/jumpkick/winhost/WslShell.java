@@ -47,7 +47,7 @@ public interface WslShell {
         pb.redirectInput(ProcessBuilder.Redirect.from(new File("NUL")));
         Process child;
         try {
-            child = pb.start();
+            child = ChildEnv.start(pb);
         } catch (IOException | RuntimeException e) {
             out.accept("could not start " + argv.getFirst() + ": " + e.getMessage());
             return NOT_STARTED;

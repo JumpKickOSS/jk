@@ -7,7 +7,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -47,6 +49,20 @@ class EngineAotTrainerTest {
         assertThat(EngineAotTrainer.step(cli, dir, Map.of(), () -> true, "build"))
                 .isTrue();
         assertThat(marker).exists();
+    }
+
+    /**
+     * The trainer's environment is this engine's, which is the shell that started the engine: a cache
+     * key seed that shell exported does not reach the trainer's jk, its engine or their children.
+     */
+    @Test
+    void a_trainer_step_is_handed_no_cache_key_seed(@TempDir Path dir) throws Exception {
+        Map<String, String> env = new LinkedHashMap<>(EngineAotTrainer.env(dir, dir.resolve("engine.aot")));
+        env.put("JK_CACHE_KEY_SEED", "made-up-seed-0123456789");
+        Process p = EngineAotTrainer.start(
+                Path.of("/bin/sh"), dir, env, "-c", "printf '%s' \"${JK_CACHE_KEY_SEED-unset}\" > seen");
+        assertThat(p.waitFor(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(Files.readString(dir.resolve("seen"))).isEqualTo("unset");
     }
 
     @Test

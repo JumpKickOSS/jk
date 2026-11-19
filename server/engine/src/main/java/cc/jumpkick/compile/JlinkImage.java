@@ -4,6 +4,7 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.host.AotTraining;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -368,7 +369,7 @@ public final class JlinkImage {
 
             @Override
             public Process start(ProcessBuilder pb) throws IOException {
-                Process process = pb.start();
+                Process process = ChildEnv.start(pb);
                 JobWorkers.register(process);
                 return process;
             }
@@ -427,7 +428,7 @@ public final class JlinkImage {
     private static Tool runTool(List<String> cmd, @Nullable Path cwd) throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
         if (cwd != null) pb.directory(cwd.toFile());
-        Process process = pb.start();
+        Process process = ChildEnv.start(pb);
         JobWorkers.register(process);
         try {
             Processes.Captured c = Processes.capture(process, Duration.ofMinutes(TOOL_TIMEOUT_MINUTES));

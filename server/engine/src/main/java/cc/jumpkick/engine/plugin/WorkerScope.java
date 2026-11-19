@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.config.Request;
+import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.time.Clock;
@@ -182,10 +183,9 @@ public final class WorkerScope {
         int n = command.size() - 2;
         if (n == 0) return 0;
         try {
-            Process kill = new ProcessBuilder(command)
+            Process kill = ChildEnv.start(new ProcessBuilder(command)
                     .redirectErrorStream(true)
-                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-                    .start();
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD));
             kill.waitFor(5, TimeUnit.SECONDS);
         } catch (IOException e) {
             Log.debug("job " + id + ": kill " + signal + " failed", e);

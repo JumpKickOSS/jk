@@ -286,7 +286,7 @@ final class EngineAotTrainer {
         return p.exitValue() == 0;
     }
 
-    private static Process start(Path cli, Path dir, Map<String, String> env, String... args) throws IOException {
+    static Process start(Path cli, Path dir, Map<String, String> env, String... args) throws IOException {
         List<String> command = new ArrayList<>(List.of(cli.toString()));
         command.addAll(List.of(args));
         ProcessBuilder pb = new ProcessBuilder(command)
@@ -294,7 +294,7 @@ final class EngineAotTrainer {
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD);
         ChildEnv.replace(pb, env);
-        return pb.start();
+        return ChildEnv.start(pb);
     }
 
     /** The trainer's exit assembles the cache; wait for a non-empty file whose size has settled. */

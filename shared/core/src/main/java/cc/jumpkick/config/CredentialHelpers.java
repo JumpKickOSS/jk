@@ -283,7 +283,7 @@ public final class CredentialHelpers {
         ChildEnv.replace(pb, env);
         Process process;
         try {
-            process = pb.start();
+            process = ChildEnv.start(pb);
         } catch (IOException e) {
             throw new JkBuildParseException(where + " could not run `" + argv.getFirst() + "`: " + e.getMessage());
         }

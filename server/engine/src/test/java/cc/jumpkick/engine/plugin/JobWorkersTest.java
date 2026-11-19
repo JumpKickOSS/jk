@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.testing.Await;
@@ -96,6 +97,22 @@ class JobWorkersTest {
         String stat = Processes.outputIfOk(
                 new ProcessBuilder("ps", "-o", "stat=", "-p", Long.toString(pid)), Duration.ofSeconds(10));
         return stat == null || stat.isBlank() ? '?' : stat.strip().charAt(0);
+    }
+
+    /**
+     * A job's child (npm installing jk's graph scripts, javadoc, git, a compiler) starts from a copy
+     * of the engine's environment, which is the shell that started the engine: a cache key seed it
+     * exported does not reach the child.
+     */
+    @Test
+    void a_jobs_child_inherits_no_cache_key_seed_from_the_engine() throws Exception {
+        ProcessBuilder pb = (Os.isWindows() ? new ProcessBuilder("cmd.exe", "/c", "set") : new ProcessBuilder("env"))
+                .redirectErrorStream(true);
+        pb.environment().put("JK_CACHE_KEY_SEED", "made-up-seed-0123456789");
+        pb.environment().put("JK_SEED_NEIGHBOUR", "kept");
+        String out =
+                Processes.capture(JobWorkers.start(pb), Duration.ofSeconds(30)).output();
+        assertThat(out).contains("JK_SEED_NEIGHBOUR=kept").doesNotContain("made-up-seed");
     }
 
     @Test

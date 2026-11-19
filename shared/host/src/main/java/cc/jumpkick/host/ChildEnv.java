@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import java.io.IOException;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,10 +19,45 @@ import org.jspecify.annotations.Nullable;
  * therefore built with {@link #map()} or {@link #copyOf}, changed with {@link #put}, and handed to
  * a process with {@link #replace} or {@link #putAll}, which keep one entry per name whatever its
  * case.
+ *
+ * <p>It is also where the one variable jk keeps from every child is kept out ({@link #withheld}):
+ * the remote cache key seed, which jk alone reads. A child starts from a copy of whichever
+ * environment its parent had, and the engine's is the shell that started it, so a seed exported
+ * there would otherwise reach every program the engine starts that is not a worker (npm installing
+ * jk's graph scripts, the AOT trainer, {@code git}, {@code jlink}, a notifier). {@link #replace},
+ * {@link #put} and {@link #putAll} leave it out of what they hand over, and {@link #start} takes it
+ * out of what the child would inherit; the engine starts every process through {@link #start} (the
+ * {@code child-start-owner} guard).
  */
 public final class ChildEnv {
 
+    /**
+     * The team's remote cache key seed. jk alone reads it, from the shell that runs {@code jk}: no
+     * child process is handed it and no key holds it.
+     */
+    public static final String CACHE_KEY_SEED = "JK_CACHE_KEY_SEED";
+
     private ChildEnv() {}
+
+    /**
+     * Whether {@code name} is kept from every child jk starts and from every key: {@link
+     * #CACHE_KEY_SEED}, in any case, since a Windows name matches so. The one rule; {@code
+     * BuildEnv.withheld} is this.
+     */
+    public static boolean withheld(String name) {
+        return CACHE_KEY_SEED.equalsIgnoreCase(name);
+    }
+
+    /** Takes every {@link #withheld} name out of what {@code pb}'s child would get, under any spelling. */
+    public static ProcessBuilder withhold(ProcessBuilder pb) {
+        pb.environment().keySet().removeIf(ChildEnv::withheld);
+        return pb;
+    }
+
+    /** Starts {@code pb}'s child without the {@link #withheld} names: how jk's engine starts a process. */
+    public static Process start(ProcessBuilder pb) throws IOException {
+        return withhold(pb).start();
+    }
 
     /** An empty environment map that, on Windows, treats {@code Path} and {@code PATH} as one name. */
     public static Map<String, String> map() {
@@ -110,23 +146,23 @@ public final class ChildEnv {
         for (Map.Entry<String, String> e : more.entrySet()) put(env, e.getKey(), e.getValue(), caseInsensitive);
     }
 
-    /** Gives {@code pb}'s child exactly {@code env}, one entry per name whatever its case. */
+    /** Gives {@code pb}'s child exactly {@code env}, one entry per name whatever its case, less the {@link #withheld}. */
     public static ProcessBuilder replace(ProcessBuilder pb, Map<String, String> env) {
         Map<String, String> target = pb.environment();
         target.clear();
         putAll(target, env);
-        return pb;
+        return withhold(pb);
     }
 
     /** Sets {@code name} for {@code pb}'s child, replacing any other spelling of it ({@link #put}). */
     public static ProcessBuilder put(ProcessBuilder pb, String name, String value) {
         put(pb.environment(), name, value);
-        return pb;
+        return withhold(pb);
     }
 
     /** Lays {@code more} over what {@code pb}'s child inherits, one entry per name whatever its case. */
     public static ProcessBuilder putAll(ProcessBuilder pb, Map<String, String> more) {
         putAll(pb.environment(), more);
-        return pb;
+        return withhold(pb);
     }
 }
