@@ -443,9 +443,10 @@ public final class BuildJournal {
      */
     private void learn(Path projectHome, BuildRecord finished, RunMeasures measures) {
         String metrics = RunMetricsToml.render(finished, measures);
-        ProjectStore.foldRun(projectHome, metrics, RunStepLedger.record(finished));
+        Path hostStore = buildsRoot.resolve(HostStore.FILE);
+        ProjectStore.foldRun(projectHome, metrics, RunStepLedger.record(finished, hostStore));
         if (metrics != null && !finished.synthetic()) {
-            HostStore.foldMeans(buildsRoot.resolve(HostStore.FILE), ProjectStore.scalars(metrics));
+            HostStore.foldMeans(hostStore, ProjectStore.scalars(metrics));
         }
     }
 

@@ -27,9 +27,11 @@ final class RunStepLedger {
      * The ledger entry of {@code finished}, for its project store to apply ({@link
      * StepLedger#entry}), and what it teaches the host's effort and rung-bias sections: successful
      * build-like runs only; a failed or cancelled run's walls are not what its steps cost. Null when
-     * there is nothing to record.
+     * there is nothing to record. The host's sections go to {@code hostStore}, the store of the
+     * builds root the run is journaled under, not to the one the process resolves now: a run
+     * finished under one state directory once taught another's estimates.
      */
-    static @Nullable UnaryOperator<List<String>> record(BuildRecord finished) {
+    static @Nullable UnaryOperator<List<String>> record(BuildRecord finished, Path hostStore) {
         if (finished == null || finished.running() || !finished.success() || finished.cancelled()) return null;
         if (!BuildHistoryKinds.isBuildLike(finished.kind())) return null;
         long held = MemoryHolds.totalHeldMillis(finished.requestId());
@@ -51,8 +53,8 @@ final class RunStepLedger {
                 RunShapes.compilerWarmthOf(finished.requestId()),
                 RunShapes.hostBusyOf(finished.requestId()),
                 samples);
-        StepEffort.learn(StepEffort.defaultFile(), effortSamples(samples));
-        RungBias.learn(RungBias.defaultFile(), pricedPairs(finished.requestId(), samples));
+        StepEffort.learn(hostStore, effortSamples(samples));
+        RungBias.learn(hostStore, pricedPairs(finished.requestId(), samples));
         return entry;
     }
 
