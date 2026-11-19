@@ -14,11 +14,20 @@ limit less its working set — see [Engine](engine.md#worker-memory).
       ~/.jk/store
       ~/.m2/repository
       **/target/.jk
-    key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml', '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}
+    key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml', '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}-${{ github.run_id }}
     restore-keys: |
+      jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml', '**/package-lock.json', '**/pnpm-lock.yaml', '**/yarn.lock') }}-
       jk-${{ runner.os }}-
 - run: jk test
 ```
+
+An `actions/cache` entry is never overwritten: a run that restores its exact key saves nothing, so
+a key made of the lockfiles alone keeps what the first run after a lock change built and nothing
+after it. The run id makes every run's key new, so every run saves; the next run restores the
+newest entry with the same OS and lockfiles, else the newest with the same OS.
+
+The cache serves another runner only when the project commits `jk-lock.toml`, which carries the
+project id every key names ([below](#sharing-a-cache-across-checkouts-and-agents)).
 
 | Path | What it holds | Safe to restore? |
 |------|----------------|------------------|
@@ -29,10 +38,33 @@ limit less its working set — see [Engine](engine.md#worker-memory).
 | `store/tools/node`, `store/tools/<pnpm\|yarn\|bun>` | Provisioned Node.js and package managers ([Node.js](node.md)) | **Yes** — inside the store above |
 | `cache/npm`, `cache/bun`, `cache/yarn`, `store/pnpm-store` | The package managers' download caches | **Yes** — a warm `node-install` |
 | `target/.jk/` | Project-local engine state, including **preflight memos** | **Yes** with the workspace |
-| Platform **state** runs | Run history + `jk-results.md` + `details.jsonl` | Optional |
+| Platform **state** `builds/` | Run history | Optional |
+| The rest of platform **state** | Engine sockets and tokens, the home's secret, kept key seeds | **Never** |
+| `~/.jk/creds` | Repository and forge credentials | **Never** |
 | `jk-lock.toml` | Resolved coords | **Commit** (not a cache) |
 
-**Do not cache** engine sockets / live process state across machines.
+**Do not cache** the state directory as a whole (`~/.jk/state`) or `~/.jk/creds`. Beside the
+engine's sockets and live process state, the state directory holds the engine's HTTP token, the
+secret this home keys environment values under (`env-read.key`) and the key seeds a shared cache
+issued (`cache-seeds/`), and a pull request's run can restore what the default branch saved.
+
+A suite whose result read a value of the environment
+([Tests](test.md#environment-variables-a-suite-reads)) is keyed under that home secret, so a fresh
+runner runs it again; every other result replays from the restored cache. Such results reach another
+runner only through a [shared cache](cache.md#shared-cache) under a
+[key seed](cache.md#results-that-read-your-environment). Make the seed once, any random string of at
+least 16 characters (`openssl rand -base64 32`; a shorter one is refused with a warning), keep it as
+a repository secret, and hand it to the job with the cache's address and credential:
+
+```yaml
+env:
+  JK_CACHE_REMOTE: https://cache.example.com
+  JK_REPO_CACHE_EXAMPLE_COM_TOKEN: ${{ secrets.JK_CACHE_TOKEN }}
+  JK_CACHE_KEY_SEED: ${{ secrets.JK_CACHE_KEY_SEED }}
+```
+
+A pull request from a fork gets no secrets: its run takes no seed, runs the suites that read the
+environment instead of replaying them and keeps their results to itself. Nothing fails.
 
 Preflight dirty memos use **source content hashes** by default (CI-safe). Opt into faster
 path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if you accept that tradeoff.
