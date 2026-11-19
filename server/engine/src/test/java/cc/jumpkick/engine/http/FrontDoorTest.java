@@ -48,14 +48,19 @@ class FrontDoorTest {
 
     /** An engine answering only {@code /api/identity}, as id {@code id}, on an ephemeral loopback port. */
     private int engineAnswering(String id) throws IOException {
+        return engineAnswering(id, "guest");
+    }
+
+    /** As {@link #engineAnswering(String)}, saying it has role {@code role}. */
+    private int engineAnswering(String id, String role) throws IOException {
         HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         int port = s.getAddress().getPort();
         s.createContext(
                 "/api/identity",
                 ex -> send(
                         ex,
-                        "{\"id\":\"" + id + "\",\"label\":\"WSL Ubuntu on box\",\"role\":\"guest\",\"port\":" + port
-                                + "}"));
+                        "{\"id\":\"" + id + "\",\"label\":\"WSL Ubuntu on box\",\"role\":\"" + role + "\",\"port\":"
+                                + port + "}"));
         s.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         s.start();
         started.add(s);
@@ -156,6 +161,16 @@ class FrontDoorTest {
         assertThat(door(List.of(self, notHex)).engines())
                 .extracting(m -> m.get("id"))
                 .containsExactly("90cec5c68a24");
+    }
+
+    @Test
+    void discovery_leaves_out_a_host_engine_on_the_band_which_is_another_homes_on_this_host() throws Exception {
+        int otherHome = engineAnswering("0be7a1e5c0de", "host");
+        int guest = engineAnswering(GUEST_ID);
+        assertThat(door(List.of(otherHome, guest)).engines())
+                .as("a scratch home's engine moved off 8910 is no guest to switch to")
+                .extracting(m -> m.get("id"))
+                .containsExactly("90cec5c68a24", GUEST_ID);
     }
 
     @Test

@@ -19,6 +19,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.53.1
 
+- **A scratch or test home's engine no longer takes port 8910 from yours.** An engine started
+  with `JK_HOME` naming another home serves on a port between 8911 and 8999 instead, so MCP and
+  the dashboard keep answering at 8910 in your own sessions. When something still holds 8910,
+  `jk engine status` names the home whose engine holds it.
+
 - **A first build no longer gives up waiting for memory it has.** Kotlin, Groovy and plugin
   workers left idle by earlier modules now exit for a job whose heap would not fit beside theirs,
   instead of that job failing after ten minutes with most of the worker budget free.

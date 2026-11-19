@@ -19,6 +19,7 @@ import cc.jumpkick.engine.http.FrontDoorToken;
 import cc.jumpkick.engine.http.GuestPairing;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
+import cc.jumpkick.engine.http.PortHolder;
 import cc.jumpkick.engine.http.SelfUpdateControl;
 import cc.jumpkick.engine.http.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
@@ -45,6 +46,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
@@ -103,6 +105,18 @@ public final class EngineHttpFront {
 
     private Consumer<HttpEngineServer> pairWith = this::pairWithWindows;
 
+    /** Whether this engine's home is the person's own ({@link JkDirs#isAccountHome}); a test seam. */
+    private BooleanSupplier ownHome = () -> JkDirs.current().isAccountHome();
+
+    /** The front door's port, 8910; a test puts a free port in its place rather than touch the real one. */
+    private int frontDoorPort = JkHttpConfig.DEFAULT_PORT;
+
+    /** Test seam, before {@link #start}: whether the home is the person's own, and the port standing for 8910. */
+    void homeSeams(boolean ownHome, int frontDoorPort) {
+        this.ownHome = () -> ownHome;
+        this.frontDoorPort = frontDoorPort;
+    }
+
     /** Test seam, before {@link #start}: the guest detection, the environment and the guest's pairing. */
     void seams(Supplier<Guest> guest, Function<String, @Nullable String> env, Consumer<HttpEngineServer> pairing) {
         this.guest = guest;
@@ -131,7 +145,11 @@ public final class EngineHttpFront {
     /**
      * Start when {@code [http]} is present; bind failure is advisory only. A named port is bound as
      * named. Otherwise the host engine binds 8910, and a WSL or container guest its sticky band port
-     * ({@link BandPort}), moving to the next free one when another process holds it.
+     * ({@link BandPort}), moving to the next free one when another process holds it. 8910 is the
+     * person's own home's: an engine of any other home ({@code JK_HOME} naming a test, scratch or
+     * gate home, with or without a {@code HOME} beside it) that would bind it, named or not, takes a
+     * band port instead, so it never keeps the
+     * default home's engine, and the MCP and dashboard clients that call it at 8910, from serving.
      */
     public void start() {
         // The hub and the config are created together: no [http] table, neither of them.
@@ -140,8 +158,12 @@ public final class EngineHttpFront {
         EngineIdentity id = EngineIdentity.current(version, guest.get());
         frontDoor = FrontDoorScope.active(env, JkDirs.home());
         if (!frontDoor) log.accept("jk engine: a test sandbox, private home or CI: no front-door duty");
-        Path bandFile =
-                id.guest().guest() && !JkHttpConfig.portNamed() ? paths.dir().resolve(BandPort.FILE) : null;
+        boolean leaveFrontDoor = config.port() == frontDoorPort && !ownHome.getAsBoolean();
+        if (leaveFrontDoor)
+            log.accept("jk engine: port " + frontDoorPort + " is the default home's; serving on a band port");
+        Path bandFile = leaveFrontDoor || (id.guest().guest() && !JkHttpConfig.portNamed())
+                ? paths.dir().resolve(BandPort.FILE)
+                : null;
         JkHttpConfig first = bandFile == null ? config : config.withPort(BandPort.preferred(bandFile, id.id()));
         if (frontDoor && !id.guest().guest()) FrontDoorToken.align(paths.dir(), paths.httpToken());
         HttpEngineServer candidate = candidate(first, hub, id);
@@ -181,7 +203,13 @@ public final class EngineHttpFront {
         } catch (BindException taken) {
             candidate.close();
             if (bandFile == null) {
-                failed(candidate, taken);
+                if (first.port() != frontDoorPort) {
+                    failed(candidate, taken);
+                    return;
+                }
+                // Say who holds the front door, so the person stops that engine (often another home's).
+                error = PortHolder.describe(first.port(), id.jkHome());
+                log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
                 return;
             }
         } catch (IOException | RuntimeException e) {

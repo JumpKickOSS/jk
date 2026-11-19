@@ -177,6 +177,18 @@ pairing into your Windows profile, starts no Windows engine, runs no check from 
 Windows toast, so it starts no Windows program at all. `JK_FRONT_DOOR=true` in its environment opts
 such an engine in; `JK_FRONT_DOOR=false` opts any engine out.
 
+Port 8910 belongs to your own home (`~/.jk` under your account's home directory, or a `JK_HOME` that
+is that same directory; on Windows also a `JK_HOME` set as a User variable). Pointing `HOME`
+elsewhere for one command does not make another home yours. An engine of any other home serves its
+dashboard and MCP endpoint on a port between 8911 and 8999 that it keeps across restarts, even when
+8910 is free and even when its config names 8910, so a scratch, test or gate home's engine never
+keeps yours from serving there. Everything run under that home finds it where it is: `jk web`, `jk
+mcp` and `jk engine status` read the URL from that home's own engine. When your engine still finds
+8910 taken, the Web UI line of `jk engine status` says by what: `port 8910 is held by the jk engine
+of home /var/tmp/x/.jk` (an engine of another home from an older JumpKick), or `by another program`.
+Stop that engine with `jk engine stop` run with `JK_HOME` set to its home, then `jk engine stop`
+here; your next `jk` command starts an engine that binds 8910.
+
 JumpKick for Windows installs JumpKick into the WSL distros you name: `jk self setup-wsl Ubuntu-26.10`
 (`--status` shows each distro, the JumpKick it has and whether its engine is paired; `--remove` takes
 JumpKick out of a distro again and leaves Windows' own alone). Each distro gets the published release

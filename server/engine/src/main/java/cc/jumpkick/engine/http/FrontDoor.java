@@ -162,8 +162,8 @@ public final class FrontDoor {
     }
 
     /**
-     * Every engine on this machine: this one first ({@code self: true}), then each engine answering on
-     * a band port, with {@code paired} saying whether this front door can proxy it. Every port is
+     * Every engine on this machine: this one first ({@code self: true}), then each guest engine
+     * answering on a band port, with {@code paired} saying whether this front door can proxy it. Every port is
      * asked at once: on Windows a loopback port with no listener takes about a second to refuse.
      */
     public List<Map<String, Object>> engines() {
@@ -188,6 +188,9 @@ public final class FrontDoor {
         for (Map.Entry<Integer, CompletableFuture<@Nullable Map<String, Object>>> e : asked.entrySet()) {
             Map<String, Object> id = await(e.getValue(), deadline - clock.nanos());
             if (id == null || (me != null && me.id().equals(id.get("id")))) continue;
+            // A host engine on the band is another home's on this host (a scratch, test or gate home moved
+            // off 8910), not a guest this front door could pair with: listing it would offer a dead row.
+            if ("host".equals(id.get("role"))) continue;
             String engine = String.valueOf(id.get("id"));
             Map<String, Object> earlier = found.get(engine);
             boolean own = e.getKey().equals(id.get("port"));

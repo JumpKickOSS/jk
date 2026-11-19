@@ -8,10 +8,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * The HTTP port a guest engine binds when no port is configured: a sticky port in 8911 to 8999,
- * first chosen from the engine's identity and then kept in its state directory, so a restart keeps
- * the origin a bookmark, a tab or an MCP config uses. The host engine binds 8910; a guest never
- * takes it just because it is free.
+ * The HTTP port a guest engine binds when no port is configured, and an engine of a home other than
+ * the person's own in place of 8910: a sticky port in 8911 to 8999, first chosen from the engine's
+ * identity and then kept in its state directory, so a restart keeps the origin a bookmark, a tab or
+ * an MCP config uses. The own home's host engine binds 8910; a guest never takes it just because it
+ * is free.
  */
 public final class BandPort {
 

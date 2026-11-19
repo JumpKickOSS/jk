@@ -284,6 +284,25 @@ public final class JkDirs {
         return isDefaultHome() || (Os.isWindows(osName) && PersistedHome.isPersisted(homeDir()));
     }
 
+    /**
+     * True when this home is the one the person's own shells use: an installed home ({@link
+     * #isInstalledHome}) that is also {@code .jk} under the home the OS records for the account,
+     * {@code user.home} as this JVM started, rather than under {@code $HOME}. A scratch or gate home
+     * run as {@code HOME=/var/tmp/x JK_HOME=/var/tmp/x/.jk} is the default home by {@code $HOME}'s
+     * rule, but not the account's: what one home may hold for the whole machine (port 8910) asks this.
+     */
+    public boolean isAccountHome() {
+        return isAccountHome(STARTUP_USER_HOME);
+    }
+
+    /** {@link #isAccountHome()} with the account's home {@code accountUserHome}: testable without the process. */
+    boolean isAccountHome(@Nullable String accountUserHome) {
+        if (Os.isWindows(osName) && PersistedHome.isPersisted(homeDir())) return true;
+        if (accountUserHome == null || !isDefaultHome()) return false;
+        return realOrNormal(homeDir())
+                .equals(realOrNormal(Path.of(accountUserHome).resolve(HOME_DIR)));
+    }
+
     private static Path realOrNormal(Path path) {
         try {
             return path.toRealPath();

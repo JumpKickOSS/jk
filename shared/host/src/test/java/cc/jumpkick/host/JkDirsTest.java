@@ -448,6 +448,45 @@ class JkDirsTest {
         assertThat(dirs.borrowedDefaultStore(dirs.storeDir())).isNull();
     }
 
+    /**
+     * The account's home is {@code .jk} under the home the OS records for the account, not under
+     * {@code $HOME}: a scratch or gate home run as {@code HOME=/x JK_HOME=/x/.jk} is the default home
+     * by {@code $HOME}'s rule, and must still not hold what is the person's alone (port 8910).
+     */
+    @Test
+    void the_accounts_home_is_under_the_accounts_own_home_whatever_HOME_says(@TempDir Path root) throws Exception {
+        Path account = Files.createDirectories(root.resolve("account"));
+        Files.createDirectories(account.resolve(".jk"));
+        Path scratch = Files.createDirectories(root.resolve("scratch"));
+        Path link = root.resolve("link");
+        Symlinks.create(link, account.resolve(".jk"));
+
+        assertThat(JkDirs.of(NO_ENV::get, account.toString(), "Linux").isAccountHome(account.toString()))
+                .as("no override")
+                .isTrue();
+        assertThat(JkDirs.of(Map.of("JK_HOME", link.toString())::get, account.toString(), "Linux")
+                        .isAccountHome(account.toString()))
+                .as("a JK_HOME that resolves to it")
+                .isTrue();
+        JkDirs scratchHome = JkDirs.of(
+                Map.of(
+                        "HOME",
+                        scratch.toString(),
+                        "JK_HOME",
+                        scratch.resolve(".jk").toString())::get,
+                scratch.toString(),
+                "Linux");
+        assertThat(scratchHome.isDefaultHome()).as("by $HOME's rule").isTrue();
+        assertThat(scratchHome.isAccountHome(account.toString())).isFalse();
+        assertThat(JkDirs.of(Map.of("JK_HOME", scratch.toString())::get, account.toString(), "Linux")
+                        .isAccountHome(account.toString()))
+                .as("a JK_HOME elsewhere")
+                .isFalse();
+        assertThat(JkDirs.of(NO_ENV::get, account.toString(), "Linux").isAccountHome(null))
+                .as("no account home known")
+                .isFalse();
+    }
+
     @Test
     void a_private_home_with_its_own_store_borrows_nothing(@TempDir Path user) throws Exception {
         Files.createDirectories(user.resolve(".jk/store"));

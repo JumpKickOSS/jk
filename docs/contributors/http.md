@@ -34,6 +34,21 @@ comes from its identity; the port it binds is kept in `<state>/engine/http-port`
 every start. When another process holds it after the bind's retries, the guest takes the next free
 port in the band and keeps that one. A guest never takes 8910 because it is free.
 
+8910 is the person's own home's (`JkDirs.isAccountHome`: `.jk` under the home the OS records for the
+account, the JVM's startup `user.home`, however reached, or on Windows a `JK_HOME` persisted as a User
+variable). `$HOME` does not decide it: a scratch or gate home run as `HOME=/x JK_HOME=/x/.jk` is the
+default home by `$HOME`'s rule, and it is the usual culprit. An engine of any other home whose port
+would be 8910, by default or named, takes the band the same way, sticky in its own `http-port` file
+(`EngineHttpFront.start`), and logs `port 8910 is the default home's; serving on a band port`. Its
+clients never assumed 8910: `jk web`, `jk mcp` and `jk engine status` read the URL from the home's own
+socket. The front door's discovery leaves out a band port answering with role `host`, since that is
+such an engine and no guest to pair with. When the own home's engine cannot bind 8910 after the
+retries, it reads `/api/identity` there (`PortHolder`) and reports the holder's `jkHome` (or "another
+program") as its `httpError`, which `jk engine status` prints on the Web UI line. Taking a band port
+was chosen over stepping aside on request: step-aside is authorized with a pairing token, which an
+engine of another home does not have, and an engine that moved while serving would leave its own
+clients holding a dead URL.
+
 `Guest` (`cc.jumpkick.host`) detects a guest from the kernel and the filesystem: WSL by `microsoft` in
 `/proc/sys/kernel/osrelease` (with `WSLInterop` saying whether Windows programs can run), a container
 by `/.dockerenv`, `/run/.containerenv` or `container=`. It never reads `WSL_*` variables for the
