@@ -14,7 +14,6 @@ import cc.jumpkick.wire.runtime.WorkspaceTarget;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -24,8 +23,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The lines a build's OK verdict ends with after a hand edit, from the rows the graph worker leaves:
  * petclinic's telephone column renamed in the H2 schema alone, and its visit limit key renamed in
- * application.properties alone, as the worker wrote them. Nothing at all unless {@code [graph] anchor-tail}
- * names a variant; then silent with nothing left, after a failed run, and of prose unless it asks for a count.
+ * application.properties alone, as the worker wrote them. By default the places that must change; nothing
+ * with nothing left, after a failed run, with no graph, outside a workspace or with {@code anchor-tail = "off"};
+ * and nothing of prose unless {@code anchor-tail} asks for a count.
  */
 class AnchorsLeftTest {
 
@@ -33,7 +33,7 @@ class AnchorsLeftTest {
     static final String H2 = "src/main/resources/db/h2/schema.sql";
     static final String MYSQL = "src/main/resources/db/mysql/schema.sql";
 
-    /** The push's lines, which a workspace gets only when its root's jk.toml asks for them. */
+    /** The push's lines asked for by name, as a workspace gets them by default. */
     static final String SILENT = "\n[graph]\nanchor-tail = \"silent\"\n";
 
     /** The telephone column renamed to phone in the H2 schema only. */
@@ -300,7 +300,7 @@ class AnchorsLeftTest {
 
     @Test
     void aFailedRunNoGraphOrNoRecordSaysNothing(@TempDir Path root) throws IOException {
-        String dir = workspace(root, COLUMN, SILENT).toString();
+        String dir = workspace(root, COLUMN, "").toString();
         assertThat(AnchorsLeft.after(dir, "FAIL test spring-petclinic · 1 failed\n"))
                 .isEmpty();
         assertThat(AnchorsLeft.after(dir, "FAIL guard spring-petclinic · 1 failed\n"))
@@ -312,13 +312,30 @@ class AnchorsLeftTest {
     }
 
     /**
-     * By default the push is off: the trap's hasty edit (the column renamed in MySQL's schema alone) gets
-     * the plain verdict, and the verdict does none of the push's work: here the refresh the build started
-     * is still running and the graph has no watch list, which with the push on waits for that refresh.
+     * With no {@code [graph]} table at all, the trap's hasty edit (the column renamed in MySQL's schema
+     * alone) gets the places: the default is {@code silent}, prose unsaid. A {@code [graph]} table that sets
+     * only aliases is the same.
      */
     @Test
-    void byDefaultTheVerdictIsThePlainOneAndWaitsForNothing(@TempDir Path root) throws Exception {
-        String dir = workspace(root, MYSQL_ONLY, "").toString();
+    void byDefaultTheVerdictNamesThePlacesAndNothingOfTheProse(@TempDir Path root) throws IOException {
+        String dir = workspace(root, COLUMN, "").toString();
+        String places = AnchorsLeft.after(dir, OK);
+        assertThat(places)
+                .isEqualTo(AnchorsLeft.after(workspace(root, COLUMN, SILENT).toString(), OK));
+        assertThat(places).startsWith("Your edit changed these names;").doesNotContain("Docs");
+        workspace(root, COLUMN, "\n[graph.aliases]\nOwner = [\"customer\"]\n");
+        assertThat(AnchorsLeft.after(dir, OK)).isEqualTo(places);
+    }
+
+    /**
+     * {@code anchor-tail = "off"} is the way out: the verdict is the plain one and the push does none of
+     * its work. Here the refresh the build started is still running and the graph has no watch list, in
+     * which state the default waits for that refresh; off answers at once, before the record is read.
+     */
+    @Test
+    void offSaysNothingAndWaitsForNothing(@TempDir Path root) throws Exception {
+        String dir = workspace(root, MYSQL_ONLY, "\n[graph]\nanchor-tail = \"off\"\n")
+                .toString();
         String verdict = "OK build spring-petclinic · 9.7s\n";
         Path key = GraphRunner.rootOf(root);
         GraphRunner.holdSlot(key);
@@ -326,15 +343,33 @@ class AnchorsLeftTest {
             long start = System.nanoTime();
             assertThat(verdict + AnchorsLeft.after(dir, verdict)).isEqualTo(verdict);
             assertThat((System.nanoTime() - start) / 1_000_000).as("no wait").isLessThan(2_000);
-            Files.writeString(root.resolve("jk.toml"), "\n[graph]\nanchor-tail = \"off\"\n", StandardOpenOption.APPEND);
-            assertThat(AnchorsLeft.after(dir, verdict)).as("off, said").isEmpty();
+            Files.writeString(
+                    root.resolve("jk.toml"),
+                    Files.readString(root.resolve("jk.toml")).replace("anchor-tail = \"off\"\n", ""));
+            Thread release = releaseAfter(key, 400);
+            start = System.nanoTime();
+            assertThat(AnchorsLeft.after(dir, verdict)).startsWith("Your edit changed these names;");
+            assertThat((System.nanoTime() - start) / 1_000_000)
+                    .as("the default waits for the refresh")
+                    .isGreaterThanOrEqualTo(350);
+            release.join();
         } finally {
-            GraphRunner.releaseSlot(key);
+            if (!GraphRunner.awaitRefresh(key, 0)) GraphRunner.releaseSlot(key);
         }
-        Files.writeString(
-                root.resolve("jk.toml"),
-                Files.readString(root.resolve("jk.toml")).replace("\"off\"", "\"silent\""));
-        assertThat(AnchorsLeft.after(dir, verdict)).startsWith("Your edit changed these names;");
+    }
+
+    /**
+     * A directory that is not a workspace (no jk.toml at its root) says nothing, even with a graph and a
+     * record under it; nor does a root jk builds from its pom.xml, which has no {@code [graph]} to turn
+     * the lines off with.
+     */
+    @Test
+    void outsideAWorkspaceOrOnAPomItSaysNothing(@TempDir Path root) throws IOException {
+        String dir = workspace(root, COLUMN, "").toString();
+        Files.delete(root.resolve("jk.toml"));
+        assertThat(AnchorsLeft.after(dir, OK)).isEmpty();
+        Files.writeString(root.resolve("pom.xml"), "<project/>\n");
+        assertThat(AnchorsLeft.after(dir, OK)).isEmpty();
     }
 
     /**

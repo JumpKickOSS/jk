@@ -34,6 +34,12 @@ JumpKick shows you this page's new entries after it updates itself.
   IPv4, failed calling it. Test JVMs keep both IP stacks now: no `micronaut.server.host` line is
   needed.
 
+- **An agent's passing build names what its edit left under an old name.** When a hand edit
+  renames one side of an anchor (a SQL column, a config key, a route) and other files still use
+  the old name, an MCP `run` that builds and passes ends with those places, in five files at
+  most; it says nothing otherwise, and the CLI never prints it. `[graph] anchor-tail = "off"` turns
+  it off ([After a hand edit](graph.md#after-a-hand-edit)).
+
 ## 0.53.0
 
 - **Breaking: tests see your shell.** `FOO=bar jk test` reaches the test, and a cached result

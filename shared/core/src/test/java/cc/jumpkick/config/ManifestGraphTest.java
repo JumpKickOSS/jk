@@ -30,7 +30,11 @@ class ManifestGraphTest {
 
     @Test
     void readsWhatABuildsVerdictSaysOfProseLeftUnderAnOldName() {
-        assertThat(parse("name = \"a\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_OFF);
+        assertThat(parse("name = \"a\"\n").anchorTail()).as("no [graph]").isEqualTo(GraphConfig.TAIL_SILENT);
+        assertThat(parse("[graph.aliases]\nTariff = [\"price\"]\n").anchorTail())
+                .as("[graph] without the key")
+                .isEqualTo(GraphConfig.TAIL_SILENT);
+        assertThat(parse("[graph]\nanchor-tail = \"off\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_OFF);
         assertThat(parse("[graph]\nanchor-tail = \"silent\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_SILENT);
         assertThat(parse("[graph]\nanchor-tail = \"kinds\"\n").anchorTail()).isEqualTo(GraphConfig.TAIL_KINDS);
         assertThatThrownBy(() -> parse("[graph]\nanchor-tail = \"loud\"\n"))

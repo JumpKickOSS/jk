@@ -52,7 +52,7 @@ final class ManifestGraph {
                 aliases.put(term, List.copyOf(out));
             }
         }
-        String tail = GraphConfig.TAIL_OFF;
+        String tail = GraphConfig.TAIL_DEFAULT;
         if (graph.contains("anchor-tail")) {
             Object v = graph.get("anchor-tail");
             if (!(v instanceof String t) || !GraphConfig.TAILS.contains(t)) {

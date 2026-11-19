@@ -249,15 +249,21 @@ nor a file that merely shares an anchor with the edited one; an edit that change
 nothing. The places are kept in `target/graph/anchors/stale`, each dropped once its file no longer
 carries the old name or the edit is undone, so a build after a graph question still names them.
 
-The record is always kept, and `callers` answers from it (below). Naming its places in a build's verdict
-is experimental and off by default, while the agent bench measures it: with `[graph] anchor-tail` set
-to a variant ([Settings](#settings)), an MCP `run` that builds (`kind=build`, `test`, `gate`, `guard`, `install` or any kind that builds the tree) and passes ends with the places that must change, a file's lines as one place, in five
-files at most, then `+N more:` and the call that lists the rest. It says nothing when none is left,
-and nothing after a run that failed. It waits for the refresh its build started (10 seconds at
+The record is always kept, and `callers` answers from it (below). An agent also sees its places without
+asking: in a workspace with a graph, an MCP `run` that builds (`kind=build`, `test`, `gate`, `guard`,
+`install` or any kind that builds the tree) and passes ends with the places that must change, a file's
+lines as one place, in five files at most, then `+N more:` and the call that lists the rest. It says
+nothing when none is left, nothing after a run that failed, nothing in a checkout with no graph yet,
+and nothing on the CLI: `jk build` and the rest print their usual output, and `callers file:<path>`
+is how a person asks. Prose that still names the old name is not mentioned. `[graph] anchor-tail =
+"off"` turns the lines off ([Settings](#settings)); a project JumpKick builds from its `pom.xml` has no
+`[graph]` to set and gets none. A verdict waits for the refresh its build started (10 seconds at
 most) only when a file that defines or uses an anchor, or that the record names, changed since the
 last refresh (`target/graph/anchors/watch` lists them with their hashes); otherwise that refresh
 cannot change the record, which is read at once, so a run that is up to date, or whose edit touched
-no such file, takes no longer than without the graph. On spring-petclinic, with the column renamed in MySQL's schema
+no such file, takes no longer than without the graph. On the agent bench's petclinic tasks that
+change one side of an anchor, agents' runs ended green 62 times in 68 with the lines and 56 without,
+and no task whose right change touches nothing else ever showed them. On spring-petclinic, with the column renamed in MySQL's schema
 alone (one line, wrapped here):
 
 ```
@@ -481,12 +487,18 @@ An alias maps a name in the code to the words people use for it. A question hold
 also starts from the name. JumpKick's graph has no LLM pass: documents are read for their structure, links
 and code mentions only.
 
-`[graph] anchor-tail` is for the agent bench, which compares what a build's verdict says after a hand
-edit left a name behind ([After a hand edit](#after-a-hand-edit)); it is experimental. `off`, the
-default: the verdict says nothing of it and neither waits for the graph's refresh nor reads the record;
-`silent`, the places that must change and nothing of the prose; `count`, those and how many places of
-prose (`Docs use the old name too: 3 places.`); `kinds`, how many of each kind of file (`1 markdown,
-2 text`).
+`[graph] anchor-tail` is what an MCP `run`'s verdict says after a hand edit left a name behind
+([After a hand edit](#after-a-hand-edit)):
+
+```toml
+[graph]
+anchor-tail = "off"      # the default is "silent"
+```
+
+`silent`, the default: the places that must change and nothing of the prose. `off`: the verdict says
+nothing of it and neither waits for the graph's refresh nor reads the record. Two variants are
+experimental: `count`, those places and how many places of prose (`Docs use the old name too: 3
+places.`); `kinds`, how many of each kind of file (`1 markdown, 2 text`).
 
 ## Callers
 

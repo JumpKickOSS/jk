@@ -602,7 +602,7 @@
         "anchor-tail": {
           "type": "string",
           "enum": ["off", "silent", "count", "kinds"],
-          "description": "Experimental, for the agent bench: what a build's MCP verdict says of the places a hand edit left under an old name. off (default): nothing; silent: the places that must change; count, kinds: those and a count of the prose."
+          "description": "What a passing build's MCP run verdict says of the places a hand edit left under an old name. silent (default): the places that must change, in five files at most; off: nothing, and the verdict waits for nothing; count, kinds (experimental): those and a count of the prose. See docs/user/graph.md."
         }
       },
       "additionalProperties": false

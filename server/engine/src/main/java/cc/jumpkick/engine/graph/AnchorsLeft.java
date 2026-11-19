@@ -27,8 +27,11 @@ import java.util.stream.Collectors;
  * per place: {@code must|may \t place \t kind \t old \t now \t rel \t line \t written \t edited}. A
  * verdict names the places that must change in at most {@link #CAP} files, then how many more and the call
  * that lists them; it says nothing when none is left, and nothing of the judgment calls (prose) unless
- * {@code [graph] anchor-tail} asks for a count, which the agent bench compares. All of it is experimental and
- * off unless {@code anchor-tail} names a variant: by default a verdict gains nothing and costs nothing.
+ * {@code [graph] anchor-tail} asks for a count ({@code count} and {@code kinds}, experimental). This is the
+ * default ({@code silent}) in a workspace whose root has a {@code jk.toml}; {@code anchor-tail = "off"} turns it
+ * off, and then a verdict neither waits nor reads the record. Where nothing an anchor hangs on changed since the
+ * last refresh ({@link AnchorWatch}), a verdict waits for nothing: a project with no anchors pays a stat or two.
+ * Only MCP verdicts carry the lines; the CLI's output never does.
  */
 public final class AnchorsLeft {
 
@@ -74,8 +77,9 @@ public final class AnchorsLeft {
         if (!REFRESHED.matcher(verdict).find()) return "";
         try {
             Path root = GraphRunner.rootOf(Path.of(dir));
+            if (!GraphRunner.hasGraph(root)) return "";
             String mode = mode(root);
-            if (mode.equals(GraphConfig.TAIL_OFF) || !GraphRunner.hasGraph(root)) return "";
+            if (mode.equals(GraphConfig.TAIL_OFF)) return "";
             Path graph = GraphLayout.dir(root);
             if (!AnchorWatch.unchanged(root, graph) && !GraphRunner.awaitRefresh(root, REFRESH_WAIT_MS)) return "";
             List<Place> left = read(graph.resolve("anchors").resolve("stale"));
@@ -90,16 +94,17 @@ public final class AnchorsLeft {
     }
 
     /**
-     * The root manifest's {@code [graph] anchor-tail}: {@link GraphConfig#TAIL_OFF} without parsing it when
-     * the root's manifest does not name the key, so a default verdict pays one small read; a root built from
-     * its pom.xml (whose shadow manifest has no {@code [graph]}) is not rendered for it.
+     * The root manifest's {@code [graph] anchor-tail}: {@link GraphConfig#TAIL_DEFAULT} without parsing it
+     * when the root's manifest does not name the key, so a default verdict pays one small read. A directory
+     * with no {@code jk.toml} at its root is not a workspace and gets {@link GraphConfig#TAIL_OFF}, as does a
+     * root built from its pom.xml, whose shadow manifest has no {@code [graph]} to turn the lines off with.
      */
     static String mode(Path root) throws IOException {
         if (ManifestPaths.isShadowed(root)) return GraphConfig.TAIL_OFF;
         Path manifest = ManifestPaths.manifestIn(root);
-        if (!Files.isRegularFile(manifest)
-                || !Files.readString(manifest, StandardCharsets.UTF_8).contains("anchor-tail")) {
-            return GraphConfig.TAIL_OFF;
+        if (!Files.isRegularFile(manifest)) return GraphConfig.TAIL_OFF;
+        if (!Files.readString(manifest, StandardCharsets.UTF_8).contains("anchor-tail")) {
+            return GraphConfig.TAIL_DEFAULT;
         }
         return GraphRunner.graphConfig(root).anchorTail();
     }
