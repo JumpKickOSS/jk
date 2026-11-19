@@ -1022,6 +1022,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G157 | a JSON key read as a literal (`Jsonl.<reader>(…, "key")`) in production source that nothing in the tree writes (a `\"key\":` literal, a `.put("key", …)` or a `RequestJson` field call) and no `WireKeyRules.EXEMPT` entry names; an exemption that gained a writer or is no longer read | text over every `src/main/java`, read and written keys closed over the whole tree; a tree fixture proves the bite | guard test `wire-key-closure` |
 | G158 | a `jk-lock.toml` in the tree that `shared/core/src/test/resources/cc/jumpkick/lock/repository-locks.txt` does not list, or a listed path that is no lock: `LockRowParserTest` reads the repository's locks through both lock grammars from that list rather than walking the checkout from a test JVM | text, the guard's walk of the tree against the list's lines; a tree fixture proves the bite | guard test `lock-list-complete` |
 | G159 | a fixture manifest in test source pinning the JUnit train (`junit-jupiter`, `junit-platform-launcher`, `junit-vintage-engine`) at a version other than the one `jk-lock.toml` resolved, without a trailing `# off the train:` reason | text over every `src/test` and `src/integrationTest` Java file against the root lock's `org.junit.*` rows; a tree fixture proves the bite | guard test `junit-pin-parity` |
+| G160 | a call of `AnchorsLeft.after` outside `McpJobRuns`: the places a hand edit left under an old name reach a surface other than an MCP `run` verdict (the CLI's output first), where the push was never measured | bytecode forbid over server modules; the owner is `McpJobRuns` | `anchor-push-mcp-only` (forbid) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1051,6 +1052,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 <!-- guard-rules:start -->
 | id | kind | why |
 |---|---|---|
+| anchor-push-mcp-only | forbid | the push was measured on MCP verdicts alone; a second surface would carry it to readers it was never measured on |
 | archive-instant-owner | forbid | an archive stamped through the default timezone is a function of the build host's TZ |
 | archive-stream-owner | text | an archive written over an unbuffered sink pays one system call per 512 bytes |
 | async-names-its-executor | forbid | an async stage without an executor runs on the common pool, where none of the request's carried values reach |
