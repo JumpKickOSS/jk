@@ -18,9 +18,7 @@ import cc.jumpkick.util.StoreWriteGate;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutionException;
@@ -543,13 +541,8 @@ class OfficialTemplatesFreshenTest {
         }
     }
 
+    /** A fake git printing {@code versionLine}, run once untimed so a first-exec scan misses the probe's bound. */
     private static void fakeGit(Path file, String versionLine) throws IOException {
-        Files.writeString(file, "#!/bin/sh\nprintf '%s\\n' '" + versionLine + "'\n");
-        Files.setPosixFilePermissions(
-                file,
-                EnumSet.of(
-                        PosixFilePermission.OWNER_READ,
-                        PosixFilePermission.OWNER_WRITE,
-                        PosixFilePermission.OWNER_EXECUTE));
+        FakePrograms.warmed(file, "#!/bin/sh\nprintf '%s\\n' '" + versionLine + "'\n");
     }
 }
