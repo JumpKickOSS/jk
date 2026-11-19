@@ -853,6 +853,19 @@ A tier that fails is off for the rest of the build after one `remote-cache-unrea
 the step that met it, or on the run when the forecast met it before any step ran; the build goes on
 locally. No ACLs or REAPI execution in 1.0.
 
+A run-tests stamp that read a value of the caller's environment has two forms (JK-FQWGG). The
+local form, which the local cache, history and `jk explain` name, keys each value by HMAC under the
+JumpKick home's secret (`EnvReadKey`) and carries `x:env-keyed=this-host`, so it never leaves the host.
+With a key seed in force (`CacheSeeds`: `JK_CACHE_KEY_SEED`, `[cache] key-seed-file`, else
+`GET /v0/key-seed`), `SharedStampKeys` takes the stamp again with each value under the seed's key
+(`KeySeed`, derived per cache URL) and no host mark, and `RemoteTier.shareAs` maps local to shared:
+a lookup asks the shared key and keeps a hit under the local one, an upload goes under the shared
+key. A key noted as its own shared form uploads nowhere. A seed's arrival, rotation or loss moves
+only the shared form, so nothing reruns locally; a stamp that keyed no value (all reads unset) is
+one key in both forms. No value is ever keyed by plain digest in a suite's stamp, `[env] scope`
+included; compile and plugin keys' `env:` and `plugin-env:` tokens still are (JK-EAJPR). A failed
+seed fetch says `remote-cache-key-seed` once and keeps such results local for the build.
+
 **Non-goals for 1.0:** signed records and multi-tenant trust beyond the server's own scopes, full
 Bazel REAPI execution, cross-org sharing.
 

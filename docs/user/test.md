@@ -1072,13 +1072,29 @@ each. `jk explain` names what moved and never a value: `run tests · MUST_BE_TRU
 then how many more); the run that follows records the same names as the reason it ran (`jk history
 show <id>`: `ran: inputs changed (x:env-read:MUST_BE_TRUE)`).
 
-**What never leaves your machine.** Values are HMAC'd under a secret of your JumpKick home before they
-enter a key, so a key gives no way to test guesses at a short secret. They are held in the engine's
-and the test JVM's memory for the run, and are never written to the build's history, `jk results`,
-the logs, the dashboard or an MCP answer. A result that read a variable the module neither declares
-nor [scopes](#scoping-what-a-suite-may-see), or that listed or took the environment with no scope,
-stays on this host: its record says `x:env-keyed` (`this-host`) and is never uploaded to a shared
-cache. Only declared, scoped and allow-listed values are keyed alike everywhere.
+**What never leaves your machine.** Values are HMAC'd before they enter a key, never digested
+plainly, so a key gives no way to test guesses at a short value to anyone without the HMAC's
+secret. They are held in the engine's and the test JVM's memory for the run, and are never written
+to the build's history, `jk results`, the logs, the dashboard or an MCP answer. On your machine the
+secret is one of your JumpKick home: a result that read a variable's value, declared or not,
+[scoped](#scoping-what-a-suite-may-see) or not, or that listed or took the environment, keys
+alike on this host alone, and its record says `x:env-keyed` (`this-host`) and is never uploaded.
+A result whose reads were all unset keys no value and is shared as any other.
+
+**Sharing a result that read your environment.** When your [shared cache](cache.md#shared-cache)
+hands its clients a key seed, or your team [sets its own](cache.md#results-that-read-your-environment),
+JumpKick also keys such a result a second way, each value HMAC'd under the seed, and asks and
+uploads it by that form. Another machine with the same seed and the same values replays it, with
+no `[env]` configuration; another value, or no seed, runs the suite. Credentials included: a
+CI runner whose environment carries a token still shares its results, unless you keep those on
+the machine (`[cache] credential-env = "local"`). The names of the variables a suite read travel
+with the result (never a value), so a machine that never ran the suite knows which to read. A suite
+keyed on a listing or the whole environment is keyed under the seed too, but two machines match
+only when their environments do, less the terminal's own names;
+[`[env] scope`](#scoping-what-a-suite-may-see) narrows what must match. Your own results never
+depend on the seed: a seed that arrives, changes or goes reruns nothing on your machine, and a
+result stored before it is uploaded the next time the suite runs. Whatever its key, a suite that
+talks to anything but this host is never replayed.
 
 **A build with no terminal.** A build started by the web UI, an agent over MCP, `jk watch` or an IDE
 has no shell to ask: its test JVMs get the allow-list and the declared names from the engine, as
@@ -1090,17 +1106,15 @@ a build from a terminal does not take one that read a variable it could not have
 `[env] scope = ["SPRING_*", "MYAPP_*"]` narrows what a test JVM sees of your other variables to the
 names the patterns match (a name, or a prefix ending in `*`), beside the allow-list and the
 declared names. A suite that lists the environment then keys on a small, stable set of names, so
-an unrelated variable no longer reruns it and its result holds on another machine and may be
-shared. The cost: a test sees no other variable of your shell. Set at a workspace root, it holds
+an unrelated variable no longer reruns it, and under a cache's key seed its result holds on another
+machine. The cost: a test sees no other variable of your shell. Set at a workspace root, it holds
 for every member that sets none of its own.
 
-Under a scope a scoped value is keyed by its plain digest, so two homes key it alike. A name
-outside the scope keys nothing: the test saw it unset, as it does on every host, even when a run
-before the scope read it. A scoped name that reads as a credential (it says `TOKEN`, `SECRET`,
-`KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or `CREDENTIAL`, as `SPRING_DATASOURCE_PASSWORD` and
-JumpKick's own `JK_REPO_*_TOKEN` do) is still HMAC'd when it is set, so no record here or in a
-shared cache holds a digest a guessed secret could be checked against, and such a result stays
-on this host. Unset, it keys as unset everywhere.
+A name outside the scope keys nothing: the test saw it unset, as it does on every host, even when
+a run before the scope read it. A scoped value keys as any value does, by HMAC under your home's
+secret, and shares only under a [key seed](cache.md#results-that-read-your-environment); with
+one, two machines whose scoped names match replay each other whatever else their shells hold.
+Unset, a name keys as unset everywhere.
 
 The test JVM always gets what JumpKick hands every worker, scope or not: the machine's
 `PATH`, `HOME` and temp roots (and on Windows `USERPROFILE` and the system roots), the locale and
@@ -1119,7 +1133,7 @@ keyed that broadly, the run says so in one line, with the scope for the framewor
 dependencies name:
 
 ```text
-Spring Boot reads your whole environment, so changing any variable runs these tests again; [env] scope = ["SPRING_*", "<YOURAPP>_*"] in jk.toml keeps them to those names (and lets the result be shared)
+Spring Boot reads your whole environment, so changing any variable runs these tests again; [env] scope = ["SPRING_*", "<YOURAPP>_*"] in jk.toml keeps them to those names (and, with a cache key seed, shared)
 ```
 
 Once per module: not on later runs, not per suite, not in later verdicts. A module that already

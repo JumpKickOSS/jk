@@ -200,7 +200,66 @@ record and 3 blobs not stored (1 503 from the service after 4 tries)`, and count
 
 What leaves the machine is what a record that leaves the machine holds (see [What is what](#what-is-what)),
 the blobs its outputs name, the action keys a build asks about, its platform (`macos-aarch64`) and the
-JDK it uses.
+JDK it uses. A key seed never leaves it.
+
+### Results that read your environment
+
+A test suite's result is keyed on the values of the variables it read
+([Tests](test.md#environment-variables-a-suite-reads)), each HMAC'd, never digested plainly, so a
+key never shows a value and gives no way to test a guess. On your machine the HMAC's secret is one
+of your JumpKick home, so that key matches there alone. Such a result is shared only under a **key
+seed** every client of the cache holds: the seed the server hands its authenticated clients, or
+one your team sets, which wins. Without either, a result that read your environment stays on the
+machine that ran it, `[env] scope` or not. A result whose reads were all unset keys no value and is
+shared as before.
+
+```toml
+# ~/.jk/config.toml
+[cache]
+key-seed-file = "~/team-cache-seed"   # a file holding your team's seed, at least 16 characters
+```
+
+`JK_CACHE_KEY_SEED=<seed>` does the same for one shell (a CI secret, say from `openssl rand -base64
+32`); `off` takes no seed, the issued one included. Never put the seed in `jk.toml` or the
+repository. JumpKick never hands `JK_CACHE_KEY_SEED` to a test, a compiler or any other worker
+(`[env] inherit` and a declared name included), keys nothing on it, and never prints it, logs it or
+sends it anywhere. The seed is scoped to the cache URL, so point every machine at the same URL. JumpKick
+keeps an issued seed in its home, readable by you alone, and asks for it again after an hour, so a
+seed the server rotates reaches every machine within the hour; rotating makes the shared results
+that read the environment miss once, and nothing else. A server that issues none answers 404, and
+then only a team's seed shares. A server may also hand its seed only to credentials that write and
+answer 404 to one that may only read: a fork's CI build may be given no seed, and then it says
+nothing, runs the suites whose results read the environment, and keeps those results to itself. A seed that cannot be had (the server refuses the credential or
+does not answer) leaves the build going, says once `remote cache cache.example.com did not hand
+out its key seed (…)` (`remote-cache-key-seed`), and keeps such results on this machine for that
+build.
+
+**Sharing scoped results through a cache that issues no seed.** Before 0.54, a value a suite read
+under `[env] scope` (or a declared `[env]` / `[test] env` name forwarded from your shell) was keyed
+by its plain digest and shared with no seed. Now it is keyed like any other value, so add the one
+line that keeps sharing, the same seed on every machine that writes or reads:
+
+```bash
+export JK_CACHE_KEY_SEED="$TEAM_CACHE_SEED"   # CI; on a laptop, [cache] key-seed-file
+```
+
+Credentials share too. Under a seed, a value whose name reads as a credential (`TOKEN`, `SECRET`,
+`KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE`, `CREDENTIAL`) keys the shared form like any other, so a
+CI runner whose environment carries a token still shares its results. To keep those results on the
+machine instead:
+
+```toml
+# ~/.jk/config.toml, or JK_CACHE_CREDENTIAL_ENV=local for one shell
+[cache]
+credential-env = "local"
+```
+
+What leaves the machine for such a result is one combined key, never a value, never a digest of
+one variable, never the names behind a listing; the names of the variables it read travel with its
+read list. Whoever holds the seed and a checkout of the repository can test guesses of a weak value
+against that key: every client the cache hands the seed to (read-only ones too, unless the server
+withholds it from them), and the server when it issued the seed. A team seed keeps the server blind. [Security](security.md#what-a-shared-cache-learns-of-your-environment)
+says the same.
 
 ## Hygiene
 
