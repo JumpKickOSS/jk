@@ -32,6 +32,22 @@ public final class HeldOpen {
         T write() throws IOException;
     }
 
+    /** What a process with no resident helpers of its own can say: someone else holds the file. */
+    static final Release ELSEWHERE =
+            () -> new Holder("another program, such as an IDE or a jk engine", "close it, or run jk engine stop -A");
+
+    private static volatile Release installed = ELSEWHERE;
+
+    /**
+     * Make {@code release} the one {@link #replace(Path, Write)} runs, for every later replace in
+     * this process; the engine installs the release of its own workers. Returns the one it replaced.
+     */
+    public static Release install(Release release) {
+        Release previous = installed;
+        installed = release;
+        return previous;
+    }
+
     /** The target stayed open after the release; the message names it, its holder and the fix. */
     public static final class Held extends IOException {
         Held(String message, IOException cause) {
@@ -41,9 +57,20 @@ public final class HeldOpen {
 
     /**
      * Run {@code write}, which replaces {@code target}. When Windows refuses because the target is
-     * open, run {@code release} and write once more; a second refusal throws {@link Held}.
+     * open, run the {@linkplain #install installed} release and write once more; a second refusal
+     * throws {@link Held}.
      */
-    public static <T> T replace(Path target, Write<T> write, Release release) throws IOException {
+    public static <T> T replace(Path target, Write<T> write) throws IOException {
+        return replace(target, write, e -> Os.isWindows() && refusedFor(e, target));
+    }
+
+    /** As {@link #replace(Path, Write)}, counting as held what {@code held} accepts. */
+    static <T> T replace(Path target, Write<T> write, Predicate<IOException> held) throws IOException {
+        return replace(target, write, installed, held);
+    }
+
+    /** As {@link #replace(Path, Write)}, running {@code release} rather than the installed one. */
+    static <T> T replace(Path target, Write<T> write, Release release) throws IOException {
         return replace(target, write, release, e -> Os.isWindows() && refusedFor(e, target));
     }
 

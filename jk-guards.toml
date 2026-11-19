@@ -2566,6 +2566,10 @@ in     = "cc.jumpkick.host.Forks#opener"
 reason = "seam: starts the process in production; the engine installs its worker starter once"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.HeldOpen#installed"
+reason = "seam: names another program in a client; the engine installs the release of its own workers once"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.host.Log$Backend#JK"
 reason = "engine-process fact: this process's logger backend, installed as logging starts"
 

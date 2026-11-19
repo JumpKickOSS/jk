@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.compat.ImportProgress;
+import cc.jumpkick.compile.JavaCompilerHost;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JkHttpConfig;
 import cc.jumpkick.config.SecretRedactor;
@@ -9,20 +10,24 @@ import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.ExecutionSpeed;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.UserPluginPins;
+import cc.jumpkick.engine.plugin.WarmWorkers;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.engine.power.Awake;
 import cc.jumpkick.host.Forks;
+import cc.jumpkick.host.HeldOpen;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.ShadowManifests;
+import cc.jumpkick.runtime.base.BuildLogicKtsHost;
 import cc.jumpkick.runtime.workspace.ImportPinRaises;
 import cc.jumpkick.wire.EnginePaths;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -89,6 +94,7 @@ public final class EngineMain {
         WorkerContainment.install();
         ExecutionSpeed.self();
         Forks.install(JobWorkers::start);
+        HeldOpen.install(EngineMain::releaseHeldJars);
         try {
             JkDirs.current().secureRoots();
             EnginePaths.Paths paths = EnginePaths.current();
@@ -129,6 +135,24 @@ public final class EngineMain {
             Log.error("jk engine: failed to start: " + e.getMessage());
             return 1;
         }
+    }
+
+    /**
+     * Stop this engine's idle compiler, plugin and build-script workers, whose classpaths keep jars
+     * open, and wait for them to exit. The holder named is a worker still busy with another build,
+     * else a program outside this engine.
+     */
+    private static HeldOpen.Holder releaseHeldJars() {
+        BuildLogicKtsHost.retireIdle();
+        int compilers = JavaCompilerHost.retireIdle();
+        List<String> plugins = WarmWorkers.retireIdle();
+        String later = "run the command again when that build ends";
+        if (compilers > 0) return new HeldOpen.Holder("the Java compiler of a jk build still running", later);
+        if (!plugins.isEmpty()) {
+            return new HeldOpen.Holder("the " + plugins.getFirst() + " worker of a jk build still running", later);
+        }
+        return new HeldOpen.Holder(
+                "another program, such as an IDE or another jk engine", "close it, or run jk engine stop -A");
     }
 
     /**

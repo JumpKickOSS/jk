@@ -2,10 +2,14 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIOException;
 import static org.assertj.core.groups.Tuple.tuple;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.HeldOpen;
+import cc.jumpkick.host.Os;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -20,6 +24,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -621,5 +630,142 @@ class RepoArtifactStoreTest {
         assertThat(store.locate(JAR)).contains(theirs);
         assertThat(ArtifactMemo.jkPath(cache.resolve("repos/central"), JAR)).doesNotExist();
         assertThat(store.contains(JAR)).isFalse();
+    }
+
+    // ---- a stored jar another process keeps open (Windows refuses to rename onto it) ----------
+
+    @Test
+    void a_stored_jar_held_open_is_replaced_by_other_bytes_once_the_installed_release_frees_it(@TempDir Path dir)
+            throws IOException {
+        assumeTrue(Os.isWindows(), "only Windows refuses to rename onto an open file");
+        RepoArtifactStore store = RepoArtifactStore.forStoreId(dir.resolve("store"), "snapshots");
+        Path first = jar(dir.resolve("first.jar"), "one");
+        store.materialize(JAR, first, Hashing.sha256Hex(first), true);
+        Path stored = store.locate(JAR).orElseThrow();
+        Path again = jar(dir.resolve("again.jar"), "two");
+        String sha = Hashing.sha256Hex(again);
+        ZipFile compiler = new ZipFile(stored.toFile());
+        AtomicInteger releases = new AtomicInteger();
+        HeldOpen.Release previous = HeldOpen.install(() -> {
+            releases.incrementAndGet();
+            close(compiler);
+            return new HeldOpen.Holder("a compiler", "stop it");
+        });
+        try {
+            store.materialize(JAR, again, sha, true);
+        } finally {
+            HeldOpen.install(previous);
+            compiler.close();
+        }
+
+        assertThat(releases).hasValue(1);
+        assertThat(entry(stored)).isEqualTo("two");
+        assertThat(store.verify(JAR, sha)).isEqualTo(RepoArtifactStore.IndexState.VERIFIED);
+    }
+
+    @Test
+    void a_stored_jar_that_stays_open_fails_naming_it_and_its_holder(@TempDir Path dir) throws IOException {
+        assumeTrue(Os.isWindows(), "only Windows refuses to rename onto an open file");
+        RepoArtifactStore store = RepoArtifactStore.forStoreId(dir.resolve("store"), "snapshots");
+        Path first = jar(dir.resolve("first.jar"), "one");
+        store.materialize(JAR, first, Hashing.sha256Hex(first), true);
+        Path stored = store.locate(JAR).orElseThrow();
+        Path again = jar(dir.resolve("again.jar"), "two");
+        HeldOpen.Release previous = HeldOpen.install(() -> new HeldOpen.Holder("a compiler", "stop it"));
+        try (ZipFile compiler = new ZipFile(stored.toFile())) {
+            assertThatIOException()
+                    .isThrownBy(() -> store.materialize(JAR, again, Hashing.sha256Hex(again), true))
+                    .isInstanceOf(HeldOpen.Held.class)
+                    .withMessage("could not replace " + stored + ": it is open in a compiler; stop it");
+            assertThat(compiler.getEntry("a/B.class"))
+                    .as("the old jar is still whole")
+                    .isNotNull();
+        } finally {
+            HeldOpen.install(previous);
+        }
+        assertThat(entry(stored)).isEqualTo("one");
+        try (Stream<Path> left = Files.list(stored.getParent())) {
+            assertThat(left.map(f -> f.getFileName().toString())).noneMatch(n -> n.endsWith(".part"));
+        }
+    }
+
+    @Test
+    void a_shelved_jar_held_open_is_replaced_once_the_installed_release_frees_it(@TempDir Path dir) throws IOException {
+        assumeTrue(Os.isWindows(), "only Windows refuses to rename onto an open file");
+        Path store = dir.resolve("store");
+        String rel = "com/acme/lib/0.1.0-SNAPSHOT/lib-0.1.0-SNAPSHOT.jar";
+        RepoArtifactStore.writeToLocalStore(store, rel, jar(dir.resolve("first.jar"), "one"), null);
+        Path shelved =
+                store.resolve("repos").resolve(RepoArtifactResolver.JK_LOCAL).resolve(rel);
+        ZipFile compiler = new ZipFile(shelved.toFile());
+        AtomicInteger releases = new AtomicInteger();
+        HeldOpen.Release previous = HeldOpen.install(() -> {
+            releases.incrementAndGet();
+            close(compiler);
+            return new HeldOpen.Holder("a compiler", "stop it");
+        });
+        String hex;
+        try {
+            hex = RepoArtifactStore.writeToLocalStore(store, rel, jar(dir.resolve("again.jar"), "two"), null);
+        } finally {
+            HeldOpen.install(previous);
+            compiler.close();
+        }
+
+        assertThat(releases).hasValue(1);
+        assertThat(entry(shelved)).isEqualTo("two");
+        assertThat(Hashing.sha256Hex(shelved)).isEqualTo(hex);
+    }
+
+    @Test
+    void a_shared_download_held_open_in_the_local_repository_is_replaced_once_the_installed_release_frees_it(
+            @TempDir Path dir) throws IOException {
+        assumeTrue(Os.isWindows(), "only Windows refuses to rename onto an open file");
+        Path m2 = dir.resolve("m2");
+        RepoArtifactStore store = centralOver(dir.resolve("store"), m2);
+        Path first = jar(dir.resolve("first.jar"), "one");
+        store.materialize(JAR, first, Hashing.sha256Hex(first), true);
+        Path stored = m2.resolve(JAR);
+        Path again = jar(dir.resolve("again.jar"), "two");
+        String sha = Hashing.sha256Hex(again);
+        ZipFile compiler = new ZipFile(stored.toFile());
+        AtomicInteger releases = new AtomicInteger();
+        HeldOpen.Release previous = HeldOpen.install(() -> {
+            releases.incrementAndGet();
+            close(compiler);
+            return new HeldOpen.Holder("a compiler", "stop it");
+        });
+        try {
+            store.materialize(JAR, again, sha, true);
+        } finally {
+            HeldOpen.install(previous);
+            compiler.close();
+        }
+
+        assertThat(releases).hasValue(1);
+        assertThat(entry(stored)).isEqualTo("two");
+        assertThat(store.verify(JAR, sha)).isEqualTo(RepoArtifactStore.IndexState.VERIFIED);
+    }
+
+    private static Path jar(Path file, String body) throws IOException {
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(file))) {
+            zip.putNextEntry(new ZipEntry("a/B.class"));
+            zip.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        return file;
+    }
+
+    private static String entry(Path jar) throws IOException {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            return new String(zip.getInputStream(zip.getEntry("a/B.class")).readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void close(ZipFile zip) {
+        try {
+            zip.close();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

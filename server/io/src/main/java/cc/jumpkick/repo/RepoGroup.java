@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.HeldOpen;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.SafeUri;
@@ -1026,6 +1027,9 @@ public final class RepoGroup {
                     }
                     if (resolve) throw dead;
                     fanOut.failed(repo, dead);
+                } catch (HeldOpen.Held held) {
+                    // This machine's copy cannot be replaced; no other repository changes that.
+                    throw held;
                 } catch (IOException transport) {
                     // A failed remote falls through to the next candidate silently: the artifact that
                     // arrives is still checked against the lock's sha256, so where it came from does

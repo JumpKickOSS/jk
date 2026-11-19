@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.HeldOpen;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -450,7 +451,11 @@ public final class RepoArtifactStore {
      * is when {@code source} is another copy of them: a re-fetch rewrites neither it nor its memo.
      */
     public void materialize(String relativePath, Path source, String sha256) {
-        materialize(relativePath, source, sha256, false);
+        try {
+            materialize(relativePath, source, sha256, false);
+        } catch (HeldOpen.Held held) {
+            Log.warn("jk: warning: " + held.getMessage());
+        }
     }
 
     /**
@@ -462,8 +467,12 @@ public final class RepoArtifactStore {
      * local repository a file jk did not download is not jk's to replace: a slot holding other bytes
      * stays as it is, and {@link #verify} then says it does not match. A file jk downloaded and that
      * no longer verifies is its own damage, and is replaced.
+     *
+     * <p>Any other failure to store is warned about and left for the caller's check of what
+     * landed; a stored file another process keeps open, so that other bytes cannot replace it,
+     * throws {@link HeldOpen.Held}, whose message names the file, its holder and the fix.
      */
-    public void materialize(String relativePath, Path source, String sha256, boolean fetched) {
+    public void materialize(String relativePath, Path source, String sha256, boolean fetched) throws HeldOpen.Held {
         if (root == null || source == null || !Files.isRegularFile(source)) return;
         Path artifact = writePath(relativePath, source);
         try {
@@ -505,13 +514,18 @@ public final class RepoArtifactStore {
                 boolean moved = false;
                 try {
                     Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-                    AtomicWrites.moveInto(tmp, artifact);
+                    HeldOpen.replace(artifact, () -> {
+                        AtomicWrites.moveInto(tmp, artifact);
+                        return artifact;
+                    });
                     moved = true;
                 } finally {
                     if (!moved) Files.deleteIfExists(tmp);
                 }
             }
             writeMemo(relativePath, artifact, sha256, fetched);
+        } catch (HeldOpen.Held held) {
+            throw held;
         } catch (IOException | RuntimeException e) {
             // Best-effort store write: the caller re-checks presence and fails loudly if nothing
             // landed. Surface the cause so a disk-full/permissions failure is diagnosable
@@ -1102,10 +1116,14 @@ public final class RepoArtifactStore {
                     hex,
                     packagedBy);
             boolean[] published = new boolean[1];
-            FileLocks.withLock(shelf.resolve(SHELF_LOCK_NAME), () -> {
-                AtomicWrites.moveInto(tmp, target);
-                published[0] = true;
-                memo.write(memoFile);
+            // The release runs between two takes of the lock, never under it.
+            HeldOpen.replace(target, () -> {
+                FileLocks.withLock(shelf.resolve(SHELF_LOCK_NAME), () -> {
+                    AtomicWrites.moveInto(tmp, target);
+                    published[0] = true;
+                    memo.write(memoFile);
+                });
+                return target;
             });
             moved = published[0];
             return hex;
