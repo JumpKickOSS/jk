@@ -11,6 +11,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Invocation;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -95,6 +96,12 @@ class SelfNukeShelfTest {
                 .contains("Kept:")
                 .contains("jk-local")
                 .contains(version + "  (this jk's own 1 shelved artifact; no repository has them)");
+        String shownStore = SelfNukeCommand.displayPath(store);
+        String sep = shownStore.startsWith("~") ? "/" : File.separator;
+        String shelf = String.join(sep, "", "repos", "jk-local", "cc", "jumpkick", "*", version);
+        assertThat(text)
+                .as("the kept shelf named as the store row is, in the same separators")
+                .contains("Kept:  " + shownStore + shelf + "  (this jk's own");
     }
 
     private static Path write(Path file, String text) throws IOException {

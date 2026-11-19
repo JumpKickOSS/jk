@@ -32,9 +32,13 @@ public final class StoreWipe {
         return group;
     }
 
-    /** {@code repos/jk-local/cc/jumpkick/*}{@code /<version>}: how the confirm names what a wipe keeps. */
-    public static Path shelfPattern(Path storeRoot, String version) {
-        return firstPartyShelf(storeRoot).resolve("*").resolve(version);
+    /**
+     * {@code repos/jk-local/cc/jumpkick/*}{@code /<version>} in the host's separators: how the confirm
+     * names what a wipe keeps. Text, not a {@link Path}: Windows rejects {@code *} in a path.
+     */
+    public static String shelfPattern(Path storeRoot, String version) {
+        String sep = storeRoot.getFileSystem().getSeparator();
+        return firstPartyShelf(storeRoot) + sep + "*" + sep + version;
     }
 
     /**

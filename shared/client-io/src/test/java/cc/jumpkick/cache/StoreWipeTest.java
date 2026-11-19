@@ -56,6 +56,15 @@ class StoreWipeTest {
     }
 
     @Test
+    void the_kept_shelf_pattern_is_text_in_the_hosts_separators(@TempDir Path tmp) {
+        Path store = tmp.resolve("store");
+        String sep = store.getFileSystem().getSeparator();
+
+        assertThat(StoreWipe.shelfPattern(store, VERSION))
+                .isEqualTo(store + String.join(sep, "", "repos", "jk-local", "cc", "jumpkick", "*", VERSION));
+    }
+
+    @Test
     void a_store_without_this_versions_shelf_goes_as_a_directory(@TempDir Path tmp) throws Exception {
         Path store = tmp.resolve("store");
         write(store.resolve("repos/jk-local/cc/jumpkick/jk-intellij/0.51.1/jk-intellij-0.51.1.jar"), "old");

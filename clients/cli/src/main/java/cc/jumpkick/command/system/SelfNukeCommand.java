@@ -628,7 +628,8 @@ public final class SelfNukeCommand implements CliCommand {
             int shelf = keptShelf(dirs.storeDir());
             if (shelf > 0) {
                 CliOutput.out("  Kept:  "
-                        + pathStyled(StoreWipe.shelfPattern(dirs.storeDir(), JkVersion.VERSION))
+                        + PathDisplay.styledRaw(displayPath(
+                                StoreWipe.shelfPattern(WorkingDirectory.resolve(dirs.storeDir()), JkVersion.VERSION)))
                         + "  (this jk's own " + shelf + " shelved artifact" + (shelf == 1 ? "" : "s")
                         + "; no repository has them)");
             }
@@ -676,7 +677,11 @@ public final class SelfNukeCommand implements CliCommand {
     /** Prefer {@code ~/…} when under the user home directory. */
     static String displayPath(Path path) {
         if (path == null) return "";
-        String abs = WorkingDirectory.resolve(path).toString();
+        return displayPath(WorkingDirectory.resolve(path).toString());
+    }
+
+    /** {@link #displayPath(Path)} for an absolute path's text, or a pattern that is not a path. */
+    static String displayPath(String abs) {
         String home = System.getProperty("user.home");
         if (home != null && !home.isBlank()) {
             String h = WorkingDirectory.resolve(home).toString();
