@@ -242,6 +242,20 @@ does not answer) leaves the build going, says once `remote cache cache.example.c
 out its key seed (…)` (`remote-cache-key-seed`), and keeps such results on this machine for that
 build.
 
+**Every other step that reads your environment is keyed the same way.** A compile, KSP or jlink
+step of a module whose `[env]` forwards a name from your shell, a plugin step or
+packager whose plugin table names `env:NAME` (a signing password, a keystore path), a packager's
+signing secrets, any step of a module with `[env] inherit = true`, and a node build (`NODE_ENV`,
+`CI` and the frameworks' public prefixes such as `VITE_` and `NEXT_PUBLIC_`) take each such value
+HMAC'd under your home's secret here and under the seed when shared, never by plain digest, and
+the run's memo under `target/` holds the same. A value the manifest writes itself (`vars = [{ TZ =
+"UTC" }]`, a profile's or a suite's `env`) is the checkout's, not your shell's, and keys by its
+digest as before. So, without a seed, these results stay on the machine that made them, as a
+suite's do. Most compiles read no environment and still share with no seed. The steps you are
+likely to notice are release builds whose signing step names `env:`, and node builds on CI runners,
+which all set `CI`: they share between machines only once every machine sets the same team seed.
+The first build after upgrading to 0.54 runs these steps once more, because their keys changed.
+
 **Sharing scoped results through a cache that issues no seed.** Before 0.54, a value a suite read
 under `[env] scope` (or a declared `[env]` / `[test] env` name forwarded from your shell) was keyed
 by its plain digest and shared with no seed. Now it is keyed like any other value, so add the one

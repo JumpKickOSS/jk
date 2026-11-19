@@ -863,8 +863,24 @@ a lookup asks the shared key and keeps a hit under the local one, an upload goes
 key. A key noted as its own shared form uploads nowhere. A seed's arrival, rotation or loss moves
 only the shared form, so nothing reruns locally; a stamp that keyed no value (all reads unset) is
 one key in both forms. No value is ever keyed by plain digest in a suite's stamp, `[env] scope`
-included; compile and plugin keys' `env:` and `plugin-env:` tokens still are (JK-EAJPR). A failed
-seed fetch says `remote-cache-key-seed` once and keeps such results local for the build.
+included. A failed seed fetch says `remote-cache-key-seed` once and keeps such results local for
+the build.
+
+Every other step key takes a value of the caller's environment the same way, through one generic
+substitution rather than a mapping per step kind (JK-EAJPR). `EnvKeyText.Sealer.seal` is the one
+place such a value becomes key text: `hmac:` and an HMAC under the home's secret, with the value
+under the seed noted on the build's tier as that part's shared form (or the part as its own, with
+no seed or for a credential under `credential-env = "local"`). `EnvKeyText.digest` is the hash of
+every key text such a part can reach (`ActionKey`'s compile and artifact keys, the options digests,
+the KSP round key): it returns the plain SHA-256 of the text, and when the text holds a noted part,
+notes the SHA-256 of the text with each part in its shared form as the key's shared form, through
+`RemoteTier.shareAs`. A digest is itself a part, so the shared form of a key is the key over the
+shared forms of its parts, through any nesting, and lookups, uploads and read lists need nothing
+per step. A step whose hash bypasses `digest` still holds only the sealed value: it loses its
+shared form, not its secrecy. The run-tests stamp, hashed elsewhere, takes its sealed extras
+(`inherited-env:`) through `EnvKeyText.sharedTokens`. Guard `env-value-plain-digest` (G162) fails
+an env token's literal and a `Hashing` digest in one statement; `TestEnvValues.Mode.CacheKey` no
+longer has a plain-digest form.
 
 **Non-goals for 1.0:** signed records and multi-tenant trust beyond the server's own scopes, full
 Bazel REAPI execution, cross-org sharing.

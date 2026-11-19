@@ -39,6 +39,14 @@ JumpKick shows you this page's new entries after it updates itself.
   holding the key and a checkout could test guesses against. If you share scoped suites through a
   cache that issues no seed, set the same `JK_CACHE_KEY_SEED` on every machine to keep sharing
   ([Cache](cache.md#results-that-read-your-environment)).
+- **Compile, plugin, packaging and node steps no longer key your environment by plain digest.**
+  A value a module forwards to its compilers or plugin steps (`[env]`, a plugin table's `env:NAME`,
+  `[env] inherit`), a packager's signing secrets and a node build's `CI`, `NODE_ENV` and
+  public-prefix variables are HMAC'd under your home's secret, and under the key seed when shared,
+  as a test's reads are. Without a seed those results stay on their machine. Release builds that
+  sign through `env:` and node builds on CI share between machines once every machine sets the same
+  `JK_CACHE_KEY_SEED` ([Cache](cache.md#results-that-read-your-environment)). Their keys change, so
+  the first build after the upgrade runs those steps once more.
 - **The key seed stays inside JumpKick.** No program the engine starts (npm, `git`, the AOT
   trainer) is handed a `JK_CACHE_KEY_SEED` the engine's shell exported, a `jk.toml` that names it
   is refused, and a machine that changes to a credential the server hands no seed stops using

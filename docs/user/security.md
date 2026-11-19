@@ -79,15 +79,16 @@ optional = ["JK_REPO_CORP_TOKEN"] # every worker of the module: compilers, plugi
 ```
 
 A value forwarded this way is masked as `***` in output when its name looks like a credential, and
-it keys the work like any other forwarded value. For a test result that means an HMAC under a
-secret of your JumpKick home, or the cache's key seed for a shared result. For a compile or plugin
-step it still means a plain digest (see the last point of the next section). The key seed is the
+it keys the work like any other forwarded value. For a test result, a compile and a plugin step
+alike, that means an HMAC under a secret of your JumpKick home, or the cache's key seed for a shared
+result, never a plain digest. The key seed is the
 one exception to the consent rule: a `jk.toml` that names it is refused.
 
 ## What a shared cache learns of your environment
 
-A test suite's result is keyed on the values of the variables it read. What may leave your machine
-for such a result is one combined key: never a value, never a digest of one variable, never the
+A test suite's result is keyed on the values of the variables it read, and every other step's on
+the values of the variables it is handed. What may leave your machine for such a result is one
+combined key: never a value, never a digest of one variable, never the
 names behind a listing. The names of the variables a suite read travel with its read list.
 
 - **No key seed** (none issued, none set): every such value is HMAC'd under a secret of your
@@ -115,9 +116,17 @@ names behind a listing. The names of the variables a suite read travel with its 
   holds the seed and the archive can test guesses of a weak value. Cache `~/.jk/cache` alone, never
   `~/.jk/state`, which holds your home's secret.
 - Whatever its key, a suite that talks to anything but this host is never replayed.
-- Not yet covered: a value a module hands its compilers and plugin steps through `[env]` or a
-  plugin table's `env:NAME` (rather than its tests) still enters those steps' keys by plain
-  digest, and those keys may be shared. That includes a JumpKick credential forwarded this way.
+- The same holds for every other step's key. A value a module hands its compilers, plugin steps
+  and packagers through `[env]` or a plugin table's `env:NAME`, its signing secrets, the whole
+  environment under `[env] inherit`, and a node build's `NODE_ENV`, `CI` and public-prefix
+  variables are each HMAC'd under your home's secret, and under the seed in the shared form, never
+  digested plainly. So is the copy the run's memo keeps under `target/`, which anyone who can read
+  the project could otherwise test guesses against. A JumpKick credential forwarded this way is
+  covered too.
+- Not yet covered: a non-secret key of a variant's named plugin group (for example
+  `[android.signing.release] key-alias = "env:KEY_ALIAS"`) is read into the plugin's
+  configuration as it is applied, and enters the plugin step's key by a digest of that
+  configuration. The group's secret keys (the passwords) are HMAC'd as above.
 
 [Cache § Results that read your environment](cache.md#results-that-read-your-environment) says how
 to set a seed.

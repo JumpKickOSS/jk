@@ -484,8 +484,12 @@ key alone, so a variable declared for the tests never rebuilds a compile. A plug
 `env:NAME` value (`store-file = "env:KEYSTORE_FILE"`) keys that plugin's steps and packager
 the same way, from the shell or the module's `.env`. A declared variable that
 changes between two builds reruns that work, `jk build -S` included; one nothing declares
-reruns a suite that read it, and nothing else — [Test](test.md#environment-variables-a-suite-reads). A value taken from the environment enters a key as its SHA-256, never as text,
-so the key can travel to another machine. A declared name that reads as
+reruns a suite that read it, and nothing else — [Test](test.md#environment-variables-a-suite-reads). A value taken from the environment enters a key HMAC'd under your JumpKick home's
+secret, never as text and never as a plain digest, so the key gives no way to test a guess at the
+value; such a result is shared with another machine only under a cache key seed both hold, and stays
+on this one without ([Cache § Results that read your environment](cache.md#results-that-read-your-environment)).
+A value the manifest writes itself (`vars = [{ TZ = "UTC" }]`) keys by its digest and shares as
+before. A declared name that reads as
 a credential — its name says `TOKEN`, `SECRET`, `KEY`, `PASSWORD`, `PASSWD`, `PASSPHRASE` or
 `CREDENTIAL` — has its value masked as `***` in test output, errors and `jk results`, as a
 repository credential is. `jk run` launches the app from the shell itself, with all of its
