@@ -61,10 +61,22 @@ makes a smaller one ask for more than it has.
 A suite whose result read a value of the environment
 ([Tests](test.md#environment-variables-a-suite-reads)) is keyed under that home secret, so a fresh
 runner runs it again; every other result replays from the restored cache. Such results reach another
-runner only through a [shared cache](cache.md#shared-cache) under a
-[key seed](cache.md#results-that-read-your-environment). Make the seed once, any random string of at
-least 16 characters (`openssl rand -base64 32`; a shorter one is refused with a warning), keep it as
-a repository secret, and hand it to the job with the cache's address and credential:
+runner under a [key seed](cache.md#results-that-read-your-environment) your team sets: through a
+[shared cache](cache.md#shared-cache), or, with none, through the cache directory above. A run that
+sets the seed also keeps each such result in `~/.jk/cache` under the seed's key, and the next runner
+that restores that directory with the same seed replays it
+([Cache](cache.md#a-ci-runners-own-cache-with-no-cache-server)); a seed a shared cache issues never
+keys those copies. Make the seed once, any random string of at least 16 characters
+(`openssl rand -base64 32`; a shorter one is refused with a warning), keep it as a repository
+secret, and hand it to the job:
+
+```yaml
+env:
+  JK_CACHE_KEY_SEED: ${{ secrets.JK_CACHE_KEY_SEED }}
+```
+
+With a shared cache named, the cache alone shares those results; hand the job the seed with the
+cache's address and credential:
 
 ```yaml
 env:
@@ -75,6 +87,10 @@ env:
 
 A pull request from a fork gets no secrets: its run takes no seed, runs the suites that read the
 environment instead of replaying them and keeps their results to itself. Nothing fails.
+
+A restored cache is trusted as it comes, every record in it. On GitHub a pull request's run cannot
+save into the default branch's cache, but where any run may save what others restore, a run that
+can write the cache can change what the others replay, seed or not.
 
 Preflight dirty memos use **source content hashes** by default (CI-safe). Opt into faster
 path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if you accept that tradeoff.
