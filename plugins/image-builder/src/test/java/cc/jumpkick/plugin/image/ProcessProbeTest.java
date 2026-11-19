@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.image;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -76,9 +77,7 @@ class ProcessProbeTest {
     }
 
     private static Path script(Path file, String body) throws IOException {
-        Files.writeString(file, "#!/bin/sh\n" + body, StandardCharsets.UTF_8);
-        assertThat(file.toFile().setExecutable(true)).isTrue();
-        return file;
+        return FakePrograms.warmed(file, "#!/bin/sh\n" + body);
     }
 
     /** Whether the process whose pid the child recorded is still running, after giving a kill time to land. */

@@ -11,6 +11,7 @@ import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.Settled;
+import cc.jumpkick.testing.FakePrograms;
 import cc.jumpkick.util.GitProxy;
 import cc.jumpkick.util.GitVersion;
 import cc.jumpkick.util.StoreWriteGate;
@@ -282,15 +283,7 @@ class OfficialTemplatesFreshenTest {
     }
 
     private Path script(String body) throws IOException {
-        Path script = tmp.resolve("fake-git.sh");
-        Files.writeString(script, body);
-        Files.setPosixFilePermissions(
-                script,
-                EnumSet.of(
-                        PosixFilePermission.OWNER_READ,
-                        PosixFilePermission.OWNER_WRITE,
-                        PosixFilePermission.OWNER_EXECUTE));
-        return script;
+        return FakePrograms.warmed(tmp.resolve("fake-git.sh"), body);
     }
 
     /**

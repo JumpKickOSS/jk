@@ -7,12 +7,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.compat.ImportProgress;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.mvn.PomImporter;
+import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -127,8 +126,7 @@ class GradleModelQueryTest {
                         new GradleModelQuery.Launch(List.of(launcher.toString()), null, "Gradle 9.5.1 on JDK 25"),
                 tmp.resolve("tmp"),
                 Clock.SYSTEM,
-                // Wide enough that a slow shell start on a loaded host still prints before it passes.
-                3000L);
+                400L);
 
         long started = System.nanoTime();
         assertThatThrownBy(() -> query.read(tmp, List.of("java"), ImportProgress.NONE))
@@ -158,15 +156,7 @@ class GradleModelQueryTest {
     }
 
     private static Path script(Path dir, String body) throws IOException {
-        Path file = dir.resolve("gradle");
-        Files.writeString(file, body);
-        Files.setPosixFilePermissions(
-                file,
-                EnumSet.of(
-                        PosixFilePermission.OWNER_READ,
-                        PosixFilePermission.OWNER_WRITE,
-                        PosixFilePermission.OWNER_EXECUTE));
-        return file;
+        return FakePrograms.warmed(dir.resolve("gradle"), body);
     }
 
     @Test

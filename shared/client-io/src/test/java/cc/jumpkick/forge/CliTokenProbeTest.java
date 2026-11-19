@@ -3,12 +3,11 @@ package cc.jumpkick.forge;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
-import java.util.EnumSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
@@ -73,14 +72,6 @@ class CliTokenProbeTest {
     }
 
     private Path script(String body) throws IOException {
-        Path script = Files.createTempFile(tmp, "helper", ".sh");
-        Files.writeString(script, body);
-        Files.setPosixFilePermissions(
-                script,
-                EnumSet.of(
-                        PosixFilePermission.OWNER_READ,
-                        PosixFilePermission.OWNER_WRITE,
-                        PosixFilePermission.OWNER_EXECUTE));
-        return script;
+        return FakePrograms.warmed(Files.createTempFile(tmp, "helper", ".sh"), body);
     }
 }

@@ -9,12 +9,12 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.testing.FakePrograms;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -429,9 +429,7 @@ class ProjectIdentityTest {
     }
 
     private static Path script(Path dir, String name, String body) throws IOException {
-        Path file = Files.writeString(dir.resolve(name), body);
-        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwx------"));
-        return file;
+        return FakePrograms.warmed(dir.resolve(name), body);
     }
     /**
      * A lock write parses no lock text: the identity it materializes comes from the rows in

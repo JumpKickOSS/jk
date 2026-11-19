@@ -13,9 +13,10 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.host.Settled;
-import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
+import cc.jumpkick.testing.FakeClock;
+import cc.jumpkick.testing.FakePrograms;
 import cc.jumpkick.testing.Symlinks;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;
@@ -25,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -243,8 +243,7 @@ class ToolIdentityTest {
                 .as("asked twice, then remembered")
                 .isEqualTo("2");
 
-        Files.writeString(helper, "#!/bin/sh\n" + WARM + "# upgraded\n" + body + "\n");
-        warm(helper);
+        FakePrograms.warmed(helper, "#!/bin/sh\n# upgraded\n" + body + "\n");
         assertThat(ToolIdentity.probeOnce(helper, rest, bin.toString(), 300).timedOut())
                 .isTrue();
         assertThat(Files.readString(count).strip())
@@ -252,27 +251,9 @@ class ToolIdentityTest {
                 .isEqualTo("4");
     }
 
-    /** A fake tool's first line: {@code --jk-warm} exits at once, before the body counts or hangs. */
-    private static final String WARM = "[ \"$1\" = --jk-warm ] && exit 0\n";
-
-    /**
-     * A fake tool, run once untimed: security software that scans a new executable's first run must
-     * not spend a test's timed window.
-     */
+    /** A fake tool, run once untimed so a first-exec scan never spends a test's timed window. */
     private static Path tool(Path bin, String name, String body) throws Exception {
-        Path exe = bin.resolve(name);
-        Files.writeString(exe, "#!/bin/sh\n" + WARM + body + "\n");
-        assertThat(exe.toFile().setExecutable(true)).isTrue();
-        warm(exe);
-        return exe;
-    }
-
-    private static void warm(Path exe) throws Exception {
-        Process p = new ProcessBuilder(exe.toString(), "--jk-warm")
-                .redirectErrorStream(true)
-                .start();
-        p.getOutputStream().close();
-        assertThat(p.waitFor(30, TimeUnit.SECONDS)).as("warm run of " + exe).isTrue();
+        return FakePrograms.warmed(bin.resolve(name), "#!/bin/sh\n" + body + "\n");
     }
 
     /** A tool that counts its runs into {@code count} and hangs on the first {@code hangs} of them. */
@@ -383,23 +364,5 @@ class ToolIdentityTest {
                     if (m.getReturnType() == Optional.class) return Optional.empty();
                     return null;
                 });
-    }
-
-    private static final class FakeClock implements Clock {
-        private long nanos;
-
-        @Override
-        public long millis() {
-            return nanos / 1_000_000;
-        }
-
-        @Override
-        public long nanos() {
-            return nanos;
-        }
-
-        void advance(Duration d) {
-            nanos += d.toNanos();
-        }
     }
 }

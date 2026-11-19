@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -86,6 +87,50 @@ public final class FakePrograms {
         Files.writeString(file, "#!/bin/sh\n" + script.sh() + "\n", StandardCharsets.UTF_8);
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
         return file;
+    }
+
+    /** The argument a {@link #warmed} script exits on at once, before its body runs. */
+    public static final String WARM_ARG = "--jk-warm";
+
+    /**
+     * A POSIX script at {@code file} holding {@code text}, run once untimed before it is returned.
+     * Security software that scans a new executable's first run (for seconds, on a slow network)
+     * then never spends a test's timed window. A first line of {@code text} that starts with
+     * {@code #!} stays first; the line after it exits on {@value #WARM_ARG}.
+     */
+    public static Path warmed(Path file, String text) throws IOException {
+        String guard = "[ \"$1\" = " + WARM_ARG + " ] && exit 0\n";
+        String body;
+        if (text.startsWith("#!")) {
+            int eol = text.indexOf('\n');
+            body = eol < 0 ? text + "\n" + guard : text.substring(0, eol + 1) + guard + text.substring(eol + 1);
+        } else {
+            body = "#!/bin/sh\n" + guard + text;
+        }
+        Path dir = file.toAbsolutePath().getParent();
+        if (dir != null) Files.createDirectories(dir);
+        Files.writeString(file, body, StandardCharsets.UTF_8);
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwx------"));
+        warm(file);
+        return file;
+    }
+
+    /** Run {@code exe} once with {@value #WARM_ARG} and wait for it, so its first run is behind it. */
+    public static void warm(Path exe) throws IOException {
+        Process p = new ProcessBuilder(exe.toString(), WARM_ARG)
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        p.getOutputStream().close();
+        try {
+            if (!p.waitFor(60, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                throw new IOException("the warm run of " + exe + " did not finish in 60 s");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted warming " + exe, e);
+        }
     }
 
     /** The batch file name a shim called {@code exeName} runs. */
