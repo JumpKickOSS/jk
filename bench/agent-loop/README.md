@@ -322,11 +322,14 @@ starts, not tested.
 | `jk-graphify` | jk | `jk mcp` plus graphify's own install (`graphify claude install`: its CLAUDE.md block and hooks) and MCP server | jk's graph against graphify's, the build tool equal |
 | `mvn-graphify` | Maven | the wrapper plus graphify's MCP server, over a `graphify update .` index | a code graph added by hand |
 
-`$AGENT_LOOP_ANCHOR_TAIL` (`silent`, `count` or `kinds`) writes `[graph] anchor-tail` into a jk
-sandbox's `jk.toml` before the baseline commit: what a passing build's verdict says of the prose a hand
+`$AGENT_LOOP_ANCHOR_TAIL` (`off`, `silent`, `count` or `kinds`) writes `[graph] anchor-tail` into a jk
+sandbox's `jk.toml` before the baseline commit: what a passing build's verdict says of the places a hand
 edit left under an old name ([graph.md](../../docs/user/graph.md#after-a-hand-edit)). Unset writes
-nothing, and jk's default (`off`) pushes nothing: no verdict names a place, so the push arm must set
-`silent` (the places that must change) or a prose variant. It is part of the prepared sandbox's key and of each row (`anchor_tail`). The
+nothing and leaves the arm's jk at its default: `silent` (the places that must change) since the push
+became jk's default, `off` on the builds before it. The no-push arm on a current jk must set `off`. It is
+part of the prepared sandbox's key and of each row (`anchor_tail`); a row without it ran its build's
+default, which the row's `jk_build` dates (every row banked under results/2026-11-18-anchor-push ran a
+build whose default was `off`). The
 `petclinic-push-*` tasks are built for it, traps and decoys in pairs, each commented in `tasks.toml`
 with the variant that should matter.
 

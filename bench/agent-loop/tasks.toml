@@ -350,9 +350,10 @@ test   = ["jk", "-u", "-x", "-a", "test", "-S", "DateOfBirthColumnAcceptanceTest
 # The push slice (JK-BHW43): paired tasks for the stale-anchor push in a build's verdict (docs/user/graph.md,
 # "After a hand edit"). A TRAP asks for one side of an anchor by hand, and the hidden check fails unless the
 # other side changes too, where no test of the agent's own run looks; a DECOY edits a file full of anchors and
-# the right change touches nothing else. The default build pushes nothing (anchor-tail off): compare arm jk with
-# AGENT_LOOP_ANCHOR_TAIL=silent (the push, prose silent) with arm jk unset or jk-before on 0.52.0 (no push), and
-# the prose variants with AGENT_LOOP_ANCHOR_TAIL=count and =kinds.
+# the right change touches nothing else. jk's default build pushes (anchor-tail silent: the places, prose silent):
+# compare arm jk unset with AGENT_LOOP_ANCHOR_TAIL=off or jk-before on 0.52.0 (no push), and the prose
+# variants with AGENT_LOOP_ANCHOR_TAIL=count and =kinds. Builds before the push became the default pushed
+# nothing unless AGENT_LOOP_ANCHOR_TAIL=silent.
 # A push that adds reads, turns or tokens on the decoys for an agent is off for that agent; reads of pushed
 # files that lead to no edit are the noise metric. Every test class but the Docker ones runs, as above.
 

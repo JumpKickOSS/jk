@@ -202,11 +202,13 @@ def test_excludes() -> list[str]:
 
 
 def anchor_tail() -> str:
-    """$AGENT_LOOP_ANCHOR_TAIL: what a jk sandbox's build verdicts say of prose a hand edit left under an
-    old name, written to its `[graph] anchor-tail` (silent, count or kinds); empty where unset (jk's default, off: no push)."""
+    """$AGENT_LOOP_ANCHOR_TAIL: what a jk sandbox's build verdicts say of the places a hand edit left under
+    an old name, written to its `[graph] anchor-tail` (off, silent, count or kinds); empty where unset, which
+    writes nothing and leaves the arm's jk at its own default: silent since the push became the default, off
+    on the builds before it (a row's jk_build says which). `off` asks for no push by name."""
     tail = os.environ.get("AGENT_LOOP_ANCHOR_TAIL", "").strip()
-    if tail and tail not in ("silent", "count", "kinds"):
-        raise SystemExit(f"AGENT_LOOP_ANCHOR_TAIL={tail}: expected silent, count or kinds")
+    if tail and tail not in ("off", "silent", "count", "kinds"):
+        raise SystemExit(f"AGENT_LOOP_ANCHOR_TAIL={tail}: expected off, silent, count or kinds")
     return tail
 
 
