@@ -40,6 +40,11 @@ public final class EnvReadKey {
         return new EnvReadKey(readOrMake(JkDirs.state().resolve(FILE)));
     }
 
+    /** A key over {@code secret}, as another home holds one: for a test that keys as two homes do. */
+    static EnvReadKey of(byte[] secret) {
+        return new EnvReadKey(secret.clone());
+    }
+
     /** The HMAC-SHA256 of {@code text} under this key, hex. */
     public String hmac(String text) {
         try {

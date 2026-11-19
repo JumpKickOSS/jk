@@ -7,15 +7,16 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.ResolvedSecrets;
 import cc.jumpkick.config.SecretRedactor;
-import cc.jumpkick.config.TestEnvValues;
-import cc.jumpkick.engine.plugin.ModuleEnvKeys;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.runtime.base.TestEnv;
+import cc.jumpkick.task.ModuleEnvKeys;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,9 @@ import org.junit.jupiter.api.io.TempDir;
  * value would be printed.
  */
 class SuiteEnvKeysTest {
+
+    /** What a test JVM's keying makes of a value the environment answered, spelled for these tests alone. */
+    private static final UnaryOperator<String> DIGESTED = value -> "sha256:" + Hashing.sha256Hex(value);
 
     @TempDir
     Path tmp;
@@ -60,11 +64,10 @@ class SuiteEnvKeysTest {
     private String inherited(JkBuild project, Map<String, String> shell, String... churn) throws Exception {
         Map<String, String> vars = new HashMap<>(shell);
         for (int i = 0; i < churn.length; i += 2) vars.put(churn[i], churn[i + 1]);
-        return RequestShell.where(
-                vars, () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested).stream()
-                        .filter(t -> t.startsWith("inherited-env:"))
-                        .findFirst()
-                        .orElseThrow());
+        return RequestShell.where(vars, () -> ModuleEnvKeys.testJvm(project, tmp, DIGESTED).stream()
+                .filter(t -> t.startsWith("inherited-env:"))
+                .findFirst()
+                .orElseThrow());
     }
 
     private JkBuild project(String extra) throws Exception {

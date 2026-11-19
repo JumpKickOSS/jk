@@ -6,7 +6,6 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.WorkerEnv;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.ContextPropagator;
@@ -458,7 +457,8 @@ public final class JavaCompile {
      * action key, since it names a file in the cache (a {@code :} is illegal there on Windows).
      */
     static String referencesKey(String key) {
-        return Hashing.sha256Hex(key + "\nreferences");
+        // Through the key hash: the compile key may hold a sealed value, and its shared form goes with it.
+        return EnvKeyText.digest(key + "\nreferences");
     }
 
     /** The task the reference index of {@code taskId}'s compile is cached under: a file name on every OS. */

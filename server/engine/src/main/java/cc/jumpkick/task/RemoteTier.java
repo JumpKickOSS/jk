@@ -218,6 +218,29 @@ public final class RemoteTier {
     /** The shared forms noted ({@link #shareAs}) other than a key's own: all a {@link #sharedFormsOnly} tier asks. */
     private final Set<String> sharedKeys = ConcurrentHashMap.newKeySet();
 
+    private volatile boolean holdsParts;
+
+    /**
+     * Note {@code shared} as the shared form of {@code local}, a part of a step key ({@link
+     * EnvKeyText}): a sealed environment value, or the digest of a text that held one. {@code shared}
+     * equal to {@code local} notes a part with no shared form, which keeps every key holding it here.
+     */
+    void notePart(String local, String shared) {
+        holdsParts = true;
+        shareAs(local, shared);
+    }
+
+    /** Whether this build noted a part ({@link #notePart}): until it has, no key text needs a scan. */
+    boolean holdsParts() {
+        return holdsParts;
+    }
+
+    /** What {@code local} was noted as ({@link #shareAs}), itself for no shared form, or null for nothing. */
+    @Nullable
+    String formOf(String local) {
+        return sharedForms.get(local);
+    }
+
     /** Whether this build noted what {@code local}'s shared form is ({@link #shareAs}), itself included. */
     public boolean noted(String local) {
         return sharedForms.containsKey(local);

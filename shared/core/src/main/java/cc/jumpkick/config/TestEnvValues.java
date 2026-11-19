@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.EnvDecl;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -95,25 +94,16 @@ public final class TestEnvValues {
          * @param lookup resolves {@code ${VAR}} and says which values came from a {@code .env}
          * @param secrets {@link SecretRedactor#from} that same {@code lookup} — a redactor built
          * from a different environment would mask the wrong values
-         * @param environmental what a value the environment answered becomes in the key: a plain
-         * digest ({@link #digested}), or for a suite's key an HMAC under a secret, so that no key
-         * that leaves the machine holds a digest a guessed value could be checked against
+         * @param environmental what a value the environment answered becomes in the key: an HMAC
+         * under a secret, never a plain digest, so that no key that leaves the machine and no memo
+         * holds a digest a guessed value could be checked against (the engine's step keys seal it,
+         * a suite's key keys it under the home's secret or the cache key seed)
          */
         record CacheKey(EnvLookup lookup, SecretRedactor secrets, UnaryOperator<String> environmental) implements Mode {
             public CacheKey {
                 Objects.requireNonNull(lookup, "lookup");
                 Objects.requireNonNull(secrets, "secrets");
                 Objects.requireNonNull(environmental, "environmental");
-            }
-
-            /** A key that takes a value the environment answered as its plain digest. */
-            public CacheKey(EnvLookup lookup, SecretRedactor secrets) {
-                this(lookup, secrets, CacheKey::digested);
-            }
-
-            /** {@code value} as {@link SecretRedactor#KEY_PREFIX} and its SHA-256. */
-            public static String digested(String value) {
-                return SecretRedactor.KEY_PREFIX + Hashing.sha256Hex(value);
             }
         }
     }

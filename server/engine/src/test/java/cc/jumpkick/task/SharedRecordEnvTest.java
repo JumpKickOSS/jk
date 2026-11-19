@@ -56,6 +56,39 @@ class SharedRecordEnvTest {
     }
 
     /**
+     * A sealed value ({@code hmac:} and an HMAC under the home's secret, as a node step's {@code
+     * env:NODE_ENV} and a packager's {@code secrets:} spell it) says nothing to another host and
+     * leaves as {@code hmac:-}, whatever input holds it.
+     */
+    @Test
+    void the_shared_form_withholds_every_sealed_value() {
+        String key = "k".repeat(64);
+        String node = "hmac:" + "a1".repeat(32);
+        String secrets = "hmac:" + "b2".repeat(32);
+        Map<String, String> inputs =
+                Map.of("env:NODE_ENV", node, "inputs", "facts:x;secrets:" + secrets + ";env:MODE=" + "c3".repeat(32));
+        String local = ActionRecordText.render(
+                "package-jar@x",
+                key,
+                inputs,
+                Map.of("app.jar", "a".repeat(64)),
+                Set.of(),
+                List.of(),
+                ActionRecordText.Meta.now(
+                        "package:jar", ActionRecordText.Writes.OUTPUTS, "jk/test", "linux-x86_64", -1, Map.of()));
+
+        String shared = ActionRecordText.renderShared(ActionRecordText.parse(local, key));
+
+        assertThat(local).contains(node).contains(secrets);
+        assertThat(shared)
+                .doesNotContain("a1".repeat(32))
+                .doesNotContain("b2".repeat(32))
+                .doesNotContain("c3".repeat(32))
+                .contains("secrets:hmac:-")
+                .contains("facts:x");
+    }
+
+    /**
      * The names behind a suite's listing and whole-environment tokens, which its record keeps so a
      * miss can name the variable that came or went, stay on this host, and so does the listing's
      * own digest.

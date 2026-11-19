@@ -484,15 +484,26 @@ public final class ActionRecordText {
 
     /**
      * Environment tokens a key hashes ({@code env:NAME=<digest>}, {@code plugin-env:}, {@code
-     * test-env:}, {@code inherited-env:<digest>}) with their values withheld: a digest of a short
+     * test-env:}, {@code inherited-env:<digest>}) and every sealed value ({@code hmac:<hex>}) with
+     * their values withheld: a digest of a short
      * secret can be brute-forced from a record that leaves the machine. The names stay, so a miss
      * can still say which variable moved; the key, which hashed the values here, is unchanged.
      */
     public static String withoutEnvValues(String text) {
-        if (!text.contains("env:")) return text;
+        if (!text.contains("env:") && !text.contains(SEALED_PREFIX)) return text;
         String named = ENV_TOKEN.matcher(text).replaceAll("$1:$2=-");
-        return INHERITED_ENV.matcher(named).replaceAll("inherited-env:-");
+        named = INHERITED_ENV.matcher(named).replaceAll("inherited-env:-");
+        return SEALED.matcher(named).replaceAll(SEALED_PREFIX + "-");
     }
+
+    /**
+     * How a step key spells a value of the caller's environment it sealed (the engine's {@code
+     * EnvKeyText}): an HMAC under the home's secret, which says nothing to another host and is
+     * withheld like any value (a node step's {@code env:NODE_ENV}, a packager's {@code secrets:}).
+     */
+    private static final String SEALED_PREFIX = "hmac:";
+
+    private static final Pattern SEALED = Pattern.compile("\\bhmac:[0-9a-f]{64}");
 
     private static final Pattern ENV_TOKEN = Pattern.compile("\\b((?:plugin-|test-)?env):([^=,;\\s]+)=[^,;\\s]*");
 

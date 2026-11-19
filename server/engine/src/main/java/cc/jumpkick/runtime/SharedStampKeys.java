@@ -3,11 +3,12 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.CallerEnv;
 import cc.jumpkick.config.TestSelection;
-import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeySeed;
+import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.RemoteCaches;
 import cc.jumpkick.task.RemoteTier;
 import cc.jumpkick.test.SuiteEnvReads;
@@ -61,8 +62,8 @@ final class SharedStampKeys {
      * Note the shared form of {@code local}, the stamp taken over {@code extras} for the suites of
      * {@code moduleDir} under {@code selection}, with the build's remote tier, which holds a key noted
      * with no shared form on this host, ledger and all: nothing when no tier is bound, the stamp keys
-     * on no secret (no {@link SuiteEnvReads#HOST_TOKEN}: both forms are one),
-     * no seed is in force, or the result stays on this host even so (a run with no caller, or a
+     * on no secret (no {@link SuiteEnvReads#HOST_TOKEN} and no value sealed by {@link EnvKeyText}:
+     * both forms are one), no seed is in force, or the result stays on this host even so (a run with no caller, or a
      * credential's value while the user keeps those here). Heard by no tap: the shared form names
      * nothing a forecast or a miss compares.
      */
@@ -75,22 +76,29 @@ final class SharedStampKeys {
             SuiteEnvReads.Policy policy,
             Rekey rekey) {
         RemoteTier tier = RemoteCaches.current();
-        if (tier == null || tier.noted(local) || !extras.contains(SuiteEnvReads.HOST_TOKEN)) return;
+        if (tier == null || tier.noted(local)) return;
+        // A sealed value among the extras ([env] inherit reaches the test JVM): in its shared form,
+        // or null when it has none.
+        List<String> sealed = EnvKeyText.sharedTokens(extras);
+        boolean reads = extras.contains(SuiteEnvReads.HOST_TOKEN);
+        if (!reads && sealed == extras) return;
         // Noted as itself until a shared form is known: the tier uploads neither the result nor its
         // ledger under a key no other host takes, and asked again, it costs a map read.
         tier.shareAs(local, local);
         tier.shareAs(TestClassLedger.key(local), TestClassLedger.key(local));
-        KeySeed seed = tier.keySeed();
-        if (seed == null) return;
+        if (sealed == null) return;
+        KeySeed seed = reads ? tier.keySeed() : null;
+        if (reads && seed == null) return;
         try {
             String key = KeyAudit.untapped(() -> {
+                if (seed == null) return rekey.key(sealed);
                 List<String> env = SuiteEnvReads.sharedTokens(
                         SuiteReads.load(moduleDir, selection).env(),
                         policy,
                         CallerEnv.current(),
                         seed,
                         tier.credentialsLocal());
-                return env == null ? null : rekey.key(shared(extras, env, declaredTokens(project, moduleDir, seed)));
+                return env == null ? null : rekey.key(shared(sealed, env, declaredTokens(project, moduleDir, seed)));
             });
             if (key == null || key.equals(local)) return;
             tier.shareAs(local, key);

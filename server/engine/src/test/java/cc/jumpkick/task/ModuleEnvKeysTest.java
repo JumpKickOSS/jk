@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.plugin;
+package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -7,7 +7,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.RequestShell;
-import cc.jumpkick.config.TestEnvValues;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
@@ -16,11 +15,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Each kind of environment read keys the readers it reaches, and only those. */
 class ModuleEnvKeysTest {
+
+    /** What a test JVM's keying makes of a value the environment answered, spelled for these tests alone. */
+    private static final UnaryOperator<String> DIGESTED = value -> "sha256:" + Hashing.sha256Hex(value);
 
     @TempDir
     Path tmp;
@@ -52,14 +55,8 @@ class ModuleEnvKeysTest {
                 [test]
                 env = ["SUITE_MODE"]
                 """);
-        assertThat(under(
-                        "SUITE_MODE",
-                        "a",
-                        () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested)))
-                .isNotEqualTo(under(
-                        "SUITE_MODE",
-                        "b",
-                        () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested)));
+        assertThat(under("SUITE_MODE", "a", () -> ModuleEnvKeys.testJvm(project, tmp, DIGESTED)))
+                .isNotEqualTo(under("SUITE_MODE", "b", () -> ModuleEnvKeys.testJvm(project, tmp, DIGESTED)));
         assertThat(under("SUITE_MODE", "a", () -> ModuleEnvKeys.plugin(project, tmp)))
                 .isEmpty();
     }
@@ -75,8 +72,7 @@ class ModuleEnvKeysTest {
                 [test]
                 env = ["JK_ANWXB_UNSET", "SUITE_MODE", { CI = "false" }]
                 """);
-        List<String> tokens = under(
-                "SUITE_MODE", "fast", () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested));
+        List<String> tokens = under("SUITE_MODE", "fast", () -> ModuleEnvKeys.testJvm(project, tmp, DIGESTED));
 
         assertThat(tokens)
                 .hasSize(3)
@@ -97,7 +93,7 @@ class ModuleEnvKeysTest {
         for (Callable<List<String>> reader : List.<Callable<List<String>>>of(
                 () -> ModuleEnvKeys.worker(project, tmp),
                 () -> ModuleEnvKeys.plugin(project, tmp),
-                () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested),
+                () -> ModuleEnvKeys.testJvm(project, tmp, DIGESTED),
                 () -> ModuleEnvKeys.module(project, tmp))) {
             assertThat(under("GEN_MODE", "A", reader)).isNotEqualTo(under("GEN_MODE", "B", reader));
         }
@@ -113,7 +109,7 @@ class ModuleEnvKeysTest {
         for (Callable<List<String>> reader : List.<Callable<List<String>>>of(
                 () -> ModuleEnvKeys.worker(project, tmp),
                 () -> ModuleEnvKeys.plugin(project, tmp),
-                () -> ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested),
+                () -> ModuleEnvKeys.testJvm(project, tmp, DIGESTED),
                 () -> ModuleEnvKeys.module(project, tmp))) {
             assertThat(under("JK_CACHE_KEY_SEED", "made-up-seed-a-0123456789", reader))
                     .isNotEmpty()
@@ -162,12 +158,68 @@ class ModuleEnvKeysTest {
         }
     }
 
+    /**
+     * A value the caller's shell answered enters a compiler's, a plugin's and a packager's tokens
+     * sealed, with no plain digest of it in any spelling, whether forwarded or read by a plugin
+     * table's {@code env:}; a value the manifest writes literally is a constant of
+     * the checkout and keys by its digest, as it did, so a module that forwards nothing keys alike.
+     */
+    @Test
+    void a_value_the_shell_answered_is_sealed_and_a_literal_keys_by_its_digest() throws Exception {
+        JkBuild project = project("""
+                [env]
+                require = ["SIGNING_PASSWORD"]
+                vars    = [{ TZ = "UTC" }]
+
+                [android]
+                namespace   = "t.app"
+                compile-sdk = 34
+                min-sdk     = 24
+
+                [android.signing.release]
+                store-file = "env:KEYSTORE_FILE"
+                key-alias  = "upload"
+                """);
+        Map<String, String> shell = Map.of(
+                "PATH", "/bin",
+                "SIGNING_PASSWORD", "made-up-pw-1",
+                "KEYSTORE_FILE", "/k/made-up.jks");
+        List<String> worker = RequestShell.where(shell, () -> ModuleEnvKeys.worker(project, tmp));
+        List<String> plugin = RequestShell.where(shell, () -> ModuleEnvKeys.plugin(project, tmp));
+        String all = String.join("\n", plugin);
+
+        assertThat(worker)
+                .anyMatch(t -> t.matches("env:SIGNING_PASSWORD=hmac:[0-9a-f]{64}"))
+                .contains("env:TZ=" + Hashing.sha256Hex("UTC"));
+        assertThat(plugin).containsAll(worker).anyMatch(t -> t.matches("plugin-env:KEYSTORE_FILE=hmac:[0-9a-f]{64}"));
+        for (String value : List.of("made-up-pw-1", "/k/made-up.jks")) {
+            assertThat(all).doesNotContain(value);
+            PlainDigests.assertNone(all, value);
+        }
+        assertThat(RequestShell.where(shell, () -> ModuleEnvKeys.worker(project, tmp)))
+                .as("one home seals one value alike")
+                .isEqualTo(worker);
+    }
+
+    /** A module that inherits the shell keys a worker on the whole of it sealed, never by its digest. */
+    @Test
+    void the_inherited_environment_is_sealed() throws Exception {
+        JkBuild project = project("""
+                [env]
+                inherit = true
+                """);
+        List<String> worker = under("MADE_UP_FLAG", "on", () -> ModuleEnvKeys.worker(project, tmp));
+
+        assertThat(worker).singleElement().asString().matches("inherited-env:hmac:[0-9a-f]{64}");
+        assertThat(under("MADE_UP_FLAG", "off", () -> ModuleEnvKeys.worker(project, tmp)))
+                .isNotEqualTo(worker);
+    }
+
     @Test
     void a_module_that_reads_nothing_has_no_tokens() throws Exception {
         JkBuild project = project("");
         assertThat(ModuleEnvKeys.module(project, tmp)).isEmpty();
-        assertThat(ModuleEnvKeys.testJvm(project, tmp, TestEnvValues.Mode.CacheKey::digested))
-                .isEmpty();
+        assertThat(ModuleEnvKeys.testJvm(project, tmp, DIGESTED)).isEmpty();
     }
 
     private static List<String> under(String name, String value, Callable<List<String>> reader) throws Exception {

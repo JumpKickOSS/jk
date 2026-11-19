@@ -7,9 +7,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
@@ -27,7 +25,9 @@ import cc.jumpkick.runtime.base.FilteredResources;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.BuildInfoKeys;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolIdentity;
@@ -463,9 +463,10 @@ public record TestStampInputs(
         build.runSuites().forEach((suite, spec) -> {
             SuiteSettings run = spec.settings();
             if (run.isEmpty() || selection == null || !selection.runs(suite, spec.explicit())) return;
-            // The suite's env by digest: a record names no value a test JVM is handed.
+            // The suite's env by digest of a constant: written literally in the manifest, never read
+            // from the caller's shell; a record names no value a test JVM is handed.
             out.add("suite-run:" + suite + "=" + String.join(" ", run.forkArgs()) + ";env="
-                    + (run.env().isEmpty() ? "none" : Hashing.sha256Hex(new TreeMap<>(run.env()).toString())));
+                    + (run.env().isEmpty() ? "none" : EnvKeyText.literal(new TreeMap<>(run.env()).toString())));
         });
         return out;
     }

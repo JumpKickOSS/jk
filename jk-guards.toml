@@ -1558,7 +1558,7 @@ instead    = "BuildEnv.secretsFor(moduleDir), or BuildEnv.secretsFor(null) for w
 why        = "a sink with a redactor of its own masks less than the wire, and a CI job that publishes it leaks what the terminal hid"
 
 [[guards.redactor-owner.allow]]
-in     = "cc.jumpkick.engine.plugin.ModuleEnvKeys"
+in     = "cc.jumpkick.task.ModuleEnvKeys"
 reason = "hashes the .env values its own lookup resolved into step keys and the run-tests stamp; it writes no text anywhere"
 
 # G149. A manifest's environment values are keyed in one place. ModuleEnvKeys turns every read
@@ -1569,7 +1569,7 @@ kind       = "forbid"
 signatures = ["cc.jumpkick.config.TestEnvValues#resolve(**)"]
 scope      = ["server/*"]
 source-set = "main"
-owner      = "cc.jumpkick.engine.plugin.ModuleEnvKeys"
+owner      = "cc.jumpkick.task.ModuleEnvKeys"
 fixture    = "server/engine/guard-fixtures/env-key-owner"
 instead    = "ModuleEnvKeys.worker, plugin or testJvm for a key; WorkerEnv.declared for a launch"
 why        = "an environment value keyed outside ModuleEnvKeys is one the preflight memo and the forecast never see"
@@ -1581,6 +1581,26 @@ reason = "resolves [env] for a worker's launch, the values the keys hash in Modu
 [[guards.env-key-owner.allow]]
 in     = "cc.jumpkick.runtime.base.TestEnv"
 reason = "resolves [test] env for the test JVM's launch, the values the stamp hashes in ModuleEnvKeys"
+
+# G162. No value of the caller's environment enters a key or a memo by plain digest: a digest of a
+# short value is guessed by trying values, by anyone who holds the key (a remote cache, a record
+# that left the host) or can read the project (the preflight memo, the freshness stamps). A step key
+# takes such a value sealed (EnvKeyText: an HMAC under the home's secret, under the cache key seed
+# in the shared form); a constant the manifest writes literally goes through EnvKeyText.literal.
+# Every plain digest found so far (ModuleEnvKeys' env:, plugin-env: and inherited-env:, NodeKeys and
+# the preflight memo's node env:) had this shape: an env token's literal and a Hashing digest in one
+# statement. The rule cannot see a value hashed in another statement or a helper, or under a name
+# with no env token; the removed plain-digest helper and env-key-owner (G149) stand there.
+[guards.env-value-plain-digest]
+kind     = "text"
+files    = ["server/*/src/main/java/**/*.java", "shared/*/src/main/java/**/*.java"]
+blank    = "comments"
+patterns = ['"[^"\n]*env[\w-]*[:=][^"\n]*"[^;{}]*?\bHashing\.(?:sha256\w*|newSha256)\(']
+fixture  = "server/guard/fixtures/env-value-plain-digest"
+hit      = 'out.add("env:" + name + "=" + Hashing.sha256Hex(value));'
+miss     = 'out.add("env:" + name + "=" + sealer.seal(value, EnvKeyText.credential(name)));'
+instead  = "EnvKeyText.sealer().seal(value, credential) for a value the caller's environment answered; EnvKeyText.literal(value) for a constant the manifest writes"
+why      = "a plain digest of a short environment value in a key or a memo is a guess away from the value"
 
 # G97. A catch of Exception, Throwable or RuntimeException whose body is only a comment has written
 # down its intent and dropped its evidence. This rule measures the sites; the ratchet below holds

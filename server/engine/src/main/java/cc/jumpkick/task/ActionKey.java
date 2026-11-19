@@ -100,7 +100,7 @@ public final class ActionKey {
         appendSources(sb, request.sources());
         for (String line : classpathTokens) sb.append(line).append('\n');
         KeyAudit.tapLines(sb);
-        String key = Hashing.sha256Hex(sb.toString());
+        String key = EnvKeyText.digest(sb);
         ToolchainPolicy.expect(
                 key,
                 request.compilerHome(),
@@ -206,7 +206,7 @@ public final class ActionKey {
         // even where the key, which names the level, would let the cache serve it.
         sb.append("jdk:").append(JdkToolchain.token(request.compilerHome())).append('\n');
         KeyAudit.tapLines(sb);
-        return Hashing.sha256Hex(sb.toString());
+        return EnvKeyText.digest(sb);
     }
 
     private static void appendJavacOptions(StringBuilder sb, CompileRequest request) throws IOException {
@@ -289,7 +289,7 @@ public final class ActionKey {
             appendCpToken(sb, "worker:", entry);
         }
         KeyAudit.tapLines(sb);
-        String key = Hashing.sha256Hex(sb.toString());
+        String key = EnvKeyText.digest(sb);
         ToolchainPolicy.expect(
                 key,
                 request.javaHome(),
@@ -427,7 +427,7 @@ public final class ActionKey {
         appendSources(sb, GroovycInputs.compileSet(request));
         for (String line : groovycClasspathTokens(request, cp)) sb.append(line).append('\n');
         KeyAudit.tapLines(sb);
-        String key = Hashing.sha256Hex(sb.toString());
+        String key = EnvKeyText.digest(sb);
         ToolchainPolicy.expect(
                 key,
                 JavaHomes.runningJavaHome(),
@@ -486,7 +486,7 @@ public final class ActionKey {
         sorted.sort(Comparator.naturalOrder());
         for (String t : sorted) sb.append("in:").append(t).append('\n');
         KeyAudit.tapLines(sb);
-        return Hashing.sha256Hex(sb.toString());
+        return EnvKeyText.digest(sb);
     }
 
     /**

@@ -9,7 +9,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceModules;
-import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.host.AtomicWrites;
@@ -34,9 +33,11 @@ import cc.jumpkick.plugin.manifest.PluginModule;
 import cc.jumpkick.runtime.base.CompileSupport;
 import cc.jumpkick.runtime.base.Perf;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.LockSlice;
+import cc.jumpkick.task.ModuleEnvKeys;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -844,9 +845,12 @@ public final class PreflightMemo {
             raw(out, "node:" + e.getKey());
             raw(out, e.getValue());
         }
+        // Sealed as the node keys seal them: the memo sits in the project, readable by anyone who
+        // can read the checkout, and holds no digest a guessed value could be checked against.
+        EnvKeyText.Sealer sealer = EnvKeyText.sealer();
         for (Map.Entry<String, String> e :
                 BuildEnv.nodeFromRequest(BuildEnv.NODE_PREFIXES).entrySet()) {
-            both(md, out, "env:" + e.getKey() + "=" + Hashing.sha256Hex(e.getValue()));
+            both(md, out, "env:" + e.getKey() + "=" + sealer.seal(e.getValue(), EnvKeyText.credential(e.getKey())));
         }
         both(md, out, "skip-node=" + SessionContext.current().skipNode());
     }

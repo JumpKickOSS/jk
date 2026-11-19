@@ -6,7 +6,6 @@ import static cc.jumpkick.runtime.BuildPlanner.*;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Session;
-import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
@@ -31,13 +30,14 @@ import cc.jumpkick.surface.TrainLayout;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.PortablePath;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -403,13 +403,15 @@ public final class PackagingKeys {
                         repositories)));
         tokens.addAll(PlannerPlugin.toolTokens(tools, extras, sdkPins));
         if (!p.secrets().isEmpty()) {
-            // A changed signing credential re-signs (the signature is part of the artifact); the
-            // key carries only a digest — a secret value never appears anywhere readable.
+            // A changed signing credential re-signs (the signature is part of the artifact). The
+            // secrets come from the variant's env: indirection or the manifest's secret keys, and
+            // enter sealed as a credential (EnvKeyText): never a digest a guess could be checked
+            // against, shared only under the cache key seed.
             StringBuilder sb = new StringBuilder();
             for (var e : new TreeMap<>(p.secrets()).entrySet()) {
                 sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
             }
-            tokens.add("secrets:" + Hashing.sha256Hex(sb.toString().getBytes(StandardCharsets.UTF_8)));
+            tokens.add("secrets:" + EnvKeyText.sealer().seal(sb.toString(), true));
         }
         // [manifest] attributes ride inside the facts token — they reach the packager, so they key it.
         tokens.add("facts:" + facts.token());

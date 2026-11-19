@@ -6,13 +6,11 @@ import static cc.jumpkick.runtime.PlannerPlugin.beforeCompile;
 
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.engine.plugin.ModuleEnvKeys;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Classpaths;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JavaHomes;
@@ -33,10 +31,12 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.CompileWarnings;
+import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyOwner;
+import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.PortablePath;
 import cc.jumpkick.task.ProjectedFiles;
 import cc.jumpkick.task.ToolchainPolicy;
@@ -479,7 +479,8 @@ public final class PlannerKsp {
         for (Path entry : classpath) sb.append("cp:").append(identity.of(entry)).append('\n');
         for (Path entry : processorCp)
             sb.append("pp:").append(ClasspathFingerprint.entry(entry)).append('\n');
-        return Hashing.sha256Hex(sb.toString());
+        // Through the key hash: the options digest may hold the module's sealed [env] values.
+        return EnvKeyText.digest(sb);
     }
 
     /**

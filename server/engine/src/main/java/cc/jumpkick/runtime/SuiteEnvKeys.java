@@ -5,11 +5,12 @@ import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.engine.plugin.PluginJar;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.EnvKeyText;
+import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.SuiteEnvReads;
 import cc.jumpkick.test.SuiteReads;
@@ -77,8 +78,9 @@ final class SuiteEnvKeys {
         Profile profile = CompileSupport.resolveProfile(project.profiles(), profileName);
         if (profile == null || profile.env().isEmpty()) return List.of();
         List<String> out = new ArrayList<>();
-        // By digest, as [test] env is: a record names no value a test JVM is handed.
-        new TreeMap<>(profile.env()).forEach((k, v) -> out.add("profile-env:" + k + "=" + Hashing.sha256Hex(v)));
+        // By digest of a constant: a profile's env is written literally in the manifest, never read
+        // from the caller's shell, and a record names no value a test JVM is handed.
+        new TreeMap<>(profile.env()).forEach((k, v) -> out.add("profile-env:" + k + "=" + EnvKeyText.literal(v)));
         return out;
     }
 }

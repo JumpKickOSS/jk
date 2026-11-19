@@ -4,7 +4,6 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
 import java.io.IOException;
@@ -266,7 +265,9 @@ public final class FreshnessStamp {
      * two parts cannot run together into a third.
      */
     public static String optionsDigest(List<String> parts) {
-        return Hashing.sha256Hex(String.join("\n", parts));
+        // Through the key hash: an options digest that holds a sealed environment value is a part
+        // of the key it enters, and its shared form goes with it (EnvKeyText).
+        return EnvKeyText.digest(String.join("\n", parts));
     }
 
     /**

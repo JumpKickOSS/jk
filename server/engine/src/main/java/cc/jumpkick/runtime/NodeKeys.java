@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.OutputDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -14,6 +13,7 @@ import cc.jumpkick.model.NodeTable;
 import cc.jumpkick.node.NodePlatform;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.task.EnvKeyText;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.KeyOwner;
 import java.io.File;
@@ -381,16 +381,18 @@ final class NodeKeys {
 
     /**
      * {@code NODE_ENV}, {@code CI} and every variable under the frameworks' public prefixes or the
-     * build's own, hashed: what {@link NodeEnv} hands the process from the request.
+     * build's own, sealed ({@link EnvKeyText}): what {@link NodeEnv} hands the process from the
+     * request, by HMAC under this home's secret and, shared, under the cache key seed.
      */
     private static void envInputs(Map<String, String> inputs, Map<String, String> env, List<String> prefixes) {
         List<String> all = new ArrayList<>(BuildEnv.NODE_PREFIXES);
         all.addAll(prefixes);
+        EnvKeyText.Sealer sealer = EnvKeyText.sealer();
         for (Map.Entry<String, String> e : env.entrySet()) {
             String name = e.getKey();
             boolean read = name.equals("NODE_ENV") || name.equals("CI");
             for (String prefix : all) read |= name.startsWith(prefix);
-            if (read) inputs.put("env:" + name, Hashing.sha256Hex(e.getValue()).substring(0, 16));
+            if (read) inputs.put("env:" + name, sealer.seal(e.getValue(), EnvKeyText.credential(name)));
         }
     }
 
