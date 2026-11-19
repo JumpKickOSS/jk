@@ -122,6 +122,28 @@ public final class RemoteTier {
 
     private volatile @Nullable Boolean backendWrites;
 
+    /**
+     * True when this build offers {@code key}'s record ({@link #offers()}) and the tier takes it: a
+     * tier that keeps shared forms alone ({@link #sharedFormsOnly}) takes only a key noted with one.
+     */
+    public boolean offers(String key) {
+        return writes() && (!sharedFormsOnly() || sharedForm(key) != null);
+    }
+
+    /**
+     * True when this tier asks and stores shared forms alone ({@link #shareAs}): it is the request's
+     * own action cache, under a team's seed with no remote cache ({@link SeedFormStore}), which has
+     * just missed every other key and keeps every other record already.
+     */
+    public boolean sharedFormsOnly() {
+        return backend instanceof SeedFormStore;
+    }
+
+    /** Keep the shared forms in {@code local} when this tier is the request's own action cache ({@link SeedFormStore}). */
+    void bindLocal(LocalCacheBackend local) {
+        if (backend instanceof SeedFormStore store) store.bind(local);
+    }
+
     /** Whether the backend lets this caller write, asked once per build. */
     private boolean backendWrites() {
         Boolean known = backendWrites;
@@ -190,7 +212,11 @@ public final class RemoteTier {
      */
     public void shareAs(String local, String shared) {
         sharedForms.put(local, shared);
+        if (!shared.equals(local)) sharedKeys.add(shared);
     }
+
+    /** The shared forms noted ({@link #shareAs}) other than a key's own: all a {@link #sharedFormsOnly} tier asks. */
+    private final Set<String> sharedKeys = ConcurrentHashMap.newKeySet();
 
     /** Whether this build noted what {@code local}'s shared form is ({@link #shareAs}), itself included. */
     public boolean noted(String local) {
@@ -248,6 +274,7 @@ public final class RemoteTier {
         // Noted as its own shared form: keyed on this home's secret with no seed to share it under.
         if (key.equals(sharedForms.get(key))) return;
         String shared = sharedForm(key);
+        if (shared == null && sharedFormsOnly()) return;
         Map<String, String> inputs = record.inputs();
         if (shared != null) {
             inputs = new TreeMap<>(inputs);
@@ -531,6 +558,7 @@ public final class RemoteTier {
         for (Map.Entry<String, CacheBackend.@Nullable Accept> e : keys.entrySet()) {
             String key = e.getKey() == null ? null : asShared(e.getKey());
             if (key == null || key.isBlank() || found.containsKey(key) || absent.contains(key)) continue;
+            if (sharedFormsOnly() && !sharedKeys.contains(key)) continue;
             ask.add(key);
             if (e.getValue() != null) accept.put(key, e.getValue());
         }
@@ -576,7 +604,7 @@ public final class RemoteTier {
             String text = held(shared, accept);
             return text == null ? null : ActionRecordText.rekeyed(text, shared, key);
         }
-        return held(key, accept);
+        return sharedFormsOnly() ? null : held(key, accept);
     }
 
     /** The record text the backend holds for {@code key} as asked: {@link #record}'s batch. */

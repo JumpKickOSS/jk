@@ -97,6 +97,7 @@ public final class ActionCache {
         this.storeCas = storeCas;
         this.local = new LocalCacheBackend(cas, root, storeCas);
         this.remote = RemoteCaches.current();
+        if (remote != null) remote.bindLocal(local);
     }
 
     /**
@@ -632,7 +633,7 @@ public final class ActionCache {
                 StepKinds.of(task), kind, producer(), CachePlatform.current(), workedMillis(), sizes);
         meta = RecordToolchain.withPlatform(meta, key, inputs);
         // Only a record that may leave the machine pays for its tokens: here the blobs are on disk.
-        if (remote != null && remote.writes())
+        if (remote != null && remote.offers(key))
             meta = meta.withDerived(DerivedTokens.of(meta.kind(), outputs, cas, local::blobPath));
         ActionRecord record = new ActionRecord(task, key, inputs, outputs, executables, said, meta);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a

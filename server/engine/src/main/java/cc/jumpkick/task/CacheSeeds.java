@@ -32,7 +32,9 @@ import org.jspecify.annotations.Nullable;
  * project's {@code jk.toml}, which every checkout and fork reads. It wins over the issued one, so the
  * service then holds no key it could test guessed values against. {@code off} (or {@code false})
  * takes no seed at all. A team seed shorter than {@value #MIN_CHARS} characters is refused, said once:
- * a seed is what keeps a short value from being guessed.
+ * a seed is what keeps a short value from being guessed. With no remote cache, the team's seed (and
+ * never an issued one) keys the shared forms the request's own action cache keeps ({@link
+ * RemoteCacheBinding#seedForms}).
  *
  * <p>An issued seed is kept in this jk home's state, readable by its owner alone, one file per cache
  * and caller (named by an HMAC under the home's secret of the cache and the credential, never the

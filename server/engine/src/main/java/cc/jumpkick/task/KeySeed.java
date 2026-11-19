@@ -18,7 +18,9 @@ import javax.crypto.spec.SecretKeySpec;
  * <p>The derivation separates its domain twice: the HMAC key is not the seed but {@code
  * HMAC-SHA256(seed, "jk cache key seed 1\0" + scope)}, so a seed is never a key a home's secret
  * could be, and {@code scope} names the cache ({@code team\0<cache>} or {@code
- * issued\0<cache>\0<seed id>}), so one team seed set for two caches gives two unrelated keys.
+ * issued\0<cache>\0<seed id>}), so one team seed set for two caches gives two unrelated keys. With
+ * no remote cache the team's seed keys the request's own action cache ({@link SeedFormStore}) under
+ * a fixed scope, {@code team\0local cache}, alike on every machine.
  *
  * <p>No key names the seed: a key's shared form changes with it because every value under it
  * does, so a new seed moves the shared keys of results that read a value and nothing else. Neither

@@ -31,7 +31,9 @@ import org.jspecify.annotations.Nullable;
  * for a shared cache ({@link DirectoryCacheBackend}) is named by the experimental {@value #DIR}
  * setting of the shell that ran the command; {@value #WRITE}{@code =true} also uploads what the
  * request stores. Those two are not a supported feature: the names and the behaviour may change or
- * go. With nothing set, nothing is bound and the request is the local cache alone.
+ * go. With no remote cache and the team's own key seed set, the request's own action cache stands
+ * as its tier for the shared forms of the results that read the environment ({@link #seedForms});
+ * with neither, nothing is bound and the request is the local cache alone.
  */
 public final class RemoteCacheBinding {
 
@@ -60,8 +62,20 @@ public final class RemoteCacheBinding {
             return new RemoteTier(new DirectoryCacheBackend(Path.of(dir)), writes).seededBy(seed(), credentialsLocal());
         }
         RemoteCacheSettings settings = RemoteCacheSettings.resolve(BuildEnv::get, JkDirs.userConfigFile());
-        if (settings == null || SessionContext.current().config().offlineOr(false)) return null;
+        if (settings == null || SessionContext.current().config().offlineOr(false)) return seedForms(seed());
         return new RemoteTier(service(settings.url()), settings.writes()).seededBy(seed(), credentialsLocal());
+    }
+
+    /**
+     * With no remote cache, the tier that keeps the request's suite results that read the
+     * environment under their key's shared form in its own action cache too ({@link SeedFormStore}),
+     * when {@code source} is the team's own seed; null otherwise. An issued seed never keys it, and
+     * there is none without a cache to issue one: nothing matches on another machine without a
+     * seed the team set or a cache service coordinating it.
+     */
+    static @Nullable RemoteTier seedForms(CacheSeeds.Source source) {
+        if (!(source instanceof CacheSeeds.Team)) return null;
+        return new RemoteTier(new SeedFormStore(), true).seededBy(source, credentialsLocal());
     }
 
     /** Whether the request keeps results keyed on a credential's value here even under a seed. */

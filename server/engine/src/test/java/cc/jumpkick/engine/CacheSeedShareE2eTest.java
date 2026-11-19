@@ -13,6 +13,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.testing.FakeCacheServer;
 import cc.jumpkick.config.JkEngineConfig;
+import cc.jumpkick.host.ActionTree;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
@@ -29,9 +31,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -204,6 +209,63 @@ class CacheSeedShareE2eTest extends EngineServerHarness {
                     .as("the same team seed replays")
                     .isNotEqualTo(StepCache.Outcome.MISS);
         }
+    }
+
+    /** Another home secret, as a fresh runner's home has: every build here shares one home. */
+    private static void newHomeSecret() throws IOException {
+        Files.deleteIfExists(JkDirs.state().resolve("env-read.key"));
+    }
+
+    /**
+     * A CI runner's own cache with no cache service: A sets a team seed and no remote cache, and its
+     * cache directory alone (none of the home's state) is restored into fresh homes with other home
+     * secrets and checkouts. The same seed and value replay A's result; no seed, another seed or
+     * another value run the suite.
+     */
+    @Test
+    void with_a_team_seed_and_no_remote_cache_a_restored_cache_directory_replays_under_the_same_seed_alone()
+            throws Exception {
+        Path root = shortTempDir();
+        Path a = checkout(root.resolve("a"), READS_MODE);
+        String team = "made-up-team-seed-for-the-e2e";
+        Path cacheA = root.resolve("cache-a");
+        assertThat(runAt(a, cacheA, Map.of("JKSEED_MODE", "one", CacheSeeds.ENV, team)))
+                .isEqualTo(StepCache.Outcome.MISS);
+        assertThat(recordsReading(cacheA, "JKSEED_MODE"))
+                .as("kept beside the result: its shared form, no host mark and no value")
+                .anySatisfy(t -> assertThat(t).doesNotContain("x:env-keyed").doesNotContain(" one\n"));
+
+        Map<String, Map<String, String>> runners = new LinkedHashMap<>();
+        runners.put("b", Map.of("JKSEED_MODE", "one", CacheSeeds.ENV, team));
+        runners.put("c", Map.of("JKSEED_MODE", "one"));
+        runners.put("d", Map.of("JKSEED_MODE", "one", CacheSeeds.ENV, "made-up-other-seed-for-the-e2e"));
+        runners.put("e", Map.of("JKSEED_MODE", "two", CacheSeeds.ENV, team));
+        for (String r : runners.keySet()) PathUtil.copyTree(cacheA, root.resolve("cache-" + r));
+        Map<String, StepCache.Outcome> outcomes = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, String>> r : runners.entrySet()) {
+            newHomeSecret();
+            Path ws = copy(a, root.resolve(r.getKey()));
+            outcomes.put(r.getKey(), runAt(ws, root.resolve("cache-" + r.getKey()), r.getValue()));
+        }
+        assertThat(outcomes.get("b"))
+                .as("the same seed and value replay without running, made on another machine")
+                .isEqualTo(StepCache.Outcome.REMOTE_HIT);
+        assertThat(outcomes.get("c")).as("no seed runs").isEqualTo(StepCache.Outcome.MISS);
+        assertThat(outcomes.get("d")).as("another seed runs").isEqualTo(StepCache.Outcome.MISS);
+        assertThat(outcomes.get("e")).as("another value runs").isEqualTo(StepCache.Outcome.MISS);
+    }
+
+    /** The text of every record under {@code cache} that names the read of {@code name}. */
+    private static List<String> recordsReading(Path cache, String name) throws IOException {
+        Path keys = ActionTree.KEYS.under(CacheTree.ACTIONS.under(cache));
+        List<String> out = new ArrayList<>();
+        try (Stream<Path> files = Files.list(keys)) {
+            for (Path f : files.toList()) {
+                String text = Files.readString(f);
+                if (text.contains("x:env-read:" + name)) out.add(text);
+            }
+        }
+        return out;
     }
 
     @Test
