@@ -1,0 +1,146 @@
+2026-11-19T00:04:59 START tier=stP2k runs=48 pid=1607445 mem_avail_mb=9414
+2026-11-19T00:04:59 RUN 1/48 codex-sol load=0.78 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:06:39   ROW codex/gpt-6.1-sol petclinic-push-column-h2 jk #1: green tokens=196972 turns=9 wall=75.3 cost=0.07173 
+2026-11-19T00:06:39 END 1 rc=0 101s wall=100.6 mono=100.6 mem_min_avail_mb=7692
+2026-11-19T00:06:39 RUN 2/48 codex-sol load=5.75 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:07:37   ROW codex/gpt-6.1-sol petclinic-push-column-h2 jk #1: green tokens=119198 turns=8 wall=33.3 cost=0.04859 
+2026-11-19T00:07:37 END 2 rc=0 58s wall=57.7 mono=57.7 mem_min_avail_mb=7655
+2026-11-19T00:07:37 RUN 3/48 codex-sol load=6.87 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:09:04   ROW codex/gpt-6.1-sol petclinic-push-config-key jk #1: green tokens=166816 turns=4 wall=62.4 cost=0.04628 
+2026-11-19T00:09:04 END 3 rc=0 87s wall=86.9 mono=86.9 mem_min_avail_mb=7521
+2026-11-19T00:09:04 RUN 4/48 codex-sol load=6.26 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:09:55   ROW codex/gpt-6.1-sol petclinic-push-config-key jk #1: green tokens=117904 turns=5 wall=26.0 cost=0.06751 
+2026-11-19T00:09:55 END 4 rc=0 51s wall=50.6 mono=50.6 mem_min_avail_mb=7990
+2026-11-19T00:09:55 RUN 5/48 codex-sol load=6.79 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:12:03   ROW codex/gpt-6.1-sol petclinic-push-json-property jk #1: green tokens=249074 turns=9 wall=101.5 cost=0.08105 
+2026-11-19T00:12:03 END 5 rc=0 128s wall=128.5 mono=128.5 mem_min_avail_mb=7118
+2026-11-19T00:12:03 RUN 6/48 codex-sol load=5.97 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:12:58   ROW codex/gpt-6.1-sol petclinic-push-json-property jk #1: green tokens=164383 turns=9 wall=29.3 cost=0.05377 
+2026-11-19T00:12:58 END 6 rc=0 55s wall=54.8 mono=54.8 mem_min_avail_mb=7583
+2026-11-19T00:12:58 RUN 7/48 codex-sol load=6.95 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:20:39   ROW codex/gpt-6.1-sol petclinic-push-ts-client jk #1: green tokens=245213 turns=9 wall=435.3 cost=0.0794 
+2026-11-19T00:20:39 END 7 rc=0 461s wall=461.0 mono=461.0 mem_min_avail_mb=7317
+2026-11-19T00:20:39 RUN 8/48 codex-sol load=2.74 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:21:42   ROW codex/gpt-6.1-sol petclinic-push-ts-client jk #1: green tokens=146193 turns=12 wall=37.4 cost=0.04868 
+2026-11-19T00:21:42 END 8 rc=0 63s wall=62.9 mono=62.9 mem_min_avail_mb=7234
+2026-11-19T00:21:42 RUN 9/48 cursor-composer load=5.26 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:25:28   ROW cursor/composer-2.5 petclinic-push-column-h2 jk #1: claimed tokens=658334 turns=20 wall=200.4 cost=0.16608 
+2026-11-19T00:25:28 END 9 rc=0 226s wall=226.3 mono=226.3 mem_min_avail_mb=7232
+2026-11-19T00:25:28 RUN 10/48 cursor-composer load=8.12 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:29:47   ROW cursor/composer-2.5 petclinic-push-column-h2 jk #1: claimed tokens=704510 turns=21 wall=232.7 cost=0.18694 
+2026-11-19T00:29:47 END 10 rc=0 258s wall=258.5 mono=258.5 mem_min_avail_mb=7156
+2026-11-19T00:29:47 RUN 11/48 cursor-composer load=9.76 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:31:45   ROW cursor/composer-2.5 petclinic-push-config-key jk #1: green tokens=187908 turns=11 wall=92.2 cost=0.0577 
+2026-11-19T00:31:45 END 11 rc=0 119s wall=118.8 mono=118.8 mem_min_avail_mb=7181
+2026-11-19T00:31:45 RUN 12/48 cursor-composer load=5.50 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:33:59   ROW cursor/composer-2.5 petclinic-push-config-key jk #1: green tokens=460824 turns=22 wall=108.8 cost=0.11918 
+2026-11-19T00:33:59 END 12 rc=0 134s wall=133.7 mono=133.7 mem_min_avail_mb=6785
+2026-11-19T00:33:59 RUN 13/48 cursor-composer load=5.73 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:35:43   ROW cursor/composer-2.5 petclinic-push-json-property jk #1: green tokens=213825 turns=11 wall=76.6 cost=0.0589 
+2026-11-19T00:35:43 END 13 rc=0 103s wall=103.4 mono=103.4 mem_min_avail_mb=7503
+2026-11-19T00:35:43 RUN 14/48 cursor-composer load=8.36 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:36:34   ROW cursor/composer-2.5 petclinic-push-json-property jk #1: green tokens=100607 turns=6 wall=25.5 cost=0.02712 
+2026-11-19T00:36:34 END 14 rc=0 52s wall=51.9 mono=51.9 mem_min_avail_mb=7626
+2026-11-19T00:36:34 RUN 15/48 cursor-composer load=7.49 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:38:55   ROW cursor/composer-2.5 petclinic-push-ts-client jk #1: green tokens=646827 turns=24 wall=113.9 cost=0.1595 
+2026-11-19T00:38:55 END 15 rc=0 141s wall=140.6 mono=140.6 mem_min_avail_mb=7478
+2026-11-19T00:38:55 RUN 16/48 cursor-composer load=7.39 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:40:39   ROW cursor/composer-2.5 petclinic-push-ts-client jk #1: green tokens=449173 turns=19 wall=78.2 cost=0.11311 
+2026-11-19T00:40:39 END 16 rc=0 104s wall=103.9 mono=103.9 mem_min_avail_mb=7352
+2026-11-19T00:40:39 RUN 17/48 muse-spark load=7.07 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:46:35   ROW muse/muse-spark-1.3-contributor petclinic-push-column-h2 jk #1: green tokens=1595849 turns=44 wall=332.1 cost=0.0152 
+2026-11-19T00:46:35 END 17 rc=0 356s wall=356.4 mono=356.4 mem_min_avail_mb=7886
+2026-11-19T00:46:35 RUN 18/48 muse-spark load=3.92 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T00:51:11   ROW muse/muse-spark-1.3-contributor petclinic-push-column-h2 jk #1: green tokens=1833319 turns=48 wall=250.9 cost=0.01104 
+2026-11-19T00:51:11 END 18 rc=0 276s wall=275.6 mono=275.6 mem_min_avail_mb=7837
+2026-11-19T00:51:11 RUN 19/48 muse-spark load=4.71 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T00:56:09   ROW muse/muse-spark-1.3-contributor petclinic-push-config-key jk #1: green tokens=823619 turns=23 wall=273.5 cost=0.01167 
+2026-11-19T00:56:09 END 19 rc=0 298s wall=298.3 mono=298.3 mem_min_avail_mb=7518
+2026-11-19T00:56:09 RUN 20/48 muse-spark load=4.18 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:00:41   ROW muse/muse-spark-1.3-contributor petclinic-push-config-key jk #1: green tokens=1312284 turns=35 wall=247.1 cost=0.01374 
+2026-11-19T01:00:41 END 20 rc=0 272s wall=272.1 mono=272.1 mem_min_avail_mb=7518
+2026-11-19T01:00:41 RUN 21/48 muse-spark load=2.99 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:03:23   ROW muse/muse-spark-1.3-contributor petclinic-push-json-property jk #1: green tokens=909376 turns=31 wall=135.3 cost=0.00703 
+2026-11-19T01:03:23 END 21 rc=0 161s wall=161.5 mono=161.5 mem_min_avail_mb=7032
+2026-11-19T01:03:23 RUN 22/48 muse-spark load=9.89 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:05:50   ROW muse/muse-spark-1.3-contributor petclinic-push-json-property jk #1: green tokens=825213 turns=27 wall=120.3 cost=0.0085 
+2026-11-19T01:05:50 END 22 rc=0 147s wall=147.1 mono=147.1 mem_min_avail_mb=7014
+2026-11-19T01:05:50 RUN 23/48 muse-spark load=7.53 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:10:31   ROW muse/muse-spark-1.3-contributor petclinic-push-ts-client jk #1: green tokens=1893910 turns=44 wall=253.8 cost=0.01375 
+2026-11-19T01:10:31 END 23 rc=0 281s wall=280.8 mono=280.8 mem_min_avail_mb=6819
+2026-11-19T01:10:31 RUN 24/48 muse-spark load=7.41 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 1 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:14:22   ROW muse/muse-spark-1.3-contributor petclinic-push-ts-client jk #1: green tokens=1153165 turns=38 wall=205.3 cost=0.00988 
+2026-11-19T01:14:22 END 24 rc=0 231s wall=231.5 mono=231.5 mem_min_avail_mb=6788
+2026-11-19T01:14:22 RUN 25/48 codex-sol load=4.09 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:15:28   ROW codex/gpt-6.1-sol petclinic-push-column-h2 jk #2: green tokens=141881 turns=9 wall=64.9 cost=0.06461 
+2026-11-19T01:15:28 END 25 rc=0 66s wall=65.6 mono=65.6 mem_min_avail_mb=6944
+2026-11-19T01:15:28 RUN 26/48 codex-sol load=5.53 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:16:05   ROW codex/gpt-6.1-sol petclinic-push-column-h2 jk #2: green tokens=120751 turns=8 wall=36.2 cost=0.059 
+2026-11-19T01:16:05 END 26 rc=0 37s wall=36.9 mono=36.9 mem_min_avail_mb=8719
+2026-11-19T01:16:05 RUN 27/48 codex-sol load=3.15 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:17:04   ROW codex/gpt-6.1-sol petclinic-push-config-key jk #2: green tokens=158157 turns=6 wall=59.0 cost=0.04496 
+2026-11-19T01:17:04 END 27 rc=0 60s wall=59.7 mono=59.7 mem_min_avail_mb=6938
+2026-11-19T01:17:04 RUN 28/48 codex-sol load=3.74 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:17:25   ROW codex/gpt-6.1-sol petclinic-push-config-key jk #2: green tokens=68873 turns=4 wall=19.9 cost=0.02085 
+2026-11-19T01:17:25 END 28 rc=0 21s wall=20.6 mono=20.6 mem_min_avail_mb=8752
+2026-11-19T01:17:25 RUN 29/48 codex-sol load=2.95 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:18:39   ROW codex/gpt-6.1-sol petclinic-push-json-property jk #2: green tokens=259905 turns=9 wall=73.4 cost=0.06434 
+2026-11-19T01:18:39 END 29 rc=0 74s wall=74.1 mono=74.1 mem_min_avail_mb=7310
+2026-11-19T01:18:39 RUN 30/48 codex-sol load=2.74 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:19:15   ROW codex/gpt-6.1-sol petclinic-push-json-property jk #2: green tokens=132009 turns=8 wall=35.1 cost=0.03472 
+2026-11-19T01:19:15 END 30 rc=0 36s wall=35.7 mono=35.7 mem_min_avail_mb=8697
+2026-11-19T01:19:15 RUN 31/48 codex-sol load=1.57 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:21:13   ROW codex/gpt-6.1-sol petclinic-push-ts-client jk #2: green tokens=284178 turns=10 wall=117.2 cost=0.08222 
+2026-11-19T01:21:13 END 31 rc=0 118s wall=117.9 mono=117.9 mem_min_avail_mb=7062
+2026-11-19T01:21:13 RUN 32/48 codex-sol load=6.43 :: --driver codex --model gpt-6.1-sol --effort low --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:21:44   ROW codex/gpt-6.1-sol petclinic-push-ts-client jk #2: green tokens=130805 turns=9 wall=30.5 cost=0.03501 
+2026-11-19T01:21:44 END 32 rc=0 31s wall=31.2 mono=31.2 mem_min_avail_mb=8717
+2026-11-19T01:21:44 RUN 33/48 cursor-composer load=4.01 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:23:55   ROW cursor/composer-2.5 petclinic-push-column-h2 jk #2: claimed tokens=374447 turns=14 wall=118.1 cost=0.09614 
+2026-11-19T01:23:55 END 33 rc=0 131s wall=131.0 mono=131.0 mem_min_avail_mb=6877
+2026-11-19T01:23:55 RUN 34/48 cursor-composer load=6.53 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:26:20   ROW cursor/composer-2.5 petclinic-push-column-h2 jk #2: claimed tokens=1141862 turns=27 wall=131.8 cost=0.29464 
+2026-11-19T01:26:20 END 34 rc=0 145s wall=145.0 mono=145.0 mem_min_avail_mb=6797
+2026-11-19T01:26:20 RUN 35/48 cursor-composer load=6.51 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:27:55   ROW cursor/composer-2.5 petclinic-push-config-key jk #2: green tokens=371061 turns=18 wall=82.3 cost=0.08922 
+2026-11-19T01:27:55 END 35 rc=0 95s wall=95.1 mono=95.1 mem_min_avail_mb=6984
+2026-11-19T01:27:55 RUN 36/48 cursor-composer load=6.22 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:30:43   ROW cursor/composer-2.5 petclinic-push-config-key jk #2: green tokens=388299 turns=20 wall=156.3 cost=0.10843 
+2026-11-19T01:30:43 END 36 rc=0 168s wall=168.3 mono=168.3 mem_min_avail_mb=6867
+2026-11-19T01:30:43 RUN 37/48 cursor-composer load=6.60 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:32:04   ROW cursor/composer-2.5 petclinic-push-json-property jk #2: green tokens=386458 turns=17 wall=80.2 cost=0.09105 
+2026-11-19T01:32:04 END 37 rc=0 81s wall=81.2 mono=81.2 mem_min_avail_mb=6737
+2026-11-19T01:32:04 RUN 38/48 cursor-composer load=5.02 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:33:41   ROW cursor/composer-2.5 petclinic-push-json-property jk #2: green tokens=295511 turns=16 wall=95.8 cost=0.07172 
+2026-11-19T01:33:41 END 38 rc=0 97s wall=96.9 mono=96.9 mem_min_avail_mb=7719
+2026-11-19T01:33:41 RUN 39/48 cursor-composer load=3.67 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:35:31   ROW cursor/composer-2.5 petclinic-push-ts-client jk #2: green tokens=330868 turns=14 wall=108.7 cost=0.08585 
+2026-11-19T01:35:31 END 39 rc=0 110s wall=109.8 mono=109.8 mem_min_avail_mb=7896
+2026-11-19T01:35:31 RUN 40/48 cursor-composer load=3.21 :: --driver cursor --model composer-2.5 --effort default --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:36:46   ROW cursor/composer-2.5 petclinic-push-ts-client jk #2: green tokens=939810 turns=31 wall=73.9 cost=0.24895 
+2026-11-19T01:36:46 END 40 rc=0 75s wall=75.0 mono=75.0 mem_min_avail_mb=8879
+2026-11-19T01:36:46 RUN 41/48 muse-spark load=1.54 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:41:03   ROW muse/muse-spark-1.3-contributor petclinic-push-column-h2 jk #2: green tokens=2829643 turns=55 wall=243.7 cost=0.01518 
+2026-11-19T01:41:03 END 41 rc=0 257s wall=256.6 mono=256.6 mem_min_avail_mb=7699
+2026-11-19T01:41:03 RUN 42/48 muse-spark load=2.71 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-column-h2 --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:43:56   ROW muse/muse-spark-1.3-contributor petclinic-push-column-h2 jk #2: green tokens=1200411 turns=32 wall=160.9 cost=0.0111 
+2026-11-19T01:43:56 END 42 rc=0 173s wall=173.1 mono=173.1 mem_min_avail_mb=7132
+2026-11-19T01:43:56 RUN 43/48 muse-spark load=4.56 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:47:47   ROW muse/muse-spark-1.3-contributor petclinic-push-config-key jk #2: green tokens=968059 turns=29 wall=219.6 cost=0.01086 
+2026-11-19T01:47:47 END 43 rc=0 231s wall=231.3 mono=231.3 mem_min_avail_mb=7493
+2026-11-19T01:47:47 RUN 44/48 muse-spark load=7.42 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-config-key --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:51:12   ROW muse/muse-spark-1.3-contributor petclinic-push-config-key jk #2: green tokens=751180 turns=23 wall=192.8 cost=0.01008 
+2026-11-19T01:51:12 END 44 rc=0 205s wall=205.1 mono=205.1 mem_min_avail_mb=7484
+2026-11-19T01:51:12 RUN 45/48 muse-spark load=5.98 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:54:12   ROW muse/muse-spark-1.3-contributor petclinic-push-json-property jk #2: green tokens=870455 turns=28 wall=164.5 cost=0.01229 
+2026-11-19T01:54:12 END 45 rc=0 179s wall=179.4 mono=179.4 mem_min_avail_mb=6921
+2026-11-19T01:54:12 RUN 46/48 muse-spark load=7.30 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-json-property --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T01:56:27   ROW muse/muse-spark-1.3-contributor petclinic-push-json-property jk #2: green tokens=526670 turns=19 wall=122.2 cost=0.00745 
+2026-11-19T01:56:27 END 46 rc=0 135s wall=135.3 mono=135.3 mem_min_avail_mb=6687
+2026-11-19T01:56:27 RUN 47/48 muse-spark load=8.46 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sc
+2026-11-19T01:59:01   ROW muse/muse-spark-1.3-contributor petclinic-push-ts-client jk #2: green tokens=1338752 turns=38 wall=140.6 cost=0.00938 
+2026-11-19T01:59:01 END 47 rc=0 154s wall=154.3 mono=154.3 mem_min_avail_mb=6773
+2026-11-19T01:59:01 RUN 48/48 muse-spark load=9.64 :: --driver muse --model muse-spark-1.3-contributor --effort high --task petclinic-push-ts-client --arm jk --max-minutes 20 --max-turns 60 --runs 1 --first-run 2 --out /var/tmp/jk-bench/run/stP2k/out-Sk
+2026-11-19T02:03:21   ROW muse/muse-spark-1.3-contributor petclinic-push-ts-client jk #2: green tokens=1707757 turns=47 wall=245.3 cost=0.01253 
+2026-11-19T02:03:21 END 48 rc=0 259s wall=259.3 mono=259.4 mem_min_avail_mb=6562
+2026-11-19T02:03:21 DONE

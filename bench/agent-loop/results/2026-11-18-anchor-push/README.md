@@ -106,7 +106,24 @@ failures for 1 loss that the agent argued away. Not proven per config: every per
 noise band, so the case rests on the pooled trap and the zero cost. Without the fix the setting does almost nothing (stage P:
 8 of 120 silent runs ever saw it), so default-on before JK-HVWV7 would be a no-op.
 
-count and kinds were not run: after P' (00:02) the budget to 03:00 allowed about 2 configs x 4 traps x 2 repeats per mode, 8 runs a cell, inside the ±3-of-8 noise band, so it could not tell them from silent.
+### count and kinds (2026-11-19 00:05-02:03 MST)
+
+Because P' showed an effect and time was left: `count` (Sc) and `kinds` (Sk) on M2 for the three configs where the push helped
+(codex sol, cursor composer, muse), the four traps only (a decoy leaves nothing stale, so no mode shows anything there),
+2 repeats, 48 rows, no error. They ran after P', not interleaved with O and S (same build, same host). TABLE-P2k.md.
+
+| Traps green, 3 configs | O (off) | S (silent) | Sc (count) | Sk (kinds) |
+|---|---:|---:|---:|---:|
+| all four traps | 16/24 | 20/24 | 22/24 | 22/24 |
+| json-property | 1/6 | 5/6 | 6/6 | 6/6 |
+| column-h2 | 3/6 | 3/6 | 4/6 | 4/6 |
+| config-key, ts-client | 12/12 | 12/12 | 12/12 | 12/12 |
+
+count and kinds are no worse than silent and not separably better (2 runs of 24, inside the noise; not interleaved). Tokens and
+turns against silent: inside stage P's per-config noise (composer count +13%, muse kinds -30%). count and kinds are the only modes with noise reads: muse read pushed files it then left alone (0.50 a
+run under kinds, 0.25 under count, 0 under silent). On this evidence silent stays the default to recommend; count and kinds do
+not earn a different one.
 
 Files for stage P': TABLE-P2.md, rows-stageP2-M2-{O,S}.jsonl, runs-stageP2-M2.jsonl, runlog-stageP2-daybreak.txt, pconv.py,
-chain5.sh (install with the fix, warm, run).
+chain5.sh (install with the fix, warm, run); count/kinds: TABLE-P2k.md, rows-stageP2k-M2-{Sc,Sk}.jsonl,
+runs-stageP2k-M2.jsonl, runlog-stageP2k-daybreak.txt, chain6.sh.
