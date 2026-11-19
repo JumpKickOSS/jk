@@ -572,7 +572,8 @@ public final class EngineFleet {
     /**
      * Stop every engine that belongs to this {@code JK_HOME} / state dir. Other homes stay up, so a
      * nested test suite cannot kill the host engine running {@code jk build}; they come back in
-     * {@link FleetStop#otherHomes()} for the caller to name, and {@code --pid} stops them explicitly.
+     * {@link FleetStop#otherHomes()} for the caller to name; {@code --pid} stops them explicitly, and
+     * {@link #stopEveryHome} stops them all.
      * Their state is never read: what another home's engine answers is not this stop's business.
      */
     public static FleetStop stopAll(boolean now) {
@@ -586,13 +587,35 @@ public final class EngineFleet {
 
     /** As {@link #stopAll(boolean)}, over an explicit fleet. */
     static FleetStop stopAll(List<Member> fleet, boolean now) {
+        return stopAll(fleet, now, false);
+    }
+
+    /**
+     * Stop every engine this user runs on the host, whatever its home: {@code jk engine stop -A -F}.
+     * From a test sandbox ({@link TestHomes}) the fleet is still the sandbox's own, as {@link #list()}
+     * leaves the rest out, so a suite can never stop the developer's engines this way either.
+     */
+    public static FleetStop stopEveryHome(boolean now) {
+        return stopAll(list(), now, true);
+    }
+
+    private static FleetStop stopAll(List<Member> fleet, boolean now, boolean everyHome) {
         List<StopResult> results = new ArrayList<>();
-        List<Member> others = new ArrayList<>();
-        for (Member m : fleet) {
-            if (m.otherHome()) others.add(m);
-            else results.add(stop(m, now));
-        }
-        return new FleetStop(results, others);
+        for (Member m : targets(fleet, everyHome)) results.add(stop(m, now));
+        return new FleetStop(results, everyHome ? List.of() : otherHomes(fleet));
+    }
+
+    /** The members a fleet stop stops: this home's, or with {@code everyHome} all of them. */
+    static List<Member> targets(List<Member> fleet, boolean everyHome) {
+        List<Member> out = new ArrayList<>();
+        for (Member m : fleet) if (everyHome || !m.otherHome()) out.add(m);
+        return List.copyOf(out);
+    }
+
+    private static List<Member> otherHomes(List<Member> fleet) {
+        List<Member> out = new ArrayList<>();
+        for (Member m : fleet) if (m.otherHome()) out.add(m);
+        return List.copyOf(out);
     }
 
     /**

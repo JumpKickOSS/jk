@@ -307,11 +307,15 @@ for an engine of another home (`null` when unknown).
 |---------|-------|
 | `jk engine stop` | this directory's engine |
 | `jk engine stop -A` | every engine of **this home**; never another home's |
+| `jk engine stop -A -F` | every engine you run on this host, whatever its home |
 | `jk engine stop -p 52211,52390` | the engines with these pids, of any home |
 
 `-A` stays inside this home so a test suite running under its own `JK_HOME` can never stop the
 engine that runs the build around it. When it leaves engines of other homes running it says how
 many, groups their pids by home, and prints the `jk engine stop -p …` command that stops them.
+`-F` (the global `--force`) widens `-A` to every home: the way to clear the engines a scratch
+`JK_HOME` left behind without copying their pids. It reaches only your own processes, and from
+inside a test suite's home it still stops that home's engines alone.
 
 ### A silent engine
 

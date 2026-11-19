@@ -326,7 +326,7 @@ public final class EngineStatusCommand implements CliCommand {
 
     /**
      * How to stop what the fleet lists. {@code stop -A} stops this home's engines only, so when
-     * other homes' engines are listed the hint names them and the per-pid command that stops them.
+     * other homes' engines are listed the hint names the per-pid command and {@code -A -F}.
      */
     static String stopHint(List<EngineFleet.Member> fleet) {
         List<EngineFleet.Member> others = new ArrayList<>();
@@ -336,9 +336,12 @@ public final class EngineStatusCommand implements CliCommand {
             return "Stop all with `jk engine stop -A`, or one with `jk engine stop -p <pid>`";
         }
         String theirs = "`" + EngineStopCommand.stopCommandFor(others) + "` stops ";
-        if (ours == 0) return "These engines belong to other homes; " + theirs + (others.size() == 1 ? "it" : "them");
-        return "`jk engine stop -A` stops this home's " + ours + (ours == 1 ? " engine" : " engines") + "; " + theirs
-                + "the others";
+        if (ours == 0) {
+            return "These engines belong to other homes; " + theirs + (others.size() == 1 ? "it" : "them")
+                    + ", `jk engine stop -A -F` every home's";
+        }
+        return "`jk engine stop -A` stops this home's " + ours + (ours == 1 ? " engine" : " engines")
+                + ", `-A -F` every home's; " + theirs + "the others";
     }
 
     /** The `-O jsonl` line for a directory with no engine of its own; the fleet says what else is alive. */

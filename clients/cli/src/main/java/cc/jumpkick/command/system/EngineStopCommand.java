@@ -30,7 +30,8 @@ import java.util.Optional;
  * {@code jk engine stop} — graceful drain by default: the engine refuses new jobs and exits cleanly
  * once in-flight jobs finish or its drain deadline passes. On a TTY with jobs running it blocks
  * with a live "Draining N job(s)…" region; press Ctrl-X (or pass {@code --now}) to stop now.
- * Stopping an engine that isn't running is reported, not an error (exit 0 either way).
+ * Stopping an engine that isn't running is reported, not an error (exit 0 either way). {@code -A}
+ * stops this home's engines; {@code -A -F} every engine this user runs on the host.
  */
 public final class EngineStopCommand implements CliCommand {
 
@@ -48,7 +49,7 @@ public final class EngineStopCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Stop now (abandon jobs)", "-n", "--now"),
-                Opt.flag("Stop every engine of this home (not only this dir's)", "-A", "--all"),
+                Opt.flag("Stop every engine of this home; with -F, of every home on this host", "-A", "--all"),
                 Opt.value(
                         "<pid>[,<pid>…]",
                         "Stop the engines with these pids, of any home (see `jk engine status`).",
@@ -71,7 +72,10 @@ public final class EngineStopCommand implements CliCommand {
 
     private int stopEngines(Invocation in) {
         if (in.isSet("all")) {
-            EngineFleet.FleetStop stop = EngineFleet.stopAll(in.isSet("now"));
+            // -F is the global --force: with -A it widens the stop from this home to the host.
+            EngineFleet.FleetStop stop = in.isSet("force")
+                    ? EngineFleet.stopEveryHome(in.isSet("now"))
+                    : EngineFleet.stopAll(in.isSet("now"));
             return report(stop.results(), stop.otherHomes());
         }
         Optional<String> pidArg = in.value("pid");
@@ -283,7 +287,8 @@ public final class EngineStopCommand implements CliCommand {
 
     /**
      * {@code left 2 engines of other homes running (/scratch/a: pid 101, 202); `jk engine stop -p
-     * 101,202` stops them} — what {@code -A} did not touch, grouped by home, and the command for it.
+     * 101,202` stops them, `jk engine stop -A -F` every home's} — what {@code -A} did not touch,
+     * grouped by home, and the commands for it.
      * Empty when every engine belonged to this home.
      */
     static String otherHomesNote(List<EngineFleet.Member> others) {
@@ -296,7 +301,7 @@ public final class EngineStopCommand implements CliCommand {
         byHome.forEach((home, pids) -> groups.add(home + ": pid " + joinPids(pids)));
         return "left " + others.size() + (others.size() == 1 ? " engine of another home" : " engines of other homes")
                 + " running (" + String.join("; ", groups) + "); `" + stopCommandFor(others) + "` stops "
-                + (others.size() == 1 ? "it" : "them");
+                + (others.size() == 1 ? "it" : "them") + ", `jk engine stop -A -F` every home's";
     }
 
     /**

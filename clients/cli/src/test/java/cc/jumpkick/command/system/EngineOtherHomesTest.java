@@ -45,9 +45,11 @@ class EngineOtherHomesTest {
         assertThat(EngineStatusCommand.stopHint(List.of(ours(1), ours(2))))
                 .isEqualTo("Stop all with `jk engine stop -A`, or one with `jk engine stop -p <pid>`");
         assertThat(EngineStatusCommand.stopHint(List.of(ours(1), other(2, SCRATCH), other(3, null))))
-                .isEqualTo("`jk engine stop -A` stops this home's 1 engine; `jk engine stop -p 2,3` stops the others");
+                .isEqualTo("`jk engine stop -A` stops this home's 1 engine, `-A -F` every home's; "
+                        + "`jk engine stop -p 2,3` stops the others");
         assertThat(EngineStatusCommand.stopHint(List.of(other(7, SCRATCH))))
-                .isEqualTo("These engines belong to other homes; `jk engine stop -p 7` stops it");
+                .isEqualTo(
+                        "These engines belong to other homes; `jk engine stop -p 7` stops it, `jk engine stop -A -F` every home's");
     }
 
     @Test
@@ -61,7 +63,8 @@ class EngineOtherHomesTest {
 
         assertThat(settled.out())
                 .contains("1 engine stopped; left 3 engines of other homes running (" + SCRATCH
-                        + ": pid 2, 3; home unknown: pid 4); `jk engine stop -p 2,3,4` stops them");
+                        + ": pid 2, 3; home unknown: pid 4); `jk engine stop -p 2,3,4` stops them, "
+                        + "`jk engine stop -A -F` every home's");
     }
 
     @Test
@@ -72,7 +75,7 @@ class EngineOtherHomesTest {
 
         assertThat(settled.out())
                 .contains("no engines of this home running; left 1 engine of another home running (" + SCRATCH
-                        + ": pid 9); `jk engine stop -p 9` stops it");
+                        + ": pid 9); `jk engine stop -p 9` stops it, `jk engine stop -A -F` every home's");
     }
 
     @Test
