@@ -48,6 +48,10 @@ JumpKick shows you this page's new entries after it updates itself.
   that runs `jk` no longer reaches a test, a compiler, a plugin step or any program the engine
   starts, even under `[env] inherit`. A test that needs one names it, for example
   `[test] env = ["JK_REPO_CORP_TOKEN"]` ([Security](security.md#jumpkicks-own-credentials)).
+- **A dropped repository connection reads the same every time.** When a passable repository
+  (optional, loopback, or a POM's) drops the connection, its warning names the failure and the
+  attempts it took, even when a checksum asked beside the download met the drop first; that
+  case lost the failure and named only the fault.
 
 ## 0.53.1
 

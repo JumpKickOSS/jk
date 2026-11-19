@@ -134,8 +134,11 @@ public final class MavenRepo {
      */
     private final AtomicReference<@Nullable OutOfJob> unreachable = new AtomicReference<>();
 
-    /** What put a repository out of the job, and whether the resolve goes on without it. */
-    private record OutOfJob(String fault, boolean passedOver) {}
+    /**
+     * What put a repository out of the job, the failure it was read from (null for a refusal no
+     * request met), and whether the resolve goes on without it.
+     */
+    private record OutOfJob(String fault, @Nullable Throwable met, boolean passedOver) {}
 
     /**
      * The sha256 of each store file verified in this job, by relative path, so a copy still holding
@@ -448,7 +451,7 @@ public final class MavenRepo {
         this.download =
                 new DownloadLeg(name, this.fetchBase, gate.over(transport), credential, storeDir(), allowUnverified);
         if (mirror != null && mirror.refusal() != null) {
-            unreachable.set(new OutOfJob("JumpKick refuses it: " + mirror.refusal(), false));
+            unreachable.set(new OutOfJob("JumpKick refuses it: " + mirror.refusal(), null, false));
         }
     }
 
@@ -500,8 +503,7 @@ public final class MavenRepo {
 
     /** The fault that put this repository out of the rest of the job, or null. */
     public @Nullable String unreachableFault() {
-        OutOfJob out = unreachable.get();
-        return out == null ? null : out.fault();
+        return unreachable.get() instanceof OutOfJob out ? out.fault() : null;
     }
 
     /**
@@ -510,8 +512,7 @@ public final class MavenRepo {
      * got no answer within the timeout. Otherwise its fault stops the resolve.
      */
     public boolean passedOver() {
-        OutOfJob out = unreachable.get();
-        return out != null && out.passedOver();
+        return unreachable.get() instanceof OutOfJob out && out.passedOver();
     }
 
     /** True when {@code version} is of a kind this repository is asked for; see {@link #servesSnapshots()}. */
@@ -962,7 +963,9 @@ public final class MavenRepo {
 
     /**
      * The fault an earlier request met, thrown again without a request, once this repository is
-     * unreachable; or the reason it refuses every request ({@link #refusingRequests}).
+     * unreachable; or the reason it refuses every request ({@link #refusingRequests}). The failure
+     * carries the one that request met: a download's body refused because a checksum asked beside
+     * it met the silence first reads as the request that met it does, and not as another event.
      */
     private void refuseIfUnreachable() throws IOException {
         String why = refusal;
@@ -970,8 +973,7 @@ public final class MavenRepo {
             throw new IOException(
                     "repository " + name + " at " + SafeUri.forMessage(baseUrl) + " is not asked: " + why);
         }
-        OutOfJob out = unreachable.get();
-        if (out != null) throw unreachableFailure(out.fault(), null);
+        if (unreachable.get() instanceof OutOfJob out) throw unreachableFailure(out.fault(), out.met());
     }
 
     /** The failure for {@code fault}: naming the mirror when one stands in for this repository. */
@@ -986,7 +988,10 @@ public final class MavenRepo {
      * when it waited out the request timeout, or — for a {@linkplain #passable passable} one, or one
      * a mirror stands in for — when it got no HTTP answer at all (reset, dropped) or an answer
      * refusing access (401, 403), which Maven passes over as well: remembered, so the repository is
-     * asked nothing more. Else {@code transport} itself.
+     * asked nothing more. Else {@code transport} itself. A request that meets such a fault after
+     * another put the repository out gets that one's failure: a body and the checksums asked beside
+     * it can meet one dropped connection as a reset and as an empty response, and the repository
+     * is out once, for the first.
      */
     private IOException unreachableOr(IOException transport) {
         boolean answersMatter = passable() || mirror != null;
@@ -997,8 +1002,10 @@ public final class MavenRepo {
         if (fault == null) return transport;
         String unrefreshed = notRefreshed(transport);
         if (unrefreshed != null) fault = fault + "; " + unrefreshed;
-        unreachable.compareAndSet(null, new OutOfJob(fault, mirror == null && (silent != null || passable())));
-        return unreachableFailure(fault, transport);
+        OutOfJob first = unreachable.compareAndExchange(
+                null, new OutOfJob(fault, transport, mirror == null && (silent != null || passable())));
+        if (first == null || first.met() == null) return unreachableFailure(fault, transport);
+        return unreachableFailure(first.fault(), first.met());
     }
 
     /**

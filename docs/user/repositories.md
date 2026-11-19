@@ -299,7 +299,8 @@ configured repository is not the lock that was asked for, and asking it again fo
 coordinate would only wait out the retry ladder each time. Fix the URL, start the server, or
 remove the entry. A repository the lock can do without is passed over instead, as a blocked one
 is: asked nothing more, with one warning, and named with the fault it met when a package resolves
-nowhere. For such a repository any request that gets no HTTP answer at all — refused, reset,
+nowhere. That warning names the failure the first request to meet the fault got, attempts and
+all, whichever request it was: a checksum asked beside a download, or the download itself. For such a repository any request that gets no HTTP answer at all — refused, reset,
 dropped before a response, timed out — counts, and after one attempt rather than the retry
 ladder; so does a 401 or 403, as Maven moves on past a repository that wants credentials it
 was not given. Any other status, a 5xx included, is an answer. A repository written by hand

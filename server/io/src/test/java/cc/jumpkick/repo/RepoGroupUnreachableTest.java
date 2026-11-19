@@ -3,6 +3,7 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
@@ -15,6 +16,7 @@ import cc.jumpkick.testing.DeadEndpoint;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.ServerSocket;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +25,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -235,6 +240,79 @@ class RepoGroupUnreachableTest {
                     .isEqualTo("good");
             assertThat(group.passedOver()).containsExactly(nexus);
         }
+    }
+
+    /**
+     * A request refused once the repository is out of the job says what the request that put it out
+     * met, cause and all. A download's body is refused this way when a checksum asked beside it met
+     * the dropped connection first, and it read as another event: the fault with no cause, so the
+     * warning lost the failure and the attempts it took.
+     */
+    @Test
+    void a_request_refused_after_the_drop_reads_as_the_request_that_met_it(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            MavenRepo nexus = new MavenRepo("nexus", dead.uri("/maven2/"), new Http().withoutSilenceRetries(), cas);
+            Throwable met = catchThrowable(() -> nexus.fetchPom(Coordinate.of("com.example", "lib", "1.0")));
+            Throwable refused = catchThrowable(() -> nexus.fetchPom(Coordinate.of("com.example", "other", "1.0")));
+
+            assertThat(met).isInstanceOf(MavenRepo.RepositoryUnreachableException.class);
+            assertThat(refused)
+                    .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                    .hasStackTraceContaining("failed after 1 attempts");
+            assertThat(RepoGroup.describe(refused))
+                    .as("one dropped connection, one warning")
+                    .isEqualTo(RepoGroup.describe(met));
+        }
+    }
+
+    /**
+     * A download's body and the checksums asked beside it can meet one dead remote as two faults (a
+     * reset and an empty response, here a timeout and a refusal). The repository is out once, for
+     * the first, and the body that met its own fault after says that one: it said its own, and the
+     * repository was later named with the other.
+     */
+    @Test
+    void a_body_that_fails_after_a_checksum_put_the_repository_out_says_the_checksums_failure(@TempDir Path tmp)
+            throws Exception {
+        Cas cas = new Cas(tmp.resolve("cas"));
+        CountDownLatch bodyAsked = new CountDownLatch(1);
+        AtomicReference<MavenRepo> repo = new AtomicReference<>();
+        RepoTransport dropping = new RepoTransport() {
+            @Override
+            public Optional<byte[]> fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+                if (uri.getPath().endsWith(".pom")) {
+                    bodyAsked.countDown();
+                    long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                    while (repo.get().unreachableFault() == null && System.nanoTime() < until) Thread.sleep(5);
+                    throw new ConnectException("Connection refused");
+                }
+                bodyAsked.await(10, TimeUnit.SECONDS);
+                throw new SocketTimeoutException("Read timed out");
+            }
+
+            @Override
+            public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+                return 0;
+            }
+        };
+        MavenRepo nexus = MavenRepo.overTransport(
+                "nexus",
+                URI.create("http://127.0.0.1:58551/maven2/"),
+                dropping,
+                cas,
+                RepoCredential.ANONYMOUS,
+                null,
+                false,
+                false,
+                false);
+        repo.set(nexus);
+
+        assertThatThrownBy(() -> nexus.fetchPom(Coordinate.of("com.example", "lib", "1.0")))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("Read timed out")
+                .hasMessageNotContaining("Connection refused");
+        assertThat(nexus.unreachableFault()).contains("Read timed out");
     }
 
     /** Every request answered with {@code status}, the way an Artifactory that wants a login answers. */
