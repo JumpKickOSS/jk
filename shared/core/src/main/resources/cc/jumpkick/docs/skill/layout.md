@@ -8,4 +8,4 @@ Layout is the directory shape, not a manifest key. Traditional: `src/main/java`,
 
 Build outputs live under `target/`. `jk clean` deletes `target/`. The action cache can restore inputs that did not change.
 
-`jk install` is the inner-loop install, used as a Maven `-SNAPSHOT` is: the project (every workspace member) goes into `~/.m2` as `<version>-SNAPSHOT`, replaced each run, and `jk.toml` keeps the release version. A sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT`. `jk release` installs the declared version once. Both are `jk build` plus the install (`-S` skips the tests); never run `jk build` before either.
+`jk install` is the inner-loop install, used as a Maven `-SNAPSHOT` is: the project (every workspace member) goes into JumpKick's `repos/jk-local` as `<version>-SNAPSHOT`, replaced each run, and `jk.toml` keeps the release version. A sibling project that must see your edits depends on `g:a:<version>-SNAPSHOT`. `jk release` installs the declared version once. Both are `jk build` plus the install (`-S` skips the tests); never run `jk build` before either.

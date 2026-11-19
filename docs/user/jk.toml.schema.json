@@ -701,7 +701,7 @@
       "type": "object",
       "description": "[install]: where jk install puts the jar and POM (docs/user/packaging.md). product-lib and product-bin are jk installing itself.",
       "properties": {
-        "destination": { "enum": ["m2", "jk"], "description": "m2 (default) is the Maven local repository, ~/.m2/repository; jk is jk's private repos/jk-local. A workspace member inherits the root's." }
+        "destination": { "enum": ["m2", "jk"], "description": "jk (default) is jk's private repos/jk-local; m2 is the Maven local repository, ~/.m2/repository, and the default on a machine whose [m2] integration is \"share\". A workspace member inherits the root's." }
       }
     },
     "dokka": {

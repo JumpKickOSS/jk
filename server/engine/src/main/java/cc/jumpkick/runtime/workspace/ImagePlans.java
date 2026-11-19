@@ -149,8 +149,8 @@ public final class ImagePlans {
                         }
                         // This module's production runtime closure — the same set the fat jar
                         // nests — layered by how often each part churns. Never the whole workspace
-                        // lock, and never the CAS alone: with [m2] integration on, the jars live
-                        // in ~/.m2.
+                        // lock, and never the CAS alone: with [m2] integration on, a jar may be
+                        // read where it lies in ~/.m2.
                         // The lib-dir layout ships exactly its own directory: its exclusions and
                         // file names, so the image's lib layer is what the jar's Class-Path names.
                         Path lockFile = LockPaths.lockFile(layout.moduleRoot());

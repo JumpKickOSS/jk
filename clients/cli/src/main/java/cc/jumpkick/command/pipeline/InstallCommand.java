@@ -86,9 +86,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * App-install plan used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Installs the thin jar and POM into the Maven local repository ({@code --destination jk} or {@code
- * [install] destination = "jk"} puts them in {@code repos/jk-local} instead); applications also get a
- * launcher under {@code ~/.jk/bin}. Plugin workers are always {@code repos/jk-local} jars — launch
+ * Installs the thin jar and POM into {@code repos/jk-local} ({@code --destination m2}, {@code [install]
+ * destination = "m2"} or {@code [m2] integration = "share"} puts them in the Maven local repository
+ * instead); applications also get a launcher under {@code ~/.jk/bin}. Plugin workers are always {@code repos/jk-local} jars — launch
  * reconstructs the classpath from the POM. jk's own modules declare {@code [install] product-lib} (the engine jar
  * into jk's product library) and {@code [install] product-bin} (the native client over the PATH
  * entry), so installing the product tree with jk is one {@code jk install}.
@@ -170,7 +170,7 @@ public final class InstallCommand {
     // --- mode 2: local file ----------------------------------------------
 
     /**
-     * Store a local file in the CAS and mirror it into the m2 local repo under its Maven coordinate
+     * Store a local file in {@code repos/jk-local} under its Maven coordinate
      * (the {@code mvn install} equivalent for pre-built artifacts). The coordinate is auto-detected
      * from {@code META-INF/maven/.../pom.properties} for {@code .jar} files; {@code --group}, {@code
      * --name}, and {@code --ver} override or supply missing fields.

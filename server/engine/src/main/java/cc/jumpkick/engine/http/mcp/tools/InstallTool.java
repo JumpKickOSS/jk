@@ -10,7 +10,7 @@ import cc.jumpkick.engine.http.mcp.McpTool;
 import java.util.Map;
 
 /**
- * {@code install} — the inner-loop install of the project into the local Maven repo as its
+ * {@code install} — the inner-loop install of the project into jk's {@code repos/jk-local} as its
  * {@code -SNAPSHOT}, or list the installed jkx tools. Installing a tool stays CLI-side: the trust
  * gate is a human decision.
  */
@@ -20,7 +20,7 @@ public final class InstallTool implements McpTool {
     public Spec spec() {
         return new Spec(
                 "install",
-                "Inner-loop install (jk install): the project goes to ~/.m2 as <version>-SNAPSHOT, replaced "
+                "Inner-loop install (jk install): the project goes to repos/jk-local as <version>-SNAPSHOT, replaced "
                         + "each run, for a sibling to depend on; an application also gets its launcher. jk release "
                         + "(CLI) cuts a version. action=list shows installed jkx tools; tool installs stay "
                         + "CLI-side (trust gates).",

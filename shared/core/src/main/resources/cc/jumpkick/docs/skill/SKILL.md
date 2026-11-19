@@ -26,7 +26,7 @@ Run, read the verdict, edit, rerun. The verdict is the whole answer; scrape noth
 | rename a method, field, type or package (topic graph) | `jk graph rename T.m new` | `rename(address=T.m, to=new)` |
 | one skill topic | `jk skill <topic>` | `skill(topic=…)` |
 
-A sibling project that must see your edits to a library gets them through `jk -a install`: the project is installed to `~/.m2` as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk release` cuts a version.
+A sibling project that must see your edits to a library gets them through `jk -a install`: the project is installed in JumpKick's store as `<version>-SNAPSHOT`, replaced each run, like a Maven snapshot; the sibling depends on `g:a:<version>-SNAPSHOT`. `jk release` cuts a version.
 
 `· up to date` means nothing was left to run. A `W` that an input moved while it ran (`inputs-moved`, `key-moved`): rerun.
 

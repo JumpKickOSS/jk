@@ -40,7 +40,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Ensures every lockfile sha256 is on disk as a Maven-layout {@code *.jar} under {@code
- * repos/<origin>/}, written through to the Maven local repository when integration is on. Parallel
+ * repos/<origin>/}, or in the Maven local repository when {@code [m2] integration} is {@code "share"}
+ * or a verified copy is already there. Parallel
  * on {@link JkThreads#io}, {@link DownloadSlots#width()} fetches at once; per-host concurrency is
  * capped inside {@link MavenRepo}. Checksum mismatches are reported, never accepted.
  */

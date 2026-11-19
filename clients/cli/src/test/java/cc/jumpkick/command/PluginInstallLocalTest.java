@@ -73,8 +73,9 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/worker"]
                 """);
-        // A project installs to the Maven local repo by default. This test is about the jk-local
-        // store alone, so the module names it as its target — and the --m2-dir redirect above means
+        // A project installs to the jk-local store unless the machine shares with Maven. This test
+        // is about the jk-local store alone, so the module names it as its target — and the --m2-dir redirect above
+        // means
         // even a policy regression cannot reach the real ~/.m2.
         Files.writeString(mod.resolve("jk.toml"), """
                 group = "cc.jumpkick"
