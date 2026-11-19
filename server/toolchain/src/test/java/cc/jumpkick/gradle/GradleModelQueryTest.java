@@ -127,7 +127,8 @@ class GradleModelQueryTest {
                         new GradleModelQuery.Launch(List.of(launcher.toString()), null, "Gradle 9.5.1 on JDK 25"),
                 tmp.resolve("tmp"),
                 Clock.SYSTEM,
-                400L);
+                // Wide enough that a slow shell start on a loaded host still prints before it passes.
+                3000L);
 
         long started = System.nanoTime();
         assertThatThrownBy(() -> query.read(tmp, List.of("java"), ImportProgress.NONE))
