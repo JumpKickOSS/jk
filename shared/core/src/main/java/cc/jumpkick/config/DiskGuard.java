@@ -42,7 +42,12 @@ public final class DiskGuard {
     /** How long one probe of a path is trusted. */
     static final long PROBE_MILLIS = 5_000;
 
-    private record Probe(long atMillis, JkCacheConfig.@Nullable DiskSpace space) {}
+    /** A probe, or a test's {@linkplain #pinForTest pin}: pinned, it never ages and answers for its tree. */
+    private record Probe(long atMillis, JkCacheConfig.@Nullable DiskSpace space, boolean pinned) {
+        Probe(long atMillis, JkCacheConfig.@Nullable DiskSpace space) {
+            this(atMillis, space, false);
+        }
+    }
 
     private static final Map<Path, Probe> PROBES = new ConcurrentHashMap<>();
     private static final CopyOnWriteArrayList<Runnable> LISTENERS = new CopyOnWriteArrayList<>();
@@ -66,11 +71,22 @@ public final class DiskGuard {
     public static JkCacheConfig.@Nullable DiskSpace space(Path path) {
         long now = clock.getAsLong();
         Probe p = PROBES.get(path);
-        if (p == null || now - p.atMillis() >= PROBE_MILLIS) {
+        if (p == null || (!p.pinned() && now - p.atMillis() >= PROBE_MILLIS)) {
+            Probe pin = pinAbove(path);
+            if (pin != null) return pin.space();
             p = new Probe(now, JkCacheConfig.DiskSpace.probe(path));
             PROBES.put(path, p);
         }
         return p.space();
+    }
+
+    /** The pin on {@code path}'s nearest pinned ancestor; asked only when a path's probe is due. */
+    private static @Nullable Probe pinAbove(Path path) {
+        for (Path at = path.toAbsolutePath().normalize(); at != null; at = at.getParent()) {
+            Probe p = PROBES.get(at);
+            if (p != null && p.pinned()) return p;
+        }
+        return null;
     }
 
     /**
@@ -133,6 +149,26 @@ public final class DiskGuard {
         clock = testClock;
         PROBES.clear();
         LISTENERS.clear();
+    }
+
+    /** A {@linkplain #pinForTest pin}; closing it gives its tree back to the probe. */
+    public interface Pin extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /**
+     * Test seam: {@code root} and every path under it read as {@code space} until the returned pin is
+     * closed, however long that is (a probe planted by {@link #putProbeForTest} ages out in {@link
+     * #PROBE_MILLIS}, less than a build takes). Scoped to a path, so tests that pin their own cache
+     * directories cannot answer for each other; close it in a finally.
+     */
+    public static Pin pinForTest(Path root, JkCacheConfig.DiskSpace space) {
+        Path key = root.toAbsolutePath().normalize();
+        PROBES.keySet().removeIf(p -> p.toAbsolutePath().normalize().startsWith(key));
+        Probe pin = new Probe(clock.getAsLong(), space, true);
+        PROBES.put(key, pin);
+        return () -> PROBES.remove(key, pin);
     }
 
     /** Test seam: what a probe of {@code path} answers until it ages out. */

@@ -74,6 +74,28 @@ class DiskGuardTest {
     }
 
     @Test
+    void a_pin_answers_for_its_tree_until_closed_however_long_that_is() {
+        JkCacheConfig.DiskSpace full = new JkCacheConfig.DiskSpace(100 * GIB, GIB);
+        Path cache = volume.resolve("cache");
+        DiskGuard.Pin pin = DiskGuard.pinForTest(cache, full);
+        try {
+            now.addAndGet(100 * DiskGuard.PROBE_MILLIS);
+            assertThat(DiskGuard.space(cache)).as("a pin does not age").isEqualTo(full);
+            assertThat(DiskGuard.critical(cache.resolve("actions/ab")))
+                    .as("a path under the pinned root")
+                    .isTrue();
+            assertThat(DiskGuard.space(volume.resolve("other")))
+                    .as("a sibling of the pinned root is probed as before")
+                    .isNotEqualTo(full);
+        } finally {
+            pin.close();
+        }
+        assertThat(DiskGuard.space(cache))
+                .as("closed: the path is probed again")
+                .isNotEqualTo(full);
+    }
+
+    @Test
     void the_reason_line_names_free_and_total_space() {
         assertThat(DiskGuard.describe(new JkCacheConfig.DiskSpace(100 * GIB, (long) (1.5 * GIB))))
                 .isEqualTo("1.5 GiB free of 100.0 GiB (2%)");

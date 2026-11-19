@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.config.DiskGuard;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.AotCacheFiles;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -26,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -35,15 +38,28 @@ import org.junit.jupiter.api.io.TempDir;
  * End-to-end: {@code [jlink]} builds {@code target/<name>-jri/} with the modules {@code jdeps}
  * finds, the application under {@code app/}, {@code bin/start}, and an AOT cache trained by
  * starting a server that never exits on its own; an unchanged rebuild relinks nothing, and an image
- * restored from the action cache still maps its cache.
+ * restored from the action cache still maps its cache. The cache's volume is pinned as roomy: on a
+ * nearly full host the guard would rightly keep the 50 MiB image out of the cache ({@link
+ * PackagingCacheDiskGuardTest} holds that case).
  */
 @Tag("integration")
 class JlinkBuildE2eTest {
+
+    private static final long GIB = 1024L * 1024 * 1024;
 
     @Test
     void the_runtime_image_links_trains_runs_and_restores_from_cache(@TempDir Path tmp) throws Exception {
         assumeFalse(Os.isWindows(), "the cache is trained by asking the application to stop");
         Path cache = TestCaches.dir("jlink-cache");
+        DiskGuard.Pin room = DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(100 * GIB, 50 * GIB));
+        try {
+            linksTrainsRunsAndRestores(tmp, cache);
+        } finally {
+            room.close();
+        }
+    }
+
+    private static void linksTrainsRunsAndRestores(Path tmp, Path cache) throws Exception {
         Path ws = workspace(tmp);
         lock(ws, cache);
 
@@ -76,7 +92,7 @@ class JlinkBuildE2eTest {
         Labels third = new Labels();
         assertThat(build(ws, cache, third).success()).isTrue();
         assertThat(third.of("app", TaskNames.PACKAGE_JLINK))
-                .as("a deleted image is restored from the action cache, not linked again")
+                .as("a deleted image is restored from the action cache, not linked again; warnings " + third.warnings)
                 .isEqualTo("app-jri up-to-date");
         assertThat(image.resolve("bin/start")).isExecutable();
         assertThat(run(image.resolve("bin/start"), "once")).contains("hello from lib");
@@ -194,6 +210,7 @@ class JlinkBuildE2eTest {
     /** The last label each module's steps carried. */
     private static final class Labels implements WorkspaceBuildListener {
         private final Map<String, String> last = new ConcurrentHashMap<>();
+        final List<String> warnings = new CopyOnWriteArrayList<>();
 
         @Override
         public BuildPlanListener onModuleStart(ModulePlan module) {
@@ -202,6 +219,11 @@ class JlinkBuildE2eTest {
                 @Override
                 public void label(String step, String label) {
                     last.put(name + "/" + step, label);
+                }
+
+                @Override
+                public void warn(String step, String code, String message) {
+                    warnings.add(name + "/" + step + " " + code + ": " + message);
                 }
             };
         }
