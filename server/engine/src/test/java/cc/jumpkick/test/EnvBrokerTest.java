@@ -10,6 +10,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,8 +76,18 @@ class EnvBrokerTest {
                 write(out, "0".repeat(64));
                 out.writeByte('A');
                 out.flush();
-                assertThat(s.getInputStream().read())
-                        .as("closed without an answer")
+                // The broker closes after the token without reading the 'A': when that byte has
+                // reached it unread, its TCP stack resets the connection instead of ending it, on
+                // either address family and on main as here. Both mean turned away unanswered; the
+                // test JVM's BrokerLink reads either as a broker that cannot answer (unset).
+                int answer;
+                try {
+                    answer = s.getInputStream().read();
+                } catch (SocketException reset) {
+                    answer = -1;
+                }
+                assertThat(answer)
+                        .as("closed without an answer (end of stream, or a reset)")
                         .isEqualTo(-1);
             }
             assertThat(broker.record().isEmpty()).isTrue();
