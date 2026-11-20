@@ -180,8 +180,9 @@ class WorkerAotCacheTest {
     }
 
     /**
-     * When a cache lands, the sweep runs; a cache a live worker maps stays, however long ago it was
-     * last touched (on a snapshot jk the age rule would take it otherwise), and is touched again.
+     * When a cache lands, the sweep runs; a cache a live worker of this engine maps stays, however
+     * long ago it was last touched (on a snapshot jk the age rule would take it otherwise), and is
+     * touched again.
      */
     @Test
     void a_landing_cache_sweeps_but_spares_what_this_process_maps(@TempDir Path dir) throws Exception {
@@ -197,11 +198,9 @@ class WorkerAotCacheTest {
         List<String> mapping =
                 WorkerAotCache.flags("kotlinc", pinned, "/w/old-kotlin.jar", List.of(), (out, scratch) -> List.of());
         assertThat(mapping).contains("-XX:AOTCache=" + mapped);
-        Assumptions.assumeTrue(
-                ProcessHandle.current().info().arguments().isPresent(),
-                "this platform shows no process arguments; a mapped file there refuses its delete instead");
-        // A warm worker still running on the old Kotlin: its command line names the cache.
-        Process worker = Sleepers.sleeperMentioning(60, mapping.getFirst()).start();
+        // A warm worker still running on the old Kotlin, started by this engine with the cache: its
+        // lease lists it, on every OS (Windows shows no process's arguments).
+        Process worker = JobWorkers.start(StartupCachesTest.javaSleeper(dir, mapped));
         FileTime longAgo = FileTime.fromMillis(
                 System.currentTimeMillis() - Duration.ofHours(13).toMillis());
         Files.setLastModifiedTime(mapped, longAgo);

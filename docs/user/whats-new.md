@@ -12,7 +12,9 @@ JumpKick shows you this page's new entries after it updates itself.
   weeks (1.2 GiB in two days on one contributor's machine). A release keeps its caches until you
   install another version, which deletes all of them, or until the disk is nearly full, when the
   unused ones go first. `jk storage usage` shows them and `jk storage clean` removes the unused
-  ones ([Cache](cache.md#jvm-startup-caches)).
+  ones ([Cache](cache.md#jvm-startup-caches)). A cache your engine's running workers map is never
+  deleted, on Windows too, and a half-written recording a stopped engine left behind goes within
+  minutes instead of a day.
 - **Breaking: `~/.jk` holds everything JumpKick downloads.** Central's jars no longer go into
   `~/.m2/repository`, so a CI runner that caches `~/.jk/store` has all of them. A jar Maven already
   fetched is still used where it is. `[m2] integration = "share"` in `~/.jk/config.toml` restores

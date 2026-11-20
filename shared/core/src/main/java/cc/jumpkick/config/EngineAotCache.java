@@ -2,12 +2,14 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkVersion;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
@@ -21,9 +23,10 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>One file per engine jar and JDK, under {@code <state>/engine-aot/}: the JVM maps a cache only
  * for the exact classpath it was recorded with, so the key is the jar's path, size and mtime and
- * the JDK home. The spawner maps it when present ({@link #spawnFlags}); an idle engine records it
- * when it is missing, by driving a trainer engine started with {@link #RECORD_ENV}. {@code
- * JK_ENGINE_AOT=off} turns both off. HotSpot 25+ only; any other JDK starts without.
+ * the JDK home. The spawner maps it when present ({@link #spawnFlags}) and touches it as it does;
+ * an idle engine records it when it is missing, by driving a trainer engine started with {@link
+ * #RECORD_ENV}. {@code JK_ENGINE_AOT=off} turns both off. HotSpot 25+ only; any other JDK starts
+ * without.
  */
 public final class EngineAotCache {
 
@@ -78,12 +81,25 @@ public final class EngineAotCache {
             }
             Path cache = cacheFile(stateDir, javaHome, engineJar);
             if (cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0) {
+                touch(cache);
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
         } catch (IOException | RuntimeException e) {
             // An accelerator, never a dependency: the engine starts without it.
         }
         return List.of();
+    }
+
+    /**
+     * Mapping a cache touches it, so its mtime says when an engine last started with it: the
+     * engine's sweep spares a snapshot cache mapped in the last 12 hours by that alone.
+     */
+    private static void touch(Path cache) {
+        try {
+            Files.setLastModifiedTime(cache, FileTime.fromMillis(Clock.SYSTEM.millis()));
+        } catch (IOException ignored) {
+            // best-effort: a cache another user owns maps all the same
+        }
     }
 
     /** HotSpot 25 or later, read from the JDK's {@code release} file; Graal and older JDKs are not. */

@@ -498,8 +498,9 @@ the step warns `disk-low`. A high-priority thread in the engine looks at the cac
 state volumes every 15 seconds, and at once when a write was refused; on a critical volume it
 collects the artifact store at emergency windows on the spot (safe beside a build, since nothing
 younger than an hour is touched) and prunes the cache now, or at the build boundary when a build
-is live. If the state volume is still critical after that, it deletes the JVM startup caches no running
-process maps, least recently used first, until the volume is back over the line or none
+is live. If the state volume is still critical after that, it deletes the JVM startup caches the
+engine and its running workers do not map, least recently used first, until the volume is back
+over the line or none
 are left ([below](#jvm-startup-caches)), and records no new one until it is. It logs when the
 volume goes critical, what the reclaim removed, and when it recovers.
 
@@ -570,16 +571,22 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   name carries the JumpKick version that recorded it. They go in two ways:
   - **A new JumpKick version**: the first engine of another version deletes every cache an older
     (or newer) one recorded, all of them at once.
-  - **The disk guard**: on a critical volume, the ones no running process maps, least recently
-    used first ([The disk guard](#the-disk-guard)).
+  - **The disk guard**: on a critical volume, the ones the engine and its running workers do not
+    map, least recently used first ([The disk guard](#the-disk-guard)).
 
   Nothing else removes them: a released JumpKick keeps a cache for as long as it is installed,
   used or not. A `-SNAPSHOT` JumpKick (one you built from a checkout, or CI's) records a new set
   each time its workers are rebuilt, so there every cache not used for 12 hours goes as well,
   checked when the engine starts, when a cache is recorded and on the engine's 12-hour
   maintenance cycle. `jk storage usage` shows them on their own row and `jk storage clean` deletes
-  every one no running process maps; the next build that needs one records it again in the
-  background. A cache a running worker or engine maps is never deleted.
+  every one the engine's running workers and the engine itself do not map; the next build that
+  needs one records it again in the background (about 4 seconds). None of these deletes a cache
+  your engine or its running workers map, on any system. A second engine of the same home is
+  spared by the 12-hour rule, since starting a worker marks its cache as used, but `jk storage
+  clean` and the disk guard can delete a cache it maps (on Windows, where one engine cannot see
+  another's workers). That costs nothing but time: a running process keeps the cache it mapped,
+  and the next worker that needs it records it again. A half-written recording a stopped engine
+  left behind goes a few minutes later, in any of these passes.
 - **Scratch under `state/tmp/`** is not tied to an install: the archive a step unpacked (`unpacked/`, an IDE
   distribution) goes a week after its last use, whatever JumpKick version is installed, since it
   belongs to the project. Worker GC logs (`worker-gc/`) go when their worker exits, or

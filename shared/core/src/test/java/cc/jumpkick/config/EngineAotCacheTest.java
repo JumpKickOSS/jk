@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,28 @@ class EngineAotCacheTest {
                 .containsExactly("-XX:AOTCache=" + cache, "-Xlog:aot=off");
         assertThat(EngineAotCache.spawnFlags(state, jdk, jar, Map.of(EngineAotCache.ENV, "off")::get))
                 .isEmpty();
+    }
+
+    /**
+     * The engine's sweep reads a cache's mtime as when it was last mapped, so the spawner touches
+     * the cache it maps; on the base a cache recorded 13 hours ago kept that mtime.
+     */
+    @Test
+    void mapping_the_cache_touches_it(@TempDir Path dir) throws Exception {
+        Path jdk = jdk(dir.resolve("jdk"), "25.0.4", "Eclipse Adoptium");
+        Path jar = Files.writeString(dir.resolve("jk-engine.jar"), "jar");
+        Path state = dir.resolve("state");
+        Path cache = Objects.requireNonNull(EngineAotCache.cacheFile(state, jdk, jar));
+        Files.createDirectories(cache.getParent());
+        Files.writeString(cache, "aot");
+        FileTime recorded = FileTime.from(Instant.now().minus(Duration.ofHours(13)));
+        Files.setLastModifiedTime(cache, recorded);
+
+        assertThat(EngineAotCache.spawnFlags(state, jdk, jar, Map.<String, String>of()::get))
+                .contains("-XX:AOTCache=" + cache);
+
+        assertThat(Files.getLastModifiedTime(cache).toInstant())
+                .isAfter(recorded.toInstant().plus(Duration.ofHours(12)));
     }
 
     @Test

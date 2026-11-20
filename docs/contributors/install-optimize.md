@@ -70,10 +70,21 @@ is a new key, every cache not mapped for 12 hours goes too, checked at engine st
 cache lands and on `EngineMaintenance`'s 12 h cycle; a release deletes nothing by age. On a critical
 state volume `DiskWatch`'s emergency pass deletes the caches the engine does not use, least recently
 mapped first, until the volume is off the line; `jk storage clean` deletes every one it does not
-use. In use means named by a live process's `-XX:AOTCache=` argument (a warm worker, the engine,
-another engine of the home), being recorded by this engine (`WorkerAotCache.training`), or this
-engine jar's own cache; a sweep touches the mapped ones, as mapping a worker cache does. Windows
-shows no process arguments, but there the delete of a mapped file fails and is skipped.
+use. In use is the engine's own bookkeeping, the same on every OS: the caches its live workers
+were started with (`JobWorkers` lists each `-XX:AOTCache=` under `state/` on the worker's lease,
+`WorkerLeases.Ledger.mappedCaches`, until the worker exits), the one the engine maps (its own JVM
+flags), the ones it is recording (`WorkerAotCache.training`) and its own jar's engine cache. Where
+the OS shows other processes' arguments (macOS, Linux; never Windows), a cache another process
+names counts too. Starting a process with a cache touches it (`JobWorkers` for a worker,
+`EngineAotCache.spawnFlags` for the engine) and every sweep touches what is in use, so mtime says
+"last mapped" and another engine of the same home is spared by the 12 h rule; `jk storage clean`
+and the emergency pass may take its caches on Windows. Deleting a mapped cache is harmless on
+every OS: the process keeps its mapping (the JVM opens it with delete sharing on Windows) and the
+next fresh worker records it again, about 4 s. A trainer temp (`<cache>.tmp-<engine pid>`, and
+its `.config`) goes in every one of these passes once no recording can write it: this engine's
+own when it records that cache no more, a dead engine's five minutes after its last write (a
+trainer outlives a killed engine by at most its two-minute run; a pid reused by a process that
+started later counts as dead, a pid that cannot be read as alive), any after a day.
 
 ## The engine's startup cache
 

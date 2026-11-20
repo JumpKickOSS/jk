@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.testing.Sleepers;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
@@ -34,6 +35,12 @@ class StartupCachesTest {
     private static final String SNAPSHOT = "0.54.0-SNAPSHOT";
     private static final String RELEASE = "0.54.0";
     private static final StartupCaches.Deleter DELETE = Files::deleteIfExists;
+
+    /** No recording is being written anywhere. */
+    private static final StartupCaches.Recorders NO_RECORDER = (pid, cache, mtime) -> false;
+
+    /** Windows: no other process's arguments can be read. */
+    private static final StartupCaches.CommandLines NO_ARGUMENTS = List::of;
 
     private int keys;
 
@@ -97,7 +104,8 @@ class StartupCachesTest {
         Path liveWorker = worker(state, "java-compiler", SNAPSHOT, "aaaaaaaa", 30, 10);
         Path liveEngine = engine(state, SNAPSHOT, 30);
 
-        StartupCaches.Report r = StartupCaches.sweep(state, SNAPSHOT, held(liveWorker, liveEngine), NOW, DELETE);
+        StartupCaches.Report r =
+                StartupCaches.sweep(state, SNAPSHOT, held(liveWorker, liveEngine), NOW, DELETE, NO_RECORDER);
 
         List<Path> expected = new ArrayList<>(recent);
         expected.add(liveWorker);
@@ -113,7 +121,7 @@ class StartupCachesTest {
         Path unmapped = worker(state, "kotlinc", SNAPSHOT, "aaaaaaaa", 13, 10);
         Path recorded = worker(state, "kotlinc", SNAPSHOT, "aaaaaaaa", 0, 10);
 
-        StartupCaches.sweep(state, SNAPSHOT, held(mapped), NOW, DELETE);
+        StartupCaches.sweep(state, SNAPSHOT, held(mapped), NOW, DELETE, NO_RECORDER);
 
         assertThat(mapped).exists();
         assertThat(unmapped).doesNotExist();
@@ -130,7 +138,7 @@ class StartupCachesTest {
         Path sibling = worker(state, "java-compiler", RELEASE, "aaaaaaaa", 24 * 61, 10);
         Path ownEngine = engine(state, RELEASE, 24 * 60);
 
-        StartupCaches.Report r = StartupCaches.sweep(state, RELEASE, Set.of(), NOW, DELETE);
+        StartupCaches.Report r = StartupCaches.sweep(state, RELEASE, Set.of(), NOW, DELETE, NO_RECORDER);
 
         assertThat(r.deleted()).isZero();
         assertThat(left(state)).containsExactlyInAnyOrder(sameJdk, otherJdk, sibling, ownEngine);
@@ -145,7 +153,7 @@ class StartupCachesTest {
         Path legacy = Files.writeString(state.resolve("aot").resolve("kotlinc-0.13.8-3d5aa37c6f2e823d.aot"), "x");
         Path notACache = Files.writeString(state.resolve("aot").resolve("aot.toml"), "x");
 
-        StartupCaches.sweep(state, RELEASE, Set.of(), NOW, DELETE);
+        StartupCaches.sweep(state, RELEASE, Set.of(), NOW, DELETE, NO_RECORDER);
 
         assertThat(left(state)).containsExactly(notACache);
         assertThat(snapWorker).doesNotExist();
@@ -155,23 +163,80 @@ class StartupCachesTest {
 
         Path release = worker(state, "graph", RELEASE, "aaaaaaaa", 0, 10);
         Path releaseEngine = engine(state, RELEASE, 0);
-        StartupCaches.sweep(state, "0.55.0-SNAPSHOT", Set.of(), NOW, DELETE);
+        StartupCaches.sweep(state, "0.55.0-SNAPSHOT", Set.of(), NOW, DELETE, NO_RECORDER);
         assertThat(release).doesNotExist();
         assertThat(releaseEngine).doesNotExist();
     }
 
+    /**
+     * A trainer temp ({@code <cache>.tmp-<engine pid>}) goes once no recording can write it: a dead
+     * engine's after a few minutes' grace, this engine's own at once when it records that cache no
+     * more, any after a day; a live engine's recording and this engine's own stay. On the base each
+     * waited 24 hours (Windows kept a failed recording's 48 MiB temp after its engine stopped).
+     */
     @Test
-    void a_trainer_temp_goes_after_a_day_and_a_live_one_stays(@TempDir Path state) throws IOException {
+    void a_trainer_temp_goes_once_no_recording_can_write_it(@TempDir Path state) throws IOException {
         Path dir = Files.createDirectories(state.resolve("aot"));
-        Path dead = aged(
-                Files.writeString(dir.resolve("graph-" + RELEASE + "-aaaaaaaa-0000000000000001.aot.tmp-7"), "x"), 25);
-        Path live = aged(
-                Files.writeString(dir.resolve("graph-" + RELEASE + "-aaaaaaaa-0000000000000002.aot.tmp-8"), "x"), 1);
+        long own = ProcessHandle.current().pid();
+        long deadPid = 7;
+        long livePid = 8;
+        String recording = "graph-" + RELEASE + "-aaaaaaaa-0000000000000005.aot";
+        StartupCaches.Recorders recorders =
+                (pid, cache, mtime) -> pid == livePid || (pid == own && cache.equals(recording));
+        Path deadEngine = temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000001.aot.tmp-" + deadPid, 60);
+        Path deadConfig =
+                temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000001.aot.tmp-" + deadPid + ".config", 60);
+        Path deadJustNow = temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000002.aot.tmp-" + deadPid, 1);
+        Path liveEngine = temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000003.aot.tmp-" + livePid, 60);
+        Path ownFailed = temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000004.aot.tmp-" + own, 0);
+        Path ownRecording = temp(dir, recording + ".tmp-" + own, 0);
+        Path dayOld = temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000006.aot.tmp-" + livePid, 25 * 60);
 
-        StartupCaches.sweep(state, RELEASE, Set.of(), NOW, DELETE);
+        StartupCaches.sweep(state, RELEASE, Set.of(), NOW, DELETE, recorders);
 
-        assertThat(dead).doesNotExist();
-        assertThat(live).exists();
+        assertThat(deadEngine).as("its engine is gone").doesNotExist();
+        assertThat(deadConfig).as("with its recording's config").doesNotExist();
+        assertThat(deadJustNow).as("an orphaned trainer may still be finishing").exists();
+        assertThat(liveEngine).as("a live engine may still be recording it").exists();
+        assertThat(ownFailed).as("this engine records it no more").doesNotExist();
+        assertThat(ownRecording).as("this engine is recording it").exists();
+        assertThat(dayOld).as("no recording runs a day").doesNotExist();
+
+        Path again = temp(dir, "graph-" + RELEASE + "-aaaaaaaa-0000000000000001.aot.tmp-" + deadPid, 60);
+        StartupCaches.Report cleaned =
+                StartupCaches.reclaim(state, Set.of(), Long.MAX_VALUE, false, DELETE, recorders, NOW);
+        assertThat(again).as("storage clean and the emergency pass take it too").doesNotExist();
+        assertThat(liveEngine).exists();
+        assertThat(ownRecording).exists();
+        assertThat(cleaned.deleted()).isEqualTo(1);
+    }
+
+    /** {@code name} under {@code dir}, last written {@code minutesAgo}. */
+    private static Path temp(Path dir, String name, long minutesAgo) throws IOException {
+        Path p = Files.writeString(dir.resolve(name), "x");
+        Files.setLastModifiedTime(p, FileTime.fromMillis(NOW - minutesAgo * 60_000));
+        return p;
+    }
+
+    /**
+     * Whether a pid may still be recording is read so that a reused pid keeps a temp, never takes a
+     * live one: a live process counts only if it started before the temp was last written.
+     */
+    @Test
+    void a_reused_pid_never_counts_as_the_engine_that_named_a_temp() throws Exception {
+        long own = ProcessHandle.current().pid();
+        long now = System.currentTimeMillis();
+        assertThat(StartupCaches.startedBefore(own, now))
+                .as("this live process wrote it")
+                .isTrue();
+        assertThat(StartupCaches.startedBefore(own, 0))
+                .as("a process that started after the write reused the pid")
+                .isFalse();
+        Process gone = Sleepers.sleeper(0).start();
+        gone.waitFor();
+        assertThat(StartupCaches.startedBefore(gone.pid(), now))
+                .as("a dead pid")
+                .isFalse();
     }
 
     /** Under the disk guard: oldest unmapped first, the mapped one spared, and no more than the goal. */
@@ -184,7 +249,7 @@ class StartupCachesTest {
         Path middle = worker(state, "formatter", RELEASE, "aaaaaaaa", 50, 100);
         Path newest = worker(state, "graph", RELEASE, "bbbbbbbb", 1, 100);
 
-        StartupCaches.Report r = StartupCaches.reclaim(state, held(oldestMapped), 150, false, DELETE);
+        StartupCaches.Report r = StartupCaches.reclaim(state, held(oldestMapped), 150, false, DELETE, NO_RECORDER, NOW);
 
         assertThat(oldestMapped).exists();
         assertThat(oldest).doesNotExist();
@@ -194,7 +259,7 @@ class StartupCachesTest {
         assertThat(r.deleted()).isEqualTo(3);
         assertThat(r.freedBytes()).isEqualTo(210);
 
-        StartupCaches.reclaim(state, held(oldestMapped), Long.MAX_VALUE, false, DELETE);
+        StartupCaches.reclaim(state, held(oldestMapped), Long.MAX_VALUE, false, DELETE, NO_RECORDER, NOW);
         assertThat(left(state)).containsExactly(oldestMapped);
     }
 
@@ -223,13 +288,14 @@ class StartupCachesTest {
             Files.deleteIfExists(p);
         };
 
-        StartupCaches.Report swept = StartupCaches.sweep(state, RELEASE, Set.of(), NOW, refusing);
+        StartupCaches.Report swept = StartupCaches.sweep(state, RELEASE, Set.of(), NOW, refusing, NO_RECORDER);
         assertThat(swept.skipped()).isEqualTo(1);
         assertThat(swept.deleted()).isEqualTo(1);
         assertThat(stuck).exists();
         assertThat(other).doesNotExist();
 
-        StartupCaches.Report reclaimed = StartupCaches.reclaim(state, Set.of(), Long.MAX_VALUE, false, refusing);
+        StartupCaches.Report reclaimed =
+                StartupCaches.reclaim(state, Set.of(), Long.MAX_VALUE, false, refusing, NO_RECORDER, NOW);
         assertThat(reclaimed.skipped()).isEqualTo(1);
         assertThat(reclaimed.freedBytes()).isZero();
     }
@@ -239,7 +305,7 @@ class StartupCachesTest {
         Path a = worker(state, "graph", RELEASE, "aaaaaaaa", 5, 40);
         Path b = engine(state, RELEASE, 5);
 
-        StartupCaches.Report r = StartupCaches.reclaim(state, Set.of(), Long.MAX_VALUE, true, DELETE);
+        StartupCaches.Report r = StartupCaches.reclaim(state, Set.of(), Long.MAX_VALUE, true, DELETE, NO_RECORDER, NOW);
 
         assertThat(r.deleted()).isEqualTo(2);
         assertThat(r.freedBytes()).isEqualTo(50);
@@ -278,21 +344,83 @@ class StartupCachesTest {
                 .isEmpty();
     }
 
-    /** A cache a live process maps is in use, whichever process it is. */
+    /**
+     * A cache a worker this engine started maps is in use from the engine's own lease ledger, on a
+     * platform that shows no process's arguments (Windows, simulated): the 12 h sweep and {@code jk
+     * storage clean} spare it while the worker lives, and starting the worker touched it. On the base
+     * the in-use set was read off process arguments alone, so on Windows it was empty and {@code jk
+     * storage clean} deleted the cache a compiler worker mapped.
+     */
     @Test
-    void a_cache_a_live_process_maps_is_in_use(@TempDir Path state) throws Exception {
+    void a_cache_a_worker_of_this_engine_maps_is_in_use_where_no_process_shows_its_arguments(@TempDir Path dir)
+            throws Exception {
+        Path state = dir.resolve("state");
+        Path cache = Files.write(
+                Files.createDirectories(state.resolve("aot"))
+                        .resolve("java-compiler-" + SNAPSHOT + "-aaaaaaaa-00000000000000aa.aot"),
+                new byte[10]);
+        long now = System.currentTimeMillis();
+        FileTime longAgo = FileTime.fromMillis(now - 30 * HOUR);
+        Files.setLastModifiedTime(cache, longAgo);
+        Path normal = cache.toAbsolutePath().normalize();
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        try {
+            Process worker = JobWorkers.start(javaSleeper(dir, cache));
+            try {
+                assertThat(Files.getLastModifiedTime(cache))
+                        .as("starting a worker with the cache touched it")
+                        .isGreaterThan(longAgo);
+                // As if a warm worker had mapped it 30 h ago and lived since.
+                Files.setLastModifiedTime(cache, longAgo);
+                Set<Path> inUse = StartupCaches.inUse(WorkerLeases.engine(), NO_ARGUMENTS);
+                assertThat(inUse).contains(normal);
+                assertThat(StartupCaches.sweep(state, SNAPSHOT, inUse, now, DELETE, NO_RECORDER)
+                                .deleted())
+                        .isZero();
+                assertThat(StartupCaches.clear(false, NO_ARGUMENTS).deleted()).isZero();
+                assertThat(cache).exists();
+            } finally {
+                worker.destroyForcibly().waitFor();
+            }
+            assertThat(StartupCaches.inUse(WorkerLeases.engine(), NO_ARGUMENTS)).doesNotContain(normal);
+            assertThat(StartupCaches.clear(false, NO_ARGUMENTS).deleted()).isEqualTo(1);
+            assertThat(cache).doesNotExist();
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+    }
+
+    /** A JVM that maps {@code cache} and sleeps a minute: a worker as the engine starts one. */
+    static ProcessBuilder javaSleeper(Path dir, Path cache) throws IOException {
+        Path src = Files.writeString(
+                dir.resolve("Sleep.java"),
+                "class Sleep { public static void main(String[] a) throws Exception { Thread.sleep(60_000); } }");
+        String java = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "java.exe" : "java")
+                .toString();
+        return new ProcessBuilder(java, "-XX:AOTCache=" + cache, "-Xlog:aot=off", src.toString());
+    }
+
+    /**
+     * Where the OS shows other processes' arguments (macOS, Linux), a cache one of them names is in
+     * use too: another engine of the home and its workers.
+     */
+    @Test
+    void a_cache_another_process_maps_is_in_use_where_the_os_shows_it(@TempDir Path state) throws Exception {
         Assumptions.assumeTrue(
                 ProcessHandle.current().info().arguments().isPresent(),
-                "this platform shows no process arguments; a mapped file there refuses its delete instead");
+                "this platform shows no process arguments; only this engine's own workers count there");
         Path cache = worker(state, "graph", SNAPSHOT, "aaaaaaaa", 30, 10);
         Process p = Sleepers.sleeperMentioning(60, "-XX:AOTCache=" + cache).start();
+        Path normal = cache.toAbsolutePath().normalize();
         try {
-            assertThat(StartupCaches.inUse()).contains(cache.toAbsolutePath().normalize());
-            StartupCaches.sweep(state, SNAPSHOT, StartupCaches.inUse(), NOW, DELETE);
+            Set<Path> inUse = StartupCaches.inUse(WorkerLeases.engine(), StartupCaches.OTHER_PROCESSES);
+            assertThat(inUse).contains(normal);
+            StartupCaches.sweep(state, SNAPSHOT, inUse, NOW, DELETE, NO_RECORDER);
             assertThat(cache).exists();
         } finally {
             p.destroyForcibly().waitFor();
         }
-        assertThat(StartupCaches.inUse()).doesNotContain(cache.toAbsolutePath().normalize());
+        assertThat(StartupCaches.inUse(WorkerLeases.engine(), StartupCaches.OTHER_PROCESSES))
+                .doesNotContain(normal);
     }
 }

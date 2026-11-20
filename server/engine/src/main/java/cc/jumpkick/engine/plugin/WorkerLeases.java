@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.IntSupplier;
 import java.util.function.LongPredicate;
 import java.util.function.LongSupplier;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -430,6 +431,18 @@ public final class WorkerLeases {
                         cpuCap(),
                         waitingLine(budget),
                         overLeaseLine());
+            }
+        }
+
+        /**
+         * The JVM startup caches ({@code -XX:AOTCache=}) the workers holding a lease here were
+         * started with, until each exits: {@link StartupCaches} never deletes them. Read from what
+         * the engine put on each command line, so it holds on every OS, Windows included, where no
+         * process's arguments can be read back.
+         */
+        public Set<Path> mappedCaches() {
+            synchronized (lock) {
+                return held.stream().flatMap(w -> w.maps.stream()).collect(Collectors.toSet());
             }
         }
 
@@ -1113,6 +1126,9 @@ public final class WorkerLeases {
         /** Named in the engine log, and on its step, for going far over its lease. */
         boolean named;
 
+        /** The startup caches its process was started with ({@link Grant#maps}). */
+        volatile Set<Path> maps = Set.of();
+
         Waiter(Demand demand, @Nullable Long requestId, @Nullable LeaseResident resident) {
             this.demand = demand;
             this.requestId = requestId;
@@ -1192,6 +1208,15 @@ public final class WorkerLeases {
          */
         public void watch(long pid, String what, @Nullable TaskContext step) {
             ledger.watch(waiter, pid, Objects.requireNonNull(what, "what"), step);
+        }
+
+        /**
+         * The startup caches the leased process is started with ({@link StartupCaches#mappedBy} of
+         * its command), listed by {@link Ledger#mappedCaches} while the lease is held. Set before the
+         * process starts, so no sweep sees it mapped and unlisted.
+         */
+        public void maps(Set<Path> caches) {
+            waiter.maps = Set.copyOf(caches);
         }
 
         /**

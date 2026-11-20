@@ -12,6 +12,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -30,8 +31,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * How long the JEP 514 startup caches under {@code <state>/} live: the workers' ({@code aot/},
  * {@link WorkerAotCache}) and the engine's own ({@code engine-aot/}, {@link EngineAotCache}). Each
- * file's name carries the jk version that recorded it; mapping a worker cache touches it, and an
- * engine touches its own when it sweeps.
+ * file's name carries the jk version that recorded it. Starting a process with a cache touches it
+ * (a worker in {@link JobWorkers}, the engine in its spawner), so a cache's mtime says when it was
+ * last mapped.
  *
  * <ul>
  *   <li>Another jk version's cache can never map again and goes, a snapshot's under a release and a
@@ -45,13 +47,23 @@ import org.jspecify.annotations.Nullable;
  * </ul>
  *
  * <p>{@link #sweep} runs at engine start, when a worker cache lands and on the engine's 12 h
- * maintenance cycle. Never deleted ({@link #inUse}): a cache a live process maps, read off its
- * command line ({@code -XX:AOTCache=}: a warm worker, this engine itself, another engine of the
- * home), one this engine is recording, and the engine cache for this engine's own jar. A sweep
- * touches the ones live processes map, so their mtime says they are still mapped. A cache another
- * engine of the same home recorded or mapped moments ago carries a fresh mtime, so the age rule
- * spares it. Where a platform shows no process arguments (Windows), the platform itself refuses to
- * delete a mapped file; a refused delete is skipped and counted, never thrown.
+ * maintenance cycle. Never deleted ({@link #inUse}): a cache a live worker of this engine was
+ * started with, from the engine's own lease ledger ({@link WorkerLeases.Ledger#mappedCaches}, on
+ * every OS); the one this engine maps; one it is recording; and the engine cache for its own jar.
+ * Where the OS shows other processes' arguments (macOS, Linux; never Windows) a cache another
+ * process names in {@code -XX:AOTCache=} counts too. Another engine of the same home is otherwise
+ * covered by mtime: it touched what it maps when it started each process, and its own sweeps touch
+ * what it still maps, so the 12 h rule spares them; {@code jk storage clean} and the emergency pass
+ * may delete them on Windows.
+ *
+ * <p>Deleting a cache a live process maps is harmless on every OS: the process keeps its mapping
+ * (POSIX unlinks under it; the JVM opens its cache with delete sharing on Windows), and the next
+ * fresh worker records the cache again, about 4 s and 20-75 MiB. So the guarantee is that jk does
+ * not delete what its own engine's live workers map, nor, on a snapshot, what was mapped in the
+ * last 12 h; not that a mapped file is never deleted.
+ *
+ * <p>A trainer temp ({@code <cache>.tmp-<engine pid>} and its {@code .config}) goes once no
+ * recording can still be writing it ({@link #staleTemp}).
  */
 public final class StartupCaches {
 
@@ -60,8 +72,42 @@ public final class StartupCaches {
     /** Under a snapshot jk, a cache not mapped for this long goes. */
     static final Duration SNAPSHOT_UNUSED = Duration.ofHours(12);
 
-    /** A worker trainer's temp sibling older than this belongs to a dead engine. */
+    /** A trainer temp older than this goes whoever named it: no recording runs a day. */
     static final Duration TMP_TTL = Duration.ofHours(24);
+
+    /**
+     * A temp whose engine is gone goes once untouched this long: a trainer outlives a killed engine
+     * by at most its own run, which the engine caps at two minutes ({@link
+     * WorkerAotCache#trainingTimeoutMillis}).
+     */
+    static final Duration ORPHAN_GRACE = Duration.ofMinutes(5);
+
+    /** {@code <cache>.aot.tmp-<pid>}, optionally {@code .config}: the engine pid that named it. */
+    private static final Pattern TEMP_NAME = Pattern.compile("(?<cache>.+\\.aot)\\.tmp-(?<pid>\\d+)(?:\\..*)?");
+
+    /** Whether a trainer temp may still be written: its engine's own recording, or a live engine's. */
+    @FunctionalInterface
+    interface Recorders {
+        /** {@code pid} named the temp of {@code cacheName}, last written at {@code mtimeMillis}. */
+        boolean mayWrite(long pid, String cacheName, long mtimeMillis);
+    }
+
+    /** This engine: the caches it records now; another pid: a live process that started before the write. */
+    static final Recorders RECORDERS = (pid, cacheName, mtimeMillis) -> pid
+                    == ProcessHandle.current().pid()
+            ? WorkerAotCache.training().stream().anyMatch(p -> cacheName.equals(String.valueOf(p.getFileName())))
+            : startedBefore(pid, mtimeMillis);
+
+    /** Every other process's command line, where the OS shows it (macOS, Linux); none on Windows. */
+    @FunctionalInterface
+    interface CommandLines {
+        List<List<String>> read();
+    }
+
+    static final CommandLines OTHER_PROCESSES = () -> ProcessHandle.allProcesses()
+            .map(h -> h.info().arguments().map(args -> List.<String>of(args)).orElse(List.of()))
+            .filter(args -> !args.isEmpty())
+            .toList();
 
     /** {@code engine-<jk-version>-<16 hex key>.aot}, as {@link EngineAotCache#cacheFile} names it. */
     private static final Pattern ENGINE_NAME =
@@ -107,9 +153,9 @@ public final class StartupCaches {
     /** The version and snapshot rules over this home's caches; best-effort, says what went. */
     public static void sweepQuietly(Consumer<String> log) {
         try {
-            Set<Path> held = inUse();
+            Set<Path> held = inUse(WorkerLeases.engine(), OTHER_PROCESSES);
             touch(held);
-            Report r = sweep(JkDirs.state(), JkVersion.VERSION, held, Clock.SYSTEM.millis(), DELETE);
+            Report r = sweep(JkDirs.state(), JkVersion.VERSION, held, Clock.SYSTEM.millis(), DELETE, RECORDERS);
             if (r.deleted() > 0) {
                 log.accept("jk engine: removed " + r.deleted() + " startup cache file(s) (" + (r.freedBytes() >> 20)
                         + " MiB)"
@@ -124,10 +170,11 @@ public final class StartupCaches {
 
     /**
      * Delete, under {@code state}, every cache another version recorded; under a snapshot {@code
-     * running} also every one unmapped for {@link #SNAPSHOT_UNUSED}; and worker trainer temps older
-     * than {@link #TMP_TTL}. {@code inUse} is never touched.
+     * running} also every one unmapped for {@link #SNAPSHOT_UNUSED}; and every trainer temp no
+     * recording can still write ({@link #staleTemp}). {@code inUse} is never touched.
      */
-    static Report sweep(Path state, String running, Set<Path> inUse, long nowMillis, Deleter deleter) {
+    static Report sweep(
+            Path state, String running, Set<Path> inUse, long nowMillis, Deleter deleter, Recorders recorders) {
         boolean snapshot = Versions.isSnapshot(running);
         List<Entry> doomed = new ArrayList<>();
         for (Path dir : dirs(state)) {
@@ -142,7 +189,7 @@ public final class StartupCaches {
                         if (!running.equals(e.version()) || (snapshot && age > SNAPSHOT_UNUSED.toMillis())) {
                             doomed.add(e);
                         }
-                    } else if (name.contains(".aot.tmp-") && age > TMP_TTL.toMillis()) {
+                    } else if (staleTemp(name, attrs.lastModifiedTime().toMillis(), nowMillis, recorders)) {
                         doomed.add(new Entry(p, null, attrs.lastModifiedTime().toMillis(), attrs.size()));
                     }
                     return true;
@@ -155,16 +202,56 @@ public final class StartupCaches {
     }
 
     /**
-     * The volume holding the state directory is critical ({@link DiskGuard}): delete caches no live
-     * process uses, least recently mapped first, until the volume is back over the line or
-     * none are left. Called by the engine's disk guard after its store and cache passes.
+     * Whether {@code name} is a trainer temp no recording can still write: one a day old whoever
+     * named it; this engine's when it records that cache no more (a failed recording that could
+     * not delete its own); another engine's once that pid is gone, or is a later process that
+     * reused it, and {@link #ORPHAN_GRACE} has passed since the last write. A reused pid can only
+     * keep a temp (until the day is up), never take a live recording's.
+     */
+    static boolean staleTemp(String name, long mtimeMillis, long nowMillis, Recorders recorders) {
+        Matcher m = TEMP_NAME.matcher(name);
+        if (!m.matches()) return false;
+        long age = nowMillis - mtimeMillis;
+        if (age > TMP_TTL.toMillis()) return true;
+        long pid;
+        try {
+            pid = Long.parseLong(m.group("pid"));
+        } catch (NumberFormatException tooLong) {
+            return false;
+        }
+        if (recorders.mayWrite(pid, m.group("cache"), mtimeMillis)) return false;
+        return pid == ProcessHandle.current().pid() || age > ORPHAN_GRACE.toMillis();
+    }
+
+    /** Whether {@code pid} is a live process that started no later than {@code mtimeMillis}. */
+    static boolean startedBefore(long pid, long mtimeMillis) {
+        return ProcessHandle.of(pid)
+                .filter(ProcessHandle::isAlive)
+                .map(h -> h.info()
+                        .startInstant()
+                        .map(start -> start.toEpochMilli() <= mtimeMillis)
+                        .orElse(true))
+                .orElse(false);
+    }
+
+    /**
+     * The volume holding the state directory is critical ({@link DiskGuard}): delete caches not in
+     * use, stale temps first and then least recently mapped, until the volume is back over the line
+     * or none are left. Called by the engine's disk guard after its store and cache passes.
      */
     public static Report reclaimUnderPressure(Consumer<String> log) {
         try {
             Path state = JkDirs.state();
             long goal = shortfall(JkCacheConfig.DiskSpace.probe(state));
             if (goal <= 0) return Report.NONE;
-            Report r = reclaim(state, inUse(), goal, false, DELETE);
+            Report r = reclaim(
+                    state,
+                    inUse(WorkerLeases.engine(), OTHER_PROCESSES),
+                    goal,
+                    false,
+                    DELETE,
+                    RECORDERS,
+                    Clock.SYSTEM.millis());
             if (r.deleted() > 0) {
                 log.accept("jk engine: emergency reclaim removed " + r.deleted() + " startup cache file(s) ("
                         + (r.freedBytes() >> 20) + " MiB); they are recorded again when next used");
@@ -176,9 +263,20 @@ public final class StartupCaches {
         }
     }
 
-    /** {@code jk storage clean}: every cache not in use, whatever its age or version. */
+    /** {@code jk storage clean}: every cache not in use, whatever its age or version, and every stale temp. */
     public static Report clear(boolean dryRun) {
-        return reclaim(JkDirs.state(), inUse(), Long.MAX_VALUE, dryRun, DELETE);
+        return clear(dryRun, OTHER_PROCESSES);
+    }
+
+    static Report clear(boolean dryRun, CommandLines others) {
+        return reclaim(
+                JkDirs.state(),
+                inUse(WorkerLeases.engine(), others),
+                Long.MAX_VALUE,
+                dryRun,
+                DELETE,
+                RECORDERS,
+                Clock.SYSTEM.millis());
     }
 
     /** Bytes {@code space} lacks to be off {@link DiskGuard}'s critical line; 0 when it is not critical. */
@@ -189,16 +287,29 @@ public final class StartupCaches {
         return Math.max(1, line - space.freeBytes());
     }
 
-    /** Caches under {@code state} not in {@code inUse}, oldest mtime first, until {@code goalBytes} are freed. */
-    static Report reclaim(Path state, Set<Path> inUse, long goalBytes, boolean dryRun, Deleter deleter) {
+    /**
+     * Stale trainer temps, then caches under {@code state} not in {@code inUse}, oldest mtime first,
+     * until {@code goalBytes} are freed.
+     */
+    static Report reclaim(
+            Path state,
+            Set<Path> inUse,
+            long goalBytes,
+            boolean dryRun,
+            Deleter deleter,
+            Recorders recorders,
+            long nowMillis) {
         List<Entry> candidates = new ArrayList<>();
         for (Path dir : dirs(state)) {
             try {
                 PathUtil.forEachChild(dir, (p, attrs) -> {
-                    if (attrs.isRegularFile()
-                            && p.getFileName().toString().endsWith(".aot")
-                            && !inUse.contains(normal(p))) {
+                    if (!attrs.isRegularFile()) return true;
+                    String name = p.getFileName().toString();
+                    long mtime = attrs.lastModifiedTime().toMillis();
+                    if (name.endsWith(".aot") && !inUse.contains(normal(p))) {
                         candidates.add(entry(dir, p, attrs.lastModifiedTime(), attrs.size()));
+                    } else if (staleTemp(name, mtime, nowMillis, recorders)) {
+                        candidates.add(new Entry(p, null, Long.MIN_VALUE, attrs.size()));
                     }
                     return true;
                 });
@@ -221,7 +332,8 @@ public final class StartupCaches {
                 deleted++;
                 freed += e.bytes();
             } catch (IOException refused) {
-                // Windows refuses while another process maps the file; the next pass tries again.
+                // A file the OS will not delete now (a virus scanner holding it, a permission): the next pass tries
+                // again.
                 skipped++;
                 Log.debug("startup cache " + e.path() + " not deleted: " + refused.getMessage());
             }
@@ -238,18 +350,41 @@ public final class StartupCaches {
     }
 
     /**
-     * What must stay: caches live processes map, those this engine is recording, and the engine
-     * cache for this engine's own jar and JDK (mapped by the next engine of this install even when
-     * this one started before it was recorded).
+     * What must stay: the caches live workers of this engine were started with ({@code workers},
+     * the engine's lease ledger), the one this engine maps (its own JVM flags), those it is
+     * recording, the engine cache for its own jar and JDK (mapped by the next engine of this
+     * install even when this one started before it was recorded), and any cache {@code others}
+     * names in {@code -XX:AOTCache=} (another engine of the home and its workers, where the OS
+     * shows their arguments).
      */
-    static Set<Path> inUse() {
+    static Set<Path> inUse(WorkerLeases.Ledger workers, CommandLines others) {
         Set<Path> held = new HashSet<>();
-        ProcessHandle.allProcesses()
-                .forEach(h -> h.info().arguments().ifPresent(args -> held.addAll(mappedBy(List.of(args)))));
+        for (Path p : workers.mappedCaches()) held.add(normal(p));
+        held.addAll(mappedBy(ManagementFactory.getRuntimeMXBean().getInputArguments()));
+        for (List<String> args : others.read()) held.addAll(mappedBy(args));
         for (Path p : WorkerAotCache.training()) held.add(normal(p));
         Path own = ownEngineCache();
         if (own != null) held.add(normal(own));
         return held;
+    }
+
+    /**
+     * The startup caches of this home {@code command} maps, each touched so its mtime says it was
+     * mapped now: what {@link JobWorkers} lists on a worker's lease as it starts it. A cache outside
+     * {@code <state>/aot} and {@code <state>/engine-aot} (an application's own, under its target)
+     * is neither listed nor touched.
+     */
+    static Set<Path> mapping(List<String> command) {
+        Set<Path> mapped = mappedBy(command);
+        if (mapped.isEmpty()) return mapped;
+        List<Path> ours =
+                dirs(JkDirs.state()).stream().map(StartupCaches::normal).toList();
+        Set<Path> out = new HashSet<>();
+        for (Path p : mapped) {
+            if (ours.contains(p.getParent())) out.add(p);
+        }
+        touch(out);
+        return out;
     }
 
     /** The caches {@code args}, one process's command line, maps. */
@@ -282,7 +417,7 @@ public final class StartupCaches {
         return EngineAotCache.cacheFile(JkDirs.state(), home, jar);
     }
 
-    /** Mapping touches a cache; a sweep says so again for the ones still mapped, here and in other processes. */
+    /** Starting a process with a cache touches it; a sweep says so again for the ones still mapped. */
     private static void touch(Set<Path> held) {
         long now = Clock.SYSTEM.millis();
         for (Path p : held) {

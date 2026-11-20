@@ -180,6 +180,7 @@ public final class JobWorkers {
             Log.warn("jk engine: " + e.getMessage());
             throw new IOException(e.getMessage(), e);
         }
+        grant.maps(StartupCaches.mapping(pb.command()));
         Process process;
         try {
             process = ChildEnv.start(pb);
@@ -235,6 +236,8 @@ public final class JobWorkers {
         WorkerGc.Watch gc = WorkerGc.watch(sized, choice, heaps);
         List<String> command = gc.command();
         if (command != pb.command()) pb.command(command);
+        // Listed before it starts, so no startup-cache sweep sees the cache mapped and unlisted.
+        grant.maps(StartupCaches.mapping(command));
         Process started;
         try {
             started = ChildEnv.start(pb);
