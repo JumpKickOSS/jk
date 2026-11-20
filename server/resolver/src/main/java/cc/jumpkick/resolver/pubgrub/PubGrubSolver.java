@@ -555,6 +555,7 @@ public class PubGrubSolver {
      * clause — dropping it learned "p0 = 1.0 or p2 = 1.0" from two clauses that only bound p3.
      */
     private boolean coversInUniverse(Term satisfier, Term pivot) {
+        // The universe projection compares version sets, which cannot say the package is present.
         if (pivot.positive() && !satisfier.positive()) return false;
         VersionUniverse u = universes.get(pivot.pkg());
         if (u != null) {

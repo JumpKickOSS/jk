@@ -64,22 +64,35 @@ public record Term(String pkg, VersionSet versions, boolean positive) {
         return !positive && versions.isEmpty();
     }
 
-    /** Per PubGrub paper §3: relationship between this term and another. */
+    /**
+     * Per PubGrub paper §3: relationship between this term and another. A negative term also holds
+     * when the package is absent, so it never satisfies a positive term and never contradicts
+     * another negative one. A positive term over no versions holds for no assignment and answers
+     * {@link Relation#SATISFIES} against every term.
+     */
     public Relation relation(Term other) {
         if (!pkg.equals(other.pkg)) {
             throw new IllegalArgumentException(
                     "cannot relate terms about different packages: " + pkg + " vs " + other.pkg);
         }
-        VersionSet a = effectiveVersions();
-        VersionSet b = other.effectiveVersions();
-        boolean aSubsetB = a.subsetOf(b);
-        boolean bSubsetA = b.subsetOf(a);
-        boolean disjoint = a.intersect(b).isEmpty();
+        VersionSet a = versions;
+        VersionSet b = other.versions;
+        if (positive && other.positive) {
+            if (a.subsetOf(b)) return Relation.SATISFIES;
+            return disjoint(a, b) ? Relation.CONTRADICTS : Relation.OVERLAPS;
+        }
+        if (positive) {
+            if (disjoint(a, b)) return Relation.SATISFIES;
+            return a.subsetOf(b) ? Relation.CONTRADICTS : Relation.OVERLAPS;
+        }
+        if (other.positive) {
+            return b.subsetOf(a) ? Relation.CONTRADICTS : Relation.OVERLAPS;
+        }
+        return b.subsetOf(a) ? Relation.SATISFIES : Relation.OVERLAPS;
+    }
 
-        if (aSubsetB && bSubsetA) return Relation.SATISFIES; // equal sets
-        if (aSubsetB) return Relation.SATISFIES; // this ⊆ other
-        if (disjoint) return Relation.CONTRADICTS;
-        return Relation.OVERLAPS;
+    private static boolean disjoint(VersionSet a, VersionSet b) {
+        return a.intersect(b).isEmpty();
     }
 
     /** Result of {@link #relation(Term)}. */
