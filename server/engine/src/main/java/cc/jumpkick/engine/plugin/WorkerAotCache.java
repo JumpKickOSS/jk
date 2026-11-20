@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.plugin;
 
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
@@ -39,9 +40,9 @@ import org.jspecify.annotations.Nullable;
  * worker runs on — jk's own, or the one a {@code jdk = 27} pin names:
  * {@code <state>/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot}, mapped when present, otherwise one
  * background recording per key per engine process. A worker on an older JDK, or a Graal one, runs
- * without a cache. When a cache lands, the tool's other caches for that JDK go; when the engine
- * starts, every cache for another jk version goes, and one for another JDK once it has gone {@link
- * #DISUSE_TTL_MILLIS} unmapped ({@link #sweepForeign}). {@code JK_WORKER_AOT=off} (or
+ * without a cache. How long a cache lives is {@link StartupCaches}' business: another jk version's
+ * goes at engine start, a snapshot jk's once unmapped for 12 hours, a release's only when the disk is
+ * nearly full or {@code jk storage clean} asks. {@code JK_WORKER_AOT=off} (or
  * {@code -Djk.worker.aot=off}) turns mapping and recording off; HotSpot 25+ only.
  */
 public final class WorkerAotCache {
@@ -63,19 +64,10 @@ public final class WorkerAotCache {
     private static final StampedMemo<Path, FileStamp, Optional<Host>> HOSTS = StampedMemo.bounded(64);
 
     /**
-     * A cache for a JDK other than the engine's that has gone this long unmapped is swept: the pin
-     * that named that JDK is gone, or the JDK is. Mapping a cache touches it.
-     */
-    static final long DISUSE_TTL_MILLIS = 14L * 24 * 60 * 60 * 1_000;
-
-    /** A trainer's temp sibling older than this belongs to a dead engine. */
-    private static final long TMP_TTL_MILLIS = 24L * 60 * 60 * 1_000;
-
-    /**
      * {@code <tool>-<jk-version>-<8 hex jdk tag>-<16 hex key>.aot}; the tool may carry hyphens, the
      * version starts with a digit and may end in {@code -SNAPSHOT}.
      */
-    private static final Pattern NAME = Pattern.compile(
+    static final Pattern NAME = Pattern.compile(
             "(?<tool>.+?)-(?<version>\\d[^-]*(?:-SNAPSHOT)?)-(?<jdk>[0-9a-f]{8})-(?<key>[0-9a-f]{16})\\.aot");
 
     /** Keys with a trainer running in this process. */
@@ -122,7 +114,8 @@ public final class WorkerAotCache {
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
             deleteIfEmpty(cache);
-            if (!FAILED.contains(cache) && !StoreWriteGate.wipedSinceStart()) {
+            // A recording is a heavy blob: none while the volume is nearly full (DiskGuard).
+            if (!FAILED.contains(cache) && !StoreWriteGate.wipedSinceStart() && !DiskGuard.critical(dir())) {
                 trainAsync(tool + " worker (" + host.vendor() + " " + host.version() + ")", cache, trainer);
             }
         } catch (RuntimeException e) {
@@ -130,38 +123,6 @@ public final class WorkerAotCache {
             Log.debug("WorkerAotCache.flags: skipped", e);
         }
         return List.of();
-    }
-
-    /**
-     * Delete every cache this engine can never map, another jk version's; another JDK's once it has
-     * gone {@link #DISUSE_TTL_MILLIS} unmapped; and trainer temp files a dead engine left behind.
-     * Runs once at engine start; best-effort.
-     */
-    public static void sweepForeign() {
-        Host host = engineHost();
-        if (host == null) return;
-        sweepForeign(dir(), host);
-    }
-
-    static void sweepForeign(Path dir, Host host) {
-        String tag = jdkTag(host);
-        long now = Clock.SYSTEM.millis();
-        try {
-            PathUtil.forEachRegularFile(dir, d -> true, (p, attrs) -> {
-                String name = p.getFileName().toString();
-                if (name.endsWith(".aot")) {
-                    var m = NAME.matcher(name);
-                    boolean thisJk = m.matches() && m.group("version").equals(JkVersion.VERSION);
-                    boolean disused = now - attrs.lastModifiedTime().toMillis() > DISUSE_TTL_MILLIS;
-                    if (!thisJk || (!m.group("jdk").equals(tag) && disused)) deleteQuietly(p);
-                } else if (name.contains(".aot.tmp-")
-                        && now - attrs.lastModifiedTime().toMillis() > TMP_TTL_MILLIS) {
-                    deleteQuietly(p);
-                }
-            });
-        } catch (IOException ignored) {
-            // opportunistic: a leftover cache costs disk, not correctness
-        }
     }
 
     /** The cache file for one key under jk's own JDK. */
@@ -286,7 +247,7 @@ public final class WorkerAotCache {
             if (p.exitValue() == 0 && usable(tmp)) {
                 if (OwnerOnlyFiles.inState(cache)) OwnerOnlyFiles.setOwnerOnly(tmp, "rw-------");
                 AtomicWrites.moveInto(tmp, cache);
-                sweepSiblings(cache);
+                StartupCaches.sweepQuietly(s -> Log.info(s));
                 Log.info("jk engine: startup cache ready for the " + what + " (" + cache.getFileName() + ")");
             } else {
                 FAILED.add(cache);
@@ -317,33 +278,6 @@ public final class WorkerAotCache {
     }
 
     /**
-     * When a cache lands, the tool's other caches for that JDK go once they have gone {@link
-     * #DISUSE_TTL_MILLIS} unmapped. One still mapped serves another key in use (a second Kotlin
-     * version, another module's {@code -J} flags); sweeping it would retrain both on every build.
-     * Another JDK's are another worker's.
-     */
-    static void sweepSiblings(Path landed) {
-        var m = NAME.matcher(landed.getFileName().toString());
-        if (!m.matches()) return;
-        String tool = m.group("tool");
-        String jdk = m.group("jdk");
-        Path dir = Objects.requireNonNull(landed.getParent(), "cache dir");
-        long now = Clock.SYSTEM.millis();
-        try {
-            PathUtil.forEachRegularFile(dir, d -> true, (p, attrs) -> {
-                if (p.equals(landed)) return;
-                var other = NAME.matcher(p.getFileName().toString());
-                if (other.matches()
-                        && other.group("tool").equals(tool)
-                        && other.group("jdk").equals(jdk)
-                        && now - attrs.lastModifiedTime().toMillis() > DISUSE_TTL_MILLIS) deleteQuietly(p);
-            });
-        } catch (IOException ignored) {
-            // opportunistic: a leftover cache costs disk, not correctness
-        }
-    }
-
-    /**
      * Kill and reap every trainer this process started, returning their pids. A trainer holds
      * store jars open, and Windows refuses to delete a file another process has open, so the store
      * wipe and the engine's shutdown both call this first.
@@ -360,6 +294,11 @@ public final class WorkerAotCache {
             }
         }
         return pids;
+    }
+
+    /** The caches this process is recording now; {@link StartupCaches} never deletes them. */
+    static Set<Path> training() {
+        return Set.copyOf(TRAINING);
     }
 
     /** Test seam: whether a trainer is still running in this process. */

@@ -318,7 +318,7 @@ and the archive can test guesses of a short value against its key.
 
 ```bash
 jk cache clean                    # first knob for safe space reclaim
-jk storage clean                  # leaked download temps
+jk storage clean                  # leaked download temps, unused JVM startup caches
 jk storage clean -w        # also drop installed plugin workers (see below)
 jk cache nuke -y                  # wipe rebuildable action cache
 jk storage nuke                   # wipe downloaded artifacts (confirms)
@@ -498,7 +498,10 @@ the step warns `disk-low`. A high-priority thread in the engine looks at the cac
 state volumes every 15 seconds, and at once when a write was refused; on a critical volume it
 collects the artifact store at emergency windows on the spot (safe beside a build, since nothing
 younger than an hour is touched) and prunes the cache now, or at the build boundary when a build
-is live. It logs when the volume goes critical and when it recovers.
+is live. If the state volume is still critical after that, it deletes the JVM startup caches no running
+process maps, least recently used first, until the volume is back over the line or none
+are left ([below](#jvm-startup-caches)), and records no new one until it is. It logs when the
+volume goes critical, what the reclaim removed, and when it recovers.
 
 Under budget and inside every window there is nothing to evict, so `jk cache clean`
 reclaims only leaked temps, unreferenced blobs, whatever the small derived tiers have aged
@@ -561,5 +564,26 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   `--dry-run` lists them. A build server that wants `~/.m2` bounded sets `[m2] auto-clean =
   true` (or `JK_M2_AUTO_CLEAN=true`) and the engine does the same at its idle boundary.
 - **Managed JDKs**: `jk jdk uninstall` removes them; nothing else does.
+- <a id="jvm-startup-caches"></a>**JVM startup caches** (`~/.jk/state/aot/`, `~/.jk/state/engine-aot/`):
+  the JEP 514 caches the compiler, formatter, graph and script workers map (20–50 MB each, one per
+  tool, JDK and worker classpath or `-J` flags) and the engine's own (about 75 MB). Each file's
+  name carries the JumpKick version that recorded it. They go in two ways:
+  - **A new JumpKick version**: the first engine of another version deletes every cache an older
+    (or newer) one recorded, all of them at once.
+  - **The disk guard**: on a critical volume, the ones no running process maps, least recently
+    used first ([The disk guard](#the-disk-guard)).
+
+  Nothing else removes them: a released JumpKick keeps a cache for as long as it is installed,
+  used or not. A `-SNAPSHOT` JumpKick (one you built from a checkout, or CI's) records a new set
+  each time its workers are rebuilt, so there every cache not used for 12 hours goes as well,
+  checked when the engine starts, when a cache is recorded and on the engine's 12-hour
+  maintenance cycle. `jk storage usage` shows them on their own row and `jk storage clean` deletes
+  every one no running process maps; the next build that needs one records it again in the
+  background. A cache a running worker or engine maps is never deleted.
+- **Scratch under `state/tmp/`** is not tied to an install: the archive a step unpacked (`unpacked/`, an IDE
+  distribution) goes a week after its last use, whatever JumpKick version is installed, since it
+  belongs to the project. Worker GC logs (`worker-gc/`) go when their worker exits, or
+  a day later if it was killed; the engine startup cache's recording scratch goes when the next
+  recording starts; anything else under `state/tmp/` goes a week after it was written.
 
 MCP: `disk` (`clean`/`nuke` require `confirm=true`).

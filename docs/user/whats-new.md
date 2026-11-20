@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **JVM startup caches no longer pile up on a self-built JumpKick.** The caches the workers and the
+  engine map to start fast (`~/.jk/state/aot/`, `~/.jk/state/engine-aot/`) now go when they have
+  not been used for 12 hours on a `-SNAPSHOT` build, where every rebuild left a new set for two
+  weeks (1.2 GiB in two days on one contributor's machine). A release keeps its caches until you
+  install another version, which deletes all of them, or until the disk is nearly full, when the
+  unused ones go first. `jk storage usage` shows them and `jk storage clean` removes the unused
+  ones ([Cache](cache.md#jvm-startup-caches)).
 - **Breaking: `~/.jk` holds everything JumpKick downloads.** Central's jars no longer go into
   `~/.m2/repository`, so a CI runner that caches `~/.jk/store` has all of them. A jar Maven already
   fetched is still used where it is. `[m2] integration = "share"` in `~/.jk/config.toml` restores

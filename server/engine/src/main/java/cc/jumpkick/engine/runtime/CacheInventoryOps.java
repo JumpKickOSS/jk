@@ -10,6 +10,7 @@ import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.engine.plugin.BuiltInPluginJars;
 import cc.jumpkick.engine.plugin.PluginJar;
+import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.ActionTree;
@@ -287,6 +288,9 @@ public final class CacheInventoryOps {
         }
         // What the next pass would take: retired installs' blobs and blobs past their window.
         StoreCasGc.Report reclaimable = StoreCasGc.preview(storeRoot);
+        // The JVM startup caches under state/ (workers' and the engine's): their own row, since
+        // nothing else names them and a self-built jk used to grow them by a set per install.
+        long[] startup = StartupCaches.usage(JkDirs.state());
         List<String> stats = List.of(
                 pack("reclaimable", reclaimable.deleted(), reclaimable.freedBytes()),
                 pack("shared", tally.sharedFiles(), tally.sharedBytes()),
@@ -298,7 +302,8 @@ public final class CacheInventoryOps {
                 pack("test-homes", tally.files(OwnedTally.TEST_HOMES), tally.bytes(OwnedTally.TEST_HOMES)),
                 pack("tools", tally.files(OwnedTally.TOOLS), tally.bytes(OwnedTally.TOOLS)),
                 pack("scratch", tally.files(OwnedTally.SCRATCH), tally.bytes(OwnedTally.SCRATCH)),
-                pack("test-store", tally.files(OwnedTally.TEST_POOL), tally.bytes(OwnedTally.TEST_POOL)));
+                pack("test-store", tally.files(OwnedTally.TEST_POOL), tally.bytes(OwnedTally.TEST_POOL)),
+                pack("startup-caches", startup[0], startup[1]));
         return CacheInventoryAck.usage("store-usage", stats, totalFiles, totalBytes);
     }
 

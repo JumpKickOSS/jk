@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -121,6 +122,25 @@ class StorageSurfacesRenderTest {
         assertThat(joined).contains("Tool installs (aged by use): 40 files");
         assertThat(joined).contains("Scratch (aged by use): 9 files");
         assertThat(joined).contains("Test download pool (aged by use): 5 files");
+    }
+
+    /** The engine's {@code startup-caches} row (state/aot, state/engine-aot) has a line of its own. */
+    @Test
+    void store_usage_names_the_jvm_startup_caches_and_how_to_clear_them() {
+        CacheInventoryAck ack =
+                CacheInventoryAck.usage("store-usage", List.of("jars|1|10", "startup-caches|36|1288490188"), 1, 10);
+        CacheCommand.StoreUsageStats stats = CacheCommand.storeUsageFromAck(ack);
+        assertThat(stats.startupCaches()).isEqualTo(new CacheCommand.Stats(36, 1_288_490_188L));
+        List<String> lines = CacheCommand.renderStoreUsageTable(stats, "today");
+
+        assertBoxedRowsShareWidth(lines);
+        String joined = TestAnsi.strip(String.join("\n", lines));
+        assertThat(joined)
+                .contains("JVM startup caches (until the next jk version): 36 files")
+                .contains("(jk storage clean takes the unused ones)");
+        assertThat(stats.totalFiles())
+                .as("not artifacts: outside the store's total")
+                .isEqualTo(1);
     }
 
     @Test

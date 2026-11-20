@@ -55,15 +55,25 @@ shrunk mid-chore.
 ## Worker startup caches
 
 The java-compiler, kotlinc, groovyc, formatter and graph workers (`java … PluginMain`) map a JEP 514 cache under
-`~/.jk/state/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot` (`WorkerAotCache`). The rule is one file
-per tool, recorded only for the JDK JumpKick itself runs on: a worker forked on a project's own JDK
-runs without a cache, a landing cache deletes the tool's other caches, and the engine deletes
-every cache for another JumpKick version or another JDK when it starts. The key hashes the worker GC
+`~/.jk/state/aot/<tool>-<jk-version>-<jdk tag>-<key>.aot` (`WorkerAotCache`), one per tool, JDK
+and key, for every HotSpot 25+ JDK a worker runs on. The key hashes the worker GC
 flag, the worker classpath, the module's own JVM flags and, for javac, what the trainer compiled.
 Nothing pre-trains: the first run that misses forks one background trainer (for javac a bundled
 four-file module, `JavacTrainingSources`, compiled at `--release 21` or the module's, whichever is
 higher; a synthetic `Hello.kt` for kotlinc, `Hello.groovy` for groovyc; formatter sources) and the next run maps the result. A recording that fails is not retried until the next engine
-start. `JK_WORKER_AOT=off` turns mapping and recording off; suite JVMs and CI set it.
+start, and none starts while the state volume is critical (`DiskGuard`). `JK_WORKER_AOT=off`
+turns mapping and recording off; suite JVMs and CI set it.
+
+How long these and the engine's cache live is `StartupCaches`: every cache another JumpKick version
+recorded goes at engine start; under a `-SNAPSHOT` version, where each rebuilt worker or engine jar
+is a new key, every cache not mapped for 12 hours goes too, checked at engine start, when a worker
+cache lands and on `EngineMaintenance`'s 12 h cycle; a release deletes nothing by age. On a critical
+state volume `DiskWatch`'s emergency pass deletes the caches the engine does not use, least recently
+mapped first, until the volume is off the line; `jk storage clean` deletes every one it does not
+use. In use means named by a live process's `-XX:AOTCache=` argument (a warm worker, the engine,
+another engine of the home), being recorded by this engine (`WorkerAotCache.training`), or this
+engine jar's own cache; a sweep touches the mapped ones, as mapping a worker cache does. Windows
+shows no process arguments, but there the delete of a mapped file fails and is skipped.
 
 ## The engine's startup cache
 
@@ -75,7 +85,7 @@ jar (`EngineAotTrainer`, once per process, not under `CI`) runs the `jk` CLI aga
 and cache with `JK_ENGINE_AOT_RECORD` set: the spawner starts that trainer engine recording, the
 CLI builds the javac training module, edits and rebuilds it, rebuilds it as a no-op and asks for
 status, and `jk engine stop` makes the trainer assemble the cache, which lands atomically beside
-the others and replaces them. About 10 s once; on petclinic a no-op on a fresh engine is then
+the others and replaces them (`StartupCaches` above covers what a recording never replaces). About 10 s once; on petclinic a no-op on a fresh engine is then
 ~0.8 s instead of 1.17 s, for ~9 MiB more idle PSS. `JK_ENGINE_AOT=off` turns both halves off.
 
 ## Install

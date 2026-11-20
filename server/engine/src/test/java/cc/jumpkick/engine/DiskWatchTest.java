@@ -10,7 +10,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
-/** The guard's response to a critical volume: reclaim at once, at most once a minute, and say so. */
+/**
+ * The guard's response to a critical volume: reclaim at once (the store, the cache, then the
+ * startup caches the engine does not use), at most once a minute, and say so.
+ */
 class DiskWatchTest {
 
     private final AtomicLong now = new AtomicLong(10_000_000L);
@@ -29,6 +32,11 @@ class DiskWatchTest {
             public boolean pruneNow(Path cache) {
                 calls.add("prune");
                 return idle.get();
+            }
+
+            @Override
+            public void reclaimStartupCaches() {
+                calls.add("startup-caches");
             }
         };
         return new DiskWatch(
@@ -49,18 +57,20 @@ class DiskWatchTest {
 
         critical.set(true);
         assertThat(w.check()).isTrue();
-        assertThat(calls).containsExactly("store", "prune");
+        assertThat(calls)
+                .as("the startup caches last, for whatever the store and cache passes left short")
+                .containsExactly("store", "prune", "startup-caches");
         assertThat(log).anySatisfy(l -> assertThat(l).contains("disk nearly full at " + Path.of("/store")));
         assertThat(log).anySatisfy(l -> assertThat(l).contains("emergency reclaim ran"));
 
         now.addAndGet(DiskWatch.COOLDOWN.toMillis() - 1);
         w.check();
-        assertThat(calls).as("inside the cooldown: no second walk").hasSize(2);
+        assertThat(calls).as("inside the cooldown: no second walk").hasSize(3);
 
         idle.set(false);
         now.addAndGet(1);
         w.check();
-        assertThat(calls).hasSize(4);
+        assertThat(calls).hasSize(6);
         assertThat(log.getLast()).contains("queued for the build boundary");
 
         critical.set(false);

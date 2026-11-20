@@ -4,16 +4,20 @@ package cc.jumpkick.engine.plugin;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.DiskGuard;
+import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.testing.Symlinks;
+import cc.jumpkick.version.Versions;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
@@ -38,8 +42,17 @@ class WorkerAotCacheTest {
         WorkerAotCache.forgetFailuresForTests();
     }
 
+    /** Pins that read a test's tree as roomy, whatever the host's disk says: a critical volume records nothing. */
+    private final List<DiskGuard.Pin> pins = new ArrayList<>();
+
+    private void roomy(Path dir) {
+        pins.add(DiskGuard.pinForTest(dir, new JkCacheConfig.DiskSpace(100L << 30, 50L << 30)));
+    }
+
     @AfterEach
     void forget() {
+        pins.forEach(DiskGuard.Pin::close);
+        pins.clear();
         WorkerAotCache.forgetFailuresForTests();
         System.clearProperty("jk.worker.aot");
         Settled.aheadForTests(null);
@@ -99,6 +112,7 @@ class WorkerAotCacheTest {
     @Test
     void a_pinned_25_plus_jdk_records_its_own_cache_and_an_older_one_records_none(@TempDir Path dir) throws Exception {
         Path state = Files.createDirectories(dir.resolve("state"));
+        roomy(dir);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         Path older = Files.createDirectories(dir.resolve("temurin-21-project"));
         Files.writeString(older.resolve("release"), "JAVA_VERSION=\"21.0.12\"\n");
@@ -135,6 +149,7 @@ class WorkerAotCacheTest {
     @Test
     void a_pointer_repointed_to_an_older_jdk_maps_no_cache(@TempDir Path dir) throws Exception {
         Path state = Files.createDirectories(dir.resolve("state"));
+        roomy(dir);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         Path newer = Files.createDirectories(dir.resolve("temurin-27"));
         Files.writeString(newer.resolve("release"), "JAVA_VERSION=\"27.0.1\"\n");
@@ -165,29 +180,87 @@ class WorkerAotCacheTest {
     }
 
     /**
-     * When a cache lands, the tool's disused caches for that JDK go; one still mapped serves another
-     * key in use and stays, and another JDK's belong to another worker.
+     * When a cache lands, the sweep runs; a cache a live worker maps stays, however long ago it was
+     * last touched (on a snapshot jk the age rule would take it otherwise), and is touched again.
      */
     @Test
-    void a_landing_cache_sweeps_its_own_jdks_disused_siblings_only(@TempDir Path aot) throws Exception {
-        String v = JkVersion.VERSION;
-        FileTime disused = FileTime.fromMillis(System.currentTimeMillis() - WorkerAotCache.DISUSE_TTL_MILLIS - 60_000);
-        Path landed = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000001.aot"), "x");
-        Path stale = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000002.aot"), "x");
-        Files.setLastModifiedTime(stale, disused);
-        Path otherKey = Files.writeString(aot.resolve("kotlinc-" + v + "-aaaaaaaa-0000000000000005.aot"), "x");
-        Path otherJdk = Files.writeString(aot.resolve("kotlinc-" + v + "-bbbbbbbb-0000000000000003.aot"), "x");
-        Files.setLastModifiedTime(otherJdk, disused);
-        Path otherTool = Files.writeString(aot.resolve("formatter-" + v + "-aaaaaaaa-0000000000000004.aot"), "x");
-        Files.setLastModifiedTime(otherTool, disused);
-        WorkerAotCache.sweepSiblings(landed);
-        assertThat(landed).exists();
-        assertThat(stale).doesNotExist();
-        assertThat(otherKey)
-                .as("a second key mapped lately (another Kotlin version) must not be retrained every build")
-                .exists();
-        assertThat(otherJdk).exists();
-        assertThat(otherTool).exists();
+    void a_landing_cache_sweeps_but_spares_what_this_process_maps(@TempDir Path dir) throws Exception {
+        Path state = Files.createDirectories(dir.resolve("state"));
+        roomy(dir);
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        Path pinned = Files.createDirectories(dir.resolve("temurin-27"));
+        Files.writeString(pinned.resolve("release"), "JAVA_VERSION=\"27.0.1\"\n");
+        WorkerAotCache.Host host = requireNonNull(WorkerAotCache.hostOf(pinned));
+        Path mapped = WorkerAotCache.cacheFile("kotlinc", host, "/w/old-kotlin.jar", List.of());
+        Files.createDirectories(mapped.getParent());
+        Files.writeString(mapped, "an older Kotlin's cache");
+        List<String> mapping =
+                WorkerAotCache.flags("kotlinc", pinned, "/w/old-kotlin.jar", List.of(), (out, scratch) -> List.of());
+        assertThat(mapping).contains("-XX:AOTCache=" + mapped);
+        Assumptions.assumeTrue(
+                ProcessHandle.current().info().arguments().isPresent(),
+                "this platform shows no process arguments; a mapped file there refuses its delete instead");
+        // A warm worker still running on the old Kotlin: its command line names the cache.
+        Process worker = Sleepers.sleeperMentioning(60, mapping.getFirst()).start();
+        FileTime longAgo = FileTime.fromMillis(
+                System.currentTimeMillis() - Duration.ofHours(13).toMillis());
+        Files.setLastModifiedTime(mapped, longAgo);
+        Path unmapped = Files.writeString(
+                mapped.resolveSibling(
+                        "kotlinc-" + JkVersion.VERSION + "-" + WorkerAotCache.jdkTag(host) + "-0123456789abcdef.aot"),
+                "a key nobody maps");
+        Files.setLastModifiedTime(unmapped, longAgo);
+        Path otherVersion = Files.writeString(
+                mapped.resolveSibling("kotlinc-0.1.0-" + WorkerAotCache.jdkTag(host) + "-0123456789abcdef.aot"), "x");
+
+        AtomicInteger forks = new AtomicInteger();
+        try {
+            WorkerAotCache.flags("kotlinc", pinned, "/w/new-kotlin.jar", List.of(), (out, scratch) -> {
+                forks.incrementAndGet();
+                return Sleepers.writesLine("x", out);
+            });
+            waitUntil(() -> forks.get() == 1 && !WorkerAotCache.trainingInFlight());
+        } finally {
+            worker.destroyForcibly().waitFor();
+        }
+
+        assertThat(WorkerAotCache.cacheFile("kotlinc", host, "/w/new-kotlin.jar", List.of()))
+                .isRegularFile();
+        assertThat(mapped).as("a live worker maps it").exists();
+        assertThat(Files.getLastModifiedTime(mapped))
+                .as("and the sweep says so")
+                .isGreaterThan(longAgo);
+        assertThat(otherVersion).as("another jk version's never maps again").doesNotExist();
+        if (Versions.isSnapshot(JkVersion.VERSION)) {
+            assertThat(unmapped).as("a snapshot's cache unmapped for 12 h").doesNotExist();
+        } else {
+            assertThat(unmapped).as("a release deletes nothing by age").exists();
+        }
+    }
+
+    /** A recording is a heavy write: none while the state volume is critical. */
+    @Test
+    void no_cache_is_recorded_while_the_volume_is_nearly_full(@TempDir Path dir) throws Exception {
+        Path state = Files.createDirectories(dir.resolve("state"));
+        roomy(dir);
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        Path pinned = Files.createDirectories(dir.resolve("temurin-27"));
+        Files.writeString(pinned.resolve("release"), "JAVA_VERSION=\"27.0.1\"\n");
+        AtomicInteger forks = new AtomicInteger();
+        WorkerAotCache.Trainer trainer = (out, scratch) -> {
+            forks.incrementAndGet();
+            return Sleepers.writesLine("x", out);
+        };
+        try (var full = DiskGuard.pinForTest(state, new JkCacheConfig.DiskSpace(100L << 30, 1L << 30))) {
+            assertThat(WorkerAotCache.flags("java-compiler", pinned, "/w/a.jar", List.of(), trainer))
+                    .isEmpty();
+            assertThat(WorkerAotCache.trainingInFlight()).isFalse();
+        }
+        assertThat(forks.get()).isZero();
+        assertThat(WorkerAotCache.flags("java-compiler", pinned, "/w/a.jar", List.of(), trainer))
+                .as("off the line, the miss records again")
+                .isEmpty();
+        waitUntil(() -> forks.get() == 1 && !WorkerAotCache.trainingInFlight());
     }
 
     /**
@@ -199,13 +272,16 @@ class WorkerAotCacheTest {
         WorkerAotCache.Host engine = WorkerAotCache.engineHost();
         Assumptions.assumeTrue(engine != null && engine.eligible(), "this JVM cannot record a cache");
         Path state = Files.createDirectories(dir.resolve("state"));
+        roomy(dir);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         Path aot = Files.createDirectories(state.resolve("aot"));
         String tag = WorkerAotCache.jdkTag(requireNonNull(engine));
         Path older = Files.writeString(
                 aot.resolve("kotlinc-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "an older key");
         Files.setLastModifiedTime(
-                older, FileTime.fromMillis(System.currentTimeMillis() - WorkerAotCache.DISUSE_TTL_MILLIS - 60_000));
+                older,
+                FileTime.fromMillis(
+                        System.currentTimeMillis() - Duration.ofHours(13).toMillis()));
         Path otherTool = Files.writeString(
                 aot.resolve("java-compiler-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "other tool");
 
@@ -218,7 +294,11 @@ class WorkerAotCacheTest {
         Path cache = WorkerAotCache.cacheFile("kotlinc", engine, "/w/a.jar", List.of());
         assertThat(cache).isRegularFile();
         assertThat(Files.size(cache)).isGreaterThan(0);
-        assertThat(older).as("a disused key of the tool goes").doesNotExist();
+        if (Versions.isSnapshot(JkVersion.VERSION)) {
+            assertThat(older).as("a snapshot's key unmapped for 12 h goes").doesNotExist();
+        } else {
+            assertThat(older).as("a release deletes nothing by age").exists();
+        }
         assertThat(otherTool)
                 .as("another tool's cache is not this tool's business")
                 .exists();
@@ -239,6 +319,7 @@ class WorkerAotCacheTest {
         WorkerAotCache.Host engine = WorkerAotCache.engineHost();
         Assumptions.assumeTrue(engine != null && engine.eligible(), "this JVM cannot record a cache");
         Path state = Files.createDirectories(dir.resolve("state"));
+        roomy(dir);
         System.setProperty("jk.env.JK_STATE_DIR", state.toString());
         Path home = JavaHomes.runningJavaHome();
         int[] forks = new int[1];
@@ -257,45 +338,6 @@ class WorkerAotCacheTest {
         assertThat(forks[0]).isEqualTo(1);
         assertThat(WorkerAotCache.cacheFile("java-compiler", requireNonNull(engine), "/w/z.jar", List.of()))
                 .doesNotExist();
-    }
-
-    /**
-     * At engine start, caches for another jk version go; another JDK's go once disused, and stay
-     * while a pinned worker still maps them; this engine's stay.
-     */
-    @Test
-    void the_start_sweep_keeps_this_version_and_the_jdks_still_in_use(@TempDir Path aot) throws Exception {
-        String tag = WorkerAotCache.jdkTag(HOTSPOT_25);
-        Path mine = Files.writeString(
-                aot.resolve("kotlinc-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot"), "x");
-        Path mineToo = Files.writeString(
-                aot.resolve("java-compiler-" + JkVersion.VERSION + "-" + tag + "-fedcba9876543210.aot"), "x");
-        Path otherJdk =
-                Files.writeString(aot.resolve("kotlinc-" + JkVersion.VERSION + "-89abcdef-0123456789abcdef.aot"), "x");
-        Path disusedJdk =
-                Files.writeString(aot.resolve("kotlinc-" + JkVersion.VERSION + "-76543210-0123456789abcdef.aot"), "x");
-        Files.setLastModifiedTime(
-                disusedJdk,
-                FileTime.fromMillis(System.currentTimeMillis() - WorkerAotCache.DISUSE_TTL_MILLIS - 60_000));
-        Path otherVersion = Files.writeString(aot.resolve("kotlinc-0.1.0-" + tag + "-0123456789abcdef.aot"), "x");
-        Path legacy = Files.writeString(aot.resolve("kotlinc-0.13.8-3d5aa37c6f2e823d.aot"), "x");
-        Path manifest = Files.writeString(aot.resolve("aot.toml"), "not a cache");
-        Path freshTmp = Files.writeString(
-                aot.resolve("formatter-" + JkVersion.VERSION + "-" + tag + "-0123456789abcdef.aot.tmp-4242"),
-                "recording");
-
-        WorkerAotCache.sweepForeign(aot, HOTSPOT_25);
-
-        assertThat(mine).exists();
-        assertThat(mineToo).exists();
-        assertThat(otherJdk).as("a pinned JDK's cache in use").exists();
-        assertThat(disusedJdk).as("a pinned JDK's cache nobody maps").doesNotExist();
-        assertThat(otherVersion).doesNotExist();
-        assertThat(legacy)
-                .as("a name from before the JDK tag can never map again")
-                .doesNotExist();
-        assertThat(manifest).as("only .aot files are the sweep's business").exists();
-        assertThat(freshTmp).as("a live recording is left alone").exists();
     }
 
     private static void waitUntil(BooleanSupplier done) throws InterruptedException {

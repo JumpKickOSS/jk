@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.compile.JavacTrainingSources;
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.EngineAotCache;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.engine.plugin.WarmLinger;
@@ -91,6 +92,8 @@ final class EngineAotTrainer {
         if (javaHome == null || !Files.isRegularFile(cli) || !Files.isRegularFile(jar)) return;
         Path cache = EngineAotCache.cacheFile(JkDirs.state(), javaHome, jar);
         if (cache == null || Files.isRegularFile(cache) || !idle.getAsBoolean()) return;
+        // A recording is a heavy blob: none while the volume is nearly full (DiskGuard).
+        if (DiskGuard.critical(cache)) return;
         if (!ATTEMPTED.compareAndSet(false, true)) return;
         // Idle-time recording beside the resident engine; reads no session.
         BooleanSupplier go = () -> !stopping && idle.getAsBoolean();

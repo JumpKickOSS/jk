@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
@@ -26,7 +27,8 @@ import java.util.function.Consumer;
  *   <li>Reload user {@code config.toml} when its mtime changes (best-effort; heap size is not
  *       re-applied to the running JVM).
  *   <li>If wall-clock ≥ 12 h since the last maintenance stamp, run store-feed refresh + templates
- *       freshen + enqueue cache prune / host calibration. Heap {@code System.gc()} is
+ *       freshen + the startup-cache sweep ({@link StartupCaches}) + enqueue cache prune / host
+ *       calibration. Heap {@code System.gc()} is
  *       performed only at the end of that workset by the engine (never mid-chore).
  * </ul>
  *
@@ -42,7 +44,7 @@ public final class EngineMaintenance implements AutoCloseable {
     public static final Duration MAINTENANCE_INTERVAL = StoreFeedRefresh.INTERVAL;
 
     private final Consumer<String> log;
-    private final StoreFeedRefresh feeds;
+    private final Runnable fetches;
     private final Runnable onMaintenanceDue;
     private final Path stampFile;
     private final Path configFile;
@@ -65,8 +67,14 @@ public final class EngineMaintenance implements AutoCloseable {
     /** Test seam: injectable stamp + config paths. */
     EngineMaintenance(
             Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
+        this(log, fetches(log, feeds), onMaintenanceDue, stampFile, configFile);
+    }
+
+    /** Test seam: {@code fetches} stands for the cycle's network half (feeds, templates). */
+    EngineMaintenance(
+            Consumer<String> log, Runnable fetches, Runnable onMaintenanceDue, Path stampFile, Path configFile) {
         this.log = log != null ? log : s -> {};
-        this.feeds = Objects.requireNonNull(feeds, "feeds");
+        this.fetches = Objects.requireNonNull(fetches, "fetches");
         this.onMaintenanceDue = onMaintenanceDue != null ? onMaintenanceDue : () -> {};
         this.stampFile = stampFile;
         this.configFile = configFile;
@@ -160,14 +168,25 @@ public final class EngineMaintenance implements AutoCloseable {
         }
     }
 
+    /** Store feeds, then the official templates: the cycle's network half; both quiet on failure. */
+    private static Runnable fetches(Consumer<String> log, StoreFeedRefresh feeds) {
+        Objects.requireNonNull(feeds, "feeds");
+        Consumer<String> sink = log != null ? log : s -> {};
+        return () -> {
+            feeds.refreshFeedsQuietly();
+            OfficialTemplatesFreshen.refreshQuiet(sink, ProxyEnvironment.ambient()::gitHttpProxy);
+        };
+    }
+
     /**
-     * Full cycle: store feeds + official templates, then prune/warmup enqueue, then stamp. Failures
-     * inside feeds are already quiet.
+     * Full cycle: store feeds + official templates, the startup-cache sweep, then prune/warmup
+     * enqueue, then stamp. Failures inside each are already quiet.
      */
     void runMaintenanceCycle() {
         if (closed.get()) return;
-        feeds.refreshFeedsQuietly();
-        OfficialTemplatesFreshen.refreshQuiet(log, ProxyEnvironment.ambient()::gitHttpProxy);
+        fetches.run();
+        // A snapshot jk's caches unmapped for 12 h go on this cycle too, not only when an engine starts.
+        StartupCaches.sweepQuietly(log);
         try {
             onMaintenanceDue.run();
         } catch (Throwable e) {

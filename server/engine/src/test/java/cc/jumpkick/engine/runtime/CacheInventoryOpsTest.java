@@ -254,6 +254,31 @@ class CacheInventoryOpsTest {
         assertThat(ack.stats()).anyMatch(s -> s.startsWith("maven-local|"));
     }
 
+    /** The JVM startup caches under state/ get a row of their own, outside the store's total. */
+    @Test
+    void store_usage_counts_the_startup_caches_on_their_own_row(@TempDir Path tmp) throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path state = tmp.resolve("state");
+        Files.write(
+                Files.createDirectories(state.resolve("aot")).resolve("graph-0.54.0-aaaaaaaa-0123456789abcdef.aot"),
+                new byte[300]);
+        Files.write(
+                Files.createDirectories(state.resolve("engine-aot")).resolve("engine-0.54.0-0123456789abcdef.aot"),
+                new byte[700]);
+        System.setProperty("jk.env.JK_STATE_DIR", state.toString());
+        CacheInventoryAck ack;
+        try {
+            ack = CacheInventoryOps.run(new CacheInventoryOps.Request(
+                    "store-usage", cache, store, tmp.resolve("m2"), List.of(), List.of(), false));
+        } finally {
+            System.clearProperty("jk.env.JK_STATE_DIR");
+        }
+        assertThat(ack.error()).isNull();
+        assertThat(ack.stats()).contains("startup-caches|2|1000");
+        assertThat(ack.totalFiles()).isZero();
+    }
+
     @Test
     void blob_shared_with_an_unbucketed_key_still_counts(@TempDir Path cache) throws Exception {
         // An unbucketed key must not consume the shared-sha dedup set, or the count would

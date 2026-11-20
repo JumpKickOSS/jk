@@ -15,6 +15,7 @@ import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.config.WorkspaceModules;
+import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
@@ -336,8 +337,9 @@ public final class CachePlans {
     }
 
     /**
-     * Build the store-sweep plan ({@code jk storage clean}): leaked download temps. Garbage-only
-     * — the store's artifacts are never collected.
+     * Build the store-sweep plan ({@code jk storage clean}): leaked download temps and the JVM
+     * startup caches no live process maps. Garbage-only — the store's artifacts are never
+     * collected.
      */
     public static BuildPlan sweepBuildPlan(Path root, boolean dryRun) {
         Task sweepStep = Task.builder("sweep")
@@ -360,8 +362,9 @@ public final class CachePlans {
     public record SweepReport(long files, long bytes) {}
 
     /**
-     * Artifact-store GC: leaked {@code .put-} download temps, legacy name-keyed repository stores
-     * and artifacts the Maven local repository now owns ({@link #reclaimShadowedArtifacts}). The
+     * Artifact-store GC: leaked {@code .put-} download temps, legacy name-keyed repository stores,
+     * artifacts the Maven local repository now owns ({@link #reclaimShadowedArtifacts}) and the
+     * startup caches no live process maps ({@link StartupCaches#clear}). The
      * store's CAS blobs are collected by the cache prune ({@link StoreCasGc}); {@code jk storage
      * nuke} removes everything.
      */
@@ -392,6 +395,12 @@ public final class CachePlans {
         SweepReport shadowed = reclaimShadowedArtifacts(dryRun);
         totalFiles += shadowed.files();
         totalBytes += shadowed.bytes();
+
+        // Startup caches (state/aot, state/engine-aot) are accelerators the next use records again;
+        // the ones this engine maps stay.
+        StartupCaches.Report startup = StartupCaches.clear(dryRun);
+        totalFiles += startup.deleted();
+        totalBytes += startup.freedBytes();
 
         return new SweepReport(totalFiles, totalBytes);
     }

@@ -6,6 +6,7 @@ import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.DiskPressure;
 import cc.jumpkick.config.JkCacheConfig;
+import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
@@ -29,7 +30,9 @@ import org.jspecify.annotations.Nullable;
  * artifact store at emergency windows on the spot, which is safe beside a build because each blob is
  * independent and none younger than an hour is touched, and asks for a cache prune now: it runs at
  * once when no build is live, else at the build boundary, while the guard keeps heavy blobs out of
- * the caches in between.
+ * the caches in between. Last it deletes the startup caches no live process maps, least
+ * recently mapped first, while the state volume is still short ({@link StartupCaches}): a release
+ * keeps them otherwise until the next upgrade.
  *
  * <p>The <em>collector</em>, at low priority, runs the routine prune every {@link #ROUTINE} when its
  * cadence calls for one and no build is live; a build that arrives makes it yield at its next safe
@@ -54,6 +57,9 @@ final class DiskWatch implements AutoCloseable {
 
         /** Prune {@code cache} now, or at the build boundary; true when it ran now. */
         boolean pruneNow(Path cache);
+
+        /** Delete unused startup caches while the state volume is still critical. */
+        void reclaimStartupCaches();
     }
 
     private final List<Path> volumes;
@@ -93,6 +99,11 @@ final class DiskWatch implements AutoCloseable {
             @Override
             public boolean pruneNow(Path cache) {
                 return idle.pruneNow(cache);
+            }
+
+            @Override
+            public void reclaimStartupCaches() {
+                StartupCaches.reclaimUnderPressure(log);
             }
         };
         DiskWatch watch = new DiskWatch(
@@ -183,6 +194,9 @@ final class DiskWatch implements AutoCloseable {
         lastEmergency = now;
         responder.collectStore();
         boolean ran = responder.pruneNow(JkDirs.cache());
+        // After the store and cache passes, so it takes only what they left short; safe beside a
+        // build, which maps what it uses and so keeps it.
+        responder.reclaimStartupCaches();
         log.accept("jk engine: emergency reclaim " + (ran ? "ran" : "queued for the build boundary"));
         return true;
     }

@@ -196,7 +196,8 @@ public final class CacheCommand extends GroupCommand {
                 statFromAck(ack, "scratch"),
                 statFromAck(ack, "test-store"),
                 statFromAck(ack, "reclaimable"),
-                statFromAck(ack, "shared"));
+                statFromAck(ack, "shared"),
+                statFromAck(ack, "startup-caches"));
     }
 
     private static Stats statFromAck(CacheInventoryAck ack, String name) {
@@ -238,7 +239,35 @@ public final class CacheCommand extends GroupCommand {
             Stats scratch,
             Stats testPool,
             Stats reclaimable,
-            Stats shared) {
+            Stats shared,
+            Stats startupCaches) {
+        StoreUsageStats(
+                Stats jars,
+                Stats executables,
+                Stats oci,
+                Stats workers,
+                Stats mavenLocal,
+                Stats testHomes,
+                Stats tools,
+                Stats scratch,
+                Stats testPool,
+                Stats reclaimable,
+                Stats shared) {
+            this(
+                    jars,
+                    executables,
+                    oci,
+                    workers,
+                    mavenLocal,
+                    testHomes,
+                    tools,
+                    scratch,
+                    testPool,
+                    reclaimable,
+                    shared,
+                    new Stats(0, 0));
+        }
+
         StoreUsageStats(Stats jars, Stats executables, Stats oci, Stats workers) {
             this(
                     jars,
@@ -972,6 +1001,12 @@ public final class CacheCommand extends GroupCommand {
         out.add("  Test download pool (aged by use): "
                 + Theme.colorize(
                         fmtCount(s.testPool().files) + " files · " + fmtSize(s.testPool().bytes), t.normalGray()));
+        // state/aot and state/engine-aot: kept until jk's version changes (12 h unused on a snapshot).
+        out.add("  JVM startup caches (until the next jk version): "
+                + Theme.colorize(
+                        fmtCount(s.startupCaches().files) + " files · " + fmtSize(s.startupCaches().bytes),
+                        t.normalGray())
+                + Theme.colorize("  (jk storage clean takes the unused ones)", t.normalGray()));
         // Linked in from outside the home (~/.m2, a project's target/, another home): not jk's to count.
         if (s.shared().files > 0) {
             out.add("  Shared with other trees (not counted): "

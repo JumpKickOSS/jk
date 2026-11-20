@@ -329,6 +329,7 @@ public final class StorageCommand extends GroupCommand {
         kinds.put("tools", s.tools());
         kinds.put("scratch", s.scratch());
         kinds.put("test-pool", s.testPool());
+        kinds.put("startup-caches", s.startupCaches());
         kinds.put("reclaimable", s.reclaimable());
         kinds.put("shared", s.shared());
         kinds.forEach((kind, st) -> JsonlShape.row("storage-usage", f -> f.string("root", root.toString())
@@ -345,7 +346,7 @@ public final class StorageCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Reclaim leaked download temps (--workers: drop plugin workers)";
+            return "Reclaim leaked temps and unused startup caches (-w: drop workers)";
         }
 
         @Override
