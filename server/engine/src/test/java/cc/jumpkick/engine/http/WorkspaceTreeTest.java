@@ -174,6 +174,55 @@ class WorkspaceTreeTest {
     }
 
     @Test
+    void a_link_to_a_hidden_file_or_key_material_is_neither_listed_nor_found(@TempDir Path root) throws Exception {
+        Files.createDirectories(root.resolve(".git/hooks"));
+        Files.writeString(root.resolve(".git/hooks/pre-commit"), "#!/bin/sh\n");
+        Files.writeString(root.resolve(".git/config"), "[core]\n");
+        Files.writeString(root.resolve(".env"), "API_KEY=secret\n");
+        Files.createDirectories(root.resolve("certs"));
+        Files.writeString(root.resolve("certs/prod.key"), "PRIVATE KEY\n");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Real.java"), "class Real {}\n");
+        Files.createDirectories(root.resolve("docs"));
+        Symlinks.create(root.resolve("docs/readme.txt"), Path.of("../.git/hooks/pre-commit"));
+        Symlinks.create(root.resolve("docs/x.txt"), Path.of("../.env"));
+        Symlinks.create(root.resolve("docs/Link.java"), Path.of("../src/Real.java"));
+        Symlinks.create(root.resolve("notes.txt"), Path.of("certs/prod.key"));
+        Symlinks.create(root.resolve("repo"), Path.of(".git"));
+        Symlinks.create(root.resolve("alias"), Path.of("src"));
+        // A directory whose only child is a link to .git: nothing to fold into, nothing to show.
+        Files.createDirectories(root.resolve("wrap"));
+        Symlinks.create(root.resolve("wrap/inner"), Path.of("../.git"));
+
+        Page top = page(root, "");
+        assertThat(names(top)).containsExactly("alias", "certs", "docs", "src", "wrap");
+        assertThat(entry(top, "wrap").empty()).isTrue();
+        assertThat(names(page(root, "docs"))).containsExactly("Link.java");
+        assertThat(names(page(root, "alias"))).containsExactly("Real.java");
+        for (String hidden : List.of("repo", "repo/hooks", "wrap/inner")) {
+            assertThat(WorkspaceTree.list(root, hidden, null, 0)).as(hidden).isInstanceOf(ListResult.NotFound.class);
+        }
+        for (String term : List.of("pre-commit", "config", "readme", "x.txt", "notes", "prod")) {
+            assertThat(WorkspaceTree.find(root, term, 0).files()).as(term).isEmpty();
+        }
+        assertThat(WorkspaceTree.find(root, "Link.java", 0).files())
+                .extracting(WorkspaceTree.Found::path)
+                .containsExactly("docs/Link.java");
+    }
+
+    @Test
+    void a_checkout_reached_through_a_link_lists_by_real_paths(@TempDir Path base) throws Exception {
+        Path real = Files.createDirectories(base.resolve("real"));
+        Files.writeString(real.resolve(".env"), "API_KEY=secret\n");
+        Files.writeString(real.resolve("A.java"), "class A {}\n");
+        Symlinks.create(real.resolve("env.txt"), Path.of(".env"));
+        Path via = Symlinks.create(base.resolve("via"), real);
+
+        assertThat(names(page(via, ""))).containsExactly("A.java");
+        assertThat(WorkspaceTree.find(via, "env", 0).files()).isEmpty();
+    }
+
+    @Test
     void find_matches_every_term_ranks_name_hits_first_and_caps(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("jk.toml"), "name = \"demo\"\n");
         Path pkg = Files.createDirectories(root.resolve("src/main/java/demo/pricing"));

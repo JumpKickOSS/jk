@@ -444,8 +444,9 @@ past 50 000 entries is read that far and says `partial: true`.
 
 Every entry is shown except hidden names (a leading `.`), `node_modules`, and key material:
 `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `*.kdbx`, `*.ppk` and SSH private keys
-(`id_rsa`, `id_ed25519`, …; their `.pub` halves are shown). In-root symlinks count as what they
-point at; links whose target escapes the checkout are omitted, matching the read endpoints.
+(`id_rsa`, `id_ed25519`, …; their `.pub` halves are shown). A symlink counts as what it points at
+and is shown only when its real path stays in the checkout and passes the same rules, so
+`docs/x.txt -> ../.env` or a folder link to `.git` is omitted, matching the read endpoints.
 
 `lang` is the language the dashboard highlights the file in, by role-named file (`Dockerfile`,
 `Jenkinsfile`), else by extension (`java`, `kotlin`, `groovy` for `.gradle`, `xml`, `yaml`,
@@ -474,14 +475,17 @@ Response: `{ projectId, dir, more, partial, files: [{ path, lang }] }`, at most 
 `GET /api/project/file?project=<id>&path=<rel>[&dir=<abs-path>]`
 
 UTF-8 body of one file. `path` is workspace-relative (`src%2FMain.java`). Same sandbox as the
-tree: the id's checkout (`dir=` selects among several), real-path containment, and the same hidden
-and key-material paths refused as **404** (existence is not distinguishable).
+tree: the id's checkout (`dir=` selects among several), and the same hidden and key-material
+rules applied both to `path` and to the real path it resolves to inside the checkout; anything else
+is a **404**, as a missing file is (existence is not distinguishable). The file is read at that real
+path.
 
 Response: `{ projectId, dir, path, lang, bytes, lines, encoding, etag, content }`. `encoding` is
 `utf-8`, or `iso-8859-1` when the bytes were not valid UTF-8 (the pane labels the fallback
 instead of silently substituting U+FFFD). `etag` is the SHA-256 hex of the on-disk bytes
-(optimistic concurrency for PUT). Images and known binaries (`lang: image` / `binary`) are **415**
-here without reading their bytes, and so is any file with a NUL byte — use the raw endpoint below.
+(optimistic concurrency for PUT). Images and known binaries (`lang: image` / `binary`, by the
+path's name or a symlink target's) are **415** here, and so is any file with a NUL byte — use the
+raw endpoint below.
 
 | Status | When |
 | --- | --- |
@@ -518,8 +522,10 @@ bytes, so a save cannot land in a sibling worktree.
 fallback) so a save re-encodes to the original charset instead of transcoding; content no
 longer representable in the declared charset → **400**.
 
-Replace a **text** file under the selected checkout (atomic temp+move). Images, known binaries
-and refused paths are not writable. Body size is capped near 1 MiB of content (not the smaller
+Replace a **text** file under the selected checkout (atomic temp+move). The sandbox is the GET
+endpoint's, and the write lands at the real path that was checked. Images, known binaries and
+refused paths are not writable; a symlink is writable only when both its own name and its
+target's name are text. Body size is capped near 1 MiB of content (not the smaller
 global 64 KiB mutation limit used for build/cancel).
 
 When `etag` is present it must match the current on-disk SHA-256 (from GET). Mismatch → **409**
@@ -538,8 +544,8 @@ Response: `{ projectId, dir, path, lang, bytes, lines, etag }` (new content hash
 | 404 | unknown project, `dir` not one of its checkouts, missing file, or non-servable path |
 | 409 | `etag` present but file changed on disk (not engine-epoch) |
 | 413 | content larger than 1 MiB (or request body over cap) |
-| 415 | file type is not text-writable (e.g. image) |
-| 422 | a `jk.toml` the project's dependency guard rules refuse: the body's `error` is the rule's card, the file is untouched (the same check every `jk add` and `POST /api/project/deps` edit passes) |
+| 415 | file type is not text-writable (e.g. image), by the path's name or its target's |
+| 422 | a `jk.toml` (by the path's name or its target's) the project's dependency guard rules refuse: the body's `error` is the rule's card, the file is untouched (the same check every `jk add` and `POST /api/project/deps` edit passes) |
 | 500 | filesystem write failure |
 
 The dashboard `#project/<id>/files/…` pane is the primary consumer (Copy / Preview / Save + Build).

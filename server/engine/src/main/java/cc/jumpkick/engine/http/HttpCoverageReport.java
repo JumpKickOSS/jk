@@ -128,10 +128,10 @@ final class HttpCoverageReport {
     }
 
     /**
-     * {@code rel} under the run's directory when it is a regular file whose real path lies inside
-     * one of the record's report directories (each module's, and the roll-up's), else {@code
-     * null}. Real paths, not lexical ones: a symlink planted under a report directory must not
-     * serve its target.
+     * The real path of {@code rel} under the run's directory when it is a regular file inside one
+     * of the record's report directories (each module's, and the roll-up's), else {@code null}.
+     * The file is opened at the path that was checked, so a symlink planted under a report
+     * directory never serves its target.
      */
     static @Nullable Path servable(BuildRecord record, String rel) {
         Path root = Path.of(record.dir()).toAbsolutePath().normalize();
@@ -150,7 +150,7 @@ final class HttpCoverageReport {
         }
         for (Path dir : reportDirs(record)) {
             try {
-                if (real.startsWith(dir.toRealPath())) return file;
+                if (real.startsWith(dir.toRealPath())) return real;
             } catch (IOException missing) {
                 // a report directory the record names but the checkout no longer has
             }

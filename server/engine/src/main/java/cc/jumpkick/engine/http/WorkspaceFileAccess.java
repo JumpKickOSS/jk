@@ -16,7 +16,9 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -25,12 +27,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Identity-scoped source-tree access for the dashboard {@code #project/<id>/files} viewer: one
- * file read, raw read and write. {@link WorkspaceTree} lists directories and finds paths over the
- * same {@link #servable} predicate. The sandbox root is one of the checkouts {@code identity.toml}
- * records for the id ({@link #resolveRoot}), never a caller-supplied tree.
+ * file read, raw read and write. {@link WorkspaceTree} lists directories and finds paths under the
+ * same rule. The sandbox root is one of the checkouts {@code identity.toml} records for the id
+ * ({@link #resolveRoot}), never a caller-supplied tree.
  *
  * <p>Every regular file is servable except hidden entries, {@code node_modules} and key material
- * ({@link #isKeyMaterial}). The extension map names a language for highlighting and Preview, and
+ * ({@link #isKeyMaterial}), judged on the path asked for and on the real path it resolves to
+ * ({@link #resolveServable}). The extension map names a language for highlighting and Preview, and
  * says which files are images or known binaries; it does not decide what is served. A read decides
  * text from the bytes: a NUL is {@link ReadResult.Binary}.
  */
@@ -259,7 +262,13 @@ final class WorkspaceFileAccess {
     static @Nullable String normalizeRel(@Nullable String raw) {
         if (raw == null || raw.isBlank()) return null;
         if (raw.indexOf('\0') >= 0 || raw.indexOf('\\') >= 0) return null;
-        if (raw.startsWith("/") || Path.of(raw).isAbsolute()) return null;
+        if (raw.startsWith("/")) return null;
+        try {
+            // A root without being absolute is a Windows drive-relative path (C:foo).
+            if (Path.of(raw).getRoot() != null) return null;
+        } catch (InvalidPathException e) {
+            return null;
+        }
         String[] segs = raw.split("/", -1);
         for (String s : segs) {
             if (s.isEmpty() || s.equals(".") || s.equals("..")) return null;
@@ -279,6 +288,16 @@ final class WorkspaceFileAccess {
         if (ext == null) return TEXT;
         if (BINARY_EXT.contains(ext)) return BINARY;
         return LANG_BY_EXT.getOrDefault(ext, TEXT);
+    }
+
+    /** {@link #langOf(String)} of a path's own name. */
+    static String langOf(Path file) {
+        Path name = file.getFileName();
+        return langOf(name == null ? "" : name.toString());
+    }
+
+    private static String lastSegment(String rel) {
+        return rel.substring(rel.lastIndexOf('/') + 1);
     }
 
     private static @Nullable String extension(String lowerName) {
@@ -363,10 +382,10 @@ final class WorkspaceFileAccess {
     }
 
     /**
-     * Shared by the tree, find, read and write: no hidden segment, no {@code node_modules}, and the
-     * file is not key material. A refused path reads as absent.
+     * A {@code /}-separated checkout-relative path the dashboard may show: no hidden segment, no
+     * {@code node_modules}, and the last segment is not key material.
      */
-    static boolean servable(Path root, String rel) {
+    static boolean servable(String rel) {
         String[] segs = rel.split("/", -1);
         if (segs.length == 0) return false;
         for (String s : segs) {
@@ -375,41 +394,66 @@ final class WorkspaceFileAccess {
         return !isKeyMaterial(segs[segs.length - 1]);
     }
 
+    /**
+     * Whether {@code real}, a real path, lies in {@code realRoot} and its path relative to it is
+     * {@link #servable}. The root itself is.
+     */
+    static boolean servableReal(Path realRoot, Path real) {
+        if (!real.startsWith(realRoot)) return false;
+        if (real.equals(realRoot)) return true;
+        StringBuilder rel = new StringBuilder();
+        for (Path seg : realRoot.relativize(real)) {
+            if (!rel.isEmpty()) rel.append('/');
+            rel.append(seg);
+        }
+        return servable(rel.toString());
+    }
+
+    /**
+     * The real path of {@code rel}, a {@link #normalizeRel normalized} path or {@code ""} for the
+     * root, when both {@code rel} and the real path it resolves to are servable; else null. Every
+     * file and directory the dashboard reaches goes through here, and all later I/O uses the
+     * returned path, so a link is judged by what it is called and by what it points at, and a
+     * refused one answers as a missing file does.
+     */
+    static @Nullable Path resolveServable(Path root, String rel) {
+        if (!rel.isEmpty() && !servable(rel)) return null;
+        Path absRoot = root.toAbsolutePath().normalize();
+        Path real;
+        Path realRoot;
+        try {
+            realRoot = absRoot.toRealPath();
+            real = absRoot.resolve(rel).toRealPath();
+        } catch (IOException | InvalidPathException e) {
+            return null;
+        }
+        return servableReal(realRoot, real) ? real : null;
+    }
+
     static ReadResult read(Path root, @Nullable String rawRel) {
         if (rawRel == null || rawRel.isBlank()) return new ReadResult.BadRequest("missing \"path\"");
         String rel = normalizeRel(rawRel);
         if (rel == null) return new ReadResult.BadRequest("illegal path");
         Path absRoot = root.toAbsolutePath().normalize();
-        if (!servable(absRoot, rel)) return new ReadResult.NotFound();
-        Path file = absRoot.resolve(rel).normalize();
-        if (!file.startsWith(absRoot)) return new ReadResult.BadRequest("illegal path");
-        if (!Files.isRegularFile(file)) return new ReadResult.NotFound();
-        Path realFile;
-        Path realRoot;
-        try {
-            realFile = file.toRealPath();
-            realRoot = absRoot.toRealPath();
-        } catch (IOException e) {
-            return new ReadResult.NotFound();
-        }
-        if (!realFile.startsWith(realRoot)) return new ReadResult.NotFound();
+        Path realFile = resolveServable(absRoot, rel);
+        if (realFile == null || !Files.isRegularFile(realFile)) return new ReadResult.NotFound();
         long size;
         try {
-            size = Files.size(file);
+            size = Files.size(realFile);
         } catch (IOException e) {
             return new ReadResult.NotFound();
         }
         if (size > MAX_FILE_BYTES) return new ReadResult.TooLarge(size, MAX_FILE_BYTES);
         byte[] bytes;
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = Files.newInputStream(realFile)) {
             bytes = in.readNBytes(MAX_FILE_BYTES + 1);
         } catch (IOException e) {
             return new ReadResult.NotFound();
         }
         if (bytes.length > MAX_FILE_BYTES) return new ReadResult.TooLarge(bytes.length, MAX_FILE_BYTES);
-        String lang = langOf(file.getFileName().toString());
+        String lang = langOf(lastSegment(rel));
         // Images and known binaries are not text whatever their bytes; images read through raw.
-        if (!isTextLang(lang)) return new ReadResult.Binary();
+        if (!isTextLang(lang) || !isTextLang(langOf(realFile))) return new ReadResult.Binary();
         // Whole-buffer NUL scan: the file is already in memory, and a late NUL means binary
         // content that would otherwise fail strict UTF-8 and render as Latin-1 mojibake.
         for (byte b : bytes) {
@@ -446,34 +490,23 @@ final class WorkspaceFileAccess {
         String rel = normalizeRel(rawRel);
         if (rel == null) return new RawResult.BadRequest("illegal path");
         Path absRoot = root.toAbsolutePath().normalize();
-        if (!servable(absRoot, rel)) return new RawResult.NotFound();
-        Path file = absRoot.resolve(rel).normalize();
-        if (!file.startsWith(absRoot)) return new RawResult.BadRequest("illegal path");
-        if (!Files.isRegularFile(file)) return new RawResult.NotFound();
-        Path realFile;
-        Path realRoot;
-        try {
-            realFile = file.toRealPath();
-            realRoot = absRoot.toRealPath();
-        } catch (IOException e) {
-            return new RawResult.NotFound();
-        }
-        if (!realFile.startsWith(realRoot)) return new RawResult.NotFound();
+        Path realFile = resolveServable(absRoot, rel);
+        if (realFile == null || !Files.isRegularFile(realFile)) return new RawResult.NotFound();
         long size;
         try {
-            size = Files.size(file);
+            size = Files.size(realFile);
         } catch (IOException e) {
             return new RawResult.NotFound();
         }
         if (size > MAX_FILE_BYTES) return new RawResult.TooLarge(size, MAX_FILE_BYTES);
         byte[] bytes;
-        try (InputStream in = Files.newInputStream(file)) {
+        try (InputStream in = Files.newInputStream(realFile)) {
             bytes = in.readNBytes(MAX_FILE_BYTES + 1);
         } catch (IOException e) {
             return new RawResult.NotFound();
         }
         if (bytes.length > MAX_FILE_BYTES) return new RawResult.TooLarge(bytes.length, MAX_FILE_BYTES);
-        String name = file.getFileName().toString();
+        String name = lastSegment(rel);
         String lang = langOf(name);
         String contentType = imageContentType(name);
         if (contentType == null) contentType = "application/octet-stream";
@@ -504,31 +537,27 @@ final class WorkspaceFileAccess {
         String rel = normalizeRel(rawRel);
         if (rel == null) return new WriteResult.BadRequest("illegal path");
         Path absRoot = root.toAbsolutePath().normalize();
-        if (!servable(absRoot, rel)) return new WriteResult.NotFound();
-        String name = Path.of(rel).getFileName().toString();
-        String lang = langOf(name);
+        if (!servable(rel)) return new WriteResult.NotFound();
+        String lang = langOf(lastSegment(rel));
         if (!isTextWritable(lang)) {
             return new WriteResult.NotWritable("file type is not text-writable");
         }
-        Path file = absRoot.resolve(rel).normalize();
-        if (!file.startsWith(absRoot)) return new WriteResult.BadRequest("illegal path");
-        if (!Files.isRegularFile(file)) return new WriteResult.NotFound();
-        Path realFile;
-        Path realRoot;
-        try {
-            realFile = file.toRealPath();
-            realRoot = absRoot.toRealPath();
-        } catch (IOException e) {
-            return new WriteResult.NotFound();
+        Path realFile = resolveServable(absRoot, rel);
+        if (realFile == null || !Files.isRegularFile(realFile)) return new WriteResult.NotFound();
+        if (!isTextWritable(langOf(realFile))) {
+            return new WriteResult.NotWritable("file type is not text-writable");
         }
-        if (!realFile.startsWith(realRoot)) return new WriteResult.NotFound();
+        // A manifest by either name: the build reads a linked jk.toml as the manifest it names.
+        List<Path> manifests = new ArrayList<>(2);
+        if (ManifestPaths.MANIFEST.equals(lastSegment(rel))) manifests.add(absRoot.resolve(rel));
+        if (ManifestPaths.MANIFEST.equals(String.valueOf(realFile.getFileName()))) manifests.add(realFile);
         // Compare-then-write is atomic per real path: the handlers run one virtual thread per
         // request, so two tabs (or a tab plus an agent) PUTting the same file with the same etag
         // could both pass the comparison and the second silently clobbered the first — the exact
         // lost update the etag exists to prevent. Striped monitors (never a clear-on-overflow
         // map): a shared stripe only over-serializes distinct files.
         synchronized (WRITE_LOCKS[Math.floorMod(realFile.hashCode(), WRITE_LOCKS.length)]) {
-            return compareAndWrite(realFile, expectedEtag, content, encoding, absRoot, rel, lang);
+            return compareAndWrite(realFile, manifests, expectedEtag, content, encoding, absRoot, rel, lang);
         }
     }
 
@@ -540,6 +569,7 @@ final class WorkspaceFileAccess {
 
     private static WriteResult compareAndWrite(
             Path file,
+            List<Path> manifests,
             @Nullable String expectedEtag,
             String content,
             @Nullable String encoding,
@@ -598,17 +628,13 @@ final class WorkspaceFileAccess {
         }
         Path dir = file.getParent();
         if (dir == null) return new WriteResult.Failed("no parent directory");
-        if (ManifestPaths.MANIFEST.equals(String.valueOf(file.getFileName()))) {
-            // The guard rules ManifestEdit applies to every jk.toml edit judge a raw save too.
-            String refusal = MutationCheck.check(file, content);
+        // The guard rules ManifestEdit applies to every jk.toml edit judge a raw save too.
+        for (Path manifest : manifests) {
+            String refusal = MutationCheck.check(manifest, content);
             if (refusal != null) return new WriteResult.Refused(refusal);
         }
         try {
-            // Was a hand-rolled copy of AtomicWrites.replace — temp sibling, atomic move, cleanup in
-            // a finally — and it carried that pattern's permission bug: the JDK creates a
-            // temp file 0600, the rename hands those bits to the target, and this target is the
-            // user's own source file. An agent editing through the API left the file readable by
-            // nobody but its owner. The owner also gets the Windows retry it never had.
+            // Keeps the source file's permissions, where a bare temp-and-rename would leave it 0600.
             AtomicWrites.replace(file, bytes);
         } catch (IOException e) {
             return new WriteResult.Failed(e.getMessage() == null ? "write failed" : e.getMessage());

@@ -12,6 +12,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -97,16 +100,15 @@ class WorkspaceFileAccessTest {
         Files.writeString(root.resolve("id_ed25519"), "key");
         Files.writeString(root.resolve("id_ed25519.pub"), "ssh-ed25519 AAAA");
 
-        assertThat(WorkspaceFileAccess.servable(root, "build/Foo.java")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "build.gradle")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "notes.txt")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "Dockerfile")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "id_ed25519.pub")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, ".env")).isFalse();
-        assertThat(WorkspaceFileAccess.servable(root, "node_modules/x/index.js"))
-                .isFalse();
-        assertThat(WorkspaceFileAccess.servable(root, "server.pem")).isFalse();
-        assertThat(WorkspaceFileAccess.servable(root, "id_ed25519")).isFalse();
+        assertThat(WorkspaceFileAccess.servable("build/Foo.java")).isTrue();
+        assertThat(WorkspaceFileAccess.servable("build.gradle")).isTrue();
+        assertThat(WorkspaceFileAccess.servable("notes.txt")).isTrue();
+        assertThat(WorkspaceFileAccess.servable("Dockerfile")).isTrue();
+        assertThat(WorkspaceFileAccess.servable("id_ed25519.pub")).isTrue();
+        assertThat(WorkspaceFileAccess.servable(".env")).isFalse();
+        assertThat(WorkspaceFileAccess.servable("node_modules/x/index.js")).isFalse();
+        assertThat(WorkspaceFileAccess.servable("server.pem")).isFalse();
+        assertThat(WorkspaceFileAccess.servable("id_ed25519")).isFalse();
 
         assertThat(WorkspaceFileAccess.read(root, "build/Foo.java")).isInstanceOf(ReadResult.Ok.class);
         var notes = (ReadResult.Ok) WorkspaceFileAccess.read(root, "notes.txt");
@@ -165,7 +167,7 @@ class WorkspaceFileAccessTest {
         Path pkg = root.resolve("src/main/java/com/example/build");
         Files.createDirectories(pkg);
         Files.writeString(pkg.resolve("Util.java"), "class Util {}");
-        assertThat(WorkspaceFileAccess.servable(root, "src/main/java/com/example/build/Util.java"))
+        assertThat(WorkspaceFileAccess.servable("src/main/java/com/example/build/Util.java"))
                 .isTrue();
         assertThat(WorkspaceFileAccess.read(root, "src/main/java/com/example/build/Util.java"))
                 .isInstanceOf(ReadResult.Ok.class);
@@ -183,8 +185,8 @@ class WorkspaceFileAccessTest {
 
         assertThat(WorkspaceFileAccess.isOutputDir(member)).isFalse();
         assertThat(WorkspaceFileAccess.isOutputDir(member.resolve("target"))).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "build/src/A.java")).isTrue();
-        assertThat(WorkspaceFileAccess.servable(root, "build/target/A.java")).isTrue();
+        assertThat(WorkspaceFileAccess.servable("build/src/A.java")).isTrue();
+        assertThat(WorkspaceFileAccess.servable("build/target/A.java")).isTrue();
 
         assertThat(WorkspaceFileAccess.read(root, "build/src/A.java")).isInstanceOf(ReadResult.Ok.class);
         assertThat(WorkspaceFileAccess.read(root, "build/target/A.java")).isInstanceOf(ReadResult.Ok.class);
@@ -288,6 +290,117 @@ class WorkspaceFileAccessTest {
         assertThat(written).isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
         assertThat(Files.isSymbolicLink(root.resolve("src/Link.java"))).isTrue();
         assertThat(Files.readString(root.resolve("src/Real.java"))).isEqualTo("class Real { int x; }\n");
+    }
+
+    /**
+     * A checkout with links whose own names are harmless and whose targets are hidden or key
+     * material, a directory link to {@code .git}, and harmless links to sources.
+     */
+    private static void linkedSecrets(Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve(".git/hooks"));
+        Files.writeString(root.resolve(".git/hooks/pre-commit"), "#!/bin/sh\nexit 0\n");
+        Files.writeString(root.resolve(".git/config"), "[core]\n");
+        Files.writeString(root.resolve(".env"), "API_KEY=secret\n");
+        Files.createDirectories(root.resolve("certs"));
+        Files.writeString(root.resolve("certs/prod.key"), "PRIVATE KEY\n");
+        Files.createDirectories(root.resolve("src"));
+        Files.writeString(root.resolve("src/Real.java"), "class Real {}\n");
+        Files.createDirectories(root.resolve("docs"));
+        Symlinks.create(root.resolve("docs/readme.txt"), Path.of("../.git/hooks/pre-commit"));
+        Symlinks.create(root.resolve("docs/x.txt"), Path.of("../.env"));
+        Symlinks.create(root.resolve("notes.txt"), Path.of("certs/prod.key"));
+        Symlinks.create(root.resolve("repo"), Path.of(".git"));
+        Symlinks.create(root.resolve("docs/Link.java"), Path.of("../src/Real.java"));
+        Symlinks.create(root.resolve("alias"), Path.of("src"));
+    }
+
+    /** Links that resolve to a hidden or key-material path, through the last segment or a parent. */
+    static final List<String> LINKED_SECRETS =
+            List.of("docs/readme.txt", "docs/x.txt", "notes.txt", "repo/hooks/pre-commit", "repo/config");
+
+    @Test
+    void a_link_to_a_hidden_file_or_key_material_reads_and_writes_as_a_missing_file(@TempDir Path root)
+            throws Exception {
+        linkedSecrets(root);
+        Map<Path, String> before = new HashMap<>();
+        for (String target : List.of(".git/hooks/pre-commit", ".git/config", ".env", "certs/prod.key")) {
+            before.put(root.resolve(target), Files.readString(root.resolve(target)));
+        }
+
+        for (String path : LINKED_SECRETS) {
+            assertThat(WorkspaceFileAccess.read(root, path)).as(path).isEqualTo(new ReadResult.NotFound());
+            assertThat(WorkspaceFileAccess.readRaw(root, path))
+                    .as(path)
+                    .isEqualTo(new WorkspaceFileAccess.RawResult.NotFound());
+            assertThat(WorkspaceFileAccess.write(root, path, "echo pwned\n"))
+                    .as(path)
+                    .isEqualTo(new WorkspaceFileAccess.WriteResult.NotFound());
+        }
+        assertThat(WorkspaceFileAccess.read(root, "docs/missing.txt")).isEqualTo(new ReadResult.NotFound());
+        for (var e : before.entrySet()) {
+            assertThat(Files.readString(e.getKey())).as(e.getKey().toString()).isEqualTo(e.getValue());
+        }
+    }
+
+    @Test
+    void a_link_to_a_servable_source_reads_and_writes_its_target(@TempDir Path root) throws Exception {
+        linkedSecrets(root);
+
+        for (String path : List.of("docs/Link.java", "alias/Real.java")) {
+            assertThat(WorkspaceFileAccess.read(root, path)).as(path).isInstanceOf(ReadResult.Ok.class);
+            assertThat(WorkspaceFileAccess.readRaw(root, path))
+                    .as(path)
+                    .isInstanceOf(WorkspaceFileAccess.RawResult.Ok.class);
+        }
+        assertThat(WorkspaceFileAccess.write(root, "alias/Real.java", "class Real { int y; }\n"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.Ok.class);
+        assertThat(Files.readString(root.resolve("src/Real.java"))).isEqualTo("class Real { int y; }\n");
+    }
+
+    @Test
+    void a_text_named_link_to_a_binary_file_is_neither_read_nor_written_as_text(@TempDir Path root) throws Exception {
+        writeJkToml(root, "demo");
+        Files.createDirectories(root.resolve("lib"));
+        Files.writeString(root.resolve("lib/tool.jar"), "PK not text\n");
+        Symlinks.create(root.resolve("tool.txt"), Path.of("lib/tool.jar"));
+
+        assertThat(WorkspaceFileAccess.read(root, "tool.txt")).isInstanceOf(ReadResult.Binary.class);
+        assertThat(WorkspaceFileAccess.write(root, "tool.txt", "overwritten\n"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.NotWritable.class);
+        assertThat(Files.readString(root.resolve("lib/tool.jar"))).isEqualTo("PK not text\n");
+    }
+
+    @Test
+    void a_jk_toml_that_links_elsewhere_is_judged_by_the_guard_rules(@TempDir Path root) throws Exception {
+        String before = "name = \"p\"\ngroup = \"g\"\nversion = \"1\"\n\n[dependencies]\n";
+        Files.createDirectories(root.resolve("manifests"));
+        Files.writeString(root.resolve("manifests/p.toml"), before);
+        Symlinks.create(root.resolve("jk.toml"), Path.of("manifests/p.toml"));
+        Files.writeString(root.resolve(GuardsPresence.RULES_FILE), """
+                [guards.no-junit4]
+                kind = "depend"
+                ban = ["junit:junit"]
+                instead = "org.junit.jupiter:junit-jupiter"
+                why = "one test framework"
+                """);
+
+        assertThat(WorkspaceFileAccess.write(root, "jk.toml", before + "junit = \"junit:junit:4.13.2\"\n"))
+                .isInstanceOf(WorkspaceFileAccess.WriteResult.Refused.class);
+        assertThat(Files.readString(root.resolve("manifests/p.toml"))).isEqualTo(before);
+    }
+
+    @Test
+    void a_checkout_reached_through_a_link_is_judged_on_real_paths(@TempDir Path base) throws Exception {
+        Path real = Files.createDirectories(base.resolve("real"));
+        linkedSecrets(real);
+        Path via = Symlinks.create(base.resolve("via"), real);
+
+        assertThat(WorkspaceFileAccess.read(via, "src/Real.java")).isInstanceOf(ReadResult.Ok.class);
+        assertThat(WorkspaceFileAccess.read(via, "docs/Link.java")).isInstanceOf(ReadResult.Ok.class);
+        for (String path : LINKED_SECRETS) {
+            assertThat(WorkspaceFileAccess.read(via, path)).as(path).isEqualTo(new ReadResult.NotFound());
+        }
     }
 
     @Test

@@ -21,9 +21,10 @@ import org.jspecify.annotations.Nullable;
 /**
  * The dashboard's file tree, one directory at a time, and the path finder behind its filter box.
  * Nothing here reads a whole checkout into one response: {@link #list} answers one directory in
- * pages, and {@link #find} returns a capped set of matches. Both walk the same entries {@link
- * WorkspaceFileAccess#servable} admits: hidden names, {@code node_modules} and key material are
- * never shown, symlinks are followed only while their real path stays in the checkout.
+ * pages, and {@link #find} returns a capped set of matches. Both show only what {@link
+ * WorkspaceFileAccess#resolveServable} would serve: hidden names, {@code node_modules} and key
+ * material are never shown, and a symlink is shown, as what it points at, only while its real path
+ * stays in the checkout and is servable too. Every directory is read at its real path.
  */
 final class WorkspaceTree {
 
@@ -82,10 +83,10 @@ final class WorkspaceTree {
     /** {@code more}: matches past the limit exist; {@code partial}: the walk stopped before the end. */
     record Matches(Path root, List<Found> files, boolean more, boolean partial) {}
 
-    /** A directory waiting in {@link #find}'s walk, and whether it is under build output. */
-    private record Queued(String rel, boolean output) {}
+    /** A directory waiting in {@link #find}'s walk: shown path, real path, and whether it is output. */
+    private record Queued(String rel, Path real, boolean output) {}
 
-    /** A child of a directory, before paging: the name, and whether it is a directory. */
+    /** A child of a directory, before paging: the name it is listed under and its real path. */
     private record Child(String name, Path path, boolean dir) {}
 
     /**
@@ -99,7 +100,6 @@ final class WorkspaceTree {
         if (rawRel != null && !rawRel.isBlank()) {
             rel = WorkspaceFileAccess.normalizeRel(rawRel);
             if (rel == null) return new ListResult.BadRequest("illegal path");
-            if (!WorkspaceFileAccess.servable(absRoot, rel)) return new ListResult.NotFound();
         }
         int offset;
         try {
@@ -109,11 +109,9 @@ final class WorkspaceTree {
         }
         if (offset < 0) return new ListResult.BadRequest("illegal cursor");
         int size = limit <= 0 ? DEFAULT_PAGE : Math.min(limit, MAX_PAGE);
-        Path dir = rel.isEmpty() ? absRoot : absRoot.resolve(rel).normalize();
-        if (!dir.startsWith(absRoot) || !Files.isDirectory(dir) || !contained(dir, realRoot)) {
-            return new ListResult.NotFound();
-        }
-        boolean output = underOutput(absRoot, rel);
+        Path dir = WorkspaceFileAccess.resolveServable(absRoot, rel);
+        if (dir == null || !Files.isDirectory(dir)) return new ListResult.NotFound();
+        boolean output = underOutput(realRoot, dir);
         List<Child> children = new ArrayList<>();
         boolean partial;
         try {
@@ -131,7 +129,7 @@ final class WorkspaceTree {
             String childRel = rel.isEmpty() ? c.name() : rel + "/" + c.name();
             entries.add(
                     c.dir()
-                            ? folded(absRoot, realRoot, c, childRel, output)
+                            ? folded(realRoot, c, childRel, output)
                             : new Entry(
                                     c.name(), childRel, false, WorkspaceFileAccess.langOf(c.name()), output, false));
         }
@@ -143,7 +141,7 @@ final class WorkspaceTree {
      * A directory row, with any chain of single-child directories below it folded in: while the
      * directory shows exactly one entry and that entry is a directory, the row moves down to it.
      */
-    private static Entry folded(Path absRoot, Path realRoot, Child top, String rel, boolean parentOutput) {
+    private static Entry folded(Path realRoot, Child top, String rel, boolean parentOutput) {
         StringBuilder name = new StringBuilder(top.name());
         Path dir = top.path();
         String path = rel;
@@ -171,13 +169,12 @@ final class WorkspaceTree {
     }
 
     /**
-     * The shown children of {@code dir}, up to {@code max}: true when more remained unread. A
-     * symlink counts as what it points at, and only while that stays in the checkout.
+     * The shown children of {@code realDir}, a real path already judged servable, up to {@code
+     * max}: true when more remained unread.
      */
-    private static boolean readChildren(Path dir, Path realRoot, List<Child> out, int max) throws IOException {
+    private static boolean readChildren(Path realDir, Path realRoot, List<Child> out, int max) throws IOException {
         boolean[] more = {false};
-        // The walk does not follow a link it starts at: a symlinked directory is read at its target.
-        PathUtil.forEachChild(dir.toRealPath(), (entry, attrs) -> {
+        PathUtil.forEachChild(realDir, (entry, attrs) -> {
             Child c = child(entry, attrs, realRoot);
             if (c == null) return true;
             if (out.size() >= max) {
@@ -190,29 +187,33 @@ final class WorkspaceTree {
         return more[0];
     }
 
-    /** {@code attrs} are the entry's own, links not followed, as the listing read them. */
+    /**
+     * {@code entry} as a child of a real, servable directory, or null when it is not shown. {@code
+     * attrs} are the entry's own, links not followed. A regular file is its own real path, one
+     * servable segment below its parent's. A link or a directory is judged again at its real path,
+     * since a Windows junction reads as a plain directory.
+     */
     private static @Nullable Child child(Path entry, BasicFileAttributes attrs, Path realRoot) {
         Path fileName = entry.getFileName();
         String name = fileName == null ? "" : fileName.toString();
-        if (!WorkspaceFileAccess.visibleName(name)) return null;
-        if (attrs.isSymbolicLink()) {
-            if (!contained(entry, realRoot)) return null;
-            if (Files.isDirectory(entry)) return new Child(name, entry, true);
-            if (!Files.isRegularFile(entry)) return null;
-        } else if (attrs.isDirectory()) {
-            return new Child(name, entry, true);
-        } else if (!attrs.isRegularFile()) {
-            return null;
+        if (!WorkspaceFileAccess.servable(name)) return null;
+        if (attrs.isSymbolicLink() || attrs.isDirectory()) {
+            Path real;
+            try {
+                real = entry.toRealPath();
+            } catch (IOException broken) {
+                return null;
+            }
+            if (!WorkspaceFileAccess.servableReal(realRoot, real)) return null;
+            if (Files.isDirectory(real)) return new Child(name, real, true);
+            return Files.isRegularFile(real) ? new Child(name, real, false) : null;
         }
-        return WorkspaceFileAccess.isKeyMaterial(name) ? null : new Child(name, entry, false);
+        return attrs.isRegularFile() ? new Child(name, entry, false) : null;
     }
 
-    /** Whether any directory on {@code rel}, from the root down, is a module's build output. */
-    private static boolean underOutput(Path absRoot, String rel) {
-        if (rel.isEmpty()) return false;
-        Path at = absRoot;
-        for (String seg : rel.split("/")) {
-            at = at.resolve(seg);
+    /** Whether {@code realDir} or a directory above it, up to the root, is a module's build output. */
+    private static boolean underOutput(Path realRoot, Path realDir) {
+        for (Path at = realDir; at != null && !at.equals(realRoot) && at.startsWith(realRoot); at = at.getParent()) {
             if (WorkspaceFileAccess.isOutputDir(at)) return true;
         }
         return false;
@@ -242,14 +243,13 @@ final class WorkspaceTree {
         visited.add(realRoot);
         Deque<Queued> sources = new ArrayDeque<>();
         Deque<Queued> outputs = new ArrayDeque<>();
-        sources.add(new Queued("", false));
+        sources.add(new Queued("", realRoot, false));
         while (!sources.isEmpty() || !outputs.isEmpty()) {
             Queued q = sources.isEmpty() ? outputs.poll() : sources.poll();
             String rel = q.rel();
-            Path dir = rel.isEmpty() ? absRoot : absRoot.resolve(rel);
             List<Child> children = new ArrayList<>();
             try {
-                readChildren(dir, realRoot, children, MAX_DIR_ENTRIES);
+                readChildren(q.real(), realRoot, children, MAX_DIR_ENTRIES);
             } catch (IOException unreadable) {
                 continue;
             }
@@ -260,9 +260,9 @@ final class WorkspaceTree {
                 }
                 String childRel = rel.isEmpty() ? c.name() : rel + "/" + c.name();
                 if (c.dir()) {
-                    if (visited.add(realOrSelf(c.path()))) {
+                    if (visited.add(c.path())) {
                         boolean output = q.output() || WorkspaceFileAccess.isOutputDir(c.path());
-                        (output ? outputs : sources).add(new Queued(childRel, output));
+                        (output ? outputs : sources).add(new Queued(childRel, c.path(), output));
                     }
                     continue;
                 }
@@ -291,14 +291,6 @@ final class WorkspaceTree {
     private static boolean containsAll(String haystack, List<String> terms) {
         for (String t : terms) if (!haystack.contains(t)) return false;
         return true;
-    }
-
-    private static boolean contained(Path p, Path realRoot) {
-        try {
-            return p.toRealPath().startsWith(realRoot);
-        } catch (IOException broken) {
-            return false;
-        }
     }
 
     private static Path realOrSelf(Path p) {
