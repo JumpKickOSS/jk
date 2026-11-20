@@ -20,7 +20,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -56,21 +58,47 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
 
     private volatile int statusAnswer = 200;
 
+    /** Request bodies that reached the guest, by size. */
+    private final List<Integer> bodies = new CopyOnWriteArrayList<>();
+
+    /** The {@code Authorization} of each identity request that reached the guest. */
+    private final List<String> identityAsked = new CopyOnWriteArrayList<>();
+
+    /** Where the guest redirects a request for its report directory {@code /report/<token>/r1[/]}. */
+    private volatile String reportRedirect = "";
+
+    /** A header the guest adds to every answer, {@code name: value}; none when blank. */
+    private volatile String extraHeader = "";
+
     @BeforeEach
     void startGuestAndDoor() throws IOException {
         guest = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         int guestPort = guest.getAddress().getPort();
-        guest.createContext(
-                "/api/identity",
-                ex -> send(
-                        ex, 200, "{\"id\":\"" + GUEST_ID + "\",\"label\":\"WSL Ubuntu\",\"port\":" + guestPort + "}"));
+        guest.createContext("/api/identity", ex -> {
+            identityAsked.add(
+                    ex.getRequestMethod() + " auth=" + ex.getRequestHeaders().getFirst("Authorization"));
+            send(ex, 200, "{\"id\":\"" + GUEST_ID + "\",\"label\":\"WSL Ubuntu\",\"port\":" + guestPort + "}");
+        });
         guest.createContext("/", ex -> {
+            byte[] in = ex.getRequestBody().readAllBytes();
+            if (in.length > 0) bodies.add(in.length);
+            if (!extraHeader.isBlank()) {
+                String[] h = extraHeader.split(": ", 2);
+                ex.getResponseHeaders().set(h[0], h[1]);
+            }
             reached.add(ex.getRequestMethod() + " " + ex.getRequestURI().getRawPath()
                     + " q=" + ex.getRequestURI().getRawQuery()
                     + " auth=" + ex.getRequestHeaders().getFirst("Authorization")
                     + " referer=" + ex.getRequestHeaders().getFirst("Referer")
                     + " cookie=" + ex.getRequestHeaders().getFirst("Cookie"));
             String path = ex.getRequestURI().getPath();
+            String dir = "/report/" + GUEST_TOKEN + "/r1";
+            if (path.equals(dir) || path.equals(dir + "/")) {
+                ex.getResponseHeaders().set("Location", reportRedirect.replace("<port>", "" + guestPort));
+                ex.sendResponseHeaders(302, -1);
+                ex.close();
+                return;
+            }
             if (path.equals("/api/events")) {
                 ex.getResponseHeaders().set("Content-Type", "text/event-stream");
                 ex.sendResponseHeaders(200, 0);
@@ -302,5 +330,116 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
         assertThat(root.statusCode()).isEqualTo(302);
         assertThat(root.headers().firstValue("Location")).contains("/engines/" + GUEST_ID + "/");
         assertThat(send("/api/identity").body()).contains("\"nonce\":\"n-42\"");
+    }
+
+    @Test
+    void a_report_redirect_lands_under_the_front_door_with_its_token_never_the_engines() throws Exception {
+        String entry = prefix() + "/report/" + token() + "/r1/lib/index.html";
+        Map<String, String> forms = new LinkedHashMap<>();
+        forms.put("/report/" + GUEST_TOKEN + "/r1/lib/index.html", "/r1/");
+        forms.put("http://127.0.0.1:<port>/report/" + GUEST_TOKEN + "/r1/lib/index.html", "/r1/");
+        forms.put("./lib/index.html", "/r1/");
+        forms.put("r1/lib/index.html", "/r1");
+        for (Map.Entry<String, String> form : forms.entrySet()) {
+            reportRedirect = form.getKey();
+            HttpResponse<String> r = send(prefix() + "/report/" + token() + form.getValue());
+            assertThat(r.statusCode()).as(form.getKey()).isEqualTo(302);
+            assertThat(r.headers().map().toString()).as(form.getKey()).doesNotContain(GUEST_TOKEN);
+            String location = r.headers().firstValue("Location").orElseThrow();
+            assertThat(URI.create(baseUrl + prefix().substring(1) + "/report/" + token() + form.getValue())
+                            .resolve(location)
+                            .getRawPath())
+                    .as(form.getKey())
+                    .isEqualTo(entry);
+        }
+        HttpResponse<String> landed = send(entry);
+        assertThat(landed.statusCode())
+                .as("the front door takes the redirect's target")
+                .isEqualTo(200);
+        assertThat(reached).last().asString().startsWith("GET /report/" + GUEST_TOKEN + "/r1/lib/index.html ");
+    }
+
+    @Test
+    void a_redirect_off_the_engine_or_a_header_with_its_token_is_a_bad_gateway() throws Exception {
+        for (String off : List.of(
+                "http://example.com/x",
+                "//example.com/x",
+                "http://127.0.0.1:" + (guest.getAddress().getPort() ^ 1) + "/x",
+                "../../../../x",
+                "/report/" + GUEST_TOKEN)) {
+            reportRedirect = off;
+            HttpResponse<String> r = send(prefix() + "/report/" + token() + "/r1/");
+            assertThat(r.statusCode()).as(off).isEqualTo(502);
+            assertThat(r.headers().firstValue("Location")).as(off).isEmpty();
+            assertThat(r.body()).doesNotContain(GUEST_TOKEN);
+        }
+        extraHeader = "X-Debug: token=" + GUEST_TOKEN;
+        HttpResponse<String> page = send(prefix() + "/index.html");
+        assertThat(page.statusCode()).isEqualTo(502);
+        assertThat(page.headers().map().toString()).doesNotContain(GUEST_TOKEN);
+    }
+
+    @Test
+    void a_page_or_report_takes_only_reads_and_is_refused_before_the_engine_is_asked() throws Exception {
+        for (String path : List.of(prefix() + "/index.html", prefix() + "/report/" + token() + "/r1/index.html")) {
+            HttpResponse<String> r = client.send(
+                    HttpRequest.newBuilder(URI.create(baseUrl + path.substring(1)))
+                            .POST(HttpRequest.BodyPublishers.ofByteArray(new byte[1024]))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(r.statusCode()).as(path).isEqualTo(405);
+            assertThat(r.headers().firstValue("Allow")).as(path).contains("GET, HEAD");
+        }
+        assertThat(reached).isEmpty();
+        assertThat(identityAsked).as("not even the pairing's identity").isEmpty();
+    }
+
+    @Test
+    void a_body_past_the_paths_own_cap_is_a_413_and_one_under_it_is_forwarded() throws Exception {
+        HttpResponse<String> big = post("/api/build", HttpRequests.MAX_BODY_BYTES + 1);
+        assertThat(big.statusCode()).isEqualTo(413);
+        assertThat(big.body()).contains("\"maxBytes\":" + HttpRequests.MAX_BODY_BYTES);
+        assertThat(reached).isEmpty();
+        assertThat(identityAsked).isEmpty();
+
+        assertThat(post("/api/build", 1024).statusCode()).isEqualTo(200);
+        assertThat(post("/api/project/file", HttpRequests.MAX_BODY_BYTES * 4).statusCode())
+                .as("a file save takes the direct endpoint's larger cap")
+                .isEqualTo(200);
+        assertThat(post("/api/project/file", HttpProjectApi.MAX_FILE_PUT_BODY_BYTES + 1)
+                        .statusCode())
+                .isEqualTo(413);
+        assertThat(bodies).containsExactly(1024, HttpRequests.MAX_BODY_BYTES * 4);
+    }
+
+    @Test
+    void the_engines_identity_is_read_without_a_token_and_sent_none() throws Exception {
+        HttpResponse<String> id = send(prefix() + "/api/identity");
+        assertThat(id.statusCode()).isEqualTo(200);
+        assertThat(id.body()).contains("\"id\":\"" + GUEST_ID + "\"");
+        assertThat(send(prefix() + "/api/identity", "Authorization", "Bearer " + token())
+                        .statusCode())
+                .isEqualTo(200);
+        assertThat(identityAsked).last().isEqualTo("GET auth=null");
+        assertThat(identityAsked).allMatch(asked -> !asked.contains(GUEST_TOKEN));
+        HttpResponse<String> post = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + prefix().substring(1) + "/api/identity"))
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(post.statusCode())
+                .as("only its read is open, as on the engine itself")
+                .isEqualTo(401);
+    }
+
+    /** A {@code PUT} for the file save, else a {@code POST}, of {@code size} bytes with the front door's token. */
+    private HttpResponse<String> post(String apiPath, int size) throws Exception {
+        String method = apiPath.equals("/api/project/file") ? "PUT" : "POST";
+        return client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + prefix().substring(1) + apiPath))
+                        .header("Authorization", "Bearer " + token())
+                        .method(method, HttpRequest.BodyPublishers.ofByteArray(new byte[size]))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 }

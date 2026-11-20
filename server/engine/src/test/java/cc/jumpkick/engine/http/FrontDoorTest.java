@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -278,13 +279,45 @@ class FrontDoorTest {
                 .as("a control character")
                 .isNull();
 
-        assertThat(FrontDoor.Kind.of("/api/events")).isEqualTo(FrontDoor.Kind.EVENTS);
-        assertThat(FrontDoor.Kind.of("/api/status")).isEqualTo(FrontDoor.Kind.API);
-        assertThat(FrontDoor.Kind.of("/api")).isEqualTo(FrontDoor.Kind.API);
-        assertThat(FrontDoor.Kind.of("/mcp")).isEqualTo(FrontDoor.Kind.MCP);
-        assertThat(FrontDoor.Kind.of("/report/t/r1/index.html")).isEqualTo(FrontDoor.Kind.REPORT);
-        assertThat(FrontDoor.Kind.of("/apix")).isEqualTo(FrontDoor.Kind.OPEN);
-        assertThat(FrontDoor.Kind.of("/index.html")).isEqualTo(FrontDoor.Kind.OPEN);
+        assertThat(FrontDoor.Kind.of("GET", "/api/events")).isEqualTo(FrontDoor.Kind.EVENTS);
+        assertThat(FrontDoor.Kind.of("GET", "/api/status")).isEqualTo(FrontDoor.Kind.API);
+        assertThat(FrontDoor.Kind.of("GET", "/api")).isEqualTo(FrontDoor.Kind.API);
+        assertThat(FrontDoor.Kind.of("GET", "/mcp")).isEqualTo(FrontDoor.Kind.MCP);
+        assertThat(FrontDoor.Kind.of("GET", "/report/t/r1/index.html")).isEqualTo(FrontDoor.Kind.REPORT);
+        assertThat(FrontDoor.Kind.of("GET", "/apix")).isEqualTo(FrontDoor.Kind.OPEN);
+        assertThat(FrontDoor.Kind.of("GET", "/index.html")).isEqualTo(FrontDoor.Kind.OPEN);
+        assertThat(FrontDoor.Kind.of("GET", "/api/identity"))
+                .as("read without a token, as on the engine itself")
+                .isEqualTo(FrontDoor.Kind.OPEN);
+        assertThat(FrontDoor.Kind.of("HEAD", "/api/identity")).isEqualTo(FrontDoor.Kind.API);
+        assertThat(FrontDoor.Kind.of("POST", "/api/identity")).isEqualTo(FrontDoor.Kind.API);
+    }
+
+    @Test
+    void an_engines_location_is_put_back_under_its_prefix_with_the_browsers_token() {
+        URI sent = URI.create("http://127.0.0.1:8911/report/g/r1/");
+        String id = "caf4beecf11d";
+        assertThat(FrontDoor.location("/report/g/r1/a/index.html?x=1#top", sent, id, "f", "g"))
+                .isEqualTo("/engines/caf4beecf11d/report/f/r1/a/index.html?x=1#top");
+        assertThat(FrontDoor.location("http://127.0.0.1:8911/report/g/r1/a.html", sent, id, "f", "g"))
+                .isEqualTo("/engines/caf4beecf11d/report/f/r1/a.html");
+        assertThat(FrontDoor.location("./a/b%20c.html", sent, id, "f", "g"))
+                .isEqualTo("/engines/caf4beecf11d/report/f/r1/a/b%20c.html");
+        assertThat(FrontDoor.location("/#settings", sent, id, null, "g")).isEqualTo("/engines/caf4beecf11d/#settings");
+        assertThat(FrontDoor.location("/report/g/r1/", sent, id, null, "g"))
+                .as("no browser token to put in its place")
+                .isNull();
+        assertThat(FrontDoor.location("https://127.0.0.1:8911/x", sent, id, "f", "g"))
+                .isNull();
+        assertThat(FrontDoor.location("http://localhost:8911/x", sent, id, "f", "g"))
+                .isNull();
+        assertThat(FrontDoor.location("http://u@127.0.0.1:8911/x", sent, id, "f", "g"))
+                .isNull();
+        assertThat(FrontDoor.location("/../../x", sent, id, "f", "g")).isNull();
+        assertThat(FrontDoor.location("/a%2Fb", sent, id, "f", "g")).isNull();
+        assertThat(FrontDoor.location("not a uri", sent, id, "f", "g")).isNull();
+        assertThat(FrontDoor.carries("/x?t=%67%2d%74", "g-t")).isTrue();
+        assertThat(FrontDoor.carries("/x?t=a+b", "a b")).isFalse();
     }
 
     @Test

@@ -44,6 +44,14 @@ final class HttpProjectApi {
      */
     private record TemplatesCache(List<TemplateSpec> entries, long atNanos) {}
 
+    /**
+     * Cap on a {@code PUT /api/project/file} body: up to 1 MiB of content plus JSON quoting, past the
+     * engine-wide 64 KiB. Factor 6, not 3: {@code JSON.stringify} escapes each control character to
+     * six bytes, and the binary probe rejects only NUL, so a legal file under the write cap can
+     * escape past 3x.
+     */
+    static final int MAX_FILE_PUT_BODY_BYTES = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
+
     /** The query parameter a token-in-URL client sends, never a request field. */
     private static final Set<String> ACCESS_TOKEN = Set.of("access_token");
 
@@ -755,13 +763,7 @@ final class HttpProjectApi {
      * WorkspaceFileAccess#MAX_FILE_BYTES} (not the smaller global POST body limit).
      */
     void handleProjectFilePut(HttpExchange exchange) throws IOException {
-        // File write can be up to 1 MiB of content plus JSON quoting overhead; read past the
-        // engine-wide 64 KiB mutation cap used for build/cancel/scaffold. Factor 6, not 3:
-        // JSON.stringify escapes each control char to six bytes (backslash-u form), and the
-        // binary probe only rejects NUL, so a legal control-char-heavy file under the 1 MiB
-        // write cap can escape past 3x.
-        int maxBody = WorkspaceFileAccess.MAX_FILE_BYTES * 6 + 4096;
-        String body = HttpRequests.body(exchange, maxBody);
+        String body = HttpRequests.body(exchange, MAX_FILE_PUT_BODY_BYTES);
         String projectId = Jsonl.str(body, "project");
         String path = Jsonl.str(body, "path");
         String content = Jsonl.str(body, "content");

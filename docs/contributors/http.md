@@ -103,7 +103,13 @@ takes it here: `Authorization` for `/api` and `/mcp`, `?access_token=` for the e
 MCP event-stream GET, the path segment for `/report/<token>/`. A request that presented it reaches
 `127.0.0.1:<port>`, never through a proxy, with the paired engine's token in that same shape, and the
 browser's token in none: `Authorization`, `Cookie` and `Referer` are dropped, as is any
-`access_token` in the query. A page or an asset reaches the engine with no token. A 401 from the
+`access_token` in the query. A page, an asset and `GET /api/identity` reach the engine with no token;
+a page or a report takes `GET` and `HEAD` only, anything else is a 405 before the body is read. A
+body is read under the cap the engine puts on that path (64 KiB, the file save's larger one for `PUT
+/api/project/file`), and past it is a 413, before the engine is asked anything. A `Location` in the
+engine's answer is resolved against the request sent and put back under `/engines/<id>/`, a report's
+token segment replaced by the browser's; one that leads off the engine's address or to a path the
+front door refuses, and any response header carrying the engine's token, is a 502. A 401 from the
 engine becomes a 502, so a stale pairing never makes the dashboard drop the front door's token. The
 path is forwarded as the browser sent it, and one that could route otherwise at the engine (a dot or
 empty segment, an escaped `/`, `\`, `?`, `#` or `%`, a control character) is a 404. The response
@@ -835,7 +841,8 @@ A run's coverage HTML report, served from the checkout the run measured. The bea
 path segment — the one place a credential can ride into every page a report links to relatively
 — and is checked with the same constant-time comparison as the header. `<id>` is the journal
 record's id (or its build number / job directory, as `GET /api/history?id=` accepts); a run whose
-record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report's entry page: the
+record has no `coverage[]` is a 404. An empty `<path>` is a `302` to the report's entry page, with a
+`Location` relative to the request so the token is never echoed into a header: the
 one module's `index.html`, or the workspace roll-up (`target/site/jacoco/index.html`, or
 `workspace.html` beside it when a module's own report owns `index.html`). Any other `<path>`
 resolves under the record's `dir` and is served only when it is a regular file inside one of the

@@ -34,8 +34,13 @@ final class HttpRequests {
 
     /** The whole body as UTF-8, or {@link TooLarge} past {@code maxBytes}. */
     static String body(HttpExchange exchange, int maxBytes) throws IOException {
+        return new String(bytes(exchange, maxBytes), StandardCharsets.UTF_8);
+    }
+
+    /** The whole body, or {@link TooLarge} past {@code maxBytes}. */
+    static byte[] bytes(HttpExchange exchange, int maxBytes) throws IOException {
         byte[] raw = exchange.getRequestBody().readNBytes(maxBytes + 1);
         if (raw.length > maxBytes) throw new TooLarge(maxBytes);
-        return new String(raw, StandardCharsets.UTF_8);
+        return raw;
     }
 }

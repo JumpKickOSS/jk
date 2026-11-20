@@ -704,7 +704,7 @@ public final class HttpEngineServer implements AutoCloseable {
             HttpResponses.sendText(exchange, 404, "not found\n");
             return;
         }
-        FrontDoor.Kind kind = FrontDoor.Kind.of(target.path());
+        FrontDoor.Kind kind = FrontDoor.Kind.of(exchange.getRequestMethod(), target.path());
         boolean authorized =
                 switch (kind) {
                     case EVENTS, API -> tokens.authorizesApi(exchange, target.path());

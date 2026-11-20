@@ -39,7 +39,13 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         HttpResponse<String> entry = fetch("/report/" + token() + "/" + id + "/");
         assertThat(entry.statusCode()).isEqualTo(302);
         assertThat(entry.headers().firstValue("Location"))
-                .contains("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
+                .as("relative, so the token never rides in a header")
+                .contains("./lib/target/site/jacoco/index.html");
+        HttpResponse<String> bare = fetch("/report/" + token() + "/" + id);
+        assertThat(bare.statusCode()).isEqualTo(302);
+        assertThat(landing("/report/" + token() + "/" + id, bare))
+                .isEqualTo("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
+        assertThat(bare.headers().map().toString()).doesNotContain(token());
 
         HttpResponse<String> page = fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/index.html");
         assertThat(page.statusCode()).isEqualTo(200);
@@ -75,8 +81,8 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         String id = finished(testJournal(), ws, List.of(module(ws, "core", 10, 10), module(ws, "app", 5, 5)));
 
         HttpResponse<String> entry = fetch("/report/" + token() + "/" + id + "/");
-        assertThat(entry.headers().firstValue("Location"))
-                .contains("/report/" + token() + "/" + id + "/target/site/jacoco/index.html");
+        assertThat(landing("/report/" + token() + "/" + id + "/", entry))
+                .isEqualTo("/report/" + token() + "/" + id + "/target/site/jacoco/index.html");
         assertThat(fetch("/report/" + token() + "/" + id + "/target/site/jacoco/index.html")
                         .body())
                 .contains("roll-up");
@@ -113,6 +119,13 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
         assertThat(fetch("/report/" + token() + "/" + id + "/lib/target/site/jacoco/huge.html")
                         .statusCode())
                 .isEqualTo(413);
+    }
+
+    /** The path a browser that asked for {@code path} follows {@code redirect}'s {@code Location} to. */
+    private String landing(String path, HttpResponse<String> redirect) {
+        return URI.create(baseUrl + path.substring(1))
+                .resolve(redirect.headers().firstValue("Location").orElseThrow())
+                .getRawPath();
     }
 
     /** No bearer header and no redirect following: the browser's own navigation, seen one hop at a time. */

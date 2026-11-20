@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -112,6 +114,9 @@ public final class FrontDoor {
             "trailer",
             "proxy-authorization",
             "proxy-connection");
+
+    /** What a page or a report takes; anything else is a 405 before the body is read. */
+    private static final String READS = "GET, HEAD";
 
     /** Response headers the proxy's own framing replaces, or that would speak for the front door. */
     private static final Set<String> RESPONSE_DROPPED =
@@ -305,12 +310,13 @@ public final class FrontDoor {
         API,
         /** The MCP endpoint: a bearer token, or the query's on its event-stream GET. */
         MCP,
-        /** {@code /report/<token>/…}: a coverage report, the token in the path. */
+        /** {@code /report/<token>/…}: a coverage report, the token in the path; reads only. */
         REPORT,
-        /** Pages and assets: no token. */
+        /** Pages, assets and the engine's identity: no token; reads only. */
         OPEN;
 
-        static Kind of(String path) {
+        static Kind of(String method, String path) {
+            if (path.equals(HttpEngineServer.IDENTITY) && method.equals("GET")) return OPEN;
             if (path.equals("/api/events")) return EVENTS;
             if (path.equals("/api") || path.startsWith("/api/")) return API;
             if (HttpAdmission.isMcpPath(path)) return MCP;
@@ -323,7 +329,10 @@ public final class FrontDoor {
      * Forwards {@code exchange} to paired engine {@code target.id()}, streaming the answer back as it
      * comes, so an event stream flows through. {@code authorized} says the browser presented this
      * engine's token in the shape {@code kind} takes it; only then does the request carry the target
-     * engine's token, in that same shape.
+     * engine's token, in that same shape. A body is read, under the cap the engine itself puts on that
+     * path, before the engine is asked anything. An answer's {@code Location} is put back under
+     * {@code /engines/<id>/}; one that leads elsewhere, or any header that carries the engine's token,
+     * is a 502.
      */
     void proxy(HttpExchange exchange, Target target, Kind kind, boolean authorized) throws IOException {
         if (target.rawPath().isEmpty()) {
@@ -332,6 +341,14 @@ public final class FrontDoor {
             HttpResponses.sendText(exchange, 308, "moved\n");
             return;
         }
+        String method = exchange.getRequestMethod();
+        boolean read = method.equals("GET") || method.equals("HEAD");
+        if (!read && (kind == Kind.OPEN || kind == Kind.REPORT)) {
+            exchange.getResponseHeaders().set("Allow", READS);
+            HttpResponses.sendText(exchange, 405, "method not allowed\n");
+            return;
+        }
+        byte[] body = read ? new byte[0] : HttpRequests.bytes(exchange, maxBody(method, target.path()));
         GuestPairing.Pair pair = paired().get(target.id());
         if (pair == null) {
             HttpResponses.sendText(exchange, 404, "engine " + target.id() + " is not paired with this one\n");
@@ -352,10 +369,9 @@ public final class FrontDoor {
         boolean queryToken = authorized && (kind == Kind.EVENTS || kind == Kind.MCP);
         String query = forwardedQuery(exchange.getRequestURI().getRawQuery(), queryToken ? pair.token() : null);
         URI uri = URI.create("http://127.0.0.1:" + pair.port() + path + (query == null ? "" : "?" + query));
-        byte[] body = exchange.getRequestBody().readAllBytes();
         HttpRequest.Builder req = HttpRequest.newBuilder(uri)
                 .method(
-                        exchange.getRequestMethod(),
+                        method,
                         body.length == 0
                                 ? HttpRequest.BodyPublishers.noBody()
                                 : HttpRequest.BodyPublishers.ofByteArray(body));
@@ -393,12 +409,29 @@ public final class FrontDoor {
                     "engine " + target.id() + " refused the token it paired with; it pairs again when it restarts\n");
             return;
         }
-        resp.headers().map().forEach((name, values) -> {
-            if (RESPONSE_DROPPED.contains(name.toLowerCase(Locale.ROOT)) || name.startsWith(":")) return;
-            exchange.getResponseHeaders().put(name, values);
-        });
-        boolean empty =
-                resp.statusCode() == 204 || resp.statusCode() == 304 || "HEAD".equals(exchange.getRequestMethod());
+        String browserToken = kind == Kind.REPORT ? reportToken(target.rawPath()) : null;
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> h : resp.headers().map().entrySet()) {
+            String name = h.getKey();
+            String lower = name.toLowerCase(Locale.ROOT);
+            if (RESPONSE_DROPPED.contains(lower) || name.startsWith(":")) continue;
+            List<String> values = new ArrayList<>();
+            for (String v : h.getValue()) {
+                String value = lower.equals("location") ? location(v, uri, target.id(), browserToken, pair.token()) : v;
+                if (value == null || carries(value, pair.token())) {
+                    resp.body().close();
+                    HttpResponses.sendText(
+                            exchange,
+                            502,
+                            "engine " + target.id() + " answered with a " + name + " the front door cannot pass on\n");
+                    return;
+                }
+                values.add(value);
+            }
+            headers.put(name, values);
+        }
+        exchange.getResponseHeaders().putAll(headers);
+        boolean empty = resp.statusCode() == 204 || resp.statusCode() == 304 || method.equals("HEAD");
         exchange.sendResponseHeaders(resp.statusCode(), empty ? -1 : 0);
         try (InputStream in = resp.body();
                 OutputStream out = exchange.getResponseBody()) {
@@ -507,6 +540,59 @@ public final class FrontDoor {
         return true;
     }
 
+    /** The body cap the engine puts on {@code method} at {@code path}. */
+    private static int maxBody(String method, String path) {
+        return method.equals("PUT") && path.equals("/api/project/file")
+                ? HttpProjectApi.MAX_FILE_PUT_BODY_BYTES
+                : HttpRequests.MAX_BODY_BYTES;
+    }
+
+    /**
+     * Upstream {@code location}, resolved against {@code upstream}, the request the proxy sent, as a
+     * path under engine {@code id}'s prefix, with a coverage report's token segment replaced by {@code
+     * browserToken}, the one the browser presented. Null when it leads off the engine's address, to a
+     * path the front door would refuse, or to the engine's token with no browser token to put in its place.
+     */
+    static @Nullable String location(
+            String location, URI upstream, String id, @Nullable String browserToken, String engineToken) {
+        URI to;
+        try {
+            to = upstream.resolve(new URI(location)).normalize();
+        } catch (URISyntaxException | IllegalArgumentException malformed) {
+            return null;
+        }
+        if (!"http".equalsIgnoreCase(to.getScheme())
+                || !upstream.getHost().equalsIgnoreCase(to.getHost())
+                || to.getPort() != upstream.getPort()
+                || to.getRawUserInfo() != null) {
+            return null;
+        }
+        String path = to.getRawPath();
+        if (path == null || !path.startsWith("/")) return null;
+        if (engineToken.equals(reportToken(path))) {
+            if (browserToken == null) return null;
+            path = HttpCoverageReport.PREFIX
+                    + browserToken
+                    + path.substring(HttpCoverageReport.PREFIX.length() + engineToken.length());
+        }
+        String mapped = PREFIX + id + path;
+        if (target(mapped) == null) return null;
+        if (to.getRawQuery() != null) mapped += "?" + to.getRawQuery();
+        if (to.getRawFragment() != null) mapped += "#" + to.getRawFragment();
+        return mapped;
+    }
+
+    /** Whether {@code value} holds {@code token}, as written or percent-encoded. */
+    static boolean carries(String value, String token) {
+        if (value.contains(token)) return true;
+        try {
+            return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8)
+                    .contains(token);
+        } catch (IllegalArgumentException malformed) {
+            return false;
+        }
+    }
+
     /**
      * {@code rawPath}, a coverage report's {@code /report/<token>/…}, with the token segment replaced
      * by {@code token}; null when there is no token segment or the browser's did not authorize it.
@@ -519,7 +605,7 @@ public final class FrontDoor {
         return HttpCoverageReport.PREFIX + URLEncoder.encode(token, StandardCharsets.UTF_8) + rest.substring(slash);
     }
 
-    /** The token segment of a coverage report's path, decoded; null when there is none. */
+    /** The token segment of a coverage report's path; null when there is none. */
     static @Nullable String reportToken(String path) {
         if (!path.startsWith(HttpCoverageReport.PREFIX)) return null;
         String rest = path.substring(HttpCoverageReport.PREFIX.length());

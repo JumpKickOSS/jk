@@ -6,6 +6,8 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.CoverageRollup;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -54,11 +56,6 @@ final class HttpCoverageReport {
         this.tokens = tokens;
     }
 
-    /** The dashboard's link for run {@code id}: the entry page, tokenized. */
-    static String href(String token, String id) {
-        return PREFIX + token + "/" + id + "/";
-    }
-
     void handle(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
         if (!method.equals("GET") && !method.equals("HEAD")) {
@@ -78,7 +75,8 @@ final class HttpCoverageReport {
         }
         String rel = parts.length < 3 ? "" : parts[2];
         if (rel.isEmpty()) {
-            exchange.getResponseHeaders().set("Location", href(parts[0], parts[1]) + entryPage(record));
+            exchange.getResponseHeaders()
+                    .set("Location", entryLocation(exchange.getRequestURI().getRawPath(), record));
             exchange.sendResponseHeaders(302, -1);
             return;
         }
@@ -115,6 +113,20 @@ final class HttpCoverageReport {
                 StaticContent.copyExactly(
                         channel, new WriteDeadline(exchange.getResponseBody(), WriteDeadline.PER_WRITE), size);
             }
+        }
+    }
+
+    /**
+     * The entry page relative to {@code rawPath}, the run's {@code /report/<token>/<id>} with or
+     * without its slash, percent-encoded. Relative, so the token never rides in a header.
+     */
+    static String entryLocation(String rawPath, BuildRecord record) {
+        String dir = rawPath.endsWith("/") ? "." : rawPath.substring(rawPath.lastIndexOf('/') + 1);
+        try {
+            String page = new URI(null, null, "./" + entryPage(record), null, null).toASCIIString();
+            return dir + page.substring(1);
+        } catch (URISyntaxException e) {
+            throw new IllegalStateException("entry page is not a path: " + entryPage(record), e);
         }
     }
 
