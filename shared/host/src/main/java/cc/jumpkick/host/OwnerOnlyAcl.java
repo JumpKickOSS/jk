@@ -17,7 +17,9 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.UserPrincipal;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 
@@ -105,7 +107,7 @@ final class OwnerOnlyAcl {
         for (AclEntry e : acl) {
             if (e.type() != AclEntryType.ALLOW) continue;
             UserPrincipal p = e.principal();
-            if (p.equals(owner) || p.equals(me) || WellKnown.system(p) || WellKnown.administrators(p)) continue;
+            if (p.equals(owner) || p.equals(me) || WellKnown.onThisHost().either(p)) continue;
             return true;
         }
         return false;
@@ -167,40 +169,92 @@ final class OwnerOnlyAcl {
     }
 
     /**
-     * SYSTEM and Administrators, recognised without their names, which Windows localises: each is
-     * the owner that two system objects a standard user can read agree on (SYSTEM owns
-     * {@code C:\ProgramData} and {@code System32\Tasks}, Administrators {@code ServiceProfiles} and
-     * {@code drivers\etc\hosts}), and it must appear in {@code System32}'s ACL. Null when the
-     * objects disagree or cannot be read, and an unrecognised principal is treated as foreign.
+     * SYSTEM and Administrators, recognised without their names, which Windows localises, from the
+     * owners of system objects a standard user can read ({@code ProgramData}, {@code System32\Tasks}
+     * and {@code Users} for SYSTEM; {@code drivers\etc\hosts}, {@code ServiceProfiles},
+     * {@code Prefetch} and {@code Installer} for Administrators). Which of them a machine gives to
+     * whom varies with its edition and history (one Windows 11 Pro has {@code ServiceProfiles} owned
+     * by SYSTEM), so each is the principal that more than half of its readable references name once
+     * the user, the owner of {@code SystemRoot} (TrustedInstaller) and, for Administrators, the
+     * recognised SYSTEM are set aside, and it must appear in {@code System32}'s ACL. Only an
+     * administrator can give these objects an owner, so an ordinary principal is never recognised
+     * unless an administrator made it so. Null without such a majority, and an unrecognised
+     * principal is treated as foreign.
      */
-    private static final class WellKnown {
+    record WellKnown(
+            @Nullable UserPrincipal system, @Nullable UserPrincipal administrators) {
+
+        /** True when {@code p} is the recognised SYSTEM or Administrators. */
+        boolean either(UserPrincipal p) {
+            return p.equals(system) || p.equals(administrators);
+        }
+
+        /**
+         * Recognise the two from the owners of their references (null where unreadable), the owner
+         * of {@code SystemRoot}, the principals of {@code System32}'s ACL and the user.
+         */
+        static WellKnown recognise(
+                List<@Nullable UserPrincipal> systemOwners,
+                List<@Nullable UserPrincipal> administratorsOwners,
+                @Nullable UserPrincipal rootOwner,
+                List<UserPrincipal> system32,
+                @Nullable UserPrincipal me) {
+            @Nullable UserPrincipal system = agreed(systemOwners, system32, me, rootOwner, null);
+            return new WellKnown(system, agreed(administratorsOwners, system32, me, rootOwner, system));
+        }
+
+        /** SYSTEM and Administrators of this machine, read once. */
+        static WellKnown onThisHost() {
+            return Host.WELL_KNOWN;
+        }
+
+        private static @Nullable UserPrincipal agreed(
+                List<@Nullable UserPrincipal> owners,
+                List<UserPrincipal> system32,
+                @Nullable UserPrincipal me,
+                @Nullable UserPrincipal root,
+                @Nullable UserPrincipal system) {
+            Map<UserPrincipal, Integer> votes = new HashMap<>();
+            int left = 0;
+            for (@Nullable UserPrincipal owner : owners) {
+                if (owner == null || owner.equals(me) || owner.equals(root) || owner.equals(system)) continue;
+                votes.merge(owner, 1, Integer::sum);
+                left++;
+            }
+            for (Map.Entry<UserPrincipal, Integer> v : votes.entrySet()) {
+                if (2 * v.getValue() > left && system32.contains(v.getKey())) return v.getKey();
+            }
+            return null;
+        }
+    }
+
+    /** What {@link WellKnown} reads from this machine; a reference that cannot be read counts as null. */
+    private static final class Host {
         private static final @Nullable String ROOT = ProcessEnv.get("SystemRoot");
-        private static final @Nullable UserPrincipal SYSTEM = agreed(programData(), path(ROOT, "System32", "Tasks"));
-        private static final @Nullable UserPrincipal ADMINISTRATORS = distinct(
-                agreed(path(ROOT, "ServiceProfiles"), path(ROOT, "System32", "drivers", "etc", "hosts")), SYSTEM);
+        static final WellKnown WELL_KNOWN = WellKnown.recognise(
+                owners(programData(), path(ROOT, "System32", "Tasks"), users()),
+                owners(
+                        path(ROOT, "System32", "drivers", "etc", "hosts"),
+                        path(ROOT, "ServiceProfiles"),
+                        path(ROOT, "Prefetch"),
+                        path(ROOT, "Installer")),
+                owner(path(ROOT)),
+                principals(ROOT, "System32"),
+                Me.USER);
 
-        static boolean system(UserPrincipal p) {
-            return p.equals(SYSTEM);
+        private static List<@Nullable UserPrincipal> owners(@Nullable Path... paths) {
+            List<@Nullable UserPrincipal> owners = new ArrayList<>(paths.length);
+            for (@Nullable Path p : paths) owners.add(owner(p));
+            return owners;
         }
 
-        static boolean administrators(UserPrincipal p) {
-            return p.equals(ADMINISTRATORS);
-        }
-
-        private static @Nullable UserPrincipal agreed(@Nullable Path a, @Nullable Path b) {
-            if (a == null || b == null) return null;
+        private static @Nullable UserPrincipal owner(@Nullable Path path) {
+            if (path == null) return null;
             try {
-                UserPrincipal owner = Files.getOwner(a);
-                if (!owner.equals(Files.getOwner(b))
-                        || !principals(ROOT, "System32").contains(owner)) return null;
-                return distinct(owner, Me.USER);
+                return Files.getOwner(path);
             } catch (IOException | RuntimeException unreadable) {
                 return null;
             }
-        }
-
-        private static @Nullable UserPrincipal distinct(@Nullable UserPrincipal p, @Nullable UserPrincipal other) {
-            return p == null || p.equals(other) ? null : p;
         }
 
         private static List<UserPrincipal> principals(@Nullable String first, String... more) {
@@ -217,9 +271,18 @@ final class OwnerOnlyAcl {
 
         /** {@code ProgramData} at the root of the Windows drive, where Windows puts it. */
         private static @Nullable Path programData() {
+            return onWindowsDrive("ProgramData");
+        }
+
+        /** {@code Users} at the root of the Windows drive, where Windows puts it. */
+        private static @Nullable Path users() {
+            return onWindowsDrive("Users");
+        }
+
+        private static @Nullable Path onWindowsDrive(String name) {
             Path windows = path(ROOT);
             Path drive = windows == null ? null : windows.getRoot();
-            return drive == null ? null : drive.resolve("ProgramData");
+            return drive == null ? null : drive.resolve(name);
         }
 
         private static @Nullable Path path(@Nullable String first, String... more) {

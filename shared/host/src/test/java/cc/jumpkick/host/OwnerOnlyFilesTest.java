@@ -15,14 +15,25 @@ import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class OwnerOnlyFilesTest {
+
+    private static final UserPrincipal SYSTEM = new Named("SYSTEM");
+    private static final UserPrincipal ADMINS = new Named("Administrators");
+    private static final UserPrincipal USERS = new Named("Users");
+    private static final UserPrincipal INSTALLER = new Named("TrustedInstaller");
+    private static final UserPrincipal CREATOR_OWNER = new Named("CREATOR OWNER");
+    private static final UserPrincipal PACKAGES = new Named("ALL APPLICATION PACKAGES");
+    private static final UserPrincipal ME = new Named("me");
+    private static final UserPrincipal STRANGER = new Named("someone else");
 
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
@@ -119,6 +130,81 @@ class OwnerOnlyFilesTest {
                 .isEqualTo(fileAcl);
     }
 
+    /** On this machine SYSTEM owns {@code ProgramData} and Administrators owns {@code hosts}. */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void system_and_administrators_are_recognised_on_this_host() throws IOException {
+        String root = System.getenv("SystemRoot");
+
+        OwnerOnlyAcl.WellKnown known = OwnerOnlyAcl.WellKnown.onThisHost();
+
+        assertThat(known.system())
+                .isEqualTo(Files.getOwner(Path.of(root).getRoot().resolve("ProgramData")));
+        assertThat(known.administrators())
+                .isEqualTo(Files.getOwner(Path.of(root, "System32", "drivers", "etc", "hosts")));
+    }
+
+    @Test
+    void a_host_whose_references_all_name_their_principal_recognises_both() {
+        OwnerOnlyAcl.WellKnown known =
+                recognise(List.of(SYSTEM, SYSTEM, SYSTEM), Arrays.asList(ADMINS, ADMINS, ADMINS, ADMINS));
+
+        assertThat(known).isEqualTo(new OwnerOnlyAcl.WellKnown(SYSTEM, ADMINS));
+    }
+
+    /** A Windows 11 Pro whose {@code ServiceProfiles} is owned by SYSTEM, not Administrators. */
+    @Test
+    void a_reference_owned_by_system_does_not_hide_administrators() {
+        assertThat(recognise(List.of(SYSTEM, SYSTEM, SYSTEM), Arrays.asList(ADMINS, SYSTEM, ADMINS, ADMINS))
+                        .administrators())
+                .isEqualTo(ADMINS);
+        assertThat(recognise(List.of(SYSTEM, SYSTEM, SYSTEM), Arrays.asList(ADMINS, SYSTEM, null, null))
+                        .administrators())
+                .as("hosts alone is left once SYSTEM is set aside")
+                .isEqualTo(ADMINS);
+    }
+
+    @Test
+    void references_that_name_two_principals_equally_recognise_neither() {
+        assertThat(recognise(List.of(SYSTEM, SYSTEM, SYSTEM), Arrays.asList(ADMINS, USERS, null, null))
+                        .administrators())
+                .isNull();
+        assertThat(recognise(List.of(SYSTEM, SYSTEM, SYSTEM), Arrays.asList(ADMINS, ADMINS, USERS, USERS))
+                        .administrators())
+                .isNull();
+        assertThat(recognise(List.of(SYSTEM, ADMINS), Arrays.asList(ADMINS, ADMINS))
+                        .system())
+                .isNull();
+    }
+
+    @Test
+    void one_odd_reference_is_outvoted() {
+        assertThat(recognise(List.of(SYSTEM, SYSTEM, SYSTEM), Arrays.asList(ADMINS, ADMINS, USERS, null))
+                        .administrators())
+                .isEqualTo(ADMINS);
+    }
+
+    @Test
+    void an_unreadable_reference_is_left_out() {
+        OwnerOnlyAcl.WellKnown known =
+                recognise(Arrays.asList(null, SYSTEM, null), Arrays.asList(ADMINS, null, null, null));
+
+        assertThat(known).isEqualTo(new OwnerOnlyAcl.WellKnown(SYSTEM, ADMINS));
+        assertThat(recognise(Arrays.asList(null, null, null), Arrays.asList(null, null, null, null)))
+                .isEqualTo(new OwnerOnlyAcl.WellKnown(null, null));
+    }
+
+    /** Neither is ever the user, TrustedInstaller or a principal missing from System32's ACL. */
+    @Test
+    void the_user_trusted_installer_and_a_stranger_are_never_recognised() {
+        assertThat(recognise(List.of(ME, ME), Arrays.asList(ME, ADMINS)))
+                .isEqualTo(new OwnerOnlyAcl.WellKnown(null, ADMINS));
+        assertThat(recognise(List.of(INSTALLER, SYSTEM), Arrays.asList(INSTALLER, INSTALLER, ADMINS)))
+                .isEqualTo(new OwnerOnlyAcl.WellKnown(SYSTEM, ADMINS));
+        assertThat(recognise(List.of(STRANGER, STRANGER), Arrays.asList(STRANGER, STRANGER)))
+                .isEqualTo(new OwnerOnlyAcl.WellKnown(null, null));
+    }
+
     /** A filesystem that refuses ACLs costs the protection, never the write. */
     @Test
     @EnabledOnOs(OS.WINDOWS)
@@ -166,6 +252,23 @@ class OwnerOnlyFilesTest {
                 .setFlags(AclEntryFlag.FILE_INHERIT, AclEntryFlag.DIRECTORY_INHERIT)
                 .build());
         view.setAcl(acl);
+    }
+
+    private static OwnerOnlyAcl.WellKnown recognise(
+            List<@Nullable UserPrincipal> systemOwners, List<@Nullable UserPrincipal> administratorsOwners) {
+        return OwnerOnlyAcl.WellKnown.recognise(
+                systemOwners,
+                administratorsOwners,
+                INSTALLER,
+                List.of(INSTALLER, SYSTEM, ADMINS, USERS, CREATOR_OWNER, PACKAGES),
+                ME);
+    }
+
+    private record Named(String name) implements UserPrincipal {
+        @Override
+        public String getName() {
+            return name;
+        }
     }
 
     private static AclEntry fullControl(UserPrincipal who) {
