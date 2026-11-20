@@ -443,8 +443,7 @@ final class LockClosures {
             String hex = known.get(coord);
             Path bytes = file.getValue();
             if (hex == null && bytes != null && within(bytes, held)) {
-                hex = Hashing.sha256Hex(bytes);
-                cas.putFile(bytes, hex);
+                hex = cas.putFile(bytes).sha256();
                 known.put(coord, hex);
             }
             if (hex != null) {

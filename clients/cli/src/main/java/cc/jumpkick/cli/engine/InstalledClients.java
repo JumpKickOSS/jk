@@ -5,7 +5,6 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.EngineInstall.ClientKind;
 import cc.jumpkick.cache.EngineInstall.InstalledClient;
-import cc.jumpkick.host.Hashing;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,8 +70,6 @@ public final class InstalledClients {
     }
 
     private static InstalledClient ingest(Cas cas, Path client, ClientKind kind) throws IOException {
-        String sha = Hashing.sha256Hex(client);
-        cas.putFile(client, sha);
-        return new InstalledClient(sha, kind, null);
+        return new InstalledClient(cas.putFile(client).sha256(), kind, null);
     }
 }

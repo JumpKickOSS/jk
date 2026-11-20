@@ -11,7 +11,6 @@ import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -608,7 +607,9 @@ public final class SyncPlans {
                 ctx.error("plugin", pe.coordinate() + ": " + jar + " is not a readable file");
                 return;
             }
-            String got = Hashing.sha256Hex(jar);
+            // Stored first, so the hash checked is the one the bytes are stored under; a jar that
+            // fails the check leaves a blob no root names.
+            String got = cas.putFile(jar).sha256();
             if (!got.equalsIgnoreCase(hex)) {
                 ctx.error(
                         "plugin",
@@ -616,7 +617,6 @@ public final class SyncPlans {
                                 + shortSha(hex) + "; run jk lock after rebuilding the jar");
                 return;
             }
-            cas.putFile(jar, hex);
             ctx.label("copied " + pe.coordinate());
         } catch (IOException e) {
             ctx.error("plugin", pe.coordinate() + ": " + e.getMessage());

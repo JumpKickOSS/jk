@@ -10,14 +10,18 @@ import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.testing.Await;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -257,6 +261,61 @@ class CasPrewriterTest {
                     .isEqualTo(1);
         } finally {
             for (CasPrewriter p : open) p.close();
+        }
+    }
+
+    /**
+     * A file the compiler rewrites while the watcher ingests it is stored as the bytes the copy
+     * took, under their own hash: whatever the interleaving, every blob hashes to its name. The
+     * rewrites keep size and mtime, so each pass of the loop ingests the file again.
+     */
+    @Test
+    void a_file_rewritten_while_it_is_ingested_never_leaves_a_blob_under_another_hash(@TempDir Path tempDir)
+            throws Exception {
+        Path classes = Files.createDirectories(tempDir.resolve("classes"));
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path file = classes.resolve("Busy.class");
+        byte[] a = new byte[1 << 20];
+        byte[] b = new byte[1 << 20];
+        Arrays.fill(a, (byte) 'A');
+        Arrays.fill(b, (byte) 'B');
+        Files.write(file, a);
+        FileTime mtime = Files.getLastModifiedTime(file);
+
+        AtomicBoolean stop = new AtomicBoolean();
+        Thread compiler = Thread.ofPlatform().daemon().start(() -> {
+            for (int i = 0; !stop.get(); i++) {
+                try {
+                    Files.write(file, i % 2 == 0 ? b : a);
+                    Files.setLastModifiedTime(file, mtime);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }
+        });
+        try (CasPrewriter prewriter = CasPrewriter.watching(cas, classes)) {
+            for (int i = 0; i < 200; i++) {
+                prewriter.observeForTest(file);
+                prewriter.settleForTest();
+                prewriter.settleForTest();
+            }
+        } finally {
+            stop.set(true);
+            compiler.join(10_000);
+        }
+
+        List<Path> blobs;
+        try (Stream<Path> all = Files.walk(cas.root().resolve("sha256"))) {
+            blobs = all.filter(Files::isRegularFile)
+                    .filter(p -> !p.getFileName().toString().startsWith("."))
+                    .toList();
+        }
+        assertThat(blobs).as("blobs the watcher stored").isNotEmpty();
+        for (Path blob : blobs) {
+            String name = cas.hashFromPath(blob).orElseThrow();
+            assertThat(Hashing.sha256Hex(blob))
+                    .as("the bytes stored under " + name)
+                    .isEqualTo(name);
         }
     }
 }

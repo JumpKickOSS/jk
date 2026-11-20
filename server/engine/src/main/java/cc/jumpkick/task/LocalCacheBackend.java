@@ -162,7 +162,11 @@ public final class LocalCacheBackend implements CacheBackend {
         }
     }
 
-    /** Copies, never links: compilers rewrite outputs in place and must not mutate a blob ({@link Cas#putFile}). */
+    /**
+     * Copies, never links: compilers rewrite outputs in place and must not mutate a blob. {@code
+     * digest} is trusted ({@link Cas#putFile(Path, String)}): the source is a finished action's
+     * output or another store's blob, which nothing writes meanwhile.
+     */
     public void putBlob(String digest, Path source) throws IOException {
         cas.putFile(source, digest);
     }

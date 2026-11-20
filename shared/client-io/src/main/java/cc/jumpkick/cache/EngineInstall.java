@@ -448,8 +448,7 @@ public final class EngineInstall {
          * client under {@code binDir}, built from {@code commit} ({@code null}: not known).
          */
         public Path placeNative(Path built, Path binDir, Cas cas, @Nullable String commit) throws IOException {
-            String sha = Hashing.sha256Hex(built);
-            cas.putFile(built, sha);
+            String sha = cas.putFile(built).sha256();
             installBinaries(cas.pathFor(sha), binDir);
             placed = new InstalledClient(sha, ClientKind.NATIVE, commit);
             return pathClient(binDir);
@@ -516,8 +515,7 @@ public final class EngineInstall {
     public Materialized materializeFromFiles(
             String version, Cas cas, Path engineJar, boolean downgrade, @Nullable InstalledClient client)
             throws IOException {
-        String engineSha = Hashing.sha256Hex(engineJar);
-        cas.putFile(engineJar, engineSha);
+        String engineSha = cas.putFile(engineJar).sha256();
         return materialize(version, cas, engineSha, downgrade, client);
     }
 
@@ -821,8 +819,7 @@ public final class EngineInstall {
         if (live.isEmpty() || !live.get().version().equals(version)) return false;
         String sha = Hashing.sha256Hex(client);
         if (liveClient().filter(c -> c.sha256().equalsIgnoreCase(sha)).isPresent()) return false;
-        cas.putFile(client, sha);
-        recordClient(new InstalledClient(sha, kind, null));
+        recordClient(new InstalledClient(cas.putFile(client).sha256(), kind, null));
         return true;
     }
 

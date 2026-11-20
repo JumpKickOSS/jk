@@ -3,7 +3,6 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.host.time.Clock;
@@ -110,6 +109,8 @@ public final class CasPrewriter implements AutoCloseable {
             // self-hash is recorded only once the file is settled, so the memo cannot hand back
             // the bytes a file held before.
             String hex = FileHashMemo.contentHash(file, attrs);
+            // The compiler has returned, so nothing writes the file between this hash and the copy.
+            // A hash the watcher took is reused only when it is the file's hash now.
             if (!hex.equals(processed.get(file))) cas.putFile(file, hex);
             // This hash is the authoritative one: seeding it lets downstream ClasspathFingerprint
             // passes over the same tree answer from the memo.
@@ -215,7 +216,9 @@ public final class CasPrewriter implements AutoCloseable {
             }
             it.remove();
             try {
-                processed.put(file, hashAndCopy(file));
+                // Under the hash of the bytes copied: the compiler may still rewrite the file, so a
+                // hash taken off the file itself could name other bytes than the copy holds.
+                processed.put(file, cas.putFile(file).sha256());
             } catch (IOException ignored) {
                 // The file vanished or could not be read; finish picks it up.
             }
@@ -224,16 +227,6 @@ public final class CasPrewriter implements AutoCloseable {
 
     private synchronized boolean settling() {
         return running && !pending.isEmpty();
-    }
-
-    /**
-     * Streamed SHA-256 then {@link Cas#putFile} <em>copy</em> into CAS — never a hard link, because
-     * compile trees rewrite class files in place and a link would poison the blob.
-     */
-    private String hashAndCopy(Path file) throws IOException {
-        String hex = Hashing.sha256Hex(file);
-        cas.putFile(file, hex);
-        return hex;
     }
 
     private record Snapshot(long size, long mtime) {}

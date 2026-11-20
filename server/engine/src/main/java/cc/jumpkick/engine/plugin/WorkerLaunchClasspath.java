@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
@@ -172,8 +173,14 @@ public final class WorkerLaunchClasspath {
             return jar;
         }
         if (pinned == null || pinned.equalsIgnoreCase(hex)) {
+            Optional<Path> held = cas.reuse(hex);
+            if (held.isPresent()) return held.get();
             try {
-                return cas.putFile(jar, hex);
+                // Another install may replace the shelf jar since it was hashed: the copy is
+                // stored and checked under the hash of what it took.
+                Cas.Stored stored = cas.putFile(jar);
+                hex = stored.sha256();
+                if (pinned == null || pinned.equalsIgnoreCase(hex)) return stored.path();
             } catch (IOException e) {
                 return jar;
             }

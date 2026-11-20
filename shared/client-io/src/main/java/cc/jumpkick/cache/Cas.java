@@ -24,7 +24,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * SHA-256-keyed content-addressed store ({@code <root>/sha256/AB/CD/<rest>}). Atomic writes;
- * reads verify the hash. Puts never hard-link external paths into the store (see {@link #putFile}).
+ * reads verify the hash. Puts never hard-link external paths into the store (see {@link
+ * #putFile(Path)}).
  */
 public final class Cas {
 
@@ -42,8 +43,9 @@ public final class Cas {
 
     /**
      * Staging-name discriminator. Every writer stages under {@code sha256/} as {@code
-     * .put-<hex>-<pid>-<n>.tmp} beside its target — {@link #putStream}, which learns its hash last,
-     * as {@code .put-stream-<pid>-<n>.tmp} at the top of the tree. Unique by construction, so the
+     * .put-<hex>-<pid>-<n>.tmp} beside its target — {@link #putStream} and {@link #putFile(Path)},
+     * which learn their hash last, as {@code .put-stream-<pid>-<n>.tmp} and {@code
+     * .put-file-<pid>-<n>.tmp} at the top of the tree. Unique by construction, so the
      * create needs none of the random-name generation and collision retry {@link Files#createTempFile}
      * does, which is measurable when one build deposits thousands of outputs. The {@code .put-} prefix
      * is the one shape the cache GC and {@code CasSweep} recognise as a leaked temp; the pid keeps two
@@ -217,18 +219,23 @@ public final class Cas {
             }
             String hex = Hashing.hex(digest.digest());
             if (expected != null && !expected.equals(hex)) throw new DigestMismatch(expected, hex, size);
-            Path target = pathFor(hex);
-            if (reused(target)) {
-                Files.deleteIfExists(tmp);
-                return new Stored(target, hex, size);
-            }
-            ensureShard(shardOf(target));
-            AtomicWrites.moveInto(tmp, target);
-            return new Stored(target, hex, size);
+            return place(tmp, hex, size);
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(tmp);
             throw e;
         }
+    }
+
+    /** Move the staged {@code tmp}, whose bytes hash to {@code hex}, to its path; drop it when the blob is there. */
+    private Stored place(Path tmp, String hex, long size) throws IOException {
+        Path target = pathFor(hex);
+        if (reused(target)) {
+            Files.deleteIfExists(tmp);
+            return new Stored(target, hex, size);
+        }
+        ensureShard(shardOf(target));
+        AtomicWrites.moveInto(tmp, target);
+        return new Stored(target, hex, size);
     }
 
     /** A blob stored in the CAS: its on-disk path, hex hash, and byte size. */
@@ -292,13 +299,46 @@ public final class Cas {
         }
     }
 
+    /** The blob stored under {@code hex}, refreshed as a put that finds it refreshes it; empty when absent. */
+    public Optional<Path> reuse(String hex) {
+        Path target = pathFor(hex);
+        return reused(target) ? Optional.of(target) : Optional.empty();
+    }
+
     /**
-     * Store {@code source}'s bytes under {@code hex} by COPY (temp + atomic move). Never hard-links:
-     * compilers rewrite class files in place and must not mutate CAS blobs. {@code Files.copy}
-     * clones where the filesystem can (FICLONE on Linux btrfs and XFS, clonefile on macOS APFS, block
-     * cloning on Windows ReFS): the blob shares the source's extents and costs no space while the
-     * source lives, and an in-place rewrite of either side diverges from the other. Idempotent if
-     * {@code hex} is already present.
+     * Store {@code source}'s bytes by COPY under the hash of what was copied. The copy is staged
+     * first and the staged file, which nothing else writes, is hashed, so a source rewritten
+     * during the put is stored under the hash of the bytes the copy took, never under another.
+     * Never hard-links: compilers rewrite class files in place and must not mutate CAS blobs.
+     * {@code Files.copy} clones where the filesystem can (FICLONE on Linux btrfs and XFS, clonefile
+     * on macOS APFS, block cloning on Windows ReFS): the blob shares the source's extents and costs
+     * no space while the source lives, and an in-place rewrite of either side diverges from the
+     * other. Idempotent if the hash is already present.
+     */
+    public Stored putFile(Path source) throws IOException {
+        return putFile(source, () -> {});
+    }
+
+    /** As {@link #putFile(Path)}, running {@code staged} between the copy and its hash: a test seam. */
+    Stored putFile(Path source, Runnable staged) throws IOException {
+        Path shaRoot = root.resolve("sha256");
+        Files.createDirectories(shaRoot);
+        Path tmp = staging(shaRoot, "file");
+        try {
+            Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
+            staged.run();
+            return place(tmp, Hashing.sha256Hex(tmp), Files.size(tmp));
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(tmp);
+            throw e;
+        }
+    }
+
+    /**
+     * As {@link #putFile(Path)} under a hash the caller already holds, which is trusted and not
+     * checked: only for a source nothing writes between that hash and this put (a store file, a
+     * private temp, the outputs of an action that has finished). Skips the copy when {@code hex}
+     * is already present.
      */
     public Path putFile(Path source, String hex) throws IOException {
         Path target = pathFor(hex);

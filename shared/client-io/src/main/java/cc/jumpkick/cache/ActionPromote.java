@@ -69,11 +69,9 @@ public final class ActionPromote {
         for (Path f : files) {
             if (f == null || !Files.isRegularFile(f)) continue;
             String hex = Hashing.sha256Hex(f);
+            // Ensure store has the bytes even when never cached, under the hash of what was copied.
+            if (!storeCas.contains(hex)) hex = storeCas.putFile(f).sha256();
             shas.add(hex);
-            // Ensure store has the bytes even when never cached (put from file).
-            if (!storeCas.contains(hex)) {
-                storeCas.putFile(f, hex);
-            }
         }
         return promoteShas(cacheCas, storeCas, shas);
     }

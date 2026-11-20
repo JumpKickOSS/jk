@@ -177,8 +177,9 @@ public final class ManifestEdit {
                                         : "add " + a.group() + ":" + a.artifact() + ":" + version);
                     }
                     case Op.AddFileDependency f -> {
-                        String sha256 = Hashing.sha256Hex(f.jar());
-                        if (!req.preview()) JkStores.storeCas().putFile(f.jar(), sha256);
+                        String sha256 = req.preview()
+                                ? Hashing.sha256Hex(f.jar())
+                                : JkStores.storeCas().putFile(f.jar()).sha256();
                         after = JkBuildEditor.addFileDependency(
                                 after, f.scope(), f.library(), f.group(), f.artifact(), f.version(), sha256);
                         detail = sha256;

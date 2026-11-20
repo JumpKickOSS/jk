@@ -34,7 +34,6 @@ import cc.jumpkick.config.TerminalCapsCache;
 import cc.jumpkick.config.UserConfigEditor;
 import cc.jumpkick.config.WhatsNew;
 import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
@@ -805,15 +804,13 @@ public final class SelfCommand extends GroupCommand {
         }
 
         /**
-         * CAS-ingest the inflated client and reclaim its temp file: {@link Cas#putFile} copies
+         * CAS-ingest the inflated client and reclaim its temp file: {@link Cas#putFile(Path)} copies
          * (temp + atomic move), so the multi-MB {@code jk-self-*.bin} would otherwise be
          * stranded in the system temp dir on every update — xz and zip paths alike.
          */
         static String ingestClient(Cas cas, Path client) throws IOException {
             try {
-                String clientSha = Hashing.sha256Hex(client);
-                cas.putFile(client, clientSha);
-                return clientSha;
+                return cas.putFile(client).sha256();
             } finally {
                 Files.deleteIfExists(client);
             }

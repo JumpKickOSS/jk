@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.host.Hashing;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -71,6 +72,8 @@ class CasTest {
         cas.put("bytes".getBytes(StandardCharsets.UTF_8));
         cas.putStream(new ByteArrayInputStream("stream".getBytes(StandardCharsets.UTF_8)));
         cas.putFile(src, Hashing.sha256Hex(src));
+        Files.writeString(src, "file again");
+        cas.putFile(src);
 
         assertThat(stagingFiles(cas.root())).isEmpty();
         try (Stream<Path> top = Files.list(cas.root())) {
@@ -198,6 +201,64 @@ class CasTest {
         assertThat(Cas.isBlobPath(leaked)).isFalse();
         assertThat(cas.hashFromPath(leaked)).isEmpty();
         assertThat(Cas.isBlobPath(cas.pathFor(hex))).isTrue();
+    }
+
+    /**
+     * A source rewritten after the put took its copy (a compiler still writing) is stored as the
+     * bytes copied, under their own hash: no digest in the store names bytes it is not the hash of.
+     */
+    @Test
+    void putFile_of_a_source_rewritten_during_the_put_stores_the_copy_under_its_own_hash(@TempDir Path tempDir)
+            throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        byte[] before = "class-bytes-v1".getBytes(StandardCharsets.UTF_8);
+        byte[] after = "class-bytes-v2, longer".getBytes(StandardCharsets.UTF_8);
+        Path src =
+                Files.write(Files.createDirectories(tempDir.resolve("classes")).resolve("A.class"), before);
+
+        Cas.Stored stored = cas.putFile(src, () -> {
+            try {
+                Files.write(src, after);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        });
+
+        assertThat(stored.sha256()).isEqualTo(Hashing.sha256Hex(before));
+        assertThat(stored.size()).isEqualTo(before.length);
+        assertThat(stored.path()).isEqualTo(cas.pathFor(stored.sha256())).hasBinaryContent(before);
+        assertThat(cas.read(stored.sha256())).isEqualTo(before);
+        assertThat(cas.contains(Hashing.sha256Hex(after))).isFalse();
+        assertThat(stagingFiles(cas.root())).isEmpty();
+
+        Cas.Stored again = cas.putFile(src);
+        assertThat(again.sha256()).isEqualTo(Hashing.sha256Hex(after));
+        assertThat(cas.read(again.sha256())).isEqualTo(after);
+    }
+
+    @Test
+    void putFile_of_a_stored_blob_returns_it_and_leaves_no_staging_file(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        byte[] body = "content".getBytes(StandardCharsets.UTF_8);
+        Path src = Files.write(Files.createDirectories(tempDir.resolve("in")).resolve("f"), body);
+        Path blob = cas.put(body);
+
+        Cas.Stored stored = cas.putFile(src);
+
+        assertThat(stored.path()).isEqualTo(blob);
+        assertThat(Files.isSameFile(stored.path(), src)).isFalse();
+        assertThat(stagingFiles(cas.root())).isEmpty();
+    }
+
+    @Test
+    void reuse_returns_a_stored_blob_and_nothing_for_an_absent_one(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path blob = cas.put("content".getBytes(StandardCharsets.UTF_8));
+
+        assertThat(cas.reuse(Hashing.sha256Hex("content".getBytes(StandardCharsets.UTF_8))))
+                .contains(blob);
+        assertThat(cas.reuse(Hashing.sha256Hex("absent".getBytes(StandardCharsets.UTF_8))))
+                .isEmpty();
     }
 
     /** Only hex names a blob: a separator or a {@code ..} would resolve outside the store. */

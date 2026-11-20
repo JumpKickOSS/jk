@@ -1106,8 +1106,7 @@ public final class RepoArtifactStore {
         boolean moved = false;
         try {
             Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING);
-            String hex = Hashing.sha256Hex(tmp);
-            new Cas(artifactRoot).putFile(tmp, hex);
+            String hex = new Cas(artifactRoot).putFile(tmp).sha256();
             // The move keeps the inode, so the staged copy's size and mtime are the published file's.
             ArtifactMemo memo = new ArtifactMemo(
                     inferGav(relativePath),
