@@ -188,7 +188,8 @@ a plaintext network URL without `allow-insecure`, fails the resolve naming the t
   the failure, naming the mirror and the repository it stands in for — `optional` on the
   repository does not pass it over. The same holds for a `settings.xml` mirror. Every command
   that reads a matched repository asks the mirror: `jk lock`, `jk why` reading a POM where the
-  lock says it came from, and `jk import` checking a pin.
+  lock says it came from, `jk import` checking a pin, and the engine's idle host calibration,
+  which times one download from Central (`[engine] auto-warmup = false` turns it off).
 - **Credentials** come from the chain in [Credentials](#credentials), keyed by the mirror's id;
   its `config.toml` table binds the id to its URL, so `${VAR}` there reads your shell and `jk repo
   login corp` binds to the mirror's URL.

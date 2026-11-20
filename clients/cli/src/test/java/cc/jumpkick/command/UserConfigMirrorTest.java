@@ -70,6 +70,9 @@ class UserConfigMirrorTest {
                 .as("the lock without a mirror")
                 .isZero();
         String direct = Files.readString(dir.resolve("jk-lock.toml"));
+        assertThat(origins.requested())
+                .as("the origins see the lock's requests alone, no idle calibration's: %s", origins.requested())
+                .noneMatch(path -> path.contains("/opentest4j/"));
         origins.clearRequests();
 
         userConfig(origins() + mirrorOf("*"));
@@ -78,7 +81,9 @@ class UserConfigMirrorTest {
                 .isZero();
 
         assertThat(Files.readString(dir.resolve("jk-lock.toml"))).isEqualTo(direct);
-        assertThat(origins.requested()).as("no origin is asked at its own URL").isEmpty();
+        assertThat(origins.requested())
+                .as("no origin is asked at its own URL; asked: %s", origins.requested())
+                .isEmpty();
         assertThat(mirror.requested())
                 .contains(
                         MavenStub.path(CENTRAL_LIB, "central-lib", "1.0", ".jar"),
@@ -549,11 +554,20 @@ class UserConfigMirrorTest {
     /** The isolated home's starting {@code config.toml}, read before the first rewrite. */
     private @Nullable String homeConfig;
 
-    /** The isolated home's {@code config.toml}: its starting text, the recording proxy, then {@code tables}. */
+    /**
+     * The isolated home's {@code config.toml}: its starting text, the recording proxy, the engine's
+     * idle host calibration off, then {@code tables}. The calibration starts with the home's engine
+     * and times a download from Central at the URL it read when it got there, so with it on, a
+     * request it chose before {@code tables} changed reached the origin stub after the test cleared
+     * it, and the stubs no longer said what a command asked.
+     */
     void userConfig(String tables) throws IOException {
         Path config = JkDirs.userConfigFile();
         if (homeConfig == null) homeConfig = Files.readString(config);
-        Files.writeString(config, homeConfig + "\n[network]\nproxy = \"" + proxy.url() + "\"\n\n" + tables);
+        Files.writeString(
+                config,
+                homeConfig + "\n[engine]\nauto-warmup = false\n\n[network]\nproxy = \"" + proxy.url() + "\"\n\n"
+                        + tables);
     }
 
     /**
