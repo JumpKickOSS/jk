@@ -241,17 +241,22 @@ public final class ZincJavaCompiler {
             GeneratedProvenance.of(classOutput).deletePrevious(sourceOutput, classOutput);
             return;
         }
-        // module-info.class is no product in Zinc's analysis, so the sweep would take it from a
-        // module that still declares one; a compile with nothing to recompile never writes it back.
-        Path keep = compilesDescriptor
-                ? classOutput.resolve(MODULE_DESCRIPTOR_CLASS).toAbsolutePath().normalize()
-                : null;
         deleteClassFilesUnknownTo(
                 prev.get().getAnalysis(),
                 converter,
                 classOutput,
                 GeneratedProvenance.of(classOutput).ownedClassFiles(sourceOutput, classOutput),
-                keep);
+                kept(classOutput, compilesDescriptor));
+    }
+
+    /**
+     * The class file the sweep leaves although no analysis names it: module-info.class of a module
+     * that declares one, since a compile with nothing to recompile never writes it back.
+     */
+    private static @Nullable Path kept(Path classOutput, boolean compilesDescriptor) {
+        return compilesDescriptor
+                ? classOutput.resolve(MODULE_DESCRIPTOR_CLASS).toAbsolutePath().normalize()
+                : null;
     }
 
     /**
@@ -259,10 +264,16 @@ public final class ZincJavaCompiler {
      * descriptor but has no module-info.class (an earlier build lost it) compiles whole: no analysis
      * invalidates the descriptor, so an incremental compile would never write it back and every
      * module requiring this one fails module not found. So does one whose reference index is in an
-     * older format: only the sources a compile compiles get a new index.
+     * older format: only the sources a compile compiles get a new index. So does one whose output
+     * holds a class neither the analysis nor a generated-file ledger accounts for ({@link #unvouched}).
      */
     private static Optional<AnalysisContents> previousAnalysis(
-            ZincWorkdir zinced, AnalysisStore store, boolean compilesDescriptor, Path classOutput) {
+            ZincWorkdir zinced,
+            AnalysisStore store,
+            boolean compilesDescriptor,
+            Path classOutput,
+            FileConverter converter)
+            throws IOException {
         Optional<AnalysisContents> prev = zinced.readAnalysis(store);
         if (prev.isPresent()
                 && compilesDescriptor
@@ -270,7 +281,51 @@ public final class ZincJavaCompiler {
             return Optional.empty();
         }
         if (prev.isPresent() && References.staleFormat(classOutput)) return Optional.empty();
+        if (prev.isPresent()
+                && unvouched(prev.get().getAnalysis(), converter, classOutput, kept(classOutput, compilesDescriptor))) {
+            return Optional.empty();
+        }
         return prev;
+    }
+
+    /**
+     * Whether the generated-file ledger is missing while the class output holds a class file the
+     * analysis does not name. Such a class may be a processor's: {@code jk clean} takes the ledger
+     * with {@code target/} and an action-cache hit lays the classes back, and the sweep would then
+     * delete every generated class while an incremental compile writes back none whose origin did
+     * not change. Only a whole compile writes them all again.
+     */
+    private static boolean unvouched(
+            CompileAnalysis analysis, FileConverter converter, Path classOutput, @Nullable Path keep)
+            throws IOException {
+        if (!(analysis instanceof Analysis full)) return false;
+        if (Files.exists(GeneratedProvenance.ledgerFor(classOutput))) return false;
+        Set<Path> products = products(full, converter);
+        return PathUtil.anyRegularFile(classOutput, dir -> false, file -> {
+            if (!file.toString().endsWith(".class")) return false;
+            Path abs = file.toAbsolutePath().normalize();
+            return !products.contains(abs) && !abs.equals(keep);
+        });
+    }
+
+    /** {@link #unvouched} for a forecast, which cannot fail: an unreadable output forecasts a whole compile. */
+    private static boolean unvouchedForecast(
+            Analysis analysis, FileConverter converter, Path classOutput, List<Path> sources) {
+        boolean compilesDescriptor = sources.stream().anyMatch(ZincJavaCompiler::isDescriptorSource);
+        try {
+            return unvouched(analysis, converter, classOutput, kept(classOutput, compilesDescriptor));
+        } catch (IOException | RuntimeException unreadable) {
+            return true;
+        }
+    }
+
+    /** Every class file {@code analysis} records as a product, absolute and normalized. */
+    private static Set<Path> products(Analysis analysis, FileConverter converter) {
+        Set<Path> products = new HashSet<>();
+        var it = analysis.relations().allProducts().iterator();
+        while (it.hasNext())
+            products.add(converter.toPath(it.next()).toAbsolutePath().normalize());
+        return products;
     }
 
     /** The directories a compile writes, made before it starts. */
@@ -437,7 +492,8 @@ public final class ZincJavaCompiler {
                     .withStamper(stamper);
 
             boolean compilesDescriptor = descriptor(sourceFiles, converter) != null;
-            Optional<AnalysisContents> prev = previousAnalysis(zinced, store, compilesDescriptor, classOutput);
+            Optional<AnalysisContents> prev =
+                    previousAnalysis(zinced, store, compilesDescriptor, classOutput, converter);
             phases.mark("read-analysis");
             clearOutput(prev, converter, classOutput, workdir, sourceOutput, compilesDescriptor);
             provenance.pristine(
@@ -539,7 +595,9 @@ public final class ZincJavaCompiler {
      * recorded nor a generated class {@code owned} accounts for. An action-cache restore rewrites
      * the tree and not the analysis, so the tree can hold the classes of sources the analysis never
      * saw — one whose source is since deleted among them — and Zinc prunes only the products it
-     * recorded. A swept class whose source is present is compiled again as an added source.
+     * recorded. A swept class whose source is present is compiled again as an added source. A
+     * generated class is no product, so only the ledger keeps it; with no ledger, a class the
+     * analysis does not name makes the compile whole instead ({@link #unvouched}).
      */
     private static void deleteClassFilesUnknownTo(
             CompileAnalysis analysis,
@@ -549,10 +607,7 @@ public final class ZincJavaCompiler {
             @Nullable Path keep)
             throws IOException {
         if (!(analysis instanceof Analysis full)) return;
-        Set<Path> products = new HashSet<>();
-        var it = full.relations().allProducts().iterator();
-        while (it.hasNext())
-            products.add(converter.toPath(it.next()).toAbsolutePath().normalize());
+        Set<Path> products = products(full, converter);
         PathUtil.forEachRegularFile(dir, (file, attrs) -> {
             if (!file.toString().endsWith(".class")) return;
             Path abs = file.toAbsolutePath().normalize();
@@ -622,6 +677,10 @@ public final class ZincJavaCompiler {
         CompileAnalysis raw = prev.get().getAnalysis();
         if (!(raw instanceof Analysis analysis)) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
+        }
+        if (unvouchedForecast(analysis, converter, classOutput, sources)) {
+            String why = "generated-file ledger missing";
+            return new Plan(true, why, allSources(sources, why));
         }
         LinkedHashMap<Path, String> invalid = new LinkedHashMap<>();
         forecastSources(analysis, sources, converter, invalid);

@@ -3,6 +3,7 @@ package cc.jumpkick.java.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
@@ -14,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -312,6 +314,135 @@ class JavaIncrementalCompilerTest {
         assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
     }
 
+    /**
+     * {@code jk clean} takes {@code target/} (class output, generated sources, the generated-file
+     * ledger) and leaves the compile state; an action-cache hit lays back the classes and the
+     * reference index. The next edit of an unrelated source must not take the classes compiled
+     * from generated sources.
+     */
+    @Test
+    void a_generated_class_survives_an_edit_after_clean_and_a_cache_restore(@TempDir Path dir) throws Exception {
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+        editAfterCleanAndRestore(dir, procDir, "classes", "app/WidgetGen.class");
+    }
+
+    /** The same for a test compile, whose ledger is {@code target/incremental/test-classes-generated.tsv}. */
+    @Test
+    void a_generated_test_class_survives_an_edit_after_clean_and_a_cache_restore(@TempDir Path dir) throws Exception {
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+        editAfterCleanAndRestore(dir, procDir, "test-classes", "app/WidgetGen.class");
+    }
+
+    /** As above, for a class a processor writes itself through {@code Filer.createClassFile}. */
+    @Test
+    void a_class_a_processor_wrote_survives_an_edit_after_clean_and_a_cache_restore(@TempDir Path dir)
+            throws Exception {
+        Path procDir = dir.resolve("proc");
+        writeClassProcessor(dir, procDir);
+        editAfterCleanAndRestore(dir, procDir, "classes", "app/WidgetDirect.class");
+    }
+
+    /**
+     * Without a ledger, a class output whose classes the analysis all names has nothing a sweep
+     * could wrongly take: the edit after a clean and a restore stays incremental.
+     */
+    @Test
+    void an_output_of_analysed_classes_alone_stays_incremental_without_a_ledger(@TempDir Path dir) throws Exception {
+        Path procDir = dir.resolve("proc");
+        writeGenProcessor(procDir);
+        Path widget = dir.resolve("src/app/Widget.java");
+        Path other = dir.resolve("src/app/Other.java");
+        Files.createDirectories(widget.getParent());
+        Files.writeString(widget, "package app; public class Widget {}");
+        Files.writeString(other, "package app; public class Other {}");
+        Path target = dir.resolve("module/target");
+        Path classOut = target.resolve("classes");
+        Path genOut = target.resolve("generated-sources/annotations");
+        Path workdir = dir.resolve("cache/incremental/compile-java");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, widget, other))
+                .as("first compile")
+                .isZero();
+
+        cleanAndRestore(dir, target, classOut);
+        Files.writeString(other, "package app; public class Other { int n() { return 1; } }");
+
+        assertThat(planOf(dir, procDir, classOut, genOut, workdir, widget, other))
+                .contains("\"outcome\":\"incremental\"");
+        String out = captureCompile(dir, procDir, classOut, genOut, workdir, widget, other);
+        assertThat(out).contains("\"t\":\"result\",\"status\":\"OK\"").contains("Other.java");
+        assertThat(out).doesNotContain("Widget.java");
+        assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
+    }
+
+    /**
+     * Compile {@code Widget} (annotated) and {@code Other} into {@code target/<outName>}, clean and
+     * restore, edit {@code Other}, compile again: {@code generated} is still in the output, the
+     * forecast said the compile would be whole, and the ledger is written again.
+     */
+    private static void editAfterCleanAndRestore(Path dir, Path procDir, String outName, String generated)
+            throws Exception {
+        Path widget = dir.resolve("src/app/Widget.java");
+        Path other = dir.resolve("src/app/Other.java");
+        Files.createDirectories(widget.getParent());
+        Files.writeString(widget, "package app; @gen.Gen public class Widget {}");
+        Files.writeString(other, "package app; public class Other {}");
+
+        Path target = dir.resolve("module/target");
+        Path classOut = target.resolve(outName);
+        Path genOut = target.resolve("generated-sources/annotations");
+        Path workdir = dir.resolve("cache/incremental/compile-java");
+
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, widget, other))
+                .as("first compile")
+                .isZero();
+        assertThat(classOut.resolve(generated)).isRegularFile();
+
+        cleanAndRestore(dir, target, classOut);
+        assertThat(GeneratedProvenance.ledgerFor(classOut)).doesNotExist();
+        assertThat(classOut.resolve(generated)).isRegularFile();
+
+        Files.writeString(other, "package app; public class Other { int n() { return 1; } }");
+        assertThat(planOf(dir, procDir, classOut, genOut, workdir, widget, other))
+                .contains("\"outcome\":\"full\"")
+                .contains("generated-file ledger missing");
+        assertThat(compileBoth(dir, procDir, classOut, genOut, workdir, widget, other))
+                .as("compile after the restore")
+                .isZero();
+
+        assertThat(classOut.resolve(generated)).isRegularFile();
+        assertThat(classOut.resolve("app/Widget.class")).isRegularFile();
+        assertThat(classOut.resolve("app/Other.class")).isRegularFile();
+        assertThat(GeneratedProvenance.ledgerFor(classOut)).isRegularFile();
+    }
+
+    /**
+     * What {@code jk clean} and a cache hit leave: {@code target/} deleted, then the class output
+     * and the reference index written back as fresh files; the compile state is untouched.
+     */
+    private static void cleanAndRestore(Path dir, Path target, Path classOut) throws IOException {
+        Path saved = dir.resolve("saved");
+        Path refs = References.dirFor(classOut);
+        copyFresh(classOut, saved.resolve("classes"));
+        copyFresh(refs, saved.resolve("refs"));
+        PathUtil.deleteRecursively(target);
+        copyFresh(saved.resolve("classes"), classOut);
+        copyFresh(saved.resolve("refs"), refs);
+        PathUtil.deleteRecursively(saved);
+    }
+
+    private static void copyFresh(Path from, Path to) throws IOException {
+        if (!Files.isDirectory(from)) return;
+        try (var walk = Files.walk(from)) {
+            for (Path p : (Iterable<Path>) walk::iterator) {
+                Path dest = to.resolve(from.relativize(p).toString());
+                if (Files.isDirectory(p)) Files.createDirectories(dest);
+                else Files.copy(p, dest);
+            }
+        }
+    }
+
     private static void compile(Path outDir, Map<String, String> sources) throws IOException {
         Path srcDir = outDir.resolve("_src");
         Files.createDirectories(outDir);
@@ -369,6 +500,47 @@ class JavaIncrementalCompilerTest {
         Files.writeString(services, "gen.GenProc\n");
     }
 
+    /**
+     * A {@code gen.Gen} processor that writes {@code app.<Simple>Direct.class} itself through {@code
+     * Filer.createClassFile}, with the bytes of {@code app.WidgetDirect} compiled here.
+     */
+    private static void writeClassProcessor(Path dir, Path procDir) throws Exception {
+        Path fixture = dir.resolve("direct");
+        compile(fixture, Map.of("app.WidgetDirect", "package app; public class WidgetDirect {}"));
+        String bytes =
+                Base64.getEncoder().encodeToString(Files.readAllBytes(fixture.resolve("app/WidgetDirect.class")));
+        compile(procDir, Map.of("gen.Gen", """
+                        package gen;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.SOURCE) @Target(ElementType.TYPE)
+                        public @interface Gen {}
+                        """, "gen.ClassProc", """
+                        package gen;
+                        import javax.annotation.processing.*;
+                        import javax.lang.model.SourceVersion;
+                        import javax.lang.model.element.*;
+                        import java.io.*;
+                        import java.util.*;
+                        @SupportedAnnotationTypes("gen.Gen")
+                        public class ClassProc extends AbstractProcessor {
+                            public SourceVersion getSupportedSourceVersion() { return SourceVersion.latestSupported(); }
+                            public boolean process(Set<? extends TypeElement> a, RoundEnvironment r) {
+                                for (Element e : r.getElementsAnnotatedWith(Gen.class)) {
+                                    if (!(e instanceof TypeElement t)) continue;
+                                    String name = "app." + t.getSimpleName() + "Direct";
+                                    try (OutputStream o = processingEnv.getFiler().createClassFile(name, t).openOutputStream()) {
+                                        o.write(Base64.getDecoder().decode("BYTES"));
+                                    } catch (IOException ex) { throw new UncheckedIOException(ex); }
+                                }
+                                return true;
+                            }
+                        }
+                        """.replace("BYTES", bytes)));
+        Path services = procDir.resolve("META-INF/services/javax.annotation.processing.Processor");
+        Files.createDirectories(services.getParent());
+        Files.writeString(services, "gen.ClassProc\n");
+    }
+
     /** Exit code of one {@code compileSpec} over {@code sources}, sharing {@code workdir} so Zinc stays incremental. */
     private static int compileBoth(Path dir, Path procDir, Path classOut, Path genOut, Path workdir, Path... sources)
             throws Exception {
@@ -393,6 +565,24 @@ class JavaIncrementalCompilerTest {
             ByteArrayOutputStream buf,
             Path... sources)
             throws Exception {
+        return JavaIncrementalCompiler.compileSpec(
+                specFile(dir, procDir, classOut, genOut, workdir, sources),
+                new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+    }
+
+    /** The JSONL result of the forecast over the same spec a compile would run. */
+    private static String planOf(Path dir, Path procDir, Path classOut, Path genOut, Path workdir, Path... sources)
+            throws Exception {
+        StringBuilder out = new StringBuilder();
+        JavaIncrementalCompiler.planSpec(
+                specFile(dir, procDir, classOut, genOut, workdir, sources),
+                ProducerAnalysisCache.sizedToHeap(),
+                out::append);
+        return out.toString();
+    }
+
+    private static Path specFile(Path dir, Path procDir, Path classOut, Path genOut, Path workdir, Path... sources)
+            throws IOException {
         var spec = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
                 .configInt("release", 21)
@@ -401,7 +591,6 @@ class JavaIncrementalCompilerTest {
         spec = spec.cp(procDir, PluginProtocol.ROLE_COMPILE).cp(procDir, PluginProtocol.ROLE_PROCESSOR);
         Path specFile = Files.createTempFile(dir, "spec", ".txt");
         Files.write(specFile, spec.lines());
-        return JavaIncrementalCompiler.compileSpec(
-                specFile, new ProtocolWriter(new PrintStream(buf, true, StandardCharsets.UTF_8), "##JKJC:"));
+        return specFile;
     }
 }
