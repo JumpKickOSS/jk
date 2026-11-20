@@ -10,6 +10,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -79,7 +80,8 @@ public final class EdgeSelectors {
             }
             if (!known.add(url)) continue;
             try {
-                extra.add(template.declaredByPom(name, URI.create(url), true, true));
+                // Through the mirror that stands in for it, where the lock asked it.
+                extra.add(RepoMirrors.apply(template.declaredByPom(name, URI.create(url), true, true)));
             } catch (IllegalArgumentException e) {
                 Log.debug("jk why: lock source is not a URL: " + row.source(), e);
             }

@@ -64,6 +64,10 @@ JumpKick shows you this page's new entries after it updates itself.
   the engine, which a daemon started from a shell in another zone (or, on Windows, the machine's
   zone, whatever `TZ` says) could put a day apart, so an entry could block a day early or ignore a
   day late. It now ignores through that day on the local calendar where `jk audit` runs.
+- **`jk why` and `jk import` ask a mirrored repository through its mirror.** Under a `mirror-of`
+  table in `~/.jk/config.toml`, `jk why` read the POM of a row from a repository a dependency's
+  POM declared, and `jk import` checked a pin against a repository the imported POM declares, at
+  that repository's own URL. Both now ask the mirror, as `jk lock` does.
 
 ## 0.53.1
 

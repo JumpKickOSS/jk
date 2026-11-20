@@ -186,7 +186,9 @@ a plaintext network URL without `allow-insecure`, fails the resolve naming the t
   entries in file order; the first that matches a repository wins.
 - **A mirror never goes direct.** A mirror nothing answers at, or one that answers 401 or 403, is
   the failure, naming the mirror and the repository it stands in for — `optional` on the
-  repository does not pass it over. The same holds for a `settings.xml` mirror.
+  repository does not pass it over. The same holds for a `settings.xml` mirror. Every command
+  that reads a matched repository asks the mirror: `jk lock`, `jk why` reading a POM where the
+  lock says it came from, and `jk import` checking a pin.
 - **Credentials** come from the chain in [Credentials](#credentials), keyed by the mirror's id;
   its `config.toml` table binds the id to its URL, so `${VAR}` there reads your shell and `jk repo
   login corp` binds to the mirror's URL.

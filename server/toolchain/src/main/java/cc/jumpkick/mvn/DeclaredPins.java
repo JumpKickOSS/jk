@@ -17,6 +17,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.repo.RepoMirrors;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.time.Duration;
@@ -97,8 +98,9 @@ public final class DeclaredPins {
         Http http = new Http();
         for (RepositorySpec spec : imported.repositories()) {
             if (base.repos().stream().anyMatch(r -> r.baseUrl().equals(spec.url()))) continue;
-            declared.add(
-                    new MavenRepo(spec.name(), spec.url(), http, cas).withPolicy(spec.releases(), spec.snapshots()));
+            // Through the mirror that stands in for it: the lock will ask it there, never at its own URL.
+            declared.add(RepoMirrors.apply(
+                    new MavenRepo(spec.name(), spec.url(), http, cas).withPolicy(spec.releases(), spec.snapshots())));
         }
         return base.withReposPrepended(declared);
     }
