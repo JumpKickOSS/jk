@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -245,7 +246,8 @@ class EngineServerRequestTest extends EngineServerHarness {
                                 "LOW",
                                 base + "/querybatch",
                                 base + "/vulns/",
-                                false)
+                                false,
+                                "2026-11-19")
                         .encode());
                 String line;
                 while ((line = c.readLine()) != null) {
@@ -307,6 +309,130 @@ class EngineServerRequestTest extends EngineServerHarness {
             osv.stop(0);
             LockfileReader.clearCache();
         }
+    }
+
+    /**
+     * An {@code [audit] ignore} entry is judged on the date the request carries, the caller's, and
+     * holds through its {@code until} day: the same engine, the same entry, ignored on that day and
+     * blocking the day after, whatever this machine's clock or zone says.
+     */
+    @Test
+    void an_ignore_entry_is_judged_on_the_requests_date_through_its_last_day() throws Exception {
+        HttpServer osv = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        try {
+            osv.createContext("/querybatch", exchange -> {
+                byte[] body = "{\"results\":[{\"vulns\":[{\"id\":\"GHSA-test-1\"}]}]}".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+                exchange.close();
+            });
+            osv.createContext("/vulns/", exchange -> {
+                byte[] body = "{\"summary\":\"Stub vulnerability\",\"database_specific\":{\"severity\":\"HIGH\"}}"
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+                exchange.close();
+            });
+            osv.start();
+            String base = "http://127.0.0.1:" + osv.getAddress().getPort();
+
+            Path project = shortTempDir();
+            Files.writeString(project.resolve("jk.toml"), """
+                    group = "com.foo"
+                    name = "app"
+                    version = "0.1.0"
+                    java = 25
+
+                    [audit]
+                    ignore = [{ id = "GHSA-test-1", reason = "waiting on upstream", until = "2026-11-19" }]
+                    """);
+            Files.writeString(project.resolve("jk-lock.toml"), """
+                    version = 1
+                    generated-by = "jk test"
+                    resolution-algorithm = "pubgrub-v1"
+
+                    [[artifact]]
+                    name     = "com.foo:leaf"
+                    version  = "1.0"
+                    source   = "central+https://repo.maven.apache.org/maven2/"
+                    checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d954c2"
+                    scopes   = ["main"]
+                    """);
+            Path cache = shortTempDir();
+
+            EnginePaths.Paths p = paths(shortTempDir());
+            EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+            Thread serverThread = runInBackground(server);
+            waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
+
+            List<String> onTheDay = audit(
+                    p,
+                    new AuditRequest(
+                            project.toString(),
+                            cache.toString(),
+                            "LOW",
+                            base + "/querybatch",
+                            base + "/vulns/",
+                            false,
+                            "2026-11-19"));
+            List<String> dayAfter = audit(
+                    p,
+                    new AuditRequest(
+                            project.toString(),
+                            cache.toString(),
+                            "LOW",
+                            base + "/querybatch",
+                            base + "/vulns/",
+                            false,
+                            "2026-11-20"));
+
+            String onTheDayWire = String.join(System.lineSeparator(), onTheDay);
+            String finding = lineOf(onTheDay, EngineProtocol.AUDIT_FINDING);
+            assertThat(finding)
+                    .as("audit-finding on the until day%n%s", onTheDayWire)
+                    .isNotNull();
+            assertThat(Jsonl.bool(finding, "ignoreExpired", true)).isFalse();
+            assertThat(Jsonl.bool(lineOf(onTheDay, EngineProtocol.BUILDPLAN_FINISH), "success", false))
+                    .as("the entry still covers the finding on its last day%n%s", onTheDayWire)
+                    .isTrue();
+
+            String dayAfterWire = String.join(System.lineSeparator(), dayAfter);
+            finding = lineOf(dayAfter, EngineProtocol.AUDIT_FINDING);
+            assertThat(finding)
+                    .as("audit-finding the day after%n%s", dayAfterWire)
+                    .isNotNull();
+            assertThat(Jsonl.bool(finding, "ignoreExpired", false)).isTrue();
+            assertThat(Jsonl.bool(lineOf(dayAfter, EngineProtocol.BUILDPLAN_FINISH), "success", true))
+                    .as("the lapsed entry no longer covers the finding%n%s", dayAfterWire)
+                    .isFalse();
+
+            server.close();
+            serverThread.join(5_000);
+        } finally {
+            osv.stop(0);
+            LockfileReader.clearCache();
+        }
+    }
+
+    /** Every line of one audit conversation, through its plan-finish or error. */
+    private static List<String> audit(EnginePaths.Paths p, AuditRequest request) throws Exception {
+        List<String> transcript = new ArrayList<>();
+        try (Client c = new Client(EnginePaths.activeSocket(p))) {
+            c.sendLine(request.encode());
+            String line;
+            while ((line = c.readLine()) != null) {
+                transcript.add(line);
+                String type = EngineProtocol.typeOf(line);
+                if (EngineProtocol.BUILDPLAN_FINISH.equals(type) || EngineProtocol.ERROR.equals(type)) break;
+            }
+        }
+        return transcript;
+    }
+
+    /** The first line of {@code type} in {@code transcript}, or null. */
+    private static @Nullable String lineOf(List<String> transcript, String type) {
+        for (String line : transcript) if (type.equals(EngineProtocol.typeOf(line))) return line;
+        return null;
     }
 
     /**

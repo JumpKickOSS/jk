@@ -440,8 +440,9 @@ class EngineProtocolTest {
 
     @Test
     void audit_request_round_trips_all_fields() {
-        String json =
-                new AuditRequest("/work", "/cache", "HIGH", "http://osv/batch", "http://osv/vulns/", true).encode();
+        String json = new AuditRequest(
+                        "/work", "/cache", "HIGH", "http://osv/batch", "http://osv/vulns/", true, "2026-11-19")
+                .encode();
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.AUDIT_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
@@ -450,9 +451,11 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(json, "osvVulnsUrl")).isEqualTo("http://osv/vulns/");
         // The audit worker queries OSV, so the run's offline decision has to ride the request.
         assertThat(Jsonl.bool(json, "offline", false)).isTrue();
+        // The caller's day, which the engine judges ignore entries on.
+        assertThat(AuditRequest.decode(json).today()).isEqualTo("2026-11-19");
         // null overrides decode as absent (the real OSV endpoints)
-        assertThat(Jsonl.str(new AuditRequest("/w", "/c", "LOW", null, null, false).encode(), "osvBatchUrl"))
-                .isNull();
+        String bare = new AuditRequest("/w", "/c", "LOW", null, null, false, "2026-11-19").encode();
+        assertThat(Jsonl.str(bare, "osvBatchUrl")).isNull();
     }
 
     @Test

@@ -60,6 +60,10 @@ JumpKick shows you this page's new entries after it updates itself.
   (optional, loopback, or a POM's) drops the connection, its warning names the failure and the
   attempts it took, even when a checksum asked beside the download met the drop first; that
   case lost the failure and named only the fault.
+- **An `[audit] ignore` entry's `until` is your local date.** `jk audit` judged it on the date of
+  the engine, which a daemon started from a shell in another zone (or, on Windows, the machine's
+  zone, whatever `TZ` says) could put a day apart, so an entry could block a day early or ignore a
+  day late. It now ignores through that day on the local calendar where `jk audit` runs.
 
 ## 0.53.1
 

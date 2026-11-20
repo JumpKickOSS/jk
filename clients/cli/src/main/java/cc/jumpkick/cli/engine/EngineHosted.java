@@ -60,7 +60,8 @@ final class EngineHosted {
                                         req.osvVulnsUrl() != null
                                                 ? req.osvVulnsUrl().toString()
                                                 : null,
-                                        req.offline())
+                                        req.offline(),
+                                        req.today().toString())
                                 .encode(),
                         "audit",
                         listenerFactory,

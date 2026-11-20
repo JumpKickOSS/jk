@@ -6,7 +6,6 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
-import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.BuildBlock;
@@ -23,7 +22,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -65,7 +63,7 @@ public final class AuditVerb implements HostedVerb {
                 Session session = ReleaseSession.sessionOf(requestLine, cancelToken);
                 String dir = EngineProtocol.SINGLE_PLAN_DIR;
                 List<BuildBlock.AuditIgnore> ignores = auditIgnores(entryDir);
-                LocalDate today = LocalDate.ofInstant(Clock.SYSTEM.instant(), ZoneId.systemDefault());
+                LocalDate today = judgedOn(body);
                 BuildPlan plan = AuditPlans.auditBuildPlan(
                         LockPaths.lockFile(entryDir),
                         cache,
@@ -84,6 +82,15 @@ public final class AuditVerb implements HostedVerb {
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);
         }
+    }
+
+    /**
+     * The day ignore entries are judged on: the caller's local date, which the request carries. Never
+     * this engine's clock, whose zone is the machine's or that of whichever shell started the daemon.
+     */
+    static LocalDate judgedOn(AuditRequest body) {
+        if (body.today() == null) throw new IllegalArgumentException("the audit request names no date to judge on");
+        return LocalDate.parse(body.today());
     }
 
     /**

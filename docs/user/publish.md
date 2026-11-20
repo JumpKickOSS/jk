@@ -317,9 +317,10 @@ ignore = [
 ```
 
 Every entry needs its `reason` — an ignore nobody can review is refused at parse. `until` is
-optional and an ISO date (`YYYY-MM-DD`): the entry ignores through that day and expires after
-it. The text report says `ignored (reason)` for a covered finding and `ignore expired (reason,
-until …)` for a lapsed one; the JSON carries the same state. Unknown keys on either level are
+optional and an ISO date (`YYYY-MM-DD`): the entry ignores through that day, on the local
+calendar where `jk audit` runs, and expires after it.
+The text report says `ignored (reason)` for a covered finding and `ignore expired (reason, until
+…)` for a lapsed one; the JSON carries the same state. Unknown keys on either level are
 refused, so a misspelt `untill` cannot silently turn a dated ignore into a permanent one.
 
 ## Verify

@@ -119,12 +119,13 @@ class AuditCommandE2eTest {
 
     @Test
     void an_expired_ignore_entry_fails_the_gate_again(@TempDir Path dir) throws Exception {
-        LocalDate yesterday = LocalDate.now().minusDays(1);
+        // A day long past in every zone; the day boundary itself is the engine's test, on injected dates.
+        LocalDate lapsed = LocalDate.of(2020, 1, 31);
         project(dir, """
 
                 [audit]
                 ignore = [{ id = "GHSA-test-1", reason = "was waiting on upstream", until = "%s" }]
-                """.formatted(yesterday));
+                """.formatted(lapsed));
 
         Run r = audit(dir);
 
@@ -132,7 +133,7 @@ class AuditCommandE2eTest {
         String line = r.findingLine();
         assertThat(Jsonl.bool(line, "ignored", true)).isFalse();
         assertThat(Jsonl.bool(line, "ignoreExpired", false)).isTrue();
-        assertThat(Jsonl.str(line, "until")).isEqualTo(yesterday.toString());
+        assertThat(Jsonl.str(line, "until")).isEqualTo(lapsed.toString());
     }
 
     /** A manifest plus a lock stamped fresh against it, so the invisible freshen leaves the lock alone. */

@@ -7,6 +7,7 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.Task;
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -278,14 +279,18 @@ public final class EngineRequests {
 
     // ---- hosted worker commands -------------------------------------------------------------------
 
-    /** Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local fields. */
+    /**
+     * Everything an engine-hosted {@code jk audit} needs — mirrors {@code AuditCommand}'s local
+     * fields. {@code today} is the caller's local date, the day ignore entries are judged on.
+     */
     public record AuditRequest(
             Path entryDir,
             Path cache,
             String severity,
             @Nullable URI osvBatchUrl,
             @Nullable URI osvVulnsUrl,
-            boolean offline) {}
+            boolean offline,
+            LocalDate today) {}
 
     /** Everything an engine-hosted {@code jk format} needs — resolved styles, not raw flags. */
     public record FormatRequest(

@@ -29,6 +29,8 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -99,6 +101,8 @@ public final class AuditCommand implements CliCommand {
         Path cache = JkDirs.cache();
         AuditReport.Severity threshold = AuditReport.Severity.parse(severity);
         BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
+        // An ignore entry's `until` is a day on the user's calendar: this shell's, not the engine's.
+        LocalDate today = LocalDate.ofInstant(Clock.SYSTEM.instant(), ZoneId.systemDefault());
 
         List<AuditReport.Finding> findings = new ArrayList<>();
         BuildPlanResult result;
@@ -106,7 +110,7 @@ public final class AuditCommand implements CliCommand {
             result = EngineClient.runAudit(
                     EnginePaths.current(),
                     new EngineRequests.AuditRequest(
-                            projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl, global.offline),
+                            projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl, global.offline, today),
                     steps -> BuildPlanConsole.chooseConsoleListener("audit", steps, mode),
                     findings::add);
         } catch (IOException e) {
