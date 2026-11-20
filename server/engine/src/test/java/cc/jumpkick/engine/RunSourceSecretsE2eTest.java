@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -53,6 +54,9 @@ import org.junit.jupiter.api.Test;
 class RunSourceSecretsE2eTest extends EngineServerHarness {
 
     private static final String CANARY = "canary-3f9a7c1e-do-not-leak";
+
+    /** An atomic write's staging sibling: {@code .<target>-<random digits>.tmp}. */
+    private static final Pattern STAGING = Pattern.compile("\\.(.+)-\\d+\\.tmp");
 
     @Test
     void ci_secrets_never_reach_the_record_the_journal_or_the_api() throws Exception {
@@ -241,16 +245,27 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
         }
     }
 
-    /** The journal's files that hold the canary. */
+    /**
+     * The journal's files that hold the canary. An atomic write's staging sibling is skipped: the
+     * engine may still be settling the run, and the file can be renamed onto its target between the
+     * listing and the read; what it holds is checked under the target's own name.
+     */
     private static List<Path> journalLeaks() throws IOException {
         List<Path> leaks = new ArrayList<>();
         try (Stream<Path> files = Files.walk(BuildJournal.current().buildsRoot())) {
-            for (Path f : files.filter(Files::isRegularFile).toList()) {
+            for (Path f : files.filter(path -> !staging(path))
+                    .filter(Files::isRegularFile)
+                    .toList()) {
                 String text = new String(Files.readAllBytes(f), StandardCharsets.ISO_8859_1);
                 if (text.contains(CANARY)) leaks.add(f);
             }
         }
         return leaks;
+    }
+
+    /** Whether {@code f} is a staging sibling {@link cc.jumpkick.host.AtomicWrites#staging} made. */
+    private static boolean staging(Path f) {
+        return STAGING.matcher(f.getFileName().toString()).matches();
     }
 
     /** {@code /api/history} and the record's own history answer, each checked to be a 200. */
