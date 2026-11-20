@@ -339,6 +339,12 @@ an `X-Jk-Web-Overlay: 1` response header, and reports `webOverlay: true` in `GET
 Both directories get the same checks: a request path with `..`, a backslash or a NUL is a 404, and a
 file whose real path leaves the directory (a symlink) is not served.
 
+Every static response, a 404 or 405 included, carries `X-Frame-Options: DENY` and
+`X-Content-Type-Options: nosniff`, and every file carries the shell's `Content-Security-Policy`
+(`StaticContent.SHELL_POLICY`; [webclient.md](webclient.md#dependencies-cdn-pinned-integrity-locked)
+says what each directive allows), whose `frame-ancestors 'none'` keeps another site from framing the
+dashboard. The JSON, text and bytes responses of `/api` send `nosniff` too.
+
 Point either at a directory only you can write. It can replace scripts that run with the page's bearer
 token, so a directory a build or a sandboxed process can write defeats the point of the default. A
 snapshot is a development build: no deployed or shared environment should run one with an overlay set.

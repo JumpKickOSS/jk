@@ -26,7 +26,6 @@ const {
   baseFileName,
   codePathForFailure,
   extractMermaidFences,
-  injectMermaidSvgs,
   isImagePath,
   isPreviewable,
   isRemoteHttpUrl,
@@ -196,16 +195,173 @@ test('preview eligibility is extension-driven', () => {
   assert.equal(isTextWritableLang(null), false);
 });
 
-test('extractMermaidFences pulls fenced mermaid blocks out of markdown', () => {
+test('extractMermaidFences leaves an unguessable placeholder paragraph per block', () => {
   const md = '# Title\n\n```mermaid\ngraph TD\n  A-->B\n```\n\nMore text.\n\n```js\nconst x = 1;\n```\n';
-  const { markdown, fences } = extractMermaidFences(md);
+  const { markdown, fences, placeholders } = extractMermaidFences(md);
   assert.equal(fences.length, 1);
   assert.match(fences[0], /graph TD/);
-  assert.match(markdown, /JKMERMAIDPLACEHOLDER0X/);
+  assert.equal(placeholders.length, 1);
+  assert.match(placeholders[0], /^jkmermaid[0-9a-f]{32}n0$/);
+  assert.ok(markdown.includes('\n\n' + placeholders[0] + '\n\n'), 'a paragraph of its own');
   assert.doesNotMatch(markdown, /```mermaid/);
   assert.match(markdown, /```js/);
-  const html = injectMermaidSvgs('<p>JKMERMAIDPLACEHOLDER0X</p>', ['<svg></svg>']);
-  assert.equal(html, '<p><svg></svg></p>');
+  const again = extractMermaidFences(md).placeholders[0];
+  assert.notEqual(again, placeholders[0], 'a fresh placeholder every render');
+  const two = extractMermaidFences('```mermaid\na\n```\n\n```mermaid\nb\n```\n').placeholders;
+  assert.equal(two.length, 2);
+  assert.equal(two[0].slice(0, -1), two[1].slice(0, -1), 'one nonce per render, indexed per block');
+});
+
+// The few DOM calls placeMermaidDiagrams and diagramNode make, over a tree built by hand. Node has
+// no HTML parser, so each case is the tree DOMPurify would hand over; serialization escapes the way
+// a browser's does, so an attribute value cannot end early.
+class FakeText {
+  constructor(value) {
+    this.nodeType = 3;
+    this.nodeValue = value;
+    this.parentNode = null;
+  }
+  get outerHTML() {
+    return this.nodeValue.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+}
+class FakeElement {
+  constructor(tag, attrs = {}, children = []) {
+    this.nodeType = 1;
+    this.tagName = tag.toUpperCase();
+    this.attrs = { ...attrs };
+    this.childNodes = [];
+    this.parentNode = null;
+    this.raw = null;
+    for (const c of children) this.append(typeof c === 'string' ? new FakeText(c) : c);
+  }
+  get firstChild() {
+    return this.childNodes[0] || null;
+  }
+  get ownerDocument() {
+    return fakeDocument;
+  }
+  set className(v) {
+    this.attrs.class = v;
+  }
+  set textContent(v) {
+    this.childNodes = [];
+    this.append(new FakeText(v));
+  }
+  set innerHTML(v) {
+    this.childNodes = [];
+    this.raw = v;
+  }
+  append(...nodes) {
+    for (const n of nodes) {
+      n.parentNode = this;
+      this.childNodes.push(n);
+    }
+  }
+  replaceWith(node) {
+    const siblings = this.parentNode.childNodes;
+    siblings[siblings.indexOf(this)] = node;
+    node.parentNode = this.parentNode;
+    this.parentNode = null;
+  }
+  querySelectorAll(sel) {
+    const out = [];
+    const walk = (el) => {
+      for (const c of el.childNodes) {
+        if (c.nodeType !== 1) continue;
+        if (c.tagName === sel.toUpperCase()) out.push(c);
+        walk(c);
+      }
+    };
+    walk(this);
+    return out;
+  }
+  get innerHTMLText() {
+    return this.raw != null ? this.raw : this.childNodes.map((c) => c.outerHTML).join('');
+  }
+  get outerHTML() {
+    const tag = this.tagName.toLowerCase();
+    const attrs = Object.entries(this.attrs)
+      .map(([k, v]) => ' ' + k + '="' + String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"')
+      .join('');
+    return '<' + tag + attrs + '>' + this.innerHTMLText + '</' + tag + '>';
+  }
+}
+const fakeDocument = { createElement: (tag) => new FakeElement(tag) };
+const el = (tag, attrs, ...children) => new FakeElement(tag, attrs, children);
+
+async function placeInto(root, placeholders, diagrams) {
+  const { placeMermaidDiagrams, diagramNode } = await spa('preview.js');
+  placeMermaidDiagrams(root, placeholders, (i) => diagramNode(fakeDocument, diagrams[i]));
+  return root.innerHTMLText;
+}
+
+test('a mermaid diagram replaces its placeholder paragraph as a node', async () => {
+  const { placeholders } = extractMermaidFences('```mermaid\ngraph TD\n```\n\n```mermaid\nbad\n```\n');
+  const root = el(
+    'body',
+    {},
+    el('h1', {}, 'Title'),
+    el('p', {}, placeholders[0]),
+    el('p', {}, '\n' + placeholders[1] + '\n'),
+  );
+  const html = await placeInto(root, placeholders, [
+    { svg: '<svg data-ok="1"></svg>' },
+    { error: 'Parse error <img src=x onerror=alert(1)>' },
+  ]);
+  assert.equal(
+    html,
+    '<h1>Title</h1><div class="code-preview-diagram"><svg data-ok="1"></svg></div>' +
+      '<pre class="code-preview-diagram-err">Parse error &lt;img src=x onerror=alert(1)&gt;</pre>',
+  );
+});
+
+test('a placeholder inside an attribute value is never touched', async () => {
+  const { placeholders } = extractMermaidFences('```mermaid\ngraph TD\n```\n');
+  const [real] = placeholders;
+  // Even a document that somehow knew this render's placeholder, and the fixed token of old.
+  for (const token of [real, 'JKMERMAIDPLACEHOLDER0X']) {
+    const payload = token + '" onmouseover="alert(1)" x="<iframe srcdoc=\'<script>parent.alert(1)<\/script>\'>';
+    const link = el('a', { title: payload, href: 'https://example.com' }, 'x');
+    const root = el('body', {}, el('p', {}, link), el('p', {}, real));
+    const html = await placeInto(root, placeholders, [{ svg: '<svg></svg>' }]);
+    assert.equal(link.attrs.title, payload, 'attribute value unchanged');
+    assert.equal(root.childNodes[0].childNodes[0], link, 'the link stays where it was');
+    assert.equal(html, '<p>' + link.outerHTML + '</p><div class="code-preview-diagram"><svg></svg></div>');
+    assert.deepEqual(root.querySelectorAll('iframe'), []);
+  }
+});
+
+test('a placeholder within other text, or nested in other markup, is left as text', async () => {
+  const { placeholders } = extractMermaidFences('```mermaid\ngraph TD\n```\n');
+  const [real] = placeholders;
+  const root = el(
+    'body',
+    {},
+    el('p', {}, 'see ' + real + ' here'),
+    el('p', {}, el('em', {}, real)),
+    el('li', {}, real),
+  );
+  const before = root.innerHTMLText;
+  assert.equal(await placeInto(root, placeholders, [{ svg: '<svg></svg>' }]), before);
+});
+
+test('a guessed placeholder does not place a diagram', async () => {
+  const { placeholders } = extractMermaidFences('```mermaid\ngraph TD\n```\n');
+  const guesses = [
+    'JKMERMAIDPLACEHOLDER0X',
+    'jkmermaid' + '0'.repeat(32) + 'n0',
+    extractMermaidFences('```mermaid\nx\n```\n').placeholders[0],
+  ];
+  const root = el('body', {}, ...guesses.map((g) => el('p', {}, g)));
+  const before = root.innerHTMLText;
+  assert.equal(await placeInto(root, placeholders, [{ svg: '<svg></svg>' }]), before);
+  // The real one, written twice, is placed once.
+  const twice = el('body', {}, el('p', {}, placeholders[0]), el('p', {}, placeholders[0]));
+  assert.equal(
+    await placeInto(twice, placeholders, [{ svg: '<svg></svg>' }]),
+    '<div class="code-preview-diagram"><svg></svg></div><p>' + placeholders[0] + '</p>',
+  );
 });
 
 test('monaco partial-failure retry does not re-inject loader.js', async () => {

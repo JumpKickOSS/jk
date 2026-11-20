@@ -121,33 +121,32 @@ export function resolveMarkdownLinkPath(fromFile, href) {
   return resolveWorkspaceRelPath(fromFile, href);
 }
 
+/** 128 random bits as hex: a placeholder the document being rendered cannot know in advance. */
+function placeholderNonce() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /**
- * Pull fenced ```mermaid blocks out of markdown so the rest can go through marked, then re-inject
- * rendered SVGs by placeholder. Placeholders are plain tokens that survive DOMPurify.
+ * Pull fenced ```mermaid blocks out of markdown so the rest can go through marked. Each block
+ * becomes a paragraph of its own holding `placeholders[i]`, a token random per call, so the
+ * document cannot write one itself; the rendered diagram later replaces that paragraph as a node
+ * (`placeMermaidDiagrams` in preview.js).
  */
 export function extractMermaidFences(markdown) {
   const src = markdown == null ? '' : String(markdown);
   const fences = [];
+  const placeholders = [];
+  const nonce = placeholderNonce();
   // Opening fence at line start; language is mermaid (optional trailing attrs ignored).
   const re = /^[ \t]*```[ \t]*mermaid[ \t]*\r?\n([\s\S]*?)^[ \t]*```[ \t]*$/gim;
   const markdownOut = src.replace(re, (_, body) => {
-    const i = fences.length;
+    const placeholder = 'jkmermaid' + nonce + 'n' + fences.length;
     fences.push(String(body).replace(/\r\n/g, '\n').replace(/\s+$/, ''));
-    return '\n\nJKMERMAIDPLACEHOLDER' + i + 'X\n\n';
+    placeholders.push(placeholder);
+    return '\n\n' + placeholder + '\n\n';
   });
-  return { markdown: markdownOut, fences };
-}
-
-/** Replace JKMERMAIDPLACEHOLDER{n}X tokens with the corresponding rendered SVG (or error HTML). */
-export function injectMermaidSvgs(html, svgs) {
-  let out = html == null ? '' : String(html);
-  const list = svgs || [];
-  for (let i = 0; i < list.length; i++) {
-    const token = 'JKMERMAIDPLACEHOLDER' + i + 'X';
-    const svg = list[i] == null ? '' : String(list[i]);
-    out = out.split(token).join(svg);
-  }
-  return out;
+  return { markdown: markdownOut, fences, placeholders };
 }
 
 /**

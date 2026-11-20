@@ -29,7 +29,8 @@ import org.jspecify.annotations.Nullable;
  * optionally preceded by a disk directory the user named ({@link
  * cc.jumpkick.config.JkHttpConfig#webDisk}): a {@code web-root}, or a {@code -SNAPSHOT} build's {@code
  * web-overlay}. Disk files are no-cache and size-snapshotted per GET so concurrent appends cannot
- * corrupt framing. No directory listings.
+ * corrupt framing. No directory listings. Every response, a 404 or 405 included, carries {@code
+ * X-Frame-Options: DENY} and {@code X-Content-Type-Options: nosniff}; files carry {@link #SHELL_POLICY}.
  *
  * <p>With no such directory only the jar is served. Nothing is read from a default location: a build
  * can write anywhere it can reach, and a file the dashboard page loads as a script runs in the
@@ -74,27 +75,63 @@ final class StaticContent {
             Map.entry("wasm", "application/wasm"));
 
     /**
-     * The shipped shell's policy. Its only external resources: Vue + ECharts + Monaco (lazy,
-     * #project/…/files) + Preview CDNs (marked/mermaid/…, also lazy) from unpkg (version-pinned; SRI
-     * on every static tag where possible) and the JetBrains Mono webfonts from Google Fonts (CSS on
-     * fonts.googleapis.com, font files on fonts.gstatic.com). style-src includes unpkg for Monaco's
-     * editor.main.css, which its loader injects itself.
+     * The unpkg packages the shipped client loads as scripts, each by its exact versioned prefix (a
+     * source ending in {@code /} matches by prefix): Vue and ECharts ({@code index.html}), Monaco (its
+     * loader, editor chunks, and the worker bundles its Blob workers {@code importScripts}), and the
+     * UMD preview renderers mermaid, viz-js and Asciidoctor ({@code monaco.js}). A published npm
+     * version never changes, so nobody but these packages can put a script under them; any other
+     * package on unpkg is refused. {@code ShellPolicyTest} reads the client's files and fails unless
+     * every unpkg URL in them is covered here and every prefix here is used.
+     */
+    private static final String UNPKG_SCRIPTS = "https://unpkg.com/vue@3.5.39/ https://unpkg.com/echarts@5.5.1/ "
+            + "https://unpkg.com/monaco-editor@0.56.0/ https://unpkg.com/mermaid@11.6.0/ "
+            + "https://unpkg.com/@viz-js/viz@3.11.0/ https://unpkg.com/@asciidoctor/core@3.0.4/";
+
+    /**
+     * marked and DOMPurify: {@code importVerified} fetches them with their integrity hash and imports
+     * the verified bytes from a {@code blob:} URL, so they are a connect-src load, never a script one.
+     */
+    private static final String UNPKG_FETCHED = "https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/";
+
+    /** Monaco's {@code editor.main.css}, which its loader links itself. */
+    private static final String UNPKG_STYLES = "https://unpkg.com/monaco-editor@0.56.0/";
+
+    /**
+     * The shipped shell's policy. Its only external resources: the unpkg packages above (all lazy but
+     * Vue and ECharts; SRI on every tag where possible) and the JetBrains Mono webfonts from Google
+     * Fonts (CSS on fonts.googleapis.com, font files on fonts.gstatic.com). connect-src is the
+     * dashboard's own API and event stream ('self') plus the two fetched modules.
      *
-     * <p>'unsafe-eval' is Vue's runtime template compiler. The rest is Monaco, and each piece was
+     * <p>'unsafe-eval' is Vue's runtime template compiler (and viz-js compiling its WebAssembly).
+     * blob: in script-src also imports the two fetched modules. The rest is Monaco, and each piece was
      * verified against a real browser (a missing one degrades to a blank/broken pane): blob: in
      * script-src + worker-src — it spawns language workers from a generated Blob that importScripts
      * the unpkg bundle; 'unsafe-inline' in style-src — the editor positions every view line, cursor
-     * and widget with inline style attributes (~100 per paint), which no hash or nonce can cover;
-     * data: in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons).
-     * 'self' in worker-src registers the dashboard's service worker ({@value #WORKER}); without it
-     * worker-src would allow only Monaco's blobs.
+     * and widget with inline style attributes (~100 per paint), which no hash or nonce can cover; data:
+     * in font-src — editor.main.css inlines the codicon font (gutter/find-widget icons). 'self' in
+     * worker-src registers the dashboard's service worker ({@value #WORKER}); without it worker-src
+     * would allow only Monaco's blobs.
+     *
+     * <p>Nothing in the dashboard frames, embeds or is framed (the coverage report opens in a tab of
+     * its own), and nothing uses {@code <base>}: frame-src, object-src and base-uri are 'none', and
+     * frame-ancestors 'none' (with {@code X-Frame-Options: DENY} for browsers that predate it) keeps
+     * another site from framing the dashboard under a click.
      */
-    static final String SHELL_POLICY = "default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; "
-            + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; "
+    static final String SHELL_POLICY = "default-src 'self'; "
+            + "script-src 'self' 'unsafe-eval' blob: "
+            + UNPKG_SCRIPTS
+            + "; "
+            + "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
+            + UNPKG_STYLES
+            + "; "
+            + "connect-src 'self' "
+            + UNPKG_FETCHED
+            + "; "
             + "font-src https://fonts.gstatic.com data:; worker-src 'self' blob:; "
             // Preview pane: auth-fetch → blob: for in-repo images; https: for badges / remote README
             // images (shields.io, etc.); data: for rare inlines.
             + "img-src 'self' blob: data: https: http:; "
+            + "frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; "
             // No form ever submits from the shell; injected markup (rendered previews) must not be
             // able to add one that posts off-origin.
             + "form-action 'none';";
@@ -157,6 +194,8 @@ final class StaticContent {
     }
 
     void serve(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("X-Frame-Options", "DENY");
+        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         String method = exchange.getRequestMethod();
         boolean head = method.equals("HEAD");
         if (!head && !method.equals("GET")) {

@@ -7,17 +7,70 @@
 import { ensureCdn, markedParse } from './monaco.js';
 import {
   extractMermaidFences,
-  injectMermaidSvgs,
   previewKind,
   isRemoteHttpUrl,
   resolveMarkdownImagePath,
   resolveMarkdownLinkPath,
   sanitizeDiagramSvg,
 } from './paths.js';
-import { buildProjectHash, escapeHtml } from './route.js';
+import { buildProjectHash } from './route.js';
 
 /** Tags a preview never renders: a repository document may not style or script the console around it. */
 export const PREVIEW_FORBID_TAGS = ['style', 'link', 'meta', 'base', 'form'];
+
+/**
+ * Sanitized HTML parsed once into the body of an inert document (no browsing context: nothing it
+ * names loads, nothing runs), in the same body context `v-html` parses it in. Every later step
+ * works on these nodes, and only `body.innerHTML` leaves.
+ */
+function parseSanitized(html) {
+  const doc = document.implementation.createHTMLDocument('');
+  doc.body.innerHTML = html;
+  return doc.body;
+}
+
+/**
+ * A rendered diagram as a node of `doc`: `{ svg }` (already through `sanitizeDiagramSvg`) inside a
+ * `.code-preview-diagram`, or `{ error }` as the text of a `.code-preview-diagram-err`.
+ */
+export function diagramNode(doc, diagram) {
+  if (diagram && diagram.svg != null) {
+    const box = doc.createElement('div');
+    box.className = 'code-preview-diagram';
+    box.innerHTML = String(diagram.svg);
+    return box;
+  }
+  const err = doc.createElement('pre');
+  err.className = 'code-preview-diagram-err';
+  err.textContent = String((diagram && diagram.error) || 'Mermaid diagram failed');
+  return err;
+}
+
+/**
+ * Put each diagram where `extractMermaidFences` left its placeholder: a `<p>` whose one child is a
+ * text node holding exactly `placeholders[i]` is replaced by `node(i)`, once. Attribute values and
+ * a placeholder inside other text are never read, so the document cannot steer a diagram there.
+ */
+export function placeMermaidDiagrams(root, placeholders, node) {
+  const pending = new Map((placeholders || []).map((p, i) => [p, i]));
+  if (!pending.size) return;
+  for (const p of Array.from(root.querySelectorAll('p'))) {
+    const only = p.childNodes.length === 1 ? p.firstChild : null;
+    if (!only || only.nodeType !== 3) continue;
+    const key = String(only.nodeValue).trim();
+    const i = pending.get(key);
+    if (i === undefined) continue;
+    pending.delete(key);
+    p.replaceWith(node(i));
+  }
+}
+
+/** One diagram preview (a `.mmd` or `.dot` file) as HTML, built as a node like the markdown ones. */
+function diagramHtml(svg) {
+  const root = parseSanitized('');
+  root.append(diagramNode(root.ownerDocument, { svg }));
+  return root.innerHTML;
+}
 
 export const previewMethods = {
   revokeImageUrl() {
@@ -44,15 +97,11 @@ export const previewMethods = {
    *  We intentionally skip the engine image proxy for remotes — GH user-attachments often 404
    *  server-side, and a failed proxy + {@code crossorigin} fallback was the CORS error loop.
    * Relative: auth-fetch workspace raw bytes → blob: URL.
+   * Works on the parsed preview in place; a superseded render keeps none of its blob: URLs.
    */
-  async hydrateMarkdownImages(html, gen) {
-    if (!html || typeof DOMParser === 'undefined') return html;
-    const parser = new DOMParser();
-    const doc = parser.parseFromString('<div id="jk-md-root">' + html + '</div>', 'text/html');
-    const root = doc.getElementById('jk-md-root');
-    if (!root) return html;
+  async hydrateMarkdownImages(root, gen) {
     const imgs = root.querySelectorAll('img[src]');
-    if (!imgs.length) return root.innerHTML;
+    if (!imgs.length) return;
     const { getBlob } = await import('./api.js');
     const blobs = [];
     const jobs = [];
@@ -101,22 +150,17 @@ export const previewMethods = {
           // ignore
         }
       }
-      return html;
+      return;
     }
     this._mdImgBlobs = blobs;
-    return root.innerHTML;
   },
   /**
    * Point relative markdown links at the files-pane hash so clicks open the target in
    * code-view (e.g. badge → {@code docs/architecture.md}). External http(s) stay as-is
-   * (new tab).
+   * (new tab). Works on the parsed preview in place.
    */
-  rewriteMarkdownLinks(html) {
-    if (!html || typeof DOMParser === 'undefined' || !this.projectId) return html;
-    const parser = new DOMParser();
-    const doc = parser.parseFromString('<div id="jk-md-root">' + html + '</div>', 'text/html');
-    const root = doc.getElementById('jk-md-root');
-    if (!root) return html;
+  rewriteMarkdownLinks(root) {
+    if (!this.projectId) return;
     for (const a of root.querySelectorAll('a[href]')) {
       const href = a.getAttribute('href');
       if (!href) continue;
@@ -136,7 +180,6 @@ export const previewMethods = {
       a.classList.add('code-preview-inlink');
       a.removeAttribute('target');
     }
-    return root.innerHTML;
   },
   async togglePreview() {
     if (!this.previewable) return;
@@ -180,10 +223,10 @@ export const previewMethods = {
         // ESM for marked/purify — no AMD park (avoids racing Monaco's markdown grammar load).
         const [marked, purify] = await Promise.all([ensureCdn('marked'), ensureCdn('purify')]);
         if (gen !== this._previewGen) return;
-        const { markdown, fences } = extractMermaidFences(this.currentContent());
+        const { markdown, fences, placeholders } = extractMermaidFences(this.currentContent());
         const raw = markedParse(marked, markdown);
         // Keep raw HTML <img> (GitHub READMEs) and markdown images; hydrate srcs to blob: after.
-        let html = purify.sanitize(raw, {
+        const html = purify.sanitize(raw, {
           ADD_ATTR: ['loading', 'referrerpolicy', 'decoding', 'width', 'height'],
           // A repository's README is not the page's to style: a <style> it carries would restyle
           // the whole console (an overlay on Save or Build), with the CSP's inline styles allowed.
@@ -193,30 +236,29 @@ export const previewMethods = {
             /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|blob|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
         });
         // Mermaid UMD only when fenced blocks exist (noAmd park stays off the default path).
+        const diagrams = [];
         if (fences.length) {
           const mermaid = await ensureCdn('mermaid');
           if (gen !== this._previewGen) return;
           mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'strict' });
-          const svgs = [];
           for (let i = 0; i < fences.length; i++) {
             try {
               const id = 'jk-md-mmd-' + gen + '-' + i;
               const { svg } = await mermaid.render(id, fences[i]);
-              svgs.push('<div class="code-preview-diagram">' + sanitizeDiagramSvg(purify, svg) + '</div>');
+              diagrams.push({ svg: sanitizeDiagramSvg(purify, svg) });
             } catch (err) {
-              const msg = (err && err.message) || 'Mermaid diagram failed';
-              svgs.push('<pre class="code-preview-diagram-err">' + escapeHtml(msg) + '</pre>');
+              diagrams.push({ error: (err && err.message) || 'Mermaid diagram failed' });
             }
             if (gen !== this._previewGen) return;
           }
-          html = injectMermaidSvgs(html, svgs);
         }
+        // Parsed once; diagrams, images and links are placed as nodes, never spliced into the string.
+        const root = parseSanitized(html);
+        placeMermaidDiagrams(root, placeholders, (i) => diagramNode(root.ownerDocument, diagrams[i]));
+        await this.hydrateMarkdownImages(root, gen);
         if (gen !== this._previewGen) return;
-        html = await this.hydrateMarkdownImages(html, gen);
-        if (gen !== this._previewGen) return;
-        html = this.rewriteMarkdownLinks(html);
-        if (gen !== this._previewGen) return;
-        this.previewHtml = html;
+        this.rewriteMarkdownLinks(root);
+        this.previewHtml = root.innerHTML;
       } else if (kind === 'mermaid') {
         const [mermaid, purify] = await Promise.all([ensureCdn('mermaid'), ensureCdn('purify')]);
         if (gen !== this._previewGen) return;
@@ -224,7 +266,7 @@ export const previewMethods = {
         const id = 'jk-mmd-' + gen;
         const { svg } = await mermaid.render(id, this.currentContent());
         if (gen !== this._previewGen) return;
-        this.previewHtml = '<div class="code-preview-diagram">' + sanitizeDiagramSvg(purify, svg) + '</div>';
+        this.previewHtml = diagramHtml(sanitizeDiagramSvg(purify, svg));
       } else if (kind === 'graphviz') {
         // Sanitize like markdown/asciidoc: .dot files from a cloned repo control
         // the SVG (URL= attrs, arbitrary markup) — one DOMPurify chokepoint for all renderers.
@@ -232,10 +274,8 @@ export const previewMethods = {
         if (gen !== this._previewGen) return;
         const viz = await Viz.instance();
         if (gen !== this._previewGen) return;
-        this.previewHtml =
-          '<div class="code-preview-diagram">' +
-          sanitizeDiagramSvg(purify, viz.renderSVGElement(this.currentContent()).outerHTML) +
-          '</div>';
+        const svg = viz.renderSVGElement(this.currentContent()).outerHTML;
+        this.previewHtml = diagramHtml(sanitizeDiagramSvg(purify, svg));
       } else if (kind === 'asciidoc') {
         const Asciidoctor = await ensureCdn('asciidoctor');
         const purify = await ensureCdn('purify');

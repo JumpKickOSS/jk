@@ -108,6 +108,17 @@ Mermaid / viz / asciidoctor still use classic UMD with a refcounted `define` par
 those diagram kinds are needed. There is no bundler and no npm build step: the shell ships as
 static resources inside the engine jar.
 
+The shell's CSP (`StaticContent.SHELL_POLICY`) names each of these packages by its exact versioned
+prefix (`https://unpkg.com/vue@3.5.39/`), never unpkg as a whole, in the directive that governs the
+load: `script-src` for the `index.html` tags, Monaco (its loader, chunks and the worker bundles its
+Blob workers `importScripts`) and the UMD renderers; `connect-src` for marked and DOMPurify, which
+`importVerified` fetches; `style-src` for Monaco's `editor.main.css`. So every unpkg URL in the
+client is a literal with its exact version (no template, no bare `@3` that unpkg would redirect),
+and moving a pin means moving the prefix in `StaticContent` in the same change: `ShellPolicyTest`
+reads the shipped files and fails when a URL is not covered, a prefix is unused, or one sits under
+the wrong directive. The policy also sets `frame-src`, `object-src` and `base-uri` to `'none'`
+(the dashboard frames, embeds and rebases nothing) and `frame-ancestors 'none'`.
+
 **Monaco is the one partial exception.** Its version is pinned and `loader.js` carries SRI
 (`MONACO_LOADER` in `monaco.js`), but the loader then fetches `editor.main.js`, `editor.main.css` and
 the per-language chunks itself and has no way to pass an integrity hash down, so those bytes are
@@ -400,8 +411,12 @@ tab bar: [ file-name-pill ]   [ Copy ] [ Preview ] [ Save ]
 - **Preview** is enabled for markdown, images, mermaid (`.mmd`/`.mermaid`), Graphviz (`.dot`/`.gv`),
   and AsciiDoc (`.adoc`/`.asciidoc`). Renderers load **lazily from unpkg only** (never
   self-hosted); images use an auth-fetch → blob URL. Markdown also renders fenced
-  ` ```mermaid ` blocks. Preview-eligible files open with Preview on by default (toggle to Source). The rendered
-  pane sits above the editor; text buffers re-render on a short debounce while both are open.
+  ` ```mermaid ` blocks: each block leaves a placeholder paragraph random per render, and after
+  DOMPurify the sanitized HTML is parsed once into an inert document where the diagram replaces
+  that paragraph as a node, images are hydrated and links rewritten, and only then is it
+  serialized for `v-html`. Nothing is spliced into sanitized HTML as a string, and a placeholder in
+  an attribute or inside other text is never read. Preview-eligible files open with Preview on by
+  default (toggle to Source). The rendered pane sits above the editor; text buffers re-render on a short debounce while both are open.
   Markdown images (including raw HTML `<img>`): relative paths load via the workspace
   raw-file API as `blob:` URLs; remote `http(s)` stay as direct `<img src>` with
   `referrerpolicy=no-referrer` and **no** `crossorigin` (setting CORS mode broke GitHub

@@ -8,10 +8,12 @@ import { clipHashMsg } from './route.js';
 export const HIGHLIGHT_MAX_BYTES = 200 * 1024;
 export const HIGHLIGHT_MAX_LINES = 4000;
 
-const MONACO = '0.56.0';
-
-/** Same CDN origin as Vue/ECharts in index.html, so the shell's CSP needs no new host. */
-const MONACO_BASE = `https://unpkg.com/monaco-editor@${MONACO}/min/vs`;
+/**
+ * Same CDN origin as Vue/ECharts in index.html. The shell's CSP names each unpkg package prefix
+ * this client loads, so every unpkg URL here is a literal with its exact version (StaticContent;
+ * ShellPolicyTest fails when the two disagree).
+ */
+const MONACO_BASE = 'https://unpkg.com/monaco-editor@0.56.0/min/vs';
 
 /**
  * Only the AMD loader can be SRI-pinned: it then fetches `editor.main.js`, `editor.main.css` and

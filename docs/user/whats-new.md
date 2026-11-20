@@ -6,6 +6,12 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A README cannot reach outside the dashboard's Markdown preview.** A Markdown file could write
+  the fixed text that marked where a Mermaid diagram goes into an attribute and turn the rest of
+  that attribute into markup the sanitizer never saw. Diagrams now go in by an unguessable marker,
+  placed as page elements after sanitizing. The dashboard also refuses to be framed by another
+  site, loads scripts only from the exact CDN packages and versions it uses rather than from any
+  package on unpkg, and tells the browser never to guess a response's type.
 - **Annotation-processor classes survive `jk clean`.** After `jk clean`, a build served from the
   cache and then an edit, the next compile deleted every class an annotation processor had
   generated and wrote back only those of the edited sources, so they went missing from

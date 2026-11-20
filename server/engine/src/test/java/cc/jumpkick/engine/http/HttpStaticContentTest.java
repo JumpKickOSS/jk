@@ -258,7 +258,8 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
         HttpResponse<String> css = get("/style.css");
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
         // Vue rides the CDN, version-pinned and integrity-locked (docs/contributors/webclient.md) — the shell
-        // must carry the pin + SRI, and the CSP must allow exactly that one external origin.
+        // must carry the pin + SRI, and the CSP must allow that package's prefix, not all of unpkg
+        // (ShellPolicyTest checks every prefix against the client's files).
         // (Read from the classpath: this test's web-root shadows /index.html with its own.)
         String shell;
         try (var in = getClass().getResourceAsStream("/web/index.html")) {
@@ -268,14 +269,48 @@ class HttpStaticContentTest extends HttpEngineServerHarness {
         assertThat(shell).contains("integrity=\"sha384-");
         assertThat(shell).contains("crossorigin=\"anonymous\"");
         HttpResponse<String> js = get("/app.js");
-        // OptionalAssert#contains is equality, not substring — unwrap and check the directives
-        // (the full header also carries img-src and form-action; ).
+        // OptionalAssert#contains is equality, not substring — unwrap and check the directives.
         String csp = js.headers().firstValue("Content-Security-Policy").orElseThrow();
         assertThat(csp)
-                .startsWith("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com; ")
-                .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; ")
+                .startsWith("default-src 'self'; script-src 'self' 'unsafe-eval' blob: https://unpkg.com/vue@3.5.39/ ")
+                .doesNotContain("https://unpkg.com;")
+                .doesNotContain("https://unpkg.com ")
+                .contains("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com "
+                        + "https://unpkg.com/monaco-editor@0.56.0/; ")
+                .contains("connect-src 'self' https://unpkg.com/marked@15.0.12/ https://unpkg.com/dompurify@3.2.5/; ")
                 .contains("font-src https://fonts.gstatic.com data:; worker-src 'self' blob:")
+                .contains("frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; ")
                 .contains("form-action 'none'");
+        assertThat(js.headers().firstValue("X-Frame-Options")).contains("DENY");
+        assertThat(js.headers().firstValue("X-Content-Type-Options")).contains("nosniff");
+    }
+
+    @Test
+    void every_static_response_refuses_framing_and_sniffing() throws Exception {
+        // Disk, jar, a 404 and a 405 alike: a page another site frames could take a click on Build.
+        HttpResponse<String> mutation = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "hello.txt"))
+                        .POST(HttpRequest.BodyPublishers.ofString("x"))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        for (HttpResponse<String> resp :
+                List.of(get("/hello.txt"), get("/classpath-only.txt"), get("/no-such-file.txt"), mutation)) {
+            assertThat(resp.headers().firstValue("X-Frame-Options"))
+                    .as(resp.uri().getPath())
+                    .contains("DENY");
+            assertThat(resp.headers().firstValue("X-Content-Type-Options"))
+                    .as(resp.uri().getPath())
+                    .contains("nosniff");
+        }
+        assertThat(get("/hello.txt").headers().firstValue("Content-Security-Policy"))
+                .contains(StaticContent.SHELL_POLICY);
+        // The API's JSON and text helpers say the same about their types.
+        HttpResponse<String> json = get("/api/status");
+        assertThat(json.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
+        assertThat(json.headers().firstValue("X-Content-Type-Options")).contains("nosniff");
+        HttpResponse<String> refused = get("/api/status", "Authorization", "Bearer wrong");
+        assertThat(refused.statusCode()).isEqualTo(401);
+        assertThat(refused.headers().firstValue("X-Content-Type-Options")).contains("nosniff");
     }
 
     @Test
