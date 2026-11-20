@@ -4,7 +4,6 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.CentralMirror;
@@ -26,7 +25,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -80,6 +78,7 @@ public final class MavenRepo {
     private final RepoTransport transport;
     private final Cas cas;
     private final RepoArtifactStore repoStore;
+    private final LocalMirrorVerifier localMirror;
 
     /** Replaced at most once, by {@link #refreshedAfter}, when it came from a credential helper. */
     private volatile RepoCredential credential;
@@ -425,6 +424,7 @@ public final class MavenRepo {
         // keyed by this repo's ORIGIN — the name is a label, and two projects calling different
         // origins by one name must never read each other's bytes.
         this.repoStore = RepoArtifactStore.forRepository(cas.root(), name, this.baseUrl, m2integration);
+        this.localMirror = new LocalMirrorVerifier(repoStore, this.baseUrl, name);
         this.credential = Objects.requireNonNull(credential, "credential");
         this.m2integration = m2integration;
         this.allowUnverified = allowUnverified;
@@ -740,7 +740,7 @@ public final class MavenRepo {
         try (KeyedLocks.Held held =
                 mirror ? MovingSnapshots.hold(coord, repoStore.root(), relativePath) : MovingSnapshots.NONE) {
             if (offlineRemote()) {
-                return fetchOffline(coord, relativePath, expectedSha256);
+                return localMirror.offline(coord, relativePath, expectedSha256);
             }
             // warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
             // --force always revalidates from the network (checksums re-checked).
@@ -764,7 +764,7 @@ public final class MavenRepo {
             boolean lookAgain = missed;
             return FLIGHTS.run(flight, () -> {
                 if (lookAgain) {
-                    Optional<Fetched> placed = placedSinceMiss(relativePath, expectedSha256);
+                    Optional<Fetched> placed = localMirror.placedSinceMiss(relativePath, expectedSha256);
                     if (placed.isPresent()) return placed.get();
                 }
                 return fetchRemote(coord, relativePath, uri, mirror, leg, abort, expectedSha256, force);
@@ -784,17 +784,6 @@ public final class MavenRepo {
      * caller's flight can store the file and end. Package-visible so a test can hold a caller there.
      */
     static volatile Runnable storeMissed = () -> {};
-
-    /**
-     * The store copy a flight that ended after this caller looked has placed, read again by the
-     * caller that leads the next flight for it. A copy only counts with a pin or a {@code .jk}
-     * memo, which a verified download writes as it places the file: a Maven-local file with
-     * neither is the outer look's to confirm, never this one's to adopt.
-     */
-    private Optional<Fetched> placedSinceMiss(String relativePath, @Nullable String expectedSha256) {
-        if (expectedSha256 == null && repoStore.readSha256Sidecar(relativePath).isEmpty()) return Optional.empty();
-        return tryLocalMirror(relativePath, expectedSha256);
-    }
 
     /** {@link #fetch}'s network leg, once the store has missed. */
     private Fetched fetchRemote(
@@ -1091,7 +1080,7 @@ public final class MavenRepo {
     /**
      * The store's copy of {@code relativePath} when it may answer for {@code coord}: a copy whose
      * bytes verify as the pin, or — without one — as what its memo recorded ({@link
-     * #tryLocalMirror}); an unpinned artifact is then confirmed by the checksum the repository
+     * LocalMirrorVerifier#stored}); an unpinned artifact is then confirmed by the checksum the repository
      * publishes ({@link #confirmed}), and so is a POM in the Maven local repository that jk never
      * verified. A POM or metadata file jk wrote is served as stored.
      *
@@ -1106,20 +1095,17 @@ public final class MavenRepo {
             Coordinate coord, String relativePath, Leg leg, @Nullable String expectedSha256, BooleanSupplier abort)
             throws IOException, InterruptedException {
         try (KeyedLocks.Held held = MovingSnapshots.hold(coord, repoStore.root(), relativePath)) {
-            // A file in the Maven local repository that jk has never verified is only a candidate: the
-            // repository's published checksum is the authority, and none published means no vouching.
-            boolean unvouched = repoStore.inM2(relativePath)
-                    && expectedSha256 == null
-                    && repoStore.readSha256Sidecar(relativePath).isEmpty();
+            boolean unvouched = localMirror.unvouched(relativePath, expectedSha256);
             // An unvouched copy gets no memo until it is confirmed: a memo is what makes it vouched.
             Optional<Fetched> local =
-                    unvouched ? candidate(relativePath) : tryLocalMirror(relativePath, expectedSha256);
+                    unvouched ? localMirror.candidate(relativePath) : localMirror.stored(relativePath, expectedSha256);
             boolean moving = expectedSha256 == null && MovingSnapshots.moving(coord);
             if (local.isEmpty() || expectedSha256 != null || (leg != Leg.ARTIFACT && !unvouched && !moving))
                 return local;
             if (local.get().sha256().equalsIgnoreCase(verified.get(relativePath))) return local;
             if (moving && local()) return sourceHolds(relativePath, local.get());
-            Optional<Fetched> answer = confirmed(coord, relativePath, local.get(), leg, abort, unvouched || moving);
+            Optional<Fetched> answer =
+                    confirmed(coord, relativePath, local.get(), leg, abort, unvouched || moving, unvouched);
             if (unvouched && answer.isPresent() && answer.get().sha256().equalsIgnoreCase(verified.get(relativePath))) {
                 repoStore.verify(relativePath, answer.get().sha256());
             }
@@ -1143,28 +1129,17 @@ public final class MavenRepo {
         return Optional.empty();
     }
 
-    /** The store's copy of {@code relativePath} with its digest, read and hashed but not recorded. */
-    private Optional<Fetched> candidate(String relativePath) {
-        Optional<Path> located = repoStore.locate(relativePath);
-        String sha = located.map(MavenRepo::hashQuietly).orElse("");
-        if (located.isEmpty() || sha.isBlank()) return Optional.empty();
-        try {
-            return Optional.of(
-                    new Fetched(baseUrl.resolve(relativePath), located.get(), sha, Files.size(located.get())));
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-    }
-
     /**
      * {@code local} once the checksum this repository publishes agrees with it, the same sidecar
      * reads a download gets, so a store that holds the wrong bytes for a coordinate — a killed
      * write, a jar copied in by hand, an artifact upstream republished — is not what a fresh lock
      * pins. A disowned copy is evicted and the fetch goes on to the network with a note; a copy the
      * repository publishes no checksum for follows the download's {@code allow-unverified} rule, so
-     * a refused one falls through to the download that refuses it by name. Offline (for a repository
-     * that is not {@linkplain #local local}), under an abort (the lock has already failed and pins
-     * nothing) or with the repository unreachable the store answers as it stands.
+     * a refused one falls through to the download that refuses it by name.
+     *
+     * <p>When the checksum cannot be read (offline for a repository that is not {@linkplain #local
+     * local}, unreachable, a transport error) or the lock has already failed ({@code abort}), a copy
+     * a memo vouches for answers as it stands, and an {@code unvouched} one is not used.
      */
     private Optional<Fetched> confirmed(
             Coordinate coord,
@@ -1172,10 +1147,16 @@ public final class MavenRepo {
             Fetched local,
             Leg leg,
             BooleanSupplier abort,
-            boolean requirePublished)
+            boolean requirePublished,
+            boolean unvouched)
             throws IOException, InterruptedException {
-        if (offlineRemote() || abort.getAsBoolean() || unreachable.get() != null) {
-            return Optional.of(local);
+        if (offlineRemote()) {
+            if (!unvouched) return Optional.of(local);
+            LocalMirrorVerifier.noteUnverifiedOffline(coord);
+            return Optional.empty();
+        }
+        if (abort.getAsBoolean() || unreachable.get() != null) {
+            return unvouched ? Optional.empty() : Optional.of(local);
         }
         try {
             if (download.confirmStored(
@@ -1194,47 +1175,11 @@ public final class MavenRepo {
         } catch (MissingChecksumException refused) {
             return Optional.empty();
         } catch (IOException transport) {
-            // Nothing answered for the sidecar: the store answers, as it does offline. A dead
+            // Nothing answered for the sidecar: a vouched copy answers, as it does offline. A dead
             // address is remembered so the rest of the job stops dialing it.
-            Log.debug("confirmed: " + coord + " from " + name + " served from the store unconfirmed", transport);
+            Log.debug("confirmed: " + coord + " from " + name + " unconfirmed", transport);
             unreachableOr(transport);
-            return Optional.of(local);
-        }
-    }
-
-    /**
-     * This repository's store copy of {@code relativePath} once its bytes are known, without
-     * network I/O: under a pin, a copy that verifies as the pin; without one, a copy that is still
-     * what its {@code .jk} memo recorded. A memo that still describes the file (size and mtime)
-     * answers in one stat; otherwise the file is re-hashed and the memo refreshed. A copy that
-     * verifies as neither — a torn or truncated file beside an intact memo, a copy whose pin moved
-     * — is evicted so the network leg replaces it. Empty on a miss and after an eviction.
-     */
-    private Optional<Fetched> tryLocalMirror(String relativePath, @Nullable String expectedSha256) {
-        Optional<Path> located = repoStore.locate(relativePath);
-        if (located.isEmpty()) return Optional.empty();
-        Path path = located.get();
-        try {
-            String sha = expectedSha256 != null
-                    ? expectedSha256
-                    : repoStore.readSha256Sidecar(relativePath).orElseGet(() -> hashQuietly(path));
-            if (sha.isBlank() || repoStore.verify(relativePath, sha) != RepoArtifactStore.IndexState.VERIFIED) {
-                repoStore.evict(relativePath);
-                return Optional.empty();
-            }
-            URI uri = baseUrl.resolve(relativePath);
-            return Optional.of(new Fetched(uri, path, sha.toLowerCase(Locale.ROOT), Files.size(path)));
-        } catch (IOException e) {
-            return Optional.empty();
-        }
-    }
-
-    /** {@code path}'s SHA-256 for a store copy that has no memo to speak for it; blank when unreadable. */
-    private static String hashQuietly(Path path) {
-        try {
-            return Hashing.sha256Hex(path);
-        } catch (IOException e) {
-            return "";
+            return unvouched ? Optional.empty() : Optional.of(local);
         }
     }
 
@@ -1257,19 +1202,6 @@ public final class MavenRepo {
     }
 
     /**
-     * Serve a fetch from the named repo's full store under {@code repos/<name>/}; a coordinate
-     * that was never fetched (or mirrored) here is treated as not-found and the resolver falls
-     * through cleanly.
-     */
-    private Fetched fetchOffline(Coordinate coord, String relativePath, @Nullable String expectedSha256)
-            throws IOException {
-        Optional<Fetched> local = tryLocalMirror(relativePath, expectedSha256);
-        if (local.isPresent()) return local.get();
-        throw new ArtifactNotFoundException(
-                "offline: " + coord + " (" + relativePath + ") not in local index for " + name);
-    }
-
-    /**
      * The canonical form of a repository base URL: a trailing slash so {@code resolve} appends
      * rather than replaces, and <strong>no userinfo</strong>. {@link #baseUrl()} is interpolated into
      * every artifact's {@code source} field in {@code jk-lock.toml}, into fetch errors and into the
@@ -1289,7 +1221,7 @@ public final class MavenRepo {
      * An artifact on disk: the URL it answers for, where it lies, and its SHA-256 and size. The
      * digest is the digest of the bytes at {@code cachePath} as this process established it — hashed
      * as a download landed or an adopted copy was read, or, for a store copy, verified against the
-     * file by its memo or a re-hash ({@link #tryLocalMirror}) — so a caller may name the file by it
+     * file by its memo or a re-hash ({@link LocalMirrorVerifier#stored}) — so a caller may name the file by it
      * (a CAS put) without hashing it again.
      */
     public record Fetched(URI url, Path cachePath, String sha256, long size) {}

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
@@ -12,6 +13,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.transport.RepoTransports;
+import cc.jumpkick.task.RunNotices;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -21,11 +23,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * A repository Maven shares (Central, or one {@code settings.xml} declares; the stub here is
@@ -41,6 +46,9 @@ class MavenRepoM2LookupTest {
 
     private static final String REL = "com/example/widget/1.0/widget-1.0.jar";
     private static final byte[] REAL = "the genuine artifact bytes".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] IMPOSTOR = "a hand-built impostor".getBytes(StandardCharsets.UTF_8);
+    private static final String UNVERIFIED_OFFLINE =
+            "offline: com.example:widget:1.0 in ~/.m2 is unverified; run jk lock online first";
 
     @TempDir
     Path settingsDir;
@@ -276,5 +284,177 @@ class MavenRepoM2LookupTest {
         // a candidate does exist.)
         assertThat(hits).contains("/" + REL);
         assertThat(Files.readAllBytes(fetched.cachePath())).isEqualTo(REAL);
+    }
+
+    /** Where the store keeps the {@code .jk} memo that would vouch for the {@code ~/.m2} file at {@code rel}. */
+    private Path memo(Path store, String rel) {
+        Path repoStore = Objects.requireNonNull(
+                RepoArtifactStore.forRepository(store, "test", base).root());
+        return ArtifactMemo.jkPath(repoStore, rel);
+    }
+
+    private static void goOffline() {
+        SessionContext.installConfig(JkConfig.empty().withOffline(true));
+    }
+
+    /** The run's warnings, collected while {@code body} runs. */
+    private static List<String> warnings(ThrowingRunnable body) throws Exception {
+        List<String> said = new CopyOnWriteArrayList<>();
+        RunNotices.openSink(SessionContext.current().io(), (code, message) -> said.add(message));
+        try {
+            body.run();
+        } finally {
+            RunNotices.closeSink(SessionContext.current().io());
+        }
+        return said;
+    }
+
+    @FunctionalInterface
+    private interface ThrowingRunnable {
+        void run() throws Exception;
+    }
+
+    @Test
+    void an_unvouched_m2_copy_is_not_served_when_the_checksum_read_fails(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        seedM2(tmp.resolve("m2"), IMPOSTOR);
+        serve("/", 500, new byte[0]);
+        Path store = tmp.resolve("store");
+        MavenRepo repo = new MavenRepo("test", base, Http.failFast(), new Cas(store));
+
+        assertThatThrownBy(() -> repo.fetchArtifact(coord())).isInstanceOf(IOException.class);
+
+        assertThat(ArtifactMemo.read(memo(store, REL))).isEmpty();
+        assertThat(Files.readAllBytes(tmp.resolve("m2").resolve(REL))).isEqualTo(IMPOSTOR);
+    }
+
+    @Test
+    void an_unvouched_m2_copy_is_not_served_while_its_repository_is_unreachable(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        seedM2(tmp.resolve("m2"), IMPOSTOR);
+        server.stop(0);
+        Path store = tmp.resolve("store");
+        MavenRepo repo = new MavenRepo("test", base, Http.failFast(), new Cas(store));
+
+        // The first fetch finds the repository down; the second is refused without asking it.
+        assertThatThrownBy(() -> repo.fetchArtifact(coord())).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> repo.fetchArtifact(coord()))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class);
+        assertThat(repo.tryLocalArtifact(coord(), null, () -> false)).isEmpty();
+
+        assertThat(ArtifactMemo.read(memo(store, REL))).isEmpty();
+    }
+
+    @Test
+    void an_unvouched_m2_copy_is_not_served_once_the_lock_has_failed(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        seedM2(tmp.resolve("m2"), IMPOSTOR);
+        Path store = tmp.resolve("store");
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(store));
+
+        assertThat(repo.tryLocalArtifact(coord(), null, () -> true)).isEmpty();
+
+        assertThat(hits).isEmpty();
+        assertThat(ArtifactMemo.read(memo(store, REL))).isEmpty();
+    }
+
+    @Test
+    void offline_an_unvouched_m2_copy_is_not_found_and_gets_no_memo(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        seedM2(tmp.resolve("m2"), IMPOSTOR);
+        server.stop(0);
+        goOffline();
+        Path store = tmp.resolve("store");
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(store));
+
+        List<String> said = warnings(() -> {
+            assertThat(repo.tryLocalArtifact(coord(), null, () -> false)).isEmpty();
+            assertThatThrownBy(() -> repo.fetchArtifact(coord()))
+                    .isInstanceOf(MavenRepo.ArtifactNotFoundException.class)
+                    .hasMessage(UNVERIFIED_OFFLINE);
+        });
+
+        assertThat(said).containsExactly("jk: warning: " + UNVERIFIED_OFFLINE);
+        assertThat(ArtifactMemo.read(memo(store, REL))).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"read", "share"})
+    void offline_a_coordinate_held_nowhere_is_an_ordinary_miss(String integration, @TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.integration", integration);
+        System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
+        server.stop(0);
+        goOffline();
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
+
+        List<String> said = warnings(() -> {
+            assertThat(repo.tryLocalArtifact(coord(), null, () -> false)).isEmpty();
+            assertThatThrownBy(() -> repo.fetchArtifact(coord()))
+                    .isInstanceOf(MavenRepo.ArtifactNotFoundException.class)
+                    .hasMessageContaining("not in local index for test");
+        });
+
+        assertThat(said).isEmpty();
+    }
+
+    /**
+     * A POM the store holds a memo for is served as stored, so a memo written offline for bytes
+     * nothing checked would decide every later online lock.
+     */
+    @Test
+    void an_offline_run_leaves_an_unvouched_m2_pom_to_be_checked_online(@TempDir Path tmp) throws Exception {
+        String pomRel = "com/example/widget/1.0/widget-1.0.pom";
+        byte[] realPom = "<project>genuine</project>".getBytes(StandardCharsets.UTF_8);
+        Path m2 = tmp.resolve("m2");
+        System.setProperty("jk.m2.local", m2.toString());
+        Files.createDirectories(m2.resolve(pomRel).getParent());
+        Files.write(m2.resolve(pomRel), IMPOSTOR);
+        Path store = tmp.resolve("store");
+
+        goOffline();
+        MavenRepo offline = new MavenRepo("test", base, new Http(), new Cas(store));
+        assertThatThrownBy(() -> offline.fetchPom(coord())).isInstanceOf(MavenRepo.ArtifactNotFoundException.class);
+        assertThat(ArtifactMemo.read(memo(store, pomRel))).isEmpty();
+
+        SessionContext.reset();
+        serve("/" + pomRel + ".sha1", 200, sha1Of(realPom).getBytes(StandardCharsets.UTF_8));
+        serve("/" + pomRel, 200, realPom);
+        MavenRepo online = new MavenRepo("test", base, new Http(), new Cas(store));
+
+        assertThat(Files.readAllBytes(online.fetchPom(coord()).cachePath())).isEqualTo(realPom);
+    }
+
+    @Test
+    void offline_a_pinned_m2_copy_is_served_in_place(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.integration", "share");
+        Path m2 = tmp.resolve("m2");
+        seedM2(m2, REAL);
+        server.stop(0);
+        goOffline();
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tmp.resolve("store")));
+
+        MavenRepo.Fetched fetched = repo.fetchArtifact(coord(), Hashing.sha256Hex(REAL), () -> false);
+
+        assertThat(fetched.cachePath()).isEqualTo(m2.resolve(REL));
+        assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(REAL));
+    }
+
+    /** A non-unique snapshot jk downloaded answers as stored while its repository cannot be asked. */
+    @Test
+    void a_vouched_moving_snapshot_is_served_while_its_repository_is_unreachable(@TempDir Path tmp) throws Exception {
+        System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
+        Coordinate snapshot = Coordinate.of("com.example", "widget", "1.0-SNAPSHOT");
+        String rel = MavenLayout.artifactPath(snapshot);
+        serve("/" + rel, 200, REAL);
+        serve("/" + rel + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
+        Path store = tmp.resolve("store");
+        new MavenRepo("test", base, new Http(), new Cas(store)).fetchArtifact(snapshot);
+        server.stop(0);
+        MavenRepo repo = new MavenRepo("test", base, Http.failFast(), new Cas(store));
+
+        Optional<MavenRepo.Fetched> stored = repo.tryLocalArtifact(snapshot, null, () -> false);
+
+        assertThat(stored).isPresent();
+        assertThat(Files.readAllBytes(stored.get().cachePath())).isEqualTo(REAL);
     }
 }

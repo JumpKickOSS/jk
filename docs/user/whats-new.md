@@ -19,6 +19,11 @@ JumpKick shows you this page's new entries after it updates itself.
   `~/.m2/repository`, so a CI runner that caches `~/.jk/store` has all of them. A jar Maven already
   fetched is still used where it is. `[m2] integration = "share"` in `~/.jk/config.toml` restores
   downloading into `~/.m2` ([Repositories](repositories.md#sharing-with-maven)).
+- **A file in `~/.m2` that JumpKick never verified is never pinned unchecked.** A jar or POM Maven
+  downloaded is used only once its repository's published checksum matches it. Offline, or with
+  the repository unreachable, the check cannot run, so the file is not used: an offline `jk lock`
+  that needs it fails with a warning naming it, and one `jk lock` online fixes that. A build whose
+  lock pins the file still reads it offline ([Repositories](repositories.md#offline)).
 - **Breaking: `jk install` and `jk release` stay out of `~/.m2` unless asked.** They install into
   JumpKick's own repository, where every JumpKick project finds the result; `--destination m2` on
   either command, or `[install] destination = "m2"`, installs for Maven and Gradle builds too.

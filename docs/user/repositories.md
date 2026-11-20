@@ -94,6 +94,8 @@ coordinate, and a package only it serves fails naming it. The next resolve asks 
 project package registry asked for Central's artifacts is the usual case. A repository a mirror
 stands in for is the exception: the mirror is the only route to it, so its silence stops the
 resolve.
+A file in the Maven local repository that JumpKick has not verified yet does not stand in for a
+repository that does not answer: nothing can vouch for it, so the lock never pins it.
 
 ### Transfer limits
 
@@ -210,6 +212,12 @@ in the mirrored repository's store as it would online. A repository or mirror re
 `http`, `https`, `s3` or `gs` is asked nothing offline; what the store already holds from it
 answers instead, and a coordinate it never served is not found. Offline, a `file:` repository's
 version list is its own and what the store holds from it, together.
+
+A file in the Maven local repository that JumpKick has never verified (one Maven downloaded, with
+no `.jk` memo in the store) needs the checksum its repository publishes, which offline cannot be
+read. An offline `jk lock` does not use it and fails, with a warning naming the coordinate; one
+`jk lock` online verifies it, and from then on it is read offline as the store is. A build whose
+lock pins the file reads it offline: the pin verifies its bytes.
 
 `jk add` (and MCP `deps`) offline read the same `file:` repositories: a coordinate without a
 version is pinned to the newest stable release they list, and an exact version is checked against
