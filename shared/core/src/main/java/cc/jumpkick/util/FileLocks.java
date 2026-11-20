@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.util;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.AsynchronousCloseException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.FileLockInterruptionException;
@@ -17,6 +19,7 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import org.jspecify.annotations.Nullable;
 
@@ -42,6 +45,9 @@ public final class FileLocks {
     private static final ConcurrentHashMap<Path, Entry> ENTRIES = new ConcurrentHashMap<>();
 
     private static final long LOCK_POSITION = Long.MAX_VALUE - 1;
+
+    /** How often {@link #describeHolder} looks for a channel while another thread holds the JVM lock. */
+    private static final long DESCRIBE_POLL_MILLIS = 10;
 
     private FileLocks() {}
 
@@ -132,57 +138,53 @@ public final class FileLocks {
     /**
      * The holder's description written by {@link Hold#write}, or empty when there is none.
      *
-     * <p>When this JVM already has the file's channel open, the bytes are read from that channel.
-     * Opening a second descriptor and closing it would drop every POSIX lock this process holds
-     * on the file, including the hold that is being described.
+     * <p>Never opens a second descriptor while this JVM may hold the lock: on POSIX its close would
+     * drop every lock this process holds on the file. While another thread of this JVM is inside
+     * the lock (a body, possibly one waiting on another process, or a hold being written), the
+     * bytes are read through that thread's channel without waiting for it. The file is opened only
+     * under the JVM lock with no channel of this JVM on it, so no hold can start meanwhile.
      */
     public static String describeHolder(Path lockFile) {
-        Entry held = openEntry(lockFile);
-        if (held != null) {
-            held.jvm.lock();
-            try {
-                FileChannel open = held.channel;
-                if (open != null && open.isOpen()) return readDescription(open);
-            } finally {
-                held.jvm.unlock();
+        if (!Files.exists(lockFile)) return "";
+        Entry e = entry(lockFile);
+        try {
+            while (!e.jvm.tryLock(DESCRIBE_POLL_MILLIS, TimeUnit.MILLISECONDS)) {
+                FileChannel busy = e.channel;
+                if (busy == null) continue; // being opened or closed, or a body runs without an OS lock
+                try {
+                    return readDescription(busy);
+                } catch (ClosedChannelException released) {
+                    // the hold ended under the read; ask again
+                } catch (IOException unreadable) {
+                    return "";
+                }
             }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return "";
         }
         try {
-            return Files.readString(lockFile, StandardCharsets.UTF_8);
+            FileChannel open = e.channel;
+            return open != null ? readDescription(open) : Files.readString(lockFile, StandardCharsets.UTF_8);
         } catch (IOException unreadable) {
             return "";
+        } finally {
+            e.jvm.unlock();
         }
     }
 
-    /** The entry this JVM already opened for {@code lockFile}, or null. */
-    private static @Nullable Entry openEntry(Path lockFile) {
-        Path key = lockFile.toAbsolutePath().normalize();
-        Entry direct = ENTRIES.get(key);
-        if (direct != null && direct.channel != null) return direct;
-        try {
-            if (Files.exists(key)) {
-                Entry real = ENTRIES.get(key.toRealPath());
-                if (real != null) return real;
-            }
-        } catch (IOException ignored) {
-            // fall through to the spelling key
+    /**
+     * Description bytes at offset 0, read positionally so a thread holding the channel is not
+     * disturbed. The lock itself sits past the end of the file.
+     */
+    private static String readDescription(FileChannel channel) throws IOException {
+        long size = channel.size();
+        if (size <= 0) return "";
+        ByteBuffer buf = ByteBuffer.allocate((int) Math.min(size, 64 * 1024));
+        while (buf.hasRemaining() && channel.read(buf, buf.position()) > 0) {
+            // until the buffer is full or the file ends
         }
-        return direct;
-    }
-
-    /** Description bytes at offset 0. The lock itself sits past the end of the file. */
-    private static String readDescription(FileChannel channel) {
-        try {
-            long size = channel.size();
-            if (size <= 0) return "";
-            int n = (int) Math.min(size, 64 * 1024);
-            ByteBuffer buf = ByteBuffer.allocate(n);
-            int read = channel.read(buf, 0);
-            if (read <= 0) return "";
-            return new String(buf.array(), 0, read, StandardCharsets.UTF_8);
-        } catch (IOException unreadable) {
-            return "";
-        }
+        return new String(buf.array(), 0, buf.position(), StandardCharsets.UTF_8);
     }
 
     /**
@@ -221,9 +223,11 @@ public final class FileLocks {
         final ReentrantLock jvm = new ReentrantLock();
         final Path file;
 
-        /** Guarded by {@link #jvm}: the open channel while a hold or a body is in progress. */
-        @Nullable
-        FileChannel channel;
+        /**
+         * The open channel while a hold or a body is in progress. Written under {@link #jvm};
+         * {@link #describeHolder} reads it without the lock, only to read through it.
+         */
+        volatile @Nullable FileChannel channel;
 
         @Nullable
         FileLock os;
@@ -311,7 +315,7 @@ public final class FileLocks {
                 FileChannel c = entry.channel;
                 if (!open || c == null) throw new IOException("lock released: " + entry.file);
                 c.truncate(0);
-                c.write(ByteBuffer.wrap(description.getBytes(StandardCharsets.UTF_8)), 0);
+                AtomicWrites.writeFully(c, ByteBuffer.wrap(description.getBytes(StandardCharsets.UTF_8)), 0);
                 c.force(false);
             } finally {
                 entry.jvm.unlock();

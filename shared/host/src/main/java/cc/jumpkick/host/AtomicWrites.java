@@ -30,10 +30,8 @@ import java.util.function.IntConsumer;
  * IDE tailing a manifest.
  *
  * <p><strong>What it does not guarantee:</strong> crash consistency. There is no {@code fsync}
- * before the rename — and none anywhere in the product; the only
- * {@link java.nio.channels.FileChannel#force} in the tree is a disk benchmark. On ext4
- * {@code data=ordered} or APFS, a power loss can make the rename durable while the data blocks are
- * not, leaving a zero-length or truncated target.
+ * before the rename. On ext4 {@code data=ordered} or APFS, a power loss can make the rename durable
+ * while the data blocks are not, leaving a zero-length or truncated target.
  *
  * <p>Use {@link #replaceDurably} for a file where a torn target is not recoverable by re-running.
  * There are three: {@code jk-lock.toml}, the engine install pointer, and
@@ -102,7 +100,9 @@ public final class AtomicWrites {
     }
 
     /**
-     * As {@link #replace(Path, byte[])}, forcing the bytes to stable storage before the rename.
+     * As {@link #replace(Path, byte[])}, forcing the bytes to stable storage before the rename and,
+     * on POSIX, the directory after it, so the rename itself survives a power loss. A directory
+     * that refuses the fsync does not fail the write.
      *
      * <p>For the handful of files where a torn target is not recoverable by re-running: the lockfile,
      * the engine install pointer, {@code run-number}. Everything else in this tree
@@ -114,7 +114,7 @@ public final class AtomicWrites {
         boolean moved = false;
         try {
             try (FileChannel ch = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
-                ch.write(ByteBuffer.wrap(bytes));
+                writeFully(ch, ByteBuffer.wrap(bytes), 0);
                 // Metadata too: the rename below is only meaningful if the bytes it publishes are
                 // already on stable storage.
                 ch.force(true);
@@ -123,6 +123,35 @@ public final class AtomicWrites {
             moved = true;
         } finally {
             if (!moved) Files.deleteIfExists(tmp);
+        }
+        if (!Os.isWindows()) forceDirectory(directoryOf(target));
+    }
+
+    /** Write all of {@code src} to {@code ch} from {@code position}, however few bytes each call takes. */
+    public static void writeFully(FileChannel ch, ByteBuffer src, long position) throws IOException {
+        writeFully(ch::write, src, position);
+    }
+
+    /** One positional write, as {@link FileChannel#write(ByteBuffer, long)}; a seam for short writes. */
+    @FunctionalInterface
+    interface PositionalWrite {
+        int write(ByteBuffer src, long position) throws IOException;
+    }
+
+    static void writeFully(PositionalWrite write, ByteBuffer src, long position) throws IOException {
+        long at = position;
+        while (src.hasRemaining()) at += write.write(src, at);
+    }
+
+    /**
+     * Fsync {@code dir} so a rename in it is durable. POSIX only: Windows cannot open a directory as
+     * a channel. Best-effort; some filesystems refuse a directory fsync.
+     */
+    private static void forceDirectory(Path dir) {
+        try (FileChannel ch = FileChannel.open(dir, StandardOpenOption.READ)) {
+            ch.force(true);
+        } catch (IOException | UnsupportedOperationException refused) {
+            // the file's own bytes are on disk; only the rename may be lost
         }
     }
 

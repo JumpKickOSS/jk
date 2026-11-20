@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileAlreadyExistsException;
@@ -17,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.IntConsumer;
@@ -446,5 +448,22 @@ class AtomicWritesTest {
         } finally {
             Files.deleteIfExists(target);
         }
+    }
+
+    /** A channel that takes three bytes per call still receives every byte, each at its own position. */
+    @Test
+    void write_fully_drains_the_buffer_across_short_writes() throws IOException {
+        byte[] payload = "pid=4242\nbuild=17\nkind=build\n".getBytes(StandardCharsets.UTF_8);
+        byte[] file = new byte[8 + payload.length];
+        List<Long> positions = new ArrayList<>();
+        AtomicWrites.PositionalWrite threeAtATime = (src, position) -> {
+            positions.add(position);
+            int n = Math.min(3, src.remaining());
+            src.get(file, (int) position, n);
+            return n;
+        };
+        AtomicWrites.writeFully(threeAtATime, ByteBuffer.wrap(payload), 8);
+        assertThat(Arrays.copyOfRange(file, 8, file.length)).isEqualTo(payload);
+        assertThat(positions).hasSize((payload.length + 2) / 3).startsWith(8L, 11L, 14L);
     }
 }

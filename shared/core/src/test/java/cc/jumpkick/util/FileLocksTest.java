@@ -10,13 +10,17 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
@@ -84,6 +88,56 @@ class FileLocksTest {
             hold.close();
         }
         assertThat(probeFromAnotherProcess(lock)).isEqualTo("free");
+    }
+
+    /**
+     * A thread describing the holder while another takes the lock must not drop that thread's POSIX
+     * lock by closing a descriptor of its own. A forked judge probes the lock after every take.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void describing_the_holder_while_another_thread_takes_the_lock_keeps_the_os_lock(@TempDir Path dir)
+            throws Exception {
+        Path lock = Files.createFile(dir.resolve("build.lock"));
+        AtomicBoolean stop = new AtomicBoolean();
+        List<Thread> describers = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            describers.add(Thread.ofPlatform().daemon().start(() -> {
+                while (!stop.get()) FileLocks.describeHolder(lock);
+            }));
+        }
+        Process judge = start(javaCommand(ProbeLoopMain.class, lock.toString()));
+        try (BufferedReader answers =
+                        new BufferedReader(new InputStreamReader(judge.getInputStream(), StandardCharsets.UTF_8));
+                Writer probes = new OutputStreamWriter(judge.getOutputStream(), StandardCharsets.UTF_8)) {
+            for (int round = 0; round < 5000; round++) {
+                FileLocks.Hold hold = takeWhileDescribed(lock);
+                try {
+                    probes.write("probe\n");
+                    probes.flush();
+                    assertThat(answers.readLine())
+                            .as("judge's view after take " + round)
+                            .isEqualTo("held");
+                } finally {
+                    hold.close();
+                }
+            }
+        } finally {
+            stop.set(true);
+            for (Thread describer : describers) describer.join(Duration.ofSeconds(10));
+            judge.destroy();
+            judge.waitFor();
+        }
+    }
+
+    /** {@link FileLocks#tryHold} until it holds; the describer's brief turns under the JVM lock refuse it. */
+    private static FileLocks.Hold takeWhileDescribed(Path lock) {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (FileLocks.tryHold(lock) instanceof FileLocks.Hold hold) return hold;
+            Thread.onSpinWait();
+        }
+        throw new AssertionError("never took " + lock);
     }
 
     /** A hold and a fold on one file from one JVM share the channel: the fold runs under the hold. */
@@ -165,17 +219,25 @@ class FileLocksTest {
     }
 
     private static Process fork(Class<?> main, String... args) throws IOException {
+        Process p = start(javaCommand(main, args));
+        try (OutputStream in = p.getOutputStream()) {
+            // no stdin
+        }
+        return p;
+    }
+
+    private static Process start(List<String> cmd) throws IOException {
+        return new ProcessBuilder(cmd).redirectErrorStream(true).start();
+    }
+
+    private static List<String> javaCommand(Class<?> main, String... args) {
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         cmd.add("-cp");
         cmd.add(System.getProperty("java.class.path"));
         cmd.add(main.getName());
         cmd.addAll(List.of(args));
-        Process p = new ProcessBuilder(cmd).redirectErrorStream(true).start();
-        try (OutputStream in = p.getOutputStream()) {
-            // no stdin
-        }
-        return p;
+        return cmd;
     }
 
     /** Subprocess body for {@link #with_lock_serialises_read_fold_write_across_processes}. */
@@ -212,6 +274,26 @@ class FileLocksTest {
                 }
                 case FileLocks.Held held -> System.out.println("held");
                 case FileLocks.Unavailable unavailable -> System.out.println("unavailable: " + unavailable.reason());
+            }
+        }
+    }
+
+    /** Subprocess body: probe the lock once per line on stdin and answer each as {@link ProbeMain} does. */
+    public static final class ProbeLoopMain {
+        public static void main(String[] args) throws Exception {
+            Path lock = Path.of(args[0]);
+            BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+            while (in.readLine() != null) {
+                switch (FileLocks.tryHold(lock)) {
+                    case FileLocks.Hold hold -> {
+                        hold.close();
+                        System.out.println("free");
+                    }
+                    case FileLocks.Held held -> System.out.println("held");
+                    case FileLocks.Unavailable unavailable ->
+                        System.out.println("unavailable: " + unavailable.reason());
+                }
+                System.out.flush();
             }
         }
     }
