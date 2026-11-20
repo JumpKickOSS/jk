@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.generate;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.build.TaskSpec;
@@ -19,7 +20,8 @@ import org.jspecify.annotations.Nullable;
  * ({@code [openapi]}, {@code [localizer]}) expands to. {@link #task()} is its build-plan
  * declaration; the body is {@link GeneratorStep}.
  *
- * @param name the entry name; the step is {@code generate-<name>}
+ * @param name the entry name, letters, digits, {@code .}, {@code _} and {@code -}; the step is
+ *     {@code generate-<name>}
  * @param toolArtifact the step-dependency artifact the engine hands the body (the tool's jar, or
  *     the directory holding its runtime closure), or null for a preset whose {@code main} needs no
  *     tool beyond {@code classpath}
@@ -32,11 +34,13 @@ import org.jspecify.annotations.Nullable;
  *     or null
  * @param args the tool's arguments, before {@link Arguments} expansion
  * @param contributes where the output joins the module
- * @param out the output directory's name under the step's scratch
+ * @param out the output directory's name under the step's scratch; one that names the scratch
+ *     itself or climbs out of it is refused
  * @param classpath entries put ahead of the tool's closure on the forked classpath — a preset's
  *     own {@code main} over a library that ships none
  * @param discard paths under the output, or globs over it, removed once the tool has run: what it
- *     writes beside its contribution (DGS codegen's {@code generated-examples})
+ *     writes beside its contribution (DGS codegen's {@code generated-examples}); a plain path that
+ *     names the output itself or climbs out of it is refused
  * @param keyProbe what the tool reads that no file holds (a live schema), measured into the step's
  *     key before it is looked up; with one, inputs that match no file do not skip the tool
  * @param reads module-relative files or directories the tool also reads (an import directory, the
@@ -80,6 +84,10 @@ public record GeneratorEntry(
 
     public GeneratorEntry {
         Objects.requireNonNull(name, "name");
+        if (!PathUtil.isPlainName(name)) {
+            throw new IllegalArgumentException(
+                    "[generate." + name + "] is not a plain name; use letters, digits, '.', '_' or '-'");
+        }
         inputs = List.copyOf(inputs);
         args = List.copyOf(args);
         classpath = List.copyOf(classpath);
@@ -91,6 +99,16 @@ public record GeneratorEntry(
         }
         if (toolArtifact == null && (main == null || classpath.isEmpty())) {
             throw new IllegalArgumentException("[generate." + name + "] names no tool; set main and its classpath");
+        }
+        if (!PathUtil.isStrictlyBelow(out)) {
+            throw new IllegalArgumentException(
+                    "[generate." + name + "] out \"" + out + "\" is not under the step's output root");
+        }
+        for (String path : discard) {
+            if (!Inputs.isGlob(path) && !PathUtil.isStrictlyBelow(path)) {
+                throw new IllegalArgumentException(
+                        "[generate." + name + "] discard \"" + path + "\" is not under the output directory");
+            }
         }
     }
 

@@ -11,6 +11,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -35,6 +36,7 @@ import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /** Shared filesystem helpers. */
@@ -551,6 +553,43 @@ public final class PathUtil {
          * {@code jk-lock.toml}, so freshness behaves as it did in the original tree.
          */
         PRESERVE_ATTRIBUTES
+    }
+
+    /**
+     * Whether {@code rel}, resolved against any directory, names something strictly below it:
+     * no root (absolute, or a drive or root-relative path on Windows), not empty or {@code .} once
+     * normalized, and not climbing out with {@code ..}. Lexical only; a link under the directory
+     * can still lead out of it.
+     */
+    public static boolean isStrictlyBelow(String rel) {
+        Path normalized = Path.of(rel).normalize();
+        return normalized.getRoot() == null && !normalized.toString().isEmpty() && !normalized.startsWith("..");
+    }
+
+    /**
+     * Whether {@code name}, resolved against a directory, names one entry directly inside it: not
+     * empty, {@code .} or {@code ..}, no separator of either platform and no root (a Windows drive).
+     */
+    public static boolean isSingleSegment(String name) {
+        if (name.isEmpty() || name.equals(".") || name.equals("..")) return false;
+        if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) return false;
+        Path path;
+        try {
+            path = Path.of(name);
+        } catch (InvalidPathException notAName) {
+            return false;
+        }
+        return path.getRoot() == null && path.getNameCount() == 1;
+    }
+
+    private static final Pattern PLAIN_NAME = Pattern.compile("[A-Za-z0-9._-]+");
+
+    /**
+     * Whether a user-chosen name may become a directory name as it is: letters, digits, {@code .},
+     * {@code _} and {@code -}, and not {@code .} or {@code ..}.
+     */
+    public static boolean isPlainName(String name) {
+        return PLAIN_NAME.matcher(name).matches() && isSingleSegment(name);
     }
 
     /**

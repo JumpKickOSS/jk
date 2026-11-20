@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lint;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -47,8 +48,18 @@ public final class LintPlugin implements Plugin, BuildExtension {
         for (String run : checkstyleRuns(config)) ctx.task(task(LintTool.CHECKSTYLE, scoped(config, run), run));
     }
 
-    /** The {@code [lint.<name>]} entries: each names a rule set and is a Checkstyle run of its own. */
+    /**
+     * The {@code [lint.<name>]} entries: each names a rule set and is a Checkstyle run of its own.
+     * A name is letters, digits, {@code .}, {@code _} and {@code -}: it names the run's step and
+     * output directory.
+     */
     static List<String> checkstyleRuns(PluginConfig config) {
+        for (String run : config.entries().keySet()) {
+            if (!PathUtil.isPlainName(run)) {
+                throw new IllegalArgumentException(
+                        "[lint." + run + "] is not a plain name; use letters, digits, '.', '_' or '-'");
+            }
+        }
         return List.copyOf(config.entries().keySet());
     }
 

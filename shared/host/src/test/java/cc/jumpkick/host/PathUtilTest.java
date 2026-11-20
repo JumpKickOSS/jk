@@ -155,4 +155,32 @@ class PathUtilTest {
         PathUtil.deleteRecursivelyOrThrow(tmp.resolve("nope"));
         PathUtil.deleteRecursively(null);
     }
+
+    @Test
+    void a_relative_path_strictly_below_its_directory_is_told_from_one_that_leaves_or_names_it() {
+        for (String below : new String[] {"gen", "lint/checkstyle", "a/../b", "./gen"}) {
+            assertThat(PathUtil.isStrictlyBelow(below)).as(below).isTrue();
+        }
+        for (String not : new String[] {"", ".", "a/..", "..", "../x", "a/../../x", "/abs"}) {
+            assertThat(PathUtil.isStrictlyBelow(not)).as(not).isFalse();
+        }
+    }
+
+    @Test
+    void a_single_segment_has_no_separator_and_is_not_a_dot_name() {
+        for (String one : new String[] {"generate-api", "org.hibernate.orm", "a b", "..x"}) {
+            assertThat(PathUtil.isSingleSegment(one)).as(one).isTrue();
+        }
+        for (String not : new String[] {"", ".", "..", "a/b", "a\\b", "/abs"}) {
+            assertThat(PathUtil.isSingleSegment(not)).as(not).isFalse();
+        }
+    }
+
+    @Test
+    void a_plain_name_is_letters_digits_dot_underscore_and_dash() {
+        assertThat(PathUtil.isPlainName("api_v2.1-x")).isTrue();
+        for (String not : new String[] {"", ".", "..", "a b", "a/b", "a:b", "ä"}) {
+            assertThat(PathUtil.isPlainName(not)).as(not).isFalse();
+        }
+    }
 }

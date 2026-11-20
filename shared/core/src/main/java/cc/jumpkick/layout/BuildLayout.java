@@ -5,6 +5,7 @@ import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.OutputDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.LibDir;
@@ -184,9 +185,13 @@ public final class BuildLayout {
 
     /**
      * One plugin step's scratch root, {@code <target>/plugin/<step>/}: its declared output dirs
-     * resolve under it — a lint step's report at {@code lint/<tool>/<tool>.xml}.
+     * resolve under it — a lint step's report at {@code lint/<tool>/<tool>.xml}. A step name that
+     * is not one path segment is refused, so the scratch never lies outside {@link #pluginDir()}.
      */
     public Path pluginStepScratch(String step) {
+        if (!PathUtil.isSingleSegment(step)) {
+            throw new IllegalArgumentException("plugin step \"" + step + "\": name must not contain a path");
+        }
         return pluginDir().resolve(step);
     }
 

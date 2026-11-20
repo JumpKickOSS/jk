@@ -2,6 +2,7 @@
 package cc.jumpkick.layout;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
@@ -11,6 +12,7 @@ import cc.jumpkick.model.Project;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -108,6 +110,21 @@ class BuildLayoutTest {
         assertThat(layout.jacocoExec()).isEqualTo(dir.resolve("target/jacoco.exec"));
         assertThat(layout.jacocoReportDir()).isEqualTo(dir.resolve("target/site/jacoco"));
         assertThat(layout.apidocsDir()).isEqualTo(dir.resolve("target/site/apidocs"));
+    }
+
+    @Test
+    void a_plugin_step_scratch_is_one_directory_inside_the_plugin_dir(@TempDir Path dir) {
+        BuildLayout layout = BuildLayout.of(dir, project("widget", "1.2.3"));
+
+        assertThat(layout.pluginStepScratch("generate-api")).isEqualTo(dir.resolve("target/plugin/generate-api"));
+        assertThat(layout.pluginStepScratch("org.hibernate.orm"))
+                .isEqualTo(dir.resolve("target/plugin/org.hibernate.orm"));
+        for (String step : List.of("generate-x/../../..", "..", ".", "", "a\\b", dir.toString())) {
+            assertThatThrownBy(() -> layout.pluginStepScratch(step))
+                    .as(step)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("plugin step \"" + step + "\": name must not contain a path");
+        }
     }
 
     /** Every build but a release names its artifacts -SNAPSHOT, whichever manifest view it reads. */

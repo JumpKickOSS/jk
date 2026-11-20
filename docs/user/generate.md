@@ -25,9 +25,9 @@ contributes = "sources"                                      # sources | resourc
 | `unpack` | A jar coordinate whose contents the tool reads — a schema published as an artifact (`io.zipkin.proto3:zipkin-proto3:1.0.0`). The jar is fetched like the tool, extracted before the run, and `${unpacked}` names the directory. |
 | `args` | The tool's arguments. `${in}` is the first input, `${inputs}` all of them (alone, one argument per input; embedded, joined with the path separator), `${unpacked}` the extracted jar, `${out}` the output directory, `${module.dir}` the module root — every one an absolute path. Other `${…}` pass through to the tool. |
 | `contributes` | `sources` (default) folds the output into the compiler's source set; `test-sources` into the test compiler's, beside the suites' own sources; `resources` into the packaged resources. |
-| `out` | The output directory's name under the step's output root; default `generated/<name>`. |
+| `out` | The output directory's name under the step's output root; default `generated/<name>`. A name that is absolute, `.` or empty, or climbs out with `..` is an error. |
 | `env` | Variables laid on the tool's environment, such as `{ DB_PASSWORD = "…" }`: a secret the tool reads from there stays off its command line, which other users of the machine can read. |
-| `discard` | Paths under the output, or globs over it, removed once the tool has run — what it writes beside its contribution, such as DGS codegen's example data fetchers under `generated-examples`. |
+| `discard` | Paths under the output, or globs over it, removed once the tool has run — what it writes beside its contribution, such as DGS codegen's example data fetchers under `generated-examples`. A path that is absolute, climbs out with `..`, names the output itself or reaches outside it through a link is an error, and nothing is removed. |
 
 Each entry is one step named `generate-<name>`. Its **action key** is the input files' content
 (a glob's whole base directory), every path an argument names under `${module.dir}/` (a catalog,

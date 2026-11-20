@@ -2,6 +2,7 @@
 package cc.jumpkick.lint;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.In;
@@ -125,6 +126,18 @@ class LintPluginPlanTest {
                         In.classes(),
                         In.config());
         assertThat(spec.declaredOutputs()).containsExactly("lint/checkstyle-nohttp");
+    }
+
+    @Test
+    void an_entry_name_that_is_not_a_plain_name_is_refused() {
+        for (String run : List.of("x/../../..", "..", ".", "", "a b", "a\\b")) {
+            PluginConfig table =
+                    new PluginConfig("lint", Map.of(PluginConfig.ENTRIES, Map.of(run, Map.of("checkstyle", "n.xml"))));
+            assertThatThrownBy(() -> LintPlugin.checkstyleRuns(table))
+                    .as(run)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("[lint." + run + "] is not a plain name; use letters, digits, '.', '_' or '-'");
+        }
     }
 
     /** A rule set at a URL is the engine's to fetch and key: no module file is declared for it. */

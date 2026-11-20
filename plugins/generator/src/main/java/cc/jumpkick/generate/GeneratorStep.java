@@ -5,6 +5,7 @@ import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
@@ -119,14 +120,34 @@ final class GeneratorStep {
 
     /**
      * Remove what the tool wrote beside its contribution: a plain path under {@code out} with
-     * everything below it, or every file a glob over {@code out} matches.
+     * everything below it, or every file a glob over {@code out} matches. A plain path that names
+     * {@code out} itself, lies outside it, or reaches outside it through a link the tool wrote is
+     * refused before anything is deleted. A glob only matches files the walk of {@code out} finds,
+     * and that walk does not enter linked directories.
      */
     static void discard(Path out, List<String> patterns) throws IOException {
+        Path base = out.toAbsolutePath().normalize();
+        List<Path> targets = new ArrayList<>();
         for (String pattern : patterns) {
-            if (!Inputs.isGlob(pattern)) {
-                PathUtil.deleteRecursivelyOrThrow(out.resolve(pattern));
+            if (Inputs.isGlob(pattern)) continue;
+            if (!PathUtil.isStrictlyBelow(pattern)) {
+                throw new IOException("discard \"" + pattern + "\" is not under the output directory");
+            }
+            Path target = base.resolve(pattern).normalize();
+            Path parent;
+            try {
+                parent = Objects.requireNonNull(target.getParent()).toRealPath();
+            } catch (NoSuchFileException absent) {
                 continue;
             }
+            if (!parent.startsWith(base.toRealPath())) {
+                throw new IOException("discard \"" + pattern + "\" leads out of the output directory through a link");
+            }
+            targets.add(target);
+        }
+        for (Path target : targets) PathUtil.deleteRecursivelyOrThrow(target);
+        for (String pattern : patterns) {
+            if (!Inputs.isGlob(pattern)) continue;
             List<PathMatcher> matchers = Inputs.matchers(pattern);
             List<Path> matched = new ArrayList<>();
             PathUtil.forEachRegularFile(out, (file, attrs) -> {

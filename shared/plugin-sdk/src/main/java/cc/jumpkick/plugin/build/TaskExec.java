@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.build;
 import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.plugin.PluginConfig;
@@ -141,8 +142,14 @@ public interface TaskExec {
                         "step-dependency `" + name + "` not provided; declare it in [[contribute.step-dependency]]"));
     }
 
-    /** Resolve (and create) a declared output dir under {@link #scratch()}. */
+    /**
+     * Resolve (and create) a declared output dir under {@link #scratch()}. A {@code rel} that is
+     * absolute, names the scratch itself or climbs out of it with {@code ..} is refused.
+     */
     default Path outputDir(String rel) throws IOException {
+        if (!PathUtil.isStrictlyBelow(rel)) {
+            throw new IllegalArgumentException("output dir \"" + rel + "\" is not under the step's output root");
+        }
         return Files.createDirectories(scratch().resolve(rel));
     }
 

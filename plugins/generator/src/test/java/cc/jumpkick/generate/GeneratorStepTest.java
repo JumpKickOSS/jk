@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.testing.FakeBuildIo;
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -276,6 +277,124 @@ class GeneratorStepTest {
         assertThat(out.resolve("Hello.java")).isRegularFile();
         assertThat(out.resolve("generated-examples")).doesNotExist();
         assertThat(out.resolve("argv.txt")).doesNotExist();
+    }
+
+    @Test
+    void a_discard_path_outside_the_output_or_naming_it_is_refused_when_the_table_is_read(@TempDir Path tmp) {
+        for (String path : List.of("../../src", tmp.resolve("src").toString(), ".", "", "a/../..")) {
+            assertThatThrownBy(() -> GeneratorEntry.fromConfig(
+                            "api",
+                            Map.of(
+                                    "tool", "com.example:stub-gen:1.0",
+                                    "inputs", List.of("api/a.yaml"),
+                                    "discard", List.of(path))))
+                    .as(path)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("[generate.api] discard \"" + path + "\" is not under the output directory");
+        }
+        assertThat(GeneratorEntry.fromConfig(
+                                "api",
+                                Map.of(
+                                        "tool", "com.example:stub-gen:1.0",
+                                        "inputs", List.of("api/a.yaml"),
+                                        "discard", List.of("generated-examples", "a/../b", "../**/*.txt")))
+                        .discard())
+                .hasSize(3);
+    }
+
+    @Test
+    void an_out_outside_the_steps_output_root_or_naming_it_is_refused_when_the_table_is_read(@TempDir Path tmp) {
+        for (String out : List.of("../../..", tmp.toString(), ".", "", "generated/../..")) {
+            assertThatThrownBy(() -> GeneratorEntry.fromConfig(
+                            "api",
+                            Map.of("tool", "com.example:stub-gen:1.0", "inputs", List.of("api/a.yaml"), "out", out)))
+                    .as(out)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("[generate.api] out \"" + out + "\" is not under the step's output root");
+        }
+    }
+
+    @Test
+    void an_entry_name_that_is_not_a_plain_name_is_refused_when_the_table_is_read() {
+        for (String name : List.of("x/../../..", "..", ".", "", "a b", "a\\b")) {
+            assertThatThrownBy(() -> GeneratorEntry.fromConfig(
+                            name, Map.of("tool", "com.example:stub-gen:1.0", "inputs", List.of("api/a.yaml"))))
+                    .as(name)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("[generate." + name + "] is not a plain name; use letters, digits, '.', '_' or '-'");
+        }
+        assertThat(GeneratorEntry.fromConfig(
+                                "api_v2.1-x",
+                                Map.of("tool", "com.example:stub-gen:1.0", "inputs", List.of("api/a.yaml")))
+                        .stepName())
+                .isEqualTo("generate-api_v2.1-x");
+    }
+
+    @Test
+    void an_out_outside_the_steps_output_root_never_runs_the_tool_or_discards_outside_it(@TempDir Path tmp)
+            throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");
+        Path src = FakeBuildIo.write(tmp.resolve("src/Keep.java"), "class Keep {}");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+
+        for (String out : List.of("..", tmp.toString())) {
+            assertThatThrownBy(() -> GeneratorStep.run(
+                            io,
+                            new GeneratorEntry(
+                                    "api",
+                                    "api",
+                                    "com.example:stub-gen:1.0",
+                                    null,
+                                    List.of("api/a.yaml"),
+                                    null,
+                                    List.of("-i", "${in}", "-o", "${out}"),
+                                    GeneratorEntry.Contribution.SOURCES,
+                                    out,
+                                    List.of(),
+                                    List.of("src"),
+                                    null)))
+                    .as(out)
+                    .isInstanceOf(IllegalArgumentException.class);
+            assertThat(src).as(out).hasContent("class Keep {}");
+            assertThat(tmp.resolve("argv.txt")).as(out).doesNotExist();
+        }
+    }
+
+    @Test
+    void discard_refuses_a_path_outside_the_output_or_the_output_itself_before_deleting_anything(@TempDir Path tmp)
+            throws Exception {
+        Path src = FakeBuildIo.write(tmp.resolve("src/Keep.java"), "class Keep {}");
+        Path out = Files.createDirectories(tmp.resolve("scratch/generated/api"));
+        Path generated = FakeBuildIo.write(out.resolve("Hello.java"), "class Hello {}");
+        Path examples = FakeBuildIo.write(out.resolve("generated-examples/Example.java"), "class Example {}");
+
+        for (String path : List.of("../../../src", tmp.resolve("src").toString(), ".", "")) {
+            assertThatThrownBy(() -> GeneratorStep.discard(out, List.of("generated-examples", path)))
+                    .as(path)
+                    .isInstanceOf(IOException.class)
+                    .hasMessage("discard \"" + path + "\" is not under the output directory");
+        }
+
+        assertThat(src).hasContent("class Keep {}");
+        assertThat(generated).isRegularFile();
+        assertThat(examples).isRegularFile();
+    }
+
+    @Test
+    void discard_never_deletes_through_a_link_out_of_the_output(@TempDir Path tmp) throws Exception {
+        Path src = FakeBuildIo.write(tmp.resolve("src/Keep.java"), "class Keep {}");
+        Path out = Files.createDirectories(tmp.resolve("scratch/generated/api"));
+        Path link = Symlinks.create(out.resolve("link"), tmp.resolve("src"));
+
+        assertThatThrownBy(() -> GeneratorStep.discard(out, List.of("link/Keep.java")))
+                .isInstanceOf(IOException.class)
+                .hasMessage("discard \"link/Keep.java\" leads out of the output directory through a link");
+        assertThat(src).hasContent("class Keep {}");
+
+        GeneratorStep.discard(out, List.of("link", "**/*.java"));
+        assertThat(link).doesNotExist();
+        assertThat(src).hasContent("class Keep {}");
     }
 
     private static GeneratorEntry entry(@Nullable String main, List<String> inputs, List<String> args) {
