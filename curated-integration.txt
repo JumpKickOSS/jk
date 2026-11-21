@@ -1,10 +1,10 @@
-# The integration classes that run on every pull request.
+# The integration classes CI's self-host job runs on every run of ci.yml.
 #
-# `jk test -s integration` runs more than a hundred classes; the branch gate cannot afford all
-# of them, so it runs this subset (scripts/curated-integration.sh, a step of the self-host job) and
-# the full suite stays nightly. Membership is a duplicate execution policy, not a JUnit tag: every
-# class named here carries `@Tag("integration")` and runs in the nightly suite run too, so nothing is
-# reclassified to make the gate pass.
+# `jk test -s integration` runs more than a hundred classes; a dispatch of CI on a branch does not
+# run them all unless asked, so the self-host job runs this subset (scripts/curated-integration.sh)
+# and the full suite runs on the release tag and nightly. Membership is a duplicate execution policy,
+# not a JUnit tag: every class named here carries `@Tag("integration")` and runs in the full suite
+# too, so nothing is reclassified to make the gate pass.
 #
 # One entry per line, five `|`-separated fields:
 #

@@ -1,5 +1,6 @@
 # The slow tiers, the coverage ratchet, the doc examples and the product smoke, on Linux and macOS.
-# Unit tests and the curated integration lane stay on every push/PR in ci.yml.
+# Unit tests, the curated integration lane and the whole integration tier run again in ci.yml on the
+# release tag; no workflow runs on a push or a pull request.
 # Manual re-run: Actions → "CI (nightly)" → Run workflow.
 #
 # Every job bootstraps the way ci.yml's self-host job does: the hosted release
@@ -60,7 +61,9 @@ jobs:
         if: always()
         with:
           name: integration-results
-          path: "**/target/surefire-reports/"
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
           if-no-files-found: warn
           retention-days: 14
 

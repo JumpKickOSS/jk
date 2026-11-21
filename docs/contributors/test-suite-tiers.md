@@ -1,6 +1,6 @@
 # Test suite tiers (one tier per tag)
 
-**Goal:** keep the merge gate under **~5 minutes** and run the full e2e once per push, not once per merge.
+**Goal:** keep the merge gate under **~5 minutes** and run the full e2e before a push, nightly and on every release, not once per merge.
 
 ## Commands
 
@@ -30,9 +30,9 @@ before it is pushed. The house rules run under `jk build` and `jk guard`
 
 **Suites are scope, tags are cost.** A suite that claims a tag takes its tests from every test
 source a module has: `jk test -s integration` runs `clients/cli`'s `src/e2e` integration test
-(`E2eSuiteEngineTest`) beside every `src/test` integration class, and the nightly `jk test -s
-integration` step in `ci-nightly.yml` is its CI run. A directory suite keeps what no tag suite
-claims, and `e2e` is in `guard-suites`, so the push gate runs whatever `src/e2e` holds untagged. The
+(`E2eSuiteEngineTest`) beside every `src/test` integration class, and the `jk test -s integration`
+step of `ci.yml` (release tag) and `ci-nightly.yml` is its CI run. A directory suite keeps what no
+tag suite claims, and `e2e` is in `guard-suites`, so the push gate runs whatever `src/e2e` holds untagged. The
 ci-cadence guard holds that every suite `--all` runs is run by a CI step (`jk test -s <name>`) or by
 the push gate. Members carry no `[test.suites.*]` of their own for these tiers: the root's tables
 are the only routing, and a member may only add settings to them (JK-CWJGR).
@@ -90,7 +90,7 @@ test — sitting in the nightly suite run — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
 checkout root and runs one `jk test -s integration -m <module> -S …` per module the
-registry names, as the last step of the self-host job on every pull request. JumpKick fails a run in
+registry names, as a step of the self-host job on every run of `ci.yml`. JumpKick fails a run in
 which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
@@ -195,15 +195,28 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 
 ## CI
 
-- **PR / push (`ci.yml`):** the self-host job (`jk install`, which builds, then `jk guard`, `jk test`: the
-  fast tier and every house-rule lane, run by the checkout's own `jk`; then the curated integration
-  lane and `jk audit -s HIGH` over the lock), the shell fixtures, the workflow lint and the
-  commit-authorship scan. No coverage, no benches.
-- **Release (`ci.yml` on the release tag):** after the curated lane, the self-host job runs
-  `jk test -s release`: the tests a release must pass that are too slow or too heavy for any other
-  run, such as the dashboard's new-project wizard in Playwright's Chromium
-  (`NewProjectWizardE2eTest`). The tier may fetch (the browser, the dashboard's CDN); a red run
-  stops the release.
+Which tier runs where. GitHub minutes are spent nightly and on a release, never on a push or a
+pull request:
+
+| Run | Started by | Tiers |
+|-----|------------|-------|
+| Merge and push gates | a developer, on their own machine | `jk install` (fast tier); `jk install -g` (`test`, `integration`, `e2e`) |
+| No workflow | a push to `main`, a pull request | — |
+| `ci.yml` | a release tag, or a dispatch | fast tier, curated lane, `release`; the whole `integration` tier on a tag, or on a dispatch whose `integration` input is on |
+| `ci-nightly.yml` | its schedule, when the workflow is enabled | `integration`, `slow`, `network`, `bench`, coverage, the audit at `LOW` |
+
+A commit that reaches `main` without the push gate is therefore judged by no CI until the next
+nightly or release run. Nothing runs the integration or slow tier on Windows.
+
+- **Release (`ci.yml` on the release tag):** the self-host job (`jk install`, which builds, then
+  `jk guard`, `jk test`: the fast tier and every house-rule lane, run by the checkout's own `jk`;
+  then the curated integration lane and `jk audit -s HIGH` over the lock), the shell fixtures, the
+  workflow lint and the commit-authorship scan. No coverage, no benches. After the curated lane, the
+  self-host job runs `jk test -s release`: the tests a release must pass that are too slow or too
+  heavy for any other run, such as the dashboard's new-project wizard in Playwright's Chromium
+  (`NewProjectWizardE2eTest`). The tier may fetch (the browser, the dashboard's CDN). Beside it the
+  `integration` job runs `jk test -s integration --continue`, and the Windows and macOS jobs wait
+  for it. A red job stops the release.
 - **Nightly (`ci-nightly.yml`):** `jk test -s integration`, `-s slow`,
   `-s network`, `-s bench`, the coverage ratchet (`jk test --coverage`, `jk guard`),
   the heap guard, the nightly [jk-examples](https://github.com/JumpKickOSS/jk-examples)

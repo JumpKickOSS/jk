@@ -278,9 +278,11 @@ gh run watch                     # CI, then CD: build, merge, and publish waitin
 
 **CI** (`ci.yml`, started by the tag push or a dispatch on the tag): the tag equals the version
 `jk.toml` declares (`scripts/release-version.sh`), the commit authorship scan, the shell fixtures,
-the self-host job, the curated integration lane, the release test tier (`jk test -s release`) and
-the audit. This is the only place the tests
-run in the cloud, and a red run stops the release.
+the self-host job, the curated integration lane, the release test tier (`jk test -s release`), the
+audit and the whole integration tier (`jk test -s integration`, its own job, which the Windows and
+macOS jobs wait for). Beside the nightly, this is the only place the tests run in the cloud: a push
+to `main` starts no workflow ([which tier runs where](test-suite-tiers.md#ci)). A red run stops
+the release: CD starts only on a green one.
 
 **CD** (`release.yml`, started by CI finishing green on a release tag; a `workflow_dispatch` is the
 dry run and never publishes):

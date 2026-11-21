@@ -5,7 +5,9 @@
 # here is the end of that release. Day-to-day pushes and pull requests start nothing; the merge gate
 # (jk format, jk guard, jk install) and the push gate (jk install -g) run on the
 # developer's machine. A workflow_dispatch re-runs the gate on any ref; on a release tag, a green
-# dispatch releases it like the tag push would.
+# dispatch releases it like the tag push would. The whole integration tier runs on every release
+# tag, a dispatch on one included, and on a dispatch on any other ref only when its `integration`
+# input asks: it is most of an hour of runner time.
 #
 # Runners are spent in order, cheapest first: every Linux job, then the Windows jobs once all of
 # those passed, then the macOS jobs once the Windows ones passed. A build already broken on Linux
@@ -20,6 +22,11 @@ on:
   push:
     tags: ["v[0-9]*"]
   workflow_dispatch:
+    inputs:
+      integration:
+        description: Run the whole integration tier (always on a release tag)
+        type: boolean
+        default: false
 
 # Every job runs the GITHUB_TOKEN read-only. A job that has to write says so itself, under its own
 # `permissions:`, naming the one scope it needs.
@@ -271,6 +278,47 @@ jobs:
         if: failure() && steps.audit.outcome == 'failure'
         run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl HIGH
 
+  # The whole integration tier, as the nightly's integration job runs it: a commit can reach main
+  # without the push gate, and the curated lane is a subset. A red class is a verdict about its
+  # module; --continue reports every module's. The release workflow starts only on a green CI run,
+  # so a red tier here stops the release. The nightly's run of the tier took 48 minutes on
+  # ubuntu-latest, bootstrap and install included.
+  integration:
+    name: Integration suite (release tag)
+    if: ${{ github.ref_type == 'tag' || inputs.integration }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JK_HOME: ${{ github.workspace }}/../jk-home
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: graalvm/setup-graalvm@d6eca2595046623d69d636041513c80abf745406 # v1.6.9
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bootstrap jk from the hosted release
+        shell: bash
+        run: bash scripts/ci-bootstrap.sh
+
+      - name: The checkout's own jk takes over
+        run: bash scripts/ci-takeover.sh --install-only
+
+      - name: Integration suite
+        run: jk test -s integration --continue --no-ansi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: integration-results
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
   # The VS Code extension (clients/vscode), on the three desktop OSes, a job each (steps in
   # .github/actions/vscode-extension). It is not a jk module: jk's own build never needs Node.js.
   # Unit tests run under Node's runner; the integration suite starts VS Code (downloaded by
@@ -291,7 +339,7 @@ jobs:
 
   vscode-extension-windows:
     name: VS Code extension (windows-latest)
-    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host]
+    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host, integration]
     # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
     if: ${{ !cancelled() && !failure() }}
     runs-on: windows-latest
@@ -304,7 +352,7 @@ jobs:
 
   installer-windows:
     name: PowerShell 5.1 installer verification
-    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host]
+    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host, integration]
     # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
     if: ${{ !cancelled() && !failure() }}
     runs-on: windows-latest
@@ -321,7 +369,7 @@ jobs:
   # a native client.
   node-windows:
     name: Node.js toolchain (Windows)
-    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host]
+    needs: [tag, authorship, workflows, fixtures, vscode-extension-linux, self-host, integration]
     # The tag check is skipped off a tag: run unless a Linux job failed or the run was cancelled.
     if: ${{ !cancelled() && !failure() }}
     runs-on: windows-2022
