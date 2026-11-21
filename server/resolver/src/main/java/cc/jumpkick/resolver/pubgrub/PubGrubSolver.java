@@ -262,7 +262,8 @@ public class PubGrubSolver {
         deferEmpty = false;
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
-                    List.of(rootTerm, dep.invert()), new Incompatibility.Cause.Dependency(rootTerm, dep)));
+                    List.of(rootTerm, dep.invert()),
+                    new Incompatibility.Cause.Dependency(rootTerm, dep, pinnedBy(dep))));
             if (dep.versions().asExactSingleton().isEmpty()) floatingRoots.add(dep.pkg());
         }
 
@@ -776,9 +777,14 @@ public class PubGrubSolver {
         for (Term depTerm : deps) {
             addIncompatibility(new Incompatibility(
                     List.of(decisionTerm, depTerm.invert()),
-                    new Incompatibility.Cause.Dependency(decisionTerm, depTerm)));
+                    new Incompatibility.Cause.Dependency(decisionTerm, depTerm, pinnedBy(depTerm))));
         }
         return pkg;
+    }
+
+    /** What decided the versions {@code edge} allows, when its own version did not; see {@link PackageSource#pinnedBy}. */
+    private @Nullable String pinnedBy(Term edge) {
+        return source.pinnedBy(edge.pkg(), edge.effectiveVersions());
     }
 
     /**

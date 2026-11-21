@@ -100,6 +100,9 @@ public final class MavenPackageSource implements PackageSource {
     /** Versions the lock a floating pass replaces held, keyed like {@link #lockedVersionPrefs}; see {@link #floorVersion}. */
     private volatile Map<String, String> floorVersions = Map.of();
 
+    /** Per managed {@code group:artifact}, the BOM or {@code [managed-dependencies]} entry its pin came from. */
+    private volatile PinOrigins pinOrigins = PinOrigins.NONE;
+
     /**
      * GA keys the manifest asked for with the {@code snapshot} selector — the one opt-in that wants
      * pre-releases. Mutable for the same reason as {@link #lockedVersionPrefs}.
@@ -246,17 +249,7 @@ public final class MavenPackageSource implements PackageSource {
             EffectivePomBuilder pomBuilder,
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs) {
-        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, KmpRedirects.NONE);
-    }
-
-    /** As above with KMP root-module redirect resolution (see {@link KmpRedirects}). */
-    public MavenPackageSource(
-            RepoGroup repos,
-            EffectivePomBuilder pomBuilder,
-            Map<String, String> bomConstraints,
-            Map<String, String> lockedVersionPrefs,
-            KmpRedirects kmp) {
-        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
+        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, KmpRedirects.NONE, PlatformPolicy.ENFORCED);
     }
 
     /** As above with {@link PlatformPolicy}; unmapped fills default to MEDIATE. */
@@ -373,6 +366,22 @@ public final class MavenPackageSource implements PackageSource {
     /** The prior lock's versions a floating pass must not go below, by package key and by {@code group:artifact}. */
     public void setFloorVersions(Map<String, String> floors) {
         this.floorVersions = Map.copyOf(Objects.requireNonNull(floors, "floors"));
+    }
+
+    /**
+     * Where each platform pin came from, {@code group:artifact →} a BOM's {@code group:artifact:version}
+     * or a managed entry's {@code jk.toml:<handle>}: what {@link #pinnedBy} names.
+     */
+    void setPinOrigins(Map<String, String> gaToOrigin) {
+        this.pinOrigins = new PinOrigins(gaToOrigin);
+    }
+
+    @Override
+    public @Nullable String pinnedBy(String pkg, VersionSet constraint) {
+        if (pinOrigins.byModule().isEmpty()) return null;
+        String ga = PackageId.parse(pkg).ga();
+        return pinOrigins.of(
+                ga, firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg)), platformPolicy, constraint);
     }
 
     /**

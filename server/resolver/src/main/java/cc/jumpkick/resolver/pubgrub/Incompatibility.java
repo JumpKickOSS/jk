@@ -30,8 +30,18 @@ public record Incompatibility(List<Term> terms, Cause cause) {
         /** "The root project requires the root package itself." */
         record Root(String rootPkg, String rootVersion) implements Cause {}
 
-        /** "Package {@code from} {@code fromVersions} depends on {@code to}." */
-        record Dependency(Term from, Term to) implements Cause {}
+        /**
+         * "Package {@code from} {@code fromVersions} depends on {@code to}." {@code pinnedBy} names
+         * what decided {@code to}'s versions when the edge's own did not: a BOM as {@code
+         * group:artifact:version} or a {@code [managed-dependencies]} entry as {@code
+         * jk.toml:<handle>}; {@code null} otherwise.
+         */
+        record Dependency(Term from, Term to, @Nullable String pinnedBy) implements Cause {
+            /** An edge whose own version decides the target's. */
+            public Dependency(Term from, Term to) {
+                this(from, to, null);
+            }
+        }
 
         /**
          * No versions of {@code pkg} satisfy the requested set. {@code unknownPackage} is {@code true}

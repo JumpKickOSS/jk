@@ -856,6 +856,7 @@ public final class LockOrchestrator {
             sharedSource.setManagedExclusions(constraints.managedExclusions());
             sharedSource.setWorkspaceModules(workspaceModules);
             sharedSource.setFloorVersions(floors);
+            sharedSource.setPinOrigins(constraints.pinOrigins());
             sharedSource.setPomRepositories(pomRepositories);
         }
 

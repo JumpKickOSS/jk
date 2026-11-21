@@ -71,6 +71,16 @@ public interface PackageSource {
     }
 
     /**
+     * What decided {@code constraint}, the versions an edge onto {@code pkg} allows, when the edge's
+     * own version did not: a BOM as {@code group:artifact:version} or a {@code
+     * [managed-dependencies]} entry as {@code jk.toml:<handle>}. Diagnostics name it beside the
+     * edge. Default: {@code null}, the edge decided.
+     */
+    default @Nullable String pinnedBy(String pkg, VersionSet constraint) {
+        return null;
+    }
+
+    /**
      * Optional pre-solve warm (BOM pins, lock prefs, root exact pins). Default: no-op. Production
      * Maven sources parallel-load known pins so the first decide frontier is not cold on disk.
      */

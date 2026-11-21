@@ -16,6 +16,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
@@ -188,6 +189,67 @@ class LockOrchestratorBomTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(leafArt.version()).isEqualTo("1.0");
+    }
+
+    /** A conflict on a version the BOM pins names the BOM, in the text and in the typed conflict. */
+    @Test
+    void a_conflict_on_a_bom_pinned_edge_names_the_bom(@TempDir Path tempDir) {
+        upstream.pom("org.example", "the-bom", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>the-bom</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.foo</groupId>
+                        <artifactId>leaf</artifactId>
+                        <version>1.0</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5");
+        upstream.pom("com.foo", "middle", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>middle</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.5</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.jar("com.foo", "middle", "1.0");
+        upstream.pom("com.foo", "leaf", "1.0", leafVersioned("leaf", "1.0"));
+        upstream.jar("com.foo", "leaf", "1.0");
+        upstream.pom("com.foo", "leaf", "1.5", leafVersioned("leaf", "1.5"));
+        upstream.jar("com.foo", "leaf", "1.5");
+
+        JkBuild project = jkBuildWithDeps(Map.of(
+                Scope.PLATFORM,
+                List.of(Dependency.of("the-bom", "org.example:the-bom", VersionSelector.parse("=1.0"))),
+                Scope.MAIN,
+                List.of(
+                        new Dependency("com.foo:middle", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:leaf", VersionSelector.parse("^1.5")))));
+
+        LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
+        assertThatThrownBy(() -> orchestrator.lock(project, "test"))
+                .isInstanceOfSatisfying(UnsatisfiableException.class, e -> {
+                    assertThat(e.getMessage())
+                            .contains(
+                                    "com.foo:middle 1.0 depends on com.foo:leaf 1.0 (pinned by org.example:the-bom:1.0)");
+                    assertThat(e.conflict().facts())
+                            .filteredOn(f -> "com.foo:middle".equals(f.from()))
+                            .extracting(f -> f.pinnedBy())
+                            .containsExactly("org.example:the-bom:1.0");
+                });
     }
 
     @Test

@@ -227,7 +227,19 @@ the repository's version catalog (`maven-metadata.xml`) omits it: the POM it nam
 exist. A classified artifact (`io.netty:netty-transport-native-epoll:linux-x86_64`) follows the
 same rule as the plain module — two POMs naming it at different versions mediate to the highest
 declared, and a platform pin on the module governs its classified edges as it does the plain one.
-Conflicts get PubGrub prose. With a BOM: [Platforms](platforms.md).
+Conflicts get PubGrub prose: the dependencies the failure comes from, then one conclusion per
+line of reasoning, not one per solver step. A dependency whose version a BOM or a
+`[managed-dependencies]` entry decided names it, as the lock's `pinned-by` does:
+
+```text
+‼ Cannot resolve dependencies:
+  │ com.foo:middle 1.0 depends on com.foo:leaf 1.0 (pinned by org.example:the-bom:1.0)
+  │ The project depends on com.foo:leaf [1.5,2.0)
+  │ The project depends on com.foo:middle 1.0
+  │ Therefore, the project's requirements cannot be resolved
+```
+
+With a BOM: [Platforms](platforms.md).
 
 Your own exact pin is one constraint among the transitives': a pin below a floor some POM declares
 is a conflict, explained — raise the pin to the version the floor names. There is no nearest-wins

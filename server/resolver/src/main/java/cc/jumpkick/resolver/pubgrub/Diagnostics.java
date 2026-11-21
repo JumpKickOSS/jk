@@ -3,6 +3,7 @@ package cc.jumpkick.resolver.pubgrub;
 
 import cc.jumpkick.model.PackageId;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.IdentityHashMap;
@@ -10,6 +11,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * English explanation of an {@link UnsatisfiableException} incompatibility DAG (post-order leaves
@@ -168,6 +170,69 @@ public final class Diagnostics {
         return List.copyOf(out);
     }
 
+    /** {@link Conflict#of}: the facts in pre-order over the DAG, each node once. */
+    static Conflict conflict(Incompatibility rootCause) {
+        List<Conflict.Fact> facts = new ArrayList<>();
+        Set<Incompatibility> visited = identitySet();
+        Deque<Incompatibility> stack = new ArrayDeque<>();
+        stack.push(rootCause);
+        while (!stack.isEmpty()) {
+            Incompatibility inco = stack.pop();
+            if (!visited.add(inco)) continue;
+            if (inco.cause() instanceof Incompatibility.Cause.Derived d) {
+                stack.push(d.b());
+                stack.push(d.a());
+                continue;
+            }
+            Conflict.Fact fact = fact(inco.cause());
+            if (fact != null) facts.add(fact);
+        }
+        LinkedHashSet<String> packages = new LinkedHashSet<>();
+        for (Term t : rootCause.terms()) {
+            if (!isRoot(t)) packages.add(gaOf(t.pkg()));
+        }
+        return new Conflict(
+                describeConclusion(rootCause, Palette.PLAIN), List.copyOf(packages), facts, rootConstraints(rootCause));
+    }
+
+    private static Conflict.@Nullable Fact fact(Incompatibility.Cause cause) {
+        return switch (cause) {
+            case Incompatibility.Cause.Dependency dep -> {
+                boolean constraint = !dep.to().positive();
+                boolean project = isRoot(dep.from());
+                yield new Conflict.Fact(
+                        constraint ? "constraint" : "dependency",
+                        gaOf(dep.to().pkg()),
+                        versionsOf(dep.to().effectiveVersions()),
+                        project ? null : gaOf(dep.from().pkg()),
+                        project ? null : versionsOf(dep.from().effectiveVersions()),
+                        dep.pinnedBy(),
+                        List.of(),
+                        List.of());
+            }
+            case Incompatibility.Cause.NoVersions nv ->
+                new Conflict.Fact(
+                        nv.unknownPackage() ? "not-found" : "no-versions",
+                        gaOf(nv.pkg()),
+                        versionsOf(nv.requested()),
+                        null,
+                        null,
+                        null,
+                        nv.available(),
+                        nv.notes());
+            case Incompatibility.Cause.Unavailable u ->
+                new Conflict.Fact("unavailable", gaOf(u.pkg()), u.version(), null, null, null, List.of(), List.of());
+            case Incompatibility.Cause.BudgetExceeded b ->
+                new Conflict.Fact("budget", "", "", null, null, null, List.of(), List.of(b.reason()));
+            case Incompatibility.Cause.Root r -> null;
+            case Incompatibility.Cause.Derived d -> null;
+        };
+    }
+
+    private static String versionsOf(VersionSet versions) {
+        return stripBraces(versions.toString());
+    }
+
     private static String gaOf(String pkg) {
         if (!PackageId.isMavenPackageKey(pkg)) return pkg;
         try {
@@ -251,23 +316,30 @@ public final class Diagnostics {
         return shared;
     }
 
-    /** One frame of the rendering walk: a node on the way in, or a {@code Derived} node whose children are out. */
-    private record Frame(Incompatibility inco, boolean childrenDone) {}
+    /**
+     * One frame of the rendering walk: a node on the way in, or a {@code Derived} node whose children
+     * are out; {@code conclude} is false for a link of a linear chain, whose conclusion only its
+     * successor's restates.
+     */
+    private record Frame(Incompatibility inco, boolean childrenDone, boolean conclude) {}
 
     /**
      * Post-order: a derived node's inputs before its "Therefore". A shared node is numbered where
-     * it first prints and is a back-reference after that; any other node prints once.
+     * it first prints and is a back-reference after that; any other node prints once. A linear
+     * chain, each derived node concluding from one derived node and one fact, prints its facts and
+     * one conclusion: an unshared derived input of such a node draws no "Therefore" of its own.
      */
     private static void renderInco(
             Incompatibility rootCause, StringBuilder out, String prefix, Set<Incompatibility> shared, Palette palette) {
         Map<Incompatibility, Integer> numbered = new IdentityHashMap<>();
         Set<Incompatibility> emitted = identitySet();
         Deque<Frame> stack = new ArrayDeque<>();
-        stack.push(new Frame(rootCause, false));
+        stack.push(new Frame(rootCause, false, true));
         while (!stack.isEmpty()) {
             Frame frame = stack.pop();
             Incompatibility inco = frame.inco();
             if (frame.childrenDone()) {
+                if (!frame.conclude()) continue;
                 out.append(prefix)
                         .append(label(inco, shared, numbered))
                         .append("Therefore, ")
@@ -283,13 +355,23 @@ public final class Diagnostics {
                 continue;
             }
             if (inco.cause() instanceof Incompatibility.Cause.Derived d) {
-                stack.push(new Frame(inco, true));
-                stack.push(new Frame(d.b(), false));
-                stack.push(new Frame(d.a(), false));
+                stack.push(new Frame(inco, true, frame.conclude()));
+                stack.push(new Frame(d.b(), false, !chainLink(d.b(), d.a(), shared)));
+                stack.push(new Frame(d.a(), false, !chainLink(d.a(), d.b(), shared)));
                 continue;
             }
             renderLeaf(inco, out, prefix, label(inco, shared, numbered), palette);
         }
+    }
+
+    /**
+     * True when {@code input} is a link of a linear chain: an unshared derived node whose sibling
+     * input is a fact, so the node they derive restates its conclusion.
+     */
+    private static boolean chainLink(Incompatibility input, Incompatibility sibling, Set<Incompatibility> shared) {
+        return input.cause() instanceof Incompatibility.Cause.Derived
+                && !(sibling.cause() instanceof Incompatibility.Cause.Derived)
+                && !shared.contains(input);
     }
 
     /** The {@code "#n "} prefix of a shared node's line, numbered in print order; empty for any other node. */
@@ -320,8 +402,10 @@ public final class Diagnostics {
                         .append(label)
                         .append(from)
                         .append(constraint ? " constrains " : " depends on ")
-                        .append(describe(to, palette))
-                        .append('\n');
+                        .append(describe(to, palette));
+                if (dep.pinnedBy() != null)
+                    out.append(" (pinned by ").append(dep.pinnedBy()).append(')');
+                out.append('\n');
             }
             case Incompatibility.Cause.NoVersions nv -> {
                 if (nv.unknownPackage()) {

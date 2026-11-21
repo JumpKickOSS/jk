@@ -235,6 +235,21 @@ public final class PlatformConstraints {
     }
 
     /**
+     * Per module the table still pins at the version it collected, {@code group:artifact →} the BOM
+     * ({@code group:artifact:version}) or {@code [managed-dependencies]} entry ({@code
+     * jk.toml:<handle>}) the pin came from. A module an exact root stripped, or whose version a
+     * later edit replaced, is left out: no entry or BOM speaks for it.
+     */
+    Map<String, String> pinOrigins() {
+        Map<String, String> out = new LinkedHashMap<>();
+        provenance.forEach((ga, by) -> {
+            String version = versions.get(ga);
+            if (version != null && version.equals(collected.get(ga))) out.put(ga, by);
+        });
+        return out;
+    }
+
+    /**
      * The version the table managed {@code ga} at as collected from the manifest's entries and BOMs,
      * whatever the solve did to it since: an exact root strips the table's say on its module from
      * {@link #versions()}, and this still answers what the table said. {@code null} when no entry

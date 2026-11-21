@@ -172,6 +172,38 @@ class MavenPackageSourceConstraintTest {
         assertThat(vs.contains("2.0.0")).isFalse();
     }
 
+    /** A pinned edge names the BOM or managed entry behind it; an edge that decided its own version names nothing. */
+    @Test
+    void a_pinned_edge_names_what_pinned_it(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.2.3", "com.foo:gadget", "2.0"));
+        src.setPinOrigins(Map.of("com.foo:widget", "com.foo:bom:7", "com.foo:gadget", "jk.toml:gadget"));
+
+        VersionSet widget = src.constraintForManagedEdge("com.foo:widget:jar:", "1.0.0");
+        assertThat(src.pinnedBy("com.foo:widget:jar:", widget)).isEqualTo("com.foo:bom:7");
+        assertThat(src.pinnedBy("com.foo:widget:jar:", widget.complement().complement()))
+                .as("a constraint edge's negated set is the same versions")
+                .isEqualTo("com.foo:bom:7");
+        assertThat(src.pinnedBy("com.foo:gadget:jar:", VersionSet.exact("2.0"))).isEqualTo("jk.toml:gadget");
+        assertThat(src.pinnedBy("com.foo:widget:jar:", VersionSet.exact("1.0.0")))
+                .isNull();
+        assertThat(src.pinnedBy("org.example:unmanaged:jar:", VersionSet.exact("1.2.3")))
+                .isNull();
+    }
+
+    @Test
+    void under_floor_a_pin_names_itself_only_where_it_is_the_floor(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.2.0"), PlatformPolicy.FLOOR);
+        src.setPinOrigins(Map.of("com.foo:widget", "com.foo:bom:7"));
+
+        VersionSet below = src.constraintForManagedEdge("com.foo:widget:jar:", "1.0.0");
+        VersionSet above = src.constraintForManagedEdge("com.foo:widget:jar:", "1.5.0");
+
+        assertThat(src.pinnedBy("com.foo:widget:jar:", below)).isEqualTo("com.foo:bom:7");
+        assertThat(src.pinnedBy("com.foo:widget:jar:", above))
+                .as("the edge's own version lifted it past the pin")
+                .isNull();
+    }
+
     private MavenPackageSource source(Path tmp, Map<String, String> bom) {
         return source(tmp, bom, PlatformPolicy.ENFORCED);
     }

@@ -23,4 +23,9 @@ public final class UnsatisfiableException extends RuntimeException {
     public Incompatibility rootCause() {
         return rootCause;
     }
+
+    /** The failure as data: the facts it derives from and the declarations behind it. */
+    public Conflict conflict() {
+        return Conflict.of(rootCause);
+    }
 }

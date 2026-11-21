@@ -3,8 +3,12 @@ package cc.jumpkick.resolver.pubgrub;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.tuple;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class DiagnosticsTest {
@@ -213,7 +217,8 @@ class DiagnosticsTest {
         String rendered = Diagnostics.render(chain);
 
         assertThat(rendered.lines().filter(l -> l.contains("Therefore,")).count())
-                .isEqualTo(depth);
+                .as("a linear chain prints one conclusion")
+                .isEqualTo(1);
         assertThat(rendered.lines().filter(l -> l.contains("depends on")).count())
                 .as("the shared leaf renders once and is referenced after that")
                 .isEqualTo(1);
@@ -266,5 +271,175 @@ class DiagnosticsTest {
         } catch (UnsatisfiableException e) {
             assertThat(Diagnostics.rootConstraints(e.rootCause())).containsExactly("missing:lib");
         }
+    }
+
+    /** Each link of a linear chain concludes from the one before and one fact: only the last conclusion prints. */
+    @Test
+    void a_linear_chain_prints_its_facts_and_one_conclusion() {
+        Incompatibility chain = fact("a");
+        for (String pkg : List.of("b", "c", "d")) {
+            chain = new Incompatibility(List.of(ROOT), new Incompatibility.Cause.Derived(chain, fact(pkg)));
+        }
+
+        String rendered = Diagnostics.render(chain);
+
+        assertThat(rendered.lines().filter(l -> l.contains("depends on")).count())
+                .isEqualTo(4);
+        assertThat(rendered.lines().filter(l -> l.contains("Therefore,")).toList())
+                .containsExactly("  │ Therefore, the project's requirements cannot be resolved");
+    }
+
+    /** A node concluding from two derived nodes is no chain: each branch keeps its conclusion. */
+    @Test
+    void two_derived_branches_keep_their_conclusions() {
+        Incompatibility left = new Incompatibility(
+                List.of(ROOT, Term.negative("x", VersionSet.ALL)),
+                new Incompatibility.Cause.Derived(fact("a"), fact("b")));
+        Incompatibility right = new Incompatibility(
+                List.of(ROOT, Term.negative("y", VersionSet.ALL)),
+                new Incompatibility.Cause.Derived(fact("c"), fact("d")));
+        Incompatibility top = new Incompatibility(List.of(ROOT), new Incompatibility.Cause.Derived(left, right));
+
+        String rendered = Diagnostics.render(top);
+
+        assertThat(rendered.lines().filter(l -> l.contains("Therefore,")).count())
+                .isEqualTo(3);
+    }
+
+    /** A term a BOM or managed entry decided names it beside the dependency, in the text and as data. */
+    @Test
+    void a_conflicting_term_names_the_bom_that_pins_it() {
+        PackageSource versions = InMemoryPackageSource.builder()
+                .version("org.slf4j:slf4j-api", "1.7.36")
+                .version("org.slf4j:slf4j-api", "2.0.13")
+                .version(
+                        "ch.qos.logback:logback-classic",
+                        "1.5.6",
+                        deps -> deps.require("org.slf4j:slf4j-api", VersionSet.exact("2.0.13")))
+                .version(
+                        "org.apache.zookeeper:zookeeper",
+                        "3.9.2",
+                        deps -> deps.require("org.slf4j:slf4j-api", VersionSet.exact("1.7.36")))
+                .build();
+        PackageSource pinned = new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                return versions.versions(pkg);
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return versions.dependencies(pkg, version);
+            }
+
+            @Override
+            public @Nullable String pinnedBy(String pkg, VersionSet constraint) {
+                return pkg.equals("org.slf4j:slf4j-api") && constraint.equals(VersionSet.exact("1.7.36"))
+                        ? "org.apache.zookeeper:zookeeper-bom:3.9.2"
+                        : null;
+            }
+        };
+        try {
+            new PubGrubSolver(pinned)
+                    .solve(
+                            "<root>",
+                            "1.0",
+                            List.of(
+                                    Term.positive("ch.qos.logback:logback-classic", VersionSet.exact("1.5.6")),
+                                    Term.positive("org.apache.zookeeper:zookeeper", VersionSet.exact("3.9.2"))));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            assertThat(Diagnostics.render(e.rootCause()))
+                    .contains("org.apache.zookeeper:zookeeper 3.9.2 depends on org.slf4j:slf4j-api 1.7.36"
+                            + " (pinned by org.apache.zookeeper:zookeeper-bom:3.9.2)")
+                    .contains("ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api 2.0.13\n");
+
+            Conflict conflict = e.conflict();
+            assertThat(conflict.facts())
+                    .filteredOn(f -> f.from() != null && f.from().equals("org.apache.zookeeper:zookeeper"))
+                    .singleElement()
+                    .satisfies(f -> {
+                        assertThat(f.kind()).isEqualTo("dependency");
+                        assertThat(f.pkg()).isEqualTo("org.slf4j:slf4j-api");
+                        assertThat(f.versions()).isEqualTo("1.7.36");
+                        assertThat(f.fromVersions()).isEqualTo("3.9.2");
+                        assertThat(f.pinnedBy()).isEqualTo("org.apache.zookeeper:zookeeper-bom:3.9.2");
+                    });
+        } catch (Exception e) {
+            fail("expected UnsatisfiableException, got: " + e);
+        }
+    }
+
+    /** The typed view carries what the text explains: facts, the project's declarations, the conclusion. */
+    @Test
+    void the_conflict_is_typed_and_serialises_to_plain_json_values() {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("shared", "1.0")
+                .version("shared", "2.0")
+                .version("a", "1.0", deps -> deps.require("shared", VersionSet.exact("1.0")))
+                .version("b", "1.0", deps -> deps.require("shared", VersionSet.exact("2.0")))
+                .build();
+        try {
+            new PubGrubSolver(src)
+                    .solve(
+                            "<root>",
+                            "1.0",
+                            List.of(
+                                    Term.positive("a", VersionSet.exact("1.0")),
+                                    Term.positive("b", VersionSet.exact("1.0"))));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            Conflict conflict = e.conflict();
+            assertThat(conflict.declared()).containsExactlyInAnyOrder("a", "b");
+            assertThat(conflict.conclusion()).endsWith("cannot be resolved");
+            assertThat(conflict.facts())
+                    .extracting(Conflict.Fact::kind, Conflict.Fact::from, Conflict.Fact::pkg, Conflict.Fact::versions)
+                    .contains(
+                            tuple("dependency", "a", "shared", "1.0"),
+                            tuple("dependency", "b", "shared", "2.0"),
+                            tuple("dependency", null, "a", "1.0"));
+
+            Map<String, Object> json = conflict.toMap();
+            assertThat(json).containsOnlyKeys("conclusion", "packages", "facts", "declared");
+            assertThat(json.get("facts"))
+                    .asList()
+                    .contains(Map.of(
+                            "kind",
+                            "dependency",
+                            "package",
+                            "shared",
+                            "versions",
+                            "2.0",
+                            "from",
+                            "b",
+                            "fromVersions",
+                            "1.0"));
+        } catch (Exception e) {
+            fail("expected UnsatisfiableException, got: " + e);
+        }
+    }
+
+    @Test
+    void a_missing_package_is_a_not_found_fact() {
+        PackageSource src = InMemoryPackageSource.builder().build();
+        try {
+            new PubGrubSolver(src)
+                    .solve("<root>", "1.0", List.of(Term.positive("missing:lib", VersionSet.exact("1.0"))));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            assertThat(e.conflict().facts())
+                    .extracting(Conflict.Fact::kind, Conflict.Fact::pkg)
+                    .contains(tuple("not-found", "missing:lib"));
+        } catch (Exception e) {
+            fail("expected UnsatisfiableException, got: " + e);
+        }
+    }
+
+    private static final Term ROOT = Term.positive("<root>", VersionSet.exact("1.0"));
+
+    /** The project's dependency on {@code pkg} 1.0, as its own leaf. */
+    private static Incompatibility fact(String pkg) {
+        Term dep = Term.positive(pkg, VersionSet.exact("1.0"));
+        return new Incompatibility(List.of(ROOT, dep.invert()), new Incompatibility.Cause.Dependency(ROOT, dep));
     }
 }
