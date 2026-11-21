@@ -498,7 +498,7 @@ public final class MavenPackageSource implements PackageSource {
         String where = "repositories." + spec.name();
         boolean plaintext = "http".equalsIgnoreCase(spec.url().getScheme())
                 && !RepositorySpec.loopback(spec.url().getHost());
-        return "repository `" + spec.name() + "` at " + spec.url() + " is blocked"
+        return "repository `" + spec.name() + "` at " + SafeUri.forMessage(spec.url()) + " is blocked"
                 + (plaintext
                         ? ": plain http; use https or set allow-insecure = true"
                         : "; remove blocked = true from [" + where + "] to use it");

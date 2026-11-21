@@ -45,7 +45,8 @@ import org.jspecify.annotations.Nullable;
  * the user's own {@code ~/.jk/config.toml}, a {@code <mirror>} or active-profile {@code
  * <repository>} with that id in the user's {@code settings.xml}, a {@code JK_REPO_<ID>_HOST}
  * variable from the caller's shell, or an id that is itself the host. Anything else is refused with a warning that names the
- * repository, the origin and the source that was not sent.
+ * repository, the origin and the source that was not sent. A binding that names no scheme does not
+ * reach a plaintext {@code http://} URL off loopback, since the project picks the scheme.
  *
  * <p>An inline {@code ${VAR}} reference reads this machine's environment too, and which manifest
  * wrote it decides whether it may. The user's own {@code ~/.jk/config.toml} may name any variable.
@@ -342,7 +343,7 @@ public final class RepoCredentialResolver {
             String prefix = envVarPrefix(repoId);
             return "jk: warning: " + repoId + " at " + origin + ": no credential sent; jk.toml cannot use " + refs
                     + "\n  move the reference to ~/.jk/config.toml, set " + prefix + "TOKEN with " + prefix + "HOST="
-                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run jk repo login "
+                    + hostBindingFor(url) + ", or run jk repo login "
                     + repoId + " -U " + SafeUri.forMessage(url);
         });
     }
@@ -414,15 +415,23 @@ public final class RepoCredentialResolver {
         String boundHost = nonBlank(hostBindings.apply(hostVar));
         if (boundHost != null) {
             if (hostMatches(boundHost, url)) return Binding.BOUND;
+            if (!boundHost.contains("://") && plaintext(url)) {
+                return Binding.mismatch(hostVar + " names no scheme, so it does not bind plain http; set it to "
+                        + originText(url) + " to send the credential unencrypted");
+            }
             return Binding.mismatch(hostVar + " names " + boundHost + ", not " + hostPort(url));
         }
-        if (repoId.equalsIgnoreCase(url.getHost()) || repoId.equalsIgnoreCase(hostPort(url))) {
+        if ((repoId.equalsIgnoreCase(url.getHost()) || repoId.equalsIgnoreCase(hostPort(url))) && !plaintext(url)) {
             return Binding.BOUND;
         }
         return Binding.UNBOUND;
     }
 
-    /** {@code host}, {@code host:port}, or a full URL whose origin must match. */
+    /**
+     * {@code host}, {@code host:port}, or a full URL whose origin must match. A binding that names
+     * no scheme never binds a plaintext {@code http://} URL off loopback: the project chooses the
+     * scheme, so only a full {@code http://} binding sends a credential in the clear.
+     */
     static boolean hostMatches(String binding, URI url) {
         if (binding.contains("://")) {
             try {
@@ -431,6 +440,7 @@ public final class RepoCredentialResolver {
                 return false;
             }
         }
+        if (plaintext(url)) return false;
         int colon = binding.lastIndexOf(':');
         String host = colon >= 0 ? binding.substring(0, colon) : binding;
         if (url.getHost() == null || !host.equalsIgnoreCase(url.getHost())) return false;
@@ -442,9 +452,20 @@ public final class RepoCredentialResolver {
         }
     }
 
+    /** A plaintext {@code http://} URL to a host other than this machine. */
+    private static boolean plaintext(URI url) {
+        return "http".equalsIgnoreCase(url.getScheme()) && !RepositorySpec.loopback(url.getHost());
+    }
+
     private static int effectivePort(URI url) {
         if (url.getPort() != -1) return url.getPort();
         return "https".equalsIgnoreCase(url.getScheme()) ? 443 : 80;
+    }
+
+    /** The {@code JK_REPO_<ID>_HOST} value that would bind {@code url}: its host, or its origin when plaintext. */
+    public static String hostBindingFor(@Nullable URI url) {
+        if (url == null || url.getHost() == null) return "<host>";
+        return plaintext(url) ? originText(url) : hostPort(url);
     }
 
     private static String hostPort(URI url) {
@@ -469,7 +490,7 @@ public final class RepoCredentialResolver {
             String prefix = envVarPrefix(repoId);
             return head + "the project, not ~/.jk/config.toml, declares this repository"
                     + "\n  declare it in ~/.jk/config.toml, set " + prefix + "HOST="
-                    + (url == null || url.getHost() == null ? "<host>" : hostPort(url)) + ", or run jk repo login "
+                    + hostBindingFor(url) + ", or run jk repo login "
                     + repoId + " -U " + SafeUri.forMessage(url);
         });
     }

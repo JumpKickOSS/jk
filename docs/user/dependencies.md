@@ -332,6 +332,11 @@ with one rule:
   published checksum for every artifact. A POM has no table to opt out with, so a plaintext
   `http://` repository it declares is not used, and an artifact it publishes no checksum for fails
   the lock naming the repository.
+- A published POM is anyone's, so it may not point the resolve at this machine or off https: a
+  `file:` tree, any scheme other than https (`s3://`, `ftp://`, …) and a loopback address
+  (`localhost`, `127.*`, `::1`) are not used and the lock notes each. The one exception is a
+  loopback repository when the project itself resolves through one (a local proxy or a test stub,
+  directly or as a mirror). Declare a repository under `[repositories]` to use it anyway.
 - Its `<releases>` and `<snapshots>` policies are read as Maven reads them: a repository declared
   with `<releases><enabled>false</enabled></releases>` is asked for `-SNAPSHOT` versions only, and
   one with snapshots disabled is never asked for a snapshot.

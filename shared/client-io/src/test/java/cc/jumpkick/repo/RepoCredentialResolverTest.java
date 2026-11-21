@@ -247,6 +247,51 @@ class RepoCredentialResolverTest {
                 .isFalse();
     }
 
+    /**
+     * A project that points a bound name at {@code http://} with {@code allow-insecure} would get the
+     * credential sent in the clear; a binding without a scheme does not reach a plaintext URL.
+     */
+    @Test
+    void a_host_binding_without_a_scheme_does_not_send_a_credential_over_plain_http(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("JK_REPO_NEXUS_TOKEN", "tok", "JK_REPO_NEXUS_CORP_TOKEN", "by-id")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir)),
+                NEXUS_HOST,
+                List.of());
+        URI plaintext = URI.create("http://nexus.corp/repo");
+
+        var resolved = new AtomicReference<RepoCredential>();
+        String warnings = warningsFrom(() -> resolved.set(r.resolve("nexus", plaintext, Optional.empty())));
+
+        assertThat(resolved.get()).isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(warnings)
+                .contains("JK_REPO_NEXUS_HOST names no scheme, so it does not bind plain http;"
+                        + " set it to http://nexus.corp");
+        assertThat(r.resolve("nexus.corp", plaintext, Optional.empty()))
+                .as("an id that is the host binds https, not plain http")
+                .isEqualTo(RepoCredential.ANONYMOUS);
+        assertThat(RepoCredentialResolver.hostMatches("nexus.corp:80", plaintext))
+                .isFalse();
+    }
+
+    @Test
+    void an_explicit_http_binding_or_a_loopback_host_still_binds_plain_http(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("JK_REPO_NEXUS_TOKEN", "tok", "JK_REPO_LOCAL_TOKEN", "local-tok")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir)),
+                Map.of("JK_REPO_NEXUS_HOST", "http://nexus.corp", "JK_REPO_LOCAL_HOST", "127.0.0.1:8081"),
+                List.of());
+
+        assertThat(r.resolve("nexus", URI.create("http://nexus.corp/repo"), Optional.empty()))
+                .isEqualTo(new RepoCredential.Bearer("tok"));
+        assertThat(r.resolve("local", URI.create("http://127.0.0.1:8081/repo"), Optional.empty()))
+                .isEqualTo(new RepoCredential.Bearer("local-tok"));
+    }
+
     /** A container registry is logged into by host; the id being the host is the binding. */
     @Test
     void an_id_that_is_the_host_binds_itself(@TempDir Path dir) {

@@ -596,6 +596,12 @@ something the project cannot edit binds the name to:
 | `JK_REPO_<ID>_HOST=<host[:port]>` (or a full URL) | your shell or CI variables. A project's `.env` cannot supply it |
 | the id *is* the host | container registries and other repositories addressed by host |
 
+A binding without a scheme (`JK_REPO_<ID>_HOST=nexus.corp`, or an id that is the host) never binds
+a plaintext `http://` URL off loopback: the project chooses the scheme, and `allow-insecure` would
+otherwise put the credential on the wire in the clear. To send one over plain http, bind the full
+URL (`JK_REPO_<ID>_HOST=http://nexus.corp`), declare the repository in `~/.jk/config.toml`, or log
+in with `jk repo login <id> -U http://…`.
+
 A user-config declaration outranks the rest: if it names another origin than the project does, the
 credential stays home even when a `JK_REPO_<ID>_HOST` agrees with the project.
 

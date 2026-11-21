@@ -42,6 +42,22 @@ class SafeUriTest {
     }
 
     @Test
+    void pre_signed_and_api_key_query_values_are_masked() {
+        assertThat(SafeUri.forMessage(URI.create("https://b.s3.amazonaws.com/x.jar?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+                        + "&X-Amz-Credential=AKIA%2F20261120&X-Amz-Security-Token=tok&X-Amz-Signature=abc")))
+                .isEqualTo("https://b.s3.amazonaws.com/x.jar?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+                        + "&X-Amz-Credential=***&X-Amz-Security-Token=***&X-Amz-Signature=***");
+        assertThat(SafeUri.forMessage(URI.create("https://a.blob.core.windows.net/c/x.jar?sv=2024-11-04&sig=s1g")))
+                .as("an Azure SAS signature")
+                .isEqualTo("https://a.blob.core.windows.net/c/x.jar?sv=2024-11-04&sig=***");
+        assertThat(SafeUri.forMessage(URI.create("https://h/p?api_key=k1&apikey=k2&api-key=k3&X-Api-Key=k4")))
+                .isEqualTo("https://h/p?api_key=***&apikey=***&api-key=***&X-Api-Key=***");
+        assertThat(SafeUri.forMessage(URI.create("https://h/p?signed=1&keys=2")))
+                .as("a name that only resembles one is kept")
+                .isEqualTo("https://h/p?signed=1&keys=2");
+    }
+
+    @Test
     void withoutUserInfo_keeps_a_usable_url_and_its_encoding() {
         URI clean = URI.create("https://nexus.example.com/repo/a%2Bb/1.0/x.jar?q=1");
         assertThat(SafeUri.withoutUserInfo(clean))

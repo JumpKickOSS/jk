@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -168,6 +170,17 @@ class MavenPackageSourceTest {
         for (String v : versions) sb.append("<version>").append(v).append("</version>");
         sb.append("</versions></versioning></metadata>");
         Files.writeString(dir.resolve("maven-metadata.xml"), sb.toString());
+    }
+
+    @Test
+    void a_blocked_repository_s_note_masks_the_credential_its_url_carries() {
+        String note = MavenPackageSource.blockedNote(
+                new RepositorySpec("corp", URI.create("http://alice:hunter2@nexus.corp/maven/?token=abc123")));
+
+        assertThat(note)
+                .startsWith("repository `corp` at http://nexus.corp/maven/?token=*** is blocked")
+                .doesNotContain("hunter2")
+                .doesNotContain("abc123");
     }
 
     private MavenPackageSource newSource(Path tempDir) {

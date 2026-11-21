@@ -44,9 +44,8 @@ public final class SafeUri {
     }
 
     /**
-     * {@code uri} as display text: no userinfo, and {@code token} / {@code code} /
-     * {@code client_secret} (and any {@code *_token} / {@code *_secret} / {@code *password}) query
-     * values replaced by {@link #MASK}. A null URI renders as {@code "null"} so a message never
+     * {@code uri} as display text: no userinfo, and every query value {@link #isCredentialParam}
+     * names replaced by {@link #MASK}. A null URI renders as {@code "null"} so a message never
      * depends on the caller null-checking first.
      */
     public static String forMessage(@Nullable URI uri) {
@@ -96,16 +95,23 @@ public final class SafeUri {
 
     /**
      * Names whose value is a credential. The three the OAuth device flow and the package registries
-     * actually use, plus the suffix forms ({@code access_token}, {@code refresh_token}, …) that are
-     * the same secret under a longer name.
+     * actually use; the suffix forms ({@code access_token}, {@code X-Amz-Security-Token}, …) that
+     * are the same secret under a longer name, with {@code _} or {@code -}; a pre-signed URL's
+     * signature and credential ({@code X-Amz-Signature}, {@code X-Goog-Credential}, an Azure SAS
+     * {@code sig}); and an API key however it is spelled.
      */
     private static boolean isCredentialParam(String name) {
-        String n = name.toLowerCase(Locale.ROOT);
+        String n = name.toLowerCase(Locale.ROOT).replace('-', '_');
         return n.equals("token")
                 || n.equals("code")
                 || n.equals("client_secret")
+                || n.equals("sig")
+                || n.equals("apikey")
                 || n.endsWith("_token")
                 || n.endsWith("_secret")
-                || n.endsWith("password");
+                || n.endsWith("password")
+                || n.endsWith("signature")
+                || n.endsWith("credential")
+                || n.endsWith("api_key");
     }
 }

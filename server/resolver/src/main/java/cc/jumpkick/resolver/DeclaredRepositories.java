@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.RepositorySpec;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,8 +31,10 @@ import org.jspecify.annotations.Nullable;
  * subtree. A package reached through such a POM is <em>granted</em> the repository; its versions,
  * POM and artifact are then asked of the project's group with the grant appended.
  *
- * <p>Trust is the project-declared rule with no way to opt out: a plaintext {@code http://}
- * repository is not used and the lock says so, and an artifact without a published checksum fails
+ * <p>Trust is the project-declared rule with no way to opt out, and narrower: only an {@code
+ * https://} repository on a named host is used. A plaintext {@code http://} one, a {@code file:}
+ * tree or any other scheme is not, nor is a loopback address unless the project itself resolves
+ * through one; the lock says so. An artifact without a published checksum fails
  * the lock naming the repository, as it would for a {@code [repositories]} entry without {@code
  * allow-unverified}. A row a declared repository serves records it in {@code source}, and every
  * repository that served a row is named once in a lock note with the POM that introduced it; a
@@ -43,6 +47,9 @@ final class DeclaredRepositories {
 
     private final RepoGroup base;
     private final EffectivePomBuilder baseBuilder;
+
+    /** Whether the project itself resolves through this machine, so a POM may name a loopback repository too. */
+    private final boolean projectOnLoopback;
 
     /** {@code group:artifact} → the repositories granted to it, in the order they were granted. */
     private final ConcurrentHashMap<String, Set<Pom.Repository>> granted = new ConcurrentHashMap<>();
@@ -62,6 +69,7 @@ final class DeclaredRepositories {
     DeclaredRepositories(RepoGroup base, EffectivePomBuilder baseBuilder) {
         this.base = base;
         this.baseBuilder = baseBuilder;
+        this.projectOnLoopback = onLoopback(base);
     }
 
     /**
@@ -142,28 +150,65 @@ final class DeclaredRepositories {
         try {
             url = new URI(repository.url());
         } catch (URISyntaxException e) {
-            refuse(repository, "invalid URL: " + e.getMessage());
+            refuse(repository, "invalid URL");
             return null;
         }
-        if ("http".equalsIgnoreCase(url.getScheme()) && !RepositorySpec.loopback(url.getHost())) {
-            refuse(repository, "plain http; add it to [repositories] with allow-insecure = true to use it");
+        String why = refusal(url);
+        if (why != null) {
+            refuse(repository, why);
             return null;
         }
-        if (url.getScheme() == null || url.getHost() == null && !"file".equalsIgnoreCase(url.getScheme())) {
-            refuse(repository, "its URL has no host");
-            return null;
+        return built.computeIfAbsent(
+                repository.url(),
+                k -> RepoMirrors.apply(base.repos()
+                        .getFirst()
+                        .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots())));
+    }
+
+    /**
+     * Why a POM may not send the resolve to {@code url}, or null when it may. Only {@code https}
+     * to a named host is asked: a {@code file:} tree is this machine's disk, and a loopback address
+     * is this machine's services, unless the project itself resolves through one.
+     */
+    private @Nullable String refusal(URI url) {
+        String scheme = url.getScheme() == null ? "" : url.getScheme().toLowerCase(Locale.ROOT);
+        if (!scheme.equals("https") && !scheme.equals("http")) {
+            return scheme.isEmpty()
+                    ? "its URL has no scheme"
+                    : "a POM may name only an https repository, not " + scheme;
         }
-        MavenRepo repo = RepoMirrors.apply(base.repos()
-                .getFirst()
-                .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots()));
-        built.putIfAbsent(repository.url(), repo);
-        return repo;
+        if (url.getHost() == null) return "its URL has no host";
+        if (RepositorySpec.loopback(url.getHost())) {
+            return projectOnLoopback ? null : "it names this machine; declare it in [repositories] to use it";
+        }
+        if (scheme.equals("http")) return "plain http; add it to [repositories] with allow-insecure = true to use it";
+        return null;
+    }
+
+    /** Whether a repository the project resolves through, or the mirror one is asked through, is on loopback. */
+    private static boolean onLoopback(RepoGroup group) {
+        for (MavenRepo repo : group.repos()) {
+            if (RepositorySpec.loopback(repo.baseUrl().getHost())) return true;
+            if (repo.mirror()
+                    .map(m -> RepositorySpec.loopback(m.url().getHost()))
+                    .orElse(false)) return true;
+        }
+        return false;
     }
 
     private void refuse(Pom.Repository repository, String why) {
         refusedUrls.add(repository.url());
-        notes.add("repository `" + repository.id() + "` (" + repository.url() + ") from the POM of "
+        notes.add("repository `" + repository.id() + "` (" + display(repository.url()) + ") from the POM of "
                 + repository.declaredBy() + " not used: " + why);
+    }
+
+    /** {@code url} as {@link SafeUri#forMessage} prints it; a string that is no URI, as written. */
+    private static String display(String url) {
+        try {
+            return SafeUri.forMessage(new URI(url));
+        } catch (URISyntaxException notAUri) {
+            return url;
+        }
     }
 
     /** The note a repository earns once a row came from it, however many packages inherit it. */
@@ -171,7 +216,7 @@ final class DeclaredRepositories {
         String policy = repository.releases() && repository.snapshots()
                 ? ""
                 : repository.snapshots() ? ", snapshots only" : ", releases only";
-        return "repository `" + repository.id() + "` (" + repository.url() + ") from the POM of "
+        return "repository `" + repository.id() + "` (" + display(repository.url()) + ") from the POM of "
                 + repository.declaredBy() + " is used for its dependencies after [repositories]" + policy;
     }
 

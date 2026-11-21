@@ -399,8 +399,6 @@ public final class RepoGroupBuilder {
             return head + "  another credential is in use, so this one is redundant; remove it from the URL";
         }
         String prefix = RepoCredentialResolver.envVarPrefix(repoId);
-        String host =
-                url.getHost() == null ? "<host>" : url.getHost() + (url.getPort() == -1 ? "" : ":" + url.getPort());
         return head + "  no other credential found: it is accessed anonymously, and a private one answers 401\n"
                 + "  set a credential with one of:\n"
                 + "    jk repo login " + repoId + " -U " + safeUrl + "\n"
@@ -408,7 +406,7 @@ public final class RepoGroupBuilder {
                 + "] table with this URL and a ${VAR} credential in ~/.jk/config.toml\n"
                 + "    " + prefix + "TOKEN, or " + prefix + "USERNAME + " + prefix + "PASSWORD, with " + prefix
                 + "HOST="
-                + host + "\n"
+                + RepoCredentialResolver.hostBindingFor(url) + "\n"
                 + "  a <server> in ~/.m2/settings.xml needs one of these too; see repositories.md § Credentials";
     }
 

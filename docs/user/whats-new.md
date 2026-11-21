@@ -6,6 +6,14 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A dependency's POM cannot send the resolve to this machine's files or services.** A repository a
+  dependency's POM declares is used only over https to a network host: a `file:` tree, an `s3://`,
+  `ftp://` or other scheme, and a loopback address (unless the project itself resolves through one)
+  are skipped with a lock note, and the note prints the URL without its credentials. A
+  `JK_REPO_<ID>_HOST` without a scheme, or an id that is the host, no longer sends a credential to a
+  plain `http://` URL off loopback; bind the full `http://` URL to do that. Pre-signed and API-key
+  query parameters (`X-Amz-Signature`, `X-Amz-Security-Token`, `X-Amz-Credential`, `sig`, `api_key`,
+  `apikey`) are masked wherever jk prints a URL.
 - **A cancelled build cannot silently lose a lock it holds.** An interrupt that landed while a lock
   file's description was being written or read closed the file, which released the lock while the
   build still believed it held it. That I/O now runs where an interrupt cannot reach it.
