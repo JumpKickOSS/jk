@@ -104,7 +104,7 @@ class VerbRegistryTest {
         public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, @Nullable BufferedWriter writer) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter writer, boolean didWork) {}
 
         @Override
         public void send(@Nullable BufferedWriter writer, String line) {}

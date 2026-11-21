@@ -15,6 +15,7 @@ import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.io.BufferedWriter;
@@ -128,6 +129,34 @@ class WorkspaceBuildFinishTest {
         RecordingHost green = new RecordingHost();
         WorkspaceTerminal.finish(green, null, "/w", result(true, 0, List.of()), false);
         assertThat(green.journaledErrors).isEmpty();
+    }
+
+    /** The terminal writes the workspace's one timeline, and a run that did nothing keeps the last one. */
+    @Test
+    void the_terminal_writes_the_timeline_of_a_run_that_did_work() {
+        Path lib = Path.of("/w/lib");
+        RecordingHost noop = new RecordingHost();
+        WorkspaceTerminal.finish(
+                noop,
+                null,
+                "/w",
+                new WorkspaceResult(
+                        true, 0, List.of(new ModuleOutcome("g:lib", lib, true, 0, 3, false)), List.of(), false),
+                false);
+        RecordingHost built = new RecordingHost();
+        WorkspaceTerminal.finish(
+                built,
+                null,
+                "/w",
+                new WorkspaceResult(
+                        true, 0, List.of(new ModuleOutcome("g:lib", lib, true, 0, 3, true)), List.of(), false),
+                false);
+        RecordingHost red = new RecordingHost();
+        WorkspaceTerminal.finish(red, null, "/w", result(false, 1, List.of("boom")), false);
+
+        assertThat(noop.timelines).containsExactly(false);
+        assertThat(built.timelines).containsExactly(true);
+        assertThat(red.timelines).containsExactly(true);
     }
 
     @Test
@@ -250,6 +279,7 @@ class WorkspaceBuildFinishTest {
         private final List<String> quietSends = new ArrayList<>();
         private final List<String> requestErrors = new ArrayList<>();
         private final List<String> journaledErrors = new ArrayList<>();
+        private final List<Boolean> timelines = new ArrayList<>();
         private int throwingSends;
 
         @Override
@@ -318,7 +348,9 @@ class WorkspaceBuildFinishTest {
         public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, @Nullable BufferedWriter writer) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter writer, boolean didWork) {
+            timelines.add(didWork);
+        }
 
         @Override
         public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {

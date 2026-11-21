@@ -88,11 +88,11 @@ public final class EngineListeners {
         return hostedPlan(dir, writer, finishEncoder, false);
     }
 
-    public void flushTimeline(long requestId, @Nullable BufferedWriter writer) {
-        flushTimeline(requestId, writer, true);
-    }
-
-    private void flushTimeline(long requestId, @Nullable BufferedWriter writer, boolean didWork) {
+    /**
+     * Write the request's timeline once; a run that did no work keeps the last one's in place (see
+     * {@link BuildAccumulator#flushTimeline(boolean)}).
+     */
+    public void flushTimeline(long requestId, @Nullable BufferedWriter writer, boolean didWork) {
         BuildAccumulator a = sessions.accumulator(requestId);
         if (a == null) return;
         a.flushTimeline(didWork).ifPresent(path -> {
@@ -215,7 +215,7 @@ public final class EngineListeners {
 
             @Override
             public BridgingPlanListener.Hooks planHooks(String dir) {
-                return EngineListeners.this.planHooks(rid, dir, writer, false);
+                return EngineListeners.this.planHooks(rid, dir, writer, false, false);
             }
 
             @Override
@@ -228,8 +228,12 @@ public final class EngineListeners {
         };
     }
 
+    /**
+     * {@code ownsTimeline} is false for a workspace's module plans: the workspace's terminal writes
+     * the one timeline of the whole request, or the first module to finish would latch it.
+     */
     private BridgingPlanListener.Hooks planHooks(
-            long rid, String dir, @Nullable BufferedWriter writer, boolean releaseSlotOnFinish) {
+            long rid, String dir, @Nullable BufferedWriter writer, boolean releaseSlotOnFinish, boolean ownsTimeline) {
         return new BridgingPlanListener.Hooks() {
             @Override
             public void stepFinished(String d, String step, String phase, String status, long millis, long waitMillis) {
@@ -243,7 +247,7 @@ public final class EngineListeners {
 
             @Override
             public void planFinished(String d, BuildPlanResult result) {
-                flushTimeline(rid, writer, !result.success() || BuildService.moduleDidWork(result));
+                if (ownsTimeline) flushTimeline(rid, writer, !result.success() || BuildService.moduleDidWork(result));
                 if (releaseSlotOnFinish) inFlight.release(rid);
                 journal.accBuildPlanFinish(rid, d, result);
             }
@@ -282,7 +286,7 @@ public final class EngineListeners {
             boolean releaseSlotOnFinish) {
         long rid = eventRequestId.getAsLong();
         return new CoalescingBuildPlanListener(new BridgingPlanListener(
-                dir, sinkFor(writer, rid), planHooks(rid, dir, writer, releaseSlotOnFinish), finishEncoder));
+                dir, sinkFor(writer, rid), planHooks(rid, dir, writer, releaseSlotOnFinish, true), finishEncoder));
     }
 
     /**

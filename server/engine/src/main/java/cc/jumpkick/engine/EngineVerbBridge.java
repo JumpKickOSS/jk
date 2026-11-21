@@ -157,8 +157,8 @@ public final class EngineVerbBridge implements VerbHost {
     }
 
     @Override
-    public void flushTimeline(long rid, @Nullable BufferedWriter writer) {
-        listeners.flushTimeline(rid, writer);
+    public void flushTimeline(long rid, @Nullable BufferedWriter writer, boolean didWork) {
+        listeners.flushTimeline(rid, writer, didWork);
     }
 
     @Override

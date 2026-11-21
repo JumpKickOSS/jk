@@ -663,8 +663,9 @@ Container images: [Images](images.md#aot-cache-in-the-image).
 
 ## Timeline
 
-Every `jk build` / `jk test` writes Chrome Trace Event JSON at `target/jk-profile.json`.
-Open it in Perfetto or `chrome://tracing`. Archive it in CI.
+Every `jk build` / `jk test` writes Chrome Trace Event JSON at `target/jk-profile.json`:
+one timeline of the whole run, every module in it. A run that did no work leaves the last
+one in place. Open it in Perfetto or `chrome://tracing`. Archive it in CI.
 
 ```bash
 jk build -M

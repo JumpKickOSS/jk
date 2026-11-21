@@ -217,7 +217,7 @@ class VerbVerdictJournalTest {
         public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, @Nullable BufferedWriter writer) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter writer, boolean didWork) {}
 
         @Override
         public @Nullable String redactEnv(@Nullable String dir, @Nullable String text) {

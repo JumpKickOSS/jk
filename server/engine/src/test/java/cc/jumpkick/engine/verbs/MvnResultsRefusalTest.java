@@ -164,7 +164,7 @@ class MvnResultsRefusalTest {
         public void emitWorkspaceProgress(long rid, @Nullable BufferedWriter w, boolean force) {}
 
         @Override
-        public void flushTimeline(long rid, @Nullable BufferedWriter w) {}
+        public void flushTimeline(long rid, @Nullable BufferedWriter w, boolean didWork) {}
 
         @Override
         public void send(@Nullable BufferedWriter w, String line) {

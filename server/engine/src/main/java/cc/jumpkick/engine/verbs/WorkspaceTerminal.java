@@ -68,7 +68,7 @@ final class WorkspaceTerminal {
             if (succeeded) host.finishProgress(rid);
             host.emitWorkspaceProgress(rid, writer, true);
         }
-        host.flushTimeline(rid, writer);
+        host.flushTimeline(rid, writer, !succeeded || result.modules().stream().anyMatch(ModuleOutcome::didWork));
 
         if (rid > 0) {
             for (ModuleOutcome module : result.modules()) {

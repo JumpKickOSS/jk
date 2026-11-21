@@ -106,7 +106,8 @@ public interface VerbHost {
 
     void emitWorkspaceProgress(long rid, @Nullable BufferedWriter writer, boolean force);
 
-    void flushTimeline(long rid, @Nullable BufferedWriter writer);
+    /** Write the request's timeline; {@code didWork} false keeps the last run's in place. */
+    void flushTimeline(long rid, @Nullable BufferedWriter writer, boolean didWork);
 
     /**
      * Write one line and let a dead client's {@code IOException} out.
