@@ -3,6 +3,7 @@ package cc.jumpkick.engine.sessions;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.builds.ProjectIds;
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
@@ -610,6 +611,31 @@ class SessionLogTest {
                 .containsEntry("title", "Updating 14 pins");
         assertThat(rows.get(1)).containsEntry("state", "ended");
         assertThat(log.sessions(1)).hasSize(1);
+    }
+
+    /** A page of stored sessions is the newest ones, and a project's page reaches past newer sessions elsewhere. */
+    @Test
+    void a_page_of_stored_sessions_is_the_newest_and_a_project_page_reaches_past_the_others(@TempDir Path ws)
+            throws Exception {
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Path lib = Files.createDirectories(ws.resolve("lib"));
+        Files.writeString(app.resolve("jk.toml"), "name = \"app\"\nversion = \"1.0\"\n");
+        Files.writeString(lib.resolve("jk.toml"), "name = \"lib\"\nversion = \"1.0\"\n");
+        String onApp = log.open("mcp", "claude-code", "claude-code a1", app.toString());
+        log.end("mcp", "claude-code a1");
+        List<String> onLib = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            now.set(T + 1_000L * (i + 1));
+            String label = "claude-code b" + i;
+            onLib.add(log.open("mcp", "claude-code", label, lib.toString()));
+            log.end("mcp", label);
+        }
+
+        SessionLog next = newLog();
+        assertThat(next.sessions(2)).extracting(r -> r.get("id")).containsExactly(onLib.get(2), onLib.get(1));
+        String appId = Objects.requireNonNull(ProjectIds.idOf(app.toString()));
+        assertThat(next.sessions(1, appId)).extracting(r -> r.get("id")).containsExactly(onApp);
+        assertThat(next.sessions(10)).hasSize(4);
     }
 
     @Test

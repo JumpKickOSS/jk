@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.PluginProcess;
+import cc.jumpkick.engine.plugin.WarmLinger;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.jsonl.Jsonl;
@@ -17,6 +18,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -343,6 +345,36 @@ class CompilerPoolTest {
         assertThat(w.compile.get(10, TimeUnit.SECONDS).success()).isTrue();
         awaitTrue(() -> CompilerPool.get(key) == null, "the pool retires once idle");
         awaitTrue(() -> worker.sentOps().contains(PluginProtocol.OP_DONE), "its worker is told to finish");
+    }
+
+    /** A pool retired before its linger is over takes its reaper with it rather than leaving it asleep. */
+    @Test
+    void a_pool_retired_early_stops_its_reaper(@TempDir Path dir) throws Exception {
+        WarmLinger.forTests(Duration.ofMinutes(10).toMillis());
+        try {
+            Fakes fakes = new Fakes(1);
+            String key = "early-" + job();
+            CompileWork w = item(dir, "early", job());
+            CompilerPool pool = CompilerPool.forKey(
+                    key,
+                    null,
+                    () -> new CompilerPool(
+                            key, null, fakes, req -> Files.createTempFile(dir, "spec", ".spec"), Duration.ofMillis(50)),
+                    w);
+            pool.enqueue(w);
+            Fake worker = fakes.await(0);
+            awaitTrue(() -> worker.dispatched().size() == 1, "in flight");
+            worker.exitOnDone = true;
+            worker.frame(result(w.id, "OK"));
+            assertThat(w.compile.get(10, TimeUnit.SECONDS).success()).isTrue();
+            Thread reaper = Objects.requireNonNull(pool.reaper());
+            assertThat(reaper.isAlive()).as("asleep for the linger").isTrue();
+
+            assertThat(pool.retireIfIdle()).isTrue();
+            awaitTrue(() -> !reaper.isAlive(), "the reaper stops with its pool");
+        } finally {
+            WarmLinger.forTests(-1);
+        }
     }
 
     // ---- fakes --------------------------------------------------------------------------------

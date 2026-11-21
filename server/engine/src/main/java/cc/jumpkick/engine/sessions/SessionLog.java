@@ -684,13 +684,21 @@ public final class SessionLog {
             }
         }
         if (journal != null) {
+            List<SessionRecord> stored = new ArrayList<>();
             for (Map<String, Object> doc : journal.list()) {
-                if (!(doc.get("session") instanceof Map<?, ?> s)) continue;
-                SessionRecord r = SessionRecord.of(s);
+                if (doc.get("session") instanceof Map<?, ?> s) stored.add(SessionRecord.of(s));
+            }
+            // Newest first, so only the sessions that can still make the page have their episodes read.
+            stored.sort(Comparator.comparingLong(SessionRecord::lastActiveAt).reversed());
+            int kept = 0;
+            for (SessionRecord r : stored) {
+                if (kept >= limit) break;
                 if (live.contains(r.id()) || rows.containsKey(r.id())) continue;
                 List<Episode> episodes = storedEpisodes(r.id());
                 Map<String, Object> row = onProject(row(r, null, episodes), r, episodes, projectId);
-                if (row != null) rows.put(r.id(), row);
+                if (row == null) continue;
+                rows.put(r.id(), row);
+                kept++;
             }
         }
         List<Map<String, Object>> out = new ArrayList<>(rows.values());

@@ -658,6 +658,11 @@ final class CompilerPool {
         return false;
     }
 
+    /** Test seam: the thread that retires this pool after its linger, once an item has armed it. */
+    synchronized @Nullable Thread reaper() {
+        return reaper;
+    }
+
     /** Test seam: whether {@link #close} has begun. */
     synchronized boolean closing() {
         return closed;
@@ -670,12 +675,16 @@ final class CompilerPool {
      */
     void close() {
         List<CompilerWorker> live;
+        Thread lingering;
         synchronized (this) {
             closed = true;
             live = List.copyOf(workers);
+            lingering = reaper;
             notifyAll();
         }
         LIVE.remove(this);
+        // A reaper asleep for the linger would otherwise hold this closed pool until it wakes.
+        if (lingering != null && lingering != Thread.currentThread()) lingering.interrupt();
         try {
             for (CompilerWorker w : live) {
                 try {

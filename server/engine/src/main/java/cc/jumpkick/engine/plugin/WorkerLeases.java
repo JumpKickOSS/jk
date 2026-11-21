@@ -369,7 +369,7 @@ public final class WorkerLeases {
          * lease and slot counted, and its place in the queue not, when it is about to be taken.
          */
         private HostLeases.Line line(@Nullable Waiter granting) {
-            long bytes = charged();
+            long bytes = leased + WorkerRss.published(excess);
             int jvms = jvmRunning;
             int waiting = queue.size();
             if (granting != null) {

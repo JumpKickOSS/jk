@@ -39,6 +39,18 @@ public final class WorkerRss {
         long rssBytes(long pid);
     }
 
+    /** {@link #published} rounds to this many bytes. */
+    static final long PUBLISHED_STEP = 16L << 20;
+
+    /**
+     * {@code excessBytes}, resident bytes charged past their leases, as the other engines of the host
+     * read them: rounded up to {@link #PUBLISHED_STEP}, so a resident set that moves by a few pages
+     * does not rewrite the host's shared file at every sample.
+     */
+    static long published(long excessBytes) {
+        return Math.ceilDiv(excessBytes, PUBLISHED_STEP) * PUBLISHED_STEP;
+    }
+
     /**
      * True when a worker resident at {@code rssBytes} is far over {@code leaseBytes}: by more than
      * the larger of 1 GiB and a quarter of the lease. The lease already carries the overhead

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** The ledger charges a watched worker its measured resident set when that is above its lease. */
 class WorkerLeasesRssTest {
@@ -163,6 +166,32 @@ class WorkerLeasesRssTest {
         rss.put(102L, 4 * GIB);
         ledger.sample();
         assertThat(ledger.snapshot().leasedBytes()).isZero();
+    }
+
+    /** The host's shared file is rewritten when a worker's charge moves by a step, not by a page. */
+    @Test
+    void a_resident_set_that_moves_by_pages_leaves_the_host_file_alone(@TempDir Path engineDir) throws Exception {
+        Map<Long, Long> rss = new ConcurrentHashMap<>();
+        WorkerLeases.Ledger ledger = ledger(10 * GIB, rss)
+                .shareHost(new HostLeases(engineDir, new HostLeases.Owner(4242, 0), owner -> true, workers -> 0));
+        Path file = engineDir.resolve(HostLeases.FILE);
+        try (WorkerLeases.Grant grant = ledger.acquireBytes(GIB, true, 7L)) {
+            grant.watch(101, "test JVM", null);
+            rss.put(101L, GIB + 100 * MIB);
+            ledger.sample();
+            String before = Files.readString(file);
+            for (int page = 1; page <= 16; page++) {
+                rss.put(101L, GIB + 100 * MIB + page * 4096L);
+                ledger.sample();
+                assertThat(Files.readString(file)).as("after %d pages", page).isEqualTo(before);
+            }
+            rss.put(101L, GIB + 200 * MIB);
+            ledger.sample();
+            assertThat(Files.readString(file)).isNotEqualTo(before);
+            assertThat(ledger.snapshot().leasedBytes())
+                    .as("charged exactly here")
+                    .isEqualTo(GIB + 200 * MIB);
+        }
     }
 
     private static WorkerLeases.Ledger ledger(long capacity, Map<Long, Long> rss) {
