@@ -33,6 +33,10 @@ import java.util.Set;
  * the setting did nothing — measured before closed this: {@code /proc/<engine>/environ} carried
  * no {@code JK_STORE_DIR} at all. The state dir alone is not enough, because two invocations can share
  * a state dir while disagreeing about where downloads belong.
+ *
+ * <p>On Windows the {@link EngineLogon} kind is part of it too: an engine started from an ssh logon
+ * cannot reach the desktop's credential vault, so a desktop command is never served by one, nor an
+ * ssh command by the desktop's.
  */
 public final class EnginePaths {
 
@@ -350,9 +354,15 @@ public final class EnginePaths {
     }
 
     static String keyFor(Path stateDir, Path storeDir) {
+        return keyFor(stateDir, storeDir, EngineLogon.current());
+    }
+
+    /** A Windows logon with no desktop adds its kind; any other key is the state dir and store alone. */
+    static String keyFor(Path stateDir, Path storeDir, EngineLogon logon) {
         String hex = Hashing.sha256Hex(stateDir.toAbsolutePath().normalize().toString()
                 + "\u0000"
-                + storeDir.toAbsolutePath().normalize());
+                + storeDir.toAbsolutePath().normalize()
+                + (logon == EngineLogon.NO_DESKTOP ? "\u0000no-desktop" : ""));
         return hex.substring(0, KEY_LENGTH);
     }
 }

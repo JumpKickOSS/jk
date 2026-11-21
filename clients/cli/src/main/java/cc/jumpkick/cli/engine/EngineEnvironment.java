@@ -4,6 +4,7 @@ package cc.jumpkick.cli.engine;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.PluginTunings;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.wire.EngineLogon;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -29,9 +30,9 @@ final class EngineEnvironment {
      * without a manifest naming it: the search path, home and user; the temp roots, time zone,
      * locale and terminal; the host JDK and GraalVM fallbacks; the SSH agent the git backend authenticates
      * through; the SDK and JDK discovery roots; the display preferences shared config reads; and on
-     * Windows the system roots a process needs to run anything at all. Both platforms' spellings,
-     * so the rule reads the same everywhere. {@code LC_*} and {@code JK_*} are prefixes, the
-     * proxy, display and container-runtime variables are {@link BuildEnv#SHELL}, all
+     * Windows the system roots a process needs to run anything at all and the desktop session's
+     * name. Both platforms' spellings, so the rule reads the same everywhere. {@code LC_*} and
+     * {@code JK_*} are prefixes, the proxy, display and container-runtime variables are {@link BuildEnv#SHELL}, all
      * matched in {@link #inherited}, less the
      * {@link #PER_REQUEST} names that travel on each request. No per-user application-data
      * variable is carried: nothing the
@@ -77,6 +78,8 @@ final class EngineEnvironment {
             "ProgramFiles(x86)",
             "NUMBER_OF_PROCESSORS",
             "PROCESSOR_ARCHITECTURE",
+            // The engine names itself by its logon kind (EngineLogon), as the client that spawned it did.
+            EngineLogon.SESSION_NAME_ENV,
             // The Visual Studio developer prompt's compiler variables: native-image compiles C
             // with MSVC and, for a Visual Studio it cannot locate itself, reads these.
             "INCLUDE",

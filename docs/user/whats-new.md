@@ -191,6 +191,13 @@ JumpKick shows you this page's new entries after it updates itself.
   `$JK_CACHE_DIR/groovy-scripts/` by the script's content, and a run from the cache never loads the
   Groovy compiler: about 40% faster and 28% less memory per script on a typical one
   ([Build logic](build-logic.md#how-groovy-scripts-run)).
+- **Windows: docker and git credentials work at the desktop after an ssh session used JumpKick.**
+  The engine, and every docker and git command it ran, kept the logon of whoever started it, so an
+  engine an ssh session had started served desktop commands without your credential vault: a
+  `docker pull` in a test failed with `A specified logon session does not exist` until `jk engine
+  stop -A`. The desktop and logons without one (ssh, services, scheduled tasks) now each get their
+  own engine, and `jk engine status` names the kind in a `Logon` row
+  ([Engine](engine.md#several-engines)).
 - **A README cannot reach outside the dashboard's Markdown preview.** A Markdown file could write
   the fixed text that marked where a Mermaid diagram goes into an attribute and turn the rest of
   that attribute into markup the sanitizer never saw. Diagrams now go in by an unguessable marker,

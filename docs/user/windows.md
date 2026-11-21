@@ -87,6 +87,11 @@ process: those widen what malware can do on the machine far more than a folder e
 
 - The engine and its workers run at full speed when the window is in the background: Windows'
   power throttling (EcoQoS) is turned off for them.
+- A command typed at the desktop and one run over ssh (or by a service or a scheduled task) are
+  served by two engines. An engine and everything it runs keep the logon of whoever started it, and
+  an ssh logon cannot reach your credential vault, so docker's and git's credential helpers would
+  fail in an engine an ssh session started. `jk engine status` names the kind in its `Logon` row
+  ([Engine § Several engines](engine.md#several-engines)).
 - Every git command JumpKick runs has long paths on.
 - Defender's cost is measured, not guessed: the `defender` row and the `jk doctor --fix` decision
   carry the number for your machine.

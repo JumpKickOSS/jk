@@ -111,6 +111,12 @@ class EngineEnvironmentTest {
     }
 
     @Test
+    void the_desktop_session_name_reaches_the_engine_so_it_names_itself_as_its_client_did() {
+        assertThat(EngineEnvironment.inherited("SESSIONNAME", true)).isTrue();
+        assertThat(EngineEnvironment.inherited("SessionName", true)).isTrue();
+    }
+
+    @Test
     void seeding_replaces_the_inherited_environment_rather_than_adding_to_it() {
         Map<String, String> env = new HashMap<>(Map.of("JAVA_TOOL_OPTIONS", "-Xmx1g", "PATH", "/stale"));
         Map<String, String> shell = Map.of(

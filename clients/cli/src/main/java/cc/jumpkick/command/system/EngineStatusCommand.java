@@ -28,6 +28,7 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
+import cc.jumpkick.wire.EngineLogon;
 import cc.jumpkick.wire.EnginePaths;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -132,6 +133,8 @@ public final class EngineStatusCommand implements CliCommand {
         if (s.engineLabel() != null)
             detail("Engine", s.engineLabel() + (s.engineId() == null ? "" : " (id " + s.engineId() + ")"));
         if (s.installSource() != null && !s.installSource().isEmpty()) detail("Source", s.installSource());
+        String logon = describeLogon(EngineLogon.current());
+        if (logon != null) detail("Logon", logon);
         detail("Updates", SelfUpdateStatus.describe());
         detail("Uptime", formatUptime(uptimeSeconds));
         detail("Live Jobs", String.valueOf(s.activeBuildPlans()));
@@ -184,6 +187,18 @@ public final class EngineStatusCommand implements CliCommand {
         List<EngineFleet.Member> fleet = EngineFleet.list();
         if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
+    }
+
+    /**
+     * The Windows logon kind this engine serves: the asking client's own, since the kind is part of
+     * the engine's identity. Null off Windows.
+     */
+    static @Nullable String describeLogon(EngineLogon logon) {
+        return switch (logon) {
+            case ANY -> null;
+            case DESKTOP -> "desktop";
+            case NO_DESKTOP -> "ssh or service: no Windows credential vault";
+        };
     }
 
     /** {@code 3 loaded of 256, 1 active}: how close the MCP connection table is to {@code [mcp] max-sessions}. */

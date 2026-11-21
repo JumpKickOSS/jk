@@ -109,7 +109,11 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   dirs carry the engine's pid.
 - **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
   identity hash because two invocations can share a state dir while disagreeing about where downloads
-  belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
+  belong; without it, `JK_STORE_DIR` silently did nothing. On Windows a logon without a desktop
+  (`SESSIONNAME` unset: sshd, a service, a scheduled task) adds its kind to the hash (`EngineLogon`),
+  since an engine and its children keep the logon that started them and such a logon cannot reach the
+  user's credential vault; the engine inherits `SESSIONNAME` so it names itself as its client did. A
+  machine can therefore hold several
   engines: `jk engine status` lists every resident engine this user owns (including other
   `JK_HOME`s and draining/ghost pids). `jk engine stop -A` stops **this home only** so a
   nested test suite cannot kill the host engine; status marks other homes' engines and `-A` names the

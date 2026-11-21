@@ -299,7 +299,8 @@ checkout the running engine came from.
 ### Several engines
 
 One machine can run several engines: one per state directory and store pair under this home
-(`JK_STORE_DIR` gives a second one), a draining predecessor, and engines of **other homes** — a
+(`JK_STORE_DIR` gives a second one), on Windows one for the desktop and one for logons without a
+desktop, a draining predecessor, and engines of **other homes** — a
 scratch `JK_HOME`, a test suite's home, a build run from another checkout. When there is more
 than one, `jk engine status` lists them all, `*` marking the one this directory's commands reach,
 and marks each engine of another home with that home (`state <dir>` when its command line names
@@ -314,6 +315,19 @@ only its state directory, a custom `JK_STATE_DIR`; `home unknown` when it names 
 
 `-O jsonl` carries the same marks on each `engines` entry: `otherHome`, and `home` and `stateDir`
 for an engine of another home (`null` when unknown).
+
+On Windows an engine, and the docker, git and credential helpers it runs, keep the logon of the
+client that started it. A logon without a desktop (an ssh session, a service, a scheduled task)
+cannot reach your credential vault, so the desktop and such logons never share an engine: a
+command typed at the desktop is served by the desktop's engine, one run over ssh by the other.
+The two share the worker budget, and the second one costs memory only once a logon of its kind has
+used it. JumpKick tells the two apart by `SESSIONNAME`, which Windows sets in a desktop session
+(`Console`, or `RDP-Tcp#N` over remote desktop) and leaves unset in the others; a shell that unsets
+it is served by the other engine. `jk engine status` shows the kind:
+
+```
+ Logon......: ssh or service: no Windows credential vault
+```
 
 | Command | Stops |
 |---------|-------|
@@ -858,7 +872,7 @@ The engine itself starts from an allow-list of the spawning shell, not from the 
 `http_proxy` / `https_proxy` / `no_proxy` in either case — as the fallback only: they ride each
 request from the shell running `jk`, and the request's values win
 ([Config § Network](config.md#network)) — and on Windows the system roots (`SystemRoot`,
-`ComSpec`, `PATHEXT`, `USERPROFILE`, …). JVM
+`ComSpec`, `PATHEXT`, `USERPROFILE`, …) and `SESSIONNAME` ([Several engines](#several-engines)). JVM
 switches (`JAVA_TOOL_OPTIONS`, `_JAVA_OPTIONS`, `JDK_JAVA_OPTIONS`), build-tool options, cloud keys
 and forge tokens stay behind: a resident engine outlives the shell that started it, and what it
 inherited once would be every later terminal's truth. Workers are narrowed again —
