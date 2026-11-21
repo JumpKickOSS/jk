@@ -59,7 +59,9 @@ class McpGuardsResourceTest {
     }
 
     private static void project(Path root) throws IOException {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         Files.writeString(root.resolve("jk-guards.toml"), """
                 [guards.no-todo]
                 kind    = "text"
@@ -88,17 +90,17 @@ class McpGuardsResourceTest {
     /** {@code resources/read} on the connection {@code session} names; null reads anonymously. */
     private static String read(McpHandler mcp, @Nullable String session, int id, String uri) {
         return mcp.handle(
-                        "{\"jsonrpc\":\"2.0\",\"id\":" + id
-                                + ",\"method\":\"resources/read\",\"params\":{\"uri\":\"" + uri + "\"}}",
+                        "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"resources/read\",\"params\":{\"uri\":\""
+                                + uri + "\"}}",
                         session)
                 .body();
     }
 
     /** A connection bound to {@code root}: {@code initialize} mints it, {@code bind} binds it. */
     private static String boundTo(McpHandler mcp, Path root) {
-        String session = requireNonNull(mcp.handle(
-                        "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
-                .openedSessionId());
+        String session = requireNonNull(
+                mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}", null)
+                        .openedSessionId());
         mcp.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"bind\",\"arguments\":{\"dir\":\""
                         + root.toString().replace("\\", "\\\\") + "\"}}}",
@@ -131,8 +133,8 @@ class McpGuardsResourceTest {
         assertThat(catalog).containsKeys("rulesSha", "baselineSha");
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> card =
-                (Map<String, Object>) requireNonNull(MiniJson.parse(text(read(mcp, session, 5, "jk://guards/no-todo"))));
+        Map<String, Object> card = (Map<String, Object>)
+                requireNonNull(MiniJson.parse(text(read(mcp, session, 5, "jk://guards/no-todo"))));
         List<Map<String, Object>> one = objects(card, "rules");
         assertThat(one).singleElement().satisfies(r -> assertThat(r.get("id")).isEqualTo("no-todo"));
 
@@ -152,7 +154,9 @@ class McpGuardsResourceTest {
 
     @Test
     void a_project_without_guards_says_so(@TempDir Path root) throws Exception {
-        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\njdk = { version = \"25\" }\n");
         McpHandler mcp = handler();
         String session = boundTo(mcp, root);
         assertThat(text(read(mcp, session, 2, "jk://guards"))).contains("no guards here");
