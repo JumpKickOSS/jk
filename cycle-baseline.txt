@@ -77,6 +77,11 @@
 # `config` beside the Session and Request that carry the ledger, and `task` keeps the transfer
 # board, a leaf. Left: builds, config, layout, library, lock and plugin.manifest, so the line is 6.
 #
+# 2026-11-21, shared/core: `lock` reached `builds` only from LockfileWriter, which kept the lock's
+# project id and recorded the checkout after writing. builds' ProjectLocks now does both around the
+# plain write, so `builds` reads `lock` and nothing reads back. Left: config, layout, library, lock
+# and plugin.manifest, so the line is 5.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -87,7 +92,7 @@
 # defends.
 
 server/engine 5
-shared/core 6
+shared/core 5
 clients/cli-terminal 3
 server/toolchain 3
 # shared/plugin-sdk is 3, not 2: the component is {plugin, plugin.build, plugin.protocol}, closed by

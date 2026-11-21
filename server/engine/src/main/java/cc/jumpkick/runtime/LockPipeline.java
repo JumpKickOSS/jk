@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 
 import cc.jumpkick.androidsdk.AndroidSdk;
 import cc.jumpkick.androidsdk.AndroidSdkInstaller;
+import cc.jumpkick.builds.ProjectLocks;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.BuildEnv;
@@ -33,7 +34,6 @@ import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileModules;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkBuild.NativeConfig;
@@ -913,8 +913,7 @@ public final class LockPipeline {
                 Log.debug("write: previous lock", unreadable);
             }
         }
-        LockfileWriter.write(stamped, file, manifestsSha);
-        return stamped;
+        return ProjectLocks.write(stamped, file, manifestsSha);
     }
 
     /** Every stage, for the callers that do not split the pipeline across plan steps. */

@@ -4,7 +4,6 @@ package cc.jumpkick.builds;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
@@ -43,7 +42,7 @@ class ProjectIdCacheTest {
         String before = ProjectIdCache.idOf(dir.toString());
         assertThat(before).isNotNull();
 
-        LockfileWriter.write(Lockfile.empty("test"), dir.resolve("jk-lock.toml"));
+        ProjectLocks.write(Lockfile.empty("test"), dir.resolve("jk-lock.toml"));
         String minted = ProjectIdentity.recordedId(dir.resolve("jk-lock.toml")).orElseThrow();
 
         assertThat(minted).isNotEqualTo(before);

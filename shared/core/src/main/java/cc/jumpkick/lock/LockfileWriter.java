@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
-import cc.jumpkick.builds.DeclaredDeps;
-import cc.jumpkick.builds.DepFrequency;
-import cc.jumpkick.builds.ProjectBuilds;
-import cc.jumpkick.builds.ProjectIdCache;
-import cc.jumpkick.builds.ProjectIdentity;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.AtomicWrites;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.manifest.PluginDescriptors;
 import cc.jumpkick.util.MinimalToml;
@@ -20,8 +14,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,6 +31,10 @@ public final class LockfileWriter {
         return owner;
     }
 
+    /**
+     * Write {@code lockfile} to {@code file} as given: a project's lock goes through {@code
+     * ProjectLocks.write}, which also keeps its {@code project-id} and records its checkout.
+     */
     public static void write(Lockfile lockfile, Path file) throws IOException {
         // Always stamp a live manifests digest so staleness survives git-clone mtimes.
         Path owner = ownerOf(file);
@@ -56,18 +52,9 @@ public final class LockfileWriter {
                 lockfile.withManifestsSha256(manifestsSha256).withWriterBuild(LockRewriteGuard.runningBuild());
         // A relock never lowers the floor: the lock in hand is freshly resolved and carries only the
         // floors this resolve found, so a floor the file held (raised by hand, or by a newer jk) is
-        // kept from the file itself, scanned from its head like the project id below.
+        // kept from the file itself, scanned from its head.
         String held = heldFloor(file);
         if (held != null) stamped = stamped.withJkMin(PluginDescriptors.maxFloor(held, stamped.jkMin()));
-        // Preserve / mint durable project-id: never drop on rewrite. The id an earlier lock recorded
-        // is scanned from its head — a torn or unreadable lock with an intact head keeps its id.
-        Path owner = ownerOf(file);
-        if (stamped.projectId() == null || stamped.projectId().isBlank()) {
-            Optional<String> existing = ProjectIdentity.recordedId(file);
-            stamped = existing.isPresent()
-                    ? stamped.withProjectId(existing.get())
-                    : ProjectIdentity.ensureProjectId(stamped, owner);
-        }
         // Atomic (temp + rename): concurrent readers never observe a truncated lock.
         // Durable: the lockfile is the source of truth, not a cache. A torn target after power loss is
         // not recoverable by re-running — the resolve that produced it is gone.
@@ -75,29 +62,8 @@ public final class LockfileWriter {
         // writer lines would turn every `jk lock` into a diff in a committed lock.
         String text = render(stamped);
         if (!sameButWriter(file, text)) AtomicWrites.replaceDurably(file, text);
-        // Record this checkout in identity.toml so project=<id> knows it without a prior build.
-        // The identity comes from the lock in memory: reading a megabyte lock back through the TOML
-        // parser to learn the id this method just wrote is what pushed the engine past its heap.
-        try {
-            LockfileReader.forget(file);
-            TomlScan.forget(file);
-            refreshMemoizedId(owner);
-            ProjectIdentity identity = ProjectIdentity.resolve(owner, stamped);
-            Path home = ProjectBuilds.projectHome(ProjectBuilds.buildsRoot(), identity);
-            ProjectIdentity.IdentityFile.write(home, identity);
-            // Host declared-dep frequency for the New wizard library picker.
-            try {
-                String id = identity.id();
-                Set<String> deps = DeclaredDeps.collect(owner);
-                DepFrequency.load().observe(id, deps).save();
-            } catch (Exception ignoredFreq) {
-                // never fail the lock write over frequency tracking
-                Log.debug("write: never fail the lock write over frequency tracking", ignoredFreq);
-            }
-        } catch (Exception e) {
-            // best-effort; lock is already durable
-            Log.debug("write: best-effort", e);
-        }
+        LockfileReader.forget(file);
+        TomlScan.forget(file);
     }
 
     /** The {@code jk-min} the lock at {@code file} holds; null when there is none or no lock. */
@@ -108,23 +74,6 @@ public final class LockfileWriter {
             return floor == null || floor.isBlank() ? null : floor;
         } catch (RuntimeException unreadable) {
             return null;
-        }
-    }
-
-    /**
-     * Re-memoize {@code owner}'s project id now that the lock on disk carries one. A first build
-     * memoizes the path or git id at admission and then mints the lock id in its lock step; without
-     * this, every action key and task pointer the rest of that build writes is tagged with an id no
-     * later build resolves to. Both spellings of the directory, as given and real, are refreshed,
-     * since the memo is keyed by the string a caller passed.
-     */
-    private static void refreshMemoizedId(Path owner) {
-        ProjectIdCache.refresh(owner.toString());
-        try {
-            Path real = owner.toRealPath();
-            if (!real.equals(owner)) ProjectIdCache.refresh(real.toString());
-        } catch (IOException ignored) {
-            // The directory was just written into; a real path that cannot be taken keeps the memo it has.
         }
     }
 

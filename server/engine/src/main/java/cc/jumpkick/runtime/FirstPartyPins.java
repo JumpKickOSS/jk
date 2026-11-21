@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.builds.ProjectLocks;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -9,7 +10,6 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockRewriteGuard;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.runtime.base.GuardSuiteLibrary;
 import cc.jumpkick.runtime.base.LockGate;
@@ -88,7 +88,7 @@ public final class FirstPartyPins {
                 moved.add(new Repin(row.coordinate(), row.version()));
             }
             if (moved.isEmpty()) return List.of();
-            LockfileWriter.write(
+            ProjectLocks.write(
                     lock.withPlugins(rows).withGeneratedBy("jk " + JkVersion.VERSION), lockFile, manifestsSha);
             return List.copyOf(moved);
         }

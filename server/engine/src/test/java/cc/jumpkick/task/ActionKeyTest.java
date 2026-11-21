@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.builds.ProjectLocks;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
@@ -14,7 +15,6 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.lock.Lockfile;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
@@ -735,7 +735,7 @@ class ActionKeyTest {
         ProjectIdCache.clear();
         String before = ActionKey.taskTag(classes);
 
-        LockfileWriter.write(Lockfile.empty("test"), root.resolve("jk-lock.toml"));
+        ProjectLocks.write(Lockfile.empty("test"), root.resolve("jk-lock.toml"));
         String minted = ProjectIdentity.recordedId(root.resolve("jk-lock.toml")).orElseThrow();
 
         assertThat(ActionKey.taskTag(classes))

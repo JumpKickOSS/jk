@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.lock.ProjectIds;
 import cc.jumpkick.testing.FakeClock;
 import cc.jumpkick.testing.FakePrograms;
@@ -67,7 +66,7 @@ class ProjectIdentityTest {
                 name = "demo"
                 version = "0.1.0"
                 """);
-        LockfileWriter.write(
+        ProjectLocks.write(
                 Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), dir.resolve("jk-lock.toml"));
         ProjectIdentity id = ProjectIdentity.resolve(dir);
         assertThat(id.source()).isEqualTo(ProjectIdentity.Source.LOCK);
@@ -84,7 +83,7 @@ class ProjectIdentityTest {
         Lockfile first = ProjectIdentity.ensureProjectId(Lockfile.empty("test"), dir);
         String minted = Objects.requireNonNull(first.projectId(), "ensure mints an id");
         assertThat(minted).isNotBlank();
-        LockfileWriter.write(first, dir.resolve("jk-lock.toml"));
+        ProjectLocks.write(first, dir.resolve("jk-lock.toml"));
         Lockfile second = ProjectIdentity.ensureProjectId(Lockfile.empty("test"), dir);
         // ensure without reading disk still mints; write path preserves — simulate preserve:
         Lockfile preserved = Lockfile.empty("test").withProjectId(minted);
@@ -138,7 +137,7 @@ class ProjectIdentityTest {
                 version = "0.1.0"
                 id = "explicit-project-id-00112233"
                 """);
-        LockfileWriter.write(
+        ProjectLocks.write(
                 Lockfile.empty("test").withProjectId("lock-id-should-not-win-00112233"), dir.resolve("jk-lock.toml"));
         ProjectIdentity id = ProjectIdentity.resolve(dir);
         assertThat(id.source()).isEqualTo(ProjectIdentity.Source.EXPLICIT);
@@ -507,12 +506,12 @@ class ProjectIdentityTest {
                 version = "0.1.0"
                 """);
         Path lock = dir.resolve("jk-lock.toml");
-        LockfileWriter.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), lock);
+        ProjectLocks.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), lock);
         LockfileReader.clearCache();
         long before = LockfileReader.parses();
 
-        LockfileWriter.write(Lockfile.empty("test"), lock);
-        LockfileWriter.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), lock);
+        ProjectLocks.write(Lockfile.empty("test"), lock);
+        ProjectLocks.write(Lockfile.empty("test").withProjectId("aabbccddeeff00112233445566778899"), lock);
         ProjectIdentity id = ProjectIdentity.resolve(dir);
 
         assertThat(LockfileReader.parses())
