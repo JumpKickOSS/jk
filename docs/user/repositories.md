@@ -42,7 +42,9 @@ file is found in either place, and only where the next download lands changes. U
 
 Cache `~/.jk/store` on a CI runner and a later run has every artifact JumpKick fetched. Under
 `"share"` the runner needs `~/.m2/repository` cached as well ([CI](ci.md)). JumpKick's `.jk` memos
-are always in the store, never in `~/.m2`.
+are always in the store, never in `~/.m2`. Under `"share"`, one file of its own sits at the root of
+`~/.m2/repository`: `.jk-share.lock`, which every JumpKick home on the machine takes while it
+writes a download there.
 
 ## Store layout: one tree per origin
 

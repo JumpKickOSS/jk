@@ -173,23 +173,57 @@ public record ArtifactMemo(
         String want = expectedSha256.strip().toLowerCase(Locale.ROOT);
         Optional<ArtifactMemo> memo = read(jkFile);
         if (memo.isPresent() && memo.get().stillMatches(blob, want)) return true;
-        // Stat before the read: a file another writer puts in its place after the stat has its own
-        // size and mtime, which the memo written below then does not describe.
-        BasicFileAttributes hashed = Files.readAttributes(blob, BasicFileAttributes.class);
-        String actual = Hashing.sha256Hex(blob);
-        if (!actual.equalsIgnoreCase(want)) return false;
         String gav = coordinate == null || coordinate.isBlank() ? "-" : coordinate;
+        Hashed hashed = hash(blob, gav, () -> {});
+        if (!hashed.memo().sha256.equalsIgnoreCase(want)) return false;
         // A re-hash refreshes size and mtime; who packaged the blob, and whether jk downloaded
         // it, have not changed — unless the bytes did, which the digest match above rules out.
-        new ArtifactMemo(
-                        gav,
-                        hashed.lastModifiedTime().toMillis(),
-                        hashed.size(),
-                        actual,
-                        memo.map(ArtifactMemo::packagedBy).orElse(null),
-                        memo.map(m -> m.sha256.equalsIgnoreCase(actual) && m.fetched)
-                                .orElse(false))
-                .write(jkFile);
+        if (hashed.stable()) {
+            new ArtifactMemo(
+                            gav,
+                            hashed.memo().mtimeMillis,
+                            hashed.memo().size,
+                            want,
+                            memo.map(ArtifactMemo::packagedBy).orElse(null),
+                            memo.map(m -> m.sha256.equalsIgnoreCase(want) && m.fetched)
+                                    .orElse(false))
+                    .write(jkFile);
+        }
         return true;
+    }
+
+    /**
+     * The memo of {@code blob}'s bytes as one read finds them, or empty when the file was replaced
+     * or changed while it was read: a memo pairs a digest only with the stat of the file hashed.
+     */
+    public static Optional<ArtifactMemo> ofRead(Path blob, String coordinate) throws IOException {
+        return ofRead(blob, coordinate, () -> {});
+    }
+
+    /** As {@link #ofRead(Path, String)}, running {@code read} after the hash: a test seam. */
+    static Optional<ArtifactMemo> ofRead(Path blob, String coordinate, Runnable read) throws IOException {
+        Hashed hashed = hash(blob, coordinate, read);
+        return hashed.stable() ? Optional.of(hashed.memo()) : Optional.empty();
+    }
+
+    /** A digest with the stat taken before the read, and whether the file had the same stat after it. */
+    private record Hashed(ArtifactMemo memo, boolean stable) {}
+
+    private static Hashed hash(Path blob, String coordinate, Runnable read) throws IOException {
+        BasicFileAttributes before = Files.readAttributes(blob, BasicFileAttributes.class);
+        String sha = Hashing.sha256Hex(blob);
+        read.run();
+        boolean stable;
+        try {
+            BasicFileAttributes after = Files.readAttributes(blob, BasicFileAttributes.class);
+            stable = after.size() == before.size()
+                    && after.lastModifiedTime().equals(before.lastModifiedTime())
+                    && Objects.equals(after.fileKey(), before.fileKey());
+        } catch (NoSuchFileException gone) {
+            stable = false;
+        }
+        ArtifactMemo memo =
+                new ArtifactMemo(coordinate, before.lastModifiedTime().toMillis(), before.size(), sha);
+        return new Hashed(memo, stable);
     }
 }

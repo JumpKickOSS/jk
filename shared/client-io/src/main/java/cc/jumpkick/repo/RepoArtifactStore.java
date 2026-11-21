@@ -22,6 +22,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
@@ -353,13 +354,23 @@ public final class RepoArtifactStore {
      * and is not blessed by being looked at.
      */
     public Optional<Path> locate(String relativePath) {
+        return locate(relativePath, () -> {});
+    }
+
+    /** As {@link #locate(String)}, running {@code read} after an adopted file is hashed: a test seam. */
+    Optional<Path> locate(String relativePath, Runnable read) {
         if (root == null) return Optional.empty();
         Path artifact = artifactPath(relativePath);
         if (!Files.isRegularFile(artifact)) return Optional.empty();
         Path sidecar = sidecarPath(relativePath);
         if (!inM2(artifact) && !Files.isRegularFile(sidecar)) {
             try {
-                writeMemo(relativePath, artifact, Hashing.sha256Hex(artifact));
+                // A file replaced while it was hashed gets no memo; the next look adopts what is there.
+                Optional<ArtifactMemo> memo = ArtifactMemo.ofRead(artifact, inferGav(relativePath), read);
+                if (memo.isPresent()) {
+                    recordOrigin();
+                    memo.get().write(sidecar);
+                }
             } catch (IOException ignored) {
                 // the jar is on disk; callers can still use it
             }
@@ -513,12 +524,17 @@ public final class RepoArtifactStore {
                 writeMemo(relativePath, artifact, sha256, fetched);
                 return;
             }
-            // Each writer stages its own copy, and the move and the memo happen under the store's
-            // lock with the memo built from the staged file: two writers of other bytes for one path
-            // leave the memo of whichever file is on disk, never one writer's digest on the other's.
+            // Each writer stages its own copy, and the move and the memo happen under one lock with
+            // the memo built from the staged file: two writers of other bytes for one path leave the
+            // memo of whichever file is on disk, never one writer's digest on the other's. In the
+            // Maven local repository every store, of any home, writes the same file and keeps its
+            // own memo, so the lock is the local repository's, and the published file's mtime is
+            // after the one it replaces: no other store's memo of an earlier file describes it.
             Path tmp = Files.createTempFile(artifact.getParent(), "." + artifact.getFileName() + ".", ".part");
-            Path lock = rootOf(this).resolve(SHELF_LOCK_NAME);
-            Files.createDirectories(rootOf(this));
+            Path lock = inM2(artifact)
+                    ? Objects.requireNonNull(m2).resolve(M2_LOCK_NAME)
+                    : rootOf(this).resolve(SHELF_LOCK_NAME);
+            Files.createDirectories(lock.getParent());
             // Failure path only — moveInto consumed tmp on success.
             boolean[] moved = new boolean[1];
             try {
@@ -526,6 +542,7 @@ public final class RepoArtifactStore {
                 // The release runs between two takes of the lock, never under it.
                 HeldOpen.replace(artifact, () -> {
                     FileLocks.withLock(lock, () -> {
+                        stampAfter(tmp, artifact);
                         // The move keeps the inode, so the staged copy's size and mtime are the published file's.
                         ArtifactMemo memo = memoOf(relativePath, tmp, sha256, fetched);
                         AtomicWrites.moveInto(tmp, artifact);
@@ -545,6 +562,24 @@ public final class RepoArtifactStore {
             // landed. Surface the cause so a disk-full/permissions failure is diagnosable
             // rather than silent.
             Log.warn("jk: warning: could not store " + relativePath + " under " + root + ": " + e);
+        }
+    }
+
+    /**
+     * Give {@code staged} an mtime after that of {@code replaced}, the file it is about to replace,
+     * so a memo of the replaced file never describes it. The later steps are for filesystems that
+     * keep whole or even seconds.
+     */
+    private static void stampAfter(Path staged, Path replaced) throws IOException {
+        long floor;
+        try {
+            floor = Files.getLastModifiedTime(replaced).toMillis();
+        } catch (NoSuchFileException absent) {
+            return;
+        }
+        for (long step : new long[] {1, 1_000, 2_000}) {
+            if (Files.getLastModifiedTime(staged).toMillis() > floor) return;
+            Files.setLastModifiedTime(staged, FileTime.fromMillis(floor + step));
         }
     }
 
@@ -1092,6 +1127,9 @@ public final class RepoArtifactStore {
 
     /** The lock every publish of an artifact and its memo under one store takes; lives at the store's root. */
     public static final String SHELF_LOCK_NAME = ".shelf.lock";
+
+    /** The lock every store takes to publish a file into the Maven local repository; lives at its root. */
+    public static final String M2_LOCK_NAME = ".jk-share.lock";
 
     /**
      * As {@link #writeToLocalStore(Path, String, Path)}, recording {@code packagedBy} — the sha256
