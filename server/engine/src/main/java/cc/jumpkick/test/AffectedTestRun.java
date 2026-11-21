@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -74,10 +73,13 @@ public final class AffectedTestRun {
         Map<String, ClassAbi.Kind> foreign = AffectedChangedPublish.foreignFor(in.session(), current.keySet());
         Set<String> production = new LinkedHashSet<>(current.keySet());
         production.addAll(foreign.keySet());
-        List<TestClassIndex.Entry> tests = runnable(
-                TestClassIndex.scan(testClasses, production, tagClasspath),
-                project.build().testExcludeClasses(),
-                suites);
+        List<TestClassIndex.Entry> scanned = TestClassIndex.scan(testClasses, production, tagClasspath);
+        Map<String, ClassTags> tags = new HashMap<>();
+        for (TestClassIndex.Entry t : scanned) tags.put(t.className(), new ClassTags(t.classTags(), t.tags()));
+        Predicate<String> runs =
+                suites.withTags(tags::get).runnable(project.build().testExcludeClasses());
+        List<TestClassIndex.Entry> tests =
+                scanned.stream().filter(t -> runs.test(t.className())).toList();
         // run-tests only executes when compile-test found test sources, so an empty scan after
         // compile-test means the classes are missing — refuse, don't guess.
         if (tests.isEmpty()) {
@@ -125,23 +127,6 @@ public final class AffectedTestRun {
         }
         ctx.label("affected " + report.ranked().size() + " classes");
         return new Outcome(report, report.classNames(), report.identityToken());
-    }
-
-    /**
-     * {@code tests} within the run's suites, by class and tag, less the classes {@code [test]
-     * exclude-classes} keeps out of every run.
-     */
-    static List<TestClassIndex.Entry> runnable(
-            List<TestClassIndex.Entry> tests, List<String> excluded, SuiteFilter suites) {
-        String body = JUnitClassFilter.excludeBody(excluded);
-        Pattern out = body == null ? null : Pattern.compile(body);
-        Map<String, ClassTags> tags = new HashMap<>();
-        for (TestClassIndex.Entry t : tests) tags.put(t.className(), new ClassTags(t.classTags(), t.tags()));
-        Predicate<String> in = suites.withTags(tags::get).acceptor();
-        return tests.stream()
-                .filter(t -> in.test(t.className()))
-                .filter(t -> out == null || !out.matcher(t.className()).matches())
-                .toList();
     }
 
     /** Distinct workspace modules owning dirty paths; 1 when not a workspace or unreadable. */

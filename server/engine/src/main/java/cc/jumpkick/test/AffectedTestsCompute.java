@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /** Rank tests from sources and on-disk classes. Does not compile or run. */
@@ -230,7 +229,7 @@ public final class AffectedTestsCompute {
         for (TestClassIndex.Entry e : compiled) tags.put(e.className(), new ClassTags(e.classTags(), e.tags()));
         Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)
                 .withTags(tags::get)
-                .acceptor();
+                .runnable(build.build().testExcludeClasses());
         LinkedHashMap<String, TestClassIndex.Entry> byName = new LinkedHashMap<>();
         for (TestClassIndex.Entry e : compiled) {
             if (runs.test(e.className())) byName.put(e.className(), e);
@@ -238,11 +237,6 @@ public final class AffectedTestsCompute {
         List<String> roots = TestSuites.compiled(moduleDir, compact, suites, declared);
         for (TestClassIndex.Entry e : scanTestSources(moduleDir, compact, roots, tags)) {
             if (runs.test(e.className())) byName.putIfAbsent(e.className(), e);
-        }
-        String excluded = JUnitClassFilter.excludeBody(build.build().testExcludeClasses());
-        if (excluded != null) {
-            Pattern out = Pattern.compile(excluded);
-            byName.keySet().removeIf(name -> out.matcher(name).matches());
         }
         return List.copyOf(byName.values());
     }

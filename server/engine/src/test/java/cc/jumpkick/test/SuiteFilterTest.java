@@ -243,6 +243,31 @@ class SuiteFilterTest {
         assertThat(both.matcher("com.acme.CartSlowIT").matches()).isFalse();
     }
 
+    /** A run keeps what its suites admit by class and tag, less {@code [test] exclude-classes}. */
+    @Test
+    void runnable_is_the_suites_choice_less_the_excluded_classes(@TempDir Path module) {
+        Map<String, ClassTags> read = Map.of(
+                "com.acme.CartIT", new ClassTags(Set.of("integration"), Set.of("integration")),
+                "com.acme.FlakyIT", new ClassTags(Set.of("integration"), Set.of("integration")),
+                "com.acme.FooTest", new ClassTags(Set.of(), Set.of()));
+        SuiteFilter integration =
+                SuiteFilter.of(module, false, List.of("integration"), TIERS).withTags(read::get);
+        var runnable = integration.runnable(List.of("*Flaky*"));
+
+        assertThat(runnable.test("com.acme.CartIT")).isTrue();
+        assertThat(runnable.test("com.acme.FooTest"))
+                .as("untagged, so the default suite's")
+                .isFalse();
+        assertThat(runnable.test("com.acme.FlakyIT"))
+                .as("excluded from every run")
+                .isFalse();
+        assertThat(runnable.test("com.acme.FlakyIT$Nested")).isFalse();
+        assertThat(SuiteFilter.NONE.runnable(List.of()).test("com.acme.FlakyIT"))
+                .isTrue();
+        assertThat(SuiteFilter.NONE.runnable(List.of("*Flaky*")).test("com.acme.FlakyIT"))
+                .isFalse();
+    }
+
     /** Each class runs in exactly one suite, and a failure names it. */
     @Test
     void suite_of_names_the_suite_a_class_runs_in(@TempDir Path module) throws Exception {

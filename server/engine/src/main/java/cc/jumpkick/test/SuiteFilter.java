@@ -349,14 +349,22 @@ public final class SuiteFilter {
     public boolean selectsCompiledClass(Path testClasses, List<Path> classpath, List<String> excludeClasses) {
         // No tree to read settles nothing: the runner decides.
         if (!Files.isDirectory(testClasses)) return true;
-        Predicate<String> accepted = (readsTags() ? withTags(classTagsIn(testClasses, classpath)) : this).acceptor();
+        Predicate<String> runnable =
+                (readsTags() ? withTags(classTagsIn(testClasses, classpath)) : this).runnable(excludeClasses);
+        return compiledClasses(testClasses, true).stream().anyMatch(runnable);
+    }
+
+    /**
+     * Whether this run may run a test of a class: its suites admit it ({@link #acceptor}) and
+     * {@code excludeClasses}, the {@code [test] exclude-classes} patterns, do not name it or the
+     * class it is nested in.
+     */
+    public Predicate<String> runnable(List<String> excludeClasses) {
+        Predicate<String> accepted = acceptor();
         String excluded = JUnitClassFilter.excludeBody(excludeClasses);
-        Pattern out = excluded == null ? null : Pattern.compile("^(?:" + excluded + ")$");
-        for (String name : compiledClasses(testClasses, true)) {
-            if (out != null && out.matcher(name).matches()) continue;
-            if (accepted.test(name)) return true;
-        }
-        return false;
+        if (excluded == null) return accepted;
+        Pattern out = Pattern.compile(excluded);
+        return name -> !out.matcher(name).matches() && accepted.test(name);
     }
 
     /**
