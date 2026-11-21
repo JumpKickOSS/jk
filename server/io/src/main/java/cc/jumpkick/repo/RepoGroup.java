@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.HeldOpen;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.ConnectFaults;
@@ -1096,8 +1097,7 @@ public final class RepoGroup {
     }
     /** The failure and the root cause it wraps, because "failed after 6 attempts" alone names no fault. */
     static String describe(Throwable failure) {
-        Throwable root = failure;
-        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        Throwable root = Errors.rootCause(failure);
         String head = failure.getClass().getSimpleName() + ": " + failure.getMessage();
         return root == failure ? head : head + " — " + root.getClass().getSimpleName() + ": " + root.getMessage();
     }

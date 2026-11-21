@@ -14,6 +14,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class SingleFlightTest {
 
@@ -125,5 +126,16 @@ class SingleFlightTest {
                 .isTrue();
         assertThat(SingleFlight.interrupted(new IOException("x", new SocketTimeoutException())))
                 .isFalse();
+    }
+
+    /** Two exceptions may name each other as cause; the walk ends instead of circling. */
+    @Test
+    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void a_cause_chain_that_loops_is_walked_once() {
+        IOException outer = new IOException("outer");
+        IOException inner = new IOException("inner");
+        outer.initCause(inner);
+        inner.initCause(outer);
+        assertThat(SingleFlight.interrupted(outer)).isFalse();
     }
 }

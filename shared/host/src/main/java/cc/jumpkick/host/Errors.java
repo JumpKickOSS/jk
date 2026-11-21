@@ -2,12 +2,42 @@
 package cc.jumpkick.host;
 
 import java.nio.file.FileSystemException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /** Error-message hygiene shared by engine verbs and client sync paths. */
 public final class Errors {
 
     private Errors() {}
+
+    /**
+     * {@code t} and its causes, outermost first; empty for null. A chain that leads back to a
+     * throwable already in it ends there, so a cyclic chain is walked once.
+     */
+    public static List<Throwable> chain(@Nullable Throwable t) {
+        List<Throwable> out = new ArrayList<>();
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable c = t; c != null && seen.add(c); c = c.getCause()) out.add(c);
+        return out;
+    }
+
+    /** The outermost {@code type} in {@code t}'s cause chain, or null. */
+    public static <X extends Throwable> @Nullable X inChain(@Nullable Throwable t, Class<X> type) {
+        for (Throwable c : chain(t)) {
+            if (type.isInstance(c)) return type.cast(c);
+        }
+        return null;
+    }
+
+    /** The innermost cause of {@code t}: {@code t} itself when it has none. */
+    public static Throwable rootCause(Throwable t) {
+        List<Throwable> chain = chain(t);
+        return chain.get(chain.size() - 1);
+    }
 
     /**
      * Human text for {@code t}: its message, or {@code t.toString()} when the message is null or

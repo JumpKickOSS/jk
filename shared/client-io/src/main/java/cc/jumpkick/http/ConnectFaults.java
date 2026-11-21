@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
@@ -53,7 +54,7 @@ public final class ConnectFaults {
      * class with a message that says reset — only the latter is one request's failure.
      */
     public static @Nullable String describe(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             if (t instanceof Remembered remembered) return remembered.fault;
             String detail = t.getMessage();
             boolean reset = detail != null && detail.toLowerCase(Locale.ROOT).contains("reset");

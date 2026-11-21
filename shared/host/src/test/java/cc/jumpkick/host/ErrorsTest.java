@@ -24,4 +24,21 @@ class ErrorsTest {
                 .isEqualTo("NoSuchFileException: /cache/compile-main@abc/provenance.tsv");
         assertThat(Errors.text(new IOException("disk full"))).isEqualTo("disk full");
     }
+
+    @Test
+    void the_cause_chain_runs_outermost_first_and_stops_where_it_loops() {
+        IOException outer = new IOException("outer");
+        IllegalStateException middle = new IllegalStateException("middle");
+        IOException inner = new IOException("inner");
+        outer.initCause(middle);
+        middle.initCause(inner);
+        inner.initCause(outer);
+
+        assertThat(Errors.chain(outer)).containsExactly(outer, middle, inner);
+        assertThat(Errors.inChain(outer, IllegalStateException.class)).isSameAs(middle);
+        assertThat(Errors.inChain(outer, NoSuchFileException.class)).isNull();
+        assertThat(Errors.rootCause(outer)).isSameAs(inner);
+        assertThat(Errors.rootCause(middle)).isSameAs(outer);
+        assertThat(Errors.chain(null)).isEmpty();
+    }
 }

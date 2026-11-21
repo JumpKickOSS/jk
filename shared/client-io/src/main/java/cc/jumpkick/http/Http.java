@@ -2,6 +2,7 @@
 package cc.jumpkick.http;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.RepositorySpec;
@@ -992,9 +993,9 @@ public final class Http {
             } catch (IOException e) {
                 // A body over the limit is an answer, and the same body would come back; a body
                 // that stopped arriving is not asked for again, as silence before the headers is not.
-                BodyTooLargeException tooLarge = inChain(e, BodyTooLargeException.class);
+                BodyTooLargeException tooLarge = Errors.inChain(e, BodyTooLargeException.class);
                 if (tooLarge != null) throw tooLarge;
-                StalledBodyGuard.Stalled stalled = inChain(e, StalledBodyGuard.Stalled.class);
+                StalledBodyGuard.Stalled stalled = Errors.inChain(e, StalledBodyGuard.Stalled.class);
                 if (stalled != null) throw stalled;
                 lastIo = e;
                 if (!retriesSilence) break;
@@ -1019,14 +1020,6 @@ public final class Http {
                 lastStatus);
         if (lastIo != null) failed.initCause(lastIo);
         throw failed;
-    }
-
-    /** The first {@code type} in {@code e}'s cause chain, or null. */
-    private static <X extends Throwable> @Nullable X inChain(Throwable e, Class<X> type) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (type.isInstance(t)) return type.cast(t);
-        }
-        return null;
     }
 
     /** The failure of a request that met silence for its whole timeout, naming the timeout it had. */

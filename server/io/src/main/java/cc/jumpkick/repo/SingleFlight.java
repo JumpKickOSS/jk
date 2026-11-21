@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.host.Errors;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.net.SocketTimeoutException;
@@ -80,7 +81,7 @@ final class SingleFlight<V> {
      * IOException caused by either. Another run's Ctrl-C is never this caller's failure.
      */
     static boolean interrupted(@Nullable Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             // A read timeout is an InterruptedIOException too, but it is the repository's answer,
             // and every waiter would only meet it again.
             if (t instanceof SocketTimeoutException) return false;

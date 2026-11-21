@@ -4,6 +4,7 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.CentralMirror;
@@ -1047,7 +1048,7 @@ public final class MavenRepo {
      * credential helper's own explanation, which the fault alone ({@code HTTP 401}) does not give.
      */
     private static @Nullable String notRefreshed(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             if (t instanceof CredentialNotRefreshedException helper) return helper.why();
         }
         return null;
@@ -1063,7 +1064,7 @@ public final class MavenRepo {
 
     /** The 401 or 403 in {@code failure}'s cause chain as one line naming it, or null. */
     private static @Nullable String refusal(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             if (t instanceof HttpStatusException answer && answer.refusesAccess()) {
                 return "HTTP " + answer.status()
                         + (answer.status() == 401 ? ": it asks for credentials" : ": access refused");

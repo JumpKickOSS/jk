@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compat.ImportReport;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
@@ -332,7 +333,7 @@ public final class DeclaredPins {
     static String summary(IOException failure) {
         String message = failure.getMessage() == null ? "" : failure.getMessage();
         if (failure instanceof RateLimitedException) return "was rate-limited";
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             if (t instanceof HttpStatusException answer) return "answered HTTP " + answer.status();
         }
         if (failure instanceof MavenRepo.RepositoryUnreachableException) return "could not be reached";
@@ -344,8 +345,7 @@ public final class DeclaredPins {
     private static final Pattern HTTP_STATUS = Pattern.compile("^HTTP (\\d{3}) ");
 
     private static String describe(Throwable failure) {
-        Throwable root = failure;
-        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        Throwable root = Errors.rootCause(failure);
         String head =
                 failure.getClass().getSimpleName() + (failure.getMessage() == null ? "" : ": " + failure.getMessage());
         return root == failure ? head : head + " — " + root.getClass().getSimpleName() + ": " + root.getMessage();

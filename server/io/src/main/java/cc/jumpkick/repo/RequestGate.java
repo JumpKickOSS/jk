@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import java.io.IOException;
@@ -70,7 +71,7 @@ record RequestGate(Admission admit, Consumer<IOException> failed) {
 
     /** True when {@code failure}'s cause chain holds a request that waited out its timeout. */
     static boolean timedOut(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             if (t instanceof HttpTimeoutException || t instanceof SocketTimeoutException) return true;
         }
         return false;
@@ -78,7 +79,7 @@ record RequestGate(Admission admit, Consumer<IOException> failed) {
 
     /** The no-answer failure in {@code failure}'s cause chain as one line naming what it met, or null. */
     static @Nullable String silence(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             Throwable met = t;
             if (t instanceof Http.NoAnswerException && t.getCause() != null) {
                 met = t.getCause();
