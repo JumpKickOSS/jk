@@ -188,4 +188,27 @@ class SourceWatchTest {
             assertThat(watch.watches(libResources)).isTrue();
         }
     }
+
+    /** A source-named file kept as a resource, such as a code template, is copied, not compiled. */
+    @Test
+    void a_source_named_file_under_the_simple_layouts_resources_is_a_resource_change(@TempDir Path tmp)
+            throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nlayout = \"simple\"\n");
+        Files.createDirectories(project.resolve("src"));
+        Path resources = Files.createDirectories(project.resolve("resources"));
+        Path testResources = Files.createDirectories(project.resolve("test/resources"));
+        Files.createDirectories(project.resolve("test/src"));
+
+        try (SourceWatch watch = SourceWatch.open(project, SourceWatch.defaultRoots(project), 0)) {
+            for (Path dir : List.of(resources, testResources)) {
+                for (String name : List.of("Foo.java", "Foo.kt")) {
+                    Path file = Files.writeString(dir.resolve(name), "class Foo\n");
+                    assertThat(Pass.of(Objects.requireNonNull(watch.classify(dir, file))))
+                            .as(project.relativize(file).toString())
+                            .isEqualTo(Pass.COPY_RESOURCES);
+                }
+            }
+        }
+    }
 }

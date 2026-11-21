@@ -325,7 +325,9 @@ public final class SourceWatch implements AutoCloseable {
         } catch (IllegalArgumentException e) {
             return manifestOnly;
         }
-        if (relPath.contains("/resources/")) return new Changes(false, true, manifest);
+        // A file under any resources/ directory, the simple layout's top-level one too, is a resource,
+        // whatever its name: a .java template there is copied, not compiled.
+        if (("/" + relPath).contains("/resources/")) return new Changes(false, true, manifest);
         if (name.endsWith(".java")
                 || name.endsWith(".kt")
                 || name.endsWith(".kts")
