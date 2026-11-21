@@ -1093,10 +1093,12 @@ them is churn without a product gain. Instead:
   remedies: `jk import pom.xml` to own a `jk.toml`, or edit the POM.
 - The shadow is what `PomImporter` produces from the effective POM (parents flattened, managed
   versions applied, properties interpolated), rendered by `JkBuildRenderer` under a `ShadowStamp`
-  header (`PomShadow`): the first line carries a digest and the rendering JumpKick's version, one `# read
-  <path>` line per POM file the import read — the module's own and every parent its
-  `<relativePath>` reaches on disk — and the digest covers those files' bytes, so editing a parent
-  re-renders the child. It is a build artefact under `target/`, never committed. `jk import` still
+  header (`PomShadow`): the first line carries a digest and the rendering JumpKick's version, a
+  single `# read <path> <path> …` line the files the import read — the module's own, every parent
+  its `<relativePath>` reaches on disk and `.mvn/maven.config`; in a reactor every POM of the tree
+  — and the digest covers those files' bytes, so editing a parent re-renders the child. The paths
+  share one line because tomlj's parse time grows faster than linearly with a run of comment
+  lines. It is a build artefact under `target/`, never committed. `jk import` still
   writes a real `jk.toml` for a user who wants one; the shadow makes that optional.
 - Digests stay byte-based. `PreflightMemo`'s three `feedFile` sites and `LockManifestDigest` hash
   the shadow's bytes, which change exactly when the POM chain changes, so memos and lock

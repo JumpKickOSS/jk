@@ -195,7 +195,7 @@ class CoexistenceBuildE2eTest {
 
         Path shadow = ManifestPaths.manifestIn(child);
         String first = Files.readString(shadow);
-        assertThat(first).contains("# read pom.xml\n").contains("# read ../parent/pom.xml\n");
+        assertThat(first).contains("# read pom.xml ../parent/pom.xml ");
         assertThat(first).contains("jspecify").doesNotContain("\"0.3.0\"");
         assertThat(ManifestPaths.manifestIn(child)).isEqualTo(shadow);
         assertThat(Files.readString(shadow)).isEqualTo(first);

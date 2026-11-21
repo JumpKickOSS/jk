@@ -4,6 +4,7 @@ package cc.jumpkick.mvn;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkVersion;
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Parent;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The header of a shadow manifest: which POM files it was rendered from and their digest, so a
@@ -23,12 +25,13 @@ import org.apache.maven.model.Parent;
  *
  * <pre>
  * # shadow of pom.xml &lt;sha256&gt; jk &lt;version&gt;
- * # read pom.xml
- * # read ../pom.xml
- * # read .mvn/maven.config
+ * # read pom.xml ../pom.xml .mvn/maven.config
  * </pre>
  *
- * <p>The paths are relative to the module directory with {@code /} separators; the digest covers
+ * <p>The inputs share one line, since tomlj's parse time grows faster than linearly with a run of
+ * comment lines and a reactor's shadow lists every POM of the tree. The paths are relative to the
+ * module directory with {@code /} separators, separated by a space, a {@code %} or whitespace
+ * inside one written as {@code %XX}; the digest covers
  * their bytes in the listed order, a file that was absent counting as absent, so a shadow is
  * current exactly when every file it read still has the bytes it read, every file it found absent
  * is still absent, and the running jk is the one that rendered it. {@link #inputs} names the files
@@ -42,7 +45,7 @@ final class ShadowStamp {
     /** Prefix of the shadow's first line; the rest is the digest and the rendering jk's version. */
     static final String HEADER = "# shadow of " + ManifestPaths.POM + " ";
 
-    /** Prefix of one input line. */
+    /** Prefix of the line that lists the inputs. */
     static final String READ = "# read ";
 
     /** What an input that does not exist contributes to the digest. */
@@ -109,30 +112,32 @@ final class ShadowStamp {
                 .append(" jk ")
                 .append(JkVersion.VERSION)
                 .append('\n');
-        for (String rel : rels) sb.append(READ).append(rel).append('\n');
-        return sb.toString();
+        sb.append(READ);
+        for (int i = 0; i < rels.size(); i++) {
+            if (i > 0) sb.append(' ');
+            sb.append(encode(rels.get(i)));
+        }
+        return sb.append('\n').toString();
     }
 
     /** True when {@code shadow} exists, this jk rendered it, and every file it read is unchanged. */
     static boolean isCurrent(Path shadow, Path moduleDir) {
         if (!Files.isRegularFile(shadow)) return false;
-        String first = null;
-        List<String> rels = new ArrayList<>();
-        try {
-            for (String line : Files.readAllLines(shadow, StandardCharsets.UTF_8)) {
-                if (first == null) {
-                    if (!line.startsWith(HEADER)) return false;
-                    first = line;
-                } else if (line.startsWith(READ)) {
-                    rels.add(line.substring(READ.length()));
-                } else {
-                    break;
-                }
-            }
+        String first;
+        String read;
+        try (BufferedReader in = Files.newBufferedReader(shadow, StandardCharsets.UTF_8)) {
+            first = in.readLine();
+            read = in.readLine();
         } catch (IOException e) {
             return false;
         }
-        if (first == null || rels.isEmpty()) return false;
+        if (first == null || !first.startsWith(HEADER) || read == null || !read.startsWith(READ)) return false;
+        List<String> rels = new ArrayList<>();
+        for (String token : read.substring(READ.length()).split(" ")) {
+            String rel = decode(token);
+            if (rel == null || rel.isEmpty()) return false;
+            rels.add(rel);
+        }
         return first.equals(HEADER + digest(moduleDir, rels) + " jk " + JkVersion.VERSION);
     }
 
@@ -153,6 +158,34 @@ final class ShadowStamp {
             }
         }
         return Hashing.hex(md.digest());
+    }
+
+    /** {@code rel} with {@code %} and every whitespace or control character as {@code %XX}, so it holds no space. */
+    static String encode(String rel) {
+        StringBuilder sb = new StringBuilder(rel.length());
+        for (int i = 0; i < rel.length(); i++) {
+            char c = rel.charAt(i);
+            if (c == '%' || c <= ' ' || c == 0x7f) sb.append('%').append(Hashing.hex(new byte[] {(byte) c}));
+            else sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    /** The path {@link #encode} wrote as {@code token}, or null when a {@code %} is not followed by two hex digits. */
+    static @Nullable String decode(String token) {
+        StringBuilder sb = new StringBuilder(token.length());
+        for (int i = 0; i < token.length(); i++) {
+            char c = token.charAt(i);
+            if (c != '%') {
+                sb.append(c);
+                continue;
+            }
+            String hex = token.substring(i + 1, Math.min(i + 3, token.length()));
+            if (!Hashing.isHex(hex, 2)) return null;
+            sb.append((char) (Hashing.unhex(hex)[0] & 0xff));
+            i += 2;
+        }
+        return sb.toString();
     }
 
     private static String relative(Path moduleDir, Path file) {
