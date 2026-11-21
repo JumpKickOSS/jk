@@ -195,6 +195,8 @@ class WorkerLeasesRssTest {
                     .as("charged exactly here")
                     .isEqualTo(GIB + 200 * MIB);
         }
+        // The release is recorded on a thread of its own; let it finish before the directory goes.
+        awaitRecorded(ledger);
     }
 
     /** The ledger's line is recorded for the other engines on a thread of its own; wait for it. */
