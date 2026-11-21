@@ -177,7 +177,7 @@
           "type": "object",
           "description": "One shared dependency per key: a version string when the key is a catalog short name, a group:artifact:version string, or { group, name, version } or { git, group, ... }. A member pins it with { workspace = true }.",
           "additionalProperties": {
-            "oneOf": [{ "type": "string" }, { "type": "object" }]
+            "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/workspace-dependency" }]
           }
         }
       },
@@ -1155,7 +1155,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1169,7 +1169,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1183,7 +1183,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1197,7 +1197,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1211,7 +1211,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1229,7 +1229,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1250,7 +1250,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1264,7 +1264,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1278,7 +1278,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1292,7 +1292,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1306,7 +1306,7 @@
             "type": "string"
           },
           {
-            "type": "object"
+            "$ref": "#/$defs/dependency"
           }
         ]
       }
@@ -1375,6 +1375,50 @@
       },
       "additionalProperties": false,
       "description": "Cargo-style inheritance from the workspace root."
+    },
+    "dependency": {
+      "type": "object",
+      "description": "A dependency's inline table. Its source is one of version (a Maven coordinate, with group and name or the catalog short name the key spells), git, path, sha256 (with version, a pinned jar) or workspace = true; git and path read the coordinate from that project, and group alone leaves the version to a platform BOM.",
+      "properties": {
+        "group": { "type": "string", "description": "Maven group; absent, the catalog short name's." },
+        "name": { "type": "string", "description": "Maven artifact, or the workspace member, when the key is another handle; absent, the key." },
+        "version": { "type": "string", "description": "An exact pin, a ^ ~ range or latest." },
+        "git": { "type": "string", "description": "A git repository to build the dependency from." },
+        "path": { "type": "string", "description": "A local jk, Maven or Gradle project to build; beside git, the sub-directory of the repository." },
+        "sha256": { "type": "string", "description": "With version and group, the jar pinned to the bytes of this sha256." },
+        "workspace": { "const": true, "description": "A workspace member, or a version the workspace's [workspace.dependencies] shares." },
+        "optional": { "type": "boolean", "description": "Left out of the default resolution; a [features] entry pulls it in by name." },
+        "kind": { "enum": ["main", "tests"], "description": "tests: a workspace sibling's test classes or a Maven test-jar, in a test scope only." },
+        "classifier": { "type": "string", "description": "The classified jar of a Maven coordinate." },
+        "fixtures": { "const": true, "description": "A workspace sibling's fixtures output, in a test scope only." },
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "group:artifact coordinates (either may be *) pruned from this dependency's subtree." },
+        "features": { "type": "array", "items": { "type": "string" }, "description": "The dependency's features to turn on." },
+        "default-features": { "type": "boolean", "default": true, "description": "false: leave the dependency's default features off." },
+        "tag": { "type": "string", "description": "The git tag to build." },
+        "branch": { "type": "string", "description": "The git branch to build." },
+        "rev": { "type": "string", "description": "The git commit to build." },
+        "submodules": { "type": "boolean", "default": true, "description": "false: check the git repository out without its submodules." },
+        "verify-signed": { "type": "boolean", "default": false, "description": "true: refuse a git commit whose signature does not verify." }
+      },
+      "additionalProperties": false
+    },
+    "workspace-dependency": {
+      "type": "object",
+      "description": "A [workspace.dependencies] entry's inline table: a version or a git source the members share.",
+      "properties": {
+        "group": { "type": "string", "description": "Maven group; absent, the catalog short name's. Required beside git." },
+        "name": { "type": "string", "description": "Maven artifact; absent, the key." },
+        "version": { "type": "string", "description": "An exact pin, a ^ ~ range or latest." },
+        "git": { "type": "string", "description": "A git repository to build the dependency from." },
+        "path": { "type": "string", "description": "Beside git, the sub-directory of the repository." },
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "group:artifact coordinates (either may be *) pruned from this dependency's subtree." },
+        "tag": { "type": "string", "description": "The git tag to build." },
+        "branch": { "type": "string", "description": "The git branch to build." },
+        "rev": { "type": "string", "description": "The git commit to build." },
+        "submodules": { "type": "boolean", "default": true, "description": "false: check the git repository out without its submodules." },
+        "verify-signed": { "type": "boolean", "default": false, "description": "true: refuse a git commit whose signature does not verify." }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -374,6 +374,34 @@ class JkTomlSchemaTest {
         }
     }
 
+    @Test
+    void a_dependency_entry_s_inline_table_names_exactly_the_parser_s_entry_keys() throws Exception {
+        String defs = requireNonNull(memberOf(Files.readString(SCHEMA), "$defs"), "$defs");
+        String dependency = requireNonNull(memberOf(defs, "dependency"), "dependency");
+        assertThat(keysOf(table(dependency, "properties")))
+                .containsExactlyInAnyOrderElementsOf(DependencyEntryKeys.DEPENDENCY);
+        assertThat(ownAdditionalProperties(dependency))
+                .as("an unknown key in a dependency's inline table is what an editor should flag")
+                .isFalse();
+        String shared = requireNonNull(memberOf(defs, "workspace-dependency"), "workspace-dependency");
+        assertThat(keysOf(table(shared, "properties")))
+                .containsExactlyInAnyOrderElementsOf(DependencyEntryKeys.WORKSPACE);
+        assertThat(ownAdditionalProperties(shared)).isFalse();
+
+        for (Scope s : Scope.values()) {
+            // jk lock writes the plugin scope itself; the schema refuses the table outright.
+            if (s == Scope.PLUGIN) continue;
+            String entry = requireNonNull(memberOf(topLevel(s.tomlSection()), "additionalProperties"), s.tomlSection());
+            assertThat(entry).as(s.tomlSection()).contains("\"#/$defs/dependency\"");
+            assertThat(entry).as(s.tomlSection()).doesNotContain("\"object\"");
+        }
+        String workspaceDependencies = requireNonNull(
+                memberOf(table(topLevel("workspace"), "properties"), "dependencies"), "workspace.dependencies");
+        String workspaceEntry =
+                requireNonNull(memberOf(workspaceDependencies, "additionalProperties"), "workspace.dependencies entry");
+        assertThat(workspaceEntry).contains("\"#/$defs/workspace-dependency\"").doesNotContain("\"object\"");
+    }
+
     /** The top-level table {@code key} by position, not by its first textual match anywhere in the schema. */
     private static String topLevel(String key) throws Exception {
         return requireNonNull(memberOf(table(Files.readString(SCHEMA), "properties"), key), key);

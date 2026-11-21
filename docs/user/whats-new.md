@@ -426,6 +426,9 @@ JumpKick shows you this page's new entries after it updates itself.
   table in `~/.jk/config.toml`, `jk why` read the POM of a row from a repository a dependency's
   POM declared, and `jk import` checked a pin against a repository the imported POM declares, at
   that repository's own URL. Both now ask the mirror, as `jk lock` does.
+- **The `jk.toml` schema knows a dependency's inline table.** An editor flags a misspelt key in a
+  `[dependencies]` or `[workspace.dependencies]` entry (`excludes` for `exclude`), which the build
+  refuses, where it accepted any table ([Editor support](projects.md#editor-support)).
 
 ## 0.53.1
 

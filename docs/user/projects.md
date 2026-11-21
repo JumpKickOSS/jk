@@ -25,8 +25,9 @@ junit-jupiter = "6.1.3"
 ### Editor support
 
 `docs/user/jk.toml.schema.json` is a JSON Schema of the manifest vocabulary — the identity and
-language keys, every core table, the dependency scopes, and the keys of the tables the parser reads
-strictly (`[application]`, `[build]`, `[test]`, `[image]`, `[train]`, `[deny]`, …). It is generated
+language keys, every core table, the dependency scopes and the keys of a dependency's inline table,
+and the keys of the tables the parser reads strictly (`[application]`, `[build]`, `[test]`,
+`[image]`, `[train]`, `[deny]`, …). It is generated
 from nothing: the parser's own key sets are the truth and a test fails when the two disagree.
 Associate it with `jk.toml` and a stock editor completes table names and keys and flags an unknown
 key in those tables:
