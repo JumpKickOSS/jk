@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// Headless tests for the Dependencies panel's state rules. The harness copies the web modules
+// Headless tests for the Dependencies panel's state rules and the build spark's tooltip. The harness copies the web modules
 // into a type:module temp dir (JK_APP_DIR) and imports chart.js's exported component options.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const { ModuleDepGraph } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'chart.js')));
+const { BuildBars, ModuleDepGraph } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'chart.js')));
 
 /** A detached component instance: data + methods, no Vue. */
 function vm(over = {}) {
@@ -41,4 +41,18 @@ test('a failed reload drops the previous graph with the error', () => {
   assert.equal(v.error, 'malformed jk.toml');
   v.failLoad({ status: 401 });
   assert.match(v.error, /Authorization required/);
+});
+
+test('the spark tooltip escapes every value it interpolates', () => {
+  globalThis.document ??= { documentElement: {} };
+  globalThis.getComputedStyle ??= () => ({ getPropertyValue: () => '' });
+  let option;
+  const spark = Object.assign(Object.create(BuildBars.methods), {
+    builds: [{ buildNumber: '<b>7</b>', outcome: '<img src=x onerror=alert(1)>', millis: 1200 }],
+    chart: { setOption: (o) => (option = o) },
+  });
+  spark.render();
+  const tip = option.tooltip.formatter([{ dataIndex: 0 }]);
+  assert.ok(!tip.includes('<'), tip);
+  assert.match(tip, /^#&lt;b&gt;7&lt;\/b&gt; · &lt;img src=x onerror=alert\(1\)&gt; · /);
 });

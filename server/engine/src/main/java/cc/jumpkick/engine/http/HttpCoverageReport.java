@@ -87,7 +87,6 @@ final class HttpCoverageReport {
         }
         exchange.getResponseHeaders().set("Content-Security-Policy", "sandbox");
         exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
-        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.getResponseHeaders().set("Cache-Control", "no-cache");
         FileChannel channel;
         try {

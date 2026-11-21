@@ -138,7 +138,7 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
                 .send(req, HttpResponse.BodyHandlers.ofString());
     }
 
-    private static BuildRecord.Coverage module(Path ws, String name, long covered, long missed) {
+    static BuildRecord.Coverage module(Path ws, String name, long covered, long missed) {
         return new BuildRecord.Coverage(
                 ws.resolve(name).toString(),
                 "g:" + name,
@@ -150,7 +150,7 @@ class HttpCoverageReportTest extends HttpEngineServerHarness {
     }
 
     /** One finished coverage run of {@code ws} in the journal; returns a locator the route accepts. */
-    private String finished(BuildJournal journal, Path ws, List<BuildRecord.Coverage> coverage) throws Exception {
+    static String finished(BuildJournal journal, Path ws, List<BuildRecord.Coverage> coverage) throws Exception {
         Files.writeString(ws.resolve("jk.toml"), "group = \"g\"\nname = \"ws\"\nversion = \"1\"\n");
         String dir = ws.toString();
         long t = System.currentTimeMillis();

@@ -585,6 +585,9 @@ public final class HttpEngineServer implements AutoCloseable {
         // the same statement runs, so a 500 written outside would always go to a closed exchange
         // and be swallowed — every handler bug read as a silent connection drop.
         try (exchange) {
+            // Every response, whoever writes it: a browser takes the declared type and never reads
+            // a body as a script or page it did not say it was.
+            exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
             try {
                 // Snapshot: stop()/stopNow() nulls `server` while exchanges are still in flight
                 // (the displacement handoff does exactly that), and dereferencing it here would

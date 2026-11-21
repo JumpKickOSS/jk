@@ -30,7 +30,7 @@ import org.jspecify.annotations.Nullable;
  * cc.jumpkick.config.JkHttpConfig#webDisk}): a {@code web-root}, or a {@code -SNAPSHOT} build's {@code
  * web-overlay}. Disk files are no-cache and size-snapshotted per GET so concurrent appends cannot
  * corrupt framing. No directory listings. Every response, a 404 or 405 included, carries {@code
- * X-Frame-Options: DENY} and {@code X-Content-Type-Options: nosniff}; files carry {@link #SHELL_POLICY}.
+ * X-Frame-Options: DENY}; files carry {@link #SHELL_POLICY}.
  *
  * <p>With no such directory only the jar is served. Nothing is read from a default location: a build
  * can write anywhere it can reach, and a file the dashboard page loads as a script runs in the
@@ -195,7 +195,6 @@ final class StaticContent {
 
     void serve(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().set("X-Frame-Options", "DENY");
-        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         String method = exchange.getRequestMethod();
         boolean head = method.equals("HEAD");
         if (!head && !method.equals("GET")) {

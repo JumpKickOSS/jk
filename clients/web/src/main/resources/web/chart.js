@@ -96,8 +96,8 @@ export const BuildBars = {
             formatter: (ps) => {
               const b = builds[ps[0].dataIndex];
               if (!b) return '';
-              const n = b.buildNumber ? '#' + b.buildNumber + ' · ' : '';
-              return n + b.outcome + ' · ' + fmtDuration(b.millis);
+              const n = b.buildNumber ? '#' + escapeHtml(b.buildNumber) + ' · ' : '';
+              return n + escapeHtml(b.outcome) + ' · ' + escapeHtml(fmtDuration(b.millis));
             },
           },
           series: [{ type: 'bar', data, barWidth: '80%', z: 2 }],

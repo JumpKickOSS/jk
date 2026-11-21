@@ -7,9 +7,8 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Write a JSON, text or binary response with the project's header conventions and HEAD handling.
- * Each carries {@code X-Content-Type-Options: nosniff}, so a browser takes the declared type and
- * never reads a body as a script or page it did not say it was, and {@code Cache-Control: no-store},
- * so no cache keeps an answer that can carry build output.
+ * Each carries {@code Cache-Control: no-store}, so no cache keeps an answer that can carry build
+ * output; the server sets {@code X-Content-Type-Options: nosniff} on every response as it enters.
  */
 final class HttpResponses {
 
@@ -17,7 +16,6 @@ final class HttpResponses {
 
     static void sendJson(HttpExchange exchange, int status, String body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (exchange.getRequestMethod().equals("HEAD")) {
             exchange.sendResponseHeaders(status, -1);
@@ -30,7 +28,6 @@ final class HttpResponses {
 
     static void sendText(HttpExchange exchange, int status, String body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (exchange.getRequestMethod().equals("HEAD")) {
             exchange.sendResponseHeaders(status, -1);
@@ -45,7 +42,6 @@ final class HttpResponses {
     static void sendBytes(HttpExchange exchange, int status, String contentType, byte[] body) throws IOException {
         exchange.getResponseHeaders()
                 .set("Content-Type", contentType == null ? "application/octet-stream" : contentType);
-        exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         if (exchange.getRequestMethod().equals("HEAD")) {
             exchange.sendResponseHeaders(status, -1);
