@@ -374,6 +374,13 @@ dependency; the module's own file wins a path two of them share. A library modul
 `jk run` launches the first enabled `<activity>` or `<activity-alias>` in it with a MAIN action and
 LAUNCHER category in one intent filter.
 
+An app installs as its `namespace` plus the selected variant's `application-id-suffix`:
+`[variants.build-type.debug.android] application-id-suffix = ".debug"` installs `com.example.app`
+as `com.example.app.debug`. The suffix reaches the APK or AAB manifest, `BuildConfig.APPLICATION_ID`,
+`jk run` and `jk test --device`. Classes and `R` stay in the namespace, and `${applicationId}` in
+the manifest still reads the namespace. A minified build leaves R8's `mapping.txt`, `seeds.txt` and
+`usage.txt` in `target/r8/`, which a cached build restores with the artifact.
+
 JVM unit tests run under Robolectric when it is on the test classpath: `android-test-config`
 writes its `test_config.properties`, naming a unit-test manifest and a unit-test resource package.
 That manifest is the module's own merged as an application with every AAR on the test runtime

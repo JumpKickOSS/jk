@@ -24,8 +24,8 @@ final class InstrumentCommand {
         }
         Path adb = pathArg(exec, "--adb").orElseGet(() -> exec.requireExtra("adb"));
         Path testApk = pathArg(exec, "--test-apk").orElse(null);
-        String namespace = exec.config().string("namespace");
-        String testPackage = testApk != null ? namespace + ".test" : namespace;
+        String applicationId = AndroidDeps.applicationId(exec.config());
+        String testPackage = testApk != null ? applicationId + ".test" : applicationId;
 
         exec.label("adb install");
         if (adb(exec, adb, false, "install", "-r", app.toAbsolutePath().toString()) != 0) return 1;

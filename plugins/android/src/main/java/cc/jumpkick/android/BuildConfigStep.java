@@ -9,8 +9,8 @@ import java.nio.file.Path;
  * The {@code android-buildconfig} step ({@code [android] build-config = true} — an explicit
  * toggle, deliberately not AGP's default-on grab-bag): a generated {@code BuildConfig.java}
  * under the module's namespace, contributed to the compiler's source set. {@code DEBUG} reflects
- * the selected build type ({@code jk build -R} → false); {@code APPLICATION_ID} carries
- * the variant's {@code application-id-suffix} when one applies.
+ * the selected build type ({@code jk build -R} → false); {@code APPLICATION_ID} is the
+ * package the app installs as, {@link AndroidDeps#applicationId}.
  */
 final class BuildConfigStep {
 
@@ -19,8 +19,7 @@ final class BuildConfigStep {
     static void run(TaskExec exec) throws Exception {
         String namespace = exec.config().string("namespace");
         boolean debug = !"release".equals(exec.config().stringOpt("build-type").orElse("debug"));
-        String applicationId =
-                namespace + exec.config().stringOpt("application-id-suffix").orElse("");
+        String applicationId = AndroidDeps.applicationId(exec.config());
         Path gen = exec.outputDir("gen");
         Path file = gen.resolve(namespace.replace('.', '/')).resolve("BuildConfig.java");
         Files.createDirectories(file.getParent());

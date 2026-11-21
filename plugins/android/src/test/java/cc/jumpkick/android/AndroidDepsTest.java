@@ -30,6 +30,24 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class AndroidDepsTest {
 
+    /** An app installs as its namespace plus the variant's suffix; with no suffix, the namespace alone. */
+    @Test
+    void an_apps_id_is_its_namespace_plus_the_variant_suffix(@TempDir Path tmp) throws Exception {
+        assertThat(AndroidDeps.applicationId(AndroidIo.step(tmp).config())).isEqualTo("com.example.app");
+        assertThat(AndroidDeps.applicationId(AndroidIo.step(tmp)
+                        .config("application-id-suffix", ".debug")
+                        .config()))
+                .isEqualTo("com.example.app.debug");
+    }
+
+    /** A library installs nothing, so a suffix a shared variant sets does not rename it. */
+    @Test
+    void a_librarys_id_is_its_namespace_whatever_the_suffix(@TempDir Path tmp) throws Exception {
+        FakeBuildIo lib = AndroidIo.step(tmp).config("library", true).config("application-id-suffix", ".debug");
+
+        assertThat(AndroidDeps.applicationId(lib.config())).isEqualTo("com.example.app");
+    }
+
     /** jk's simple layout: {@code <module>/res}, {@code <module>/AndroidManifest.xml}. */
     @Test
     void the_simple_layout_at_the_module_root_is_found(@TempDir Path tmp) throws Exception {

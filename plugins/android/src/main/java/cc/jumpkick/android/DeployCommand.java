@@ -30,6 +30,7 @@ final class DeployCommand {
         Path adb = adbPath(exec);
         String namespace = exec.config().string("namespace");
         String activity = launcherActivity(AndroidDeps.mergedManifest(artifact), namespace);
+        String component = AndroidDeps.applicationId(exec.config()) + "/" + activity;
         // A release AAB deploys locally through bundletool: build-apks --mode universal against
         // the debug identity (local testing — Play signs the real install artifacts), then the
         // extracted universal.apk installs like any APK. The directory it is built in lives
@@ -44,8 +45,8 @@ final class DeployCommand {
             if (install != 0) return install;
 
             exec.label("am start");
-            exec.out("Launching " + namespace + "/" + activity + " …");
-            return adb(exec, adb, "shell", "am", "start", "-n", namespace + "/" + activity);
+            exec.out("Launching " + component + " …");
+            return adb(exec, adb, "shell", "am", "start", "-n", component);
         } finally {
             if (work != null) PathUtil.deleteRecursively(work);
         }
@@ -129,7 +130,7 @@ final class DeployCommand {
     /**
      * The first enabled {@code <activity>} or {@code <activity-alias>} of the merged manifest with
      * a MAIN/LAUNCHER intent filter, as {@code am start} wants it: a relative name
-     * ({@code .MainActivity}, {@code MainActivity}) resolves against the app id.
+     * ({@code .MainActivity}, {@code MainActivity}) resolves against the namespace.
      */
     static String launcherActivity(Path manifest, String namespace) throws Exception {
         if (!Files.isRegularFile(manifest)) {

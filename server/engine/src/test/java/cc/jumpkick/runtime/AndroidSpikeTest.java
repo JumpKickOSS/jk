@@ -9,6 +9,9 @@ import cc.jumpkick.androidsdk.AndroidSdkInstaller;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SnapshotQualifier;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
+import cc.jumpkick.host.Os;
+import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
@@ -19,6 +22,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -123,6 +127,19 @@ class AndroidSpikeTest {
                 .contains("META-INF/MANIFEST.MF");
         // v2 signing leaves no entry — verify with the same apksig the plugin signs with.
         assertThat(verifiedByApksig(b.apk())).isTrue();
+
+        // The debug suffix renames the installed package; classes and R stay in the namespace.
+        Path aapt2 = project.resolve("target/plugin/android-res/" + TreeContent.SCRATCH_PREFIX + "tools/"
+                + (Os.isWindows() ? "aapt2.exe" : "aapt2"));
+        Processes.Captured dumped = Processes.capture(
+                List.of(
+                        aapt2.toString(),
+                        "dump",
+                        "packagename",
+                        b.apk().toAbsolutePath().toString()),
+                Duration.ofMinutes(1));
+        assertThat(dumped.exit()).as(dumped.output()).isZero();
+        assertThat(dumped.output().strip()).isEqualTo("com.example.hello.debug");
     }
 
     /**
@@ -146,7 +163,7 @@ class AndroidSpikeTest {
         String adbCalls = Files.readString(adbLog);
         assertThat(adbCalls)
                 .contains("install -r " + b.apk().toAbsolutePath())
-                .contains("shell am start -n com.example.hello/com.example.hello.MainActivity");
+                .contains("shell am start -n com.example.hello.debug/com.example.hello.MainActivity");
     }
 
     /**
@@ -173,7 +190,7 @@ class AndroidSpikeTest {
                 .contains("1 passed, 1 failed");
         assertThat(Files.readString(instrLog))
                 .contains("install -r " + b.apk().toAbsolutePath())
-                .contains("shell am instrument -r -w com.example.hello/androidx.test.runner.AndroidJUnitRunner");
+                .contains("shell am instrument -r -w com.example.hello.debug/androidx.test.runner.AndroidJUnitRunner");
     }
 
     /** Managed devices: jk avd create/list/boot against the managed SDK root. */
@@ -302,6 +319,9 @@ class AndroidSpikeTest {
                 namespace   = "com.example.hello"
                 compile-sdk = 28
                 min-sdk     = 24
+
+                [variants.build-type.debug.android]
+                application-id-suffix = ".debug"
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"

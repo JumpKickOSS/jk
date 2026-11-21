@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -124,6 +125,17 @@ final class AndroidDeps {
         for (Path f : found) {
             out.putIfAbsent(root.relativize(f).toString().replace('\\', '/'), f);
         }
+    }
+
+    /**
+     * The package an app installs as: its {@code namespace} plus the selected variant's {@code
+     * application-id-suffix}. A library installs nothing, so its id is its namespace. Classes and
+     * {@code R} stay in the namespace either way.
+     */
+    static String applicationId(PluginConfig config) {
+        String namespace = config.string("namespace");
+        if (config.bool("library", false)) return namespace;
+        return namespace + config.stringOpt("application-id-suffix").orElse("");
     }
 
     /** Extract the per-OS aapt2 binary from its Maven wrapper jar into {@code destDir}. */

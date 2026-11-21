@@ -73,6 +73,7 @@ final class ResourceStep {
                         rTxt,
                         packaged.resolve("keep-rules.pro"),
                         false)
+                .args(renamed(exec))
                 .arg("--emit-ids")
                 .arg(packaged.resolve(IDS).toAbsolutePath().toString())
                 .run();
@@ -101,6 +102,7 @@ final class ResourceStep {
                             null,
                             null,
                             true)
+                    .args(renamed(exec))
                     .run();
             if (proto.exit() != 0) {
                 throw new IllegalStateException("aapt2 link --proto-format failed:\n" + proto.output());
@@ -163,6 +165,18 @@ final class ResourceStep {
         if (linked.exit() != 0) {
             throw new IllegalStateException("aapt2 link (unit test) failed:\n" + linked.output());
         }
+    }
+
+    /**
+     * aapt2's rename of the linked manifest to the app's {@link AndroidDeps#applicationId}, when
+     * a suffix makes it differ from the namespace. aapt2 qualifies relative class names against
+     * the namespace first, and {@code R} stays there ({@code --custom-package}).
+     */
+    private static List<String> renamed(TaskExec exec) {
+        String applicationId = AndroidDeps.applicationId(exec.config());
+        return applicationId.equals(exec.config().string("namespace"))
+                ? List.of()
+                : List.of("--rename-manifest-package", applicationId);
     }
 
     /** One aapt2 link invocation — binary (R.java + symbols + keep rules) or proto (AAB). */
