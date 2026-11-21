@@ -111,7 +111,10 @@ public final class SourceWatch implements AutoCloseable {
     /** As {@link #open(Path, List, long)}, never registering a tree under {@code skipped}. */
     public static SourceWatch open(Path projectDir, List<Path> roots, long debounceMillis, List<Path> skipped)
             throws IOException {
-        DirWatch ws = DirWatch.open();
+        List<Path> watched = new ArrayList<>();
+        for (Path root : roots) watched.add(WorkingDirectory.resolve(root));
+        watched.add(WorkingDirectory.resolve(projectDir));
+        DirWatch ws = DirWatch.open(watched);
         Set<Path> skip = new HashSet<>();
         for (Path p : skipped) skip.add(WorkingDirectory.resolve(p));
         SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis, skip, Clock.SYSTEM);

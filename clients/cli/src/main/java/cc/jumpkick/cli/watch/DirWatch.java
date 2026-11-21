@@ -7,14 +7,16 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
+import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The directories a {@link SourceWatch} watches, each for changes to its own entries, and the
  * changes they report in batches. On macOS FSEvents reports them ({@link FsEventsWatch}); elsewhere,
- * or when FSEvents cannot be bound, the JDK's {@link java.nio.file.WatchService} does ({@link
- * JdkDirWatch}), which on macOS polls every 2 s.
+ * on a volume that is not local, or when FSEvents cannot be bound, the JDK's {@link
+ * java.nio.file.WatchService} does ({@link JdkDirWatch}), which on macOS polls every 2 s.
  */
 interface DirWatch extends Closeable {
 
@@ -42,9 +44,18 @@ interface DirWatch extends Closeable {
         static final Change OVERFLOW = new Change(StandardWatchEventKinds.OVERFLOW, null, null);
     }
 
-    /** The host's watch: FSEvents on macOS when it binds, else the JDK's. */
-    static DirWatch open() throws IOException {
-        if (Os.isDarwin()) {
+    /**
+     * The host's watch over {@code dirs}: FSEvents on macOS when it binds and every one is on a local
+     * volume, else the JDK's. FSEvents reports only changes made through this machine's kernel, so a
+     * network share another machine writes to is polled.
+     */
+    static DirWatch open(Collection<Path> dirs) throws IOException {
+        return open(dirs, FsEventsWatch::local);
+    }
+
+    /** {@link #open(Collection)}, a directory's volume told local by {@code local}. */
+    static DirWatch open(Collection<Path> dirs, Predicate<Path> local) throws IOException {
+        if (Os.isDarwin() && dirs.stream().allMatch(local)) {
             DirWatch fsEvents = FsEventsWatch.open();
             if (fsEvents != null) return fsEvents;
         }

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.watch;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.cli.watch.DirWatch.Change;
 import cc.jumpkick.cli.watch.FsEventsWatch.Raw;
@@ -35,17 +36,41 @@ class FsEventsWatchTest {
 
     @Test
     @EnabledOnOs(OS.MAC)
-    void the_host_watch_on_macos_is_fsevents() throws IOException {
-        try (DirWatch watch = DirWatch.open()) {
+    void the_host_watch_on_macos_is_fsevents(@TempDir Path tmp) throws IOException {
+        try (DirWatch watch = DirWatch.open(List.of(tmp, tmp.resolve("not-made-yet")))) {
             assertThat(watch).isInstanceOf(FsEventsWatch.class);
         }
+    }
+
+    /** FSEvents never hears what another machine writes to a network share, so a watch over one polls. */
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void a_watch_over_a_volume_that_is_not_local_is_the_jdks(@TempDir Path tmp) throws IOException {
+        Path share = tmp.resolve("share");
+        try (DirWatch watch = DirWatch.open(List.of(tmp, share), d -> !d.equals(share))) {
+            assertThat(watch).isInstanceOf(JdkDirWatch.class);
+        }
+    }
+
+    @Test
+    @EnabledOnOs(OS.MAC)
+    void a_volume_is_local_by_its_mount_flags(@TempDir Path tmp) throws IOException {
+        assertThat(FsEventsWatch.local(tmp)).isTrue();
+        assertThat(FsEventsWatch.local(tmp.resolve("not/made/yet")))
+                .as("the nearest directory that exists")
+                .isTrue();
+        // macOS mounts the automounter's home map here, a volume that is not local.
+        Path autofs = Path.of("/System/Volumes/Data/home");
+        assumeTrue(
+                Files.isDirectory(autofs) && Files.getFileStore(autofs).type().equals("autofs"), "no autofs mount");
+        assertThat(FsEventsWatch.local(autofs)).isFalse();
     }
 
     @Test
     @EnabledOnOs(OS.MAC)
     void each_save_reaches_the_watch_promptly(@TempDir Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("src"));
-        try (DirWatch watch = DirWatch.open()) {
+        try (DirWatch watch = DirWatch.open(List.of(dir))) {
             watch.register(dir);
             Path file = dir.resolve("Main.java");
             for (int i = 0; i < 3; i++) {
@@ -195,7 +220,8 @@ class FsEventsWatchTest {
                         key(FsEventsWatch.SET_QUEUE),
                         key(FsEventsWatch.START),
                         key(FsEventsWatch.RELEASE),
-                        key(FsEventsWatch.QUEUE_CREATE));
+                        key(FsEventsWatch.QUEUE_CREATE),
+                        key(FsEventsWatch.STATFS));
         assertThat(keys(json.substring(upcalls))).contains(key(FsEventsWatch.CALLBACK));
     }
 

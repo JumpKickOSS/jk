@@ -103,6 +103,15 @@ final class FsEventsWatch implements DirWatch {
     static final FunctionDescriptor START = FunctionDescriptor.of(JAVA_BOOLEAN, ADDRESS);
     static final FunctionDescriptor RELEASE = FunctionDescriptor.ofVoid(ADDRESS);
     static final FunctionDescriptor QUEUE_CREATE = FunctionDescriptor.of(ADDRESS, ADDRESS, ADDRESS);
+    static final FunctionDescriptor STATFS = FunctionDescriptor.of(JAVA_INT, ADDRESS, ADDRESS);
+
+    /** {@code sizeof(struct statfs64)}, and where its {@code f_flags} lies. */
+    private static final long STATFS_SIZE = 2168;
+
+    private static final long STATFS_FLAGS = 64;
+
+    /** {@code MNT_LOCAL}: the volume is on this machine, not a network share. */
+    private static final int MNT_LOCAL = 0x1000;
 
     /** The open watches by the id each stream carries as its {@code info}: the callback's way back. */
     private static final Map<Long, FsEventsWatch> LIVE = new ConcurrentHashMap<>();
@@ -139,6 +148,26 @@ final class FsEventsWatch implements DirWatch {
         FsEventsWatch watch = new FsEventsWatch(fse);
         LIVE.put(watch.id, watch);
         return watch;
+    }
+
+    /**
+     * Whether {@code dir}, or the nearest directory above it that exists, is on a local volume. True
+     * when that cannot be read, so the watch is FSEvents as on any other volume.
+     */
+    static boolean local(Path dir) {
+        Fse fse = bind();
+        if (fse == null) return true;
+        Path at = dir.toAbsolutePath().normalize();
+        while (at != null && !Files.exists(at)) at = at.getParent();
+        if (at == null) return true;
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment buf = arena.allocate(STATFS_SIZE, 8);
+            int rc = (int) fse.statfs.invokeExact(arena.allocateFrom(at.toString()), buf);
+            return rc != 0 || (buf.get(JAVA_INT, STATFS_FLAGS) & MNT_LOCAL) != 0;
+        } catch (Throwable t) {
+            Log.debug("statfs failed for " + at, t);
+            return true;
+        }
     }
 
     @Override
@@ -364,6 +393,7 @@ final class FsEventsWatch implements DirWatch {
             MethodHandle invalidate,
             MethodHandle streamRelease,
             MethodHandle cfRelease,
+            MethodHandle statfs,
             MemorySegment callback,
             MemorySegment queue) {}
 
@@ -412,6 +442,8 @@ final class FsEventsWatch implements DirWatch {
                         linker.downcallHandle(cs.findOrThrow("FSEventStreamInvalidate"), RELEASE),
                         linker.downcallHandle(cs.findOrThrow("FSEventStreamRelease"), RELEASE),
                         linker.downcallHandle(cf.findOrThrow("CFRelease"), RELEASE),
+                        // The same layout on Intel and Apple silicon; Intel's plain statfs has 32-bit inodes.
+                        linker.downcallHandle(linker.defaultLookup().findOrThrow("statfs64"), STATFS),
                         linker.upcallStub(target, CALLBACK, Arena.global()),
                         queue);
             } catch (Throwable t) {
