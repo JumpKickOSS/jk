@@ -163,10 +163,8 @@ final class RepoReachability {
 
     /** The address refusal in {@code failure}'s cause chain as one line naming it, or null. */
     private static @Nullable String addressRefusal(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            if (t instanceof Http.AddressRefusedException refused) return "JumpKick refuses it: " + refused.reason();
-        }
-        return null;
+        Http.AddressRefusedException refused = Errors.inChain(failure, Http.AddressRefusedException.class);
+        return refused == null ? null : "JumpKick refuses it: " + refused.reason();
     }
 
     /** The 401 or 403 in {@code failure}'s cause chain as one line naming it, or null. */

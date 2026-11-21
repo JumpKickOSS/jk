@@ -571,15 +571,13 @@ public final class ZincJavaCompiler {
      */
     static String crashed(Throwable e) {
         StringBuilder sb = new StringBuilder("the compiler worker failed: ");
-        Throwable t = e;
-        while (true) {
+        List<Throwable> chain = Errors.chain(e);
+        for (Throwable t : chain) {
+            if (t != e) sb.append("\n  caused by ");
             sb.append(t.getClass().getName());
             if (t.getMessage() != null) sb.append(": ").append(t.getMessage());
-            if (t.getCause() == null || t.getCause() == t) break;
-            sb.append("\n  caused by ");
-            t = t.getCause();
         }
-        StackTraceElement[] frames = t.getStackTrace();
+        StackTraceElement[] frames = chain.get(chain.size() - 1).getStackTrace();
         for (int i = 0; i < Math.min(frames.length, CRASH_FRAMES); i++) {
             sb.append("\n\tat ").append(frames[i]);
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -296,10 +297,7 @@ final class ZincWorkdir {
      * on Windows — a POSIX {@link AccessDeniedException} is EACCES and permanent.
      */
     private static boolean isSharingViolation(Throwable e) {
-        for (Throwable t = e; t != null; t = t.getCause()) {
-            if (t instanceof FileSystemException) return true;
-        }
-        return false;
+        return Errors.inChain(e, FileSystemException.class) != null;
     }
 
     /**

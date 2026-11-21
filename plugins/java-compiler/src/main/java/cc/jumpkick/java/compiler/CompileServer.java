@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
@@ -200,11 +201,7 @@ final class CompileServer {
     }
 
     private static boolean causedByCancel(Throwable t) {
-        for (Throwable c = t; c != null; c = c.getCause()) {
-            if (c instanceof CompileCancel.Cancelled) return true;
-            if (c.getCause() == c) break;
-        }
-        return false;
+        return Errors.inChain(t, CompileCancel.Cancelled.class) != null;
     }
 
     /** {@code json} with {@code "id":n} first, where a reader scanning for the key meets it before any value. */

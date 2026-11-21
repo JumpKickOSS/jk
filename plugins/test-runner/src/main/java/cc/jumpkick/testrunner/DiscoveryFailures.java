@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -147,13 +148,11 @@ final class DiscoveryFailures implements LauncherDiscoveryListener {
         err.println("  under " + root);
         for (Failure f : failures) {
             err.println("  class: " + f.subject());
-            Throwable c = f.cause();
-            int depth = 0;
-            while (c != null && depth++ < CAUSE_DEPTH) {
+            for (Throwable c :
+                    Errors.chain(f.cause()).stream().limit(CAUSE_DEPTH).toList()) {
                 err.println("  caused by: " + c.getClass().getName() + ": " + c.getMessage());
                 StackTraceElement[] frames = c.getStackTrace();
                 for (int i = 0; i < Math.min(FRAMES, frames.length); i++) err.println("    at " + frames[i]);
-                c = c.getCause();
             }
         }
         return true;

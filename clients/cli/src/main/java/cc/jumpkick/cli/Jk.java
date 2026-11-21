@@ -17,6 +17,7 @@ import cc.jumpkick.config.JkConfigLoader;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.JkVersion;
@@ -166,10 +167,7 @@ public final class Jk {
 
     /** The {@link JkDirs.InvalidOverrideException} in {@code t}'s cause chain, or null. */
     static JkDirs.@Nullable InvalidOverrideException invalidOverride(Throwable t) {
-        for (Throwable c = t; c != null; c = c.getCause()) {
-            if (c instanceof JkDirs.InvalidOverrideException invalid) return invalid;
-        }
-        return null;
+        return Errors.inChain(t, JkDirs.InvalidOverrideException.class);
     }
 
     private static int executeInvocation(String... args) {

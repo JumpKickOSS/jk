@@ -19,6 +19,8 @@ import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.platform.engine.UniqueId;
+import org.junit.platform.launcher.EngineDiscoveryResult;
 
 /**
  * A test class the Platform's scan could not load is dropped without a word; the runner loads the
@@ -162,6 +164,25 @@ class DiscoveryFailuresTest {
                 .isEqualTo("2 classes could not be loaded during discovery: a.B, a.C");
         assertThat(DiscoveryFailures.headline(List.of("engine junit-jupiter", "a.B")))
                 .isEqualTo("discovery failed for: engine junit-jupiter, a.B");
+    }
+
+    @Test
+    void a_cause_chain_that_loops_back_is_printed_once(@TempDir Path tmp) {
+        IllegalStateException outer = new IllegalStateException("outer");
+        IllegalArgumentException inner = new IllegalArgumentException("inner");
+        outer.initCause(inner);
+        inner.initCause(outer);
+        DiscoveryFailures failures = new DiscoveryFailures(tmp, null);
+        failures.engineDiscoveryFinished(UniqueId.forEngine("junit-jupiter"), EngineDiscoveryResult.failed(outer));
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        assertThat(failures.report(new PrintStream(err, true, StandardCharsets.UTF_8)))
+                .isTrue();
+
+        assertThat(err.toString(StandardCharsets.UTF_8).lines().filter(l -> l.startsWith("  caused by: ")))
+                .containsExactly(
+                        "  caused by: java.lang.IllegalStateException: outer",
+                        "  caused by: java.lang.IllegalArgumentException: inner");
     }
 
     // --- harness ------------------------------------------------------------------

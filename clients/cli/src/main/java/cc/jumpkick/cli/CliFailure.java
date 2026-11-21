@@ -5,6 +5,7 @@ import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.jsonl.Jsonl;
@@ -54,7 +55,7 @@ final class CliFailure {
 
     /** True for the native image's report of a vanished working directory. */
     static boolean isWorkingDirectoryGone(Throwable t) {
-        for (Throwable c = t; c != null; c = c.getCause()) {
+        for (Throwable c : Errors.chain(t)) {
             String m = c.getMessage();
             if (m != null && m.contains("current working directory")) return true;
         }

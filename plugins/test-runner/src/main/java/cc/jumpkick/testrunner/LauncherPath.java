@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testrunner.env.EnvLookups;
@@ -525,11 +526,8 @@ final class LauncherPath {
         System.err.println(
                 "jk-test-runner: test discovery failed: " + e.getClass().getName() + ": " + e.getMessage());
         System.err.println("  under " + scanClasspath);
-        Throwable c = e.getCause();
-        int depth = 0;
-        while (c != null && depth++ < 6) {
+        for (Throwable c : Errors.chain(e).stream().skip(1).limit(6).toList()) {
             System.err.println("  caused by: " + c.getClass().getName() + ": " + c.getMessage());
-            c = c.getCause();
         }
     }
 

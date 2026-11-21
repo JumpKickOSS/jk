@@ -1619,6 +1619,29 @@ miss     = 'out.add("env:" + name + "=" + sealer.seal(value, EnvKeyText.credenti
 instead  = "EnvKeyText.sealer().seal(value, credential) for a value the caller's environment answered; EnvKeyText.literal(value) for a constant the manifest writes"
 why      = "a plain digest of a short environment value in a key or a memo is a guess away from the value"
 
+# G163. A cause chain is walked by Errors.chain, inChain and rootCause, which end where the chain
+# comes back to a throwable already in it. A hand-rolled `c = c.getCause()` loop at best stops a
+# throwable that is its own cause; two that name each other (a.initCause(b); b.initCause(a)) spin
+# the thread forever, or grow a message until the heap runs out.
+[guards.cause-chain-owner]
+kind    = "text"
+files   = ["**/src/main/java/**/*.java"]
+blank   = "comments+strings"
+pattern = '\b(\w+)\s*=\s*\1\.getCause\(\)'
+owner   = ["shared/host/src/main/java/cc/jumpkick/host/Errors.java"]
+hit     = 'for (Throwable c = t; c != null; c = c.getCause()) {'
+miss    = 'for (Throwable c : Errors.chain(t)) {'
+instead = "Errors.chain(t) to visit every cause, Errors.inChain(t, Type.class) to find one, Errors.rootCause(t) for the innermost"
+why     = "a hand-rolled cause walk spins forever on two exceptions that name each other"
+
+[[guards.cause-chain-owner.allow]]
+in     = "clients/maven-spy/src/main/java/cc/jumpkick/maven/spy/EventLine.java"
+reason = "runs inside Maven's JVM, where :host is not on the classpath; the walk keeps its own seen-set"
+
+[[guards.cause-chain-owner.allow]]
+in     = "plugins/helidon/src/main/java/io/helidon/service/maven/plugin/JkCreateApplication.java"
+reason = "runs in a fork over the plugin jar and Helidon's classpath, with no :host; the walk keeps its own seen-set"
+
 # G97. A catch of Exception, Throwable or RuntimeException whose body is only a comment has written
 # down its intent and dropped its evidence. This rule measures the sites; the ratchet below holds
 # the count — `owner` is the whole main tree because a match is tolerated wherever the ratchet still

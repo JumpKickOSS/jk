@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.jsonl.Jsonl;
@@ -9,6 +10,7 @@ import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -70,6 +72,17 @@ class CliFailureTest {
         assertThat(Jsonl.str(line, "message")).isEqualTo("machine");
         assertThat(Jsonl.str(line, "exceptionClass")).isEqualTo("java.lang.IllegalStateException");
         assertThat(Jsonl.intValue(line, "exit", -1)).isEqualTo(Exit.SOFTWARE);
+    }
+
+    @Test
+    void a_cause_chain_that_loops_back_is_read_once() {
+        Error outer = new Error("outer");
+        Error inner = new Error("inner");
+        outer.initCause(inner);
+        inner.initCause(outer);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThat(CliFailure.isWorkingDirectoryGone(outer))
+                .isFalse());
     }
 
     @Test

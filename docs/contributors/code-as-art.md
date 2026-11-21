@@ -1025,6 +1025,7 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G158 | a `jk-lock.toml` in the tree that `shared/core/src/test/resources/cc/jumpkick/lock/repository-locks.txt` does not list, or a listed path that is no lock: `LockRowParserTest` reads the repository's locks through both lock grammars from that list rather than walking the checkout from a test JVM | text, the guard's walk of the tree against the list's lines; a tree fixture proves the bite | guard test `lock-list-complete` |
 | G159 | a fixture manifest in test source pinning the JUnit train (`junit-jupiter`, `junit-platform-launcher`, `junit-vintage-engine`) at a version other than the one `jk-lock.toml` resolved, without a trailing `# off the train:` reason | text over every `src/test` and `src/integrationTest` Java file against the root lock's `org.junit.*` rows; a tree fixture proves the bite | guard test `junit-pin-parity` |
 | G160 | a call of `AnchorsLeft.after` outside `McpJobRuns`: the places a hand edit left under an old name reach a surface other than an MCP `run` verdict (the CLI's output first), where the push was never measured | bytecode forbid over server modules; the owner is `McpJobRuns` | `anchor-push-mcp-only` (forbid) |
+| G163 | a cause walk outside `cc.jumpkick.host.Errors` that steps by reassigning a throwable to its own cause (`c = c.getCause()`): such a loop stops at best on a throwable that is its own cause, and two exceptions that name each other spin it forever | text over main sources, comment- and string-blind, owned by `Errors`, whose `chain`, `inChain` and `rootCause` end where the chain repeats; Maven's JVM (`maven-spy`) and the Helidon fork, which have no `:host`, are allowed with their own seen-set | `cause-chain-owner` (text) |
 <!-- guards:end -->
 
 G73 and G4 predate the letters. Both read only `clients/cli`: G73 is a
@@ -1063,6 +1064,7 @@ by id, kind and why. This block is a `generated` guard's rendering
 | cache-tiers | vocabulary | a cache tier is named once; the homonyms each have their own owner |
 | carried-value-owners | text | a carried value registered by a class that does not own it outlives the reason it was carried |
 | case-conversion-locale | forbid | a case conversion in the default locale misparses identifiers under tr_TR and az |
+| cause-chain-owner | text | a hand-rolled cause walk spins forever on two exceptions that name each other |
 | central-address | text | the mirror and the cooldown key on the canonical host; an alias matches neither |
 | central-through-the-group | text | a repository built over Central by hand skips the user's repositories and mirrors, so a firewalled resolve fails and an open one goes around the mirror |
 | child-env-owner | forbid | a child's environment copied from the daemon is the engine's shell, not the `jk` command being served |

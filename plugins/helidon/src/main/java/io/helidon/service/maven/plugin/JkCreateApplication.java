@@ -19,7 +19,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -492,10 +494,16 @@ public final class JkCreateApplication {
         }
     }
 
+    /**
+     * The failure under {@code e}'s reflection wrappers. Walked here rather than by {@code Errors}:
+     * this fork's classpath is the plugin jar and Helidon's, with no {@code :host}.
+     */
     private static Throwable unwrap(Throwable e) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
         Throwable t = e;
         while ((t instanceof InvocationTargetException || t instanceof UndeclaredThrowableException)
-                && t.getCause() != null) {
+                && t.getCause() != null
+                && seen.add(t)) {
             t = t.getCause();
         }
         return t;

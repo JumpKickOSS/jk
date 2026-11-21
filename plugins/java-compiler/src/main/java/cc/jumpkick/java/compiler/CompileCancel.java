@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.java.compiler;
 
+import cc.jumpkick.host.Errors;
 import com.sun.source.util.JavacTask;
 import com.sun.source.util.TaskEvent;
 import com.sun.source.util.TaskListener;
@@ -75,10 +76,8 @@ final class CompileCancel {
      * a listener throws, and a cancelled compile must answer {@code cancelled}, not a crash.
      */
     static void rethrowIfCancelled(Throwable failure) {
-        for (Throwable c = failure; c != null; c = c.getCause()) {
-            if (c instanceof Cancelled cancelled) throw cancelled;
-            if (c.getCause() == c) return;
-        }
+        Cancelled cancelled = Errors.inChain(failure, Cancelled.class);
+        if (cancelled != null) throw cancelled;
     }
 
     private static void check(AtomicBoolean flag) {

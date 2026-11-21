@@ -8,6 +8,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
@@ -394,10 +395,7 @@ public final class BuildLogicSupport {
                                     cancelled,
                                     () -> RepoGroupBuilder.buildDefault(JkStores.storeCas()));
                 } catch (Exception e) {
-                    Throwable root = e;
-                    while (root.getCause() != null && root.getCause() != root) {
-                        root = root.getCause();
-                    }
+                    Throwable root = Errors.rootCause(e);
                     if (root instanceof InterruptedException ie) throw ie;
                     if (root instanceof IOException ioe) throw ioe;
                     throw scriptFailure(scriptFile, root);

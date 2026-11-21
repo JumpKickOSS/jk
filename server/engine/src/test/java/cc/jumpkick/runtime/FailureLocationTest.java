@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.resolver.pubgrub.InMemoryPackageSource;
@@ -12,6 +13,7 @@ import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.run.SourceLocation;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -50,5 +52,16 @@ class FailureLocationTest {
                         new SourceLocation(manifest.toAbsolutePath().normalize().toString(), 4, 1));
         assertThat(FailureLocation.of(new IllegalStateException("graal missing"), dir))
                 .isNull();
+    }
+
+    @Test
+    void a_cause_chain_that_loops_back_is_read_once(@TempDir Path dir) {
+        IllegalStateException outer = new IllegalStateException("outer");
+        IllegalStateException inner = new IllegalStateException("inner");
+        outer.initCause(inner);
+        inner.initCause(outer);
+
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThat(FailureLocation.of(outer, dir))
+                .isNull());
     }
 }

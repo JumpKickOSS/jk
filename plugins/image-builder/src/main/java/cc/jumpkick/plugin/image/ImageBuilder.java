@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.image;
 
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.image.ImageConfig;
@@ -642,10 +643,7 @@ public final class ImageBuilder {
      */
     static String causes(Throwable t) {
         StringBuilder sb = new StringBuilder(String.valueOf(t.getMessage()));
-        for (Throwable c = t.getCause(); c != null && c != c.getCause(); c = c.getCause()) {
-            sb.append("; caused by ").append(c);
-            if (c.getCause() == null) break;
-        }
+        Errors.chain(t).stream().skip(1).forEach(c -> sb.append("; caused by ").append(c));
         return sb.toString();
     }
 }

@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.ManifestLocator;
+import cc.jumpkick.host.Errors;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.resolver.pubgrub.Diagnostics;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
@@ -22,14 +23,13 @@ public final class FailureLocation {
 
     /** The location {@code failure}, or a cause of it, names in the project at {@code projectDir}; {@code null} when none. */
     public static @Nullable SourceLocation of(Throwable failure, Path projectDir) {
-        for (Throwable t = failure; t != null; t = t.getCause()) {
+        for (Throwable t : Errors.chain(failure)) {
             if (t instanceof JkBuildParseException parse && parse.location() != null) {
                 return parse.location().in(ManifestPaths.manifestIn(projectDir));
             }
             if (t instanceof UnsatisfiableException unsat) {
                 return ManifestLocator.dependency(projectDir, Diagnostics.rootConstraints(unsat.rootCause()));
             }
-            if (t.getCause() == t) break;
         }
         return null;
     }
