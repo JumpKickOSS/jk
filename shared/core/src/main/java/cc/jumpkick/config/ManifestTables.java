@@ -28,6 +28,7 @@ import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.release.ReleaseTable;
 import cc.jumpkick.release.ReleaseTag;
 import cc.jumpkick.run.TaskNames;
+import cc.jumpkick.util.Suggest;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
@@ -72,32 +73,30 @@ public final class ManifestTables {
         for (PluginDescriptor m : installed) byTable.put(m.table(), m);
         List<Variants.Dimension> dimensions = new ArrayList<>();
         for (String dim : table.keySet()) {
-            TomlTable dimTable = table.getTable(List.of(dim));
-            if (dimTable == null) {
-                throw new JkBuildParseException("[variants." + dim + "] must be a table of named values");
-            }
+            TomlTable dimTable = tableAt(table, dim, "[variants." + dim + "] must be a table of named values");
             String defaultValue = null;
             Map<String, Variants.Value> values = new LinkedHashMap<>();
             for (String key : dimTable.keySet()) {
                 if (key.equals("default")) {
                     defaultValue = optionalString(dimTable, "default", "[variants." + dim + "].default");
                     if (defaultValue == null || defaultValue.isBlank()) {
-                        throw new JkBuildParseException("[variants." + dim + "].default must be a value name");
+                        throw JkBuildParseException.at(
+                                dimTable, "default", "[variants." + dim + "].default must be a value name");
                     }
                     continue;
                 }
-                TomlTable valueTable = dimTable.getTable(List.of(key));
-                if (valueTable == null) {
-                    throw new JkBuildParseException(
-                            "[variants." + dim + "]." + key + " must be a table, or use `default = \"<value>\"`");
-                }
+                TomlTable valueTable = tableAt(
+                        dimTable,
+                        key,
+                        "[variants." + dim + "]." + key + " must be a table, or use `default = \"<value>\"`");
                 values.put(
                         key, parseVariantValue("variants." + dim + "." + key, valueTable, workspace, catalog, byTable));
             }
             try {
                 dimensions.add(new Variants.Dimension(dim, defaultValue, values));
             } catch (IllegalArgumentException e) {
-                throw new JkBuildParseException(e.getMessage());
+                // The one value a dimension's own check refuses is its default.
+                throw JkBuildParseException.at(dimTable, "default", Objects.toString(e.getMessage()));
             }
         }
         return new Variants(dimensions);
@@ -119,10 +118,8 @@ public final class ManifestTables {
             }
             Scope scope = scopeForSection(key);
             if (scope != null) {
-                TomlTable scopeTable = valueTable.getTable(List.of(key));
-                if (scopeTable == null) {
-                    throw new JkBuildParseException("[" + where + "." + key + "] must be a dependency table");
-                }
+                TomlTable scopeTable =
+                        tableAt(valueTable, key, "[" + where + "." + key + "] must be a dependency table");
                 List<Dependency> parsed = ManifestDeps.parseScopeTable(
                         scopeTable, new ArrayList<>(scopeTable.keySet()), scope, workspace, catalog);
                 if (!parsed.isEmpty()) deps.put(scope, parsed);
@@ -130,19 +127,31 @@ public final class ManifestTables {
             }
             PluginDescriptor plugin = pluginsByTable.get(key);
             if (plugin != null) {
-                TomlTable overlay = valueTable.getTable(List.of(key));
-                if (overlay == null) {
-                    throw new JkBuildParseException(
-                            "[" + where + "." + key + "] must be a table of [" + plugin.table() + "] key overlays");
-                }
+                TomlTable overlay = tableAt(
+                        valueTable,
+                        key,
+                        "[" + where + "." + key + "] must be a table of [" + plugin.table() + "] key overlays");
                 pluginOverlays.put(
                         plugin.table(), PluginTableRegistry.validateOverlay(plugin, where + "." + key, overlay));
                 continue;
             }
-            throw new JkBuildParseException("[" + where + "]." + key + ": a variant cannot set this;"
-                    + " use extra-src, a dependency table or one of " + pluginsByTable.keySet());
+            List<String> settable = new ArrayList<>();
+            settable.add("extra-src");
+            for (Scope s : Scope.values()) settable.add(s.tomlSection());
+            settable.addAll(pluginsByTable.keySet());
+            String hint = Suggest.closest(key, settable)
+                    .map(name -> " did you mean " + name + "?")
+                    .orElse(" use extra-src, a dependency table or one of " + pluginsByTable.keySet());
+            throw JkBuildParseException.at(
+                    valueTable, key, "[" + where + "]." + key + ": a variant cannot set this;" + hint);
         }
         return new Variants.Value(extraSrc, deps, pluginOverlays);
+    }
+
+    /** The table at {@code key}, which the caller read from {@code parent}'s keys; refused at the key otherwise. */
+    private static TomlTable tableAt(TomlTable parent, String key, String refusal) {
+        if (parent.get(List.of(key)) instanceof TomlTable t) return t;
+        throw JkBuildParseException.at(parent, key, refusal);
     }
 
     static final List<String> FORMAT_KEYS = List.of(

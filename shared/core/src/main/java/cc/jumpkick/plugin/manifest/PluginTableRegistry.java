@@ -376,7 +376,8 @@ public final class PluginTableRegistry {
             for (String entry : groupTable.keySet()) {
                 TomlTable entryTable = readTable(groupTable, entry);
                 if (entryTable == null) {
-                    throw new JkBuildParseException("[" + whereBase + "]." + entry + " must be a table");
+                    throw JkBuildParseException.at(
+                            groupTable, entry, "[" + whereBase + "]." + entry + " must be a table");
                 }
                 entries.put(entry, validateSub(whereBase + "." + entry, subSchema, entryTable));
             }
@@ -394,8 +395,11 @@ public final class PluginTableRegistry {
                 if (schemaKey != null) {
                     // A string-map key is an inline table by nature: the schema pass read it already.
                     if (schemaKey.type() == PluginDescriptor.SchemaKey.Type.STRING_MAP) continue;
-                    throw new JkBuildParseException("[" + manifest.table() + "." + key + "] is a [" + manifest.table()
-                            + "] key, not an entry name");
+                    throw JkBuildParseException.at(
+                            table,
+                            key,
+                            "[" + manifest.table() + "." + key + "] is a [" + manifest.table()
+                                    + "] key, not an entry name");
                 }
                 entries.put(key, validateSub(manifest.table() + "." + key, entrySchema, entryTable));
             }
@@ -427,8 +431,8 @@ public final class PluginTableRegistry {
                 throw JkBuildParseException.at(
                         table,
                         raw,
-                        "[" + where + "]." + raw + " is not a [" + manifest.table() + "] key (schema: "
-                                + manifest.schema().keySet() + ")");
+                        "[" + where + "]." + raw + " is not a [" + manifest.table() + "] key"
+                                + closestKey(raw, manifest.schema().keySet()));
             }
             Object value = read(where, key, table);
             if (value != null) values.put(key.name(), value);
@@ -448,9 +452,16 @@ public final class PluginTableRegistry {
             throw JkBuildParseException.at(
                     table,
                     raw,
-                    "[" + manifest.table() + "]." + raw + " is not a [" + manifest.table() + "] key (schema: "
-                            + manifest.schema().keySet() + ")");
+                    "[" + manifest.table() + "]." + raw + " is not a [" + manifest.table() + "] key"
+                            + closestKey(raw, manifest.schema().keySet()));
         }
+    }
+
+    /** {@code ; did you mean <key>?} when one known key is close to {@code raw}, else every known key. */
+    private static String closestKey(String raw, Set<String> known) {
+        return Suggest.closest(raw, known)
+                .map(name -> "; did you mean " + name + "?")
+                .orElse(" (keys: " + String.join(", ", known) + ")");
     }
 
     private static @Nullable TomlTable readTable(TomlTable parent, String key) {
@@ -466,11 +477,10 @@ public final class PluginTableRegistry {
             String where, Map<String, PluginDescriptor.SchemaKey> subSchema, TomlTable entryTable) {
         for (String raw : entryTable.keySet()) {
             if (subSchema.containsKey(raw)) continue;
-            String hint = Suggest.closest(raw, subSchema.keySet())
-                    .map(name -> "; did you mean " + name + "?")
-                    .orElse(" (keys: " + String.join(", ", subSchema.keySet()) + ")");
             throw JkBuildParseException.at(
-                    entryTable, raw, "[" + where + "]." + raw + " is not a key of this entry" + hint);
+                    entryTable,
+                    raw,
+                    "[" + where + "]." + raw + " is not a key of this entry" + closestKey(raw, subSchema.keySet()));
         }
         Map<String, Object> out = new LinkedHashMap<>();
         for (PluginDescriptor.SchemaKey key : subSchema.values()) {
@@ -489,10 +499,13 @@ public final class PluginTableRegistry {
     }
 
     /** A {@code one-of} key's value must be one of the listed values. */
-    private static void checkOneOf(String where, PluginDescriptor.SchemaKey key, String value) {
+    private static void checkOneOf(TomlTable table, String where, PluginDescriptor.SchemaKey key, String value) {
         if (key.oneOf().isEmpty() || key.oneOf().contains(value)) return;
-        throw new JkBuildParseException(where + " = \"" + value + "\" must be one of "
-                + key.oneOf().stream().map(v -> "\"" + v + "\"").collect(Collectors.joining(", ")));
+        throw JkBuildParseException.at(
+                table,
+                key.name(),
+                where + " = \"" + value + "\" must be one of "
+                        + key.oneOf().stream().map(v -> "\"" + v + "\"").collect(Collectors.joining(", ")));
     }
 
     /**
@@ -500,9 +513,11 @@ public final class PluginTableRegistry {
      * and {@code ^4} are refused under a floor of 27, and {@code latest}, which names no anchor,
      * passes.
      */
-    private static void checkMinVersion(String tableName, PluginDescriptor.SchemaKey key, String value) {
+    private static void checkMinVersion(
+            TomlTable table, String tableName, PluginDescriptor.SchemaKey key, String value) {
         String floor = key.minVersion();
         if (floor == null) return;
+        String where = "[" + tableName + "]." + key.name() + " = \"" + value + "\"";
         String anchor;
         try {
             anchor = switch (VersionSelector.parse(value)) {
@@ -512,73 +527,78 @@ public final class PluginTableRegistry {
                 default -> null;
             };
         } catch (IllegalArgumentException e) {
-            throw new JkBuildParseException(
-                    "[" + tableName + "]." + key.name() + " = \"" + value + "\": " + e.getMessage());
+            throw JkBuildParseException.at(table, key.name(), where + ": " + e.getMessage());
         }
         if (anchor == null || Versions.compare(anchor, floor) >= 0) return;
-        throw new JkBuildParseException("[" + tableName + "]." + key.name() + " = \"" + value + "\" is older than "
-                + floor + ", the oldest release jk supports here — set " + key.name() + " = \""
-                + (key.example() != null ? key.example() : floor) + "\"");
+        throw JkBuildParseException.at(
+                table,
+                key.name(),
+                where + " is older than " + floor + ", the oldest release jk supports here — set " + key.name()
+                        + " = \"" + (key.example() != null ? key.example() : floor) + "\"");
     }
 
+    /** {@code key}'s value in {@code table}, coerced to its schema type; a value of the wrong shape is refused at the key. */
     private static @Nullable Object read(String tableName, PluginDescriptor.SchemaKey key, TomlTable table) {
         if (!table.contains(key.name())) return null;
-        String where = "[" + tableName + "]." + key.name();
+        String name = key.name();
+        String where = "[" + tableName + "]." + name;
         return switch (key.type()) {
             case STRING -> {
-                String v = getOr(() -> table.getString(key.name()), where + " must be a string");
+                String v = getOr(table, name, () -> table.getString(name), where + " must be a string");
                 if (v == null || v.isBlank()) yield null;
-                checkOneOf(where, key, v);
-                if (key.selector()) ManifestSelectors.checked(VersionSelector.parse(v), table, key.name(), where);
-                checkMinVersion(tableName, key, v);
+                checkOneOf(table, where, key, v);
+                if (key.selector()) ManifestSelectors.checked(VersionSelector.parse(v), table, name, where);
+                checkMinVersion(table, tableName, key, v);
                 yield v;
             }
             case COORDINATE -> {
-                String v = getOr(() -> table.getString(key.name()), where + " must be a string");
+                String v = getOr(table, name, () -> table.getString(name), where + " must be a string");
                 if (v == null || v.isBlank()) yield null;
                 if (!Coordinates.wellFormed(v)) {
-                    throw new JkBuildParseException(where + " = \"" + v
-                            + "\" must be a group:artifact:version coordinate (a classifier and !type may follow)");
+                    throw JkBuildParseException.at(
+                            table,
+                            name,
+                            where + " = \"" + v
+                                    + "\" must be a group:artifact:version coordinate (a classifier and !type may follow)");
                 }
                 yield v;
             }
             case BOOL -> {
-                Boolean v = getOr(() -> table.getBoolean(key.name()), where + " must be a boolean");
-                if (v == null) throw new JkBuildParseException(where + " must be a boolean");
+                Boolean v = getOr(table, name, () -> table.getBoolean(name), where + " must be a boolean");
+                if (v == null) throw JkBuildParseException.at(table, name, where + " must be a boolean");
                 yield v;
             }
             case INT -> {
-                Long v = getOr(() -> table.getLong(key.name()), where + " must be an integer");
-                if (v == null) throw new JkBuildParseException(where + " must be an integer");
+                Long v = getOr(table, name, () -> table.getLong(name), where + " must be an integer");
+                if (v == null) throw JkBuildParseException.at(table, name, where + " must be an integer");
                 yield v;
             }
             case STRING_LIST -> {
                 // A bare string is the one-element list: `src = "proto"` reads as `src = ["proto"]`.
-                if (table.isString(key.name())) {
-                    String one = Objects.requireNonNull(table.getString(key.name()));
+                if (table.isString(name)) {
+                    String one = Objects.requireNonNull(table.getString(name));
                     yield one.isBlank() ? List.of() : List.of(one);
                 }
-                TomlArray arr = getOr(() -> table.getArray(key.name()), where + " must be an array of strings");
-                if (arr == null) throw new JkBuildParseException(where + " must be an array of strings");
+                String refusal = where + " must be an array of strings";
+                TomlArray arr = getOr(table, name, () -> table.getArray(name), refusal);
+                if (arr == null) throw JkBuildParseException.at(table, name, refusal);
                 List<String> out = new ArrayList<>(arr.size());
                 for (int i = 0; i < arr.size(); i++) {
-                    Object val = arr.get(i);
-                    if (!(val instanceof String str)) {
-                        throw new JkBuildParseException(where + " must be an array of strings");
-                    }
+                    if (!(arr.get(i) instanceof String str)) throw JkBuildParseException.at(table, name, refusal);
                     out.add(str);
                 }
                 yield out;
             }
             case STRING_MAP -> {
-                TomlTable map = getOr(() -> table.getTable(key.name()), where + " must be a table of strings");
-                if (map == null) throw new JkBuildParseException(where + " must be a table of strings");
+                String refusal = where + " must be a table of strings";
+                TomlTable map = getOr(table, name, () -> table.getTable(name), refusal);
+                if (map == null) throw JkBuildParseException.at(table, name, refusal);
                 Map<String, String> out = new LinkedHashMap<>();
                 for (String k : map.keySet()) {
                     // By path, not by name: a quoted key holding dots is one key, not a walk.
                     Object val = map.get(List.of(k));
                     if (!(val instanceof String str)) {
-                        throw new JkBuildParseException(where + "." + k + " must be a string");
+                        throw JkBuildParseException.at(map, k, where + "." + k + " must be a string");
                     }
                     out.put(k, str);
                 }
@@ -587,12 +607,12 @@ public final class PluginTableRegistry {
         };
     }
 
-    /** tomlj throws {@code TomlInvalidTypeException} on mistyped keys — normalize to a parse error. */
-    private static <T> T getOr(Supplier<T> read, String message) {
+    /** tomlj throws {@code TomlInvalidTypeException} on a mistyped key: refuse it at the key instead. */
+    private static <T> T getOr(TomlTable table, String key, Supplier<T> read, String refusal) {
         try {
             return read.get();
         } catch (org.tomlj.TomlInvalidTypeException e) {
-            throw new JkBuildParseException(message);
+            throw JkBuildParseException.at(table, key, refusal);
         }
     }
 

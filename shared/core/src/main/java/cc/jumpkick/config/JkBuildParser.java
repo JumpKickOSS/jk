@@ -619,12 +619,12 @@ public final class JkBuildParser {
 
     static List<String> requireStringList(TomlTable table, String key, String where) {
         if (!(table.get(List.of(key)) instanceof TomlArray arr)) {
-            throw new JkBuildParseException(where + " must be an array of directory strings");
+            throw JkBuildParseException.at(table, key, where + " must be an array of directory strings");
         }
         List<String> out = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
             if (!(arr.get(i) instanceof String s) || s.isBlank()) {
-                throw new JkBuildParseException(where + " must be an array of directory strings");
+                throw JkBuildParseException.at(table, key, where + " must be an array of directory strings");
             }
             out.add(s);
         }

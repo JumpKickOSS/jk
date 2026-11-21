@@ -59,8 +59,34 @@ class ManifestLocationTest {
     void an_unknown_key_in_a_plugin_table_is_refused_at_the_key(@TempDir Path dir) throws Exception {
         Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "  min-skd = 24\n");
         JkBuildParseException e = refusal(file);
-        assertThat(e).hasMessageContaining("[android].min-skd is not a [android] key");
+        assertThat(e).hasMessageContaining("[android].min-skd is not a [android] key; did you mean min-sdk?");
         assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 10, 3));
+    }
+
+    @Test
+    void an_unknown_plugin_key_close_to_none_lists_the_keys(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "flavour-of-the-month = 1\n");
+        assertThat(refusal(file))
+                .hasMessageContaining("[android].flavour-of-the-month is not a [android] key (keys: namespace,");
+    }
+
+    @Test
+    void a_plugin_value_of_the_wrong_type_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir,
+                HEAD + "java = 25\n\n[android]\nnamespace = \"com.example.app\"\n"
+                        + "compile-sdk = \"thirty-six\"\nmin-sdk = 24\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[android].compile-sdk must be an integer");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 8, 1));
+    }
+
+    @Test
+    void a_plugin_group_entry_that_is_not_a_table_is_located_at_the_entry(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "\n[android.signing]\nrelease = \"x\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[android.signing].release must be a table");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 12, 1));
     }
 
     @Test
@@ -70,8 +96,48 @@ class ManifestLocationTest {
                 HEAD + "java = 25\n\n" + ANDROID
                         + "\n[variants.build-type.release.android]\napplication-id-sufix = \".rel\"\n");
         JkBuildParseException e = refusal(file);
-        assertThat(e).hasMessageContaining("[variants.build-type.release.android].application-id-sufix");
+        assertThat(e)
+                .hasMessageContaining("[variants.build-type.release.android].application-id-sufix")
+                .hasMessageContaining("did you mean application-id-suffix?");
         assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 12, 1));
+    }
+
+    @Test
+    void an_overlay_value_of_the_wrong_type_is_located_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir, HEAD + "java = 25\n\n" + ANDROID + "\n[variants.build-type.release.android]\nminify = \"yes\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[variants.build-type.release.android].minify must be a boolean");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 12, 1));
+    }
+
+    @Test
+    void a_key_a_variant_cannot_set_is_located_at_the_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n[variants.flavor.demo]\nextra-scr = [\"src/demo\"]\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e)
+                .hasMessageContaining("[variants.flavor.demo].extra-scr: a variant cannot set this")
+                .hasMessageContaining("did you mean extra-src?");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
+    }
+
+    @Test
+    void a_variant_value_that_is_not_a_table_is_located_at_its_name(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n[variants.flavor]\ndemo = 1\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[variants.flavor].demo must be a table");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
+    }
+
+    @Test
+    void a_variant_default_naming_no_value_is_located_at_the_default(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir,
+                HEAD + "java = 25\n\n[variants.flavor]\ndefault = \"paid\"\n\n"
+                        + "[variants.flavor.demo]\nextra-src = [\"src/demo\"]\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("default = \"paid\" names no declared value");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
     }
 
     @Test
