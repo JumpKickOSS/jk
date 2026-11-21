@@ -18,8 +18,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -29,8 +27,6 @@ import org.w3c.dom.Element;
  * resolver-stage concerns. The document comes from {@link DomXml}, which owns jk's XXE posture.
  */
 public final class PomParser {
-
-    private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)\\}");
 
     private PomParser() {}
 
@@ -177,7 +173,9 @@ public final class PomParser {
     /**
      * The POM's own {@code <repositories>}: the top-level list plus those of every profile Maven
      * would activate with nothing on the command line. Central is left out, an {@code <id>}
-     * defaults to the URL, and the {@code <releases>} / {@code <snapshots>} policies ride along.
+     * defaults to the URL, and the {@code <releases>} / {@code <snapshots>} policies ride along. A
+     * URL that names a property this POM does not define is kept as written: the effective model
+     * values it with the parent chain's properties, or drops it.
      */
     private static List<Pom.Repository> parseRepositories(Element project, Map<String, String> ctx, String gav) {
         List<Pom.Repository> out = new ArrayList<>();
@@ -217,7 +215,7 @@ public final class PomParser {
         if (repositories == null) return;
         for (Element repository : childElements(repositories, "repository")) {
             String url = substituteOrNull(childText(repository, "url"), ctx);
-            if (url == null || url.isBlank() || url.contains("${") || isCentral(url.trim())) continue;
+            if (url == null || url.isBlank() || isCentral(url.trim())) continue;
             boolean releases = policyEnabled(childElement(repository, "releases"));
             boolean snapshots = policyEnabled(childElement(repository, "snapshots"));
             if (!releases && !snapshots) continue;
@@ -288,7 +286,7 @@ public final class PomParser {
             String classifier = childText(dep, "classifier");
             String type = childText(dep, "type");
 
-            List<Pom.Dep.Exclusion> exclusions = parseExclusions(childElement(dep, "exclusions"));
+            List<Pom.Dep.Exclusion> exclusions = parseExclusions(childElement(dep, "exclusions"), ctx);
             result.add(new Pom.Dep(
                     Interned.of(substitute(g, ctx)),
                     Interned.of(substitute(a, ctx)),
@@ -302,13 +300,13 @@ public final class PomParser {
         return result;
     }
 
-    private static List<Pom.Dep.Exclusion> parseExclusions(@Nullable Element exclusions) {
+    private static List<Pom.Dep.Exclusion> parseExclusions(@Nullable Element exclusions, Map<String, String> ctx) {
         if (exclusions == null) return List.of();
         List<Pom.Dep.Exclusion> result = new ArrayList<>();
         for (Element e : childElements(exclusions, "exclusion")) {
             result.add(new Pom.Dep.Exclusion(
-                    Interned.of(required(e, "groupId", "<exclusion>")),
-                    Interned.of(required(e, "artifactId", "<exclusion>"))));
+                    Interned.of(substitute(required(e, "groupId", "<exclusion>"), ctx)),
+                    Interned.of(substitute(required(e, "artifactId", "<exclusion>"), ctx))));
         }
         return result;
     }
@@ -320,29 +318,7 @@ public final class PomParser {
     }
 
     private static @Nullable String substituteOrNull(@Nullable String raw, Map<String, String> ctx) {
-        if (raw == null) return null;
-        String current = raw;
-        for (int pass = 0; pass < 4; pass++) {
-            Matcher m = PROPERTY_REF.matcher(current);
-            if (!m.find()) return current;
-            m.reset();
-            StringBuilder sb = new StringBuilder();
-            boolean changed = false;
-            while (m.find()) {
-                String key = m.group(1);
-                String value = ctx.get(key);
-                if (value != null && !value.equals(m.group())) {
-                    m.appendReplacement(sb, Matcher.quoteReplacement(value));
-                    changed = true;
-                } else {
-                    m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
-                }
-            }
-            m.appendTail(sb);
-            current = sb.toString();
-            if (!changed) return current;
-        }
-        return current;
+        return PomInterpolation.interpolate(raw, ctx);
     }
 
     // --- DOM helpers -------------------------------------------------------

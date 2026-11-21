@@ -160,6 +160,91 @@ class PomParserTest {
     }
 
     @Test
+    void an_exclusion_values_its_properties() {
+        Pom pom = PomParser.parse("""
+                <project>
+                  <groupId>io.netty</groupId>
+                  <artifactId>netty-handler</artifactId>
+                  <version>4.1.115</version>
+                  <properties><excluded>netty-common</excluded></properties>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>lib</artifactId>
+                      <version>1.0</version>
+                      <exclusions>
+                        <exclusion>
+                          <groupId>${project.groupId}</groupId>
+                          <artifactId>${excluded}</artifactId>
+                        </exclusion>
+                      </exclusions>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        assertThat(pom.dependencies().getFirst().exclusions()).singleElement().satisfies(e -> {
+            assertThat(e.groupId()).isEqualTo("io.netty");
+            assertThat(e.artifactId()).isEqualTo("netty-common");
+        });
+    }
+
+    @Test
+    void a_property_chain_of_any_depth_values_completely() {
+        StringBuilder props = new StringBuilder();
+        for (int i = 0; i < 9; i++) props.append("<p%d>${p%d}</p%d>".formatted(i, i + 1, i));
+        props.append("<p9>2.5</p9>");
+        Pom pom = PomParser.parse("""
+                <project>
+                  <groupId>com.example</groupId><artifactId>widget</artifactId><version>1.0</version>
+                  <properties>%s</properties>
+                  <dependencies>
+                    <dependency><groupId>org.example</groupId><artifactId>lib</artifactId><version>${p0}</version></dependency>
+                  </dependencies>
+                </project>
+                """.formatted(props));
+
+        assertThat(pom.dependencies().getFirst().version()).isEqualTo("2.5");
+    }
+
+    @Test
+    void a_property_cycle_is_left_as_written() {
+        Pom pom = PomParser.parse("""
+                <project>
+                  <groupId>com.example</groupId><artifactId>widget</artifactId><version>1.0</version>
+                  <properties><a>${b}</a><b>x${a}</b></properties>
+                  <dependencies>
+                    <dependency><groupId>org.example</groupId><artifactId>lib</artifactId><version>${a}</version></dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        assertThat(pom.dependencies().getFirst().version()).isEqualTo("x${a}");
+    }
+
+    @Test
+    void a_property_that_expands_without_bound_is_refused() {
+        StringBuilder props = new StringBuilder();
+        for (int i = 0; i < 12; i++) {
+            props.append("<p%d>%s</p%d>".formatted(i, "${p%d}".formatted(i + 1).repeat(16), i));
+        }
+        props.append("<p12>x</p12>");
+        String xml = """
+                <project>
+                  <groupId>com.example</groupId><artifactId>widget</artifactId><version>1.0</version>
+                  <properties>%s</properties>
+                  <dependencies>
+                    <dependency><groupId>org.example</groupId><artifactId>lib</artifactId><version>${p0}</version></dependency>
+                  </dependencies>
+                </project>
+                """.formatted(props);
+
+        assertThatThrownBy(() -> PomParser.parse(xml))
+                .isInstanceOf(PomParseException.class)
+                .hasMessageContaining("${p0}");
+    }
+
+    @Test
     void rejects_doctype_declarations() {
         String malicious = """
                 <?xml version="1.0"?>

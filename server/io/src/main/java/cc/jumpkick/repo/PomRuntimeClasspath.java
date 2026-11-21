@@ -24,7 +24,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
@@ -568,7 +567,7 @@ public final class PomRuntimeClasspath {
         Map<String, String> pins = new LinkedHashMap<>();
         for (Pom.Dep m : raw.managedDependencies()) {
             if ("import".equalsIgnoreCase(m.scope())) continue;
-            String version = m.version() == null ? null : substitute(m.version(), effective.properties());
+            String version = PomInterpolation.interpolate(m.version(), effective.properties());
             if (version == null || version.isBlank() || isUnresolvedProperty(version) || isFloating(version)) continue;
             String type = m.type() == null || m.type().isBlank() ? "jar" : m.type();
             if ("pom".equalsIgnoreCase(type)) continue;
@@ -577,32 +576,6 @@ public final class PomRuntimeClasspath {
                     mediationKey(new Coordinate(m.groupId(), m.artifactId(), version, classifier, type)), version);
         }
         return pins;
-    }
-
-    private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)}");
-
-    private static String substitute(String raw, Map<String, String> props) {
-        String current = raw;
-        for (int pass = 0; pass < 4 && current.contains("${"); pass++) {
-            Matcher m = PROPERTY_REF.matcher(current);
-            if (!m.find()) return current;
-            m.reset();
-            StringBuilder sb = new StringBuilder();
-            boolean changed = false;
-            while (m.find()) {
-                String val = props.get(m.group(1));
-                if (val != null && !val.equals(m.group())) {
-                    m.appendReplacement(sb, Matcher.quoteReplacement(val));
-                    changed = true;
-                } else {
-                    m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
-                }
-            }
-            if (!changed) return current;
-            m.appendTail(sb);
-            current = sb.toString();
-        }
-        return current;
     }
 
     /**

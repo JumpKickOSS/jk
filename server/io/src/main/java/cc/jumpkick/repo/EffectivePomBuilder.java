@@ -8,8 +8,10 @@ import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,7 +24,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -33,7 +34,6 @@ import org.jspecify.annotations.Nullable;
 public final class EffectivePomBuilder {
 
     static final int MAX_DEPTH = 16;
-    private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)\\}");
 
     private final RepoGroup repos;
     private final Map<String, Built> cache = new ConcurrentHashMap<>();
@@ -43,19 +43,29 @@ public final class EffectivePomBuilder {
      * imported BOM, at any depth, that a re-install or a deploy replaces in place. The memo's key
      * names only the POM's own file, so such a model is never kept past the builder that made it.
      */
-    private record Built(EffectivePom pom, boolean moving) {}
+    private record Built(
+            EffectivePom pom, boolean moving, @Nullable Source source) {}
+
+    /**
+     * A POM file a model was built from: the coordinate asked for, the file a group served for it
+     * ({@link #processKey}), and the sources of the parent and imported BOMs its model merged. Two
+     * groups serving the same file may serve different parents or BOMs for it, so a memoised model
+     * stands for a group only while that group serves every one of these files.
+     */
+    private record Source(Coordinate coord, String file, List<Source> inputs) {}
 
     /**
      * Process-wide effective-POM memo, keyed by the POM file the group served and its digest: two
      * groups — a POM that declares its own repositories makes another — that reach the same file
-     * share one model. No TTL: published release GAVs are immutable, and a model whose parent chain
-     * or BOM imports reach a non-unique snapshot is not kept at all; force / {@link
-     * #clearProcessCache} drop the memo and the idle engine drops it through {@link
-     * #dropProcessMemo}. Bounded by {@value #PROCESS_WEIGHT_MAX} weight of declared entries, the
+     * share one model, as long as the asking group also serves the parent and BOM files the model
+     * was built from ({@link #servesInputsOf}); a group that does not builds its own. No TTL:
+     * published release GAVs are immutable, and a model whose parent chain or BOM imports reach a
+     * non-unique snapshot is not kept at all; force / {@link #clearProcessCache} drop the memo and
+     * the idle engine drops it through {@link #dropProcessMemo}. Bounded by {@value #PROCESS_WEIGHT_MAX} weight of declared entries, the
      * least recently used going first.
      */
-    private static final LruMemo<String, EffectivePom> PROCESS_CACHE =
-            new LruMemo<>(EffectivePomBuilder.PROCESS_WEIGHT_MAX, EffectivePomBuilder::weight);
+    private static final LruMemo<String, Built> PROCESS_CACHE =
+            new LruMemo<>(EffectivePomBuilder.PROCESS_WEIGHT_MAX, built -> weight(built.pom()));
 
     /**
      * In-flight builds keyed by {@link #flightKey} so parallel warm/prefetch workers share one parent/BOM walk
@@ -120,7 +130,7 @@ public final class EffectivePomBuilder {
      */
     public EffectivePom build(Pom raw) throws IOException, InterruptedException {
         Objects.requireNonNull(raw, "raw");
-        return merge(raw, new HashSet<>(), 0).pom();
+        return merge(raw, null, new HashSet<>(), 0).pom();
     }
 
     /**
@@ -173,11 +183,10 @@ public final class EffectivePomBuilder {
                 .orElseThrow(() ->
                         new MavenRepo.ArtifactNotFoundException("POM not found in any declared repo: " + coord, coord));
         String processKey = processKey(hit);
-        EffectivePom processHit = PROCESS_CACHE.get(processKey);
-        if (processHit != null) {
-            Built hitBuilt = new Built(processHit, false);
-            cache.put(localKey, hitBuilt);
-            return hitBuilt;
+        Built processHit = PROCESS_CACHE.get(processKey);
+        if (processHit != null && servesInputsOf(Objects.requireNonNull(processHit.source()))) {
+            cache.put(localKey, processHit);
+            return processHit;
         }
         if (!visiting.add(localKey)) {
             throw new PomParseException("cycle in POM chain at " + localKey + " (already visiting: " + visiting + ")");
@@ -199,10 +208,10 @@ public final class EffectivePomBuilder {
                 // without completing. Build in-line with our own visiting set — still registered
                 // above — so a real POM cycle trips the single-thread check and throws the loud
                 // cycle diagnostic instead of parking forever. Worst case: duplicate work.
-                return parseAndMerge(hit, localKey, processKey, visiting, depth, null);
+                return parseAndMerge(coord, hit, processKey, visiting, depth, null);
             }
             try {
-                return parseAndMerge(hit, localKey, processKey, visiting, depth, mine.future());
+                return parseAndMerge(coord, hit, processKey, visiting, depth, mine.future());
             } catch (IOException | InterruptedException | RuntimeException e) {
                 mine.future().completeExceptionally(e);
                 throw e;
@@ -216,18 +225,18 @@ public final class EffectivePomBuilder {
 
     /** Parse + merge one served POM; publishes to caches and completes {@code flight} when non-null. */
     private Built parseAndMerge(
+            Coordinate coord,
             RepoGroup.RepoFetched hit,
-            String localKey,
             String processKey,
             Set<String> visiting,
             int depth,
             @Nullable CompletableFuture<Built> flight)
             throws IOException, InterruptedException {
         Pom raw = StorePoms.parse(hit.fetched().cachePath());
-        Built effective = merge(raw, visiting, depth);
-        cache.put(localKey, effective);
+        Built effective = merge(raw, new Source(coord, processKey, List.of()), visiting, depth);
+        cache.put(coord.toGav(), effective);
         if (!effective.moving() && PROCESS_CACHE.get(processKey) == null) {
-            PROCESS_CACHE.put(processKey, effective.pom());
+            PROCESS_CACHE.put(processKey, effective);
         }
         if (flight != null) {
             flight.complete(effective);
@@ -294,14 +303,39 @@ public final class EffectivePomBuilder {
         if (p == null) return null;
         Coordinate coord = Coordinate.of(p.groupId(), p.artifactId(), p.version());
         Built built = buildInternal(coord, visiting, depth + 1);
-        return new Built(built.pom(), built.moving() || MovingSnapshots.moving(coord));
+        return new Built(built.pom(), built.moving() || MovingSnapshots.moving(coord), built.source());
     }
 
-    private Built merge(Pom child, Set<String> visiting, int depth) throws IOException, InterruptedException {
+    /**
+     * True when this group serves, for every coordinate a memoised model's parents and BOMs were
+     * fetched as, the same file the model was built from: then a walk through this group would
+     * merge the same files into the same model.
+     */
+    private boolean servesInputsOf(Source source) throws IOException, InterruptedException {
+        Set<Source> checked = Collections.newSetFromMap(new IdentityHashMap<>());
+        List<Source> pending = new ArrayList<>(source.inputs());
+        while (!pending.isEmpty()) {
+            Source input = pending.removeLast();
+            if (!checked.add(input)) continue;
+            RepoGroup.RepoFetched served = repos.tryFetchPom(input.coord()).orElse(null);
+            if (served == null || !processKey(served).equals(input.file())) return false;
+            pending.addAll(input.inputs());
+        }
+        return true;
+    }
+
+    /**
+     * {@code child}'s effective model. {@code self} names the file it was read from, its inputs
+     * left for this merge to fill; null for a POM in hand, whose model is never memoised.
+     */
+    private Built merge(Pom child, @Nullable Source self, Set<String> visiting, int depth)
+            throws IOException, InterruptedException {
+        List<Source> inputs = new ArrayList<>();
 
         Built parentBuilt = parentOf(child, visiting, depth);
         EffectivePom parent = parentBuilt == null ? null : parentBuilt.pom();
         boolean moving = parentBuilt != null && parentBuilt.moving();
+        if (parentBuilt != null && parentBuilt.source() != null) inputs.add(parentBuilt.source());
 
         // 1. Coords — child wins, parent fills holes.
         String groupId = child.groupId() != null ? child.groupId() : (parent != null ? parent.groupId() : null);
@@ -355,6 +389,7 @@ public final class EffectivePomBuilder {
                 bom = buildInternal(bomCoord, visiting, depth + 1);
             }
             moving |= bom.moving() || MovingSnapshots.moving(bomCoord);
+            if (bom.source() != null) inputs.add(bom.source());
             importedManaged.addAll(bom.pom().managedDependencies());
         }
         for (Pom.Dep dep : child.managedDependencies()) {
@@ -377,11 +412,14 @@ public final class EffectivePomBuilder {
         }
         mergedManaged = substituteAll(mergedManaged, props);
 
-        // 4. Effective deps — parent first, child overrides by module.
+        // 4. Effective deps — parent first, child overrides by module. Valued before they are
+        // keyed: a coordinate spelled with a parent's property names its module only once valued,
+        // both for the override and for the management lookup below.
         List<Pom.Dep> mergedDeps = new ArrayList<>();
         if (parent != null) mergedDeps.addAll(parent.dependencies());
         mergedDeps.addAll(child.dependencies());
-        mergedDeps = dedupeByModule(mergedDeps);
+        Map<String, String> hostClassified = hostClassified(mergedDeps, props);
+        mergedDeps = dedupeByModule(substituteAll(mergedDeps, props));
 
         // 5. Apply dependencyManagement defaults. Maven fills in not just the
         // version but the scope / type / classifier / exclusions a dep leaves
@@ -399,8 +437,6 @@ public final class EffectivePomBuilder {
             }
             finalDeps.add(dep);
         }
-        Map<String, String> hostClassified = hostClassified(finalDeps, props);
-        finalDeps = substituteAll(finalDeps, props);
 
         // retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
         // artifacts already had management applied into finalDeps; keeping a full flattened
@@ -450,21 +486,42 @@ public final class EffectivePomBuilder {
                         finalDeps,
                         retainedManaged,
                         retainedImportedKeys,
-                        child.relocation(),
+                        relocation(child.relocation(), props),
                         hostClassified,
-                        repositories(child, parent),
+                        repositories(child, parent, props),
                         retainedInherited,
                         !child.licenses().isEmpty() || parent == null ? child.licenses() : parent.licenses(),
                         pomPackaging ? List.copyOf(imports) : List.of()),
-                moving);
+                moving,
+                self == null ? null : new Source(self.coord(), self.file(), List.copyOf(inputs)));
     }
 
-    /** The child's own {@code <repositories>} first, then the parent chain's, one entry per URL. */
-    private static List<Pom.Repository> repositories(Pom child, @Nullable EffectivePom parent) {
+    /** {@code moved} with its fields valued from the chain's properties. */
+    private static Pom.@Nullable Relocation relocation(Pom.@Nullable Relocation moved, Map<String, String> props) {
+        if (moved == null) return null;
+        return new Pom.Relocation(
+                substituteOrNull(moved.groupId(), props),
+                substituteOrNull(moved.artifactId(), props),
+                substituteOrNull(moved.version(), props),
+                substituteOrNull(moved.message(), props));
+    }
+
+    /**
+     * The child's own {@code <repositories>} first, then the parent chain's, one entry per URL. A
+     * child's URL is valued from the chain's properties here; one still naming a property, or
+     * naming Central, is dropped.
+     */
+    private static List<Pom.Repository> repositories(
+            Pom child, @Nullable EffectivePom parent, Map<String, String> props) {
         if (child.repositories().isEmpty()
                 && (parent == null || parent.repositories().isEmpty())) return List.of();
         LinkedHashMap<String, Pom.Repository> byUrl = new LinkedHashMap<>();
-        for (Pom.Repository r : child.repositories()) byUrl.putIfAbsent(r.url(), r);
+        for (Pom.Repository r : child.repositories()) {
+            String url = substitute(r.url(), props).trim();
+            if (url.contains("${") || PomParser.isCentral(url)) continue;
+            String id = r.id().equals(r.url()) ? url : r.id();
+            byUrl.putIfAbsent(url, new Pom.Repository(id, url, r.declaredBy(), r.releases(), r.snapshots()));
+        }
         if (parent != null) {
             for (Pom.Repository r : parent.repositories()) byUrl.putIfAbsent(r.url(), r);
         }
@@ -473,7 +530,8 @@ public final class EffectivePomBuilder {
 
     /**
      * The dependencies whose classifier is still a {@code ${...}} expression that a host property
-     * (and not the chain's own properties) will fill, keyed by module, valued by the expression.
+     * (and not the chain's own properties) will fill, keyed by valued module, valued by the
+     * expression.
      */
     private static Map<String, String> hostClassified(List<Pom.Dep> deps, Map<String, String> props) {
         Map<String, String> out = new LinkedHashMap<>();
@@ -481,11 +539,11 @@ public final class EffectivePomBuilder {
         for (Pom.Dep dep : deps) {
             String classifier = dep.classifier();
             if (classifier == null) continue;
-            Matcher m = PROPERTY_REF.matcher(classifier);
+            Matcher m = PomInterpolation.PROPERTY_REF.matcher(classifier);
             while (m.find()) {
                 String name = m.group(1);
                 if (HostClassifiers.names(name) && Objects.equals(props.get(name), hostWords.get(name))) {
-                    out.put(dep.module(), classifier);
+                    out.put(substitute(dep.groupId(), props) + ":" + substitute(dep.artifactId(), props), classifier);
                 }
             }
         }
@@ -652,12 +710,14 @@ public final class EffectivePomBuilder {
         String scope = substituteOrNull(d.scope(), props);
         String classifier = substituteOrNull(d.classifier(), props);
         String type = substituteOrNull(d.type(), props);
+        List<Pom.Dep.Exclusion> exclusions = substituteExclusions(d.exclusions(), props);
         boolean unchanged = groupId == d.groupId()
                 && artifactId == d.artifactId()
                 && version == d.version()
                 && scope == d.scope()
                 && classifier == d.classifier()
-                && type == d.type();
+                && type == d.type()
+                && exclusions == d.exclusions();
         if (unchanged) return d;
         return new Pom.Dep(
                 Interned.of(groupId),
@@ -667,7 +727,25 @@ public final class EffectivePomBuilder {
                 d.optional(),
                 Interned.ofNullable(classifier),
                 Interned.ofNullable(type),
-                d.exclusions());
+                exclusions);
+    }
+
+    /** {@code exclusions} with their properties valued; the same list when none names one. */
+    private static List<Pom.Dep.Exclusion> substituteExclusions(
+            List<Pom.Dep.Exclusion> exclusions, Map<String, String> props) {
+        List<Pom.Dep.Exclusion> out = null;
+        for (int i = 0; i < exclusions.size(); i++) {
+            Pom.Dep.Exclusion e = exclusions.get(i);
+            String groupId = substitute(e.groupId(), props);
+            String artifactId = substitute(e.artifactId(), props);
+            if (out == null && groupId == e.groupId() && artifactId == e.artifactId()) continue;
+            if (out == null) out = new ArrayList<>(exclusions.subList(0, i));
+            out.add(
+                    groupId == e.groupId() && artifactId == e.artifactId()
+                            ? e
+                            : new Pom.Dep.Exclusion(Interned.of(groupId), Interned.of(artifactId)));
+        }
+        return out == null ? exclusions : out;
     }
 
     /**
@@ -710,29 +788,6 @@ public final class EffectivePomBuilder {
     }
 
     private static @Nullable String substituteOrNull(@Nullable String raw, Map<String, String> ctx) {
-        if (raw == null) return null;
-        // Iterate up to a small fixed budget to resolve chained refs like ${a} → ${b} → "x".
-        String current = raw;
-        for (int pass = 0; pass < 4; pass++) {
-            Matcher m = PROPERTY_REF.matcher(current);
-            if (!m.find()) return current;
-            m.reset();
-            StringBuilder sb = new StringBuilder();
-            boolean changed = false;
-            while (m.find()) {
-                String key = m.group(1);
-                String value = ctx.get(key);
-                if (value != null) {
-                    m.appendReplacement(sb, Matcher.quoteReplacement(value));
-                    changed = true;
-                } else {
-                    m.appendReplacement(sb, Matcher.quoteReplacement(m.group()));
-                }
-            }
-            m.appendTail(sb);
-            current = sb.toString();
-            if (!changed) return current;
-        }
-        return current;
+        return PomInterpolation.interpolate(raw, ctx);
     }
 }

@@ -24,6 +24,9 @@ class EffectivePomProcessMemoTest {
     @RegisterExtension
     final LoopbackHttp http = new LoopbackHttp();
 
+    @RegisterExtension
+    final LoopbackHttp overriding = new LoopbackHttp();
+
     @BeforeEach
     void start() {
         EffectivePomBuilder.clearProcessCache();
@@ -69,6 +72,36 @@ class EffectivePomProcessMemoTest {
         assertThat(second).as("the model built from the same file").isSameAs(first);
         assertThat(StorePoms.reads()).as("no POM parsed again").isEqualTo(parsed);
         assertThat(http.requested()).hasSize(requests);
+    }
+
+    @Test
+    void a_group_that_serves_another_parent_for_the_same_file_gets_its_own_model(@TempDir Path tmp) throws Exception {
+        Cas cas = new Cas(tmp.resolve("cache"));
+        MavenRepo local = new MavenRepo("local", http.base(), new Http(), cas);
+        Coordinate child = Coordinate.of("org.example", "child", "1.0");
+        EffectivePom first = new EffectivePomBuilder(RepoGroup.of(local)).build(child);
+        assertThat(first.dependencies().get(0).version()).isEqualTo("2.0");
+
+        overriding.served().put("/org/example/parent/1.0/parent-1.0.pom", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement><dependencies>
+                    <dependency><groupId>org.example</groupId><artifactId>dep</artifactId><version>3.0</version></dependency>
+                  </dependencies></dependencyManagement>
+                </project>
+                """.getBytes(StandardCharsets.UTF_8));
+        MavenRepo internal = new MavenRepo("internal", overriding.base(), new Http(), cas);
+        RepoGroup shadowed = new RepoGroup(List.of(internal, local));
+
+        EffectivePom second = new EffectivePomBuilder(shadowed).build(child);
+
+        assertThat(second.dependencies().get(0).version())
+                .as("the child's file is the same, the parent this group serves is not")
+                .isEqualTo("3.0");
+        assertThat(new EffectivePomBuilder(RepoGroup.of(local)).build(child)).isSameAs(first);
     }
 
     @Test
