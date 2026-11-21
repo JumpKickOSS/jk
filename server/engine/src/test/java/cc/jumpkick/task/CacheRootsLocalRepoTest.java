@@ -37,7 +37,7 @@ class CacheRootsLocalRepoTest {
                 .write(ArtifactMemo.jkPath(cacheRoot.resolve("repos/jk-local"), rel));
         Files.setLastModifiedTime(blob, FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
 
-        Set<String> roots = CacheRoots.collect(cas, cacheRoot.resolve("actions"), cacheRoot.resolve("tools"));
+        Set<String> roots = CacheRoots.collect(cas, cacheRoot.resolve("actions"));
         assertThat(roots).contains(hex);
 
         var report = CasSweep.sweep(cas, roots, false);
@@ -59,7 +59,7 @@ class CacheRootsLocalRepoTest {
         Path artifact = cacheRoot.resolve("repos/central").resolve(rel);
         Files.setLastModifiedTime(blob, FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
 
-        Set<String> roots = CacheRoots.collect(cas, cacheRoot.resolve("actions"), cacheRoot.resolve("tools"));
+        Set<String> roots = CacheRoots.collect(cas, cacheRoot.resolve("actions"));
         assertThat(roots).doesNotContain(hex);
 
         CasSweep.sweep(cas, roots, false);

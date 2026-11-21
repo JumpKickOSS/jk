@@ -183,7 +183,7 @@ class ActionCachePruneTest {
         String live = blob(cas, 100_000, 'l', OLDEST);
         Path liveKey = key(root, "key-live", "compile-main@a", OLDEST, live);
 
-        var roots = CacheRoots.collect(cas, root.resolve("actions"), root.resolve("tools"));
+        var roots = CacheRoots.collect(cas, root.resolve("actions"));
         var sweep = CasSweep.sweep(cas, roots, true);
         assertThat(sweep.deletedShas()).containsExactly(garbage);
 
@@ -264,7 +264,7 @@ class ActionCachePruneTest {
         assertThat(taskless).exists();
         assertThat(cas.pathFor(orphanedByShape)).exists();
         assertThat(report.deletedKeys()).isZero();
-        assertThat(CacheRoots.collect(cas, root.resolve("actions"), root.resolve("tools")))
+        assertThat(CacheRoots.collect(cas, root.resolve("actions")))
                 .as("the sweep roots it too, so nothing reclaims these bytes short of `jk cache nuke`")
                 .contains(orphanedByShape);
     }
@@ -540,7 +540,7 @@ class ActionCachePruneTest {
         key(root, "memo-stale", "run-tests@a", ANCIENT); // taken by the memo window
         analysis(root, "compile-main@cold", 4_096, Duration.ofDays(10).toMillis()); // by the Zinc window
 
-        var roots = CacheRoots.collect(cas, root.resolve("actions"), root.resolve("tools"));
+        var roots = CacheRoots.collect(cas, root.resolve("actions"));
         var sweep = CasSweep.sweep(cas, roots, dryRun);
         var prune = ActionCachePrune.run(root, cas, windows(1_000), sweep.deletedShas(), dryRun);
         return new long[] {sweep.deleted() + prune.totalDeletedFiles(), sweep.freedBytes() + prune.totalFreedBytes()};

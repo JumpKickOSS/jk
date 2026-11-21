@@ -126,10 +126,9 @@ public final class Cas {
 
     /**
      * Inverse of {@link #pathFor}: extract the hex hash from a path that looks like a CAS object
-     * location, or {@link java.util.Optional#empty} if it doesn't fit the layout. Used by the sweep
-     * when scanning tool env JSONs and action records — any absolute path under {@code
-     * <root>/sha256/AA/BB/<rest>} contributes its hash to the reachable set, regardless of the file
-     * format it came from.
+     * location under this store's {@code <root>/sha256/AA/BB/<rest>}, or {@link
+     * java.util.Optional#empty} if it doesn't fit the layout. The sweep and the action-cache prune
+     * name each blob they walk by it.
      */
     public Optional<String> hashFromPath(Path candidate) {
         Path normalised = candidate.toAbsolutePath().normalize();

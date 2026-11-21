@@ -17,32 +17,29 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Collects CAS shas named by on-disk roots ({@code actions/keys}, {@code actions/synced},
- * {@code tools/envs}, local-repo {@code .jk} memos) so the sweep can drop unreferenced
- * objects. Pattern-based: any CAS-looking path counts as reachable.
+ * Collects the cache CAS shas named by on-disk roots ({@code actions/keys}, {@code actions/synced},
+ * local-repo {@code .jk} memos) so the sweep can drop unreferenced objects. A record or manifest
+ * names a blob by its bare hash; a path it holds is spelled relative to a jk root ({@code
+ * cache:sha256/…}), never as an absolute CAS path, so only the hash tokens are read.
  */
 public final class CacheRoots {
 
     private CacheRoots() {}
 
     /**
-     * Collect every reachable sha from the on-disk roots beneath the given action + tools
-     * directories. The CAS is consulted only to recognise its own path layout — no objects are
-     * touched.
+     * Collect every reachable sha from the on-disk roots beneath {@code actionsDir} and the CAS's
+     * own {@code repos/jk-local}. No objects are touched.
      */
-    public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir) throws IOException {
-        return collect(cas, actionsDir, toolsDir, PruneYield.NEVER);
+    public static Set<String> collect(Cas cas, Path actionsDir) throws IOException {
+        return collect(cas, actionsDir, PruneYield.NEVER);
     }
 
-    /** As {@link #collect(Cas, Path, Path)}, stopping between files at {@code yield}'s say-so: it only reads. */
-    public static Set<String> collect(Cas cas, Path actionsDir, Path toolsDir, PruneYield yield) throws IOException {
+    /** As {@link #collect(Cas, Path)}, stopping between files at {@code yield}'s say-so: it only reads. */
+    public static Set<String> collect(Cas cas, Path actionsDir, PruneYield yield) throws IOException {
         Set<String> refs = new HashSet<>();
         for (ActionTree root : List.of(ActionTree.KEYS, ActionTree.SYNCED)) {
             Path dir = root.under(actionsDir);
-            if (Files.isDirectory(dir)) scanTextFilesRecursively(dir, cas, refs, yield);
-        }
-        if (Files.isDirectory(toolsDir.resolve("envs"))) {
-            scanTextFilesRecursively(toolsDir.resolve("envs"), cas, refs, yield);
+            if (Files.isDirectory(dir)) scanTextFilesRecursively(dir, refs, yield);
         }
         // repos/jk-local is a PUBLISH DESTINATION (jk install / jk publish local), not a derived
         // cache: a freshly published worker is legitimately unreferenced by any action until the
@@ -60,12 +57,8 @@ public final class CacheRoots {
         return refs;
     }
 
-    /**
-     * Walk {@code dir}, read every regular file as text, pull explicit sha tokens AND any CAS-style
-     * path fragments into {@code refs}.
-     */
-    private static void scanTextFilesRecursively(Path dir, Cas cas, Set<String> refs, PruneYield yield)
-            throws IOException {
+    /** Walk {@code dir}, read every regular file as text, pull its sha tokens into {@code refs}. */
+    private static void scanTextFilesRecursively(Path dir, Set<String> refs, PruneYield yield) throws IOException {
         // Guard G45: regular-file-ness comes from the attributes the walk already read.
         PathUtil.forEachRegularFile(dir, (file, attrs) -> {
             yield.check();
@@ -78,7 +71,6 @@ public final class CacheRoots {
                 return;
             }
             addExplicitShaTokens(body, refs);
-            addPathEmbeddedShas(body, cas, refs);
         });
     }
 
@@ -96,28 +88,7 @@ public final class CacheRoots {
         }
     }
 
-    /**
-     * Any absolute path that looks like {@code .../sha256/AA/BB/<rest>} is treated as a reference —
-     * covers tool env JSONs, action-record {@code INPUT cp:} lines, and any other writer that stamps
-     * absolute CAS paths.
-     */
-    private static void addPathEmbeddedShas(String body, Cas cas, Set<String> refs) {
-        Matcher m = CAS_PATH.matcher(body);
-        while (m.find()) {
-            cas.hashFromPath(Path.of(m.group())).ifPresent(refs::add);
-        }
-    }
-
     /** 64 hex chars, optionally preceded by {@code sha256:}. */
     private static final Pattern EXPLICIT_SHA =
             Pattern.compile("(?:^|[\\s:])(?:sha256:)?([0-9a-f]{64})(?:$|[\\s\\n])", Pattern.MULTILINE);
-
-    /**
-     * A path fragment ending in the CAS layout's {@code sha256/AA/BB/<60-hex>} suffix. We anchor on
-     * the literal {@code sha256/} segment so the match starts where the directory does — the caller
-     * still calls {@link Cas#hashFromPath} to verify the path actually sits under the active CAS
-     * root.
-     */
-    private static final Pattern CAS_PATH =
-            Pattern.compile("(?<=[\\s\"'(])/[^\\s\"'\\n]*/sha256/[0-9a-f]{2}/[0-9a-f]{2}/[0-9a-f]{60}");
 }

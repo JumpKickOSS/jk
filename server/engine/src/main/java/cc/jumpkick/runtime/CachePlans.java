@@ -150,7 +150,7 @@ public final class CachePlans {
         // outgrown.
         yield.check();
         var cacheCas = JkStores.cacheCas(root);
-        var cacheLive = CacheRoots.collect(cacheCas, CacheTree.ACTIONS.under(root), root.resolve("tools"), yield);
+        var cacheLive = CacheRoots.collect(cacheCas, CacheTree.ACTIONS.under(root), yield);
         var cacheSweep = CasSweep.sweep(cacheCas, cacheLive, dryRun, yield);
         totalFiles += cacheSweep.deleted();
         totalBytes += cacheSweep.freedBytes();
