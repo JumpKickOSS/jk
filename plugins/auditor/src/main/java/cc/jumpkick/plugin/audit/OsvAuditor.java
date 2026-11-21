@@ -120,7 +120,8 @@ public final class OsvAuditor {
 
     /**
      * One advisory's details, fetched once a slot is free and only while nothing has failed. A
-     * failure is recorded in {@code failure}, so every fetch still waiting stops.
+     * failure is recorded in {@code failure} before its slot is given up, so the fetch that takes
+     * the slot, and every one still waiting, stops.
      */
     private OsvClient.Vulnerability fetch(
             String id, @Nullable String modified, Semaphore slots, AtomicReference<@Nullable Exception> failure) {
@@ -129,6 +130,9 @@ public final class OsvAuditor {
             try {
                 if (failure.get() != null) throw new CancellationException("another advisory fetch failed");
                 return client.fetchVuln(id, modified);
+            } catch (IOException | RuntimeException e) {
+                if (!(e instanceof CancellationException)) failure.compareAndSet(null, e);
+                throw e;
             } finally {
                 slots.release();
             }

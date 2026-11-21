@@ -13,9 +13,12 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,9 @@ class OsvAuditorFetchBoundTest {
     private final AtomicInteger mostInFlight = new AtomicInteger();
     private final AtomicInteger fetched = new AtomicInteger();
 
+    /** When set, a detail request is answered only once this opens, not after a fixed pause. */
+    private volatile @Nullable CountDownLatch hold;
+
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -47,7 +53,9 @@ class OsvAuditorFetchBoundTest {
                 fetched.incrementAndGet();
                 mostInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
                 try {
-                    Thread.sleep(100);
+                    CountDownLatch held = hold;
+                    if (held == null) Thread.sleep(100);
+                    else held.await(10, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } finally {
@@ -96,9 +104,17 @@ class OsvAuditorFetchBoundTest {
         for (int i = 1; i < IDS; i++) ids.add("GHSA-" + i);
         batch = batchOf(ids);
 
-        assertThatThrownBy(() -> new OsvAuditor(client()).audit(lockOf()))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("malformed");
+        // The fetches that did start stay unanswered until the audit has failed, so no slot comes
+        // free for a waiting fetch before the refusal is recorded, however slowly this host runs.
+        CountDownLatch held = new CountDownLatch(1);
+        hold = held;
+        try {
+            assertThatThrownBy(() -> new OsvAuditor(client()).audit(lockOf()))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("malformed");
+        } finally {
+            held.countDown();
+        }
         // Long enough for every fetch the audit left running to have reached the server.
         Thread.sleep(500);
         assertThat(fetched.get()).isLessThanOrEqualTo(OsvAuditor.MAX_FETCHES);
