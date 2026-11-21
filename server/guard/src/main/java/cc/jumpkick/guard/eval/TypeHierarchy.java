@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +30,9 @@ import org.objectweb.asm.Opcodes;
 /**
  * Supertypes of any class a rule can name, from three sources in order: the module's own facts,
  * the compile classpath (jars and class dirs, read {@code SKIP_CODE} on first use), and the JDK the
- * engine runs on (via the platform class loader's {@code jrt} resources). Resolved once per lane run
- * and memoised; a name none of the three knows is unresolvable — the typo a rule author made.
+ * engine runs on (via the platform class loader's {@code jrt} resources); a class in a JDK package
+ * is asked of the JDK first. Resolved once per lane run and memoised; a name none of the three knows
+ * is unresolvable — the typo a rule author made.
  */
 public final class TypeHierarchy {
 
@@ -85,6 +87,10 @@ public final class TypeHierarchy {
 
     /** The class file bytes of {@code internalName} from the classpath or the JDK; {@code null} when unknown. */
     public synchronized byte @Nullable [] bytesOf(String internalName) {
+        if (inJdkPackage(internalName)) {
+            byte[] jdk = jdkBytes(internalName);
+            if (jdk != null) return jdk;
+        }
         byte[] b = classpathBytes(internalName);
         return b != null ? b : jdkBytes(internalName);
     }
@@ -141,12 +147,42 @@ public final class TypeHierarchy {
     private Optional<Supers> lookup(String internalName) {
         ClassFacts own = facts.classes().get(internalName);
         if (own != null) return Optional.of(new Supers(internalName, own.superName(), own.interfaces()));
+        if (inJdkPackage(internalName)) {
+            Optional<Supers> jdk = jdkSupers(internalName);
+            if (jdk.isPresent()) return jdk;
+        }
         byte[] bytes = classpathBytes(internalName);
         if (bytes != null) return Optional.of(read(bytes));
+        return jdkSupers(internalName);
+    }
+
+    private static Optional<Supers> jdkSupers(String internalName) {
         return JDK_SUPERS.computeIfAbsent(internalName, n -> {
             byte[] jdk = jdkBytes(n);
             return jdk == null ? Optional.empty() : Optional.of(read(jdk));
         });
+    }
+
+    /**
+     * Packages of the JDK modules the engine runs with, as {@code java/util}. A class in one is the
+     * JDK's, as javac and the runtime read it, so it is answered without opening the classpath.
+     */
+    private static final Set<String> JDK_PACKAGES = Set.copyOf(jdkPackages());
+
+    private static Set<String> jdkPackages() {
+        ClassLoader platform = ClassLoader.getPlatformClassLoader();
+        Set<String> out = new HashSet<>();
+        for (Module m : ModuleLayer.boot().modules()) {
+            ClassLoader loader = m.getClassLoader();
+            if (loader != null && loader != platform) continue;
+            for (String p : m.getPackages()) out.add(p.replace('.', '/'));
+        }
+        return out;
+    }
+
+    private static boolean inJdkPackage(String internalName) {
+        int slash = internalName.lastIndexOf('/');
+        return slash > 0 && JDK_PACKAGES.contains(internalName.substring(0, slash));
     }
 
     /**

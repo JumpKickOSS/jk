@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -705,7 +706,7 @@ class EngineInstallTest {
         var cas = new Cas(home.resolve("cache"));
         AtomicLong clock = new AtomicLong(1_724_400_000_000L);
         Set<Path> runningJars = new HashSet<>();
-        var store = new EngineInstall(home.resolve("lib"), clock::get, runningJars::contains);
+        var store = new EngineInstall(home.resolve("lib"), clock::get, () -> runningJars::contains);
         List<EngineInstall.Materialized> installs = new ArrayList<>();
         for (int i = 1; i <= 4; i++) {
             clock.addAndGet(1000);
@@ -732,6 +733,28 @@ class EngineInstallTest {
     }
 
     @Test
+    void a_sweep_lists_the_processes_once_however_many_jars_it_weighs(@TempDir Path dir) throws Exception {
+        Path home = Files.createDirectories(dir.resolve("home"));
+        var cas = new Cas(home.resolve("cache"));
+        AtomicLong clock = new AtomicLong(1_724_400_000_000L);
+        AtomicInteger looks = new AtomicInteger();
+        var store = new EngineInstall(home.resolve("lib"), clock::get, () -> {
+            looks.incrementAndGet();
+            return jar -> true;
+        });
+        for (int i = 1; i <= 4; i++) {
+            clock.addAndGet(1000);
+            store.materializeFromFiles(
+                    "1.0.0-SNAPSHOT", cas, Files.writeString(dir.resolve("v" + i + ".jar"), "v" + i));
+        }
+        assertThat(jarsIn(store)).as("every jar a process runs stays").hasSize(4);
+
+        looks.set(0);
+        assertThat(store.gc(null)).isEmpty();
+        assertThat(looks).hasValue(1);
+    }
+
+    @Test
     void with_no_pointer_nothing_is_retired(@TempDir Path dir) throws Exception {
         Path home = Files.createDirectories(dir.resolve("home"));
         var store = install(home);
@@ -748,7 +771,7 @@ class EngineInstallTest {
         Path home = Files.createDirectories(dir.resolve("home"));
         var cas = new Cas(home.resolve("cache"));
         AtomicLong clock = new AtomicLong(1_724_400_000_000L);
-        var store = new EngineInstall(home.resolve("lib"), clock::get, jar -> false);
+        var store = new EngineInstall(home.resolve("lib"), clock::get, () -> jar -> false);
         for (int i = 1; i <= 3; i++) {
             clock.addAndGet(1000);
             store.materializeFromFiles("1.0." + i, cas, Files.writeString(dir.resolve("v" + i + ".jar"), "v" + i));
@@ -766,7 +789,7 @@ class EngineInstallTest {
 
     @Test
     void a_jar_on_a_live_process_command_line_is_running() {
-        assertThat(EngineInstall.runByAProcess(Path.of("/nonexistent/jk-engine-0.0.0.jar")))
+        assertThat(EngineInstall.runningJars().test(Path.of("/nonexistent/jk-engine-0.0.0.jar")))
                 .isFalse();
     }
 

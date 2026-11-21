@@ -236,6 +236,8 @@ public final class Linker {
         if (owner == null) return null;
         String name = text.substring(hash + 1);
         List<String> frontier = List.of(owner);
+        // A type an interface diamond reaches twice answers the same both times: each is asked once.
+        Set<String> seen = new HashSet<>(frontier);
         for (int hop = 0; hop < 6 && !frontier.isEmpty(); hop++) {
             List<String> next = new ArrayList<>();
             for (String type : frontier) {
@@ -245,7 +247,9 @@ public final class Linker {
                 if (property != null && nodes.containsKey(GraphIds.member(type, property))) {
                     return GraphIds.member(type, property);
                 }
-                next.addAll(supertypes.getOrDefault(type, List.of()));
+                for (String up : supertypes.getOrDefault(type, List.of())) {
+                    if (seen.add(up)) next.add(up);
+                }
             }
             frontier = next;
         }

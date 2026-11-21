@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -66,17 +67,18 @@ public final class EngineInstall {
 
     private final Path productLib;
     private final LongSupplier clock;
-    private final Predicate<Path> running;
+    /** Which jars a live process runs, as of the call: one look at the processes per sweep. */
+    private final Supplier<Predicate<Path>> running;
 
     public EngineInstall(Path productLibDir) {
         this(productLibDir, Clock.SYSTEM::millis);
     }
 
     EngineInstall(Path productLibDir, LongSupplier clock) {
-        this(productLibDir, clock, EngineInstall::runByAProcess);
+        this(productLibDir, clock, EngineInstall::runningJars);
     }
 
-    EngineInstall(Path productLibDir, LongSupplier clock, Predicate<Path> running) {
+    EngineInstall(Path productLibDir, LongSupplier clock, Supplier<Predicate<Path>> running) {
         this.productLib = productLibDir;
         this.clock = clock == null ? Clock.SYSTEM::millis : clock;
         this.running = running;
@@ -1058,8 +1060,10 @@ public final class EngineInstall {
         } catch (IOException ignored) {
             // best-effort
         }
+        if (jars.isEmpty()) return;
+        Predicate<Path> live = running.get();
         for (Path jar : jars) {
-            if (running.test(jar) || (!previous.isEmpty() && previous.equals(digest(jar)))) continue;
+            if (live.test(jar) || (!previous.isEmpty() && previous.equals(digest(jar)))) continue;
             tryDelete(jar, removed);
         }
     }
@@ -1073,26 +1077,30 @@ public final class EngineInstall {
     }
 
     /**
-     * Whether a live process names {@code jar} on its command line, as an engine names the jar it
-     * runs from on its class path. Where the OS does not show other processes' command lines
-     * (Windows), a jar a running engine has mapped refuses the delete instead.
+     * Whether a live process names a jar on its command line, as an engine names the jar it runs
+     * from on its class path, read from the processes running now. Where the OS does not show other
+     * processes' command lines (Windows), a jar a running engine has mapped refuses the delete
+     * instead; where the processes cannot be listed, every jar counts as running.
      */
-    static boolean runByAProcess(Path jar) {
-        Set<String> spellings = new HashSet<>();
-        spellings.add(jar.toAbsolutePath().normalize().toString());
+    static Predicate<Path> runningJars() {
+        List<String> commandLines;
         try {
-            spellings.add(jar.toRealPath().toString());
-        } catch (IOException | RuntimeException unresolved) {
-            // the absolute spelling is enough
-        }
-        try {
-            return ProcessHandle.allProcesses().anyMatch(p -> p.info()
-                    .commandLine()
-                    .map(cmd -> spellings.stream().anyMatch(cmd::contains))
-                    .orElse(false));
+            commandLines = ProcessHandle.allProcesses()
+                    .flatMap(p -> p.info().commandLine().stream())
+                    .toList();
         } catch (RuntimeException unlisted) {
-            return true;
+            return jar -> true;
         }
+        return jar -> {
+            Set<String> spellings = new HashSet<>();
+            spellings.add(jar.toAbsolutePath().normalize().toString());
+            try {
+                spellings.add(jar.toRealPath().toString());
+            } catch (IOException | RuntimeException unresolved) {
+                // the absolute spelling is enough
+            }
+            return commandLines.stream().anyMatch(cmd -> spellings.stream().anyMatch(cmd::contains));
+        };
     }
 
     /** Drop {@code <config>/jk-engine/} — the live pointer is {@code jk-engine.toml} beside the jars. */

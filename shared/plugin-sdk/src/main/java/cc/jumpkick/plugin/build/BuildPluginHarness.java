@@ -55,6 +55,7 @@ public final class BuildPluginHarness {
         if (plugin instanceof LockExtension lock && !args.isEmpty() && Files.isRegularFile(Path.of(args.get(0)))) {
             Spec spec = Spec.read(Path.of(args.get(0)));
             if (PluginProtocol.OP_LOCK_CLOSURE.equals(spec.op())) return lockClosure(lock, spec, out);
+            return answer(asBuildPlugin(plugin), spec, out);
         }
         return run(asBuildPlugin(plugin), args, out);
     }
@@ -145,8 +146,11 @@ public final class BuildPluginHarness {
             Log.error("build-plugin worker: spec file not found: " + specFile);
             return 66;
         }
-        Spec spec = Spec.read(specFile);
+        return answer(plugin, Spec.read(specFile), out);
+    }
 
+    /** Replay {@code plugin}'s registration and answer the op {@code spec} asks for. */
+    private static int answer(BuildPlugin plugin, Spec spec, ProtocolWriter out) throws Exception {
         Recorder recorder = new Recorder(spec.config(), spec.project());
         plugin.register(recorder);
 

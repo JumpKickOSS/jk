@@ -70,6 +70,9 @@ public final class SymbolReader {
     /** The Kotlin sources a headline view read to see whether a declaration writes its type. */
     private final Map<String, List<String>> kotlinText = new HashMap<>();
 
+    /** The graph's nodes by source file, built when a span without a recorded end needs its neighbours. */
+    private @Nullable Map<String, List<GraphNode>> byFile;
+
     /** A reader over {@code graph} whose source text {@code files} returns by repo-relative path. */
     public SymbolReader(CodeGraph graph, Scope scope, Function<String, @Nullable String> files) {
         this(graph, scope, files, name -> null);
@@ -335,12 +338,25 @@ public final class SymbolReader {
         int start = Decl.line(n);
         if (end >= start && end > 0) return end;
         int next = Integer.MAX_VALUE;
-        for (GraphNode other : graph.nodes()) {
-            if (!other.sourceFile().equals(n.sourceFile()) || other.id().equals(n.id())) continue;
+        for (GraphNode other : inFile(n.sourceFile())) {
+            if (other.id().equals(n.id())) continue;
             int l = Decl.line(other);
             if (l > start && l < next && other.fileType().equals(n.fileType())) next = l;
         }
         return next == Integer.MAX_VALUE ? start + OPEN_SPAN : Math.min(next - 1, start + OPEN_SPAN);
+    }
+
+    /** The nodes of {@code file}; the graph is grouped by file on first use. */
+    private List<GraphNode> inFile(String file) {
+        Map<String, List<GraphNode>> grouped = byFile;
+        if (grouped == null) {
+            grouped = new HashMap<>();
+            for (GraphNode n : graph.nodes()) {
+                grouped.computeIfAbsent(n.sourceFile(), f -> new ArrayList<>()).add(n);
+            }
+            byFile = grouped;
+        }
+        return grouped.getOrDefault(file, List.of());
     }
 
     private String render(List<Span> spans, @Nullable View wanted, int budget) {

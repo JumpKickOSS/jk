@@ -14,6 +14,7 @@ import cc.jumpkick.codegraph.Mention;
 import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.codegraph.ShopFixture;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,39 @@ class ExtractorsTest {
                         "references"))
                 .as("edges: " + g.edges())
                 .isTrue();
+    }
+
+    /** A call on a type that reaches the declaring interface down both sides of a diamond lands on it once. */
+    @Test
+    void aCallThroughAnInterfaceDiamondLandsOnTheDeclaringType() {
+        List<Fragment> fragments = new ArrayList<>();
+        String[][] sources = {
+            {"Root", "public interface Root {\n    void ping();\n}\n"},
+            {"Left", "public interface Left extends Root {}\n"},
+            {"Right", "public interface Right extends Root {}\n"},
+            {"Both", "public interface Both extends Left, Right {}\n"},
+            {"App", "public final class App {\n    static void go(Both b) {\n        b.ping();\n    }\n}\n"},
+        };
+        for (String[] src : sources) {
+            String path = "src/main/java/com/example/d/" + src[0] + ".java";
+            fragments.add(Objects.requireNonNull(Extractors.forPath(path))
+                    .extract(path, "package com.example.d;\n\n" + src[1]));
+        }
+        fragments.add(new Fragment(
+                List.of(),
+                List.of(),
+                List.of(new Mention(
+                        "src_main_java_com_example_d_app_app_go",
+                        Mention.Kind.MEMBER,
+                        "com.example.d.Both#ping",
+                        3,
+                        Relations.CALLS,
+                        "call"))));
+        CodeGraph g = Linker.link(fragments);
+        assertThat(g.edges())
+                .as("edges: " + g.edges())
+                .anyMatch(e -> e.source().equals("src_main_java_com_example_d_app_app_go")
+                        && e.target().equals("src_main_java_com_example_d_root_root_ping"));
     }
 
     @Test
