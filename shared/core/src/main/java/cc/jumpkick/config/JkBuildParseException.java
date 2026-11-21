@@ -19,8 +19,9 @@ import org.tomlj.TomlTable;
  * a file, the message leads with it as {@code file:line:column: }, or {@code file: } for a refusal
  * of the whole file, so every place that prints the message says where; {@link #refusal()} is the
  * message without it, for a record that carries the location beside the text. The file is written
- * relative to the directory {@code jk} ran in when it lies under it: the bound {@link Request}'s
- * {@link Request#callerDir}, else the session's working directory.
+ * relative to the directory {@code jk} ran in when it lies under it or under that directory's
+ * workspace: the bound {@link Request}'s {@link Request#callerDir}, else the session's working
+ * directory.
  */
 public sealed class JkBuildParseException extends RuntimeException permits UserConfigParseException {
 
@@ -91,14 +92,23 @@ public sealed class JkBuildParseException extends RuntimeException permits UserC
         return this;
     }
 
-    /** {@code file} relative to the directory {@code jk} ran in when it lies under it, else as given. */
+    /**
+     * {@code file} relative to the directory {@code jk} ran in when it lies under it, or under the
+     * workspace that directory is in ({@code ../jk.toml} from a member), else as given.
+     */
     private static String shown(Path file) {
         Request request = Request.current();
         Path ranIn = request != null ? request.callerDir() : null;
         Path cwd = (ranIn != null ? ranIn : SessionContext.current().workingDir())
                 .toAbsolutePath()
                 .normalize();
-        if (!file.startsWith(cwd) || file.equals(cwd)) return file.toString();
-        return DirKeys.slashes(cwd.relativize(file).toString());
+        if (file.equals(cwd)) return file.toString();
+        if (file.startsWith(cwd)
+                || WorkspaceScan.findEnclosingWorkspace(cwd)
+                        .filter(file::startsWith)
+                        .isPresent()) {
+            return DirKeys.slashes(cwd.relativize(file).toString());
+        }
+        return file.toString();
     }
 }

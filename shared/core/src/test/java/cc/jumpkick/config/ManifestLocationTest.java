@@ -366,6 +366,20 @@ class ManifestLocationTest {
     }
 
     @Test
+    void a_refused_root_is_named_up_from_the_member_jk_ran_in(@TempDir Path dir) throws Exception {
+        Path root = write(dir, WORKSPACE_OF_APP + "\n[build]\nbogus = 1\n");
+        Path member = Files.createDirectories(dir.resolve("app"));
+        write(member, HEAD + "java = 25\n");
+
+        JkBuildParseException e = SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> Request.detached().withCallerDir(member).call(() -> refusal(root)));
+
+        assertThat(e.getMessage()).startsWith("../jk.toml:10:1: [build] unknown key `bogus`");
+        assertThat(e.location()).isEqualTo(new SourceLocation(root.toString(), 10, 1));
+    }
+
+    @Test
     void a_member_outside_the_directory_jk_ran_in_is_named_in_full(@TempDir Path dir) throws Exception {
         Path member = Files.createDirectories(dir.resolve("app"));
         Path elsewhere = Files.createDirectories(dir.resolve("lib"));

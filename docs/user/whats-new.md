@@ -34,7 +34,8 @@ JumpKick shows you this page's new entries after it updates itself.
   `jvmTestEnvironment`**, so an IDE can find a file's target and run a main or a test class with
   the classpath JumpKick builds; a main runs with its `[application] jvm-args`, its packaging
   plugin's system properties and `.env` values, as under `jk run`, and a test with its `[test]` and
-  suite's `jvm-args`, `system-properties` and `env`, as under `jk test`.
+  suite's `jvm-args`, `system-properties` and `env`, as under `jk test`. The main class
+  `scalaMainClasses` lists for Metals carries the same run options and `.env` values.
 - **A value that starts with `-` is refused naming the `=` spelling.** `--jvm-arg -Xmx2g` says
   to write `--jvm-arg=-Xmx2g`, instead of only that the option needs a value.
 - **`jk export` writes a workspace sibling as a project reference.** `jk export gradle` writes a
@@ -53,7 +54,8 @@ JumpKick shows you this page's new entries after it updates itself.
   an unknown key, a collector it does not name (`gc = "zgcc"`) or a `max-ram-percent` outside 0
   to 100 is refused, where it was dropped. A key a plugin's own table (`[android]`) or a
   variant overlay of it does not know is refused at its line and column, where only the file
-  was named.
+  was named. The file is named from the directory you ran `jk` in, so in a member a refusal in
+  the workspace root's reads `../jk.toml`, not a bare `jk.toml`.
 - **A plugin's `[contribute.lib-dir]` reads `[native] enabled = false` as no native image**, as
   every other contribution's `native-declared` condition does.
 
