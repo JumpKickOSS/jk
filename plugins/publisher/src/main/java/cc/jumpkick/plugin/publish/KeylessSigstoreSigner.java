@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
+import cc.jumpkick.host.Hashing;
 import dev.sigstore.KeylessSigner;
 import dev.sigstore.KeylessSignerException;
 import dev.sigstore.bundle.Bundle;
@@ -22,10 +23,18 @@ import java.security.GeneralSecurityException;
  */
 public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseable {
 
-    private final KeylessSigner signer;
+    /** Signs a SHA-256 digest; {@link KeylessSigner#sign(byte[])} in production. */
+    @FunctionalInterface
+    interface DigestSigner {
+        Bundle sign(byte[] sha256) throws KeylessSignerException;
+    }
 
-    private KeylessSigstoreSigner(KeylessSigner signer) {
+    private final DigestSigner signer;
+    private final Runnable onClose;
+
+    KeylessSigstoreSigner(DigestSigner signer, Runnable onClose) {
         this.signer = signer;
+        this.onClose = onClose;
     }
 
     /** Initialise a signer using the public Sigstore defaults. */
@@ -33,7 +42,7 @@ public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseabl
         try {
             KeylessSigner signer =
                     KeylessSigner.builder().sigstorePublicDefaults().build();
-            return new KeylessSigstoreSigner(signer);
+            return new KeylessSigstoreSigner(signer::sign, signer::close);
         } catch (GeneralSecurityException | SigstoreConfigurationException | RuntimeException e) {
             throw new IOException("failed to initialise Sigstore keyless signer: " + e.getMessage(), e);
         }
@@ -41,10 +50,9 @@ public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseabl
 
     @Override
     public byte[] signBundle(Path artifact) throws IOException {
+        byte[] digest = Hashing.unhex(Hashing.sha256Hex(artifact));
         try {
-            // signFile hashes the file streamed; sign(byte[]) takes a digest, not the artifact.
-            Bundle bundle = signer.signFile(artifact);
-            return bundle.toJson().getBytes(StandardCharsets.UTF_8);
+            return signer.sign(digest).toJson().getBytes(StandardCharsets.UTF_8);
         } catch (KeylessSignerException e) {
             throw new IOException("Sigstore signing failed: " + e.getMessage(), e);
         }
@@ -52,6 +60,6 @@ public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseabl
 
     @Override
     public void close() {
-        signer.close();
+        onClose.run();
     }
 }
