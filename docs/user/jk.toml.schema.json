@@ -166,7 +166,22 @@
     },
     "workspace": {
       "type": "object",
-      "description": "[workspace] table; keys are documented in docs/user."
+      "description": "[workspace] (workspace root): the member modules and the dependency versions they share. See docs/user/workspaces.md.",
+      "properties": {
+        "modules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Member module directories, relative to the root; a glob such as \"libs/*\" names every match."
+        },
+        "dependencies": {
+          "type": "object",
+          "description": "One shared dependency per key: a version string when the key is a catalog short name, a group:artifact:version string, or { group, name, version } or { git, group, ... }. A member pins it with { workspace = true }.",
+          "additionalProperties": {
+            "oneOf": [{ "type": "string" }, { "type": "object" }]
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "manifest": {
       "type": "object",
@@ -189,25 +204,16 @@
           "description": "Package a fat (assembly) jar."
         },
         "minified": {
-          "type": [
-            "boolean",
-            "object"
-          ],
-          "description": "Package a minified (R8) jar."
+          "type": "boolean",
+          "description": "Package a minified (R8) jar; implies assembly. R8 settings live in [minified]."
         },
         "native": {
-          "type": [
-            "boolean",
-            "object"
-          ],
-          "description": "Native-image settings for this application."
+          "type": "boolean",
+          "description": "Build a GraalVM native image of the application. Image settings live in [native]."
         },
         "config": {
-          "type": [
-            "string",
-            "object"
-          ],
-          "description": "Runtime configuration source."
+          "type": "string",
+          "description": "Module-relative template jk install renders into ~/.jk/config/<bin>/config.toml."
         },
         "relocate": {
           "type": "object",

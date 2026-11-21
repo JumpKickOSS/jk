@@ -10,6 +10,7 @@ import cc.jumpkick.testing.RepoRoot;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -54,6 +55,19 @@ class JkTomlSchemaTest {
         assertThat(Jsonl.bool(application, "additionalProperties", true))
                 .as("an unknown key under [application] is what an editor should flag")
                 .isFalse();
+    }
+
+    @Test
+    void application_artifact_switches_are_booleans_and_config_is_a_template_path() throws Exception {
+        String properties = table(topLevel("application"), "properties");
+        for (String key : List.of("assembly", "minified", "native")) {
+            assertThat(table(properties, key).replaceAll("\\s", ""))
+                    .as("[application] %s is a switch; its settings live in their own table", key)
+                    .startsWith("{\"type\":\"boolean\"");
+        }
+        assertThat(table(properties, "config").replaceAll("\\s", ""))
+                .as("[application] config names a module-relative template file")
+                .startsWith("{\"type\":\"string\"");
     }
 
     @Test
@@ -320,11 +334,26 @@ class JkTomlSchemaTest {
         assertThat(ownAdditionalProperties(scm)).isFalse();
     }
 
+    @Test
+    void graph_properties_are_exactly_the_parser_s_graph_keys() throws Exception {
+        assertClosedTable("graph", ManifestGraph.KEYS);
+    }
+
+    @Test
+    void guards_properties_are_exactly_the_parser_s_guards_keys() throws Exception {
+        assertClosedTable("guards", ManifestGuards.KEYS);
+    }
+
+    @Test
+    void workspace_properties_are_exactly_the_parser_s_workspace_keys() throws Exception {
+        assertClosedTable("workspace", ManifestTables.WORKSPACE_KEYS);
+    }
+
     /**
      * Asserts the top-level table {@code key} names exactly {@code keys} and refuses any other,
      * as the parser does, and returns the table for the nested checks a caller adds.
      */
-    private static String assertClosedTable(String key, List<String> keys) throws Exception {
+    private static String assertClosedTable(String key, Collection<String> keys) throws Exception {
         String declared = topLevel(key);
         assertThat(keysOf(table(declared, "properties")))
                 .as("docs/user/jk.toml.schema.json [%s] properties", key)
