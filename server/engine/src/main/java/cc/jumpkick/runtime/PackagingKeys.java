@@ -489,6 +489,18 @@ public final class PackagingKeys {
     }
 
     /**
+     * The {@code classes:} token the plain package-jar step keys a transformed module's jar on: the
+     * transform's output ({@link #packagedClasses}) by the identity the build will read; {@code
+     * null} when no plugin transforms the classes, and the compiled tree is the caller's to key.
+     */
+    static @Nullable String transformedClassesToken(
+            JkBuild project, BuildLayout layout, Path cache, ClasspathFingerprint.EntryIdentity identity)
+            throws IOException, InterruptedException {
+        Path packed = packagedClasses(project, layout, cache);
+        return packed.equals(layout.classesDir()) ? null : identity.of(packed);
+    }
+
+    /**
      * {@code classes:} fingerprint for package/assembly keys — live tree when present, else the
      * compile records merged with current resource roots (post-{@code jk clean} restore path):
      * javac's under the CURRENT compile key ({@code compileMainKey}), Kotlin's and Groovy's under

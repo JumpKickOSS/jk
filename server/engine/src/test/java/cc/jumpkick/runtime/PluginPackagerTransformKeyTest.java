@@ -17,6 +17,8 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.plugin.manifest.VariantApply;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.runtime.base.PluginDescriptorOps;
+import cc.jumpkick.task.ClasspathFingerprint;
+import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.tool.TrustedPlugins;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -28,14 +30,15 @@ import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A plugin packager packs the classes a classes transform (bytecode enhancement) wrote, not the
+ * A packager packs the classes a classes transform (bytecode enhancement) wrote, not the
  * compiler's, so the forecast keys it on the transform's output as the live step does: the main
- * artifact's packager and the minified jar's alike.
+ * artifact's plugin packager, the minified jar's and jk's plain jar alike.
  */
 class PluginPackagerTransformKeyTest {
 
@@ -58,7 +61,7 @@ class PluginPackagerTransformKeyTest {
     void the_main_artifact_packager_is_forecast_on_the_transformed_classes() throws Exception {
         Path dir = pluginProject(true);
         JkBuild build = build(dir);
-        seedDescribeCache(dir, build);
+        seedDescribeCache(dir, build, DESCRIBE_TRANSFORM, DESCRIBE_PACKAGER);
         BuildLayout layout = BuildLayout.of(dir, build);
         Path cache = tmp.resolve("cache");
         Path transformed = compileAndTransform(build, layout, cache);
@@ -104,7 +107,7 @@ class PluginPackagerTransformKeyTest {
     void the_minified_jar_is_forecast_on_the_transformed_classes() throws Exception {
         Path dir = pluginProject(false);
         JkBuild build = build(dir);
-        seedDescribeCache(dir, build);
+        seedDescribeCache(dir, build, DESCRIBE_TRANSFORM, DESCRIBE_PACKAGER);
         BuildLayout layout = BuildLayout.of(dir, build);
         Path cache = tmp.resolve("cache");
         Path transformed = compileAndTransform(build, layout, cache);
@@ -121,6 +124,45 @@ class PluginPackagerTransformKeyTest {
         PackagingKeys.Keyed forecast = requireNonNull(
                 PackagingKeys.minified(build, dir, cache, dir.resolve("jk-lock.toml"), cas(), layout, javaHome()));
         assertThat(forecast.key()).isEqualTo(live.key());
+    }
+
+    @Test
+    void the_plain_jar_is_forecast_on_the_transformed_classes() throws Exception {
+        Path dir = pluginProject(null);
+        JkBuild build = build(dir);
+        seedDescribeCache(dir, build, DESCRIBE_TRANSFORM);
+        BuildLayout layout = BuildLayout.of(dir, build);
+        Path cache = tmp.resolve("cache");
+        Path transformed = compileAndTransform(build, layout, cache);
+        assertThat(PackagingKeys.ownsPackaging(PackagingKeys.pluginFor(build, layout, cache)))
+                .isFalse();
+
+        // What PackageSteps' live package-jar keys: its guard's token of BuildPlanner.mainClasses.
+        Path jar = layout.mainJar();
+        String live = PackagingKeys.packageJar(
+                        jar, dir, build, InputGuard.of(List.of(transformed)).token(transformed), "", null)
+                .key();
+        String forecast = requireNonNull(
+                PackagingKeys.transformedClassesToken(build, layout, cache, ClasspathFingerprint.ON_DISK));
+        assertThat(PackagingKeys.packageJar(jar, dir, build, forecast, "", null).key())
+                .isEqualTo(live);
+        String compiled = ClasspathFingerprint.entry(layout.classesDir());
+        assertThat(PackagingKeys.packageJar(jar, dir, build, compiled, "", null).key())
+                .as("the compiler's classes would key another jar")
+                .isNotEqualTo(live);
+    }
+
+    @Test
+    void a_module_no_plugin_transforms_keys_its_compiled_classes() throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("plain"));
+        Files.writeString(
+                dir.resolve("jk.toml"), "group = \"com.demo\"\nname = \"plain\"\nversion = \"0.1.0\"\njava = 25\n");
+        JkBuild build = build(dir);
+        BuildLayout layout = BuildLayout.of(dir, build);
+
+        assertThat(PackagingKeys.transformedClassesToken(
+                        build, layout, tmp.resolve("cache"), ClasspathFingerprint.ON_DISK))
+                .isNull();
     }
 
     // ---- fixture ------------------------------------------------------------------------------
@@ -177,9 +219,10 @@ class PluginPackagerTransformKeyTest {
 
     /**
      * A Java module with a path-pinned, materialized plugin that transforms the classes and
-     * packages them, as the main artifact or beside it.
+     * packages them, as the main artifact or beside it; with {@code mainArtifact} null it packages
+     * nothing, and jk packs the plain jar.
      */
-    private Path pluginProject(boolean mainArtifact) throws Exception {
+    private Path pluginProject(@Nullable Boolean mainArtifact) throws Exception {
         Path jar = writePluginJar(tmp.resolve("vendor").resolve("fake-1.0.0.jar"), mainArtifact);
         String hex = Hashing.sha256Hex(jar);
 
@@ -223,17 +266,23 @@ class PluginPackagerTransformKeyTest {
     }
 
     /** Pre-seed the content-keyed describe cache so nothing forks a plugin worker. */
-    private void seedDescribeCache(Path dir, JkBuild build) throws Exception {
+    private void seedDescribeCache(Path dir, JkBuild build, String... lines) throws Exception {
         ActivePlugin active = ActivePlugins.of(build, dir).getFirst();
         Path target = BuildLayout.of(dir, build).moduleTargetDir();
         String key = PluginBuild.describeKey(active, build, PluginBuild.locateWorkerJar(active, tmp.resolve("cache")));
         Path cacheFile = target.resolve("plugin").resolve("fake-describe-" + key + ".jsonl");
         Files.createDirectories(cacheFile.getParent());
-        Files.write(cacheFile, List.of(DESCRIBE_TRANSFORM, DESCRIBE_PACKAGER), StandardCharsets.UTF_8);
+        Files.write(cacheFile, List.of(lines), StandardCharsets.UTF_8);
     }
 
-    private static Path writePluginJar(Path jar, boolean mainArtifact) throws Exception {
+    private static Path writePluginJar(Path jar, @Nullable Boolean mainArtifact) throws Exception {
         Files.createDirectories(jar.getParent());
+        String packaging = mainArtifact == null ? "" : """
+                [packaging]
+                packager      = "pack"
+                main-artifact = %s
+
+                """.formatted(mainArtifact);
         String manifest = """
                 [plugin]
                 id      = "fake"
@@ -243,13 +292,9 @@ class PluginPackagerTransformKeyTest {
                 [schema]
                 enabled = { type = "bool", default = true }
 
-                [packaging]
-                packager      = "pack"
-                main-artifact = %s
-
-                [code]
+                %s[code]
                 protocol-prefix = "##FAKE:"
-                """.formatted(mainArtifact);
+                """.formatted(packaging);
         Manifest mf = new Manifest();
         mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         try (OutputStream out = Files.newOutputStream(jar);

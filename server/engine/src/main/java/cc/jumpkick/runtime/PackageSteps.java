@@ -401,15 +401,16 @@ final class PackageSteps {
             return new TaskForecast.Task(
                     TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · KSP round runs", null);
         }
+        if (PlannerPlugin.transformRuns(s)) {
+            // The jar packs what the transform writes, and that is unknown until it has run.
+            return new TaskForecast.Task(
+                    TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · classes transform runs", null);
+        }
         ActivePlugins.@Nullable Declared plugin = prepared.parsed().plugin();
         if (PackagingKeys.ownsPackaging(plugin)) {
             // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android): the
             // build runs the packager under its own token bag, so the key comes from the same body
             // the build calls; anything that stops us reproducing it forecasts RUN, never a hit.
-            if (PlannerPlugin.transformRuns(s)) {
-                return new TaskForecast.Task(
-                        TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · classes transform runs", null);
-            }
             return PackagingKeys.pluginPackagerStep(
                     s.project, s.dir, layout, s.cache, s.lockFile, s.cas, prepared.javaHome(), plugin, s.actionCache);
         }
@@ -428,7 +429,8 @@ final class PackageSteps {
         // classesTokenForPackage projects post-copy content when resources drifted, so package
         // CACHED/RUN matches the live step after copy-resources. A wiped tree takes the walk's own
         // projection, which merges every compiler's record.
-        String classesTok = s.restored.projectedIdentity(layout.classesDir());
+        String classesTok = PackagingKeys.transformedClassesToken(s.project, layout, s.cache, s.restored.identity());
+        if (classesTok == null) classesTok = s.restored.projectedIdentity(layout.classesDir());
         if (classesTok == null) {
             classesTok = PackagingKeys.classesTokenForPackage(
                     s.dir,
