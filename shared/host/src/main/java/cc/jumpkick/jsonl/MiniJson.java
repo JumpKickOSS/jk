@@ -178,17 +178,19 @@ public final class MiniJson {
 
     /**
      * Parse a complete JSON document; trailing non-whitespace is an error. Strict: no comments, no
-     * trailing commas, no byte-order mark. This is the plugin wire-protocol path — anything lenient
-     * belongs in {@link #parseRelaxed} instead.
+     * trailing commas, no byte-order mark, no whitespace but space, tab, LF and CR, and no raw
+     * control character (U+0000 to U+001F) inside a string. This is the plugin wire-protocol path —
+     * anything lenient belongs in {@link #parseRelaxed} instead.
      */
     public static @Nullable Object parse(String json) {
         return parse(json, false);
     }
 
     /**
-     * Parse a JSONC document — {@link #parse}'s grammar plus the three concessions human-edited
-     * config files need: {@code //} line and block comments wherever whitespace is legal, a
-     * trailing comma in objects and arrays, and a leading byte-order mark. None of these are
+     * Parse a JSONC document — {@link #parse}'s grammar plus the concessions human-edited config
+     * files need: {@code //} line and block comments wherever whitespace is legal, a trailing comma
+     * in objects and arrays, a leading byte-order mark, any {@link Character#isWhitespace} character
+     * between tokens and a raw control character (a pasted tab) inside a string. A comment is not
      * recognized inside a string literal, so {@code {"a":"// text"}} keeps its value verbatim.
      */
     public static @Nullable Object parseRelaxed(String json) {
@@ -290,6 +292,9 @@ public final class MiniJson {
             if (pos >= src.length()) throw new IllegalArgumentException("unterminated string");
             char c = src.charAt(pos++);
             if (c == '"') return sb.toString();
+            if (c < 0x20 && !relaxed) {
+                throw new IllegalArgumentException("unescaped control character at offset " + (pos - 1));
+            }
             if (c != '\\') {
                 sb.append(c);
                 continue;
@@ -436,14 +441,16 @@ public final class MiniJson {
     }
 
     /**
-     * Skip whitespace, plus — in relaxed mode — comments and byte-order marks. Every token boundary
+     * Skip whitespace: RFC 8259's space, tab, LF and CR; in relaxed mode anything
+     * {@link Character#isWhitespace} takes, comments and byte-order marks. Every token boundary
      * routes through here, which is what makes a comment legal anywhere whitespace is legal;
      * {@link #parseString} never does, which is what keeps a value of {@code "// text"} intact.
      */
     private void skipWhitespace() {
         while (pos < src.length()) {
             char c = src.charAt(pos);
-            if (Character.isWhitespace(c) || (relaxed && c == BOM)) {
+            boolean json = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+            if (json || (relaxed && (Character.isWhitespace(c) || c == BOM))) {
                 pos++;
                 continue;
             }

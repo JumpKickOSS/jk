@@ -209,6 +209,42 @@ class MiniJsonTest {
     }
 
     @Test
+    void parse_takes_only_the_four_json_whitespace_characters() {
+        // Character.isWhitespace also takes each of these; RFC 8259 takes none.
+        for (char ws : "\u000B\u000C\u001C\u001F  ".toCharArray()) {
+            String hex = String.format("U+%04X", (int) ws);
+            assertThatThrownBy(() -> MiniJson.parse(ws + "1")).as(hex).hasMessage("unexpected character at offset 0");
+            assertThatThrownBy(() -> MiniJson.parse("[1," + ws + "2]"))
+                    .as(hex)
+                    .hasMessage("unexpected character at offset 3");
+            assertThatThrownBy(() -> MiniJson.parse("{\"a\":1" + ws + "}"))
+                    .as(hex)
+                    .hasMessage("expected ',' or '}' at offset 6");
+            assertThatThrownBy(() -> MiniJson.parse("1" + ws)).as(hex).hasMessage("trailing content at offset 1");
+            assertThat(MiniJson.parseRelaxed("[1," + ws + "2]")).as(hex).isEqualTo(List.of(1L, 2L));
+        }
+        assertThat(MiniJson.parse(" \t\r\n{ \"a\" :\t[1 ,\r\n2] }\n")).isEqualTo(Map.of("a", List.of(1L, 2L)));
+    }
+
+    @Test
+    void parse_refuses_raw_control_characters_in_strings() {
+        for (char c : "\u0000\t\n\r\u001F".toCharArray()) {
+            String hex = String.format("U+%04X", (int) c);
+            assertThatThrownBy(() -> MiniJson.parse("\"a" + c + "b\""))
+                    .as(hex)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("unescaped control character at offset 2");
+            assertThatThrownBy(() -> MiniJson.parse("{\"k" + c + "\":1}"))
+                    .as(hex)
+                    .hasMessage("unescaped control character at offset 3");
+            assertThat(MiniJson.parseRelaxed("\"a" + c + "b\"")).as(hex).isEqualTo("a" + c + "b");
+        }
+        // Escaped, they are fine, and DEL (U+007F) is not a control character to JSON.
+        assertThat(MiniJson.parse("\"\\u0000\\t\\n\\r\\u001f\u007F\"")).isEqualTo("\u0000\t\n\r\u001F\u007F");
+        assertThat(MiniJson.parse(MiniJson.write("tab\there\u0001"))).isEqualTo("tab\there\u0001");
+    }
+
+    @Test
     void rejects_malformed_unicode_escapes() {
         // Integer.parseInt accepts a leading sign; a leading '+' is not a JSON unicode escape.
         assertThatThrownBy(() -> MiniJson.parse("\"\\u+123\""))
