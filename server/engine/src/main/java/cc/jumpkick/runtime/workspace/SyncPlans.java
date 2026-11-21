@@ -9,8 +9,10 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.guard.rules.GuardPacks;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -43,6 +45,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -381,7 +384,9 @@ public final class SyncPlans {
 
     /**
      * Fetch each pinned plugin jar into the CAS (pin is law) and warm its sibling POM; a path pin
-     * is copied from the file {@code [plugins]} declares instead.
+     * is copied from the file {@code [plugins]} declares instead. A rule pack is rules text, never
+     * a worker, so it needs no POM, and a copy of its pinned bytes on a first-party shelf is taken
+     * before the repositories are asked: they never serve a first-party snapshot.
      */
     private static void syncPluginEntries(
             TaskContext ctx,
@@ -390,6 +395,8 @@ public final class SyncPlans {
             List<Lockfile.PluginEntry> pluginEntries,
             RepoGroup repos,
             Cas cas) {
+        Map<String, GuardPacks.Coordinate> packs = new HashMap<>();
+        for (GuardPacks.Coordinate c : GuardPackPins.of(dir)) packs.put(c.ga() + ":" + c.version(), c);
         for (var pe : pluginEntries) {
             ctx.label("sync " + pe.coordinate());
             String hex = pe.sha256Hex();
@@ -410,12 +417,13 @@ public final class SyncPlans {
                 continue;
             }
             var coord = Coordinate.ofModule(pe.coordinate(), pe.version());
-            if (cas.contains(hex)) {
+            GuardPacks.Coordinate pack = packs.get(pe.coordinate() + ":" + pe.version());
+            if (cas.contains(hex) || (pack != null && shelved(pack, pe, hex, cas))) {
                 // The jar blob alone isn't enough: worker launch needs the sibling
                 // POM (PomRuntimeClasspath), and a store warmed via the CAS-blob
                 // fallback has jar-without-POM forever unless sync repairs it. Warm
                 // mirrors make this a cheap local probe.
-                ensureSiblingPom(ctx, repos, coord);
+                if (pack == null) ensureSiblingPom(ctx, repos, coord);
                 ctx.progress(1);
                 continue;
             }
@@ -439,7 +447,7 @@ public final class SyncPlans {
                     }
                     cas.putFile(r.get().fetched().cachePath(), hex);
                     // Worker classpath needs the sibling POM next to the jar.
-                    ensureSiblingPom(ctx, repos, coord);
+                    if (pack == null) ensureSiblingPom(ctx, repos, coord);
                     ctx.label("fetched " + pe.coordinate() + ":" + pe.version());
                 } else {
                     ctx.error("plugin", pe.coordinate() + " not found in any repo");
@@ -514,11 +522,6 @@ public final class SyncPlans {
     }
 
     /**
-     * Fetch the plugin's sibling POM into the mirror (warm hit = local probe only) and say so when
-     * it can't be had, rather than letting a silent POM 404 surface at worker launch as "has no
-     * Maven POM; run `jk install`".
-     */
-    /**
      * Unpack the lock's {@code [native]} reachability-metadata pin into the artifact store.
      *
      * <p>{@code jk sync}'s promise is that a materialized store plus a lock is enough to build with
@@ -555,6 +558,27 @@ public final class SyncPlans {
         }
     }
 
+    /**
+     * True once {@code pack}'s jar with the pinned digest {@code hex} is in {@code cas}: copied from
+     * a repository store that holds it at its version (the {@code jk-local} shelf for a snapshot).
+     */
+    private static boolean shelved(GuardPacks.Coordinate pack, Lockfile.PluginEntry pin, String hex, Cas cas) {
+        try {
+            Path jar = GuardPacks.locateJar(pack, pin, cas.root());
+            if (jar == null || !Hashing.sha256Hex(jar).equalsIgnoreCase(hex)) return false;
+            cas.putFile(jar, hex);
+            return true;
+        } catch (IOException unreadable) {
+            Log.debug("rule pack " + pack.gav() + ": store copy unreadable", unreadable);
+            return false;
+        }
+    }
+
+    /**
+     * Fetch the plugin's sibling POM into the mirror (warm hit = local probe only) and say so when
+     * it can't be had, rather than letting a silent POM 404 surface at worker launch as "has no
+     * Maven POM; run `jk install`".
+     */
     private static void ensureSiblingPom(TaskContext ctx, RepoGroup repos, Coordinate coord) {
         try {
             var pom = repos.tryFetchArtifact(
