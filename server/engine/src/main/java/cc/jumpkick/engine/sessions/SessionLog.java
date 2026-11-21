@@ -5,7 +5,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.engine.listen.EventRedaction;
-import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EventCatalog;
 import java.io.IOException;
@@ -29,7 +28,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The engine's sessions: who is talking to it, the episodes {@link EpisodeInference} groups their
  * work into, and every run and action they took. Each change is written to the {@link
- * SessionJournal} and published as an SSE {@code session}, {@code episode} or {@code action} event.
+ * SessionJournal} ({@link SessionWrites}) and published as an SSE {@code session}, {@code episode}
+ * or {@code action} event.
  *
  * <p>A session is keyed by its origin and its label: an MCP connection ({@code mcp}, {@code
  * claude-code 3f9a}) is opened at {@code initialize}; a BSP client, the dashboard or the shell is
@@ -80,12 +80,6 @@ public final class SessionLog {
     /** Actions a session keeps: in memory with no journal, and in its {@code actions.jsonl} once compacted. */
     static final int KEPT_ACTIONS = 1000;
 
-    /**
-     * Episode lines a session's {@code episodes.jsonl} may reach before it is compacted to one line
-     * per kept episode: every change to an episode appends one.
-     */
-    static final int COMPACT_EPISODE_LINES = 4 * EpisodeInference.KEEP;
-
     private final @Nullable SessionJournal journal;
     private final LongSupplier clock;
     private final long idleGapMillis;
@@ -108,6 +102,8 @@ public final class SessionLog {
      */
     private final ProjectIdMemo projectIds;
 
+    private final SessionWrites store;
+
     private final Overlaps overlaps = new Overlaps();
 
     /** Whether {@link #adopt} has run. */
@@ -126,7 +122,7 @@ public final class SessionLog {
     private boolean retired;
 
     /** One open session: its record, its episodes, the sequence its next action takes, its MCP connection. */
-    private static final class Live {
+    static final class Live {
         SessionRecord record;
         final EpisodeInference episodes;
         long seq;
@@ -176,6 +172,7 @@ public final class SessionLog {
         this.idleGapMillis = idleGapMillis;
         this.expiryMillis = expiryMillis;
         this.projectIds = projectIds;
+        this.store = new SessionWrites(journal, projectIds, this::writing);
     }
 
     /** Publish every change to {@code events}. */
@@ -322,8 +319,9 @@ public final class SessionLog {
             if (renamed) live.record = live.record.withEpisode(keptCurrent);
             List<Map<String, Object>> actions = journal.actions(r.id());
             live.seq = actions.isEmpty() ? 0 : Episode.num(actions.getLast(), "seq");
-            if (live.episodeLines > EpisodeInference.KEEP || actions.size() > KEPT_ACTIONS) compact(live, actions);
-            else if (renamed) persist(live);
+            if (live.episodeLines > EpisodeInference.KEEP || actions.size() > KEPT_ACTIONS)
+                store.compact(live, actions);
+            else if (renamed) store.persist(live);
             byId.put(r.id(), live);
             Live other = byKey.get(key(r.origin(), r.label()));
             if (other == null || other.record.lastActiveAt() < r.lastActiveAt())
@@ -336,7 +334,7 @@ public final class SessionLog {
             } else if (!handingOver) {
                 List<EpisodeInference.Change> settled = live.episodes.settle();
                 if (!settled.isEmpty()) {
-                    persist(live);
+                    store.persist(live);
                     publish(live, settled);
                 }
             }
@@ -389,7 +387,7 @@ public final class SessionLog {
             Live live = sessionFor(origin, label, client, clock.getAsLong());
             if (project != null && !project.isBlank() && live.record.project() == null) {
                 live.record = withProject(live.record, project, live.record.lastActiveAt());
-                persist(live);
+                store.persist(live);
             }
             return live.record.id();
         }
@@ -417,7 +415,7 @@ public final class SessionLog {
         Live live = byKey.get(key(origin, label));
         if (live == null || leader.equals(live.leader)) return;
         live.leader = leader;
-        persist(live);
+        store.persist(live);
     }
 
     /**
@@ -435,12 +433,7 @@ public final class SessionLog {
         live.connection = Map.copyOf(connection);
         String id = MiniJson.str(connection, "id");
         if (id != null) byConnection.put(id, live);
-        if (journal == null || !writing()) return;
-        try {
-            journal.writeConnection(live.record.id(), live.connection);
-        } catch (IOException | RuntimeException e) {
-            Log.debug("session connection not written: " + live.record.id(), e);
-        }
+        store.connection(live);
     }
 
     /** The stored MCP connection {@code id} of a session still open; empty when no open session has it. */
@@ -478,7 +471,7 @@ public final class SessionLog {
                 boolean moved = !state.equals(live.record.state());
                 if (!moved && settled.isEmpty()) continue;
                 if (moved) live.record = live.record.withState(state);
-                persist(live);
+                store.persist(live);
                 publish(live, settled);
                 if (moved) publishSession(live, state);
             }
@@ -526,7 +519,7 @@ public final class SessionLog {
             Live live = sessionFor(trigger, label, clientOf(label), at);
             EpisodeInference.Placement p = live.episodes.place(at, projectOr(live, dir));
             touch(live, dir, at, p.episode());
-            persist(live);
+            store.persist(live);
             publish(live, p.changes());
             return p.episode();
         }
@@ -568,8 +561,8 @@ public final class SessionLog {
                     r.cancelled() ? List.of() : live.episodes.fold(episode, RunFacts.fact(r));
             touch(live, r.dir(), r.finishedAt(), live.record.episode());
             ActionRecord action = RunFacts.action(r);
-            append(live, action);
-            persist(live);
+            store.append(live, action);
+            store.persist(live);
             publish(live, changes);
         }
     }
@@ -623,8 +616,8 @@ public final class SessionLog {
                     project.isBlank() ? null : project,
                     0,
                     Math.max(0, edits));
-            ActionRecord logged = append(live, action);
-            persist(live);
+            ActionRecord logged = store.append(live, action);
+            store.persist(live);
             publish(live, changes);
             Map<String, Object> payload = envelope(EventCatalog.SSE_ACTION);
             payload.put("session", live.record.id());
@@ -648,7 +641,7 @@ public final class SessionLog {
             String where = projectOr(live, project);
             EpisodeInference.Placement p = live.episodes.goal(now, where, maskedGoal(where, text));
             touch(live, project, now, p.episode());
-            persist(live);
+            store.persist(live);
             publish(live, p.changes());
             return p.episode();
         }
@@ -857,7 +850,7 @@ public final class SessionLog {
         live = new Live(record, new EpisodeInference(id, idleGapMillis));
         byKey.put(key, live);
         byId.put(id, live);
-        persist(live);
+        store.persist(live);
         publishSession(live, "started");
         return live;
     }
@@ -878,7 +871,7 @@ public final class SessionLog {
                 Math.max(now, r.lastActiveAt()),
                 SessionRecord.ENDED,
                 r.episode());
-        persist(live);
+        store.persist(live);
         publish(live, changes);
         publishSession(live, SessionRecord.ENDED);
         byKey.remove(key(r.origin(), r.label()), live);
@@ -888,12 +881,7 @@ public final class SessionLog {
         byConnection.remove(connection, live);
         live.connection = null;
         ended.add(connection);
-        if (journal == null || !writing()) return;
-        try {
-            journal.deleteConnection(r.id());
-        } catch (IOException | RuntimeException e) {
-            Log.debug("session connection not removed: " + r.id(), e);
-        }
+        store.forgetConnection(r.id());
     }
 
     private void touch(Live live, @Nullable String dir, long at, @Nullable String episode) {
@@ -934,100 +922,6 @@ public final class SessionLog {
         if (dir != null && !dir.isBlank()) return dir;
         String own = live.record.project();
         return own == null ? "" : own;
-    }
-
-    private ActionRecord append(Live live, ActionRecord action) {
-        ActionRecord logged = action.redacted().withSeq(++live.seq);
-        if (journal == null) {
-            live.memory.add(logged);
-            if (live.memory.size() > KEPT_ACTIONS) live.memory.removeFirst();
-            return logged;
-        }
-        if (!writing()) return logged;
-        try {
-            journal.append(live.record.id(), logged.toMap());
-        } catch (IOException | RuntimeException e) {
-            Log.debug("session action not written: " + live.record.id(), e);
-        }
-        return logged;
-    }
-
-    /**
-     * Store {@code live}: an episode line for each kept episode that changed since it was last
-     * appended, then the head. Once the episode lines pass {@link #COMPACT_EPISODE_LINES}, both logs
-     * are compacted to the kept episodes.
-     */
-    private void persist(Live live) {
-        if (journal == null || !writing()) return;
-        String id = live.record.id();
-        Set<String> kept = new HashSet<>();
-        try {
-            for (EpisodeInference.Stored e : live.episodes.stored()) {
-                String eid = e.episode().id();
-                kept.add(eid);
-                String text = EpisodeLines.text(e);
-                if (text.equals(live.written.get(eid))) continue;
-                journal.appendEpisode(id, line(e));
-                live.written.put(eid, text);
-                live.episodeLines++;
-            }
-            live.written.keySet().retainAll(kept);
-            if (live.episodeLines > COMPACT_EPISODE_LINES) compact(live, null);
-            else journal.write(id, head(live));
-        } catch (IOException | RuntimeException e) {
-            Log.debug("session not written: " + id, e);
-        }
-    }
-
-    /**
-     * Rewrite {@code live}'s logs to what it keeps: one line per kept episode, and the actions of
-     * those episodes, at most {@link #KEPT_ACTIONS} of the newest; then its head. {@code actions} is
-     * its action log when the caller has already read it.
-     */
-    private void compact(Live live, @Nullable List<Map<String, Object>> actions) {
-        if (journal == null || !writing()) return;
-        String id = live.record.id();
-        try {
-            List<Map<String, Object>> lines = new ArrayList<>();
-            Set<String> kept = new HashSet<>();
-            for (EpisodeInference.Stored e : live.episodes.stored()) {
-                lines.add(line(e));
-                kept.add(e.episode().id());
-            }
-            journal.rewriteEpisodes(id, lines);
-            live.episodeLines = lines.size();
-            List<Map<String, Object>> keep = new ArrayList<>();
-            for (Map<String, Object> a : actions != null ? actions : journal.actions(id)) {
-                if (kept.contains(MiniJson.str(a, "episode"))) keep.add(a);
-            }
-            journal.rewriteActions(id, keep.subList(Math.max(0, keep.size() - KEPT_ACTIONS), keep.size()));
-            journal.write(id, head(live));
-        } catch (IOException | RuntimeException e) {
-            Log.debug("session not compacted: " + id, e);
-        }
-    }
-
-    /** {@code live}'s {@code session.json}: its record and the inference state its next fact needs. */
-    private static Map<String, Object> head(Live live) {
-        Map<String, Object> doc = new LinkedHashMap<>();
-        doc.put("schema", 1);
-        doc.put("session", live.record.toMap());
-        doc.put("inference", live.episodes.state());
-        // Beside the record, never in it: the record is what the dashboard shows.
-        if (live.leader != null) doc.put("leader", live.leader);
-        return doc;
-    }
-
-    /**
-     * Under the monitor: one episode line, the episode with its project's id when remembered, and its
-     * tallies. The entry point placing a fact asked for its project's id before taking the monitor;
-     * a line without one has it added as it is read.
-     */
-    private Map<String, Object> line(EpisodeInference.Stored e) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("episode", projectIds.namedIfKnown(e.episode()).toMap());
-        m.put("state", e.state());
-        return m;
     }
 
     /** True while this engine writes the records; false for good once {@link #writes} fails or it is stopped. */

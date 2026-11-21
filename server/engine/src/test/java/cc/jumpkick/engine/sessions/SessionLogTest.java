@@ -298,7 +298,7 @@ class SessionLogTest {
             long at = T + i * 10_000L;
             String ep = Objects.requireNonNull(log.placeRun("cli", null, "build", "/ws/p" + i, at));
             log.runFinished(run(ep, i + 1, at, true));
-            assertThat(journal.episodeLines(shell).size()).isLessThanOrEqualTo(SessionLog.COMPACT_EPISODE_LINES);
+            assertThat(journal.episodeLines(shell).size()).isLessThanOrEqualTo(SessionWrites.COMPACT_EPISODE_LINES);
         }
 
         assertThat(Files.size(dir.resolve("session.json")))
@@ -308,12 +308,12 @@ class SessionLogTest {
         assertThat(stored)
                 .as(
                         "between compactions the log may still hold episodes since dropped, never more lines than the bound")
-                .hasSizeBetween(keep, SessionLog.COMPACT_EPISODE_LINES);
+                .hasSizeBetween(keep, SessionWrites.COMPACT_EPISODE_LINES);
         assertThat(Episode.num(stored.getLast(), "number")).isEqualTo(total);
         assertThat(journal.actions(shell))
                 .as("only the actions of kept episodes survive a compaction")
                 .allSatisfy(a -> assertThat(EpisodeLines.numberOf(MiniJson.str(a, "episode")))
-                        .isGreaterThan(total - keep - SessionLog.COMPACT_EPISODE_LINES));
+                        .isGreaterThan(total - keep - SessionWrites.COMPACT_EPISODE_LINES));
 
         SessionLog.Page page = log.session(shell, 0, 10).orElseThrow();
         assertThat(page.episodes()).hasSize(keep);
