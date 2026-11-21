@@ -195,53 +195,16 @@ public record JkBuild(
 
     /** This build with one plugin's config replaced — the variant-overlay substitution point. */
     public JkBuild withPluginConfig(PluginConfig config) {
-        Map<String, PluginConfig> next = new LinkedHashMap<>(pluginConfigs);
-        next.put(config.id(), config);
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                next,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        Objects.requireNonNull(config, "config");
+        return toBuilder(project).pluginConfig(config).build();
     }
 
     /** This build without the plugin config {@code id} (no-op when absent). */
     public JkBuild withoutPluginConfig(String id) {
         if (id == null || !pluginConfigs.containsKey(id)) return this;
-        Map<String, PluginConfig> next = new LinkedHashMap<>(pluginConfigs);
-        next.remove(id);
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                next,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        Builder b = toBuilder(project);
+        b.pluginConfigs.remove(id);
+        return b.build();
     }
 
     /**
@@ -253,16 +216,8 @@ public record JkBuild(
     public JkBuild withArtifacts(boolean assembly, boolean minified) {
         Application app = application != null ? application : new Application(null, false, false, false, null);
         if (app.assembly() == (assembly || minified) && app.minified() == minified) return this;
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                new Application(
+        return toBuilder(project)
+                .application(new Application(
                         app.main(),
                         assembly,
                         minified,
@@ -270,85 +225,23 @@ public record JkBuild(
                         app.config(),
                         app.relocate(),
                         app.jvmArgs(),
-                        app.libDir()),
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+                        app.libDir()))
+                .build();
     }
 
     /** This build with its {@code [plugins]} list replaced (user-config merge / tests). */
     public JkBuild withPlugins(List<PluginDeclaration> plugins) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).plugins(plugins).build();
     }
 
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
     public JkBuild withBuild(BuildBlock build) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).build(build).build();
     }
 
     /** This build with its {@code [repositories]} replaced. */
     public JkBuild withRepositories(List<RepositorySpec> repositories) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).repositories(repositories).build();
     }
 
     /** This build with its dependency rows replaced and its table settings kept. */
@@ -358,71 +251,17 @@ public record JkBuild(
 
     /** This build with its dependencies replaced — the variant dependency-overlay fold point. */
     public JkBuild withDependencies(Dependencies dependencies) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).dependencies(dependencies).build();
     }
 
     /** This build with its {@code [variants]} replaced. */
     public JkBuild withVariants(Variants variants) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).variants(variants).build();
     }
 
     /** This build with its {@code [features]} replaced. */
     public JkBuild withFeatures(Features features) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).features(features).build();
     }
 
     /** True when the {@code [spring-boot]} plugin table is declared. */
@@ -696,75 +535,19 @@ public record JkBuild(
     /** This build carrying {@code publish} as its {@code [publish]} table — how a member takes the root's. */
     public JkBuild withPublish(@Nullable PomMetadata publish) {
         if (Objects.equals(publish, this.publish)) return this;
-        Builder b = builder(project)
-                .dependencies(dependencies)
-                .repositories(repositories)
-                .profiles(profiles)
-                .features(features)
-                .workspace(workspace)
-                .manifest(manifest)
-                .plugins(plugins)
-                .application(application)
-                .nativeConfig(nativeConfig)
-                .build(build)
-                .format(format)
-                .variants(variants)
-                .install(install)
-                .publish(publish)
-                .image(image)
-                .library(library);
-        for (PluginConfig config : pluginConfigs.values()) {
-            b.pluginConfig(config);
-        }
-        return b.build();
+        return toBuilder(project).publish(publish).build();
     }
 
     /** This build carrying {@code image} as its {@code [image]} table — how a member takes the root's shared keys. */
     public JkBuild withImage(ImageTable image) {
         Objects.requireNonNull(image, "image");
         if (image.equals(this.image)) return this;
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).image(image).build();
     }
 
     /** Return a copy with the given custom jar-manifest attributes. */
     public JkBuild withManifest(Map<String, String> manifest) {
-        return new JkBuild(
-                project,
-                dependencies,
-                repositories,
-                profiles,
-                features,
-                workspace,
-                manifest,
-                plugins,
-                application,
-                nativeConfig,
-                pluginConfigs,
-                build,
-                format,
-                variants,
-                install,
-                publish,
-                image,
-                library);
+        return toBuilder(project).manifest(manifest).build();
     }
 
     /** True iff this is a workspace root (has a non-empty {@code workspace} block). */
