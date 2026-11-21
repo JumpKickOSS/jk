@@ -516,6 +516,10 @@
           "type": "boolean",
           "description": "Run every forked test JVM with -ea, as Surefire and Gradle do. Default true; false runs the suite with Java and Kotlin assert statements disabled. A run-tests input: flipping it re-runs the suite."
         },
+        "failure-snapshot": {
+          "type": "boolean",
+          "description": "A failed test's agent report carries the arguments and locals at the frame that threw and the project frames above it, read through a debugger each test JVM attaches to itself. Default false. Not under --debug-jvm, nor when [test] jvm-args load a JDWP agent."
+        },
         "fast-method-budget": {
           "type": ["string", "integer"],
           "description": "A fast-tier (untagged) test method that takes longer than this is a warning naming the method and its time; the run still passes. A duration (\"1s\", \"500ms\", \"2m\") or seconds. Set at the workspace root it holds every member; a member's own value wins. Absent: no budget."

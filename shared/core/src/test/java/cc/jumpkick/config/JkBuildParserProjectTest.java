@@ -626,6 +626,24 @@ class JkBuildParserProjectTest {
     }
 
     @Test
+    void test_failure_snapshot_is_off_unless_the_module_turns_it_on_and_takes_only_a_boolean() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testFailureSnapshot()).isFalse();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                failure-snapshot = true
+                """).build().testFailureSnapshot())
+                .isTrue();
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                [test]
+                failure-snapshot = "on"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[test].failure-snapshot must be true or false");
+    }
+
+    @Test
     void test_coverage_is_off_unless_the_module_turns_every_run_into_a_coverage_run() {
         assertThat(JkBuildParser.parse(PROJECT).build().testCoverage()).isFalse();
         assertThat(JkBuildParser.parse(PROJECT + """

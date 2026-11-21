@@ -218,13 +218,31 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** {@code [test] failure-snapshot}: whether a failed test's report carries its throwing frames' variables. */
+    private boolean failureSnapshot;
+
+    /**
+     * Start every JVM that runs tests with the JDWP agent on a loopback port and {@link
+     * FailureSnapshotFlags#PROPERTY}, so the test runner reads the variables at the frame that threw
+     * each failure. Not under {@code --debug-jvm}, whose agent is the user's debugger's, nor when the
+     * test JVM's own arguments load one.
+     */
+    public JUnitLauncher withFailureSnapshot(boolean enabled) {
+        this.failureSnapshot = enabled;
+        return this;
+    }
+
     /**
      * {@link #runnerFlags} for {@code role}, plus the JDWP agent when the suite JVM is under debug,
-     * the JaCoCo agent on every test-running JVM of a coverage run, and the recordings.
+     * the snapshot agent when failures carry one, the JaCoCo agent on every test-running JVM of a
+     * coverage run, and the recordings.
      */
     List<String> jvmFlags(JvmRole role, int concurrency, @Nullable Path tmpDir) {
         List<String> flags = new ArrayList<>(runnerFlags(concurrency, tmpDir, role));
         if (role == JvmRole.SUITE && debug != null) flags.add(debug.agentArg());
+        if (role != JvmRole.DISCOVERY && failureSnapshot && debug == null) {
+            flags.addAll(FailureSnapshotFlags.flags(launchJavaHome, jvmArgs));
+        }
         if (role != JvmRole.DISCOVERY && coverage != null) flags.add(coverage.agentArg());
         if (role != JvmRole.DISCOVERY) flags.addAll(recordings);
         return flags;

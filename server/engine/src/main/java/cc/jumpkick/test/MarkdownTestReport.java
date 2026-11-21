@@ -62,19 +62,36 @@ public final class MarkdownTestReport {
 
     /**
      * One module's tests, published after that module's workers join. {@code printed} is keyed by
-     * class name, in the order the classes first printed.
+     * class name, in the order the classes first printed; {@code snapshots} holds each failed
+     * test's {@link FailureSnapshotLines}, keyed by {@link #testKey}.
      */
-    public record ModuleRun(String scopeKey, String label, List<Entry> entries, Map<String, Printed> printed) {
+    public record ModuleRun(
+            String scopeKey,
+            String label,
+            List<Entry> entries,
+            Map<String, Printed> printed,
+            Map<String, List<String>> snapshots) {
         public ModuleRun {
             entries = entries == null ? List.of() : List.copyOf(entries);
             printed = printed == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(printed));
+            snapshots = snapshots == null ? Map.of() : Map.copyOf(snapshots);
             if (scopeKey == null) scopeKey = "";
             if (label == null) label = "";
         }
 
         public ModuleRun(String scopeKey, String label, List<Entry> entries) {
-            this(scopeKey, label, entries, Map.of());
+            this(scopeKey, label, entries, Map.of(), Map.of());
         }
+    }
+
+    /** {@code Class#method}, the {@code ()} of a method dropped; either part alone when the other is blank. */
+    public static String testKey(@Nullable String className, @Nullable String method) {
+        String cls = className == null ? "" : className.strip();
+        String m = method == null ? "" : method.strip();
+        if (m.endsWith("()")) m = m.substring(0, m.length() - 2);
+        if (cls.isEmpty()) return m;
+        if (m.isEmpty()) return cls;
+        return cls + "#" + m;
     }
 
     /** The lines of each class's output a run that keeps output holds: the last ones printed. */
@@ -90,6 +107,12 @@ public final class MarkdownTestReport {
     private final boolean keepOutput;
     private final Map<String, Integer> printedLines = new LinkedHashMap<>();
     private final Map<String, ArrayDeque<String>> printedTail = new LinkedHashMap<>();
+
+    /** Each failed test's snapshot lines by {@link #testKey}, with the class that recorded it. */
+    private final Map<String, Snapshot> snapshots = new LinkedHashMap<>();
+
+    /** One failed test's snapshot lines and the class they belong to. */
+    record Snapshot(String className, List<String> lines) {}
 
     /** A report that counts what each class printed and keeps none of it. */
     public MarkdownTestReport() {
@@ -136,6 +159,16 @@ public final class MarkdownTestReport {
     }
 
     /**
+     * Record the snapshot of a failed test of {@code className}, under each of the {@code names} it
+     * is known by (its method, its display name). Nothing for no lines.
+     */
+    public synchronized void recordSnapshot(String className, Collection<String> names, List<String> lines) {
+        if (lines.isEmpty()) return;
+        Snapshot s = new Snapshot(className, List.copyOf(lines));
+        for (String name : names) snapshots.put(testKey(className, name), s);
+    }
+
+    /**
      * Record a skipped test. {@code reason} is the skip reason from the protocol event, may be null.
      */
     public synchronized void recordSkipped(String uniqueId, String display, @Nullable String reason) {
@@ -164,7 +197,8 @@ public final class MarkdownTestReport {
             Collection<String> classNames,
             List<Entry> entries,
             Map<String, Integer> printedLines,
-            Map<String, ArrayDeque<String>> printedTail) {}
+            Map<String, ArrayDeque<String>> printedTail,
+            Map<String, Snapshot> snapshots) {}
 
     /**
      * Drop what was recorded for {@code classNames}, every class when it is empty, so a run that
@@ -188,7 +222,13 @@ public final class MarkdownTestReport {
             if (tail != null) tails.put(cls, tail);
             return true;
         });
-        return new Held(List.copyOf(classNames), held, lines, tails);
+        Map<String, Snapshot> took = new LinkedHashMap<>();
+        snapshots.entrySet().removeIf(e -> {
+            if (!classNames.isEmpty() && !classNames.contains(e.getValue().className())) return false;
+            took.put(e.getKey(), e.getValue());
+            return true;
+        });
+        return new Held(List.copyOf(classNames), held, lines, tails, took);
     }
 
     /** Put back what {@link #forget} took, in place of anything recorded for its classes since. */
@@ -197,6 +237,7 @@ public final class MarkdownTestReport {
         entries.addAll(held.entries());
         printedLines.putAll(held.printedLines());
         printedTail.putAll(held.printedTail());
+        snapshots.putAll(held.snapshots());
     }
 
     /**
@@ -210,7 +251,9 @@ public final class MarkdownTestReport {
             ArrayDeque<String> tail = printedTail.get(cls);
             printed.put(cls, new Printed(n, tail == null ? List.of() : List.copyOf(tail), reportOf.apply(cls)));
         });
-        publish(scopeKey, label, entries, printed);
+        Map<String, List<String>> lines = new LinkedHashMap<>();
+        snapshots.forEach((key, s) -> lines.put(key, s.lines()));
+        publish(scopeKey, label, entries, printed, lines);
     }
 
     /**
@@ -218,14 +261,19 @@ public final class MarkdownTestReport {
      * {@code scopeKey}. Dropped when no request is open on this thread.
      */
     public static void publish(String scopeKey, String label, List<Entry> entries) {
-        publish(scopeKey, label, entries, Map.of());
+        publish(scopeKey, label, entries, Map.of(), Map.of());
     }
 
-    private static void publish(String scopeKey, String label, List<Entry> entries, Map<String, Printed> printed) {
+    private static void publish(
+            String scopeKey,
+            String label,
+            List<Entry> entries,
+            Map<String, Printed> printed,
+            Map<String, List<String>> snapshots) {
         if (entries.isEmpty()) return;
         RunResults sink = RunResults.ambient();
         if (sink == null) return;
         String k = scopeKey == null || scopeKey.isBlank() ? "_" : scopeKey;
-        sink.publishTests(k, label == null ? "" : label, List.copyOf(entries), printed);
+        sink.publishTests(k, label == null ? "" : label, List.copyOf(entries), printed, snapshots);
     }
 }

@@ -32,15 +32,18 @@ public final class RunResults {
     }
 
     /**
-     * Fold {@code entries} and what their classes {@code printed} under {@code scopeKey}; a second
-     * run of the same module merges into the first, its printed output replacing the first's.
+     * Fold {@code entries}, what their classes {@code printed} and the failures' {@code snapshots}
+     * under {@code scopeKey}; a second run of the same module merges into the first, its printed
+     * output and snapshots replacing the first's.
      */
     void publishTests(
             String scopeKey,
             String label,
             List<MarkdownTestReport.Entry> entries,
-            Map<String, MarkdownTestReport.Printed> printed) {
-        MarkdownTestReport.ModuleRun add = new MarkdownTestReport.ModuleRun(scopeKey, label, entries, printed);
+            Map<String, MarkdownTestReport.Printed> printed,
+            Map<String, List<String>> snapshots) {
+        MarkdownTestReport.ModuleRun add =
+                new MarkdownTestReport.ModuleRun(scopeKey, label, entries, printed, snapshots);
         tests.merge(scopeKey, add, (a, b) -> {
             List<MarkdownTestReport.Entry> merged =
                     new ArrayList<>(a.entries().size() + b.entries().size());
@@ -48,8 +51,10 @@ public final class RunResults {
             merged.addAll(b.entries());
             Map<String, MarkdownTestReport.Printed> out = new LinkedHashMap<>(a.printed());
             out.putAll(b.printed());
+            Map<String, List<String>> shots = new LinkedHashMap<>(a.snapshots());
+            shots.putAll(b.snapshots());
             String keep = !a.label().isBlank() ? a.label() : b.label();
-            return new MarkdownTestReport.ModuleRun(scopeKey, keep, merged, out);
+            return new MarkdownTestReport.ModuleRun(scopeKey, keep, merged, out, shots);
         });
     }
 

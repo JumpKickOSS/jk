@@ -604,6 +604,7 @@ public final class JkResultsAgent {
             List<String> files) {
         List<String> seen = new ArrayList<>();
         Map<String, MarkdownTestReport.Printed> printed = JkResultsPrinted.byClass(tests);
+        Map<String, List<String>> snapshots = JkResultsSnapshot.byTest(tests);
         for (Locus d : loci) {
             if (!d.test()) continue;
             String id = testId(d.diag());
@@ -620,6 +621,7 @@ public final class JkResultsAgent {
                             d.line(),
                             rows,
                             r.dir())
+                    + JkResultsSnapshot.block(snapshots.get(id))
                     + JkResultsPrinted.hint(printed.get(d.diag().className())));
             files.add(d.file());
         }
@@ -640,6 +642,7 @@ public final class JkResultsAgent {
                                 0,
                                 List.of(),
                                 r.dir())
+                        + JkResultsSnapshot.block(snapshots.get(id))
                         + JkResultsPrinted.hint(printed.get(e.className())));
                 files.add("");
             }
@@ -918,12 +921,7 @@ public final class JkResultsAgent {
     }
 
     private static String testId(@Nullable String className, @Nullable String method) {
-        String cls = className == null ? "" : className.strip();
-        String m = method == null ? "" : method.strip();
-        if (m.endsWith("()")) m = m.substring(0, m.length() - 2);
-        if (cls.isEmpty()) return m;
-        if (m.isEmpty()) return cls;
-        return cls + "#" + m;
+        return MarkdownTestReport.testKey(className, method);
     }
 
     private static boolean projectFrame(String className, String file) {

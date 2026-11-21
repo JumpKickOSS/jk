@@ -54,6 +54,7 @@ public final class TestRunner implements Plugin {
             return Exit.CONFIG;
         }
 
+        if (!parsed.listOnly) FailureSnapshots.startIfAsked();
         try (var writer = new JsonEventWriter(out)) {
             if (parsed.listOnly) {
                 return runListOnly(parsed, writer);

@@ -69,6 +69,7 @@ final class ManifestBuildTable {
         final List<String> testExcludeDependencies = new ArrayList<>();
         final Map<String, DeclaredSuite> testSuites = new LinkedHashMap<>();
         boolean testAssertions = true;
+        boolean testFailureSnapshot = false;
         boolean testCoverage = false;
         boolean testNetworkAllowed = false;
         TestFailureMode testFailures = TestFailureMode.FAIL;
@@ -209,6 +210,7 @@ final class ManifestBuildTable {
             "exclude-src",
             "exclude-dependencies",
             "assertions",
+            "failure-snapshot",
             "network",
             "coverage",
             "failures",
@@ -298,6 +300,13 @@ final class ManifestBuildTable {
                 throw new JkBuildParseException("[test].assertions must be true or false");
             }
             s.testAssertions = assertions;
+        }
+        // [test] failure-snapshot — a failed test's report carries its throwing frames' variables.
+        if (test.contains("failure-snapshot")) {
+            if (!(test.get("failure-snapshot") instanceof Boolean snapshot)) {
+                throw new JkBuildParseException("[test].failure-snapshot must be true or false");
+            }
+            s.testFailureSnapshot = snapshot;
         }
         // [test] network — "allowed" keeps a suite that reaches past the host replayable.
         if (test.contains("network")) {

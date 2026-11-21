@@ -724,6 +724,9 @@ final class LauncherPath {
         private final EventWriter out;
         private final int workerId;
         private final ConcurrentHashMap<String, Long> startNanos = new ConcurrentHashMap<>();
+        /** Where each running test's window of {@link FailureSnapshots} starts. */
+        private final ConcurrentHashMap<String, Long> snapshotMarks = new ConcurrentHashMap<>();
+
         private final AtomicBoolean failed = new AtomicBoolean(false);
 
         Adapter(EventWriter out, int workerId) {
@@ -783,6 +786,8 @@ final class LauncherPath {
         @Override
         public void executionStarted(TestIdentifier id) {
             startNanos.put(id.getUniqueId(), Clock.SYSTEM.nanos());
+            FailureSnapshots snapshots = FailureSnapshots.current();
+            if (snapshots != null) snapshotMarks.put(id.getUniqueId(), snapshots.mark());
             // The environment probe attributes each lookup to the class whose tests are running.
             id.getSource()
                     .filter(ClassSource.class::isInstance)
@@ -805,7 +810,18 @@ final class LauncherPath {
             p.put("type", typeName(id));
             p.put("status", result.getStatus().name());
             p.put("duration_ms", durationMs);
-            result.getThrowable().ifPresent(t -> p.put("throwable", throwableMap(t)));
+            long mark = snapshotMarks.getOrDefault(id.getUniqueId(), 0L);
+            snapshotMarks.remove(id.getUniqueId());
+            result.getThrowable().ifPresent(t -> {
+                Map<String, Object> thrown = throwableMap(t);
+                FailureSnapshots snapshots = FailureSnapshots.current();
+                if (snapshots != null && result.getStatus() == TestExecutionResult.Status.FAILED) {
+                    var snapshot =
+                            snapshots.payload(t, mark, Thread.currentThread().getName());
+                    if (snapshot != null) thrown.put("snapshot", snapshot);
+                }
+                p.put("throwable", thrown);
+            });
             emit(EventType.FINISHED, p);
         }
 

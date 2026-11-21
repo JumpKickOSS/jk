@@ -27,6 +27,12 @@ public final class FailureClip {
     /** Characters of a stack kept after the line clip. */
     public static final int MAX_STACK_CHARS = 16_384;
 
+    /**
+     * Marks a value of a failure snapshot the test runner cut short, before its remainder count
+     * ({@link FailureSnapshotLines}).
+     */
+    public static final String VALUE_TRUNCATION_MARKER = "... (+";
+
     /** Marks a stack line cut at {@link #MAX_LINE_CHARS}, before its remainder count. */
     public static final String LINE_TRUNCATION_MARKER = " ... line truncated (";
 

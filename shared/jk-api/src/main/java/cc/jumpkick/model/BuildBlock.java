@@ -88,6 +88,12 @@ public record BuildBlock(
          */
         boolean testAssertions,
         /**
+         * {@code [test] failure-snapshot}: whether a failed test's report carries the arguments and
+         * locals at the frame that threw and the project frames above it, read through a debugger
+         * the test JVM attaches to itself. Default {@code false}.
+         */
+        boolean testFailureSnapshot,
+        /**
          * {@code [test] coverage}: whether every test run of this module is a coverage run —
          * the JaCoCo agent on each forked test JVM and the module's report written — without
          * {@code --coverage} on the command line. Default {@code false}.
@@ -241,6 +247,7 @@ public record BuildBlock(
             List.of(),
             Map.of(),
             true,
+            false,
             false,
             false,
             TestFailureMode.FAIL,

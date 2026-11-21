@@ -154,7 +154,10 @@ final class ResultAggregator {
         }
         // The runner clips a long message or stack line in the fork, which can cut a secret short.
         acceptJson(jsonSecrets.redactClipped(
-                json, JUnitLauncher.MESSAGE_TRUNCATION_MARKER, FailureClip.LINE_TRUNCATION_MARKER));
+                json,
+                JUnitLauncher.MESSAGE_TRUNCATION_MARKER,
+                FailureClip.LINE_TRUNCATION_MARKER,
+                FailureClip.VALUE_TRUNCATION_MARKER));
     }
 
     /**
@@ -289,6 +292,9 @@ final class ResultAggregator {
         // else the container/run label — there is no second short-name component to drift from it.
         String name = method.isEmpty() ? testName : method;
         failures.add(new TestFailureInfo(moduleLabel, engine, className, name, exClass, message, stack, w));
+        if (mdReport != null && throwableJson != null) {
+            mdReport.recordSnapshot(className, List.of(name, testName), FailureSnapshotLines.of(throwableJson));
+        }
         listener.onFailure(identityKey(json), testName, exClass, message, stack, engine, className, method, w);
     }
 

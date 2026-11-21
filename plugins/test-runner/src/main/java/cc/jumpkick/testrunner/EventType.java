@@ -15,7 +15,10 @@ public enum EventType {
      */
     STARTED,
 
-    /** A test or container finished. Payload: {@code {id, status, duration_ms, throwable?}}. */
+    /**
+     * A test or container finished. Payload: {@code {id, status, duration_ms, throwable?}}; a failure's
+     * {@code throwable} carries {@code snapshot} when {@link FailureSnapshots} recorded one.
+     */
     FINISHED,
 
     /** A test was skipped. Payload: {@code {id, reason}}. */

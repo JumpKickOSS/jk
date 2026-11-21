@@ -45,6 +45,7 @@ final class BuildFields {
     List<String> testExcludeClasses, testExcludeSrc, testExcludeDependencies;
     Map<String, DeclaredSuite> testSuites;
     boolean testAssertions;
+    boolean testFailureSnapshot;
     boolean testCoverage;
     boolean testNetworkAllowed;
     TestFailureMode testFailures;
@@ -105,6 +106,7 @@ final class BuildFields {
         testExcludeDependencies = b.testExcludeDependencies();
         testSuites = b.testSuites();
         testAssertions = b.testAssertions();
+        testFailureSnapshot = b.testFailureSnapshot();
         testCoverage = b.testCoverage();
         testNetworkAllowed = b.testNetworkAllowed();
         testFailures = b.testFailures();
@@ -154,6 +156,7 @@ final class BuildFields {
                 testExcludeDependencies,
                 testSuites,
                 testAssertions,
+                testFailureSnapshot,
                 testCoverage,
                 testNetworkAllowed,
                 testFailures,

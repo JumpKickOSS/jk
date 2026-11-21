@@ -152,6 +152,10 @@ T com.example.restservice.GreetingControllerTests#noParamGreetingShouldReturnDef
   44|	        assertThat(body).isEqualTo("Hello, World!");
 ```
 
+In a module with [`[test] failure-snapshot = true`](test.md#the-state-at-a-failure-test-failure-snapshot),
+a failed test's block ends with `state when it threw:` and one line per frame: the frame that threw,
+then the project frames above it, each with its arguments and locals.
+
 A failure with no failed step, test or source error carries its reason on the headline, after
 ` — `: the run-level error that decided it, or else the warning the run left.
 

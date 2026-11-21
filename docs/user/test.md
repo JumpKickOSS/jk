@@ -874,6 +874,43 @@ assertions = false      # default true
 
 The setting is a run-tests input, so flipping it re-runs the suite.
 
+## The state at a failure (`[test] failure-snapshot`)
+
+With `failure-snapshot = true`, a failed test's block in the agent report (`jk -a`, MCP `run`)
+carries the arguments and locals at the frame that threw, and at the project frames above it: what
+a debugger would show at the throw, with no stepping and no print statements.
+
+```toml
+[test]
+failure-snapshot = true   # default false
+```
+
+```
+T com.example.OrderTest#ships_overnight
+  only 2 lines
+  at Order.java:50
+  at OrderTest.java:12
+  state when it threw:
+    Order.ship(Order.java:50) qty=3, speed=Speed.OVERNIGHT, available=2, this=Order{id=7, customer="ada", lines=ArrayList[2]}
+    OrderTest.ships_overnight(OrderTest.java:12) order=Order{id=7, customer="ada", lines=ArrayList[2]}
+```
+
+Each test JVM starts with the JDWP agent on a free loopback port and attaches a debugger to itself
+before any test runs. An exception thrown by the project's code, or by the JDK on its behalf, stops
+only its own thread while the variables are read, field by field: no `toString` runs, so a snapshot
+changes nothing. An exception a project caller catches is the program's own flow and is passed over.
+A project frame is one whose class file lies in a directory on the test class path: the module's
+classes, its tests' and a sibling module's.
+
+The snapshot is held to a budget: four frames, eight variables per frame, 96 characters per value
+(a cut value ends `... (+N chars)`), objects one level deep. It is masked as every other line of a
+failure is: a secret the project declares never appears, cut or whole. Classes compiled without
+local variable names (`[build] debug = "lines"`) show their arguments as `arg0`, `arg1`, ….
+
+No snapshot is taken under `-U` (that JVM's agent is your debugger's), when `[test] jvm-args` load
+a JDWP agent, or on a runtime image without the `jdk.jdi` and `jdk.jdwp.agent` modules. The setting
+is not a run-tests input: a green suite has nothing to show, and a red one runs again anyway.
+
 ## The test JVM's locale and time zone (`[test] locale`, `[test] timezone`)
 
 Every test JVM runs in **locale `en-US` and time zone `UTC`** unless the module says otherwise,

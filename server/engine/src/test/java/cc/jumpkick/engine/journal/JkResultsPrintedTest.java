@@ -20,7 +20,7 @@ class JkResultsPrintedTest {
         var printed = Map.of(
                 "com.example.AppTests",
                 new MarkdownTestReport.Printed(3, List.of(), "/ws/rest-service/target/surefire-reports/TEST-x.xml"));
-        var run = new MarkdownTestReport.ModuleRun("/ws", "app", List.of(fail), printed);
+        var run = new MarkdownTestReport.ModuleRun("/ws", "app", List.of(fail), printed, Map.of());
         BuildRecord r = JkResultsAgentTest.record(
                 "test", false, false, 100, new BuildRecord.Tests(1, 0, 1, 0), List.of(), List.of());
         assertThat(JkResultsAgent.render(r, List.of(run)))
@@ -39,7 +39,7 @@ class JkResultsPrintedTest {
                 new MarkdownTestReport.Printed(
                         5, List.of("debug 4", "debug 5"), "/ws/rest-service/target/surefire-reports/TEST-A.xml"));
         printed.put("com.example.QuietTests", new MarkdownTestReport.Printed(1, List.of(), ""));
-        var run = new MarkdownTestReport.ModuleRun("/ws", "app", List.of(pass), printed);
+        var run = new MarkdownTestReport.ModuleRun("/ws", "app", List.of(pass), printed, Map.of());
         BuildRecord r = JkResultsAgentTest.record(
                 "test", true, false, 100, new BuildRecord.Tests(1, 1, 0, 0), List.of(), List.of());
         String text = JkResultsAgent.render(r, List.of(run));
@@ -66,7 +66,8 @@ class JkResultsPrintedTest {
                 "/ws",
                 "app",
                 List.of(new MarkdownTestReport.Entry("a.FirstTests", "t()", 1, null, null, null)),
-                printed);
+                printed,
+                Map.of());
         BuildRecord r = JkResultsAgentTest.record(
                 "test", true, false, 100, new BuildRecord.Tests(1, 1, 0, 0), List.of(), List.of());
         assertThat(JkResultsAgent.render(r, List.of(run)))

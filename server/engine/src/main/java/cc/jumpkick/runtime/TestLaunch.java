@@ -477,6 +477,7 @@ final class TestLaunch {
                 .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                 .withSerialTags(projectUnderTest.build().testSerialTags())
                 .withAssertions(projectUnderTest.build().testAssertions())
+                .withFailureSnapshot(projectUnderTest.build().testFailureSnapshot())
                 .withIdleTimeout(projectUnderTest.build().testIdleTimeoutMs())
                 .withJvmArgs(jvmArgs)
                 .withClassPatterns(effectiveSel.classes())
