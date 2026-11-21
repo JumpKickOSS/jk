@@ -500,7 +500,7 @@ Ship layout (`jk build`, under `target/dist/`; `<version>` carries `-SNAPSHOT` o
   a solve that would end unsatisfiable after taking a range to be empty restarts once more, now
   deciding every package that has a candidate before it learns that one has none. Only then: that
   order puts off conflicts PubGrub learns early and multiplies the decisions of a solve that
-  succeeds.
+  succeeds. When that retry fails too, the solve reports the first failure, not the retry's.
 - **Effective-POM tables are shared objects:** `EffectivePomBuilder` values a BOM's managed table
   once, in the BOM's own merge, and every POM that imports or inherits it carries the same
   `Pom.Dep` objects — a row is copied only where a `${...}` it spells values differently in the

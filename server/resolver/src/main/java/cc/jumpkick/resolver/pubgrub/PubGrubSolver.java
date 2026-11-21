@@ -45,7 +45,8 @@ import org.jspecify.annotations.Nullable;
  * early can fail the root before the POM naming a version in it is reached. A solve that would end
  * unsatisfiable after taking a range to be empty restarts once more, and from then on a package with
  * no candidate waits while any other can be decided. Only then, because waiting puts off conflicts
- * PubGrub learns early, which multiplies the decisions of a solve that succeeds.
+ * PubGrub learns early, which multiplies the decisions of a solve that succeeds. A retry that fails
+ * too reports the first solve's failure.
  *
  * <p><strong>Anti-loop:</strong> large AndroidX/BOM graphs can still thrash (broken POM floors,
  * prefer-pin churn). Every budget check counts a <em>step</em>, propagation storms included, so
@@ -270,6 +271,7 @@ public class PubGrubSolver {
         decideRoot(rootVersion);
 
         String next = rootPkg;
+        @Nullable UnsatisfiableException firstUnsat = null;
         StallWatch stalls = new StallWatch(
                 Clock.SYSTEM,
                 stallWindowMs,
@@ -289,11 +291,12 @@ public class PubGrubSolver {
                     restart(rootVersion);
                     next = rootPkg;
                 } catch (UnsatisfiableException unsat) {
-                    if (deferEmpty
-                            || assumedEmpty.isEmpty()
+                    if (firstUnsat != null) throw firstUnsat;
+                    if (assumedEmpty.isEmpty()
                             || unsat.rootCause().cause() instanceof Incompatibility.Cause.BudgetExceeded) {
                         throw unsat;
                     }
+                    firstUnsat = unsat;
                     deferEmpty = true;
                     restart(rootVersion);
                     next = rootPkg;

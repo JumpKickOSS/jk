@@ -84,6 +84,38 @@ class PubGrubUniverseGrowthTest {
                 .isInstanceOf(UnsatisfiableException.class);
     }
 
+    @Test
+    void a_retry_that_also_fails_reports_the_first_solves_explanation() {
+        // The first solve fails on p having no version in [1.5, 2.0). The retry lets p wait, decides
+        // c, and fails instead on b and c asking for disjoint ranges of x.
+        PomSource src = new PomSource()
+                .advertise("a", "2.0")
+                .advertise("b", "1.0")
+                .advertise("c", "1.0")
+                .advertise("p", "2.0", "1.0")
+                .advertise("x", "2.0", "1.0")
+                .pom("a", "2.0", Term.positive("p", VersionSet.between("1.5", true, "2.0", false)))
+                .pom(
+                        "b",
+                        "1.0",
+                        Term.positive("c", VersionSet.ALL),
+                        Term.positive("x", VersionSet.between("2.0", true, "3.0", false)))
+                .pom("c", "1.0", Term.positive("x", VersionSet.between("1.0", true, "2.0", false)))
+                .pom("p", "1.0")
+                .pom("p", "2.0")
+                .pom("x", "1.0")
+                .pom("x", "2.0");
+
+        assertThatThrownBy(() -> new PubGrubSolver(src)
+                        .solve(
+                                "root",
+                                "1.0",
+                                List.of(Term.positive("a", VersionSet.ALL), Term.positive("b", VersionSet.ALL))))
+                .isInstanceOfSatisfying(UnsatisfiableException.class, e -> assertThat(Diagnostics.render(e.rootCause()))
+                        .contains("a 2.0 depends on p [1.5,2.0)")
+                        .doesNotContain("depends on x"));
+    }
+
     /**
      * Serves a POM for every version it has one for, advertised or not, and reports a declared
      * version only once the POM naming it was read, as a repository-backed source does.
