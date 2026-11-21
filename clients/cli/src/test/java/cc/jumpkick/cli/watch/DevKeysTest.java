@@ -16,21 +16,44 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
 
 /** The keys {@code jk dev} reads on a terminal: what each asks for, and the mode given back. */
 class DevKeysTest {
 
-    /** Stdin the test feeds after the attach-time typeahead drain has run. */
+    /** Stdin the test feeds; its first look for input can be held, so the drain stays under way. */
     private static final class FeedStream extends InputStream {
         private final ConcurrentLinkedQueue<Integer> queue = new ConcurrentLinkedQueue<>();
+        private final CountDownLatch looked = new CountDownLatch(1);
+        private final CountDownLatch held;
+
+        FeedStream() {
+            this(false);
+        }
+
+        FeedStream(boolean holdFirstLook) {
+            held = new CountDownLatch(holdFirstLook ? 1 : 0);
+        }
 
         void feed(char c) {
             queue.add((int) c);
         }
 
+        void release() {
+            held.countDown();
+        }
+
         @Override
         public int available() {
+            if (looked.getCount() > 0) {
+                looked.countDown();
+                try {
+                    held.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
             return queue.size();
         }
 
@@ -60,7 +83,9 @@ class DevKeysTest {
         DevKeys keys = Objects.requireNonNull(DevKeys.attach(t));
         try (keys) {
             assertThat(t.mode()).isEqualTo(InputMode.PLAN_KEYS);
-            Await.until(Duration.ofSeconds(10), () -> in.available() == 0);
+            keys.pause(); // returns once the typeahead drain has ended
+            assertThat(in.available()).as("the typeahead is drained").isZero();
+            keys.resume();
             in.feed('x');
             in.feed('r');
             in.feed('q');
@@ -92,6 +117,36 @@ class DevKeysTest {
             keys.resume();
             in.feed('q');
             Await.until(Duration.ofSeconds(10), () -> keys.next() == DevKeys.Action.QUIT);
+        }
+    }
+
+    @Test
+    void pause_waits_out_the_typeahead_drain_so_it_takes_no_key_typed_after() throws Exception {
+        var in = new FeedStream(true);
+        MemoryTerminal t = Terminals.memory(in, new ByteArrayOutputStream());
+        DevKeys keys = Objects.requireNonNull(DevKeys.attach(t));
+        try (keys) {
+            in.looked.await(); // the drain is under way, held at its first look
+            Thread pausing = new Thread(() -> {
+                try {
+                    keys.pause();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            });
+            pausing.start();
+            Await.until(Duration.ofSeconds(10), () -> pausing.getState() == Thread.State.WAITING || !pausing.isAlive());
+            assertThat(pausing.isAlive()).as("pause waits for the drain").isTrue();
+            in.release();
+            pausing.join(Duration.ofSeconds(10));
+            assertThat(pausing.isAlive())
+                    .as("pause returns once the drain ends")
+                    .isFalse();
+            in.feed('r');
+            assertThat(t.readKey(Duration.ofSeconds(10))).contains(new Key.Char('r'));
+            keys.resume();
+        } finally {
+            in.release();
         }
     }
 

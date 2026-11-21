@@ -44,7 +44,9 @@ final class DevKeys implements AutoCloseable {
     private final Object gate = new Object();
 
     private boolean paused;
-    private boolean reading;
+
+    /** A read is under way; the typeahead drain counts as one, from before the reader starts. */
+    private boolean reading = true;
 
     private DevKeys(TerminalSession terminal) {
         this.terminal = terminal;
@@ -82,7 +84,8 @@ final class DevKeys implements AutoCloseable {
 
     /**
      * Hold the keys back until {@link #resume}, so a build's live view reads the terminal meanwhile.
-     * Returns once a read already under way has ended: no key typed after it is taken here.
+     * Returns once a read already under way has ended, the drain of keys typed before attach among
+     * them: no key typed after it is taken here.
      */
     void pause() throws InterruptedException {
         synchronized (gate) {
@@ -135,8 +138,12 @@ final class DevKeys implements AutoCloseable {
     }
 
     private void read() {
-        // Keys typed before the session started are not commands.
-        terminal.drain(Duration.ofMillis(40));
+        try {
+            // Keys typed before the session started are not commands.
+            terminal.drain(Duration.ofMillis(40));
+        } finally {
+            readEnded();
+        }
         while (!stopped) {
             synchronized (gate) {
                 try {
@@ -150,10 +157,7 @@ final class DevKeys implements AutoCloseable {
             try {
                 key = terminal.readKey(Duration.ofMillis(100));
             } finally {
-                synchronized (gate) {
-                    reading = false;
-                    gate.notifyAll();
-                }
+                readEnded();
             }
             if (key.isEmpty()) {
                 if (!terminal.isLive()) return;
@@ -161,6 +165,13 @@ final class DevKeys implements AutoCloseable {
             }
             Action action = actionOf(key.get());
             if (action != null) actions.add(action);
+        }
+    }
+
+    private void readEnded() {
+        synchronized (gate) {
+            reading = false;
+            gate.notifyAll();
         }
     }
 
