@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -56,16 +57,16 @@ public final class PluginContributions {
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> manifests) {
         List<ImpliedPlatform> out = new ArrayList<>();
-        for (PluginDescriptor manifest : manifests) {
-            PluginConfig config = pluginConfigs.get(manifest.id());
-            if (config == null) continue;
-            for (PluginDescriptor.PlatformDependency dep :
-                    manifest.contributions().platformDependencies()) {
-                if (!holds(dep.when(), config, project, nativeDeclared, null, manifest.id())) continue;
-                String coordinate = Interpolation.resolve(dep.coordinate(), config, project, null);
-                PlatformDep split = splitCoordinate(coordinate, manifest.id());
-                out.add(new ImpliedPlatform(split.module(), split.version(), manifest.table()));
-            }
+        for (var c : holding(
+                manifests,
+                pluginConfigs,
+                new Conditions(project, nativeDeclared, null),
+                PluginDescriptor.Contributions::platformDependencies,
+                PluginDescriptor.PlatformDependency::when)) {
+            String coordinate = Interpolation.resolve(c.entry().coordinate(), c.config(), project, null);
+            PlatformDep split = splitCoordinate(coordinate, c.manifest().id());
+            out.add(new ImpliedPlatform(
+                    split.module(), split.version(), c.manifest().table()));
         }
         return out;
     }
@@ -78,9 +79,8 @@ public final class PluginContributions {
     public static Map<String, String> testSystemProperties(
             Map<String, PluginConfig> pluginConfigs, List<PluginDescriptor> manifests) {
         Map<String, String> out = new LinkedHashMap<>();
-        for (PluginDescriptor manifest : manifests) {
-            if (!pluginConfigs.containsKey(manifest.id())) continue;
-            manifest.contributions().testSystemProperties().forEach(out::putIfAbsent);
+        for (Active plugin : active(manifests, pluginConfigs)) {
+            plugin.manifest().contributions().testSystemProperties().forEach(out::putIfAbsent);
         }
         return out;
     }
@@ -94,13 +94,13 @@ public final class PluginContributions {
             boolean nativeDeclared,
             Map<String, PluginConfig> pluginConfigs,
             List<PluginDescriptor> manifests) {
-        for (PluginDescriptor manifest : manifests) {
-            PluginConfig config = pluginConfigs.get(manifest.id());
-            PluginDescriptor.LibDir libDir = manifest.contributions().libDir();
-            if (config == null || libDir == null) continue;
-            if (holds(libDir.when(), config, project, nativeDeclared, null, manifest.id())) return manifest.table();
-        }
-        return null;
+        List<Contributed<PluginDescriptor.LibDir>> implied = holding(
+                manifests,
+                pluginConfigs,
+                new Conditions(project, nativeDeclared, null),
+                contributions -> contributions.libDir() == null ? List.of() : List.of(contributions.libDir()),
+                PluginDescriptor.LibDir::when);
+        return implied.isEmpty() ? null : implied.getFirst().manifest().table();
     }
 
     /** One plugin's {@code [contribute.jvm-modules]}, resolved: the module-name prefix and the modules to add. */
@@ -109,12 +109,11 @@ public final class PluginContributions {
     /** The {@code [contribute.jvm-modules]} of every plugin whose table {@code build} carries, in manifest order. */
     public static List<JvmModuleUse> jvmModules(JkBuild build, @Nullable Path moduleDir) {
         List<JvmModuleUse> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfigs().get(manifest.id());
-            PluginDescriptor.JvmModules mods = manifest.contributions().jvmModules();
-            if (config == null || mods == null) continue;
+        for (Active plugin : active(build, moduleDir)) {
+            PluginDescriptor.JvmModules mods = plugin.manifest().contributions().jvmModules();
+            if (mods == null) continue;
             List<String> add = new ArrayList<>();
-            for (String m : Interpolation.resolveAll(mods.addModules(), config, build.project(), null, null)) {
+            for (String m : Interpolation.resolveAll(mods.addModules(), plugin.config(), build.project(), null, null)) {
                 for (String one : m.split(",")) {
                     if (!one.isBlank()) add.add(one.trim());
                 }
@@ -153,15 +152,14 @@ public final class PluginContributions {
      */
     public static List<SourceRoot> sourceRoots(JkBuild build, @Nullable Path moduleDir) {
         List<SourceRoot> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
-            if (config == null) continue;
-            for (PluginDescriptor.SourceRoot root : manifest.contributions().sourceRoots()) {
-                if (!holds(root.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
-                    continue;
-                }
-                out.add(new SourceRoot(root.dir(), root.resource(), root.generated()));
-            }
+        for (var c : holding(
+                build,
+                moduleDir,
+                null,
+                PluginDescriptor.Contributions::sourceRoots,
+                PluginDescriptor.SourceRoot::when)) {
+            out.add(new SourceRoot(
+                    c.entry().dir(), c.entry().resource(), c.entry().generated()));
         }
         return out;
     }
@@ -181,28 +179,27 @@ public final class PluginContributions {
     public static List<KotlinPluginUse> kotlinPlugins(
             JkBuild build, @Nullable Path moduleDir, String kotlinVersion, Set<String> classpathModules) {
         List<KotlinPluginUse> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfigs().get(manifest.id());
-            if (config == null) continue;
-            for (PluginDescriptor.KotlinPlugin plugin : manifest.contributions().kotlinPlugins()) {
-                if (!holds(
-                        plugin.when(), config, build.project(), build.nativeImage(), classpathModules, manifest.id())) {
-                    continue;
-                }
-                String coordinate = Interpolation.resolve(plugin.coordinate(), config, build.project(), kotlinVersion);
-                PlatformDep c = splitCoordinate(coordinate, manifest.id());
-                int colon = c.module().indexOf(':');
-                List<String> options = new ArrayList<>(plugin.options().size());
-                for (String opt : plugin.options()) {
-                    options.add(Interpolation.resolve(opt, config, build.project(), kotlinVersion));
-                }
-                out.add(new KotlinPluginUse(
-                        plugin.id(),
-                        c.module().substring(0, colon),
-                        c.module().substring(colon + 1),
-                        c.version(),
-                        options));
+        for (var contributed : holding(
+                build,
+                moduleDir,
+                classpathModules,
+                PluginDescriptor.Contributions::kotlinPlugins,
+                PluginDescriptor.KotlinPlugin::when)) {
+            PluginDescriptor.KotlinPlugin plugin = contributed.entry();
+            PluginConfig config = contributed.config();
+            String coordinate = Interpolation.resolve(plugin.coordinate(), config, build.project(), kotlinVersion);
+            PlatformDep c = splitCoordinate(coordinate, contributed.manifest().id());
+            int colon = c.module().indexOf(':');
+            List<String> options = new ArrayList<>(plugin.options().size());
+            for (String opt : plugin.options()) {
+                options.add(Interpolation.resolve(opt, config, build.project(), kotlinVersion));
             }
+            out.add(new KotlinPluginUse(
+                    plugin.id(),
+                    c.module().substring(0, colon),
+                    c.module().substring(colon + 1),
+                    c.version(),
+                    options));
         }
         return out;
     }
@@ -213,17 +210,14 @@ public final class PluginContributions {
             Set<String> classpathModules,
             Function<PluginDescriptor.CompilerArgs, List<String>> lane) {
         List<String> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfigs().get(manifest.id());
-            if (config == null) continue;
-            for (PluginDescriptor.CompilerArgs args : manifest.contributions().compilerArgs()) {
-                if (!holds(
-                        args.when(), config, build.project(), build.nativeImage(), classpathModules, manifest.id())) {
-                    continue;
-                }
-                for (String arg : lane.apply(args)) {
-                    out.add(Interpolation.resolve(arg, config, build.project(), null));
-                }
+        for (var c : holding(
+                build,
+                moduleDir,
+                classpathModules,
+                PluginDescriptor.Contributions::compilerArgs,
+                PluginDescriptor.CompilerArgs::when)) {
+            for (String arg : lane.apply(c.entry())) {
+                out.add(Interpolation.resolve(arg, c.config(), build.project(), null));
             }
         }
         return out;
@@ -241,17 +235,14 @@ public final class PluginContributions {
      */
     public static List<String> nativeArgs(JkBuild build, Path moduleDir) {
         List<String> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfigs().get(manifest.id());
-            if (config == null) continue;
-            for (PluginDescriptor.NativeArgs contributed :
-                    manifest.contributions().nativeArgs()) {
-                if (!holds(contributed.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
-                    continue;
-                }
-                for (String arg : contributed.args()) {
-                    out.add(Interpolation.resolve(arg, config, build.project(), null));
-                }
+        for (var c : holding(
+                build,
+                moduleDir,
+                null,
+                PluginDescriptor.Contributions::nativeArgs,
+                PluginDescriptor.NativeArgs::when)) {
+            for (String arg : c.entry().args()) {
+                out.add(Interpolation.resolve(arg, c.config(), build.project(), null));
             }
         }
         return out;
@@ -277,24 +268,21 @@ public final class PluginContributions {
         List<ProcessorDep> out = new ArrayList<>();
         Set<String> declaredMain = declaredModules(build, Scope.PROCESSOR);
         Set<String> declaredTest = declaredModules(build, Scope.TEST_PROCESSOR);
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            if (manifest.contributions().processorDependencies().isEmpty()) continue;
-            PluginConfig declared = build.pluginConfig(manifest.id()).orElse(null);
-            if (declared == null) continue;
-            PluginConfig config = toolConfig(manifest, declared, build, platformPins);
-            for (PluginDescriptor.ProcessorDependency pd :
-                    manifest.contributions().processorDependencies()) {
-                if (!holds(pd.when(), config, build.project(), build.nativeImage(), classpathModules, manifest.id())) {
-                    continue;
-                }
-                String coordinate = Interpolation.resolve(pd.coordinate(), config, build.project(), null);
-                PlatformDep split = splitCoordinate(coordinate, manifest.id());
-                boolean main = pd.main() && !declaredMain.contains(split.module());
-                boolean test =
-                        pd.test() && !declaredMain.contains(split.module()) && !declaredTest.contains(split.module());
-                if (!main && !test) continue;
-                out.add(new ProcessorDep(new StepDep(split.module(), coordinate, true, null, null), main, test));
-            }
+        for (var c : holding(
+                PluginTableRegistry.manifestsFor(moduleDir, build.plugins()),
+                build.pluginConfigs(),
+                Conditions.of(build, classpathModules),
+                PluginDescriptor.Contributions::processorDependencies,
+                PluginDescriptor.ProcessorDependency::when,
+                (manifest, declared) -> toolConfig(manifest, declared, build, platformPins))) {
+            PluginDescriptor.ProcessorDependency pd = c.entry();
+            String coordinate = Interpolation.resolve(pd.coordinate(), c.config(), build.project(), null);
+            PlatformDep split = splitCoordinate(coordinate, c.manifest().id());
+            boolean main = pd.main() && !declaredMain.contains(split.module());
+            boolean test =
+                    pd.test() && !declaredMain.contains(split.module()) && !declaredTest.contains(split.module());
+            if (!main && !test) continue;
+            out.add(new ProcessorDep(new StepDep(split.module(), coordinate, true, null, null), main, test));
         }
         return out;
     }
@@ -383,11 +371,10 @@ public final class PluginContributions {
      */
     public static List<LockClosureDep> lockClosures(JkBuild build, @Nullable Path moduleDir) {
         List<LockClosureDep> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            if (manifest.contributions().lockClosures().isEmpty()) continue;
-            if (build.pluginConfig(manifest.id()).isEmpty()) continue;
-            for (PluginDescriptor.LockClosure closure : manifest.contributions().lockClosures()) {
-                out.add(new LockClosureDep(manifest, closure));
+        for (Active plugin : active(build, moduleDir)) {
+            for (PluginDescriptor.LockClosure closure :
+                    plugin.manifest().contributions().lockClosures()) {
+                out.add(new LockClosureDep(plugin.manifest(), closure));
             }
         }
         return out;
@@ -575,30 +562,31 @@ public final class PluginContributions {
             String kind,
             Function<PluginDescriptor.Contributions, List<PluginDescriptor.StepDependency>> lane) {
         List<StepDep> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig declared = build.pluginConfig(manifest.id()).orElse(null);
-            if (declared == null) continue;
-            PluginConfig config = toolConfig(manifest, declared, build, platformPins);
-            for (PluginDescriptor.StepDependency sd : lane.apply(manifest.contributions())) {
-                if (!holds(sd.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
-                    continue;
-                }
-                if (!sd.perEntry()) {
-                    StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, null);
-                    if (dep != null) out.add(dep);
-                    continue;
-                }
-                // per-entry: the one declaration, once per [<table>.<name>] entry in its scope; an
-                // entry that leaves a key the coordinate names unset declares no such tool, unless
-                // the key inherits and the table sets it.
-                for (var entry : config.entries().entrySet()) {
-                    Interpolation.Entry scope =
-                            new Interpolation.Entry(entry.getKey(), entryValues(manifest, config, entry.getValue()));
-                    if (!Interpolation.entryProvides(sd.coordinate(), scope)) continue;
-                    if (!Interpolation.entryProvides(sd.url(), scope)) continue;
-                    StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, scope);
-                    if (dep != null) out.add(dep);
-                }
+        for (var c : holding(
+                PluginTableRegistry.manifestsFor(moduleDir, build.plugins()),
+                build.pluginConfigs(),
+                Conditions.of(build, null),
+                lane,
+                PluginDescriptor.StepDependency::when,
+                (manifest, declared) -> toolConfig(manifest, declared, build, platformPins))) {
+            PluginDescriptor.StepDependency sd = c.entry();
+            PluginConfig config = c.config();
+            PluginDescriptor manifest = c.manifest();
+            if (!sd.perEntry()) {
+                StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, null);
+                if (dep != null) out.add(dep);
+                continue;
+            }
+            // per-entry: the one declaration, once per [<table>.<name>] entry in its scope; an
+            // entry that leaves a key the coordinate names unset declares no such tool, unless
+            // the key inherits and the table sets it.
+            for (var entry : config.entries().entrySet()) {
+                Interpolation.Entry scope =
+                        new Interpolation.Entry(entry.getKey(), entryValues(manifest, config, entry.getValue()));
+                if (!Interpolation.entryProvides(sd.coordinate(), scope)) continue;
+                if (!Interpolation.entryProvides(sd.url(), scope)) continue;
+                StepDep dep = toolDependency(sd, config, build.project(), manifest.id(), kind, scope);
+                if (dep != null) out.add(dep);
             }
         }
         return out;
@@ -763,18 +751,16 @@ public final class PluginContributions {
      */
     public static List<Provided> providedClasspath(JkBuild build, @Nullable Path moduleDir) {
         List<Provided> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
-            if (config == null) continue;
-            for (PluginDescriptor.ProvidedClasspath pc :
-                    manifest.contributions().providedClasspath()) {
-                if (!holds(pc.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
-                    continue;
-                }
-                List<String> jars = new ArrayList<>();
-                for (String glob : pc.jars()) jars.addAll(Interpolation.resolveEach(glob, config, build.project()));
-                out.add(new Provided(pc.dependency(), jars, pc.testOnly(), pc.compileOnly(), pc.runtimeOnly()));
-            }
+        for (var c : holding(
+                build,
+                moduleDir,
+                null,
+                PluginDescriptor.Contributions::providedClasspath,
+                PluginDescriptor.ProvidedClasspath::when)) {
+            PluginDescriptor.ProvidedClasspath pc = c.entry();
+            List<String> jars = new ArrayList<>();
+            for (String glob : pc.jars()) jars.addAll(Interpolation.resolveEach(glob, c.config(), build.project()));
+            out.add(new Provided(pc.dependency(), jars, pc.testOnly(), pc.compileOnly(), pc.runtimeOnly()));
         }
         return out;
     }
@@ -831,10 +817,9 @@ public final class PluginContributions {
 
     private static void conditionalDependencies(
             JkBuild build, Path moduleDir, Set<PluginDescriptor.ConditionalDependencies> out) {
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            if (build.pluginConfig(manifest.id()).isEmpty()) continue;
+        for (Active plugin : active(build, moduleDir)) {
             PluginDescriptor.ConditionalDependencies rule =
-                    manifest.contributions().conditionalDependencies();
+                    plugin.manifest().contributions().conditionalDependencies();
             if (rule != null) out.add(rule);
         }
     }
@@ -843,16 +828,16 @@ public final class PluginContributions {
     private static String jvmEnvironmentLocal(JkBuild build, Path moduleDir) {
         String selected = null;
         String selectedBy = null;
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            if (build.pluginConfig(manifest.id()).isEmpty()) continue;
-            String env = manifest.contributions().jvmEnvironment();
+        for (Active plugin : active(build, moduleDir)) {
+            String env = plugin.manifest().contributions().jvmEnvironment();
             if (env == null) continue;
             if (selected != null && !selected.equals(env)) {
-                throw new IllegalStateException("[" + selectedBy + "] and [" + manifest.id()
-                        + "] declare conflicting resolution jvm-environments (" + selected + " vs " + env + ")");
+                throw new IllegalStateException("[" + selectedBy + "] and ["
+                        + plugin.manifest().id() + "] declare conflicting resolution jvm-environments (" + selected
+                        + " vs " + env + ")");
             }
             selected = env;
-            selectedBy = manifest.id();
+            selectedBy = plugin.manifest().id();
         }
         return selected == null ? "standard-jvm" : selected;
     }
@@ -866,19 +851,16 @@ public final class PluginContributions {
     public static List<PackagerDep> packagerDependencies(
             JkBuild build, Path moduleDir, Map<String, String> platformPins) {
         List<PackagerDep> out = new ArrayList<>();
-        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
-            PluginConfig declared = build.pluginConfig(manifest.id()).orElse(null);
-            if (declared == null) continue;
-            PluginConfig config = toolConfig(manifest, declared, build, platformPins);
-            for (PluginDescriptor.PackagerDependency pd :
-                    manifest.contributions().packagerDependencies()) {
-                if (!holds(pd.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
-                    continue;
-                }
-                String coordinate = Interpolation.resolve(pd.coordinate(), config, build.project(), null);
-                PlatformDep split = splitCoordinate(coordinate, manifest.id());
-                out.add(new PackagerDep(pd.artifact(), split.module(), split.version()));
-            }
+        for (var c : holding(
+                PluginTableRegistry.manifestsFor(moduleDir, build.plugins()),
+                build.pluginConfigs(),
+                Conditions.of(build, null),
+                PluginDescriptor.Contributions::packagerDependencies,
+                PluginDescriptor.PackagerDependency::when,
+                (manifest, declared) -> toolConfig(manifest, declared, build, platformPins))) {
+            String coordinate = Interpolation.resolve(c.entry().coordinate(), c.config(), build.project(), null);
+            PlatformDep split = splitCoordinate(coordinate, c.manifest().id());
+            out.add(new PackagerDep(c.entry().artifact(), split.module(), split.version()));
         }
         return out;
     }
@@ -902,7 +884,7 @@ public final class PluginContributions {
             String key = configKey(parts[2]);
             if (key == null || !(config.values().get(key) instanceof String selector)) continue;
             // A platform the table turns off pins nothing; its selector's anchor still names the tool.
-            boolean imported = holds(dep.when(), config, build.project(), build.nativeImage(), null, manifest.id());
+            boolean imported = Conditions.of(build, null).hold(dep.when(), config, manifest.id());
             String pinned = imported ? platformPins.get(parts[0] + ":" + parts[1]) : null;
             String version = pinned != null ? pinned : anchor(selector);
             if (version.equals(selector)) continue;
@@ -932,35 +914,113 @@ public final class PluginContributions {
         };
     }
 
-    /** One predicate, or unconditional when {@code when} is null. */
-    private static boolean holds(
-            PluginDescriptor.@Nullable Condition when,
-            PluginConfig config,
+    /** A plugin whose table the module declares, with that table. */
+    private record Active(PluginDescriptor manifest, PluginConfig config) {}
+
+    /** One entry an active plugin contributes, with the table it is read against. */
+    private record Contributed<T>(PluginDescriptor manifest, PluginConfig config, T entry) {}
+
+    /** The plugins of {@code manifests} whose table {@code configs} holds, in manifest order. */
+    private static List<Active> active(List<PluginDescriptor> manifests, Map<String, PluginConfig> configs) {
+        List<Active> out = new ArrayList<>();
+        for (PluginDescriptor manifest : manifests) {
+            PluginConfig config = configs.get(manifest.id());
+            if (config != null) out.add(new Active(manifest, config));
+        }
+        return out;
+    }
+
+    private static List<Active> active(JkBuild build, @Nullable Path moduleDir) {
+        return active(PluginTableRegistry.manifestsFor(moduleDir, build.plugins()), build.pluginConfigs());
+    }
+
+    /** As the six-argument form, with the module's own conditions and each table as declared. */
+    private static <T> List<Contributed<T>> holding(
+            JkBuild build,
+            @Nullable Path moduleDir,
+            @Nullable Set<String> classpathModules,
+            Function<PluginDescriptor.Contributions, List<T>> lane,
+            Function<T, PluginDescriptor.@Nullable Condition> when) {
+        return holding(
+                PluginTableRegistry.manifestsFor(moduleDir, build.plugins()),
+                build.pluginConfigs(),
+                Conditions.of(build, classpathModules),
+                lane,
+                when);
+    }
+
+    private static <T> List<Contributed<T>> holding(
+            List<PluginDescriptor> manifests,
+            Map<String, PluginConfig> configs,
+            Conditions conditions,
+            Function<PluginDescriptor.Contributions, List<T>> lane,
+            Function<T, PluginDescriptor.@Nullable Condition> when) {
+        return holding(manifests, configs, conditions, lane, when, (manifest, declared) -> declared);
+    }
+
+    /**
+     * Every entry {@code lane} takes from the active plugins, in manifest order, whose condition
+     * holds. {@code view} is the plugin's table as its entries read it.
+     */
+    private static <T> List<Contributed<T>> holding(
+            List<PluginDescriptor> manifests,
+            Map<String, PluginConfig> configs,
+            Conditions conditions,
+            Function<PluginDescriptor.Contributions, List<T>> lane,
+            Function<T, PluginDescriptor.@Nullable Condition> when,
+            BiFunction<PluginDescriptor, PluginConfig, PluginConfig> view) {
+        List<Contributed<T>> out = new ArrayList<>();
+        for (Active plugin : active(manifests, configs)) {
+            List<T> entries = lane.apply(plugin.manifest().contributions());
+            if (entries.isEmpty()) continue;
+            PluginConfig config = view.apply(plugin.manifest(), plugin.config());
+            for (T entry : entries) {
+                if (conditions.hold(when.apply(entry), config, plugin.manifest().id())) {
+                    out.add(new Contributed<>(plugin.manifest(), config, entry));
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * What a contribution's {@code when} reads for one module: its project, whether it builds a
+     * native image ({@link JkBuild#nativeImage()}), and the {@code group:artifact} names on its
+     * classpath, null before resolution.
+     */
+    record Conditions(
             Project project,
             boolean nativeDeclared,
-            @Nullable Set<String> classpathModules,
-            String pluginId) {
-        if (when == null) return true;
-        return switch (when) {
-            case PluginDescriptor.Condition.ClasspathHas c -> {
-                if (classpathModules == null) {
-                    throw new JkBuildParseException("[" + pluginId + "] contribution uses classpath-has on a"
-                            + " path evaluated before resolution");
+            @Nullable Set<String> classpathModules) {
+
+        static Conditions of(JkBuild build, @Nullable Set<String> classpathModules) {
+            return new Conditions(build.project(), build.nativeImage(), classpathModules);
+        }
+
+        /** One predicate, or unconditional when {@code when} is null. */
+        boolean hold(PluginDescriptor.@Nullable Condition when, PluginConfig config, String pluginId) {
+            if (when == null) return true;
+            return switch (when) {
+                case PluginDescriptor.Condition.ClasspathHas c -> {
+                    if (classpathModules == null) {
+                        throw new JkBuildParseException("[" + pluginId + "] contribution uses classpath-has on a"
+                                + " path evaluated before resolution");
+                    }
+                    yield classpathModules.contains(c.module());
                 }
-                yield classpathModules.contains(c.module());
-            }
-            case PluginDescriptor.Condition.ConfigEquals c ->
-                c.equals().equals(String.valueOf(config.values().get(c.key())));
-            case PluginDescriptor.Condition.ConfigVersion c -> {
-                Object value = config.values().get(c.key());
-                if (!(value instanceof String version) || version.isBlank()) yield false;
-                int cmp = Versions.compare(anchor(version), c.bound());
-                yield c.atLeast() ? cmp >= 0 : cmp < 0;
-            }
-            case PluginDescriptor.Condition.ConfigSet c -> config.values().containsKey(c.key()) == c.set();
-            case PluginDescriptor.Condition.NativeDeclared ignored -> nativeDeclared;
-            case PluginDescriptor.Condition.KotlinProject ignored -> project.isKotlin();
-        };
+                case PluginDescriptor.Condition.ConfigEquals c ->
+                    c.equals().equals(String.valueOf(config.values().get(c.key())));
+                case PluginDescriptor.Condition.ConfigVersion c -> {
+                    Object value = config.values().get(c.key());
+                    if (!(value instanceof String version) || version.isBlank()) yield false;
+                    int cmp = Versions.compare(anchor(version), c.bound());
+                    yield c.atLeast() ? cmp >= 0 : cmp < 0;
+                }
+                case PluginDescriptor.Condition.ConfigSet c -> config.values().containsKey(c.key()) == c.set();
+                case PluginDescriptor.Condition.NativeDeclared ignored -> nativeDeclared;
+                case PluginDescriptor.Condition.KotlinProject ignored -> project.isKotlin();
+            };
+        }
     }
 
     private static PlatformDep splitCoordinate(String coordinate, String pluginId) {

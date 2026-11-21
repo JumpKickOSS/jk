@@ -38,4 +38,29 @@ class NativeDeclaredConditionTest {
                 .extracting(PluginContributions.SourceRoot::dir)
                 .containsExactly("native/res");
     }
+
+    /** The lib-dir layout a plugin gives a native module is read against the same native flag as every other contribution. */
+    @Test
+    void lib_dir_reads_native_declared_as_the_other_contributions_do() {
+        PluginTableRegistry.putBuiltIn(PluginDescriptors.parse("""
+                [plugin]
+                id = "nativelib-fixture"
+                table = "nativelib-fixture"
+
+                [contribute.lib-dir]
+                when = { native-declared = true }
+                """, "nativelib-fixture.toml"), null);
+        String base = """
+                name = "demo"
+                group = "com.example"
+                version = "1.0.0"
+                [nativelib-fixture]
+                [application]
+                main = "com.example.Main"
+                """;
+        assertThat(JkBuildParser.parse(base + "[native]\n").libDir()).isNotNull();
+        assertThat(JkBuildParser.parse(base + "[native]\nenabled = false\n").libDir())
+                .isNull();
+        assertThat(JkBuildParser.parse(base).libDir()).isNull();
+    }
 }

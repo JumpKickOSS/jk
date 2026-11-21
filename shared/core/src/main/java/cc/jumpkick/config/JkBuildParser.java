@@ -495,10 +495,14 @@ public final class JkBuildParser {
         Map<String, PluginConfig> pluginConfigs = ManifestTables.parsePluginTables(result, installedManifests);
         JkBuild.NativeConfig nativeConfig =
                 ManifestBuild.parseNativeConfig(result).orElse(null);
+        // Whether the module builds a native image, as JkBuild.nativeImage() answers it once built:
+        // every plugin contribution's native-declared condition reads this one flag.
+        boolean nativeDeclared = nativeConfig != null && nativeConfig.enabled() != JkBuild.NativeMode.DISABLED
+                || ManifestTables.nativeAsked(result);
         // A plugin's table may give the module the lib-dir layout ([contribute.lib-dir]); the
         // [application] table's own lib-dir, when written, wins.
-        String libDirImpliedBy = PluginContributions.libDirImpliedBy(
-                project, nativeConfig != null || ManifestTables.nativeAsked(result), pluginConfigs, installedManifests);
+        String libDirImpliedBy =
+                PluginContributions.libDirImpliedBy(project, nativeDeclared, pluginConfigs, installedManifests);
         JkBuild.Application application =
                 ManifestTables.parseApplication(result, libDirImpliedBy != null).orElse(null);
         JkBuild.Library library = ManifestTables.parseLibrary(result).orElse(null);
@@ -515,8 +519,6 @@ public final class JkBuildParser {
         // minified = true enables the minified packager without requiring an empty [minified] table.
         pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
-        boolean nativeDeclared = nativeConfig != null && nativeConfig.enabled() != JkBuild.NativeMode.DISABLED
-                || application != null && application.nativeImage();
         deps = ManifestBuild.withPlatformContributions(
                 deps, project, nativeDeclared, pluginConfigs, installedManifests);
         BuildBlock build = PluginTestDefaults.fold(ManifestBuild.parseBuild(result), pluginConfigs, installedManifests);

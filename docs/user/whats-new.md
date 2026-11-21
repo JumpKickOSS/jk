@@ -28,6 +28,8 @@ JumpKick shows you this page's new entries after it updates itself.
   `[deny]` refuse a key they do not know, as the other tables already did, where it was ignored;
   a value of the wrong type (`[build] lint = "no"`, a dependency's `version = 1`) is a parse error
   naming the key, where it failed with an internal error.
+- **A plugin's `[contribute.lib-dir]` reads `[native] enabled = false` as no native image**, as
+  every other contribution's `native-declared` condition does.
 
 
 - **`[audit] ignore` matches an advisory's aliases.** An entry written for `CVE-2026-1234` now
