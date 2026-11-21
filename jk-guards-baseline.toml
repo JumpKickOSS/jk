@@ -1,11 +1,16 @@
 # Engine-owned. Tightened on every jk build; grown only by `jk guard freeze <id> -W`.
 # Never edit by hand: an entry without a reason is a suppression, and there is no suppression syntax.
 
+[anchor-push-mcp-only]
+[anchor-push-mcp-only.populations]
+"server/toolchain" = { classes = 230, sites = 0 }
+
 [archive-instant-owner]
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -50,29 +55,29 @@ population = { files = 5722 }
 [blind-tree-walks]
 [blind-tree-walks.populations]
 "clients/cli" = { classes = 848, sites = 54944 }
-"plugins/android" = { classes = 30, sites = 1970 }
+"plugins/android" = { classes = 30, sites = 2089 }
 "plugins/formatter" = { classes = 14, sites = 856 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
-"plugins/micronaut" = { classes = 1, sites = 192 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/minified" = { classes = 5, sites = 536 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
-"plugins/quarkus" = { classes = 22, sites = 1625 }
+"plugins/quarkus" = { classes = 22, sites = 1742 }
 "plugins/spring-boot" = { classes = 5, sites = 462 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
 "server/engine" = { classes = 1773, sites = 125824 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 56, sites = 3311 }
 "server/resolver" = { classes = 111, sites = 6750 }
-"server/toolchain" = { classes = 20, sites = 1776 }
+"server/toolchain" = { classes = 230, sites = 17254 }
 "shared/client-io" = { classes = 136, sites = 7243 }
 "shared/core" = { classes = 446, sites = 26137 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 46, sites = 1921 }
 "shared/jk-api" = { classes = 221, sites = 10524 }
 "shared/plugin-sdk" = { classes = 74, sites = 2797 }
-"shared/toolchain-jdk" = { classes = 214, sites = 11356 }
+"shared/toolchain-jdk" = { classes = 216, sites = 11470 }
 "shared/wire" = { classes = 115, sites = 4305 }
 [[blind-tree-walks.entries]]
 in     = "clients/cli"
@@ -117,10 +122,6 @@ reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk
 [[blind-tree-walks.entries]]
 in     = "plugins/android"
 at     = "cc.jumpkick.android.HiltTransformStep#run(Lcc/jumpkick/plugin/build/TaskExec;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "plugins/android"
-at     = "cc.jumpkick.android.ManifestStep#jarsIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/android"
@@ -179,10 +180,6 @@ in     = "plugins/java-compiler"
 at     = "cc.jumpkick.java.compiler.ZincJavaCompiler#deleteClassFiles(Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
-in     = "plugins/micronaut"
-at     = "cc.jumpkick.micronaut.MicronautPlugin#jarsIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
 in     = "plugins/minified"
 at     = "cc.jumpkick.minified.MinifiedJarPackager#appendModuleClassKeeps(Ljava/lang/StringBuilder;Ljava/nio/file/Path;)V -> java.nio.file.Files#walk(Ljava/nio/file/Path;[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
@@ -200,15 +197,7 @@ at     = "cc.jumpkick.quarkus.QuarkusAugmentMain#publishNativeSources(Ljava/nio/
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/quarkus"
-at     = "cc.jumpkick.quarkus.QuarkusPlugin#deleteTree(Ljava/nio/file/Path;)V -> java.nio.file.Files#walkFileTree(Ljava/nio/file/Path;Ljava/nio/file/FileVisitor;)Ljava/nio/file/Path;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "plugins/quarkus"
 at     = "cc.jumpkick.quarkus.QuarkusPlugin#findQuarkusRunJar(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#walk(Ljava/nio/file/Path;I[Ljava/nio/file/FileVisitOption;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "plugins/quarkus"
-at     = "cc.jumpkick.quarkus.QuarkusPlugin#jarsIn(Ljava/nio/file/Path;)Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "plugins/spring-boot"
@@ -379,10 +368,6 @@ in     = "server/engine"
 at     = "cc.jumpkick.test.AbiIndex#fingerprintWithNested(Ljava/nio/file/Path;Ljava/lang/String;)Lcc/jumpkick/task/ClassAbi$Fingerprint; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
-in     = "server/toolchain"
-at     = "cc.jumpkick.compat.ToolInstaller#flattenedRoot(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
 in     = "shared/client-io"
 at     = "cc.jumpkick.cache.EngineInstall#inferVersion(Ljava/lang/String;)Ljava/util/Optional; -> java.nio.file.Files#newDirectoryStream(Ljava/nio/file/Path;Ljava/lang/String;)Ljava/nio/file/DirectoryStream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
@@ -532,10 +517,6 @@ at     = "cc.jumpkick.jdk.IntellijJdkTable#scan()Ljava/util/Set; -> java.nio.fil
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
 in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkInstaller#flattenedRoot(Ljava/nio/file/Path;)Ljava/nio/file/Path; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
-reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
-[[blind-tree-walks.entries]]
-in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.jdk.JdkInventory#ownedInstallDirs()Ljava/util/List; -> java.nio.file.Files#list(Ljava/nio/file/Path;)Ljava/util/stream/Stream;"
 reason = "measured 2026-09-06 from walk-baseline.txt: every remaining blind walk needs its own read (directories, a depth limit, ordering); the ratchet only shrinks"
 [[blind-tree-walks.entries]]
@@ -566,6 +547,7 @@ population = { files = 2215 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -598,7 +580,9 @@ population = { examined = 1930 }
 
 [child-env-owner]
 [child-env-owner.populations]
+"plugins/android" = { classes = 30, sites = 2089 }
 "plugins/image-builder" = { classes = 19, sites = 1546 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1372, sites = 93555 }
@@ -634,6 +618,11 @@ in     = "shared/toolchain-jdk"
 at     = "cc.jumpkick.tool.ToolLauncher#start(Ljava/util/List;Ljava/util/Map;)Ljava/lang/Process; -> java.lang.ProcessBuilder#environment()Ljava/util/Map;"
 reason = "spawners that build a child's environment on purpose on 2026-10-28; new ones compose it through WorkerEnv or TaskExec"
 
+[child-start-owner]
+[child-start-owner.populations]
+"server/toolchain" = { classes = 230, sites = 17254 }
+"shared/toolchain-jdk" = { classes = 216, sites = 11470 }
+
 [ci-cadence]
 population = { examined = 4 }
 
@@ -668,6 +657,7 @@ population = { examined = 4 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 20, sites = 1681 }
 "plugins/java-compiler" = { classes = 25, sites = 1420 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
@@ -1319,6 +1309,10 @@ population = { examined = 15 }
 "shared/toolchain-jdk" = { classes = 196 }
 "shared/wire" = { classes = 241 }
 
+[env-key-owner]
+[env-key-owner.populations]
+"server/toolchain" = { classes = 230, sites = 17254 }
+
 [executors-through-jkthreads]
 [executors-through-jkthreads.populations]
 "server/engine" = { classes = 1730, sites = 123434 }
@@ -1391,6 +1385,7 @@ population = { files = 1888 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 0 }
 "plugins/image-builder" = { classes = 19, sites = 0 }
+"plugins/micronaut" = { classes = 2, sites = 0 }
 "plugins/protobuf" = { classes = 4, sites = 0 }
 "plugins/publisher" = { classes = 16, sites = 0 }
 "plugins/quarkus" = { classes = 11, sites = 0 }
@@ -1744,6 +1739,7 @@ population = { examined = 5 }
 "clients/cli" = { classes = 676, elements = 18 }
 "plugins/android" = { classes = 30, elements = 1 }
 "plugins/image-builder" = { classes = 19, elements = 1 }
+"plugins/micronaut" = { classes = 2, elements = 1 }
 "plugins/protobuf" = { classes = 4, elements = 1 }
 "plugins/publisher" = { classes = 16, elements = 1 }
 "plugins/quarkus" = { classes = 16, elements = 1 }
@@ -1767,6 +1763,7 @@ population = { examined = 5 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -1787,7 +1784,9 @@ population = { examined = 5 }
 
 [one-env-surface]
 [one-env-surface.populations]
+"plugins/android" = { classes = 30, sites = 2089 }
 "plugins/image-builder" = { classes = 20, sites = 1681 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
 "server/engine" = { classes = 1387, sites = 100473 }
@@ -1808,6 +1807,7 @@ population = { examined = 5 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -1831,6 +1831,7 @@ population = { examined = 5 }
 "clients/cli" = { classes = 676, sites = 31445 }
 "plugins/android" = { classes = 30, sites = 1355 }
 "plugins/image-builder" = { classes = 19, sites = 1114 }
+"plugins/micronaut" = { classes = 2, sites = 124 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
@@ -1854,6 +1855,7 @@ population = { examined = 5 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
@@ -1881,7 +1883,9 @@ population = { files = 2240 }
 [one-module-planner]
 [one-module-planner.populations]
 "clients/cli" = { classes = 812, sites = 0 }
+"plugins/android" = { classes = 30, sites = 0 }
 "plugins/image-builder" = { classes = 20, sites = 0 }
+"plugins/micronaut" = { classes = 2, sites = 0 }
 "plugins/publisher" = { classes = 24, sites = 0 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }
@@ -1906,6 +1910,7 @@ population = { files = 2203 }
 "clients/cli" = { classes = 676, sites = 31445 }
 "plugins/android" = { classes = 30, sites = 1355 }
 "plugins/image-builder" = { classes = 19, sites = 1114 }
+"plugins/micronaut" = { classes = 2, sites = 124 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
 "plugins/quarkus" = { classes = 11, sites = 640 }
@@ -1930,6 +1935,7 @@ population = { files = 2203 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/android" = { edges = 0, slices = 1 }
 "plugins/image-builder" = { edges = 0, slices = 1 }
+"plugins/micronaut" = { edges = 0, slices = 1 }
 "plugins/protobuf" = { edges = 0, slices = 1 }
 "plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
@@ -2013,6 +2019,7 @@ population = { examined = 15 }
 [plugin-fork-owner.populations]
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -2030,6 +2037,7 @@ population = { files = 90 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -2056,6 +2064,11 @@ population = { left = 721, right = 721 }
 
 [published-poms]
 population = { poms = 38 }
+
+[redactor-owner]
+[redactor-owner.populations]
+"server/toolchain" = { classes = 230, sites = 17254 }
+"shared/toolchain-jdk" = { classes = 216, sites = 11470 }
 
 [repository-names]
 population = { constants = 5, files = 2266, literals = 44269 }
@@ -2087,6 +2100,7 @@ population = { files = 2335 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
@@ -2589,6 +2603,7 @@ population = { files = 1 }
 "clients/cli" = { classes = 676, sites = 41838 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
 "plugins/quarkus" = { classes = 11, sites = 868 }
