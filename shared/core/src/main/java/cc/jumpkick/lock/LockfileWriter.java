@@ -321,25 +321,34 @@ public final class LockfileWriter {
         return out.toString();
     }
 
+    /**
+     * One {@code [[plugin]]} row per plugin, sorted by coordinate and version, then by the row's
+     * text, so rows of one coordinate and version do not keep the order they were given in.
+     */
     private static void writePlugins(StringBuilder out, Lockfile lockfile) {
-        List<Lockfile.PluginEntry> sortedPlugins = new ArrayList<>(lockfile.plugins());
-        sortedPlugins.sort(
-                Comparator.comparing(Lockfile.PluginEntry::coordinate).thenComparing(Lockfile.PluginEntry::version));
+        record Row(Lockfile.PluginEntry plugin, String text) {}
+        List<Row> rows = new ArrayList<>(lockfile.plugins().size());
+        for (Lockfile.PluginEntry p : lockfile.plugins()) rows.add(new Row(p, pluginRow(p)));
+        rows.sort(Comparator.comparing((Row r) -> r.plugin().coordinate())
+                .thenComparing(r -> r.plugin().version())
+                .thenComparing(Row::text));
+        for (Row row : rows) out.append(row.text());
+    }
 
-        for (Lockfile.PluginEntry p : sortedPlugins) {
-            out.append('\n');
-            out.append("[[plugin]]\n");
-            out.append("coordinate = ").append(quote(p.coordinate())).append('\n');
-            out.append("version    = ").append(quote(p.version())).append('\n');
-            String source = p.source();
-            if (source != null)
-                out.append("source     = ").append(quote(source)).append('\n');
-            String checksum = p.checksum();
-            String path = p.path();
-            if (checksum != null)
-                out.append("checksum   = ").append(quote(checksum)).append('\n');
-            if (path != null) out.append("path       = ").append(quote(path)).append('\n');
-        }
+    private static String pluginRow(Lockfile.PluginEntry p) {
+        StringBuilder out = new StringBuilder(128);
+        out.append('\n');
+        out.append("[[plugin]]\n");
+        out.append("coordinate = ").append(quote(p.coordinate())).append('\n');
+        out.append("version    = ").append(quote(p.version())).append('\n');
+        String source = p.source();
+        if (source != null) out.append("source     = ").append(quote(source)).append('\n');
+        String checksum = p.checksum();
+        String path = p.path();
+        if (checksum != null)
+            out.append("checksum   = ").append(quote(checksum)).append('\n');
+        if (path != null) out.append("path       = ").append(quote(path)).append('\n');
+        return out.toString();
     }
 
     private static void writeSdk(StringBuilder out, Lockfile lockfile) {
@@ -358,10 +367,13 @@ public final class LockfileWriter {
      * classifier, then URLs; a host-following tool's per-platform digests are dotted {@code
      * sha256.<classifier>} keys, as {@code [node]} writes its archives', and a closure row lists its
      * jars one per line; the closures plugins resolved come last, by plugin, closure and inputs.
+     * Rows those keys tie on sort by their own text, so the order is the lock's content alone.
      */
     private static void writeTools(StringBuilder out, Lockfile lockfile) {
-        List<ToolEntry> sorted = new ArrayList<>(lockfile.tools());
-        sorted.sort(Comparator.comparing(ToolEntry::isResolved)
+        record Row(ToolEntry tool, String text) {}
+        List<Row> rows = new ArrayList<>(lockfile.tools().size());
+        for (ToolEntry t : lockfile.tools()) rows.add(new Row(t, toolRow(t)));
+        Comparator<ToolEntry> byKey = Comparator.comparing(ToolEntry::isResolved)
                 .thenComparing((ToolEntry t) -> t.url() != null)
                 .thenComparing(LockfileWriter::toolName)
                 .thenComparing(t -> t.module() == null ? "" : t.module())
@@ -370,69 +382,72 @@ public final class LockfileWriter {
                 .thenComparing(t -> t.classifier() == null ? "" : t.classifier())
                 .thenComparing(ToolEntry::isClosure)
                 .thenComparing(t -> String.join(",", t.with()))
-                .thenComparing(t -> t.managedBy() == null ? "" : t.managedBy()));
-        for (ToolEntry t : sorted) {
-            out.append('\n');
-            out.append("[[tool]]\n");
-            String resolvedBy = t.resolvedBy();
-            if (resolvedBy != null) {
-                out.append("resolved-by = ").append(quote(resolvedBy)).append('\n');
-                String module = t.module();
-                if (module != null)
-                    out.append("module      = ").append(quote(module)).append('\n');
-                out.append("plugin      = ")
-                        .append(quote(Objects.requireNonNull(t.plugin())))
-                        .append('\n');
-                out.append("inputs      = ")
-                        .append(quote(Objects.requireNonNull(t.inputs())))
-                        .append('\n');
-                out.append("files = [\n");
-                for (String file : t.closure())
-                    out.append("  ").append(quote(file)).append(",\n");
-                out.append("]\n");
-                continue;
-            }
-            String url = t.url();
-            if (url != null) {
-                out.append("url      = ").append(quote(url)).append('\n');
-                out.append("checksum = ")
-                        .append(quote(Objects.requireNonNull(t.checksum())))
-                        .append('\n');
-                continue;
-            }
-            out.append("coordinate = ")
-                    .append(quote(Objects.requireNonNull(t.coordinate())))
+                .thenComparing(t -> t.managedBy() == null ? "" : t.managedBy());
+        rows.sort(Comparator.comparing(Row::tool, byKey).thenComparing(Row::text));
+        for (Row row : rows) out.append(row.text());
+    }
+
+    private static String toolRow(ToolEntry t) {
+        StringBuilder out = new StringBuilder(256);
+        out.append('\n');
+        out.append("[[tool]]\n");
+        String resolvedBy = t.resolvedBy();
+        if (resolvedBy != null) {
+            out.append("resolved-by = ").append(quote(resolvedBy)).append('\n');
+            String module = t.module();
+            if (module != null)
+                out.append("module      = ").append(quote(module)).append('\n');
+            out.append("plugin      = ")
+                    .append(quote(Objects.requireNonNull(t.plugin())))
                     .append('\n');
-            out.append("version    = ")
-                    .append(quote(Objects.requireNonNull(t.version())))
+            out.append("inputs      = ")
+                    .append(quote(Objects.requireNonNull(t.inputs())))
                     .append('\n');
-            if (!"jar".equals(t.type()))
-                out.append("type       = ").append(quote(t.type())).append('\n');
-            String classifier = t.classifier();
-            if (classifier != null)
-                out.append("classifier = ").append(quote(classifier)).append('\n');
-            String checksum = t.checksum();
-            if (checksum != null)
-                out.append("checksum   = ").append(quote(checksum)).append('\n');
-            if (!t.with().isEmpty())
-                out.append("with       = ").append(stringArray(t.with())).append('\n');
-            String managedBy = t.managedBy();
-            if (managedBy != null)
-                out.append("managed-by = ").append(quote(managedBy)).append('\n');
-            if (t.isClosure()) {
-                out.append("closure = [\n");
-                for (String jar : t.closure())
-                    out.append("  ").append(quote(jar)).append(",\n");
-                out.append("]\n");
-            }
-            for (var sha : t.sha256().entrySet()) {
-                out.append("sha256.")
-                        .append(key(sha.getKey()))
-                        .append(" = ")
-                        .append(quote(sha.getValue()))
-                        .append('\n');
-            }
+            out.append("files = [\n");
+            for (String file : t.closure()) out.append("  ").append(quote(file)).append(",\n");
+            out.append("]\n");
+            return out.toString();
         }
+        String url = t.url();
+        if (url != null) {
+            out.append("url      = ").append(quote(url)).append('\n');
+            out.append("checksum = ")
+                    .append(quote(Objects.requireNonNull(t.checksum())))
+                    .append('\n');
+            return out.toString();
+        }
+        out.append("coordinate = ")
+                .append(quote(Objects.requireNonNull(t.coordinate())))
+                .append('\n');
+        out.append("version    = ")
+                .append(quote(Objects.requireNonNull(t.version())))
+                .append('\n');
+        if (!"jar".equals(t.type()))
+            out.append("type       = ").append(quote(t.type())).append('\n');
+        String classifier = t.classifier();
+        if (classifier != null)
+            out.append("classifier = ").append(quote(classifier)).append('\n');
+        String checksum = t.checksum();
+        if (checksum != null)
+            out.append("checksum   = ").append(quote(checksum)).append('\n');
+        if (!t.with().isEmpty())
+            out.append("with       = ").append(stringArray(t.with())).append('\n');
+        String managedBy = t.managedBy();
+        if (managedBy != null)
+            out.append("managed-by = ").append(quote(managedBy)).append('\n');
+        if (t.isClosure()) {
+            out.append("closure = [\n");
+            for (String jar : t.closure()) out.append("  ").append(quote(jar)).append(",\n");
+            out.append("]\n");
+        }
+        for (var sha : t.sha256().entrySet()) {
+            out.append("sha256.")
+                    .append(key(sha.getKey()))
+                    .append(" = ")
+                    .append(quote(sha.getValue()))
+                    .append('\n');
+        }
+        return out.toString();
     }
 
     /** What a tool row sorts by first: its plugin and closure name, URL or coordinate. */
