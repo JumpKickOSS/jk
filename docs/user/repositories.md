@@ -133,7 +133,9 @@ that has not caught up answers 404, and the file is fetched from Central instead
 `maven-metadata.xml`, which says which versions exist, is asked of Central. A file the lock does
 not pin yet is verified against the `.sha1` Central publishes for it — one request — so the
 mirror never vouches for its own bytes; mirror bytes Central disowns are discarded and downloaded
-from Central with a checksum note. A file the lock pins is verified against its sha256 and reads
+from Central with a checksum note. A checksum that cannot be read, or that Central does not
+publish, fails the fetch without downloading the file from Central again, since Central's copy is
+checked against the same `.sha1`. A file the lock pins is verified against its sha256 and reads
 no checksum at all, so a cold-cache build from a lockfile asks Central for none of its artifacts.
 While the window is open the mirror's own checksums stand in for Central's, and the results say
 how many files were verified that way (`N files from central verified by the mirror's checksums only`).

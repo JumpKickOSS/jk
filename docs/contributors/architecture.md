@@ -489,8 +489,10 @@ Ship layout (`jk build`, under `target/dist/`; `<version>` carries `-SNAPSHOT` o
   release POMs and artifacts prefer the mirror regardless (`routeForDownload`), while the checksum
   that vouches for an unpinned one is Central's `.sha1` (`MavenRepo.vouchFor`, addressed to Central
   and routed by `Http` as the file is, so the mirror vouches only inside the window, a checksum it
-  lacks falls back to Central as a file does, and `DownloadLeg` counts the mirror's for a note); a
-  pinned file reads no sidecar. `LockOrchestrator` raises the window's cause as a lock note. A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp
+  lacks falls back to Central as a file does, and `DownloadLeg` counts the mirror's for a note). A
+  mirror body that fails to arrive or fails that check is downloaded from Central; a checksum that
+  could not be read or is not published fails the fetch (`DownloadLeg.VouchUnread`), since Central's
+  body is checked against the same one. A pinned file reads no sidecar. `LockOrchestrator` raises the window's cause as a lock note. A download streams through the JDK's 16 KiB copy buffer into a `.put-` temp
   in the repository's store tree (`DownloadLeg`), so a row in flight costs its connection and that
   buffer, never its payload.
 - **Budgets / anti-loop:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000) caps decisions, and every

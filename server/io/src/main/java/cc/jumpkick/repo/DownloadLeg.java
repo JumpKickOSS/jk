@@ -190,7 +190,13 @@ final class DownloadLeg {
             ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000L;
             verifyPin(coord, relativePath, streamed, expectedSha256);
             if (streamed.sidecars() != null && vouch != null) {
-                verifyUpstreamChecksum(coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
+                try {
+                    verifyUpstreamChecksum(coord, streamed.sidecars(), relativePath, streamed.stored(), leg, vouch);
+                } catch (MavenRepo.ChecksumMismatchException disowned) {
+                    throw disowned;
+                } catch (IOException unread) {
+                    throw new VouchUnread(unread);
+                }
             }
             streamed.transfer().finished();
         } catch (IOException | InterruptedException | RuntimeException e) {
@@ -270,6 +276,24 @@ final class DownloadLeg {
         }
         // Counted as landed by the caller, once the bytes verify.
         return new Streamed(new Downloaded(tmp, Hashing.hex(digest.digest()), size), sidecars, transfer);
+    }
+
+    /**
+     * The body arrived, but the checksum {@code vouch} names could not be read or is not published.
+     * Another source of the same body reads the same checksum, so this failure is the leg's, not its
+     * source's: the caller unwraps it as {@link #failure()} rather than downloading the body again.
+     */
+    static final class VouchUnread extends IOException {
+        private final IOException failure;
+
+        VouchUnread(IOException failure) {
+            super(failure.getMessage(), failure);
+            this.failure = failure;
+        }
+
+        IOException failure() {
+            return failure;
+        }
     }
 
     /** How many times one leg asks for a body whose transfer broke off after the response began. */

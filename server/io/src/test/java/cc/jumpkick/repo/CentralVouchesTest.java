@@ -106,6 +106,28 @@ class CentralVouchesTest {
                 .isEqualTo(1);
     }
 
+    /** Central's .sha1 is read the same way for either source, so a failed read is not a reason to ask Central for the body. */
+    @Test
+    void a_checksum_read_that_fails_does_not_download_the_file_again(@TempDir Path tmp) {
+        publishJar(JAR_BYTES, JAR_BYTES);
+        transport.fail(CENTRAL + JAR + ".sha1");
+
+        assertThatThrownBy(() -> repo(tmp, true).fetchArtifact(WIDGET))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining(".sha1 did not answer");
+        assertThat(transport.requests).containsExactlyInAnyOrder(MIRROR + JAR, CENTRAL + JAR + ".sha1");
+    }
+
+    @Test
+    void a_checksum_central_does_not_publish_does_not_download_the_file_again(@TempDir Path tmp) {
+        transport.publish(MIRROR + JAR, JAR_BYTES);
+        transport.publish(CENTRAL + JAR, JAR_BYTES);
+
+        assertThatThrownBy(() -> repo(tmp, true).fetchArtifact(WIDGET))
+                .isInstanceOf(MavenRepo.MissingChecksumException.class);
+        assertThat(transport.requests).doesNotContain(CENTRAL + JAR).contains(MIRROR + JAR);
+    }
+
     @Test
     void a_pom_comes_from_the_mirror_first(@TempDir Path tmp) throws Exception {
         transport.publish(MIRROR + POM, POM_BYTES);
@@ -463,6 +485,8 @@ class CentralVouchesTest {
         /** Central URLs the mirror answers, as Http answers a request it sends to the mirror. */
         private final Set<String> rerouted = ConcurrentHashMap.newKeySet();
 
+        private final Set<String> failing = ConcurrentHashMap.newKeySet();
+
         void publish(String url, byte[] body) {
             files.put(url, body);
         }
@@ -471,15 +495,21 @@ class CentralVouchesTest {
             rerouted.add(url);
         }
 
+        /** A URL whose request fails, as one that drops every connection does. */
+        void fail(String url) {
+            failing.add(url);
+        }
+
         @Override
-        public Optional<byte[]> fetch(URI uri, RepoCredential credential) {
+        public Optional<byte[]> fetch(URI uri, RepoCredential credential) throws IOException {
             return fetchAnswer(uri, credential).map(Answer::body);
         }
 
         @Override
-        public Optional<Answer> fetchAnswer(URI uri, RepoCredential credential) {
+        public Optional<Answer> fetchAnswer(URI uri, RepoCredential credential) throws IOException {
             requests.add(uri.toString());
             credentials.put(uri.toString(), credential);
+            if (failing.contains(uri.toString())) throw new IOException(uri + " did not answer");
             String from = uri.toString();
             if (rerouted.contains(from))
                 from = MIRROR + from.substring(CENTRAL.toString().length());

@@ -887,20 +887,25 @@ public final class MavenRepo {
             BooleanSupplier abort)
             throws IOException, InterruptedException {
         try {
-            return download.run(coord, primary, relativePath, vouch, leg, expectedSha256, abort);
-        } catch (FetchAbortedException e) {
-            throw e;
-        } catch (IOException e) {
-            // The mirror can lag or simply not carry something Central has. Falling back keeps a
-            // preference from becoming a dependency.
-            if (primary.equals(uri)) throw e;
-            if (e instanceof ChecksumMismatchException) {
-                // Central's releases do not change, so bytes that fail the check are the
-                // mirror's fault; Central's copy is what the check is for.
-                download.note(coord + " from " + name + ": the mirror's " + relativePath
-                        + " failed verification; downloaded from Maven Central instead");
+            try {
+                return download.run(coord, primary, relativePath, vouch, leg, expectedSha256, abort);
+            } catch (FetchAbortedException | DownloadLeg.VouchUnread e) {
+                throw e;
+            } catch (IOException e) {
+                // The mirror can lag or simply not carry something Central has. Falling back keeps a
+                // preference from becoming a dependency.
+                if (primary.equals(uri)) throw e;
+                if (e instanceof ChecksumMismatchException) {
+                    // Central's releases do not change, so bytes that fail the check are the
+                    // mirror's fault; Central's copy is what the check is for.
+                    download.note(coord + " from " + name + ": the mirror's " + relativePath
+                            + " failed verification; downloaded from Maven Central instead");
+                }
+                return download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
             }
-            return download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
+        } catch (DownloadLeg.VouchUnread unread) {
+            // Central's copy is checked against the same checksum: downloading it would fail the same way.
+            throw unread.failure();
         }
     }
 
