@@ -231,13 +231,46 @@ function Find-Java([switch] $Probe) {
     return $java
 }
 
-# Windows PowerShell 5.1 repaints its progress bar on every received chunk, which makes a
-# multi-megabyte Invoke-WebRequest many times slower. The preference is set in the function
-# scope, so the caller's session keeps its own value.
-
+# Downloads $Url to $OutFile over HTTPS only. Redirects are followed here, one hop at a time, and a
+# hop that leaves HTTPS is refused before it is requested: under Windows PowerShell 5.1,
+# Invoke-WebRequest follows a redirect from https to http by itself.
 function Save-Url([string] $Url, [string] $OutFile) {
-    $ProgressPreference = "SilentlyContinue"
-    Invoke-WebRequest -UseBasicParsing -Uri $Url -OutFile $OutFile
+    $uri = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref] $uri) -or $uri.Scheme -cne "https") {
+        throw "not an HTTPS URL: $Url"
+    }
+    for ($hop = 0; ; $hop++) {
+        $request = [Net.HttpWebRequest]::Create($uri)
+        $request.AllowAutoRedirect = $false
+        $request.UserAgent = "jk-installer"
+        try {
+            $response = $request.GetResponse()
+        } catch {
+            $cause = $_.Exception
+            while ($cause -and $cause -isnot [Net.WebException]) { $cause = $cause.InnerException }
+            if ($cause) { throw "$($uri): $($cause.Message)" }
+            throw
+        }
+        try {
+            $status = [int] $response.StatusCode
+            if ($status -ge 200 -and $status -lt 300) {
+                $body = $response.GetResponseStream()
+                $file = [IO.File]::Create($OutFile)
+                try { $body.CopyTo($file) } finally { $file.Dispose(); $body.Dispose() }
+                return
+            }
+            $location = $response.Headers["Location"]
+            if ($status -lt 300 -or $status -ge 400 -or -not $location) {
+                throw "$uri answered $status $($response.StatusDescription)"
+            }
+            if ($hop -ge 10) { throw "$Url redirects more than 10 times" }
+            $next = New-Object -TypeName Uri -ArgumentList @($uri, $location)
+            if ($next.Scheme -cne "https") { throw "$uri redirects to $next, which is not HTTPS" }
+            $uri = $next
+        } finally {
+            $response.Dispose()
+        }
+    }
 }
 
 function Get-StrictManifestHash {

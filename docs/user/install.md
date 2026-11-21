@@ -33,6 +33,9 @@ file installs remain available for development and do not require release eviden
 only to another HTTPS URL. BusyBox's `wget` (Alpine's only downloader until curl is installed)
 cannot be told to stop at a redirect, so a remote install refuses it and asks for curl or GNU Wget.
 
+`install.ps1` downloads over HTTPS only, under Windows PowerShell 5.1 and PowerShell 7 alike: it
+follows a redirect to another `https://` URL and refuses one to `http://` before requesting it.
+
 An install that stops part way leaves the JumpKick you had. The installer unpacks the new client
 beside the live one, runs its `--version`, and only a client that answers takes the live one's
 place, in one rename; `install.ps1` puts the old `jk.exe` back if that swap fails. A truncated

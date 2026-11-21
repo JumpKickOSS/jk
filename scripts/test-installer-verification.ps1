@@ -1,6 +1,6 @@
 # Network-free PowerShell 5.1 exercise of install.ps1: release authentication, the host-to-artifact
-# mapping, download settings and the execution-policy default. Uses an ephemeral RSA-3072 key and
-# never installs or executes the fixture artifact.
+# mapping, downloads (against loopback servers) and the execution-policy default. Uses an ephemeral
+# RSA-3072 key and never installs or executes the fixture artifact.
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
@@ -50,12 +50,126 @@ function script:Write-Note([string] $Message) { $script:notes += $Message }
 function script:Write-Info([string] $Message) { $script:notes += $Message }
 function script:Die([string] $Message) { throw $Message }
 
-$script:seenProgress = @()
-function script:Invoke-WebRequest {
-    param([switch] $UseBasicParsing, [string] $Uri, [string] $OutFile)
-    $script:seenProgress += [string] $ProgressPreference
-    if ($OutFile) { [IO.File]::WriteAllText($OutFile, "fixture", [Text.Encoding]::ASCII) }
+# Loopback servers for Save-Url: an HTTPS one with a self-signed certificate this process alone
+# trusts, serving the redirects below, and a plain-HTTP one that only counts its requests.
+Add-Type -TypeDefinition @'
+#pragma warning disable
+using System;
+using System.IO;
+using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Threading;
+
+public sealed class JkRedirectFixture : IDisposable {
+    private readonly TcpListener tls = new TcpListener(IPAddress.Loopback, 0);
+    private readonly TcpListener plain = new TcpListener(IPAddress.Loopback, 0);
+    private readonly X509Certificate2 certificate;
+    private readonly RemoteCertificateValidationCallback previousCallback;
+    private readonly SecurityProtocolType previousProtocols;
+    private int plainRequests;
+    public readonly int TlsPort;
+    public readonly int PlainPort;
+
+    public int PlainRequests { get { return Thread.VolatileRead(ref plainRequests); } }
+
+    public JkRedirectFixture() {
+        using (RSA key = RSA.Create(2048)) {
+            CertificateRequest request = new CertificateRequest(
+                "CN=127.0.0.1", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            using (X509Certificate2 ephemeral = request.CreateSelfSigned(
+                    DateTimeOffset.UtcNow.AddMinutes(-5), DateTimeOffset.UtcNow.AddHours(1))) {
+                // SChannel serves only a certificate whose key it can open, so it goes through PFX.
+                certificate = new X509Certificate2(ephemeral.Export(X509ContentType.Pfx, "fixture"), "fixture");
+            }
+        }
+        string thumbprint = certificate.Thumbprint;
+        previousCallback = ServicePointManager.ServerCertificateValidationCallback;
+        previousProtocols = ServicePointManager.SecurityProtocol;
+        ServicePointManager.SecurityProtocol = previousProtocols | SecurityProtocolType.Tls12;
+        ServicePointManager.ServerCertificateValidationCallback =
+            (sender, cert, chain, errors) => cert != null && cert.GetCertHashString() == thumbprint;
+        tls.Start();
+        plain.Start();
+        TlsPort = ((IPEndPoint) tls.LocalEndpoint).Port;
+        PlainPort = ((IPEndPoint) plain.LocalEndpoint).Port;
+        Serve(tls, true);
+        Serve(plain, false);
+    }
+
+    private void Serve(TcpListener listener, bool secure) {
+        Thread thread = new Thread(() => {
+            while (true) {
+                TcpClient client;
+                try { client = listener.AcceptTcpClient(); } catch (Exception) { return; }
+                try {
+                    using (client) {
+                        Stream stream = client.GetStream();
+                        if (secure) {
+                            SslStream ssl = new SslStream(stream);
+                            ssl.AuthenticateAsServer(certificate, false, SslProtocols.Tls12, false);
+                            stream = ssl;
+                        }
+                        using (stream) { Answer(stream, secure); }
+                    }
+                } catch (Exception) {
+                }
+            }
+        });
+        thread.IsBackground = true;
+        thread.Start();
+    }
+
+    private void Answer(Stream stream, bool secure) {
+        StringBuilder head = new StringBuilder();
+        while (!head.ToString().EndsWith("\r\n\r\n")) {
+            int b = stream.ReadByte();
+            if (b < 0) return;
+            head.Append((char) b);
+        }
+        string path = head.ToString().Split(' ')[1];
+        if (!secure) {
+            Interlocked.Increment(ref plainRequests);
+            Respond(stream, "200 OK", null, "plain body");
+            return;
+        }
+        string origin = "127.0.0.1:" + TlsPort;
+        switch (path) {
+            case "/ok": Respond(stream, "200 OK", null, "secure body"); break;
+            case "/relative": Respond(stream, "302 Found", "ok", ""); break;
+            case "/absolute": Respond(stream, "301 Moved Permanently", "https://" + origin + "/ok", ""); break;
+            case "/network-path": Respond(stream, "307 Temporary Redirect", "//" + origin + "/ok", ""); break;
+            case "/to-http": Respond(stream, "302 Found", "http://127.0.0.1:" + PlainPort + "/ok", ""); break;
+            case "/loop": Respond(stream, "302 Found", "/loop", ""); break;
+            case "/no-location": Respond(stream, "302 Found", null, ""); break;
+            default: Respond(stream, "404 Not Found", null, "missing"); break;
+        }
+    }
+
+    private static void Respond(Stream stream, string status, string location, string body) {
+        byte[] bytes = Encoding.ASCII.GetBytes(body);
+        string head = "HTTP/1.1 " + status + "\r\n"
+            + (location == null ? "" : "Location: " + location + "\r\n")
+            + "Content-Length: " + bytes.Length + "\r\nConnection: close\r\n\r\n";
+        byte[] headBytes = Encoding.ASCII.GetBytes(head);
+        stream.Write(headBytes, 0, headBytes.Length);
+        stream.Write(bytes, 0, bytes.Length);
+        stream.Flush();
+    }
+
+    public void Dispose() {
+        tls.Stop();
+        plain.Stop();
+        ServicePointManager.ServerCertificateValidationCallback = previousCallback;
+        ServicePointManager.SecurityProtocol = previousProtocols;
+        certificate.Dispose();
+    }
 }
+'@
 
 $script:policies = @()
 $script:policyChanges = @()
@@ -307,16 +421,34 @@ try {
         if ($_.Exception.Message -notmatch "malformed entry") { throw }
     }
 
-    # ---- downloads run with the progress bar off, without touching the caller's preference ---
+    # ---- downloads follow HTTPS redirects and refuse one to http before requesting it ------------
     Import-InstallerFunction "Save-Url"
-    $script:seenProgress = @()
-    $ProgressPreference = "Continue"
-    Save-Url "https://fixture/releases/1.0.0/x.zip" (Join-Path $work "download.zip")
-    Save-Url "https://fixture/releases/latest/LATEST" (Join-Path $work "download-pointer")
-    if (($script:seenProgress -join ",") -cne "SilentlyContinue,SilentlyContinue") {
-        throw "downloads ran with ProgressPreference $($script:seenProgress -join ',')"
+    $fixture = New-Object JkRedirectFixture
+    try {
+        $tls = "https://127.0.0.1:$($fixture.TlsPort)"
+        foreach ($path in "/ok", "/relative", "/absolute", "/network-path") {
+            $out = Join-Path $work "download$($path.Replace('/', '-'))"
+            Save-Url "$tls$path" $out
+            if ([IO.File]::ReadAllText($out) -cne "secure body") { throw "a download through $path saved the wrong body" }
+        }
+        $refusals = @(
+            @{ Url = "$tls/to-http"; Says = "which is not HTTPS" },
+            @{ Url = "http://127.0.0.1:$($fixture.PlainPort)/ok"; Says = "not an HTTPS URL" },
+            @{ Url = "$tls/loop"; Says = "redirects more than 10 times" },
+            @{ Url = "$tls/no-location"; Says = "answered 302" },
+            @{ Url = "$tls/missing"; Says = "404" })
+        foreach ($case in $refusals) {
+            $out = Join-Path $work "download-refused"
+            $refused = $null
+            try { Save-Url $case.Url $out } catch { $refused = $_.Exception.Message }
+            if (-not $refused) { throw "a download of $($case.Url) was not refused" }
+            if (-not $refused.Contains($case.Says)) { throw "the refusal of $($case.Url) said '$refused'" }
+            if (Test-Path -LiteralPath $out) { throw "a refused download of $($case.Url) wrote a file" }
+        }
+        if ($fixture.PlainRequests -ne 0) { throw "a download made $($fixture.PlainRequests) plain-HTTP request(s)" }
+    } finally {
+        $fixture.Dispose()
     }
-    if ([string] $ProgressPreference -cne "Continue") { throw "a download changed the caller's ProgressPreference" }
 
     # ---- execution policy: printed by default, applied only on request -----------------------
     Import-InstallerFunction "Ensure-ProfileExecutionPolicy"
