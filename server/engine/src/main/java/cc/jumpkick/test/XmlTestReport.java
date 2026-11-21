@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -217,6 +218,13 @@ public final class XmlTestReport {
             }
         }
         if (first != null) throw first;
+    }
+
+    /** Every class this report holds results for, in the order they were first recorded. */
+    public synchronized List<String> classNames() {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        for (Entry e : entries) names.add(e.className());
+        return List.copyOf(names);
     }
 
     /** The name of {@code className}'s report file: {@code TEST-<classname>.xml}. */

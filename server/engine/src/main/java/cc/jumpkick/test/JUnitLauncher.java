@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
@@ -460,15 +461,18 @@ public final class JUnitLauncher {
 
     /**
      * The XML report exists exactly when there is a directory to write it into: each class's file in
-     * its suite's directory, the {@code integration} suite's in {@link #integrationResultsDir}.
+     * its suite's directory, the {@code integration} suite's in {@link #integrationResultsDir}; no
+     * report of a class gone from the test classes stays in either.
      */
     private void writeXml(@Nullable XmlTestReport xml, @Nullable Path testResultsDir) {
         if (testResultsDir == null || xml == null) return;
+        Function<String, Path> dirFor = className -> xmlDir(className, testResultsDir);
         try {
-            xml.writeAll(className -> xmlDir(className, testResultsDir));
+            xml.writeAll(dirFor);
         } catch (IOException e) {
             // Non-fatal: the tests ran; only the report failed to land.
         }
+        StaleTestReports.prune(testClassesDir, xml.classNames(), dirFor, testResultsDir, integrationResultsDir);
     }
 
     private Path xmlDir(String className, Path testResultsDir) {
