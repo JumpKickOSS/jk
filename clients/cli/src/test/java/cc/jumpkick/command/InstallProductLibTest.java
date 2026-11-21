@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.command.pipeline.EngineHandoff;
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.util.List;
@@ -112,35 +113,34 @@ class InstallProductLibTest {
 
     @Test
     void an_install_that_left_the_home_on_another_engine_runs_one_more_pass() {
-        assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.of("bbb")))
+        assertThat(EngineHandoff.replaced(Optional.of("aaa"), Optional.of("bbb")))
                 .isTrue();
-        assertThat(InstallCommand.engineReplaced(Optional.empty(), Optional.of("bbb")))
+        assertThat(EngineHandoff.replaced(Optional.empty(), Optional.of("bbb")))
                 .as("no pointer before: whatever ran the pass is not the engine the home names now")
                 .isTrue();
     }
 
     @Test
     void a_re_shelving_pass_that_replaced_the_engine_again_names_the_command_to_finish_the_shelf() {
-        String notice =
-                InstallCommand.shelfBehindEngineNotice(true, Optional.of("bbb111222333444"), Optional.of("ccc"));
+        String notice = EngineHandoff.shelfBehindNotice(true, Optional.of("bbb111222333444"), Optional.of("ccc"));
         assertThat(notice)
                 .contains("run `jk install` once more")
                 .contains("new engine ccc")
                 .contains("engine bbb111222333");
-        assertThat(InstallCommand.shelfBehindEngineNotice(true, Optional.of("ccc"), Optional.of("ccc")))
+        assertThat(EngineHandoff.shelfBehindNotice(true, Optional.of("ccc"), Optional.of("ccc")))
                 .as("the home names the engine that packaged the shelf")
                 .isNull();
-        assertThat(InstallCommand.shelfBehindEngineNotice(false, Optional.of("aaa"), Optional.of("bbb")))
+        assertThat(EngineHandoff.shelfBehindNotice(false, Optional.of("aaa"), Optional.of("bbb")))
                 .as("a first pass runs the second itself instead of announcing it")
                 .isNull();
     }
 
     @Test
     void an_install_that_kept_the_engine_stops_after_one_pass() {
-        assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.of("AAA")))
+        assertThat(EngineHandoff.replaced(Optional.of("aaa"), Optional.of("AAA")))
                 .as("the digest, not its spelling")
                 .isFalse();
-        assertThat(InstallCommand.engineReplaced(Optional.of("aaa"), Optional.empty()))
+        assertThat(EngineHandoff.replaced(Optional.of("aaa"), Optional.empty()))
                 .as("a home with no engine to run a second pass on")
                 .isFalse();
     }

@@ -10,7 +10,6 @@ import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
-import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.cli.engine.JobCancelledException;
@@ -395,7 +394,7 @@ public final class InstallCommand {
     private InstallLock.@Nullable Hold installHold;
 
     private int runWorkspaceInstall(Path wsRoot, CwdModuleScope.Resolved cwdScope) throws IOException {
-        Optional<String> engineBefore = liveEngineSha();
+        Optional<String> engineBefore = EngineHandoff.liveSha();
         Path cacheDir = cacheDir();
         ProjectInfo root = projectInfo(wsRoot);
         if (root.error() != null) {
@@ -473,13 +472,14 @@ public final class InstallCommand {
         var pass = new WorkspacePass(wsRoot, req, moduleDirs, infoByDir, cacheDir);
         int exit = live ? installWorkspaceLive(pass, mode) : installWorkspaceHeadless(pass, json);
         if (exit != 0) return exit;
-        Optional<String> engineAfter = liveEngineSha();
-        if (!reshelving && engineReplaced(engineBefore, engineAfter)) {
+        Optional<String> engineAfter = EngineHandoff.liveSha();
+        if (!reshelving && EngineHandoff.replaced(engineBefore, engineAfter)) {
             // An engine serves only clients of its own version. When the pass materialized an
             // engine of another version than this client's, no request from here can reach it, so
             // the re-shelving pass is the tree's own client's to run: the install is complete as
             // far as this client can take it, and says what runs the rest.
-            String handover = handoverNotice(JkVersion.VERSION, liveEngineVersion(), installedClient, verb);
+            String handover =
+                    EngineHandoff.handoverNotice(JkVersion.VERSION, EngineHandoff.liveVersion(), installedClient, verb);
             if (handover != null) {
                 if (!json) CommandWedge.printOk("Install", handover);
                 return Exit.SUCCESS;
@@ -493,7 +493,7 @@ public final class InstallCommand {
             // resident engine over, so the second pass runs on the engine this tree built. That
             // handoff is asserted, not assumed: the pass re-shelves under whichever engine serves
             // it, and a shelf packaged by the displaced engine would need yet another install.
-            int refused = handoffRefusal(engineAfter);
+            int refused = EngineHandoff.refusal(engineAfter);
             if (refused != Exit.SUCCESS) return refused;
             // The install's verdict is the pass that built and tested; the re-shelve only restamps.
             WireStream.LastJob built = WireStream.lastJob();
@@ -502,7 +502,7 @@ public final class InstallCommand {
             return reshelved;
         }
         if (!reshelving) ReleaseLine.print(root, global);
-        String notice = shelfBehindEngineNotice(reshelving, engineBefore, engineAfter);
+        String notice = EngineHandoff.shelfBehindNotice(reshelving, engineBefore, engineAfter);
         if (notice != null && !json) {
             Theme t = Theme.active();
             CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning()) + " " + notice);
@@ -688,7 +688,7 @@ public final class InstallCommand {
      */
     private static Optional<String> pinShelf(WorkspacePass pass, WorkspaceResult result) throws IOException {
         return ShelfPinning.record(
-                liveEngineSha(),
+                EngineHandoff.liveSha(),
                 EngineInstall.current().shelfFile(),
                 pass.wsRoot(),
                 ShelfPinning.shelved(result, ShelfPinning.engineRuns(pass.infoByDir())));
@@ -742,96 +742,6 @@ public final class InstallCommand {
                 ? "~/" + home.relativize(abs).toString().replace(File.separatorChar, '/')
                 : abs.toString();
         return PathDisplay.styledRaw(shown);
-    }
-
-    /**
-     * What the last pass leaves unsaid when it too replaced the engine: the passes are bounded at
-     * two, so a shelf packaged by an engine the home no longer names is the user's to finish. Null
-     * when the home names the engine that ran the final pass — the shelf is that engine's.
-     */
-    public static @Nullable String shelfBehindEngineNotice(
-            boolean lastPass, Optional<String> before, Optional<String> after) {
-        if (!lastPass || !engineReplaced(before, after)) return null;
-        return "workers were shelved by engine " + shortSha(before) + ", not the new engine " + shortSha(after)
-                + "; run `jk install` once more";
-    }
-
-    /**
-     * What a pass that installed an engine of another version than {@code clientVersion} leaves
-     * to the tree's own client: the home names that engine now, an engine serves only clients of
-     * its own version, so the re-shelving pass runs when {@code client} (the PATH client the pass
-     * installed, when it did) is the one asking. Null when the versions agree — this client is
-     * served by the new engine and runs the pass itself — or when the home names no engine.
-     */
-    public static @Nullable String handoverNotice(
-            String clientVersion, Optional<String> engineVersion, @Nullable Path client, String verb) {
-        if (engineVersion.isEmpty() || engineVersion.get().equals(clientVersion)) return null;
-        String tree = engineVersion.get();
-        String next = client != null ? "`" + client + " " + verb + "`" : "`jk " + verb + "` as jk " + tree;
-        return "installed engine is jk " + tree + " and this one is jk " + clientVersion + "; run " + next
-                + " once more";
-    }
-
-    /**
-     * Forget the engine this process ensured, bring up the one the next request will be served
-     * by, and check it is the one {@code pointer} names. {@link Exit#SUCCESS} when the re-shelving
-     * pass may run; otherwise the failure is printed and its exit code returned.
-     */
-    private static int handoffRefusal(Optional<String> pointer) {
-        EngineClient.forgetEnsuredEngine();
-        String refused;
-        try {
-            EngineProbe.Handshake live = EngineClient.ensureRunning(EnginePaths.current(), JkVersion.VERSION);
-            refused = handoffMismatch(live.buildId(), pointer);
-        } catch (IOException e) {
-            refused = "re-shelving pass: " + e.getMessage();
-        }
-        if (refused == null) return Exit.SUCCESS;
-        CommandWedge.printFail("Install", refused);
-        return Exit.SOFTWARE;
-    }
-
-    /**
-     * Why the re-shelving pass must not run: the engine answering the endpoint ({@code
-     * liveBuildId}, a prefix of its jar's digest) is not the one the home's pointer names. Null
-     * when they agree, or when either side has no identity to compare (an engine run from a
-     * classes directory, a home with no pointer).
-     */
-    public static @Nullable String handoffMismatch(String liveBuildId, Optional<String> pointerSha) {
-        if (liveBuildId.isEmpty() || pointerSha.isEmpty()) return null;
-        if (pointerSha.get().toLowerCase(Locale.ROOT).startsWith(liveBuildId.toLowerCase(Locale.ROOT))) return null;
-        return "engine " + liveBuildId + " answered, not the installed engine " + shortSha(pointerSha)
-                + "; run `jk engine stop`, then `jk install` again";
-    }
-
-    private static String shortSha(Optional<String> sha) {
-        return sha.map(s -> s.length() > 12 ? s.substring(0, 12) : s).orElse("(none)");
-    }
-
-    /**
-     * The engine jar the product library's pointer names, by digest; empty when the home has none,
-     * or names one without a sha256 (a jar inferred from the engine home).
-     */
-    private static Optional<String> liveEngineSha() {
-        EngineInstall install = EngineInstall.current();
-        return install.currentInstall().flatMap(m -> install.engineSha(m.version()));
-    }
-
-    /** The product version of the engine the pointer names; empty when the home has none. */
-    private static Optional<String> liveEngineVersion() {
-        return EngineInstall.current().currentInstall().map(EngineInstall.Materialized::version);
-    }
-
-    /**
-     * Whether an install pass left the home naming another engine than the one it started under.
-     * Every artifact-shaped action key names the engine that packaged the artifact, so a shelf the
-     * displaced engine filled is one the new engine packages afresh: one more pass under it brings
-     * the shelf to the tree. A home that named no engine before is treated the same way — whatever
-     * ran the pass is not the engine the home names now.
-     */
-    public static boolean engineReplaced(Optional<String> before, Optional<String> after) {
-        if (after.isEmpty()) return false;
-        return before.isEmpty() || !before.get().equalsIgnoreCase(after.get());
     }
 
     private static int cancelled(WorkspaceRunView run, long startNanos, boolean json) {

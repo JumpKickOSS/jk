@@ -11,21 +11,19 @@ import org.junit.jupiter.api.Test;
  * The re-shelving pass runs only on the engine the home's pointer names: the install compares
  * the engine answering the endpoint with the pointer before starting the pass.
  */
-class InstallCommandHandoffTest {
+class EngineHandoffTest {
 
     private static final String POINTER = "ab12cd34ef56" + "0".repeat(52);
 
     @Test
     void the_pointed_engine_answering_is_no_mismatch() {
-        assertThat(InstallCommand.handoffMismatch("ab12cd34ef56", Optional.of(POINTER)))
-                .isNull();
-        assertThat(InstallCommand.handoffMismatch("AB12CD34EF56", Optional.of(POINTER)))
-                .isNull();
+        assertThat(EngineHandoff.mismatch("ab12cd34ef56", Optional.of(POINTER))).isNull();
+        assertThat(EngineHandoff.mismatch("AB12CD34EF56", Optional.of(POINTER))).isNull();
     }
 
     @Test
     void the_displaced_engine_answering_names_both_engines_and_the_remedy() {
-        String why = InstallCommand.handoffMismatch("ffffffffffff", Optional.of(POINTER));
+        String why = EngineHandoff.mismatch("ffffffffffff", Optional.of(POINTER));
         assertThat(why)
                 .contains("engine ffffffffffff answered")
                 .contains("installed engine ab12cd34ef56")
@@ -36,32 +34,31 @@ class InstallCommandHandoffTest {
     @Test
     void a_client_of_another_version_than_the_engine_it_installed_hands_the_pass_to_the_tree_s_client() {
         Path client = Path.of("/home/u/.jk/bin/jk");
-        String notice = InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "install");
+        String notice = EngineHandoff.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "install");
         assertThat(notice)
                 .contains("jk 0.13.6")
                 .contains("this one is jk 0.13.5")
                 .contains("run `" + client + " install` once more");
-        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), null, "install"))
+        assertThat(EngineHandoff.handoverNotice("0.13.5", Optional.of("0.13.6"), null, "install"))
                 .as("no PATH client installed: the pass still belongs to a client of the tree's version")
                 .contains("run `jk install` as jk 0.13.6 once more");
-        assertThat(InstallCommand.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "install -S"))
+        assertThat(EngineHandoff.handoverNotice("0.13.5", Optional.of("0.13.6"), client, "install -S"))
                 .as("an install that skipped the tests hands over one that skips them too")
                 .contains("run `" + client + " install -S` once more");
     }
 
     @Test
     void the_tree_s_own_client_runs_the_re_shelving_pass_itself() {
-        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.of("0.13.6"), Path.of("/h/bin/jk"), "install"))
+        assertThat(EngineHandoff.handoverNotice("0.13.6", Optional.of("0.13.6"), Path.of("/h/bin/jk"), "install"))
                 .isNull();
-        assertThat(InstallCommand.handoverNotice("0.13.6", Optional.empty(), null, "install"))
+        assertThat(EngineHandoff.handoverNotice("0.13.6", Optional.empty(), null, "install"))
                 .as("a home naming no engine leaves nothing to hand over")
                 .isNull();
     }
 
     @Test
     void a_side_without_an_identity_is_not_a_mismatch() {
-        assertThat(InstallCommand.handoffMismatch("", Optional.of(POINTER))).isNull();
-        assertThat(InstallCommand.handoffMismatch("ab12cd34ef56", Optional.empty()))
-                .isNull();
+        assertThat(EngineHandoff.mismatch("", Optional.of(POINTER))).isNull();
+        assertThat(EngineHandoff.mismatch("ab12cd34ef56", Optional.empty())).isNull();
     }
 }
