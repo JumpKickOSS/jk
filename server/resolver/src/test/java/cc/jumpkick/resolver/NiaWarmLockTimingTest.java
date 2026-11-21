@@ -13,6 +13,7 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.EffectivePomBuilder;
@@ -24,7 +25,6 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
 import cc.jumpkick.testing.SysProps;
 import java.lang.management.ManagementFactory;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -109,10 +109,7 @@ class NiaWarmLockTimingTest {
         String jvmEnv = PluginContributions.jvmEnvironment(project, nia);
         System.out.println("JVM_ENV=" + jvmEnv + " modules=" + modules.size());
 
-        Cas cas = new Cas(store);
-        RepoGroup repos = new RepoGroup(List.of(
-                new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), http, cas),
-                new MavenRepo("google", URI.create("https://dl.google.com/dl/android/maven2/"), http, cas)));
+        RepoGroup repos = declaredRepos(project, http, new Cas(store));
 
         System.setProperty("jk.resolve.profile", "true");
 
@@ -161,6 +158,22 @@ class NiaWarmLockTimingTest {
         } else {
             System.out.println("TIMING_ASSERTS_SKIPPED " + budgetSkipReason);
         }
+    }
+
+    /**
+     * The overlay's own repositories, as {@code jk lock} builds them: the store keeps one tree per
+     * origin, so a Central spelled other than the overlay spells it reads a tree its locks never
+     * filled, and Google Maven takes the AndroidX groups, which Central would otherwise be asked for
+     * first and answer 404.
+     */
+    static RepoGroup declaredRepos(JkBuild project, Http http, Cas cas) {
+        List<MavenRepo> repos = new ArrayList<>();
+        List<List<String>> routed = new ArrayList<>();
+        for (RepositorySpec spec : project.repositories()) {
+            repos.add(new MavenRepo(spec.name(), spec.url(), http, cas));
+            routed.add(RepositorySpec.GOOGLE.equals(spec.name()) ? RepositorySpec.GOOGLE_ANDROID_GROUPS : List.of());
+        }
+        return new RepoGroup(repos, null, routed);
     }
 
     /**
