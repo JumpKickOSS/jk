@@ -77,8 +77,9 @@ save bursts are debounced: a pass starts once sources have been quiet for
 **150 ms** (`-U` / `--debounce-ms`), and a burst that never goes quiet starts one at the latest
 2 s after its first change (or four debounce windows, when that is longer). A save reaches the
 loop within milliseconds: on macOS JumpKick reads FSEvents, not the JDK's watch service, which
-polls there every 2 s. A project on a network volume (SMB, NFS) is polled, since FSEvents does not
-hear what another machine writes to it.
+polls there every 2 s. A project on a network volume (SMB, NFS, or a Windows drive under WSL) is
+polled every 2 s, on Linux as on macOS, since neither inotify nor FSEvents hears what another
+machine writes to it.
 
 ```bash
 jk watch compile

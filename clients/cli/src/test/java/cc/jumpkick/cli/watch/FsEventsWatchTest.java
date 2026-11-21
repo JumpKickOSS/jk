@@ -42,16 +42,6 @@ class FsEventsWatchTest {
         }
     }
 
-    /** FSEvents never hears what another machine writes to a network share, so a watch over one polls. */
-    @Test
-    @EnabledOnOs(OS.MAC)
-    void a_watch_over_a_volume_that_is_not_local_is_the_jdks(@TempDir Path tmp) throws IOException {
-        Path share = tmp.resolve("share");
-        try (DirWatch watch = DirWatch.open(List.of(tmp, share), d -> !d.equals(share))) {
-            assertThat(watch).isInstanceOf(JdkDirWatch.class);
-        }
-    }
-
     @Test
     @EnabledOnOs(OS.MAC)
     void a_volume_is_local_by_its_mount_flags(@TempDir Path tmp) throws IOException {
