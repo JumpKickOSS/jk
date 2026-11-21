@@ -61,16 +61,53 @@ class VariantApplyTest {
                 """);
         var applied = VariantApply.apply(
                 build, dir, Variants.Selection.parse("release"), Map.of("TEST_STORE_PASSWORD", "s3cret"));
-        PluginConfig config = applied.build().pluginConfig("android").orElseThrow();
+        PluginConfig config = applied.pluginConfig("android").orElseThrow();
         assertThat(config.string("build-type")).isEqualTo("release");
         assertThat(config.string("application-id-suffix")).isEqualTo(".rel");
         assertThat(config.string("signing.store-file")).isEqualTo("/tmp/ks.jks");
         assertThat(config.string("signing.key-alias")).isEqualTo("upload");
         // The secret never enters the config — it rides the side channel, resolved.
         assertThat(config.values()).doesNotContainKey("signing.store-password");
-        assertThat(applied.secrets()).containsEntry("signing.store-password", "s3cret");
+        assertThat(config.secrets()).containsExactly(Map.entry("signing.store-password", "s3cret"));
         // Groups never ride the flat config; the overlay's string REFERENCE legitimately does.
         assertThat(config.values().get("signing")).isEqualTo("release");
+    }
+
+    /**
+     * A top-level {@code secret = true} key leaves the values for the plugin's own secrets, resolved
+     * through {@code env:NAME} or as written, and a variant may overlay it.
+     */
+    @Test
+    void a_top_level_secret_leaves_the_values_for_the_plugins_secrets(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                name    = "app"
+                group   = "com.example"
+                version = "1.0.0"
+                java    = 25
+
+                [jooq]
+                jdbc-url      = "jdbc:postgresql://localhost:5432/app"
+                jdbc-user     = "app"
+                jdbc-password = "env:TEST_DB_PASSWORD"
+
+                [variants.build-type.release.jooq]
+                jdbc-password = "written-out"
+                """);
+        JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
+
+        PluginConfig debug = VariantApply.apply(
+                        build, dir, Variants.Selection.parse(""), Map.of("TEST_DB_PASSWORD", "s3cret"))
+                .pluginConfig("jooq")
+                .orElseThrow();
+        assertThat(debug.values()).doesNotContainKey("jdbc-password").containsEntry("jdbc-user", "app");
+        assertThat(debug.secrets()).containsExactly(Map.entry("jdbc-password", "s3cret"));
+        assertThat(debug.toString()).doesNotContain("s3cret");
+
+        PluginConfig release = VariantApply.apply(build, dir, Variants.Selection.parse("release"), Map.of())
+                .pluginConfig("jooq")
+                .orElseThrow();
+        assertThat(release.values()).doesNotContainKey("jdbc-password");
+        assertThat(release.secrets()).containsExactly(Map.entry("jdbc-password", "written-out"));
     }
 
     @Test
@@ -89,13 +126,13 @@ class VariantApplyTest {
                 .hasMessageContaining("--variant tier=<value>");
 
         var applied = VariantApply.apply(build, dir, Variants.Selection.parse("release|tier=free"), Map.of());
-        PluginConfig config = applied.build().pluginConfig("android").orElseThrow();
+        PluginConfig config = applied.pluginConfig("android").orElseThrow();
         assertThat(config.string("variant.tier")).isEqualTo("free");
         // Precedence: the build type overlays after custom dimensions.
         assertThat(config.string("application-id-suffix")).isEqualTo(".fromtype");
         // Bare-value convenience: one custom dimension, `--variant free` → *=free.
         var bare = VariantApply.apply(build, dir, Variants.Selection.parse("*=paid"), Map.of());
-        assertThat(bare.build().pluginConfig("android").orElseThrow().string("variant.tier"))
+        assertThat(bare.pluginConfig("android").orElseThrow().string("variant.tier"))
                 .isEqualTo("paid");
     }
 
@@ -112,7 +149,6 @@ class VariantApplyTest {
         Variants.Selection guard = VariantApply.selection("", Session.defaults().withLanesOnly(true));
         assertThat(VariantApply.selectionError(build, guard)).isNull();
         assertThat(VariantApply.apply(build, dir, guard, Map.of())
-                        .build()
                         .pluginConfig("android")
                         .orElseThrow()
                         .string("variant.tier"))
@@ -121,7 +157,6 @@ class VariantApplyTest {
         Variants.Selection chosen =
                 VariantApply.selection("tier=free", Session.defaults().withLanesOnly(true));
         assertThat(VariantApply.apply(build, dir, chosen, Map.of())
-                        .build()
                         .pluginConfig("android")
                         .orElseThrow()
                         .string("variant.tier"))
@@ -161,8 +196,7 @@ class VariantApplyTest {
                 [variants.tier.paid.dependencies]
                 billing = { group = "com.acme", name = "billing", version = "3.0.0" }
                 """);
-        JkBuild free = VariantApply.apply(build, dir, Variants.Selection.parse("tier=free"), Map.of())
-                .build();
+        JkBuild free = VariantApply.apply(build, dir, Variants.Selection.parse("tier=free"), Map.of());
         assertThat(free.build().extraSrc()).containsExactly("src/free/java");
         assertThat(free.dependencies().of(Scope.MAIN)).extracting(d -> d.name()).containsExactly("shared", "ads");
 
@@ -198,8 +232,7 @@ class VariantApplyTest {
     void selection_naming_an_undeclared_dimension_is_ignored(@TempDir Path dir) throws Exception {
         // Workspace-wide selections: a module without the dimension applies only what it declares.
         JkBuild build = parse(dir, "");
-        JkBuild effective = VariantApply.apply(build, dir, Variants.Selection.parse("contentType=demo"), Map.of())
-                .build();
+        JkBuild effective = VariantApply.apply(build, dir, Variants.Selection.parse("contentType=demo"), Map.of());
         PluginConfig config = effective.pluginConfig("android").orElseThrow();
         assertThat(config.values()).doesNotContainKey("variant.contentType");
         assertThat(config.string("build-type")).isEqualTo("debug");

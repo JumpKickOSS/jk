@@ -47,6 +47,10 @@ import org.jspecify.annotations.Nullable;
  *     files a spec's references reach): in the step's key, never on its command line
  * @param env variables laid on the forked tool's environment, never on its command line: a
  *     password the tool reads there rather than from an argument other users of the host can see
+ * @param secretEnv variable name to the plugin's secret key ({@code secret = true} in its schema)
+ *     whose value is laid on the tool's environment beside {@code env}: a password that stays out
+ *     of the config, its token and the plan; a secret the module does not set leaves its variable
+ *     unset
  */
 public record GeneratorEntry(
         String name,
@@ -62,7 +66,8 @@ public record GeneratorEntry(
         List<String> discard,
         @Nullable KeyProbe keyProbe,
         List<String> reads,
-        Map<String, String> env) {
+        Map<String, String> env,
+        Map<String, String> secretEnv) {
 
     /** Where a generator's output joins the module. */
     public enum Contribution {
@@ -94,6 +99,7 @@ public record GeneratorEntry(
         discard = List.copyOf(discard);
         reads = List.copyOf(reads);
         env = Map.copyOf(env);
+        secretEnv = Map.copyOf(secretEnv);
         if (inputs.isEmpty() && unpack == null && keyProbe == null) {
             throw new IllegalArgumentException("[generate." + name + "] declares no inputs; set inputs or unpack");
         }
@@ -140,6 +146,7 @@ public record GeneratorEntry(
                 discard,
                 keyProbe,
                 List.of(),
+                Map.of(),
                 Map.of());
     }
 
@@ -172,6 +179,7 @@ public record GeneratorEntry(
                 discard,
                 keyProbe,
                 reads,
+                Map.of(),
                 Map.of());
     }
 
@@ -194,7 +202,8 @@ public record GeneratorEntry(
                 (List<String>) values.getOrDefault("discard", List.of()),
                 null,
                 List.of(),
-                (Map<String, String>) values.getOrDefault("env", Map.of()));
+                (Map<String, String>) values.getOrDefault("env", Map.of()),
+                Map.of());
     }
 
     /** The step's name on the plan: {@code generate-<name>}, the name a manifest's {@code for-step} uses. */

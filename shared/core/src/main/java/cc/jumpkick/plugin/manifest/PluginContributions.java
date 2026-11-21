@@ -909,7 +909,7 @@ public final class PluginContributions {
             if (values == null) values = new LinkedHashMap<>(config.values());
             values.put(key, version);
         }
-        return values == null ? config : new PluginConfig(config.id(), values);
+        return values == null ? config : new PluginConfig(config.id(), values, config.secrets());
     }
 
     /** The {@code key} of a segment that is exactly {@code ${config.<key>}}, else null. */

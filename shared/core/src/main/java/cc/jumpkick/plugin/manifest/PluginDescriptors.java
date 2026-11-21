@@ -169,6 +169,10 @@ public final class PluginDescriptors {
             List<String> oneOf = stringList(spec, "one-of", where + "." + key);
             String minVersion = spec.getString("min-version");
             ManifestDefaults.checkStringConstraints(where + "." + key, type, defaultValue, oneOf, minVersion);
+            boolean secret = Boolean.TRUE.equals(spec.getBoolean("secret"));
+            if (secret && type != PluginDescriptor.SchemaKey.Type.STRING) {
+                throw new JkBuildParseException(where + "." + key + ": secret = true needs type = \"string\"");
+            }
             schema.put(
                     key,
                     new PluginDescriptor.SchemaKey(
@@ -178,7 +182,7 @@ public final class PluginDescriptors {
                             defaultValue,
                             spec.getString("example"),
                             spec.getString("hint"),
-                            Boolean.TRUE.equals(spec.getBoolean("secret")),
+                            secret,
                             Boolean.TRUE.equals(spec.getBoolean("inherit")),
                             oneOf,
                             minVersion));

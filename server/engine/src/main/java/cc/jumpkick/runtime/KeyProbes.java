@@ -37,7 +37,8 @@ final class KeyProbes {
     /**
      * {@code probe:<sha256>} for {@code probe} run on {@code javaHome} with {@code pluginJar} and the
      * closures it names from {@code tools} on the classpath, in {@code cwd}, under exactly {@code
-     * environment} with the probe's own variables laid on top.
+     * environment} with each variable of {@link KeyProbe#secretEnv} laid on top as the plugin's
+     * {@code secrets} answer it.
      */
     static String token(
             KeyProbe probe,
@@ -45,7 +46,8 @@ final class KeyProbes {
             Path pluginJar,
             Map<String, Path> tools,
             Path cwd,
-            Map<String, String> environment)
+            Map<String, String> environment,
+            Map<String, String> secrets)
             throws IOException, InterruptedException {
         List<Path> classpath = new ArrayList<>();
         classpath.add(pluginJar);
@@ -62,7 +64,10 @@ final class KeyProbes {
         command.addAll(probe.args());
         ProcessBuilder pb = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true);
         ChildEnv.replace(pb, environment);
-        ChildEnv.putAll(pb, probe.env());
+        for (Map.Entry<String, String> variable : probe.secretEnv().entrySet()) {
+            String value = secrets.get(variable.getValue());
+            if (value != null) ChildEnv.put(pb, variable.getKey(), value);
+        }
         Process process = Forks.start(pb);
         List<String> output = new ArrayList<>();
         try (BufferedReader reader =

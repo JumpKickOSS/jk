@@ -15,14 +15,33 @@ import java.util.Optional;
  * <p>The worker SPI keeps a same-shape {@code cc.jumpkick.plugin.PluginConfig} for forked
  * plugins (JDK 17). This type is the front-end/engine model so {@code :jk-api} does not
  * depend on {@code :plugin-sdk}.
+ *
+ * @param secrets the resolved values of the schema's {@code secret = true} keys, by key ({@code
+ *     signing.store-password} for one in a named group): never in {@link #values}, so never in a
+ *     describe request, a config token or {@link #toString}; a step or packager of this plugin alone
+ *     receives them
  */
-public record PluginConfig(String id, Map<String, Object> values) {
+public record PluginConfig(String id, Map<String, Object> values, Map<String, String> secrets) {
 
     public PluginConfig {
         Objects.requireNonNull(id, "id");
         values = values == null || values.isEmpty()
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(values));
+        secrets = secrets == null || secrets.isEmpty()
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(secrets));
+    }
+
+    /** A config with no secrets. */
+    public PluginConfig(String id, Map<String, Object> values) {
+        this(id, values, Map.of());
+    }
+
+    /** The id and values; a secret shows by its key alone. */
+    @Override
+    public String toString() {
+        return "PluginConfig[id=" + id + ", values=" + values + ", secrets=" + secrets.keySet() + "]";
     }
 
     /** A required-by-schema string — the schema guarantees presence, so absent is a bug. */

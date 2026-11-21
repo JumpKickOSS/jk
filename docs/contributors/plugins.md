@@ -132,7 +132,14 @@ aot     = { type = "bool" }   # no default = tri-state
 
 A string key may carry `one-of = ["libs", "jar"]`, the only values it accepts, and `min-version =
 "27"`, the oldest release its value may name: a selector anchored below it (`4.3.0`, `^4`) is
-refused at parse naming the key and the `example`; `latest` passes. `[plugin] min-java` refuses a
+refused at parse naming the key and the `example`; `latest` passes. A string key marked `secret =
+true` (a password, a signing credential) is the plugin's secret: the user writes it as is or as
+`env:NAME`, which resolves through the caller's shell and the module's `.env`, and the engine moves
+it off the config before anything reads it, so it is in no describe request, config token or log
+line. A step reads it with `TaskExec.secret(key)` and a packager with `PackageIo.secret(key)` (a key
+in a named group is `<group>.<key>`, `signing.store-password`); no other plugin receives it, and it
+keys no step (a packager takes it sealed, since a signing credential is part of what it writes).
+`[plugin] min-java` refuses a
 module that declares the table and builds for a lower `java` (or names none), once workspace
 inheritance has made its level concrete, with the line that fixes it.
 
@@ -549,10 +556,11 @@ after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SP
   carries. The body asks exactly these and never names Central itself. The action key carries the
   declared set, not the routing; a body that did not declare the input reads an empty list.
 - **Key probes** — an input no file holds (a live database schema) is `TaskSpec.keyProbe(new
-  KeyProbe(main, tools, args, env))`: before the lookup the engine runs `java <main> <args>` on the
-  build's JDK with the plugin's jar and the named step-dependency closures on the classpath, under
-  the module's worker environment with `env` (a password) laid on top, and the SHA-256 of the last
-  line it prints joins the action key. A non-zero exit fails the step with
+  KeyProbe(main, tools, args, secretEnv))`: before the lookup the engine runs `java <main> <args>`
+  on the build's JDK with the plugin's jar and the named step-dependency closures on the classpath,
+  under the module's worker environment with each `secretEnv` variable set to the plugin secret it
+  names (a password; the describe reply carries the names only), and the SHA-256 of the last line
+  it prints joins the action key. A non-zero exit fails the step with
   the probe's output. It runs on every build that reaches the step and never in a forecast, which
   says the input is probed when the step runs. The jOOQ preset's live schema is the one user.
 - **Diagnostics** — a body reports a located finding with `TaskExec.diagnostic(severity, file,
@@ -662,8 +670,9 @@ contributes = "sources"                                      # sources | resourc
   schema); such an entry runs even when its inputs match no file. Unchanged inputs restore
   `${out}`; the step shows in `jk explain` and the results Deliverables table like any other.
 - **Isolation**: `java -cp <tool> <main> <args>` forks on the build JDK with `${out}` as its
-  working directory and the entry's `env` (`GeneratorEntry.env`, a `[generate.x] env` table or a
-  preset's secret such as the jOOQ password) laid on its environment, never on its command line. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
+  working directory and the entry's `env` (`GeneratorEntry.env`, a `[generate.x] env` table) and
+  `secretEnv` (`GeneratorEntry.secretEnv`, a preset's secret by key, such as the jOOQ password,
+  read with `TaskExec.secret`) laid on its environment, never on its command line. `${in}` expands to the first input, `${inputs}` to all, `${module.dir}` to
   the module root.
 - **Diagnostics**: the tool's output is captured; lines matching `path:line[:col]: message` go
   through `TaskExec.diagnostic` (an error when the tool failed or said so, else a warning), the

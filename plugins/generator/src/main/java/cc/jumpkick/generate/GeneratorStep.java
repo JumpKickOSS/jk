@@ -9,7 +9,9 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.jar.JarFile;
@@ -66,9 +68,12 @@ final class GeneratorStep {
                 entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir(), exec::requireExtra));
         exec.label(entry.name() + " (" + describe(inputs, entry) + ")");
 
+        Map<String, String> env = new LinkedHashMap<>(entry.env());
+        for (Map.Entry<String, String> variable : entry.secretEnv().entrySet()) {
+            exec.secret(variable.getValue()).ifPresent(value -> env.put(variable.getKey(), value));
+        }
         List<String> output = new ArrayList<>();
-        int exit = exec.java().classpath(classpath).mainClass(main).args(args).env(entry.env()).cwd(out).stream(
-                output::add);
+        int exit = exec.java().classpath(classpath).mainClass(main).args(args).env(env).cwd(out).stream(output::add);
         for (String line : output) {
             ToolDiagnostics.parse(line)
                     .ifPresent(d -> exec.diagnostic(

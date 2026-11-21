@@ -59,8 +59,7 @@ public final class PluginCommands {
             if (!project.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(dir, cache)) {
                 project = JkBuildParser.reparse(buildFile);
             }
-            project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
-                    .build();
+            project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv);
             BuildLayout layout = BuildLayout.of(dir, project);
             ActivePlugins.Declared plugins = ActivePlugins.declared(project, dir, cache, layout.moduleTargetDir());
             if (plugins == null) return PluginCommandReport.notFound();

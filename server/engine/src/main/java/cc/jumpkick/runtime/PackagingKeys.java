@@ -320,7 +320,6 @@ public final class PackagingKeys {
             Path javaHome,
             @Nullable ActivePlugin active,
             PluginDeclarations decls,
-            Map<String, String> secrets,
             /** Credential lookup for the routed repositories: the request's shell, then the engine's own. */
             Function<String, @Nullable String> env) {}
 
@@ -402,13 +401,14 @@ public final class PackagingKeys {
                         SiblingFiles.forInputs(packager.inputs(), p.moduleDir(), p.project(), active.manifest()),
                         repositories)));
         tokens.addAll(PlannerPlugin.toolTokens(tools, extras, sdkPins));
-        if (!p.secrets().isEmpty()) {
+        Map<String, String> secrets = active.config().secrets();
+        if (!secrets.isEmpty()) {
             // A changed signing credential re-signs (the signature is part of the artifact). The
-            // secrets come from the variant's env: indirection or the manifest's secret keys, and
-            // enter sealed as a credential (EnvKeyText): never a digest a guess could be checked
-            // against, shared only under the cache key seed.
+            // secrets are the packager plugin's secret keys, and enter sealed as a credential
+            // (EnvKeyText): never a digest a guess could be checked against, shared only under the
+            // cache key seed.
             StringBuilder sb = new StringBuilder();
-            for (var e : new TreeMap<>(p.secrets()).entrySet()) {
+            for (var e : new TreeMap<>(secrets).entrySet()) {
                 sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
             }
             tokens.add("secrets:" + EnvKeyText.sealer().seal(sb.toString(), true));
@@ -556,10 +556,8 @@ public final class PackagingKeys {
      * anything is missing the answer is RUN with the reason, which is pessimistic and therefore
      * safe — the failure mode this replaces was a confident forecast of a different step.
      *
-     * <p>Two inputs the forecast cannot know are deliberately absent, and both fail that way:
-     * CLI-supplied signing secrets ({@code jk assemble --secret}), which the build folds into
-     * {@code secrets:}, and a transform step's re-pointed classes dir. Either makes the key miss
-     * and the module forecast RUN — never a hit against the wrong bytes.
+     * <p>A transform step's re-pointed classes dir is an input the forecast cannot know; it makes
+     * the key miss and the module forecast RUN — never a hit against the wrong bytes.
      */
     static TaskForecast.Task pluginPackagerStep(
             JkBuild project,
@@ -590,7 +588,6 @@ public final class PackagingKeys {
                             javaHome,
                             packagerPlugin,
                             owner.decls(),
-                            Map.of(), // secrets: absent — see the javadoc
                             BuildEnv.ambient()))
                     .keyed();
             if (ForecastSteps.present(actionCache, keyed.key())) {

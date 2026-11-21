@@ -79,9 +79,9 @@ public interface PackageIo {
     List<RepositoryRoute> repositories();
 
     /**
-     * A resolved secret value (signing credentials — {@code env:}-indirected config the engine
-     * resolved and diverted off the flat config so it never reaches describe payloads, tokens, or
-     * logs). Package specs only. NEVER echo a secret into labels or errors.
+     * The resolved value of the plugin's secret key {@code key} (signing credentials: {@code
+     * signing.<key>}), diverted off the config so it never reaches describe payloads, the config
+     * token or logs; empty when the module sets none. NEVER echo a secret into labels or errors.
      */
     default Optional<String> secret(String key) {
         return Optional.empty();

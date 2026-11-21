@@ -29,7 +29,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -219,7 +218,6 @@ class ThirdPartyPackagerForecastTest {
                         TaskForecaster.forecastJavaHome(proj, project, LockfileReader.read(lockFile)),
                         requireNonNull(plannedOwner.packager()),
                         plannedOwner.decls(),
-                        Map.of(),
                         BuildEnv.ambient()))
                 .keyed();
         Files.createDirectories(requireNonNull(artifact.getParent()));

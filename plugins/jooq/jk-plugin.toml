@@ -28,7 +28,7 @@ fluent-setters = { type = "bool", default = false, hint = "setters return this" 
 properties = { type = "string-map", default = {}, hint = "further DDLDatabase properties (parseIgnoreComments, logExecutedQueries, …)" }
 jdbc-url  = { type = "string", example = "jdbc:postgresql://localhost:5432/app", hint = "generate from a live database instead of the scripts: the URL; each build digests the schema over JDBC into the step's key, so a schema change regenerates and no sql file is required" }
 jdbc-user = { type = "string" }
-jdbc-password = { type = "string" }
+jdbc-password = { type = "string", secret = true, example = "env:DB_PASSWORD", hint = "the password, best as env:NAME so it stays out of jk.toml; a secret, so it never keys the step or reaches its command line" }
 driver    = { type = "string", default = "com.h2database:h2:2.5.250", example = "org.postgresql:postgresql:42.7.9", hint = "the JDBC driver on the generator's classpath; H2 serves the scripts, a live database needs its own" }
 version   = { type = "string", default = "3.21.9", example = "3.21.9", hint = "the jOOQ release; a bare version is exact, and the module's jooq dependency is expected to match" }
 

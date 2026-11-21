@@ -15,8 +15,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A step with a key probe names it on its describe line — main, closures and arguments — and a step
- * without one names none, so the engine measures only what a plugin asked it to.
+ * A step with a key probe names it on its describe line — main, closures, arguments and the secret
+ * keys its variables carry, never a value — and a step without one names none, so the engine
+ * measures only what a plugin asked it to.
  */
 class KeyProbeDeclarationTest {
 
@@ -25,7 +26,7 @@ class KeyProbeDeclarationTest {
                 .inputs(In.config())
                 .outputs("out")
                 .keyProbe(new KeyProbe(
-                        "com.acme.Digest", List.of("driver"), List.of("--url", "jdbc:x"), Map.of("PW", "pw")))
+                        "com.acme.Digest", List.of("driver"), List.of("--url", "jdbc:x"), Map.of("PW", "db-password")))
                 .run(exec -> {}));
         ctx.task(TaskSpec.named("files").inputs(In.config()).outputs("out").run(exec -> {}));
     };
@@ -51,7 +52,7 @@ class KeyProbeDeclarationTest {
                         && l.contains("\"probeMain\":\"com.acme.Digest\"")
                         && l.contains("\"probeTools\":[\"driver\"]")
                         && l.contains("\"probeArgs\":[\"--url\",\"jdbc:x\"]")
-                        && l.contains("\"probeEnv\":{\"PW\":\"pw\"}"))
+                        && l.contains("\"probeSecretEnv\":{\"PW\":\"db-password\"}"))
                 .anyMatch(l -> l.contains("\"name\":\"files\"") && !l.contains("probeMain"));
     }
 }

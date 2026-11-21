@@ -149,6 +149,40 @@ class GeneratorStepTest {
         assertThat(Files.readString(out.resolve("argv.txt"))).doesNotContain("s3cret");
     }
 
+    /**
+     * An entry's {@code secretEnv} lays the plugin's secret on the tool's environment, off its
+     * command line, and a secret the module does not set leaves its variable unset.
+     */
+    @Test
+    void a_secret_reaches_the_tool_by_the_key_the_entry_names(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = new FakeBuildIo(tmp, "generate");
+        FakeBuildIo.write(tmp.resolve("api/a.yaml"), "a");
+        io.extra("api", stubJar(tmp.resolve("tools/stub-gen-1.0.jar"), StubTool.class.getName()));
+        io.secret("db-password", "s3cret");
+        GeneratorEntry entry = new GeneratorEntry(
+                "api",
+                "api",
+                "com.example:stub-gen:1.0",
+                null,
+                List.of("api/a.yaml"),
+                null,
+                List.of("-i", "${in}", "-o", "${out}", "--env", "DB_PASSWORD"),
+                GeneratorEntry.Contribution.SOURCES,
+                "generated/api",
+                List.of(),
+                List.of(),
+                null,
+                List.of(),
+                Map.of(),
+                Map.of("DB_PASSWORD", "db-password"));
+
+        GeneratorStep.run(io, entry);
+
+        Path out = tmp.resolve("scratch/generated/api");
+        assertThat(out.resolve("env.txt")).hasContent("s3cret");
+        assertThat(Files.readString(out.resolve("argv.txt"))).doesNotContain("s3cret");
+    }
+
     @Test
     void a_jar_without_a_main_class_asks_for_main(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = new FakeBuildIo(tmp, "generate");

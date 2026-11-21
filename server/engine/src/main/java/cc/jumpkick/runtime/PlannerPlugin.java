@@ -245,8 +245,8 @@ public final class PlannerPlugin {
      * The step's spec file: the op and config, the project facts, the layout, the JDK, the runtime
      * closure and the compile classpath each under its role, every production entry, the tool
      * artifacts by name, the scratch of every step this one chains from and the directories of
-     * every dependency sibling a {@code sibling:<key>} input names, and the routed remote
-     * repositories when the step declared them.
+     * every dependency sibling a {@code sibling:<key>} input names, the plugin's secrets, and the
+     * routed remote repositories when the step declared them.
      */
     private static Path writeStepSpec(
             TaskDecl step,
@@ -280,6 +280,7 @@ public final class PlannerPlugin {
             specWriter.extra(tool.getKey(), tool.getValue());
         }
         writeChainedInputs(specWriter, step, paths.layout(), src.siblingFiles());
+        for (var secret : active.config().secrets().entrySet()) specWriter.secret(secret.getKey(), secret.getValue());
         for (RepositoryRoute route : src.repositories().forHandOff()) specWriter.repository(route);
         return specWriter.writeTempSpec();
     }
@@ -654,7 +655,15 @@ public final class PlannerPlugin {
         // outputs produced by the old code.
         Path workerJar = PluginBuild.workerJarFor(active, in.cache());
         tokens.add("worker:" + ClasspathFingerprint.entry(workerJar));
-        probeToken(ctx, step, javaHome, workerJar, toolExtras, in).ifPresent(tokens::add);
+        probeToken(
+                        ctx,
+                        step,
+                        javaHome,
+                        workerJar,
+                        toolExtras,
+                        in,
+                        active.config().secrets())
+                .ifPresent(tokens::add);
         String taskId = ActionKey.qualifiedTaskId("plugin-" + step.name(), scratch);
         String actionKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
         return new StepKey(taskId, actionKey, facts, sources, stepTools);
@@ -788,7 +797,7 @@ public final class PlannerPlugin {
 
     /**
      * The key token of an input no file holds (a live schema), measured before the lookup under the
-     * module's worker environment; empty without a probe.
+     * module's worker environment and the plugin's {@code secrets}; empty without a probe.
      */
     private static Optional<String> probeToken(
             TaskContext ctx,
@@ -796,7 +805,8 @@ public final class PlannerPlugin {
             Path javaHome,
             Path workerJar,
             Map<String, Path> tools,
-            BuildPlanner.Inputs in)
+            BuildPlanner.Inputs in,
+            Map<String, String> secrets)
             throws IOException, InterruptedException {
         KeyProbe probe = step.keyProbe();
         if (probe == null) return Optional.empty();
@@ -808,7 +818,8 @@ public final class PlannerPlugin {
                     workerJar,
                     tools,
                     in.dir(),
-                    workerEnv(ctx, in).environment()));
+                    workerEnv(ctx, in).environment(),
+                    secrets));
         } catch (IOException e) {
             ctx.error(step.name(), Errors.text(e));
             throw e;
@@ -914,8 +925,7 @@ public final class PlannerPlugin {
             Path classes,
             Path jarPath,
             @Nullable ActivePlugin declaredActive,
-            PluginDeclarations decls,
-            Map<String, String> secrets)
+            PluginDeclarations decls)
             throws Exception {
         // A plugin packager runs because this plugin declared one.
         ActivePlugin active = Objects.requireNonNull(declaredActive, "active plugin");
@@ -940,7 +950,6 @@ public final class PlannerPlugin {
                 ctx.require(JAVA_HOME),
                 active,
                 decls,
-                secrets,
                 in.env()));
         ProjectFacts facts = packaging.facts();
         List<PluginBuild.ProdEntry> entries = packaging.entries();
@@ -975,7 +984,7 @@ public final class PlannerPlugin {
             spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container(), e.group(), e.artifact(), e.version());
         }
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
-        for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
+        for (var e : active.config().secrets().entrySet()) spec.secret(e.getKey(), e.getValue());
         for (RepositoryRoute route : packaging.repositories().forHandOff()) spec.repository(route);
         spec.extra("sbom", sbomFile);
         for (TaskDecl step : decls.steps()) {

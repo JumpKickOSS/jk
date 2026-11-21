@@ -82,7 +82,6 @@ final class PackageSteps {
     Task packageJar(
             @Nullable ActivePlugin pluginActive,
             @Nullable PluginDeclarations pluginDecls,
-            Map<String, String> variantSecrets,
             boolean multiRelease,
             boolean nodeStage) {
         boolean javaStamp =
@@ -110,17 +109,7 @@ final class PackageSteps {
                         ActivePlugin owner = Objects.requireNonNull(pluginActive, "packager plugin");
                         jarPath = ActivePlugins.mainArtifactPath(layout, owner);
                         Files.createDirectories(jarPath.getParent());
-                        packagePlugin(
-                                ctx,
-                                in,
-                                cas,
-                                tools,
-                                project,
-                                classes,
-                                jarPath,
-                                pluginActive,
-                                pluginDecls,
-                                variantSecrets);
+                        packagePlugin(ctx, in, cas, tools, project, classes, jarPath, pluginActive, pluginDecls);
                         return;
                     }
                     // Plain/assembly packaging merges plugin contributesClasses (Micronaut AOT, …);

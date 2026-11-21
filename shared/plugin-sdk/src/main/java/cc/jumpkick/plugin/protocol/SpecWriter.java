@@ -377,7 +377,10 @@ public final class SpecWriter {
         return this;
     }
 
-    /** A resolved secret — package/publish specs only; never echoed by plugins. */
+    /**
+     * A resolved secret of the plugin's: written to its step, packager and publish specs, never to a
+     * describe; never echoed by plugins.
+     */
     public SpecWriter secret(String key, String value) {
         lines.add("{\"t\":\"secret\",\"key\":" + Jsonl.quote(key) + ",\"value\":" + Jsonl.quote(value) + "}");
         return this;

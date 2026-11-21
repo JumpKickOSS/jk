@@ -20,7 +20,6 @@ import cc.jumpkick.task.ActionCache;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
@@ -43,7 +42,6 @@ final class CorePlan {
     private ModuleShape shape = ModuleShape.UNREAD;
     private @Nullable JkBuild parsedBuild;
     private @Nullable RuntimeException manifestFailure;
-    private Map<String, String> variantSecrets = Map.of();
 
     private ActivePlugins.@Nullable Declared plugins;
     private @Nullable PluginDeclarations pluginDecls;
@@ -90,7 +88,6 @@ final class CorePlan {
             // The plan is built from the effective manifest under Inputs.session (not ambient
             // SessionContext): single-build constructs the plan outside SessionContext.where.
             EffectiveManifest effective = EffectiveManifest.read(in);
-            variantSecrets = effective.secrets();
             parsedBuild = effective.build();
             nodeKind = NodeShape.kind(parsedBuild, in.dir());
             testNode = nodeKind == NodeShape.Kind.NONE
@@ -302,7 +299,6 @@ final class CorePlan {
         Task packageJar = packaging.packageJar(
                 plugins == null ? null : plugins.packager(),
                 pluginDecls,
-                variantSecrets,
                 PlannerVersions.declared(parsedBuild),
                 nodeKind == NodeShape.Kind.SIDE_BY_SIDE && !in.testOnly());
         Task writeStamp = packaging.writeStamp();

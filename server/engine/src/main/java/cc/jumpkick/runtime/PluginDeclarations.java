@@ -74,7 +74,7 @@ public record PluginDeclarations(
                 main,
                 Jsonl.strArray(line, "probeTools"),
                 Jsonl.strArray(line, "probeArgs"),
-                Jsonl.strMap(line, "probeEnv"));
+                Jsonl.strMap(line, "probeSecretEnv"));
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

@@ -28,7 +28,8 @@ import org.jspecify.annotations.Nullable;
  * declared value; undeclared dimension selections are ignored.
  *
  * <p>Signing sub-tables flatten to {@code signing.*}; {@code env:NAME} resolves client env then
- * process env. {@code secret = true} keys go only on {@link Applied#secrets} (digests in action keys).
+ * process env. A {@code secret = true} key, top-level or in a group, is resolved the same way and
+ * moved off the values onto the plugin's own {@link PluginConfig#secrets}.
  */
 public final class VariantApply {
 
@@ -59,15 +60,12 @@ public final class VariantApply {
         }
     }
 
-    /** The variant-applied build plus the resolved secret values (package-spec side channel). */
-    public record Applied(JkBuild build, Map<String, String> secrets) {}
-
     /** As {@link #apply(JkBuild, Path, Selection, Map)} with defaults — non-build consumers. */
     public static JkBuild applyDefaults(JkBuild build, Path moduleDir) {
-        return apply(build, moduleDir, Selection.DEFAULTS, Map.of()).build();
+        return apply(build, moduleDir, Selection.DEFAULTS, Map.of());
     }
 
-    public static Applied apply(
+    public static JkBuild apply(
             JkBuild build, Path moduleDir, Selection selection, @Nullable Map<String, String> clientEnv) {
         return apply(build, moduleDir, selection, clientEnv, false);
     }
@@ -78,12 +76,12 @@ public final class VariantApply {
      * selection ({@code jk android licenses} runs pre-selection by design). Builds never use
      * this: silently building "no variant" is exactly what the mandatory check prevents.
      */
-    public static Applied applyLenient(
+    public static JkBuild applyLenient(
             JkBuild build, Path moduleDir, Selection selection, @Nullable Map<String, String> clientEnv) {
         return apply(build, moduleDir, selection, clientEnv, true);
     }
 
-    private static Applied apply(
+    private static JkBuild apply(
             JkBuild build,
             Path moduleDir,
             Selection selection,
@@ -121,13 +119,12 @@ public final class VariantApply {
 
         // Plugin folds: overlay keys onto each plugin config, inject the selected names, then
         // flatten named group references (signing) with env: resolution / secret diversion.
-        Map<String, String> secrets = new LinkedHashMap<>();
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = out.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
-            out = out.withPluginConfig(effective(manifest, config, chosen, clientEnv, moduleDir, secrets));
+            out = out.withPluginConfig(effective(manifest, config, chosen, clientEnv, moduleDir));
         }
-        return new Applied(out, secrets);
+        return out;
     }
 
     /** One resolved dimension: its name, the selected value name, and that value's overlay. */
@@ -175,9 +172,9 @@ public final class VariantApply {
             PluginConfig config,
             List<Chosen> chosen,
             @Nullable Map<String, String> clientEnv,
-            Path moduleDir,
-            Map<String, String> secrets) {
+            Path moduleDir) {
         Map<String, Object> values = new LinkedHashMap<>();
+        Map<String, String> secrets = new LinkedHashMap<>(config.secrets());
         for (Map.Entry<String, Object> e : config.values().entrySet()) {
             // Group DEFINITIONS never ride flat; a same-named string REFERENCE does.
             if (manifest.subTables().containsKey(e.getKey()) && e.getValue() instanceof Map) continue;
@@ -190,6 +187,12 @@ public final class VariantApply {
             values.put(
                     Variants.BUILD_TYPE.equals(c.dimension()) ? Variants.BUILD_TYPE : "variant." + c.dimension(),
                     c.value());
+        }
+
+        // A top-level secret, as written or as a variant overlays it, leaves the values.
+        for (PluginDescriptor.SchemaKey key : manifest.schema().values()) {
+            if (!key.secret() || !(values.remove(key.name()) instanceof String raw)) continue;
+            secrets.put(key.name(), resolveEnv(raw, clientEnv, moduleDir, manifest.table() + "." + key.name()));
         }
 
         // Named-group references (signing = "release" → [android.signing.release] flattens to
@@ -222,14 +225,13 @@ public final class VariantApply {
                 }
             }
         }
-        return new PluginConfig(config.id(), values);
+        return new PluginConfig(config.id(), values, secrets);
     }
 
     /**
      * {@code env:NAME} indirection via {@link BuildEnv} (request env + {@code .env} files).
      * An unresolvable reference fails loudly — a signing config must never silently sign with an
-     * empty credential. Values that came from {@code .env} land on the secrets side channel when
-     * the schema marks them secret, and are redacted/hashed by.
+     * empty credential.
      */
     private static String resolveEnv(
             String raw, @Nullable Map<String, String> clientEnv, Path moduleDir, String where) {

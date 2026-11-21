@@ -226,8 +226,7 @@ public final class PlannerTails {
                             mainClasses(ctx),
                             layout.minifiedJar(),
                             minifier,
-                            decls,
-                            Map.of());
+                            decls);
                     ctx.progress(1);
                 })
                 .build();

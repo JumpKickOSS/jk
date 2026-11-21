@@ -128,6 +128,15 @@ public interface TaskExec {
      */
     List<RepositoryRoute> repositories();
 
+    /**
+     * The resolved value of the plugin's secret key {@code key} ({@code secret = true} in its
+     * schema, {@code signing.<key>} in a named group); empty when the module sets none. Never in
+     * {@link #config()} or the step's key. NEVER echo a secret into labels, diagnostics or errors.
+     */
+    default Optional<String> secret(String key) {
+        return Optional.empty();
+    }
+
     /** As {@link #stepOutput} but required — a declared {@code In.stepOutput} is never absent. */
     default Path requireStepOutput(String step) {
         return stepOutput(step)

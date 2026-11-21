@@ -247,8 +247,8 @@ public final class BuildPluginHarness {
                         .append(quoteArray(probe.tools()))
                         .append(",\"probeArgs\":")
                         .append(quoteArray(probe.args()))
-                        .append(",\"probeEnv\":")
-                        .append(Jsonl.map(new TreeMap<>(probe.env())));
+                        .append(",\"probeSecretEnv\":")
+                        .append(Jsonl.map(new TreeMap<>(probe.secretEnv())));
             }
             b.append('}');
             out.emit(b.toString());
@@ -686,6 +686,11 @@ public final class BuildPluginHarness {
         @Override
         public List<RepositoryRoute> repositories() {
             return spec.repositories();
+        }
+
+        @Override
+        public Optional<String> secret(String key) {
+            return Optional.ofNullable(spec.secrets().get(key));
         }
 
         @Override

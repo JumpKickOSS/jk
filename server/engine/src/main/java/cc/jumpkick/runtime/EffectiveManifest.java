@@ -17,11 +17,9 @@ import org.jspecify.annotations.Nullable;
  * The manifest a module's plan, its step bodies and its forecast all read: the parsed {@code
  * jk.toml} with the request's packaging override ({@code --fat} / {@code -U}) and its selected
  * {@code [variants]} folded in, so describe keys, contribution predicates and step keys see one flat
- * config.
- *
- * @param secrets the resolved secret values the variant overlay named, for the package spec
+ * config. A plugin's secret keys ride its own config's {@link cc.jumpkick.model.PluginConfig#secrets}.
  */
-public record EffectiveManifest(JkBuild build, Map<String, String> secrets) {
+public record EffectiveManifest(JkBuild build) {
 
     /**
      * What selects the effective manifest beside the parsed one: the session's packaging override,
@@ -67,8 +65,7 @@ public record EffectiveManifest(JkBuild build, Map<String, String> secrets) {
     @KeyOwner(step = "*")
     static EffectiveManifest of(JkBuild parsed, Path dir, Selection selection) {
         JkBuild build = BuildPlanner.applyAssemblyOverride(parsed, selection.session());
-        var applied = VariantApply.apply(
-                build, dir, VariantApply.selection(selection.variant(), selection.session()), selection.clientEnv());
-        return new EffectiveManifest(applied.build(), applied.secrets());
+        return new EffectiveManifest(VariantApply.apply(
+                build, dir, VariantApply.selection(selection.variant(), selection.session()), selection.clientEnv()));
     }
 }

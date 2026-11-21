@@ -421,7 +421,10 @@ with no `exclude` for the generated package.
 The step is `generate-jooq`. A **live database** is opt-in: `jdbc-url` (with `jdbc-user`,
 `jdbc-password`) reads the schema over JDBC instead, jOOQ detecting the dialect from the
 connection, and `driver = "org.postgresql:postgresql:42.7.9"` puts its driver on the generator's
-classpath. The password reaches the generator through its environment, never its command line. Before the step looks itself up, every build connects through that driver and digests
+classpath. The password is a secret: write `jdbc-password = "env:DB_PASSWORD"` and it is read from
+your shell or the module's `.env` file, so it stays out of `jk.toml`. It reaches the generator
+through its environment, never its command line, is never in the step's cache key (a new password
+does not regenerate) and is written to no file under `target/`. Before the step looks itself up, every build connects through that driver and digests
 jOOQ's own DDL export of the input `schema` into the step's key: an unchanged schema is a cache
 hit and a changed one regenerates, whether or not any scripts are named — a module with no
 migrations in the tree generates from the database alone. Scripts named in `sql` still key the

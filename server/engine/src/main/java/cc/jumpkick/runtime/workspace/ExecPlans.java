@@ -111,8 +111,7 @@ public final class ExecPlans {
             @Nullable DebugJvm debug) {
         try {
             JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
-            project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv)
-                    .build();
+            project = VariantApply.applyLenient(project, dir, Variants.Selection.parse(variant), clientEnv);
             BuildLayout layout = BuildLayout.of(dir, project);
             return switch (kind == null ? "" : kind) {
                 case "run" -> runPlan(dir, cache, project, layout, false, clientEnv, debug);

@@ -62,8 +62,7 @@ class BuildPlannerTestOnlyPlanTest {
         // Mirror coreBuilder's parse: variant overlays fold into plugin configs BEFORE the
         // describe key is computed, so the seeded cache file must use the same effective build.
         JkBuild build = VariantApply.apply(
-                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
-                .build();
+                JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of());
         seedDescribeCache(
                 dir,
                 build,
@@ -104,8 +103,7 @@ class BuildPlannerTestOnlyPlanTest {
     void test_only_plan_keeps_the_source_generators_the_compiles_require() throws Exception {
         Path dir = pluginProject();
         JkBuild build = VariantApply.apply(
-                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
-                .build();
+                JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of());
         seedDescribeCache(
                 dir,
                 build,
@@ -131,8 +129,7 @@ class BuildPlannerTestOnlyPlanTest {
     void compile_only_plan_runs_the_source_generators_the_compile_reads() throws Exception {
         Path dir = pluginProject();
         JkBuild build = VariantApply.apply(
-                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
-                .build();
+                JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of());
         seedDescribeCache(
                 dir,
                 build,
@@ -160,8 +157,7 @@ class BuildPlannerTestOnlyPlanTest {
     void compile_only_plan_runs_the_classes_transform() throws Exception {
         Path dir = pluginProject();
         JkBuild build = VariantApply.apply(
-                        JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of())
-                .build();
+                JkBuildParser.reparse(dir.resolve("jk.toml")), dir, Variants.Selection.parse(""), Map.of());
         seedDescribeCache(
                 dir,
                 build,

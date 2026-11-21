@@ -75,8 +75,7 @@ class JooqPresetPlanTest {
                                 Map.entry("fluent-setters", true),
                                 Map.entry("properties", Map.of("parseIgnoreComments", "true")),
                                 Map.entry("jdbc-url", "jdbc:postgresql://localhost:5432/shop"),
-                                Map.entry("jdbc-user", "shop"),
-                                Map.entry("jdbc-password", "secret"))),
+                                Map.entry("jdbc-user", "shop"))),
                 PROJECT,
                 List.of(SHIM));
 
@@ -106,9 +105,10 @@ class JooqPresetPlanTest {
                         "--jdbc-user",
                         "shop",
                         "${inputs}");
-        assertThat(entry.env())
-                .as("the password reaches the generator through its environment, never its command line")
-                .containsExactly(Map.entry("JK_JOOQ_JDBC_PASSWORD", "secret"));
+        assertThat(entry.env()).isEmpty();
+        assertThat(entry.secretEnv())
+                .as("the password secret reaches the generator through its environment, by name in the plan")
+                .containsExactly(Map.entry("JK_JOOQ_JDBC_PASSWORD", "jdbc-password"));
         assertThat(entry.keyProbe()).as("the live schema keys the step").isNotNull();
         KeyProbe probe = Objects.requireNonNull(entry.keyProbe());
         assertThat(probe.main()).isEqualTo("cc.jumpkick.jooq.JooqMain");
@@ -122,7 +122,7 @@ class JooqPresetPlanTest {
                         "jdbc:postgresql://localhost:5432/shop",
                         "--jdbc-user",
                         "shop");
-        assertThat(probe.env()).containsExactly(Map.entry("JK_JOOQ_JDBC_PASSWORD", "secret"));
+        assertThat(probe.secretEnv()).containsExactly(Map.entry("JK_JOOQ_JDBC_PASSWORD", "jdbc-password"));
         assertThat(entry.task().keyProbe()).isEqualTo(probe);
     }
 

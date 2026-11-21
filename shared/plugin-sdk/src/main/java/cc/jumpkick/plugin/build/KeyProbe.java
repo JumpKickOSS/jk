@@ -16,16 +16,18 @@ import java.util.Objects;
  * @param main the class to run, in the plugin's jar or a named closure
  * @param tools step-dependency artifacts whose closures join the classpath
  * @param args the arguments, passed as written
- * @param env variables laid on the probe's environment, never on its command line: a password the
- *     probe connects with
+ * @param secretEnv variable name to the plugin's secret key ({@code secret = true} in its schema)
+ *     whose value the engine lays on the probe's environment, never on its command line: a password
+ *     the probe connects with. Only the names travel in the step's declaration; a secret the module
+ *     does not set leaves its variable unset
  */
-public record KeyProbe(String main, List<String> tools, List<String> args, Map<String, String> env) {
+public record KeyProbe(String main, List<String> tools, List<String> args, Map<String, String> secretEnv) {
 
     public KeyProbe {
         Objects.requireNonNull(main, "main");
         tools = List.copyOf(tools);
         args = List.copyOf(args);
-        env = Map.copyOf(env);
+        secretEnv = Map.copyOf(secretEnv);
     }
 
     /** A probe that needs nothing in its environment. */
