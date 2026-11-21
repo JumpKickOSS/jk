@@ -27,10 +27,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -46,7 +48,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Targets, sources (incl. resources), dependency modules (with sources jars when present),
  * dependency sources, output paths, scalac and javac options, compile/test/run by target URI,
- * workspace/reload, {@code $/cancelRequest}, and publishDiagnostics on compile failures. A module
+ * workspace/reload, {@code $/cancelRequest}, and publishDiagnostics after every compile. A module
  * that compiles Scala is a Scala build target ({@link BspTargetOptions}), which is how Metals
  * imports a mixed Java/Scala module. Compile, test and run queue on a worker, one at a time in
  * request order, so the stdio loop keeps reading and a {@code $/cancelRequest} reaches a running or
@@ -59,7 +61,7 @@ public final class BspServer {
 
     private final IdeEngineClient ide;
     private final InputStream in;
-    private final OutputStream out;
+    private final BspFrames frames;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "jk-bsp-worker");
         t.setDaemon(true);
@@ -69,8 +71,17 @@ public final class BspServer {
     /** Compile/test/run requests not yet answered, oldest first. Guarded by itself. */
     private final List<LongJob> jobs = new ArrayList<>();
 
-    private volatile @Nullable IdeWireModel cachedModel;
-    private volatile @Nullable ProjectInfo cachedInfo;
+    /**
+     * Guards the cached model, held across the engine call that fills it. No frame is written
+     * under it and it is never taken under the frame writer's lock, so the two cannot deadlock.
+     */
+    private final Object modelLock = new Object();
+
+    private @Nullable IdeWireModel cachedModel;
+    private @Nullable ProjectInfo cachedInfo;
+
+    /** The files each build target last published diagnostics for; read and written on the worker only. */
+    private final Map<String, Set<String>> diagnosed = new HashMap<>();
 
     /** The newer release jk updated itself to while this server ran; empty while it is current. */
     private final Supplier<Optional<String>> newerInstall;
@@ -82,7 +93,7 @@ public final class BspServer {
     BspServer(IdeEngineClient ide, InputStream in, OutputStream out, Supplier<Optional<String>> newerInstall) {
         this.ide = ide;
         this.in = new BufferedInputStream(in);
-        this.out = out;
+        this.frames = new BspFrames(out);
         this.newerInstall = newerInstall;
     }
 
@@ -115,7 +126,7 @@ public final class BspServer {
         System.err.println("jk bsp: " + reason);
         try {
             String id = requestId(MiniJson.parse(json));
-            if (id != null) error(id, -32000, reason);
+            if (id != null) frames.error(id, -32000, reason);
         } catch (RuntimeException notJson) {
             // Nothing to answer.
         }
@@ -137,29 +148,30 @@ public final class BspServer {
                 case "build/initialize" -> {
                     // Every build this server sends from here on journals as the IDE's own.
                     RequestEnvironment.declare("bsp", sessionLabel(message));
-                    respond(id, initializeResultJson(workspaceLanguages()));
+                    frames.respond(id, initializeResultJson(workspaceLanguages()));
                 }
                 case "build/initialized" -> {
                     /* notification */
                 }
-                case "workspace/buildTargets" -> respond(id, buildTargetsJson());
+                case "workspace/buildTargets" -> frames.respond(id, buildTargetsJson());
                 case "workspace/reload" -> {
                     invalidateModel();
-                    respond(id, "null");
+                    frames.respond(id, "null");
                 }
-                case "buildTarget/sources" -> respond(id, sourcesJson(json));
-                case "buildTarget/dependencyModules" -> respond(id, dependencyModulesJson(json));
-                case "buildTarget/outputPaths" -> respond(id, outputPathsJson(json));
+                case "buildTarget/sources" -> frames.respond(id, sourcesJson(json));
+                case "buildTarget/dependencyModules" -> frames.respond(id, dependencyModulesJson(json));
+                case "buildTarget/outputPaths" -> frames.respond(id, outputPathsJson(json));
                 case "buildTarget/scalacOptions" ->
-                    respond(id, perTargetItems(json, BspTargetOptions::scalacOptionsItem));
+                    frames.respond(id, perTargetItems(json, BspTargetOptions::scalacOptionsItem));
                 case "buildTarget/javacOptions" ->
-                    respond(id, perTargetItems(json, BspTargetOptions::javacOptionsItem));
+                    frames.respond(id, perTargetItems(json, BspTargetOptions::javacOptionsItem));
                 case "buildTarget/dependencySources" ->
-                    respond(id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.dependencySourcesItem(tid, m)));
+                    frames.respond(
+                            id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.dependencySourcesItem(tid, m)));
                 case "buildTarget/scalaMainClasses" ->
-                    respond(id, perTargetItems(json, BspTargetOptions::scalaMainClassesItem));
+                    frames.respond(id, perTargetItems(json, BspTargetOptions::scalaMainClassesItem));
                 case "buildTarget/scalaTestClasses" ->
-                    respond(id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.scalaTestClassesItem(tid)));
+                    frames.respond(id, perTargetItems(json, (tid, m, i) -> BspTargetOptions.scalaTestClassesItem(tid)));
                 case "buildTarget/compile" -> scheduleLong(id, json, "compile");
                 case "buildTarget/test" -> scheduleLong(id, json, "test");
                 case "buildTarget/run" -> scheduleLong(id, json, "run");
@@ -167,14 +179,14 @@ public final class BspServer {
                 case "build/shutdown" -> {
                     awaitJobs();
                     worker.shutdownNow();
-                    respond(id, "null");
+                    frames.respond(id, "null");
                 }
                 case "build/exit" -> {
                     awaitJobs();
                     throw new IOException("bsp exit");
                 }
                 default -> {
-                    if (id != null) error(id, -32601, "Method not found: " + method);
+                    if (id != null) frames.error(id, -32601, "Method not found: " + method);
                 }
             }
         } catch (IOException e) {
@@ -184,14 +196,14 @@ public final class BspServer {
             if (id != null) {
                 String msg =
                         e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                error(id, -32000, msg);
+                frames.error(id, -32000, msg);
             }
         } catch (RuntimeException e) {
             invalidateModel();
             if (id != null) {
                 String msg =
                         e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                error(id, -32000, msg);
+                frames.error(id, -32000, msg);
             }
         }
     }
@@ -267,13 +279,13 @@ public final class BspServer {
                 started = true;
             }
             try {
-                respond(id, body.call());
+                frames.respond(id, body.call());
             } catch (Exception e) {
                 invalidateModel();
                 String msg =
                         e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 try {
-                    error(id, -32000, msg);
+                    frames.error(id, -32000, msg);
                 } catch (IOException ignored) {
                     // the stdio channel is gone; nobody is left to answer
                 }
@@ -296,7 +308,7 @@ public final class BspServer {
             } else {
                 if (future != null) future.cancel(false);
                 finish();
-                error(id, -32800, "request cancelled");
+                frames.error(id, -32800, "request cancelled");
             }
         }
 
@@ -316,21 +328,27 @@ public final class BspServer {
         }
     }
 
-    private synchronized void invalidateModel() {
-        cachedModel = null;
-        cachedInfo = null;
-        // The names the requests carry are read from these summaries; a reload re-reads jk.toml.
-        ProjectInfos.forget();
+    private void invalidateModel() {
+        synchronized (modelLock) {
+            cachedModel = null;
+            cachedInfo = null;
+            // The names the requests carry are read from these summaries; a reload re-reads jk.toml.
+            ProjectInfos.forget();
+        }
     }
 
-    private synchronized IdeWireModel model() throws IOException {
-        if (cachedModel == null) cachedModel = ide.ideModel();
-        return cachedModel;
+    private IdeWireModel model() throws IOException {
+        synchronized (modelLock) {
+            if (cachedModel == null) cachedModel = ide.ideModel();
+            return cachedModel;
+        }
     }
 
-    private synchronized ProjectInfo info() throws IOException {
-        if (cachedInfo == null) cachedInfo = ide.projectInfo();
-        return cachedInfo;
+    private ProjectInfo info() throws IOException {
+        synchronized (modelLock) {
+            if (cachedInfo == null) cachedInfo = ide.projectInfo();
+            return cachedInfo;
+        }
     }
 
     private String buildTargetsJson() throws IOException {
@@ -429,7 +447,7 @@ public final class BspServer {
                 .string("baseDirectory", baseDir)
                 .array("tags", List.of(canRun ? "application" : "library"))
                 .array("languageIds", languages.isEmpty() ? LANGUAGE_IDS : languages)
-                .array("dependencies", List.of())
+                .token("dependencies", arrayOf(dependencyIds(id, model, i)))
                 .token(
                         "capabilities",
                         JsonFields.object()
@@ -445,6 +463,21 @@ public final class BspServer {
             else if (jvm != null) target.string("dataKind", "jvm").token("data", jvm);
         }
         return target.finish();
+    }
+
+    /**
+     * The targets of the workspace modules module {@code i} depends on, main or test scope alike,
+     * as identifiers beside {@code id}: BSP's {@code dependencies} are the direct upstream targets.
+     */
+    private static List<String> dependencyIds(String id, @Nullable IdeWireModel model, int i) {
+        if (model == null) return List.of();
+        String rootUri = id.substring(0, Math.max(0, id.indexOf('#')));
+        List<String> out = new ArrayList<>();
+        for (String name : BspTargetOptions.siblingNames(model, i)) {
+            String dep = uriJson(rootUri + "#" + name);
+            if (!out.contains(dep)) out.add(dep);
+        }
+        return out;
     }
 
     /** The languages this server compiles when the workspace's own set is not known. */
@@ -570,17 +603,13 @@ public final class BspServer {
         List<String> srcs = new ArrayList<>();
         // same roots as jk ide (all TestSuites + main + resources).
         for (IdeSourceRoots.Root root : IdeSourceRoots.of(mod)) {
-            // BSP SourceItemKind: 1 = file/normal source, 2 = test (see BSP protocol).
-            int kind = root.test() ? 2 : 1;
             Path s = mod.resolve(root.relative());
-            if (Files.isDirectory(s)) {
-                srcs.add(sourceItemJson(pathUri(s), kind, false));
-            }
+            if (Files.isDirectory(s)) srcs.add(sourceItemJson(pathUri(s), false));
         }
         // Generated sources from the engine model when present.
         if (model != null) {
-            addGenRoot(srcs, model.genSrcDirs(), moduleIndex, false);
-            addGenRoot(srcs, model.genTestSrcDirs(), moduleIndex, true);
+            addGenRoot(srcs, model.genSrcDirs(), moduleIndex);
+            addGenRoot(srcs, model.genTestSrcDirs(), moduleIndex);
         }
         return JsonFields.object()
                 .token("target", uriJson(tid))
@@ -588,22 +617,24 @@ public final class BspServer {
                 .finish();
     }
 
-    private static String sourceItemJson(String uri, int kind, boolean generated) {
+    /** BSP's {@code SourceItemKind} and {@code OutputPathItemKind} for a directory; 1 is a file. */
+    static final int DIRECTORY = 2;
+
+    private static String sourceItemJson(String uri, boolean generated) {
         return JsonFields.object()
                 .string("uri", uri)
-                .number("kind", kind)
+                .number("kind", DIRECTORY)
                 .bool("generated", generated)
                 .finish();
     }
 
-    private static void addGenRoot(List<String> srcs, List<String> dirs, int index, boolean test) {
+    private static void addGenRoot(List<String> srcs, List<String> dirs, int index) {
         if (dirs == null || index < 0 || index >= dirs.size()) return;
         String d = dirs.get(index);
         if (d == null || d.isBlank()) return;
         Path p = Path.of(d);
         if (!Files.isDirectory(p)) return;
-        int kind = test ? 2 : 1;
-        srcs.add(sourceItemJson(pathUri(p), kind, true));
+        srcs.add(sourceItemJson(pathUri(p), true));
     }
 
     private String dependencyModulesJson(String requestJson) throws IOException {
@@ -711,8 +742,8 @@ public final class BspServer {
     private static String outputPathsItem(String tid, IdeWireModel model, int i) {
         List<String> outs = new ArrayList<>();
         if (model != null) {
-            addOutput(outs, model.classesDirs(), i, 1); // 1 = directory
-            addOutput(outs, model.testClassesDirs(), i, 1);
+            addOutput(outs, model.classesDirs(), i);
+            addOutput(outs, model.testClassesDirs(), i);
         }
         return JsonFields.object()
                 .token("target", uriJson(tid))
@@ -720,20 +751,20 @@ public final class BspServer {
                 .finish();
     }
 
-    private static void addOutput(List<String> outs, List<String> dirs, int index, int kind) {
+    private static void addOutput(List<String> outs, List<String> dirs, int index) {
         if (dirs == null || index < 0 || index >= dirs.size()) return;
         String d = dirs.get(index);
         if (d == null || d.isBlank()) return;
         outs.add(JsonFields.object()
                 .string("uri", pathUri(Path.of(d)))
-                .number("kind", kind)
+                .number("kind", DIRECTORY)
                 .finish());
     }
 
     private String compileJson(String requestJson, @Nullable Path moduleDir) throws IOException {
         var outcome = ide.buildModule(moduleDir, null);
-        // Unconditional: a green compile can still carry warnings the IDE should show.
-        publishDiagnostics(requestJson, outcome.errors(), outcome.warnings());
+        // Unconditional: a green compile can carry warnings, and clears what the last one reported.
+        publishDiagnostics(requestJson, moduleDir, outcome.errors(), outcome.warnings());
         return statusResult(outcome, "compile failed");
     }
 
@@ -797,7 +828,7 @@ public final class BspServer {
         JsonFields params = JsonFields.object().number("type", type);
         if (originId != null) params.string("originId", originId);
         try {
-            notify("build/logMessage", params.string("message", message).finish());
+            frames.notify("build/logMessage", params.string("message", message).finish());
         } catch (IOException clientGone) {
             // The editor hung up mid-run; keep draining so the app can finish.
         }
@@ -814,27 +845,30 @@ public final class BspServer {
     }
 
     /**
-     * Parsed with {@link CompilerLocus} — the one header vocabulary the CLI, MCP, journal and
-     * engine already share. A private pattern here misplaced every multi-line javac block,
-     * groovyc's spaced header, and any Windows path to project root line 0.
+     * Each file's diagnostics for the compiled target, parsed with {@link CompilerLocus}, the one
+     * header vocabulary the CLI, MCP, journal and engine share. Every notification replaces what
+     * the client held for that file and target ({@code reset}), and a file this target diagnosed
+     * last time that has nothing now is sent an empty list, which clears it.
      */
-    private void publishDiagnostics(String requestJson, List<String> errors, List<String> warnings) throws IOException {
-        boolean noErrors = errors == null || errors.isEmpty();
-        boolean noWarnings = warnings == null || warnings.isEmpty();
-        if (noErrors && noWarnings) return;
+    private void publishDiagnostics(
+            String requestJson, @Nullable Path moduleDir, List<String> errors, List<String> warnings)
+            throws IOException {
         List<String> uris = extractTargetUris(requestJson);
         String targetUri = uris.isEmpty() ? pathUri(ide.projectDir()) + "#root" : uris.getFirst();
-        // Group diagnostics by file URI.
         Map<String, List<String>> byFile = new LinkedHashMap<>();
-        BspDiagnostics.collectDiagnostics(byFile, errors, 1, ide.projectDir());
-        BspDiagnostics.collectDiagnostics(byFile, warnings, 2, ide.projectDir());
+        BspDiagnostics.collectDiagnostics(byFile, errors, 1, moduleDir, ide.projectDir());
+        BspDiagnostics.collectDiagnostics(byFile, warnings, 2, moduleDir, ide.projectDir());
+        Set<String> now = Set.copyOf(byFile.keySet());
+        for (String fixed : diagnosed.getOrDefault(targetUri, Set.of())) byFile.putIfAbsent(fixed, List.of());
+        diagnosed.put(targetUri, now);
         for (Map.Entry<String, List<String>> e : byFile.entrySet()) {
-            notify(
+            frames.notify(
                     "build/publishDiagnostics",
                     JsonFields.object()
                             .token("textDocument", uriJson(e.getKey()))
                             .token("buildTarget", uriJson(targetUri))
                             .token("diagnostics", arrayOf(e.getValue()))
+                            .bool("reset", true)
                             .finish());
         }
     }
@@ -923,44 +957,6 @@ public final class BspServer {
         } catch (RuntimeException e) {
             return List.of();
         }
-    }
-
-    private synchronized void respond(@Nullable String id, String resultJson) throws IOException {
-        if (id == null) return;
-        writeMessage(JsonFields.object()
-                .string("jsonrpc", "2.0")
-                .token("id", id)
-                .token("result", resultJson)
-                .finish());
-    }
-
-    private synchronized void notify(String method, String paramsJson) throws IOException {
-        writeMessage(JsonFields.object()
-                .string("jsonrpc", "2.0")
-                .string("method", method)
-                .token("params", paramsJson)
-                .finish());
-    }
-
-    private synchronized void error(String id, int code, String message) throws IOException {
-        writeMessage(JsonFields.object()
-                .string("jsonrpc", "2.0")
-                .token("id", id)
-                .token(
-                        "error",
-                        JsonFields.object()
-                                .number("code", code)
-                                .string("message", message)
-                                .finish())
-                .finish());
-    }
-
-    /** One frame: ASCII headers, a blank line, then the body whose byte count the header carries. */
-    private void writeMessage(String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        out.write(("Content-Length: " + bytes.length + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
-        out.write(bytes);
-        out.flush();
     }
 
     /** Largest frame body accepted; a client announcing more is refused rather than buffered. */

@@ -89,6 +89,9 @@ public final class JkManifestWatcher implements Disposable {
         });
     }
 
+    /** A sync still waiting for its quiet window would run against a project that is closing. */
     @Override
-    public void dispose() {}
+    public void dispose() {
+        debouncer.close();
+    }
 }

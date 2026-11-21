@@ -115,6 +115,37 @@ test("a stopped engine leaves the session offline, and no engine is started for 
   assert.ok(states.some((st) => st.kind === "live"));
 });
 
+test("Reconnect supersedes an attempt still asking jk, which then hands its caller the new connection", { timeout: 5000 }, async () => {
+  let release = (): void => undefined;
+  let calls = 0;
+  const found = { url: engine.url, token: engine.token, engineId: engine.identity.id };
+  const s2 = new EngineSession({
+    discover: async () => {
+      calls++;
+      if (calls === 1) {
+        await new Promise<void>((r) => {
+          release = () => r();
+        });
+      }
+      return found;
+    },
+    retryMs: 20,
+    retryCapMs: 50,
+    refusedGiveUpMs: 300,
+  });
+  session = s2;
+  const hung = s2.connect();
+  await until("the first attempt is asking jk", () => calls === 1);
+  const api = await s2.reconnect();
+  assert.equal(calls, 2, "Reconnect asked jk again");
+  assert.equal(s2.state.kind, "live");
+  release();
+  assert.equal(await hung, api, "the superseded attempt resolves with the live connection");
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(s2.state.kind, "live");
+  assert.equal(engine.streamCount, 1, "the superseded attempt opened no stream of its own");
+});
+
 test("an engine at the address that is not the one jk named is refused", async () => {
   const { s } = open(() => ({ url: engine.url, token: engine.token, engineId: "someone-else" }));
   await assert.rejects(s.connect(), /another engine answers/);

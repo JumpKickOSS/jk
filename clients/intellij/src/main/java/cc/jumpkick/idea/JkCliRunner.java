@@ -27,6 +27,9 @@ public final class JkCliRunner {
 
     private static final Logger LOG = Logger.getInstance(JkCliRunner.class);
 
+    /** How long a cancelled run waits for the killed process's output to drain, in milliseconds. */
+    private static final long CANCEL_DRAIN_MS = 2_000;
+
     public record Result(int exitCode, String stdout, String stderr) {
         public boolean ok() {
             return exitCode == 0;
@@ -85,6 +88,8 @@ public final class JkCliRunner {
         cmd.withEnvironment("NO_COLOR", "1");
 
         OSProcessHandler handler = new OSProcessHandler(cmd);
+        // Each stream's reader thread appends to its own buffer; a cancelled run reads them while
+        // the readers may still be draining, so every access holds the buffer's lock.
         StringBuilder out = new StringBuilder();
         StringBuilder err = new StringBuilder();
         handler.addProcessListener(new ProcessListener() {
@@ -93,7 +98,10 @@ public final class JkCliRunner {
                 String text = event.getText();
                 if (text == null) return;
                 boolean stderr = JkCliLines.isStderr(String.valueOf(outputType));
-                JkCliLines.append(stderr ? err : out, text, capped);
+                StringBuilder transcript = stderr ? err : out;
+                synchronized (transcript) {
+                    JkCliLines.append(transcript, text, capped);
+                }
                 Consumer<String> sink = stderr ? errSink : outSink;
                 if (sink != null) {
                     String line = text.stripTrailing();
@@ -111,7 +119,9 @@ public final class JkCliRunner {
         while (!handler.isProcessTerminated()) {
             if (indicator != null && indicator.isCanceled()) {
                 handler.destroyProcess();
-                return new Result(130, out.toString(), err.toString());
+                // The handler reports termination only once both readers have drained.
+                handler.waitFor(CANCEL_DRAIN_MS);
+                return result(130, out, err);
             }
             try {
                 // noinspection BusyWait
@@ -119,11 +129,23 @@ public final class JkCliRunner {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 handler.destroyProcess();
-                return new Result(130, out.toString(), err.toString());
+                return result(130, out, err);
             }
         }
         Integer code = handler.getExitCode();
-        return new Result(code == null ? 1 : code, out.toString(), err.toString());
+        return result(code == null ? 1 : code, out, err);
+    }
+
+    private static Result result(int exitCode, StringBuilder out, StringBuilder err) {
+        String stdout;
+        String stderr;
+        synchronized (out) {
+            stdout = out.toString();
+        }
+        synchronized (err) {
+            stderr = err.toString();
+        }
+        return new Result(exitCode, stdout, stderr);
     }
 
     public static Result run(@NotNull File cwd, @NotNull String... args) throws Exception {

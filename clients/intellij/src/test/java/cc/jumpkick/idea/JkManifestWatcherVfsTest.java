@@ -4,6 +4,7 @@ package cc.jumpkick.idea;
 import static java.util.Objects.requireNonNull;
 
 import com.intellij.openapi.application.WriteAction;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -41,5 +42,23 @@ public class JkManifestWatcherVfsTest extends HeavyPlatformTestCase {
 
         WriteAction.run(() -> VfsUtil.saveText(baseVf.createChildData(this, "notes.txt"), "unrelated\n"));
         assertFalse("an unrelated file does not schedule a sync", watcher.isPending());
+    }
+
+    public void test_disposing_the_watcher_cancels_a_waiting_sync() throws Exception {
+        Path base = Files.createDirectories(Path.of(requireNonNull(getProject().getBasePath())));
+        Files.writeString(base.resolve("jk.toml"), "name = \"app\"\n");
+        VirtualFile baseVf = requireNonNull(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(base));
+
+        JkSyncDebouncerTest.FakeScheduler scheduler = new JkSyncDebouncerTest.FakeScheduler();
+        int[] syncs = {0};
+        JkManifestWatcher watcher = new JkManifestWatcher(
+                getProject(), new JkSyncDebouncer(JkSyncDebouncer.QUIET_MS, scheduler, () -> syncs[0]++));
+        WriteAction.run(() -> VfsUtil.saveText(requireNonNull(baseVf.findChild("jk.toml")), "name = \"app2\"\n"));
+        assertTrue(watcher.isPending());
+
+        Disposer.dispose(watcher);
+        assertFalse("disposing cancels the waiting sync", watcher.isPending());
+        assertTrue(scheduler.futures.getLast().isCancelled());
+        assertEquals(0, syncs[0]);
     }
 }

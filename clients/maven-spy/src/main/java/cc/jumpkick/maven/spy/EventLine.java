@@ -4,6 +4,9 @@ package cc.jumpkick.maven.spy;
 import java.io.File;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import org.apache.maven.execution.BuildSummary;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.execution.MavenSession;
@@ -34,6 +37,7 @@ public final class EventLine {
         File basedir = p == null ? null : p.getBasedir();
         MojoExecution mojo = e.getMojoExecution();
         Throwable t = e.getException();
+        @Nullable
         String[] fields = {
             e.getType().name(),
             Long.toString(mojo != null ? mojoMillis : millis(e.getSession(), p)),
@@ -47,7 +51,8 @@ public final class EventLine {
         StringBuilder sb = new StringBuilder(160);
         for (String f : fields) {
             if (sb.length() > 0) sb.append('\t');
-            sb.append(URLEncoder.encode(f, StandardCharsets.UTF_8));
+            // Maven leaves some of these unset (a mojo built without an execution id).
+            sb.append(URLEncoder.encode(f == null ? "" : f, StandardCharsets.UTF_8));
         }
         return sb.toString();
     }
@@ -59,12 +64,18 @@ public final class EventLine {
         return summary == null ? 0 : summary.getTime();
     }
 
-    /** The message, the long message a Mojo exception carries, then each cause's message. */
+    /**
+     * The message, the long message a Mojo exception carries, then each cause's message. A cause
+     * chain may loop back on itself ({@link Throwable#initCause} refuses only itself), so each
+     * throwable is read once.
+     */
     static String messageOf(Throwable t) {
         StringBuilder sb = new StringBuilder();
         append(sb, t.getMessage());
         if (t instanceof AbstractMojoExecutionException m) append(sb, m.getLongMessage());
-        for (Throwable c = t.getCause(); c != null && c != c.getCause(); c = c.getCause()) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        seen.add(t);
+        for (Throwable c = t.getCause(); c != null && seen.add(c); c = c.getCause()) {
             append(sb, c.getMessage());
         }
         return sb.toString();

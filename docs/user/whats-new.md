@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk bsp serve` follows the Build Server Protocol more closely.** Source and output paths are
+  reported as directories; a module's build target lists the workspace modules it depends on; every
+  diagnostics notification sets `reset`, and a file fixed since the last compile is cleared in the
+  IDE. A slow model refresh no longer delays a finished compile's reply. The Maven event recorder no
+  longer hangs on an exception whose causes loop, or drops the line of a mojo with no execution id.
+  In VS Code, Reconnect starts a new attempt even while an earlier one is still waiting on JumpKick. In
+  IntelliJ, closing a project cancels a pending manifest re-sync.
 - **The dashboard asks the engine for less.** A finished build reads only the newer runs instead of
   also reloading the whole history, a project's Sessions tab is one request instead of twenty-one, a
   hidden tab stops its one-second clock and catches up when shown, a long backlog of live events
@@ -15,7 +22,7 @@ JumpKick shows you this page's new entries after it updates itself.
   depend on that sibling; it now constrains them. A member with its own annotation-processor version
   of a library no longer sees the workspace's version on its processor path as well. A project
   reached through a symlink, such as macOS `/tmp` or `/var`, keeps the history id of the directory
-  it points at, and a worktree whose `jk.toml` declares an id jk cannot read no longer breaks
+  it points at, and a worktree whose `jk.toml` declares an id JumpKick cannot read no longer breaks
   recording another checkout's build.
 - **Global options before the command are read the way the parser reads them.** `jk -q check` runs
   `compile`, `jk -qC app build` builds in `app`, `-H` and `-D` skip or replace the config files as
@@ -92,7 +99,7 @@ JumpKick shows you this page's new entries after it updates itself.
   repositories for the versions of a workspace member.
 - **A stalled gzip download fails instead of hanging, and an empty gzip answer is read as what it
   is.** A download of a gzip-encoded file that stops before its first bytes now fails after the idle
-  limit, naming the URL, instead of hanging jk; an empty 304 or 404 that a server labels gzip is
+  limit, naming the URL, instead of hanging the build; an empty 304 or 404 that a server labels gzip is
   read as the answer it is instead of being retried and reported as a failure. Two fetches storing
   different bytes for the same artifact at once no longer leave the first one's checksum recorded
   against the second one's file.
@@ -147,7 +154,7 @@ JumpKick shows you this page's new entries after it updates itself.
   `JK_REPO_<ID>_HOST` without a scheme, or an id that is the host, no longer sends a credential to a
   plain `http://` URL off loopback; bind the full `http://` URL to do that. Pre-signed and API-key
   query parameters (`X-Amz-Signature`, `X-Amz-Security-Token`, `X-Amz-Credential`, `sig`, `api_key`,
-  `apikey`) are masked wherever jk prints a URL.
+  `apikey`) are masked wherever JumpKick prints a URL.
 - **A cancelled build cannot silently lose a lock it holds.** An interrupt that landed while a lock
   file's description was being written or read closed the file, which released the lock while the
   build still believed it held it. That I/O now runs where an interrupt cannot reach it.

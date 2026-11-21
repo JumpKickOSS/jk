@@ -66,4 +66,20 @@ class JkSyncDebouncerTest {
         scheduler.fire(1);
         assertThat(runs[0]).isEqualTo(2);
     }
+
+    /** Once closed, a waiting run is cancelled, one already handed to the scheduler does nothing, and a touch schedules nothing. */
+    @Test
+    void closing_cancels_the_waiting_run_and_ignores_later_touches() {
+        FakeScheduler scheduler = new FakeScheduler();
+        int[] runs = {0};
+        JkSyncDebouncer d = new JkSyncDebouncer(2_000, scheduler, () -> runs[0]++);
+        d.touch();
+        d.close();
+        assertThat(scheduler.futures.get(0).isCancelled()).isTrue();
+        assertThat(d.isPending()).isFalse();
+        scheduler.tasks.get(0).run();
+        d.touch();
+        assertThat(scheduler.tasks).hasSize(1);
+        assertThat(runs[0]).isZero();
+    }
 }

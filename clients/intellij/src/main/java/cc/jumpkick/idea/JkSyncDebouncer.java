@@ -23,6 +23,7 @@ final class JkSyncDebouncer {
     private final Scheduler scheduler;
     private final Runnable action;
     private @Nullable Future<?> pending;
+    private boolean closed;
 
     JkSyncDebouncer(long quietMs, Scheduler scheduler, Runnable action) {
         this.quietMs = quietMs;
@@ -32,6 +33,7 @@ final class JkSyncDebouncer {
 
     /** A change happened: restart the quiet window. */
     synchronized void touch() {
+        if (closed) return;
         if (pending != null) pending.cancel(false);
         pending = scheduler.schedule(this::fire, quietMs);
     }
@@ -41,8 +43,16 @@ final class JkSyncDebouncer {
         return pending != null;
     }
 
+    /** Cancel the waiting run, if any, and ignore every later change. */
+    synchronized void close() {
+        closed = true;
+        if (pending != null) pending.cancel(false);
+        pending = null;
+    }
+
     private void fire() {
         synchronized (this) {
+            if (closed) return;
             pending = null;
         }
         action.run();

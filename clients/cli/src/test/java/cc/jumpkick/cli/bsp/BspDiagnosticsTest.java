@@ -3,12 +3,15 @@ package cc.jumpkick.cli.bsp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code publishDiagnostics} placement. Parsing is {@code CompilerLocus}, the one header
@@ -21,7 +24,7 @@ class BspDiagnosticsTest {
 
     private static Map<String, List<String>> collect(int severity, String... blocks) {
         Map<String, List<String>> byFile = new LinkedHashMap<>();
-        BspDiagnostics.collectDiagnostics(byFile, new ArrayList<>(List.of(blocks)), severity, PROJECT);
+        BspDiagnostics.collectDiagnostics(byFile, new ArrayList<>(List.of(blocks)), severity, null, PROJECT);
         return byFile;
     }
 
@@ -100,5 +103,23 @@ class BspDiagnosticsTest {
         String diag = byFile.values().iterator().next().getFirst();
         assertThat(diag).contains("\"line\":0");
         assertThat(diag).contains("\"severity\":1");
+    }
+
+    /**
+     * A compiler that names its file relative to where it ran: the module's file when the module
+     * has it, else the project's, never wherever the server process was started.
+     */
+    @Test
+    void a_relative_path_is_the_modules_file_else_the_projects(@TempDir Path ws) throws IOException {
+        Path module = Files.createDirectories(ws.resolve("app"));
+        Files.createFile(Files.createDirectories(module.resolve("src")).resolve("A.java"));
+        Map<String, List<String>> byFile = new LinkedHashMap<>();
+        BspDiagnostics.collectDiagnostics(
+                byFile, List.of("src/A.java:2: error: x", "core/src/B.java:3: error: y"), 1, module, ws);
+
+        assertThat(byFile.keySet())
+                .containsExactly(
+                        BspServer.pathUri(module.resolve("src/A.java")),
+                        BspServer.pathUri(ws.resolve("core/src/B.java")));
     }
 }

@@ -97,6 +97,17 @@ final class BspTargetOptions {
                 .finish();
     }
 
+    /** The names of the workspace modules module {@code i} depends on, in any scope, in the model's order. */
+    static List<String> siblingNames(IdeWireModel model, int i) {
+        List<String> out = new ArrayList<>();
+        for (String row : model.siblingRefs()) {
+            String[] parts = row.split("\\|", 3);
+            if (parts.length < 2 || Integer.parseInt(parts[0]) != i) continue;
+            if (model.names().contains(parts[1])) out.add(parts[1]);
+        }
+        return out;
+    }
+
     /**
      * The module's compile classpath as URIs: every resolved library jar, the Scala library jars
      * of its compiler closure, and the main classes of the siblings it depends on.

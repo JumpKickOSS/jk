@@ -19,6 +19,7 @@ import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.project.MavenProject;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 class EventLineTest {
 
@@ -105,6 +106,31 @@ class EventLineTest {
         assertThat(fields(EventLine.of(event(ExecutionEvent.Type.ProjectSucceeded, null, app, null, null), 155))
                         .get(1))
                 .isEqualTo("0");
+    }
+
+    /** Two exceptions that are each other's cause end the chain instead of looping on it. */
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void a_cause_cycle_is_read_once() {
+        RuntimeException outer = new RuntimeException("outer");
+        IllegalStateException inner = new IllegalStateException("inner");
+        outer.initCause(inner);
+        inner.initCause(outer);
+
+        assertThat(EventLine.messageOf(outer)).isEqualTo("outer\ninner");
+    }
+
+    /** A mojo built from its descriptor alone has no execution id; its line is still written. */
+    @Test
+    void a_mojo_without_an_execution_id_has_an_empty_field() {
+        Plugin compiler = new Plugin();
+        compiler.setArtifactId("maven-compiler-plugin");
+        MojoExecution mojo = new MojoExecution(compiler, "compile", null);
+        List<String> f = fields(EventLine.of(event(ExecutionEvent.Type.MojoStarted, null, null, mojo, null), 0));
+
+        assertThat(f).hasSize(EventLine.FIELDS);
+        assertThat(f.get(4)).isEqualTo("maven-compiler-plugin:compile");
+        assertThat(f.get(5)).isEmpty();
     }
 
     /** The engine's read of a line: split on tabs, decode each field. */

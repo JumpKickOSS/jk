@@ -38,6 +38,9 @@ export class EngineSession {
   private lastEventId = "";
   private disposed = false;
   private connecting: Promise<EngineApi> | undefined;
+  /** The newest connection attempt, settled or not; an older one still running hands its callers this one's outcome. */
+  private latest: Promise<EngineApi> | undefined;
+  private attempts = 0;
   private current: SessionState = { kind: "connecting" };
   private readonly stateListeners = new Set<Listener<SessionState>>();
   private readonly eventListeners = new Set<Listener<EngineEvent>>();
@@ -84,19 +87,17 @@ export class EngineSession {
   /** The live API, connecting first (and starting the engine through jk) when there is none. */
   async connect(): Promise<EngineApi> {
     if (this.api && this.current.kind === "live") return this.api;
-    if (!this.connecting) {
-      this.connecting = this.establish().finally(() => {
-        this.connecting = undefined;
-      });
-    }
-    return this.connecting;
+    return this.connecting ?? this.attempt();
   }
 
-  /** Ask jk for the engine again, whatever the session holds now: the Reconnect command. */
+  /**
+   * Ask jk for the engine again, whatever the session holds now: the Reconnect command. An attempt
+   * still in flight (a `jk web` that hangs, an endpoint that went stale) is superseded, not joined.
+   */
   reconnect(): Promise<EngineApi> {
     this.api = undefined;
     this.current = { kind: "connecting" };
-    return this.connect();
+    return this.attempt();
   }
 
   dispose(): void {
@@ -107,7 +108,20 @@ export class EngineSession {
     this.engineListeners.clear();
   }
 
-  private async establish(): Promise<EngineApi> {
+  /** Start a connection attempt that supersedes any before it. */
+  private attempt(): Promise<EngineApi> {
+    const n = ++this.attempts;
+    const p: Promise<EngineApi> = this.establish(n).finally(() => {
+      if (this.connecting === p) this.connecting = undefined;
+    });
+    this.connecting = p;
+    this.latest = p;
+    return p;
+  }
+
+  /** Attempt `n`, which touches the session only while it is the newest. */
+  private async establish(n: number): Promise<EngineApi> {
+    const superseded = (): Promise<EngineApi> | undefined => (n === this.attempts ? undefined : this.latest);
     this.setState({ kind: "connecting" });
     this.stream?.close();
     try {
@@ -118,11 +132,15 @@ export class EngineSession {
         throw new Error(`another engine answers at ${endpoint.url} (${identity.label})`);
       }
       await api.status();
+      const newer = superseded();
+      if (newer) return newer;
       this.api = api;
       // Return once the stream is attached, so a job started next cannot finish unseen.
       await this.runStream(api, identity.label || endpoint.url, identity.id);
-      return api;
+      return superseded() ?? api;
     } catch (e) {
+      const newer = superseded();
+      if (newer) return newer;
       const reason = e instanceof Error ? e.message : String(e);
       this.setState({ kind: "failed", reason });
       throw e;

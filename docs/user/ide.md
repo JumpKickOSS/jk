@@ -56,15 +56,15 @@ pinned jar is verified against it.
 
 | Capability | Status |
 |------------|--------|
-| `workspace/buildTargets`, sources, dependency modules | yes |
+| `workspace/buildTargets`, sources, dependency modules | yes; a module's target lists the workspace modules it depends on (main or test scope) as its `dependencies`, and every source item is a directory (`kind` 2) |
 | Dependency **sources** jars | yes (classifier `sources` when present) |
-| `buildTarget/outputPaths` | yes (main + test classes dirs) |
+| `buildTarget/outputPaths` | yes (main + test classes dirs, `kind` 2) |
 | `buildTarget/scalacOptions`, `buildTarget/javacOptions` | yes: `-java-output-version N` / `--release N` for the module's Java level, the compile classpath (library jars, the Scala library, sibling classes) and the class directory |
 | Scala targets | a module that compiles Scala is a `scala` build target (`scalaVersion`, `scalaBinaryVersion`, the compiler jars a build fetched, the JDK); every other module carries `jvm` data naming its JDK |
 | Target tags | a module whose manifest names an `[application] main` is tagged `application`, every other `library` |
 | Suite targets | each suite of a module beside its default one, a directory or a `[test.suites]` table, is a `test`-tagged target `<module id>::<suite>` with no sources or languages of its own; `buildTarget/test` on it runs `jk test -s <suite>` for that module |
 | `buildTarget/dependencySources`, `scalaMainClasses`, `scalaTestClasses` | yes (sources jars when present; the declared main class; test classes are discovered by `buildTarget/test`, so the listing is empty) |
-| `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc, groovyc and scalac blocks, colour escapes stripped (errors severity 1, warnings 2; anything unparseable lands at project root) |
+| `buildTarget/compile` | yes; `publishDiagnostics` with file/line/column for javac, kotlinc, groovyc and scalac blocks, colour escapes stripped (errors severity 1, warnings 2; a relative path is read against the compiled module, then the project; anything unparseable lands at project root). Every notification carries `reset: true`, and a file the target's last compile diagnosed that is clean now is sent an empty list, which clears it |
 | `buildTarget/test` | yes; optional suite/tag/class `data`, optional `debug` |
 | `buildTarget/run` | yes when main class known; optional `debug` |
 | `$/cancelRequest` | yes; the JSON-RPC cancel notification's `params.id` names the compile/test/run request to cancel, running or still queued (a queued one is answered as cancelled, code -32800; a running one is cancelled on the engine and answers with its own result); there is no `build/cancel` method |
