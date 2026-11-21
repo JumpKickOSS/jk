@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
@@ -494,7 +495,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 if (Files.exists(dest)) {
                     deleteTree(dest);
                 }
-                copyTree(src, dest);
+                stageTree(src, dest, "lib".equals(child) ? QuarkusPlugin::isJar : rel -> false);
                 io.produced(dest);
             }
         }
@@ -504,7 +505,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if (Files.exists(appDir)) {
             deleteTree(appDir);
         }
-        copyTree(layoutRoot, appDir);
+        stageTree(layoutRoot, appDir, rel -> rel.startsWith("lib") && isJar(rel));
         // The run jar's Class-Path needs these siblings — declare them so a packaging
         // cache hit after `jk clean` restores a runnable layout, not a lone jar.
         io.produced(appDir);
@@ -572,12 +573,23 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
     }
 
-    private static void copyTree(Path from, Path to) throws IOException {
-        // `.jk-*` is the plugin-scratch convention; it must not ride into a staged layout.
+    /**
+     * Lay {@code from} out at {@code to}, leaving out plugin scratch: {@code .jk-*} must not ride
+     * into a staged layout. A file {@code link} accepts, by its path relative to {@code from}, is
+     * hard-linked where the filesystem allows. That is for dependency jars, which a fast-jar lays out
+     * twice and nothing writes after the augment staged them; everything else is copied.
+     */
+    private static void stageTree(Path from, Path to, Predicate<Path> link) throws IOException {
         PathUtil.copyTree(
                 from,
                 to,
-                dir -> dir.getFileName() != null && dir.getFileName().toString().startsWith(".jk-"));
+                dir -> dir.getFileName() != null && dir.getFileName().toString().startsWith(".jk-"),
+                target -> false,
+                file -> link.test(from.relativize(file)));
+    }
+
+    private static boolean isJar(Path rel) {
+        return rel.getFileName() != null && rel.getFileName().toString().endsWith(".jar");
     }
 
     private static void deleteTree(Path root) throws IOException {

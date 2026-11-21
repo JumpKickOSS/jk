@@ -30,6 +30,22 @@ class PathUtilCopyTreeTest {
         assertThat(Files.readString(to.resolve("a/b/deep.txt"))).isEqualTo("deep");
     }
 
+    /** A file the link predicate accepts becomes the source under a second name; the rest are copies. */
+    @Test
+    void a_file_the_caller_marks_is_linked_and_the_rest_copied(@TempDir Path tmp) throws IOException {
+        Path from = Files.createDirectories(tmp.resolve("from/lib"));
+        Path jar = Files.writeString(from.resolve("dep.jar"), "jar");
+        Path text = Files.writeString(from.resolve("notes.txt"), "text");
+        Path to = tmp.resolve("to");
+
+        PathUtil.copyTree(tmp.resolve("from"), to, dir -> false, target -> false, file -> file.toString()
+                .endsWith(".jar"));
+
+        assertThat(Files.isSameFile(jar, to.resolve("lib/dep.jar"))).isTrue();
+        assertThat(Files.isSameFile(text, to.resolve("lib/notes.txt"))).isFalse();
+        assertThat(Files.readString(to.resolve("lib/notes.txt"))).isEqualTo("text");
+    }
+
     /**
      * The property the whole ticket is for: an unchanged target keeps its mtime.
      *

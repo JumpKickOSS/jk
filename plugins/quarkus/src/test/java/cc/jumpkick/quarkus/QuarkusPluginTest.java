@@ -106,6 +106,33 @@ class QuarkusPluginTest {
                         target.resolve("quarkus-app"));
     }
 
+    /** Dependency jars are laid out twice from bytes nothing rewrites, so both are links, not copies. */
+    @Test
+    void fast_jar_links_dependency_jars_and_copies_the_rest(@TempDir Path dir) throws Exception {
+        Path augment = dir.resolve("augment/quarkus-app");
+        Files.createDirectories(augment.resolve("lib/main"));
+        Files.createDirectories(augment.resolve("app"));
+        Files.createDirectories(augment.resolve("lib/.jk-scratch"));
+        Files.writeString(augment.resolve("quarkus-run.jar"), "RUN");
+        Path dep = Files.writeString(augment.resolve("lib/main/dep.jar"), "DEP");
+        Files.writeString(augment.resolve("lib/main/notes.txt"), "TXT");
+        Files.writeString(augment.resolve("lib/.jk-scratch/x.jar"), "SCRATCH");
+        Path app = Files.writeString(augment.resolve("app/app.jar"), "APP");
+
+        Path target = dir.resolve("target");
+        QuarkusPlugin.produceFastJar(fake(dir, target.resolve("hello.jar"), dir.resolve("augment")));
+
+        assertThat(Files.isSameFile(dep, target.resolve("lib/main/dep.jar"))).isTrue();
+        assertThat(Files.isSameFile(dep, target.resolve("quarkus-app/lib/main/dep.jar")))
+                .isTrue();
+        assertThat(Files.isSameFile(app, target.resolve("app/app.jar"))).isFalse();
+        assertThat(Files.isSameFile(app, target.resolve("quarkus-app/app/app.jar")))
+                .isFalse();
+        assertThat(target.resolve("lib/main/notes.txt")).hasContent("TXT");
+        assertThat(target.resolve("lib/.jk-scratch")).doesNotExist();
+        assertThat(target.resolve("quarkus-app/lib/.jk-scratch")).doesNotExist();
+    }
+
     @Test
     void the_native_sources_runner_is_not_taken_for_an_uber_jar(@TempDir Path dir) throws Exception {
         Path augment = dir.resolve("augment");
