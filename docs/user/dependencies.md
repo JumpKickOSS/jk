@@ -347,8 +347,10 @@ with one rule:
   repositories or mirrors names is exempt, so a corporate repository's POM may name another path
   on it. A mirror that stands in for the declared repository is asked in its place, so its
   address is not checked; a name that does not resolve is not refused, since nothing reaches it.
-  The lookup happens once per lock, so a name whose DNS answer changes between the lookup and a
-  later download is not caught. Maven checks none of this.
+  The name is looked up again before every request to it and every redirect it answers with, so
+  a name whose DNS answer turns internal later in the lock, or a redirect onto an internal host,
+  puts the repository out of the lock with a warning naming the address. Maven checks none of
+  this.
 - A repository in the lock's `source` is as trusted as `[repositories]`, since whoever can edit
   the lock can edit `jk.toml` too: `jk build`, `jk sync`, `jk lock -s` and `jk why` ask it without
   these checks. A source only a dependency's POM introduced reached the lock through them.

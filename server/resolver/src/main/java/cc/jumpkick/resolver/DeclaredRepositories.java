@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.http.Http;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.PackageId;
@@ -39,7 +40,9 @@ import org.jspecify.annotations.Nullable;
  * https://} repository on a named host is used. A plaintext {@code http://} one, a {@code file:}
  * tree or any other scheme is not, nor is a host on this machine unless the project itself resolves
  * through one, nor a host whose address is internal (private, link-local, unique-local, shared or
- * unspecified) unless the project already resolves through that host; the lock says so. A mirror
+ * unspecified) unless the project already resolves through that host; the lock says so. The
+ * address is asked again before every request and redirect hop, so a name that resolves inward later,
+ * or a redirect onto such a host, puts the repository out of the lock with a warning. A mirror
  * that stands in for the repository is asked in its place, so its address is not checked. An
  * artifact without a published checksum fails the lock naming the repository, as it would for a
  * {@code [repositories]} entry without {@code allow-unverified}. A row a declared repository serves records it in {@code source}, and every
@@ -199,15 +202,20 @@ final class DeclaredRepositories {
             refuse(repository, why);
             return null;
         }
-        MavenRepo repo = RepoMirrors.apply(base.repos()
-                .getFirst()
-                .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots()));
-        if (repo.mirror().isEmpty()) {
+        MavenRepo template = base.repos().getFirst();
+        MavenRepo repo;
+        if (RepoMirrors.urlFor(repository.id(), url).isPresent()) {
+            repo = RepoMirrors.apply(template.declaredByPom(
+                    repository.id(), url, repository.releases(), repository.snapshots(), Http.AddressGuard.ANY));
+        } else {
             String internal = addressRefusal(url.getHost());
             if (internal != null) {
                 refuse(repository, internal);
                 return null;
             }
+            // Asked again per request: a name may resolve elsewhere once the first answer expires.
+            repo = template.declaredByPom(
+                    repository.id(), url, repository.releases(), repository.snapshots(), this::addressRefusal);
         }
         MavenRepo raced = built.putIfAbsent(repository.url(), repo);
         return raced != null ? raced : repo;

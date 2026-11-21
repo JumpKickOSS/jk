@@ -419,6 +419,50 @@ class HttpTest {
     }
 
     @Test
+    void the_address_guard_is_asked_before_every_request_so_a_host_that_resolves_inward_later_is_refused()
+            throws Exception {
+        AtomicInteger served = new AtomicInteger();
+        server.createContext("/a", exchange -> {
+            served.incrementAndGet();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        AtomicInteger asked = new AtomicInteger();
+        Http http = http().withAddressGuard(
+                        host -> asked.incrementAndGet() == 1 ? null : "it resolves to an internal address (10.0.0.7)");
+
+        http.get(base.resolve("/a"));
+        assertThatThrownBy(() -> http.get(base.resolve("/a")))
+                .isInstanceOf(Http.AddressRefusedException.class)
+                .hasMessageContaining("/a")
+                .hasMessageEndingWith("it resolves to an internal address (10.0.0.7)");
+        assertThat(served).hasValue(1);
+        assertThat(asked).hasValue(2);
+    }
+
+    @Test
+    void a_redirect_onto_a_host_the_address_guard_refuses_is_refused_at_the_hop() throws Exception {
+        AtomicInteger landed = new AtomicInteger();
+        server.createContext("/hop", exchange -> {
+            exchange.getResponseHeaders()
+                    .add("Location", "http://localhost:" + server.getAddress().getPort() + "/landed");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        server.createContext("/landed", exchange -> {
+            landed.incrementAndGet();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        Http http = http().withAddressGuard(host -> host.equals("localhost") ? "it resolves to this machine" : null);
+
+        assertThatThrownBy(() -> http.get(base.resolve("/hop")))
+                .isInstanceOf(Http.AddressRefusedException.class)
+                .hasMessageContaining("localhost");
+        assertThat(landed).hasValue(0);
+    }
+
+    @Test
     void the_deny_list_is_comma_separated_trimmed_and_case_insensitive() {
         assertThat(Http.deniedHosts(" Repo.Maven.Apache.org, ,mirror.example ,"))
                 .containsExactlyInAnyOrder("repo.maven.apache.org", "mirror.example");

@@ -437,9 +437,10 @@ public final class MavenRepo {
         this.optional = optional;
         this.http = httpOrNull;
         // Under the permit, a request is refused once this repository is out of the job, and its
-        // silence puts the repository out before the permit goes to a request queued behind it.
+        // silence or a refused address puts the repository out before the permit goes to a request
+        // queued behind it.
         RequestGate gate = new RequestGate(this::refuseIfUnreachable, failure -> {
-            if (outOfJobSilence(failure) != null) unreachableOr(failure);
+            if (outOfJobSilence(failure) != null || addressRefusal(failure) != null) unreachableOr(failure);
         });
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
@@ -478,10 +479,13 @@ public final class MavenRepo {
      * with neither {@code allow-unverified} nor {@code allow-insecure} — a POM has no table to opt in
      * with, so its repository is held to the rule a project-declared one meets by default — with
      * the {@code <releases>} / {@code <snapshots>} policy the POM wrote, and {@linkplain #passable
-     * passable}, as Maven falls through a POM's repository that answers nothing.
+     * passable}, as Maven falls through a POM's repository that answers nothing. Every request and
+     * redirect hop is asked of {@code guard} first; one it refuses puts the repository out of the
+     * job, passed over with the guard's reason as its fault, since a name checked once may resolve
+     * elsewhere later.
      */
-    public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots) {
-        Http client = clientForDerived().withoutSilenceRetries();
+    public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots, Http.AddressGuard guard) {
+        Http client = clientForDerived().withoutSilenceRetries().withAddressGuard(guard);
         return new MavenRepo(
                 name,
                 url,
@@ -1012,6 +1016,7 @@ public final class MavenRepo {
         String fault = ConnectFaults.describe(transport);
         String silent = fault == null ? outOfJobSilence(transport) : null;
         if (silent != null) fault = silent;
+        if (fault == null) fault = addressRefusal(transport);
         if (fault == null && answersMatter) fault = refusal(transport);
         if (fault == null) return transport;
         String unrefreshed = notRefreshed(transport);
@@ -1041,6 +1046,14 @@ public final class MavenRepo {
     private static @Nullable String notRefreshed(Throwable failure) {
         for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
             if (t instanceof CredentialNotRefreshedException helper) return helper.why();
+        }
+        return null;
+    }
+
+    /** The address refusal in {@code failure}'s cause chain as one line naming it, or null. */
+    private static @Nullable String addressRefusal(Throwable failure) {
+        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
+            if (t instanceof Http.AddressRefusedException refused) return "JumpKick refuses it: " + refused.reason();
         }
         return null;
     }

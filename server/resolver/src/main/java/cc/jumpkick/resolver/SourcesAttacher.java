@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo;
@@ -103,8 +104,9 @@ final class SourcesAttacher {
                 Pom.Repository policy = declaredByUrl.get(u);
                 boolean releases = policy == null || policy.releases();
                 boolean snapshots = policy == null || policy.snapshots();
-                MavenRepo declared =
-                        RepoMirrors.apply(repos.repos().getFirst().declaredByPom(id, new URI(u), releases, snapshots));
+                MavenRepo declared = RepoMirrors.apply(repos.repos()
+                        .getFirst()
+                        .declaredByPom(id, new URI(u), releases, snapshots, Http.AddressGuard.ANY));
                 return repos.withReposAppended(List.of(declared));
             } catch (URISyntaxException e) {
                 return repos;

@@ -384,8 +384,9 @@ class RepoGroupUnreachableTest {
     @Test
     void a_repository_a_pom_declares_is_passable(@TempDir Path tmp) throws Exception {
         Cas cas = new Cas(tmp.resolve("cas"));
-        MavenRepo declared =
-                good(tmp, cas).declaredByPom("vendor", URI.create("https://vendor.example/maven2/"), true, true);
+        MavenRepo declared = good(tmp, cas)
+                .declaredByPom(
+                        "vendor", URI.create("https://vendor.example/maven2/"), true, true, Http.AddressGuard.ANY);
 
         assertThat(declared.passable()).isTrue();
     }

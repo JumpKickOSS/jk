@@ -134,6 +134,22 @@ public final class Http {
     /** The most bytes of a response body read into memory; past it the request fails. */
     private final long bodyLimit;
 
+    /** Asked before every request and every redirect hop whether its host may be reached. */
+    private final AddressGuard addressGuard;
+
+    /**
+     * Why a request may not go to a host by the addresses it resolves to now, or null when it may.
+     * Asked per request, so a name that resolves elsewhere since it was last asked is caught.
+     */
+    @FunctionalInterface
+    public interface AddressGuard {
+        /** The guard that lets every host through. */
+        AddressGuard ANY = host -> null;
+
+        @Nullable
+        String refusal(String host);
+    }
+
     /** The most of any response body read into memory: {@value} bytes (64 MiB). */
     public static final long MAX_BODY_BYTES = 64L * 1024 * 1024;
 
@@ -303,7 +319,8 @@ public final class Http {
                 true,
                 NO_AUTHORIZATION,
                 StalledBodyGuard.NO_BYTES,
-                MAX_BODY_BYTES);
+                MAX_BODY_BYTES,
+                AddressGuard.ANY);
     }
 
     private Http(
@@ -318,7 +335,8 @@ public final class Http {
             boolean retriesSilence,
             Function<URI, Optional<String>> authorization,
             Duration bodyIdle,
-            long bodyLimit) {
+            long bodyLimit,
+            AddressGuard addressGuard) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
@@ -331,6 +349,7 @@ public final class Http {
         this.authorization = authorization;
         this.bodyIdle = bodyIdle;
         this.bodyLimit = bodyLimit;
+        this.addressGuard = addressGuard;
     }
 
     /**
@@ -351,7 +370,8 @@ public final class Http {
                 false,
                 authorization,
                 bodyIdle,
-                bodyLimit);
+                bodyLimit,
+                addressGuard);
     }
 
     /**
@@ -373,7 +393,8 @@ public final class Http {
                 false,
                 authorization,
                 bodyIdle,
-                bodyLimit);
+                bodyLimit,
+                addressGuard);
     }
 
     /**
@@ -393,7 +414,8 @@ public final class Http {
                 retriesSilence,
                 Objects.requireNonNull(authorization, "authorization"),
                 bodyIdle,
-                bodyLimit);
+                bodyLimit,
+                addressGuard);
     }
 
     /**
@@ -415,7 +437,8 @@ public final class Http {
                 retriesSilence,
                 authorization,
                 bodyIdle,
-                bodyLimit);
+                bodyLimit,
+                addressGuard);
     }
 
     /**
@@ -435,7 +458,8 @@ public final class Http {
                 retriesSilence,
                 authorization,
                 idle,
-                bodyLimit);
+                bodyLimit,
+                addressGuard);
     }
 
     /**
@@ -460,7 +484,31 @@ public final class Http {
                 retriesSilence,
                 authorization,
                 bodyIdle,
-                bytes);
+                bytes,
+                addressGuard);
+    }
+
+    /**
+     * This client asking {@code guard} before every request and every redirect hop, and failing one
+     * it refuses with an {@link AddressRefusedException} before a connection is opened. For a
+     * repository a dependency's POM names, whose host must not lead the resolve onto this machine's
+     * network.
+     */
+    public Http withAddressGuard(AddressGuard guard) {
+        return new Http(
+                client,
+                backoffs,
+                centralMirror,
+                cooldown,
+                clock,
+                proxies,
+                deniedHosts,
+                requestTimeout,
+                retriesSilence,
+                authorization,
+                bodyIdle,
+                bodyLimit,
+                Objects.requireNonNull(guard, "guard"));
     }
 
     /** The {@link #DENY_HOSTS_ENV} entry for every host but this one. */
@@ -674,7 +722,8 @@ public final class Http {
                 false,
                 authorization,
                 bodyIdle,
-                bodyLimit);
+                bodyLimit,
+                addressGuard);
         return once.sendWithRetry("POST", uri, postRequest(uri, body, headers), cappedBytes(uri), null);
     }
 
@@ -890,7 +939,10 @@ public final class Http {
                 }
                 lastStatus = status;
                 answered = true;
-            } catch (RedirectRefusedException | CentralMirror.BlockedException | DeniedHostException e) {
+            } catch (RedirectRefusedException
+                    | CentralMirror.BlockedException
+                    | DeniedHostException
+                    | AddressRefusedException e) {
                 throw e; // a policy answer, not a network fault: the same answer would come back
             } catch (HttpConnectTimeoutException e) {
                 lastIo = e; // the connection never came up: the next attempt is cheap and may land
@@ -973,6 +1025,7 @@ public final class Http {
             HttpRequest request, HttpResponse.BodyHandler<T> handler, @Nullable BodyDrain<T> drain)
             throws IOException, InterruptedException {
         checkDenied(request.uri());
+        checkAddress(request.uri());
         HttpResponse<T> response = client.send(request, handler);
         for (int hops = 0; isRedirect(response.statusCode()); hops++) {
             URI target = redirectTarget(request.uri(), response);
@@ -996,6 +1049,7 @@ public final class Http {
             if (drain != null) drain.handle(response);
             request = redirected(request, response.statusCode(), target);
             checkDenied(request.uri());
+            checkAddress(request.uri());
             response = client.send(request, handler);
         }
         int status = response.statusCode();
@@ -1033,6 +1087,24 @@ public final class Http {
         /** The status of the last answer. */
         public int status() {
             return status;
+        }
+    }
+
+    /**
+     * A request refused because its host resolves to an address the client's {@link AddressGuard}
+     * refuses. Raised before a connection is opened and never retried.
+     */
+    public static final class AddressRefusedException extends IOException {
+        private final String reason;
+
+        AddressRefusedException(URI uri, String reason) {
+            super("refusing outbound request to " + SafeUri.forMessage(uri) + ": " + reason);
+            this.reason = reason;
+        }
+
+        /** Why the guard refused the host, as it said it. */
+        public String reason() {
+            return reason;
         }
     }
 
@@ -1157,6 +1229,14 @@ public final class Http {
         if (SessionContext.current().config().offlineOr(false)) {
             throw new OfflineException(uri);
         }
+    }
+
+    /** Refuse a request to a host the address guard refuses; the failure names the URI and the reason. */
+    private void checkAddress(URI uri) throws AddressRefusedException {
+        String host = uri.getHost();
+        if (host == null) return;
+        String why = addressGuard.refusal(host);
+        if (why != null) throw new AddressRefusedException(uri, why);
     }
 
     /** Refuse a request to a host on the deny list; the failure names the host and the list. */

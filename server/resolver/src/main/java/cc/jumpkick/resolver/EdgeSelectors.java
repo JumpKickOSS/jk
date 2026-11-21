@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.RepoSource;
 import cc.jumpkick.model.PackageId;
@@ -81,7 +82,8 @@ public final class EdgeSelectors {
             if (!known.add(url)) continue;
             try {
                 // Through the mirror that stands in for it, where the lock asked it.
-                extra.add(RepoMirrors.apply(template.declaredByPom(name, URI.create(url), true, true)));
+                extra.add(RepoMirrors.apply(
+                        template.declaredByPom(name, URI.create(url), true, true, Http.AddressGuard.ANY)));
             } catch (IllegalArgumentException e) {
                 Log.debug("jk why: lock source is not a URL: " + row.source(), e);
             }

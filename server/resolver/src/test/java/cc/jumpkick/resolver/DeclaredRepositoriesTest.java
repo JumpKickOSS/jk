@@ -2,10 +2,12 @@
 package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -19,6 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -179,6 +182,27 @@ class DeclaredRepositoriesTest {
         assertThat(remote.notes(List.of())).singleElement().satisfies(note -> assertThat(note)
                 .contains("not used: it resolves to this machine (127.0.0.1)"));
         assertThat(local.reposFor("org.acme:child").repos()).hasSize(2);
+    }
+
+    @Test
+    void a_used_pom_repository_whose_host_resolves_inward_later_is_refused_before_the_request_and_passed_over() {
+        // Loopback, so the test launcher's deny list spares the name and only the address check speaks.
+        Map<String, String> table = new ConcurrentHashMap<>(Map.of("localhost", "127.0.0.1"));
+        DeclaredRepositories declared = declaredOver(base("http://127.0.0.1:41234/"), table);
+        declared.propagate(
+                "org.acme:parent", pomDeclaring("https://localhost:41234/maven2/"), List.of("org.acme:child"));
+        MavenRepo fromPom = declared.reposFor("org.acme:child").repos().getLast();
+        assertThat(fromPom.baseUrl()).hasToString("https://localhost:41234/maven2/");
+
+        table.put("localhost", "10.0.0.7");
+
+        assertThatThrownBy(() -> fromPom.availableVersions(Coordinate.of("org.acme", "child", "1.0")))
+                .isInstanceOf(MavenRepo.RepositoryUnreachableException.class)
+                .hasMessageContaining("it resolves to an internal address (10.0.0.7)");
+        assertThat(fromPom.passedOver()).isTrue();
+        assertThat(fromPom.unreachableFault())
+                .isEqualTo("JumpKick refuses it: it resolves to an internal address (10.0.0.7);"
+                        + " declare it in [repositories] to use it");
     }
 
     @Test
