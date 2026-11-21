@@ -193,6 +193,110 @@ class BspServerProtocolTest {
     }
 
     /**
+     * A compile of two targets builds both, and each file's diagnostics go to the target whose
+     * module holds it; a later compile of one of them clears that one's file under that target.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void each_file_s_diagnostics_go_to_the_target_that_holds_it(@TempDir Path dir) throws Exception {
+        module(dir, "app");
+        module(dir, "core");
+        Path app = Files.createDirectories(dir.resolve("app/src/main/java")).resolve("App.java");
+        Path core = Files.createDirectories(dir.resolve("core/src/main/java")).resolve("Core.java");
+        Files.writeString(app, "class App {}\n");
+        Files.writeString(core, "class Core {}\n");
+        AtomicInteger compiles = new AtomicInteger();
+        IdeEngineClient ide = new IdeEngineClient(dir, dir.resolve("cache"), null) {
+            @Override
+            public IdeWireModel ideModel() {
+                return model(dir, List.of("app", "core"), List.of());
+            }
+
+            @Override
+            public BuildOutcome buildModule(@Nullable Path moduleDir, @Nullable BuildListener listener) {
+                if (compiles.incrementAndGet() == 1) {
+                    return new BuildOutcome(
+                            false,
+                            2,
+                            2,
+                            List.of(app + ":1: error: cannot find symbol", core + ":1: error: cannot find symbol"),
+                            List.of());
+                }
+                return new BuildOutcome(true, 1, 0, List.of(), List.of());
+            }
+        };
+        String root = BspServer.pathUri(dir);
+        String both = "{\"targets\":[{\"uri\":\"" + root + "#app\"},{\"uri\":\"" + root + "#core\"}]}";
+
+        List<Map<String, Object>> frames = serve(
+                ide, request(2, "buildTarget/compile", both), request(3, "buildTarget/compile", target(dir, "core")));
+
+        List<Map<String, Object>> published = frames.stream()
+                .filter(f -> "build/publishDiagnostics".equals(f.get("method")))
+                .map(f -> (Map<String, Object>) requireNonNull(f.get("params")))
+                .toList();
+        assertThat(published).hasSize(3);
+        assertThat(published.subList(0, 2))
+                .extracting(p -> ((Map<String, Object>) requireNonNull(p.get("textDocument"))).get("uri") + " "
+                        + ((Map<String, Object>) requireNonNull(p.get("buildTarget"))).get("uri"))
+                .containsExactlyInAnyOrder(
+                        BspServer.pathUri(app) + " " + root + "#app", BspServer.pathUri(core) + " " + root + "#core");
+        Map<String, Object> cleared = published.get(2);
+        assertThat((Map<String, Object>) cleared.get("textDocument"))
+                .as("compiling core alone clears the file core diagnosed")
+                .containsEntry("uri", BspServer.pathUri(core));
+        assertThat((Map<String, Object>) cleared.get("buildTarget")).containsEntry("uri", root + "#core");
+        assertThat((List<Object>) cleared.get("diagnostics")).isEmpty();
+    }
+
+    /**
+     * A module's compile builds the modules it depends on: an error in one is that module's, and
+     * the module's next green compile clears it there.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void a_dependency_s_diagnostics_are_its_own_and_its_dependent_s_compile_clears_them(@TempDir Path dir)
+            throws Exception {
+        module(dir, "app");
+        module(dir, "core");
+        Path core = Files.createDirectories(dir.resolve("core/src/main/java")).resolve("Core.java");
+        Files.writeString(core, "class Core {}\n");
+        AtomicInteger compiles = new AtomicInteger();
+        IdeEngineClient ide = new IdeEngineClient(dir, dir.resolve("cache"), null) {
+            @Override
+            public IdeWireModel ideModel() {
+                return model(dir, List.of("app", "core"), List.of("0|core|COMPILE"));
+            }
+
+            @Override
+            public BuildOutcome buildModule(@Nullable Path moduleDir, @Nullable BuildListener listener) {
+                if (compiles.incrementAndGet() == 1) {
+                    return new BuildOutcome(false, 2, 1, List.of(core + ":1: error: cannot find symbol"), List.of());
+                }
+                return new BuildOutcome(true, 2, 0, List.of(), List.of());
+            }
+        };
+
+        List<Map<String, Object>> frames = serve(
+                ide,
+                request(2, "buildTarget/compile", target(dir, "app")),
+                request(3, "buildTarget/compile", target(dir, "app")));
+
+        List<Map<String, Object>> published = frames.stream()
+                .filter(f -> "build/publishDiagnostics".equals(f.get("method")))
+                .map(f -> (Map<String, Object>) requireNonNull(f.get("params")))
+                .toList();
+        assertThat(published).hasSize(2);
+        String coreTarget = BspServer.pathUri(dir) + "#core";
+        assertThat(published).allSatisfy(p -> {
+            assertThat((Map<String, Object>) p.get("textDocument")).containsEntry("uri", BspServer.pathUri(core));
+            assertThat((Map<String, Object>) p.get("buildTarget")).containsEntry("uri", coreTarget);
+        });
+        assertThat((List<Object>) published.get(0).get("diagnostics")).hasSize(1);
+        assertThat((List<Object>) published.get(1).get("diagnostics")).isEmpty();
+    }
+
+    /**
      * A compile finishing on the worker writes its reply while the reader is still inside a slow
      * model fetch for another request: the frame writer and the model cache do not share a lock.
      */

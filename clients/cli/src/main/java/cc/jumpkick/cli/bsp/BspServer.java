@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,6 +30,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -216,9 +218,11 @@ public final class BspServer {
         if (id == null) return;
         Path moduleDir = resolveTargetModule(requestJson);
         Path workDir = moduleDir != null ? moduleDir : ide.projectDir();
+        // Read here, on the reader: the worker must not wait on a model fetch the reader holds.
+        CompileScope scope = "compile".equals(kind) ? compileScope(moduleDir) : CompileScope.NONE;
         Callable<String> body =
                 switch (kind) {
-                    case "compile" -> () -> compileJson(requestJson, moduleDir);
+                    case "compile" -> () -> compileJson(requestJson, moduleDir, scope);
                     case "test" -> () -> testJson(requestJson, moduleDir);
                     default -> () -> runJson(requestJson, moduleDir);
                 };
@@ -720,10 +724,10 @@ public final class BspServer {
                 .finish());
     }
 
-    private String compileJson(String requestJson, @Nullable Path moduleDir) throws IOException {
+    private String compileJson(String requestJson, @Nullable Path moduleDir, CompileScope scope) throws IOException {
         var outcome = ide.buildModule(moduleDir, null);
         // Unconditional: a green compile can carry warnings, and clears what the last one reported.
-        publishDiagnostics(requestJson, moduleDir, outcome.errors(), outcome.warnings());
+        publishDiagnostics(requestJson, moduleDir, scope, outcome.errors(), outcome.warnings());
         return statusResult(outcome, "compile failed");
     }
 
@@ -804,32 +808,128 @@ public final class BspServer {
     }
 
     /**
-     * Each file's diagnostics for the compiled target, parsed with {@link CompilerLocus}, the one
-     * header vocabulary the CLI, MCP, journal and engine share. Every notification replaces what
-     * the client held for that file and target ({@code reset}), and a file this target diagnosed
-     * last time that has nothing now is sent an empty list, which clears it.
+     * Each file's diagnostics, parsed with {@link CompilerLocus}, the one header vocabulary the
+     * CLI, MCP, journal and engine share, under the target whose module holds the file: a compile
+     * of several targets builds them all, and a module's build compiles what it depends on. A file
+     * no module holds goes to the first requested target. Every notification replaces what the
+     * client held for that file and target ({@code reset}), and a file that a target this compile
+     * built diagnosed last time and that has nothing now is sent an empty list, which clears it.
      */
     private void publishDiagnostics(
-            String requestJson, @Nullable Path moduleDir, List<String> errors, List<String> warnings)
+            String requestJson,
+            @Nullable Path moduleDir,
+            CompileScope scope,
+            List<String> errors,
+            List<String> warnings)
             throws IOException {
         List<String> uris = extractTargetUris(requestJson);
-        String targetUri = uris.isEmpty() ? pathUri(ide.projectDir()) + "#root" : uris.getFirst();
+        String fallback = uris.isEmpty() ? pathUri(ide.projectDir()) + "#root" : uris.getFirst();
         Map<String, List<String>> byFile = new LinkedHashMap<>();
         BspDiagnostics.collectDiagnostics(byFile, errors, 1, moduleDir, ide.projectDir());
         BspDiagnostics.collectDiagnostics(byFile, warnings, 2, moduleDir, ide.projectDir());
-        Set<String> now = Set.copyOf(byFile.keySet());
-        for (String fixed : diagnosed.getOrDefault(targetUri, Set.of())) byFile.putIfAbsent(fixed, List.of());
-        diagnosed.put(targetUri, now);
+        Map<String, Map<String, List<String>>> byTarget = new LinkedHashMap<>();
         for (Map.Entry<String, List<String>> e : byFile.entrySet()) {
-            frames.notify(
-                    "build/publishDiagnostics",
-                    JsonFields.object()
-                            .token("textDocument", uriJson(e.getKey()))
-                            .token("buildTarget", uriJson(targetUri))
-                            .token("diagnostics", arrayOf(e.getValue()))
-                            .bool("reset", true)
-                            .finish());
+            byTarget.computeIfAbsent(ownerOf(e.getKey(), scope.owners(), fallback), t -> new LinkedHashMap<>())
+                    .put(e.getKey(), e.getValue());
         }
+        Set<String> compiled = new LinkedHashSet<>(scope.built());
+        if (moduleDir == null) compiled.addAll(diagnosed.keySet());
+        compiled.addAll(uris);
+        compiled.add(fallback);
+        compiled.addAll(byTarget.keySet());
+        for (String target : compiled) {
+            Map<String, List<String>> files = byTarget.computeIfAbsent(target, t -> new LinkedHashMap<>());
+            Set<String> now = Set.copyOf(files.keySet());
+            for (String fixed : diagnosed.getOrDefault(target, Set.of())) files.putIfAbsent(fixed, List.of());
+            if (now.isEmpty()) diagnosed.remove(target);
+            else diagnosed.put(target, now);
+        }
+        for (Map.Entry<String, Map<String, List<String>>> t : byTarget.entrySet()) {
+            for (Map.Entry<String, List<String>> e : t.getValue().entrySet()) {
+                frames.notify(
+                        "build/publishDiagnostics",
+                        JsonFields.object()
+                                .token("textDocument", uriJson(e.getKey()))
+                                .token("buildTarget", uriJson(t.getKey()))
+                                .token("diagnostics", arrayOf(e.getValue()))
+                                .bool("reset", true)
+                                .finish());
+            }
+        }
+    }
+
+    /**
+     * Where a compile's diagnostics go: each module's directory, absolute and normalized, to its
+     * build target id, and the targets the compile builds.
+     */
+    record CompileScope(Map<Path, String> owners, Set<String> built) {
+        static final CompileScope NONE = new CompileScope(Map.of(), Set.of());
+    }
+
+    /**
+     * The scope of a compile of {@code moduleDir}: that module and the workspace modules it
+     * depends on, transitively, or every module when it is {@code null}. {@link CompileScope#NONE}
+     * when the model names no modules or cannot be had, and then every file goes to the fallback
+     * target rather than the compile turning into a model error.
+     */
+    private CompileScope compileScope(@Nullable Path moduleDir) {
+        IdeWireModel model;
+        try {
+            model = model();
+        } catch (IOException noModel) {
+            return CompileScope.NONE;
+        }
+        if (model.moduleDirs() == null) return CompileScope.NONE;
+        String rootUri = pathUri(ide.projectDir());
+        List<String> dirs = model.moduleDirs();
+        List<String> names = new ArrayList<>();
+        Map<Path, String> owners = new LinkedHashMap<>();
+        int start = -1;
+        for (int i = 0; i < dirs.size(); i++) {
+            Path dir = WorkingDirectory.resolve(Path.of(dirs.get(i))).normalize();
+            String name = model.names() != null && i < model.names().size()
+                    ? model.names().get(i)
+                    : dir.getFileName().toString();
+            names.add(name);
+            owners.put(dir, rootUri + "#" + name);
+            if (moduleDir != null
+                    && dir.equals(WorkingDirectory.resolve(moduleDir).normalize())) start = i;
+        }
+        Set<String> built = new LinkedHashSet<>();
+        if (moduleDir == null) {
+            built.addAll(owners.values());
+        } else if (start >= 0) {
+            List<Integer> todo = new ArrayList<>(List.of(start));
+            Set<Integer> seen = new LinkedHashSet<>(todo);
+            while (!todo.isEmpty()) {
+                int i = todo.removeLast();
+                built.add(rootUri + "#" + names.get(i));
+                for (String sibling : BspTargetOptions.siblingNames(model, i)) {
+                    int j = names.indexOf(sibling);
+                    if (j >= 0 && seen.add(j)) todo.add(j);
+                }
+            }
+        }
+        return new CompileScope(owners, built);
+    }
+
+    /** The target of the innermost module holding {@code fileUri}, or {@code fallback} when none does. */
+    static String ownerOf(String fileUri, Map<Path, String> moduleTargets, String fallback) {
+        Path file;
+        try {
+            file = Path.of(URI.create(fileUri)).normalize();
+        } catch (RuntimeException notAPath) {
+            return fallback;
+        }
+        String owner = fallback;
+        int depth = -1;
+        for (Map.Entry<Path, String> m : moduleTargets.entrySet()) {
+            if (file.startsWith(m.getKey()) && m.getKey().getNameCount() > depth) {
+                owner = m.getValue();
+                depth = m.getKey().getNameCount();
+            }
+        }
+        return owner;
     }
 
     static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
