@@ -638,7 +638,7 @@ class ActionCacheTest {
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
         Path base = Files.createDirectories(tempDir.resolve("target"));
         Path image = base.resolve("app");
-        byte[] bytes = new byte[(int) ActionCache.CLONE_MIN_BYTES * 2];
+        byte[] bytes = new byte[(int) CachedBlob.CLONE_MIN_BYTES * 2];
         for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) (i * 7);
         Files.write(image, bytes);
         cache.storeArtifacts("native-image", "key-seed", Map.of(), base, List.of(image));
@@ -661,7 +661,7 @@ class ActionCacheTest {
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
         Path base = Files.createDirectories(tempDir.resolve("target"));
         Path image = base.resolve("app");
-        byte[] bytes = new byte[(int) ActionCache.CLONE_MIN_BYTES * 2];
+        byte[] bytes = new byte[(int) CachedBlob.CLONE_MIN_BYTES * 2];
         for (int i = 0; i < bytes.length; i++) bytes[i] = (byte) (i * 7);
         Files.write(image, bytes);
         cache.storeArtifacts("native-image", "key-image", Map.of(), base, List.of(image));

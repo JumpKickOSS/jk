@@ -10,7 +10,6 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.BuildStamps;
-import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
@@ -28,10 +27,6 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.security.DigestOutputStream;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -120,38 +115,26 @@ public final class ActionCache {
      * <p>Presence, {@link #meter}, and the copy share this map so each blob is {@code readAttributes}
      * once. Empty when any blob is missing: a restore cannot proceed without all of them.
      */
-    private Optional<Map<String, Blob>> resolveAll(Map<String, String> outputs) {
-        Map<String, Blob> blobs = new HashMap<>();
+    private Optional<Map<String, CachedBlob>> resolveAll(Map<String, String> outputs) {
+        Map<String, CachedBlob> blobs = new HashMap<>();
         for (String sha : outputs.values()) {
             if (blobs.containsKey(sha)) continue;
             if (!isSha256Hex(sha)) return Optional.empty(); // a marker record restores nothing
-            Blob b = blob(sha);
+            CachedBlob b = blob(sha);
             if (b == null) return Optional.empty();
             blobs.put(sha, b);
         }
         return Optional.of(blobs);
     }
 
-    /** A resolved blob: where it is, and how big, from one {@code readAttributes}. */
-    private record Blob(Path path, long size) {}
-
     /**
      * {@code sha}'s blob in the cache CAS, else the store CAS (promoted Class-C), else {@code null}.
      * One {@code readAttributes} per candidate answers existence, regular-file-ness, and size.
      */
-    private @Nullable Blob blob(String sha) {
-        Blob hit = statBlob(cas.pathFor(sha));
+    private @Nullable CachedBlob blob(String sha) {
+        CachedBlob hit = CachedBlob.at(cas.pathFor(sha));
         if (hit != null) return hit;
-        return storeCas == null ? null : statBlob(storeCas.pathFor(sha));
-    }
-
-    private static @Nullable Blob statBlob(Path p) {
-        try {
-            BasicFileAttributes a = Files.readAttributes(p, BasicFileAttributes.class);
-            return a.isRegularFile() ? new Blob(p, a.size()) : null;
-        } catch (IOException absent) {
-            return null;
-        }
+        return storeCas == null ? null : CachedBlob.at(storeCas.pathFor(sha));
     }
 
     /**
@@ -822,11 +805,11 @@ public final class ActionCache {
             outputs = kept;
         }
         if (!inside(outputDir, outputs.keySet())) return false;
-        Optional<Map<String, Blob>> resolved = resolveAll(outputs);
+        Optional<Map<String, CachedBlob>> resolved = resolveAll(outputs);
         boolean fetched = resolved.isEmpty() && fetchFromRemote(record);
         if (fetched) resolved = resolveAll(outputs);
         if (resolved.isEmpty()) return false;
-        Map<String, Blob> blobs = resolved.get();
+        Map<String, CachedBlob> blobs = resolved.get();
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the classes tree
         // but are not cached compiled output — write-stamp writes them after compile. They are
         // owned here so prune keeps them. Prune rather than wipe: FreshnessStamp compares
@@ -854,7 +837,7 @@ public final class ActionCache {
             // thrash described above. Digest while copying otherwise: the memo seed below asserts
             // these exact bytes, so a truncated/corrupt blob must surface as a miss here, not as
             // green tests over wrong classes downstream.
-            Blob blob = Objects.requireNonNull(blobs.get(entry.getValue()));
+            CachedBlob blob = Objects.requireNonNull(blobs.get(entry.getValue()));
             boolean laid;
             try {
                 laid = layDown(blob, target, entry.getValue());
@@ -883,81 +866,37 @@ public final class ActionCache {
     }
 
     /** Tell the running step it restored {@code record}, from the remote tier when {@code fetched}. */
-    private static void noteRestored(ActionRecord record, boolean fetched, Map<String, Blob> blobs) {
+    private static void noteRestored(ActionRecord record, boolean fetched, Map<String, CachedBlob> blobs) {
         if (!StepCacheNotes.inStep() || record.actionKey() == null) return;
         long bytes = 0;
-        for (Blob b : blobs.values()) bytes += b.size();
+        for (CachedBlob b : blobs.values()) bytes += b.size();
         StepCacheNotes.restored(
                 record.actionKey(), fetched, bytes, record.meta().wallMillis());
     }
 
     /**
      * Put {@code blob} at {@code target} unless a byte-identical file is already there. False when
-     * the copied bytes do not hash to {@code sha} (the blob is dropped so the next store re-puts it).
-     * COPY, never link: compilers and packagers rewrite restored files in place, and a hard link
-     * would let that rewrite mutate the CAS blob (see {@code Cas.putFile}). A large blob is laid
-     * down by {@code Files.copy}, which clones where the filesystem can (see {@code Cas.putFile}): no
-     * space until one side is written, and as safe from an in-place rewrite as a copy; its bytes are
-     * verified by reading the result. A streamed copy that hashes on the way can never be a clone,
-     * so every restore of a native image or fat jar used to cost its full size again.
+     * the blob vanished, or when the copied bytes do not hash to {@code sha}: that blob is dropped
+     * so the next store re-puts it.
      */
-    private boolean layDown(Blob blob, Path target, String sha) throws IOException {
+    private boolean layDown(CachedBlob blob, Path target, String sha) throws IOException {
         Files.createDirectories(target.getParent());
-        if (identicalTo(target, blob, sha)) return true;
+        if (blob.identicalAt(target, sha)) return true;
         Files.deleteIfExists(target);
-        if (blob.size() >= CLONE_MIN_BYTES) {
-            try {
-                Files.copy(blob.path(), target);
-            } catch (NoSuchFileException vanished) {
-                // Another process's prune unlinked the blob since the presence check: a miss.
-                return false;
+        return switch (blob.copyTo(target, sha)) {
+            case LAID -> true;
+            case VANISHED -> false;
+            case CORRUPT -> {
+                dropCorruptBlob(blob);
+                yield false;
             }
-            if (sha.equalsIgnoreCase(Hashing.sha256Hex(target))) return true;
-            Files.deleteIfExists(target);
-            dropCorruptBlob(sha);
-            return false;
-        }
-        if (copyVerified(blob.path(), target, sha)) return true;
-        dropCorruptBlob(sha);
-        return false;
+        };
     }
-
-    /**
-     * Copy {@code blob} to {@code target} computing SHA-256 on the way; true when the bytes match
-     * {@code expectedSha}. A mismatching target is deleted before returning false. A blob that
-     * disappeared after the caller's presence check is also false, not a throw.
-     */
-    private static boolean copyVerified(Path blob, Path target, String expectedSha) throws IOException {
-        MessageDigest md = Hashing.newSha256();
-        try (var in = Files.newInputStream(blob);
-                var out = new DigestOutputStream(
-                        Files.newOutputStream(
-                                target,
-                                StandardOpenOption.CREATE,
-                                StandardOpenOption.TRUNCATE_EXISTING,
-                                StandardOpenOption.WRITE),
-                        md)) {
-            in.transferTo(out);
-        } catch (NoSuchFileException vanished) {
-            // Another process's prune unlinked the blob between the presence check and this open.
-            // A missing blob is a cache miss, not a build failure — the caller re-runs the action.
-            Files.deleteIfExists(target);
-            return false;
-        }
-        if (expectedSha.equalsIgnoreCase(Hashing.hex(md.digest()))) {
-            return true;
-        }
-        Files.deleteIfExists(target);
-        return false;
-    }
-
-    /** Below this a clone saves too little to be worth a second read of the bytes to verify them; such blobs stream and hash in one pass. */
-    static final long CLONE_MIN_BYTES = 1024L * 1024;
 
     /** A blob whose bytes no longer match its name is garbage — drop it so the next store re-puts. */
-    private void dropCorruptBlob(String sha) {
+    private static void dropCorruptBlob(CachedBlob blob) {
         try {
-            Files.deleteIfExists(resolveBlob(sha));
+            Files.deleteIfExists(blob.path());
         } catch (IOException ignored) {
             // best-effort hygiene
         }
@@ -990,11 +929,11 @@ public final class ActionCache {
     private boolean copyArtifacts(ActionRecord record, Path baseDir, boolean pruneRoots) throws IOException {
         if (record.outputs().isEmpty()) return false;
         if (!inside(baseDir, record.outputs().keySet())) return false;
-        Optional<Map<String, Blob>> resolved = resolveAll(record.outputs());
+        Optional<Map<String, CachedBlob>> resolved = resolveAll(record.outputs());
         boolean fetched = resolved.isEmpty() && fetchFromRemote(record);
         if (fetched) resolved = resolveAll(record.outputs());
         if (resolved.isEmpty()) return false;
-        Map<String, Blob> blobs = resolved.get();
+        Map<String, CachedBlob> blobs = resolved.get();
         // Clear the DIRECTORY roots this record owns before copyinga multi-file
         // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
         // otherwise keeps stale extras beside the restored set — real packager runs clean
@@ -1026,7 +965,7 @@ public final class ActionCache {
             // restoring an unchanged sibling jar invalidated every downstream stamp and forced a
             // full KSP round (and Kotlin recompile) on every single build. Blobs may live in the
             // store CAS after a release promote (Class-C).
-            Blob blob = Objects.requireNonNull(blobs.get(e.getValue()));
+            CachedBlob blob = Objects.requireNonNull(blobs.get(e.getValue()));
             boolean laid;
             try {
                 laid = layDown(blob, target, e.getValue());
@@ -1088,21 +1027,6 @@ public final class ActionCache {
      */
     private static void pruneUnowned(Path dir, Set<Path> owned) throws IOException {
         PathUtil.pruneTree(dir, p -> owned.contains(p.normalize()) || owned.contains(AtomicWrites.inFlightTarget(p)));
-    }
-
-    /**
-     * True when {@code target} already holds exactly the CAS blob {@code sha}, whose size the
-     * caller's {@link #resolveAll} already read. One stat of the target answers presence and size,
-     * so the hash is only paid when it can actually match.
-     */
-    private static boolean identicalTo(Path target, Blob blob, String sha) throws IOException {
-        Blob existing = statBlob(target);
-        if (existing == null || existing.size() != blob.size()) return false;
-        // The memo, not a full re-read: restoreArtifacts seeds this very file via rememberContent,
-        // so the check that exists to avoid churning mtime costs a map lookup rather than re-reading
-        // a fat jar on every warm build. Only a settled entry counts: a step that rewrote the output
-        // in place at the same size within a tick of the restore left the seed's identity intact.
-        return sha.equals(FileHashMemo.settledContentHash(target));
     }
 
     /**
@@ -1204,11 +1128,11 @@ public final class ActionCache {
      * Metering from sizes already in hand — a restore has resolved every blob before it copies, and
      * asking the filesystem again for a number it just read is a third of that path's stats.
      */
-    private static void meter(Map<String, Blob> blobs, Map<String, String> outputs) {
+    private static void meter(Map<String, CachedBlob> blobs, Map<String, String> outputs) {
         if (outputs.isEmpty()) return;
         long bytes = 0;
         for (String sha : outputs.values()) {
-            Blob b = blobs.get(sha);
+            CachedBlob b = blobs.get(sha);
             if (b != null) bytes += b.size();
         }
         SessionContext.current().io().localDown(bytes);
