@@ -528,7 +528,8 @@ build-logic run and packaging step once: their action keys carry the installed e
 so an artifact the previous engine produced is never restored under the new one. The preflight
 dirty memo stores that producer id beside `cacheKeyVersion`, so a memo certified under the
 displaced engine cannot make `jk build` report fully cached while packaging keys miss. Compile
-steps keep their keys and stay cached, so that one-time re-run is packaging and verdicts, not a
+steps keep their keys and stay cached, and so do test suites unless the engine's suite code
+(`SuiteCode`) changed, so that one-time re-run is packaging and verdicts, not a
 full rebuild — and it is a later `jk build`, not the install's re-shelving pass. A later
 `jk install` whose forecast finds only `cache-install` left (packaging already keyed under the
 live engine) uses the same thin parse + cache-install plan as re-shelving.

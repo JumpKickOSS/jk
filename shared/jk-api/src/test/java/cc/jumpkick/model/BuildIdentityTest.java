@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
@@ -52,8 +53,8 @@ class BuildIdentityTest {
 
     /**
      * A compile keys by the version and salt alone: an engine rebuilt from other sources under one
-     * -SNAPSHOT version recompiles nothing, while its artifact keys and test stamps (cacheKeyVersion)
-     * still move with it.
+     * -SNAPSHOT version recompiles nothing, while its artifact keys (cacheKeyVersion) still move with
+     * it.
      */
     @Test
     void a_compile_keys_no_engine_identity() {
@@ -154,6 +155,37 @@ class BuildIdentityTest {
         m.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "cc.jumpkick.engine.Other");
         write(main, m, "A");
         assertThat(BuildIdentity.codeIdentity(main)).isNotEqualTo(BuildIdentity.codeIdentity(one));
+    }
+
+    /**
+     * The identity of a part of the archive moves with an entry of that part and with nothing else,
+     * so a run-tests stamp keyed by the code that runs a suite holds over an engine change elsewhere.
+     */
+    @Test
+    void a_parts_identity_moves_with_its_entries_only(@TempDir Path dir) throws IOException {
+        Predicate<String> part = name -> name.startsWith("cc/jumpkick/test/");
+        Path one = archive(dir.resolve("one.jar"), "A", "A");
+        Path elsewhere = archive(dir.resolve("elsewhere.jar"), "A", "B");
+        Path inside = archive(dir.resolve("inside.jar"), "B", "A");
+        assertThat(BuildIdentity.codeIdentity(elsewhere)).isNotEqualTo(BuildIdentity.codeIdentity(one));
+        assertThat(BuildIdentity.codeIdentity(elsewhere, part)).isEqualTo(BuildIdentity.codeIdentity(one, part));
+        assertThat(BuildIdentity.codeIdentity(inside, part)).isNotEqualTo(BuildIdentity.codeIdentity(one, part));
+        assertThat(BuildIdentity.codeIdentity(part))
+                .as("a classes dir has no archive")
+                .isEmpty();
+    }
+
+    private static Path archive(Path at, String suiteBody, String engineBody) throws IOException {
+        try (OutputStream out = Files.newOutputStream(at);
+                JarOutputStream jar = new JarOutputStream(out, manifest("4ee07400a592", "2026-11-15T16:27:23Z"))) {
+            jar.putNextEntry(new JarEntry("cc/jumpkick/test/Discovery.class"));
+            jar.write(suiteBody.getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+            jar.putNextEntry(new JarEntry("cc/jumpkick/engine/EngineMain.class"));
+            jar.write(engineBody.getBytes(StandardCharsets.UTF_8));
+            jar.closeEntry();
+        }
+        return at;
     }
 
     private static Path jar(Path at, String commit, String time, String body) throws IOException {

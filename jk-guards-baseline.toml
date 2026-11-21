@@ -1845,6 +1845,10 @@ population = { examined = 10 }
 [steps-declare-forecast.populations]
 "server/engine" = { examined = 59 }
 
+[suite-code-keyed]
+[suite-code-keyed.populations]
+"server/engine" = { examined = 44 }
+
 [swallowed-broad-catch]
 population = { files = 2240 }
 

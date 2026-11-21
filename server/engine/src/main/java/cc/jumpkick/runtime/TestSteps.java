@@ -16,7 +16,6 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
-import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.SessionCancel;
@@ -40,6 +39,7 @@ import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
 import cc.jumpkick.test.StampTokens;
+import cc.jumpkick.test.SuiteCode;
 import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.test.SuiteFilter;
 import cc.jumpkick.test.SuiteReads;
@@ -764,8 +764,7 @@ final class TestSteps {
             // A suite re-run for a sibling's jar bytes alone reads as that, not as this module's
             // change, so why-rebuilt can tell the two apart.
             boolean jarOnly = !s.testDirty && !s.compileDirty && (s.compileDepDirty || s.testDepDirty);
-            String jk = StampTokens.jkMoved(
-                    s.dir, SessionContext.current().testSelection(), BuildIdentity.cacheKeyVersion());
+            String jk = StampTokens.jkMoved(s.dir, SessionContext.current().testSelection(), SuiteCode.keyVersion());
             String why = jk != null
                     ? "run tests · " + jk + " · " + tests
                     : jarOnly

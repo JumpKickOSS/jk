@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -102,9 +103,19 @@ public final class BuildIdentity {
      * engine never restores an older engine's results under the same key.
      */
     public static String cacheKeyVersion() {
+        return keyVersion(keyId());
+    }
+
+    /**
+     * The version string to key by when {@code id} names the code that produces the result:
+     * {@link JkVersion#VERSION} plus {@link #CACHE_KEY_SALT}, and {@code id} on a {@code -SNAPSHOT}
+     * build. A run-tests stamp passes the identity of the engine code that picks and judges a suite
+     * ({@link #codeIdentity(Predicate)}), so an engine change elsewhere replays every green suite.
+     */
+    public static String keyVersion(String id) {
         String pinned = overrideKeyVersion;
         if (pinned != null) return pinned;
-        return compose(JkVersion.VERSION, keyId());
+        return compose(JkVersion.VERSION, id);
     }
 
     /**
@@ -117,14 +128,12 @@ public final class BuildIdentity {
      * recompiles nothing: before, every compile of the next build missed. Engine code that
      * changes what a compile records (which outputs it keeps, how it lays them out) turns the salt,
      * as on a release build, where no key folds the code. Artifact keys keep the producer ({@link
-     * #cacheKeyVersion}, {@code producer:} in {@code ActionKey.forArtifact}), and so does a run-tests
-     * stamp: the engine itself decides what a test JVM sees (its environment, its flags, which
-     * classes run) and no key names that code.
+     * #cacheKeyVersion}, {@code producer:} in {@code ActionKey.forArtifact}); a run-tests stamp keeps
+     * the part of it that decides what a test JVM sees and how its outcome reads ({@link
+     * #keyVersion}).
      */
     public static String compileKeyVersion() {
-        String pinned = overrideKeyVersion;
-        if (pinned != null) return pinned;
-        return compose(JkVersion.VERSION, "");
+        return keyVersion("");
     }
 
     private static volatile @Nullable String overrideKeyVersion;
@@ -302,11 +311,33 @@ public final class BuildIdentity {
      * engine start.
      */
     static String codeIdentity(Path jar) throws IOException {
+        return codeIdentity(jar, entry -> true);
+    }
+
+    /**
+     * The identity of the running code archive's entries that {@code entries} keeps, by archive
+     * entry name ({@code cc/jumpkick/test/Discovery.class}), as {@link #keyId()} hashes them: 12 hex,
+     * or {@code ""} when the code runs from no archive. Not cached: a caller keeps what it derives.
+     */
+    public static String codeIdentity(Predicate<String> entries) {
+        Path location = codeArchive();
+        if (location == null) return "";
+        try {
+            return codeIdentity(location, entries).substring(0, 12);
+        } catch (IOException | RuntimeException e) {
+            // Best-effort, as keyId is: the whole archive then names it.
+            return keyId();
+        }
+    }
+
+    /** As {@link #codeIdentity(Path)} over the entries {@code keep} names. */
+    static String codeIdentity(Path jar, Predicate<String> keep) throws IOException {
         MessageDigest md = Hashing.newSha256();
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             List<ZipEntry> entries = new ArrayList<>(Collections.list(zip.entries()));
             entries.sort(Comparator.comparing(ZipEntry::getName));
             for (ZipEntry e : entries) {
+                if (!keep.test(e.getName())) continue;
                 String line;
                 if (e.getName().equalsIgnoreCase(JarFile.MANIFEST_NAME)) {
                     Manifest m;

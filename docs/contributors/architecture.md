@@ -596,8 +596,12 @@ and exclusions stay GA-scoped.
    (`BuildIdentity.compileKeyVersion`, version and salt): their producer is the compiler worker,
    keyed by content beside the compiler JDK, the options and every input, so an engine edit installed
    with `jk install -S` recompiles nothing. Engine code that changes what a compile records turns
-   `CACHE_KEY_SALT`. Run-tests stamps keep it (`jk:` is `cacheKeyVersion`): the engine decides what
-   a test JVM sees, and no other key names that code.
+   `CACHE_KEY_SALT`. A run-tests stamp keeps only the part of it that decides what a test JVM sees
+   and how its outcome reads (`jk:` is `SuiteCode.keyVersion`): the identity of the package
+   `cc.jumpkick.test` and of the classes named for tests, suites or JUnit. The runner, JDK,
+   classpath, flags, environment and selection are keyed by content, so an engine edit elsewhere
+   replays every green suite; guard G164 (`suite-code-keyed`) keeps the selection and launch types
+   inside that code.
    A compile key and the freshness stamp's instant are both taken before the compiler reads its
    first source. A source whose bytes move while the compiler runs is re-read afterwards: the
    compile is reported and not recorded, its incremental analysis is dropped, and the stamp reads
