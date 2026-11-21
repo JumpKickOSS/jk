@@ -6,8 +6,9 @@
 # (jk format, jk guard, jk install) and the push gate (jk install -g) run on the
 # developer's machine. A workflow_dispatch re-runs the gate on any ref; on a release tag, a green
 # dispatch releases it like the tag push would. The whole integration tier runs on every release
-# tag, a dispatch on one included, and on a dispatch on any other ref only when its `integration`
-# input asks: it is most of an hour of runner time.
+# tag and every run on main, dispatches included, so no run here is green on a commit of main that
+# fails an integration test; on any other ref it runs only when the `integration` input asks: it is
+# most of an hour of runner time.
 #
 # Runners are spent in order, cheapest first: every Linux job, then the Windows jobs once all of
 # those passed, then the macOS jobs once the Windows ones passed. A build already broken on Linux
@@ -24,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       integration:
-        description: Run the whole integration tier (always on a release tag)
+        description: Run the whole integration tier (always on a release tag and on main)
         type: boolean
         default: false
 
@@ -279,13 +280,14 @@ jobs:
         run: scripts/ci-audit-annotate.sh target/jk-audit.jsonl HIGH
 
   # The whole integration tier, as the nightly's integration job runs it: a commit can reach main
-  # without the push gate, and the curated lane is a subset. A red class is a verdict about its
+  # without the push gate, and the curated lane is a subset. On main it always runs, so a dispatch
+  # there cannot come back green over a red integration test. A red class is a verdict about its
   # module; --continue reports every module's. The release workflow starts only on a green CI run,
   # so a red tier here stops the release. The nightly's run of the tier took 48 minutes on
   # ubuntu-latest, bootstrap and install included.
   integration:
-    name: Integration suite (release tag)
-    if: ${{ github.ref_type == 'tag' || inputs.integration }}
+    name: Integration suite
+    if: ${{ github.ref_type == 'tag' || github.ref == 'refs/heads/main' || inputs.integration }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:

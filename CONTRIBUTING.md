@@ -169,7 +169,7 @@ paths.
 
 | Lane | When | What |
 |---|---|---|
-| **Release CI** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
+| **Release CI** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff; the whole integration tier (`jk test -s integration`) on a tag and on `main` |
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -s integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
 Pushes to `main` and pull requests start no workflow: the merge gate runs on the developer's machine

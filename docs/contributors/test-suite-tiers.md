@@ -250,11 +250,14 @@ pull request:
 | Merge gate | a developer, on their own machine | `jk install` (fast tier) |
 | Queue and Full tiers | the merge queue's gate host | the Queue tier on every batch; the Full tier behind it ([gate tiers](#gate-tiers)) |
 | No workflow | a push to `main`, a pull request | — |
-| `ci.yml` | a release tag, or a dispatch | fast tier, curated lane, `release`; the whole `integration` tier on a tag, or on a dispatch whose `integration` input is on |
+| `ci.yml` | a release tag, or a dispatch | fast tier, curated lane, `release`; the whole `integration` tier on a tag and on `main`, and on another branch when the dispatch's `integration` input is on |
 | `ci-nightly.yml` | its schedule, when the workflow is enabled | `integration`, `slow`, `network`, `bench`, coverage, the audit at `LOW` |
 
 A commit that reaches `main` has passed the Queue tier; whatever only the Full tier runs judges it
-when the Full tier next runs, or the next nightly or release run. Nothing runs the integration or slow tier on Windows.
+when the Full tier next runs, or the next nightly or release run. `main` has no required GitHub
+check, since no workflow runs on a push: the merge queue is its only writer. A `ci.yml` run on
+`main` always includes the whole `integration` tier, so a commit there that fails an integration
+test cannot show a green CI run. Nothing runs the integration or slow tier on Windows.
 
 - **Release (`ci.yml` on the release tag):** the self-host job (`jk install`, which builds, then
   `jk guard`, `jk test`: the fast tier and every house-rule lane, run by the checkout's own `jk`;
