@@ -51,7 +51,7 @@ final class BspRequestParams {
      */
     static TestSelection withTargetSuite(TestSelection selection, List<String> targetUris) {
         if (targetUris.size() != 1 || !selection.suites().isEmpty() || selection.allSuites()) return selection;
-        String suite = BspServer.suiteOf(targetUris.getFirst());
+        String suite = BspTargets.suiteOf(targetUris.getFirst());
         if (suite == null) return selection;
         return TestSelection.of(List.of(suite), false, selection.includeTags(), selection.excludeTags())
                 .withClasses(selection.classes());

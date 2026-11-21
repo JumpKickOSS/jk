@@ -17,7 +17,7 @@ class BspSuiteTargetsTest {
     @SuppressWarnings("unchecked")
     void a_suite_target_tests_and_does_nothing_else() {
         Map<String, Object> target = (Map<String, Object>)
-                requireNonNull(MiniJson.parse(BspServer.suiteTargetJson("file:///ws#app", "app", "integration")));
+                requireNonNull(MiniJson.parse(BspTargets.suiteTargetJson("file:///ws#app", "app", "integration")));
 
         assertThat((Map<String, Object>) target.get("id")).containsEntry("uri", "file:///ws#app::integration");
         assertThat(target.get("displayName")).isEqualTo("app · integration");
@@ -34,8 +34,8 @@ class BspSuiteTargetsTest {
 
     @Test
     void testing_a_suite_target_selects_its_suite() {
-        assertThat(BspServer.suiteOf("file:///ws#app::integration")).isEqualTo("integration");
-        assertThat(BspServer.suiteOf("file:///ws#app")).isNull();
+        assertThat(BspTargets.suiteOf("file:///ws#app::integration")).isEqualTo("integration");
+        assertThat(BspTargets.suiteOf("file:///ws#app")).isNull();
 
         TestSelection plain = TestSelection.DEFAULT.withClasses(List.of("FooIT"));
         TestSelection suite = BspRequestParams.withTargetSuite(plain, List.of("file:///ws#app::integration"));

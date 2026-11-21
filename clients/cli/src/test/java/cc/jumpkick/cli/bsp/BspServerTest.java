@@ -45,7 +45,7 @@ class BspServerTest {
 
     @Test
     void target_json_shape_includes_canTest_and_canCompile() {
-        String json = BspServer.targetJson("file:///p#root", "demo", "file:///p");
+        String json = BspTargets.targetJson("file:///p#root", "demo", "file:///p");
         assertThat(json).contains("\"canCompile\":true");
         assertThat(json).contains("\"canTest\":true");
         assertThat(json).contains("\"canRun\":false");
@@ -54,12 +54,12 @@ class BspServerTest {
 
     @Test
     void target_json_canRun_when_main_present() {
-        String json = BspServer.targetJson("file:///p#app", "app", "file:///p/app", true);
+        String json = BspTargets.targetJson("file:///p#app", "app", "file:///p/app", true);
         assertThat(json).contains("\"canRun\":true");
         assertThat(json)
                 .as("a module with an [application] main is an application")
                 .contains("\"tags\":[\"application\"]");
-        assertThat(BspServer.targetJson("file:///p#lib", "lib", "file:///p/lib", false))
+        assertThat(BspTargets.targetJson("file:///p#lib", "lib", "file:///p/lib", false))
                 .contains("\"tags\":[\"library\"]");
     }
 

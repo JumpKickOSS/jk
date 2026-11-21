@@ -205,11 +205,11 @@ final class BspTargetOptions {
         for (int i = 0; i < moduleCount(model); i++) {
             String tid = rootUri + "#" + targetName(model, i);
             for (String asked : requested.isEmpty() ? List.of(tid) : requested) {
-                String suite = BspServer.suiteOf(asked);
+                String suite = BspTargets.suiteOf(asked);
                 boolean ofSuite = test
                         && suite != null
                         && tid.equals(asked.substring(
-                                0, asked.length() - suite.length() - BspServer.SUITE_SEPARATOR.length()));
+                                0, asked.length() - suite.length() - BspTargets.SUITE_SEPARATOR.length()));
                 if (asked.equals(tid) || ofSuite) {
                     items.add(jvmEnvironmentItem(asked, model, i, moduleDir(model, i, projectDir), test));
                 }

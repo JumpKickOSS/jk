@@ -412,7 +412,7 @@ class BspServerProtocolTest {
                                 testClasses,
                                 dir.resolve("core/target/test-classes").toString()))
                 + "," + array("siblingRefs", List.of("0|core|COMPILE")) + "}");
-        String suite = BspServer.pathUri(dir) + "#app" + BspServer.SUITE_SEPARATOR + "integration";
+        String suite = BspServer.pathUri(dir) + "#app" + BspTargets.SUITE_SEPARATOR + "integration";
 
         List<Map<String, Object>> frames = serve(
                 fake(dir, model),

@@ -24,7 +24,7 @@ class BspJsonFrozenBytesTest {
 
     @Test
     void build_target_shape() {
-        assertThat(BspServer.targetJson("file:///p#app", "g:app", "file:///p/app", true))
+        assertThat(BspTargets.targetJson("file:///p#app", "g:app", "file:///p/app", true))
                 .isEqualTo(
                         "{\"id\":{\"uri\":\"file:///p#app\"},\"displayName\":\"g:app\",\"baseDirectory\":\"file:///p/app\","
                                 + "\"tags\":[\"application\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\",\"scala\"],\"dependencies\":[],"
