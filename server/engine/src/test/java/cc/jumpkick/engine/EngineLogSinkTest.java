@@ -11,7 +11,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The log rolls once at the cap, keeps one generation, and never rolls a file it no longer owns. */
@@ -122,5 +127,47 @@ class EngineLogSinkTest {
         assertThat(sink.lastRolledAtMillis()).isEqualTo(-1);
         assertThat(dir.resolve("engine.log.1")).doesNotExist();
         assertThat(EngineLogSink.sizeOf(dir.resolve("missing.log"))).isEqualTo(-1);
+    }
+
+    /** A generation that cannot be set aside costs the roll, never the lines written after it. */
+    @Test
+    void a_roll_that_fails_keeps_appending_to_the_log(@TempDir Path dir) throws Exception {
+        Path log = dir.resolve("engine.log");
+        Path previous = dir.resolve("engine.log.1");
+        // A non-empty directory where the kept generation goes: both the rename and the copy fail.
+        Files.createDirectories(previous);
+        Files.writeString(previous.resolve("held"), "x");
+        EngineLogSink sink = new EngineLogSink(log, CAP, new FakeClock());
+        try (PrintStream out = new PrintStream(sink, true, StandardCharsets.UTF_8)) {
+            for (long written = 0; written < CAP + 1024; written += 1024) out.println("a".repeat(1023));
+            out.println("after the failed roll");
+        }
+        assertThat(sink.rolls()).isZero();
+        assertThat(Files.readString(log)).contains("after the failed roll");
+    }
+
+    /** A sink that could not reopen its log tries again after a pause and writes from then on. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_log_that_could_not_be_reopened_is_tried_again_later(@TempDir Path dir) throws Exception {
+        Path log = dir.resolve("engine.log");
+        Path previous = dir.resolve("engine.log.1");
+        Files.createDirectories(previous);
+        Files.writeString(previous.resolve("held"), "x");
+        FakeClock clock = new FakeClock();
+        EngineLogSink sink = new EngineLogSink(log, CAP, clock);
+        Files.setPosixFilePermissions(log, PosixFilePermissions.fromString("r--------"));
+        Assumptions.assumeFalse(Files.isWritable(log), "a user that writes read-only files");
+        try (PrintStream out = new PrintStream(sink, true, StandardCharsets.UTF_8)) {
+            for (long written = 0; written < CAP + 1024; written += 1024) out.println("b".repeat(1023));
+            out.println("while the log cannot be opened");
+            Files.setPosixFilePermissions(log, PosixFilePermissions.fromString("rw-------"));
+            out.println("before the pause is over");
+            clock.advance(Duration.ofMinutes(1));
+            out.println("after the pause");
+        }
+        String text = Files.readString(log);
+        assertThat(text).doesNotContain("while the log cannot be opened").doesNotContain("before the pause is over");
+        assertThat(text).contains("after the pause");
     }
 }

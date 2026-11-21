@@ -1716,6 +1716,10 @@ in     = "cc.jumpkick.host.Processes$Drain#<init>"
 reason = "byte pump for a child's output"
 
 [[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.host.Processes#feed"
+reason = "byte pump for a child's input"
+
+[[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.host.AotTraining#runUntilSettled"
 reason = "reads a training child's output to see it settle"
 
@@ -1788,7 +1792,7 @@ in     = "cc.jumpkick.engine.DrainReporter#start"
 reason = "engine-lifetime drain report to the successor"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "cc.jumpkick.engine.EngineServer#run"
+in     = "cc.jumpkick.engine.EngineServer#start"
 reason = "the connection executor, one thread per connection whose verbs bind their own request, and startup's sweep of parked installs and adoption of sessions"
 
 [[guards.request-thread-carries-session.allow]]

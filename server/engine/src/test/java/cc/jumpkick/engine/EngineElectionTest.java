@@ -632,4 +632,31 @@ class EngineElectionTest {
         }
         assertThat(log).anyMatch(l -> l.contains("did not confirm it stopped writing sessions"));
     }
+
+    /** An election that fails after claiming a generation leaves no lock held and no file behind. */
+    @Test
+    void a_win_that_fails_part_way_releases_what_it_claimed() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EnginePaths.Paths gen1 = EnginePaths.generation(p, 1);
+        // A non-empty directory where generation 1's socket goes: the stale-file delete fails.
+        Files.createDirectories(gen1.socket());
+        Files.writeString(gen1.socket().resolve("held"), "x");
+
+        EngineElection failed = election(p, "aaaa", 4242);
+        try {
+            failed.win();
+            throw new AssertionError("the win should have failed");
+        } catch (IOException expected) {
+            // The stale socket could not be deleted.
+        }
+        assertThat(gen1.pid()).doesNotExist();
+        assertThat(EnginePaths.endpoint(p)).doesNotExist();
+
+        Files.delete(gen1.socket().resolve("held"));
+        Files.delete(gen1.socket());
+        EngineElection.Won won =
+                requireNonNull(election(p, "aaaa", 4343).win(), "the startup mutex and generation 1 are free again");
+        closeLater(won.listener());
+        assertThat(won.active().socket()).isEqualTo(gen1.socket());
+    }
 }

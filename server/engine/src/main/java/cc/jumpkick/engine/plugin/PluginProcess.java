@@ -423,7 +423,7 @@ public final class PluginProcess {
         Process process;
         try {
             process = starter.start(pb, heap);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             argfile.delete();
             throw e;
         }
@@ -557,9 +557,10 @@ public final class PluginProcess {
                 if (watchdog != null) watchdog.interrupt();
                 if (process.isAlive() || hasLiveDescendant(process)) {
                     // A worker whose command channel we closed is already exiting. Killing it now records
-                    // SIGKILL, and a compiler lane that left to free memory looks like a crash.
+                    // SIGKILL, and a compiler lane that left to free memory looks like a crash. A
+                    // descendant still running once the worker has gone is stopped either way.
                     try {
-                        if (!process.waitFor(1, TimeUnit.SECONDS)) forceStop(process);
+                        if (!process.waitFor(1, TimeUnit.SECONDS) || hasLiveDescendant(process)) forceStop(process);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         forceStop(process);

@@ -16,9 +16,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Runs a child and captures its output under a deadline that always holds.
  *
- * <p>Both pipes drain on platform daemon threads while the caller waits on the child, so the
- * deadline holds for a child that neither exits nor closes its pipe, and a child whose output
- * outgrows a pipe buffer never blocks on it. Reading a pipe to its end and only then waiting with a
+ * <p>Both pipes drain, and the child's input is written, on platform daemon threads while the
+ * caller waits on the child, so the deadline holds for a child that neither exits, closes its pipe
+ * nor reads its input, and a child whose output outgrows a pipe buffer never blocks on it. Reading a pipe to its end and only then waiting with a
  * timeout does neither: the read blocks until every holder of the pipe closes it. A child past its
  * deadline is killed with its descendants.
  */
@@ -60,8 +60,8 @@ public final class Processes {
     }
 
     /**
-     * Capture {@code child}: write {@code stdin} to it (nothing when null) and close its input, then
-     * wait at most {@code timeout}. The first {@code limit} bytes of each pipe are kept and the rest
+     * Capture {@code child}: write {@code stdin} to it (nothing when null) and close its input, and
+     * wait at most {@code timeout} for it all. The first {@code limit} bytes of each pipe are kept and the rest
      * is read and dropped, so a child that prints without end neither fills memory nor blocks.
      */
     public static Captured capture(Process child, byte @Nullable [] stdin, Duration timeout, int limit)
@@ -76,11 +76,7 @@ public final class Processes {
     private static Ran run(Process child, byte @Nullable [] stdin, Duration timeout, int limit) throws IOException {
         Drain out = Drain.start(child.getInputStream(), limit, "jk-process-stdout");
         Drain err = Drain.start(child.getErrorStream(), limit, "jk-process-stderr");
-        try (OutputStream in = child.getOutputStream()) {
-            if (stdin != null) in.write(stdin);
-        } catch (IOException closedEarly) {
-            // The child exited or closed its input without reading it; its exit status says why.
-        }
+        feed(child.getOutputStream(), stdin);
         long deadline = Clock.SYSTEM.nanos() + timeout.toNanos();
         try {
             if (!child.waitFor(timeout.toNanos(), TimeUnit.NANOSECONDS)) {
@@ -132,6 +128,37 @@ public final class Processes {
             return c.ok() ? c.output() : null;
         } catch (IOException | RuntimeException e) {
             return null;
+        }
+    }
+
+    /**
+     * Write {@code stdin} to {@code in} and close it. Input larger than a pipe buffer blocks until the
+     * child reads it, so it is written on a platform daemon thread and the deadline still holds; a
+     * kill at the deadline breaks the pipe and ends the write.
+     */
+    private static void feed(OutputStream in, byte @Nullable [] stdin) {
+        if (stdin == null) {
+            closeQuietly(in);
+            return;
+        }
+        Thread feeder = new Thread(
+                () -> {
+                    try (OutputStream stream = in) {
+                        stream.write(stdin);
+                    } catch (IOException closedEarly) {
+                        // The child exited or closed its input without reading it; its exit status says why.
+                    }
+                },
+                "jk-process-stdin");
+        feeder.setDaemon(true);
+        feeder.start();
+    }
+
+    private static void closeQuietly(OutputStream in) {
+        try {
+            in.close();
+        } catch (IOException closedEarly) {
+            // The child already closed its input.
         }
     }
 

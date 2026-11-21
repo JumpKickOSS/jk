@@ -826,6 +826,8 @@ that follows it. Two clients that start an engine within the same 15 seconds —
 to the first — share one log: the second spawn appends to the first's rather than rotating it
 again. The running engine rolls the log to `.1` on its own when it reaches `log-max-mb` (default
 16 MiB; `0` = no cap), so a resident engine that warns in a loop for weeks cannot fill the disk.
+A roll that fails keeps appending to the log and is tried again at the next cap; a log the engine
+cannot reopen loses its lines until a retry ten seconds later opens it.
 `jk engine status` prints a `Log` row with the current size and when this engine last rolled it;
 `-O jsonl` carries `logBytes` and `logRolledAt` (epoch millis, `-1` = never).
 

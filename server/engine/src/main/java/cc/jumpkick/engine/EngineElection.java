@@ -104,6 +104,9 @@ final class EngineElection {
     /** The file key of the socket (or TCP port file) this engine bound, to tell it from a successor's. */
     private @Nullable Object boundSocketKey;
 
+    /** The listener {@link #win} opened, until it returns it; {@link #abandon} closes it. */
+    private @Nullable ServerSocketChannel opened;
+
     /** Test seam: runs in {@link #retire} after the generation lock is released. */
     static @Nullable Runnable afterGenerationReleased;
 
@@ -119,7 +122,8 @@ final class EngineElection {
      * Claim the engine identity and bind. Returns {@code null} — having touched nothing but the
      * lock file — when another engine is mid-startup, or when one of this exact version and build
      * identity already serves; the caller is then a losing spawn-race participant and should treat
-     * that as success-by-proxy, not an error.
+     * that as success-by-proxy, not an error. A failure part-way releases the locks, closes the
+     * listener and deletes the generation's files before it is thrown.
      */
     @Nullable
     Won win() throws IOException {
@@ -140,7 +144,18 @@ final class EngineElection {
             log.accept("jk engine: another engine is mid-startup (" + paths.lock() + " is held) — yielding");
             return null;
         }
+        try {
+            return claim();
+        } catch (IOException | RuntimeException e) {
+            abandon();
+            throw e;
+        } finally {
+            opened = null;
+        }
+    }
 
+    /** {@link #win} under the startup mutex. */
+    private @Nullable Won claim() throws IOException {
         // Where clients currently connect — the engine this one displaces (drained later).
         // Captured BEFORE we bind, and null when nothing was live: once the compat pointer is
         // written the flat path names US, and a drain aimed there is a self-shutdown.
@@ -173,26 +188,27 @@ final class EngineElection {
         for (int n = 1; n < MAX_GENERATIONS && active == null; n++) {
             EnginePaths.Paths cand = EnginePaths.generation(paths, n);
             FileChannel gc = OwnerOnlyFiles.channel(cand.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            FileLock gl;
             try {
-                gl = gc.tryLock();
-            } catch (OverlappingFileLockException e) {
-                gl = null;
-            }
-            Incumbent squatter = gl != null ? helloProbe(cand.socket(), version) : null;
-            if (gl != null && squatter == null) {
-                active = cand;
-                genLock = gl;
-                genLockChannel = gc;
-                log.accept("jk engine: claimed generation " + n + " (pid " + pid + ", lock inode "
-                        + fileKey(cand.lock()) + ")");
-            } else {
-                if (squatter != null) {
+                FileLock gl;
+                try {
+                    gl = gc.tryLock();
+                } catch (OverlappingFileLockException e) {
+                    gl = null;
+                }
+                Incumbent squatter = gl != null ? helloProbe(cand.socket(), version) : null;
+                if (gl != null && squatter == null) {
+                    active = cand;
+                    genLock = gl;
+                    genLockChannel = gc;
+                    log.accept("jk engine: claimed generation " + n + " (pid " + pid + ", lock inode "
+                            + fileKey(cand.lock()) + ")");
+                } else if (squatter != null) {
                     log.accept("jk engine: skipped generation " + n + ": its lock was free but pid " + squatter.pid()
                             + " answers on " + cand.socket().getFileName());
                 }
-                if (gl != null) gl.release();
-                gc.close();
+            } finally {
+                // Closing the channel releases any lock taken on it.
+                if (genLockChannel != gc) gc.close();
             }
         }
         if (active == null) {
@@ -211,6 +227,7 @@ final class EngineElection {
             // port instead, and gate every connection on a shared secret (see EngineTransport),
             // since a TCP port (unlike a socket file) isn't filesystem-permission-gated by default.
             listener = ServerSocketChannel.open();
+            opened = listener;
             listener.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
             int port = ((InetSocketAddress) listener.getLocalAddress()).getPort();
             token = EngineTransport.newToken();
@@ -222,6 +239,7 @@ final class EngineElection {
             OwnerOnlyFiles.writeString(active.socket(), Integer.toString(port));
         } else {
             listener = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+            opened = listener;
             // A state dir too deep for the OS's socket path binds through a short link to it.
             EnginePaths.reachableSocketDir(paths.dir());
             listener.bind(UnixDomainSocketAddress.of(active.socket()));
@@ -445,6 +463,37 @@ final class EngineElection {
         } catch (IOException e) {
             return false; // unreadable/vanished — the connect attempt sorts it out
         }
+    }
+
+    /**
+     * Undo a {@link #win} that failed part-way, still under the startup mutex: the listener closed,
+     * the generation's socket, token and pid file deleted and its lock released. The endpoint is
+     * written last, so it never names a generation abandoned here.
+     */
+    private void abandon() {
+        if (opened != null) {
+            try {
+                opened.close();
+            } catch (IOException ignored) {
+                // Closing it is all that was left to do.
+            }
+        }
+        EnginePaths.Paths gen = active;
+        if (gen != null) {
+            deleteQuietly(gen.socket());
+            deleteQuietly(gen.token());
+            deleteQuietly(gen.pid());
+            try {
+                if (genLockChannel != null) genLockChannel.close();
+            } catch (IOException ignored) {
+                // process exit releases it regardless
+            }
+        }
+        active = null;
+        genLock = null;
+        genLockChannel = null;
+        boundSocketKey = null;
+        releaseStartupLock();
     }
 
     private void releaseStartupLock() {

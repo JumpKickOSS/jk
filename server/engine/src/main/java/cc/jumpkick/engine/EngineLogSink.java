@@ -53,6 +53,12 @@ public final class EngineLogSink extends OutputStream {
     /** Bytes in the current file: its size when opened plus everything written since. */
     private long written;
 
+    /** How long a sink that could not reopen its log waits before it tries again. */
+    static final long REOPEN_RETRY_MILLIS = 10_000;
+
+    /** Epoch millis of the next reopen attempt while {@link #out} is closed; {@code -1} while it is open. */
+    private long reopenAtMillis = -1;
+
     private volatile long lastRolledAtMillis = -1;
     private volatile int rolls;
 
@@ -102,6 +108,7 @@ public final class EngineLogSink extends OutputStream {
 
     @Override
     public synchronized void write(int b) throws IOException {
+        if (!reopenIfDue()) return;
         out.write(b);
         written++;
         rollIfDue();
@@ -109,6 +116,7 @@ public final class EngineLogSink extends OutputStream {
 
     @Override
     public synchronized void write(byte[] b, int off, int len) throws IOException {
+        if (!reopenIfDue()) return;
         out.write(b, off, len);
         written += len;
         rollIfDue();
@@ -124,26 +132,58 @@ public final class EngineLogSink extends OutputStream {
         out.close();
     }
 
-    private void rollIfDue() throws IOException {
+    /**
+     * Roll at the cap. A roll that fails appends to whatever file the path names and tries again a
+     * cap later; a log that cannot be opened at all drops lines until {@link #reopenIfDue} opens it.
+     * Neither throws: a log line must never become an exception on the caller's thread.
+     */
+    private void rollIfDue() {
         if (capBytes <= 0 || written < capBytes) return;
         written = 0;
         if (!stillOwnsPath()) return;
-        out.flush();
-        out.close();
-        // Until the fresh file is open, drop rather than throw: a failed reopen must not turn
-        // every later log line into an exception on the caller's thread.
-        out = OutputStream.nullOutputStream();
         Path previous = log.resolveSibling(log.getFileName() + ".1");
         try {
-            Files.move(log, previous, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException renameRefused) {
-            // The inherited descriptor pins the name on platforms that refuse to rename an open
-            // file; copying the generation aside and truncating in place keeps the same outcome.
-            Files.copy(log, previous, StandardCopyOption.REPLACE_EXISTING);
+            out.flush();
+            out.close();
+            try {
+                Files.move(log, previous, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException renameRefused) {
+                // The inherited descriptor pins the name on platforms that refuse to rename an open
+                // file; copying the generation aside and truncating in place keeps the same outcome.
+                Files.copy(log, previous, StandardCopyOption.REPLACE_EXISTING);
+            }
+            open(true);
+            lastRolledAtMillis = clock.millis();
+            rolls++;
+        } catch (IOException rollFailed) {
+            reopen();
+            written = 0;
         }
-        open(true);
-        lastRolledAtMillis = clock.millis();
-        rolls++;
+    }
+
+    /** True when {@link #out} is open, after trying to reopen it once the retry pause is over. */
+    private boolean reopenIfDue() {
+        if (reopenAtMillis < 0) return true;
+        if (clock.millis() < reopenAtMillis) return false;
+        return reopen();
+    }
+
+    /** Open {@link #log} for append; on failure drop lines until {@link #REOPEN_RETRY_MILLIS} has passed. */
+    private boolean reopen() {
+        try {
+            open(false);
+            reopenAtMillis = -1;
+            return true;
+        } catch (IOException e) {
+            try {
+                out.close();
+            } catch (IOException alreadyClosed) {
+                // Nothing more to release.
+            }
+            out = OutputStream.nullOutputStream();
+            reopenAtMillis = clock.millis() + REOPEN_RETRY_MILLIS;
+            return false;
+        }
     }
 
     /**

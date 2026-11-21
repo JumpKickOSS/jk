@@ -91,4 +91,17 @@ class ProcessesTest {
         assertThat(c.output()).isEqualTo("secret");
         assertThat(c.error().strip()).isEqualTo("oops");
     }
+
+    /** A child that never reads its input must not hold the caller past the deadline on a full pipe. */
+    @Test
+    void stdin_larger_than_the_pipe_buffer_cannot_outlast_the_deadline() {
+        assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
+            Process child = new ProcessBuilder(sh("sleep 60")).start();
+            Processes.Captured c = Processes.capture(child, new byte[4 << 20], Duration.ofMillis(500), 1 << 20);
+            assertThat(c.timedOut()).isTrue();
+            assertThat(child.waitFor(5, TimeUnit.SECONDS))
+                    .as("killed at the deadline")
+                    .isTrue();
+        });
+    }
 }

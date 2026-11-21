@@ -69,6 +69,7 @@ import cc.jumpkick.wire.protocol.ProtoLifecycle;
 import cc.jumpkick.wire.protocol.ProtoSession;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.nio.channels.Channel;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
@@ -712,11 +713,30 @@ public final class EngineServer implements AutoCloseable {
      * EnginePaths.Paths#lock} — the caller (a losing spawn-race participant) should treat that as
      * success-by-proxy, not an error. Blocks until the server stops (an explicit {@link
      * EngineProtocol#SHUTDOWN} — {@code jk engine stop} — or {@link #close}), then returns
-     * {@code true}; there is no idle countdown — the engine stays resident until told to stop.
+     * {@code true}; there is no idle countdown — the engine stays resident until told to stop. A
+     * startup that fails after the election stops what it started and retires the election.
      */
     public boolean run() throws IOException {
         EngineElection.Won won = election.win();
         if (won == null) return false; // lost the spawn race / an identical engine already serves
+        try {
+            start(won);
+        } catch (IOException | RuntimeException e) {
+            closeQuietly(won.listener());
+            cleanup();
+            throw e;
+        }
+        Thread lastWords = lastWordsOnSignal();
+        Runtime.getRuntime().addShutdownHook(lastWords);
+        acceptLoop();
+        cleanup();
+        removeQuietly(lastWords);
+        log.accept("jk engine: stopped");
+        return true;
+    }
+
+    /** Everything between a won election and the accept loop. */
+    private void start(EngineElection.Won won) throws IOException {
         displaced = won.displaced();
         serverChannel = won.listener();
         expectedToken = won.token();
@@ -765,13 +785,6 @@ public final class EngineServer implements AutoCloseable {
         });
         if (selfUpdate != null) selfUpdate.start();
         watchdog.start();
-        Thread lastWords = lastWordsOnSignal();
-        Runtime.getRuntime().addShutdownHook(lastWords);
-        acceptLoop();
-        cleanup();
-        removeQuietly(lastWords);
-        log.accept("jk engine: stopped");
-        return true;
     }
 
     /**
@@ -1156,7 +1169,7 @@ public final class EngineServer implements AutoCloseable {
         election.retire();
     }
 
-    private static void closeQuietly(SocketChannel ch) {
+    private static void closeQuietly(Channel ch) {
         try {
             ch.close();
         } catch (IOException ignored) {
