@@ -291,9 +291,10 @@ public final class ZincJavaCompiler {
     /**
      * Whether the generated-file ledger is missing while the class output holds a class file the
      * analysis does not name. Such a class may be a processor's: {@code jk clean} takes the ledger
-     * with {@code target/} and an action-cache hit lays the classes back, and the sweep would then
-     * delete every generated class while an incremental compile writes back none whose origin did
-     * not change. Only a whole compile writes them all again.
+     * with {@code target/}, and a hit of a compile the engine kept no ledger for lays the classes
+     * back without one. The sweep would then delete every generated class while an incremental
+     * compile writes back none whose origin did not change. Only a whole compile writes them all
+     * again.
      */
     private static boolean unvouched(
             CompileAnalysis analysis, FileConverter converter, Path classOutput, @Nullable Path keep)

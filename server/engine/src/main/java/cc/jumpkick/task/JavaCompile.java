@@ -6,11 +6,13 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.ForkedJavac;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.run.ContextPropagator;
 import cc.jumpkick.run.TaskNames;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -416,6 +418,7 @@ public final class JavaCompile {
             // checkout's own last compile rather than the shared pointer's.
             Files.createDirectories(stateDir);
             LangCompile.recordTree(stateDir, key, outputs);
+            keepGeneratedLedger(stateDir, key, out);
         } else if (Files.isDirectory(stateDir)) {
             PathUtil.deleteRecursively(stateDir);
         }
@@ -478,6 +481,7 @@ public final class JavaCompile {
         ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
         if (!actionCache.restore(cached, out)) return null;
         restoreReferences(actionCache, key, out);
+        restoreGeneratedLedger(stateDir, key, out);
         Files.createDirectories(stateDir);
         LangCompile.recordTree(stateDir, key, cached.outputs());
         List<CompileResult.Diagnostic> said = CompileWarnings.fromSaid(cached.said(), request.sources());
@@ -493,6 +497,61 @@ public final class JavaCompile {
         Path classes = out.toAbsolutePath().normalize();
         Path target = Objects.requireNonNull(classes.getParent(), "a class output has a parent");
         return target.resolve("incremental").resolve(classes.getFileName() + "-refs");
+    }
+
+    /**
+     * Where the Java compiler plugin keeps the ledger of the files processors generated into {@code
+     * out}: {@code target/incremental/classes-generated.tsv} for {@code target/classes}, the rule
+     * its {@code GeneratedProvenance.ledgerFor} writes by.
+     */
+    static Path generatedLedger(Path out) {
+        Path classes = out.toAbsolutePath().normalize();
+        Path target = Objects.requireNonNull(classes.getParent(), "a class output has a parent");
+        return target.resolve("incremental").resolve(classes.getFileName() + "-generated.tsv");
+    }
+
+    /** The copy of the generated-file ledger the compile state keeps: its compile's key, then the ledger. */
+    static final String GENERATED_LEDGER = "generated";
+
+    /**
+     * Keep in {@code stateDir} the generated-file ledger the compile keyed {@code key} wrote beside
+     * {@code out}. {@code jk clean} takes the ledger and not the state, so a hit of the same key
+     * can lay it back ({@link #restoreGeneratedLedger}); the ledger names this checkout's absolute
+     * paths, so it stays here and never enters the shared record. Best-effort.
+     */
+    static void keepGeneratedLedger(Path stateDir, String key, Path out) {
+        Path kept = stateDir.resolve(GENERATED_LEDGER);
+        try {
+            Path ledger = generatedLedger(out);
+            if (Files.isRegularFile(ledger)) {
+                AtomicWrites.replace(kept, key + "\n" + Files.readString(ledger, StandardCharsets.UTF_8));
+            } else {
+                Files.deleteIfExists(kept);
+            }
+        } catch (IOException | RuntimeException unkept) {
+            Log.debug("generated-file ledger not kept for " + out, unkept);
+        }
+    }
+
+    /**
+     * Lay back the generated-file ledger beside {@code out} when it is missing and {@code stateDir}
+     * kept the one the compile keyed {@code key} wrote: the restored classes are that compile's, so
+     * its ledger vouches for their generated ones and the next edit stays incremental. A ledger on
+     * disk is left alone, and a kept one of another key is never laid back.
+     */
+    static void restoreGeneratedLedger(Path stateDir, String key, Path out) {
+        try {
+            Path ledger = generatedLedger(out);
+            Path kept = stateDir.resolve(GENERATED_LEDGER);
+            if (Files.exists(ledger) || !Files.isRegularFile(kept)) return;
+            String text = Files.readString(kept, StandardCharsets.UTF_8);
+            int nl = text.indexOf('\n');
+            if (nl < 0 || !text.substring(0, nl).equals(key)) return;
+            Files.createDirectories(ledger.getParent());
+            AtomicWrites.replace(ledger, text.substring(nl + 1));
+        } catch (IOException | RuntimeException unrestored) {
+            Log.debug("generated-file ledger not restored for " + out, unrestored);
+        }
     }
 
     /**

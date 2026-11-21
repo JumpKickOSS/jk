@@ -31,7 +31,8 @@ import org.jspecify.annotations.Nullable;
  * idle prune takes the compile state whole and leaves {@code target/classes} as it was, and a full
  * compile that then found no ledger could not delete the files a processor reads back and merges
  * into, so Helidon's {@code service-registry.json} would keep the row of a source deleted since.
- * {@code rm -rf target} takes the ledger together with those files. An action-cache hit lays the
+ * {@code rm -rf target} takes the ledger together with those files. The engine keeps a copy in the
+ * compile state and lays it back on a hit of the compile that wrote it; a hit of any other lays the
  * classes back without it, and a class output with classes the analysis does not name and no
  * ledger to vouch for them is compiled whole ({@link ZincJavaCompiler}): an incremental compile
  * would sweep every generated class and write back only those of the sources it recompiles.

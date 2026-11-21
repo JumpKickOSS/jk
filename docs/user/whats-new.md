@@ -251,7 +251,9 @@ JumpKick shows you this page's new entries after it updates itself.
 - **Annotation-processor classes survive `jk clean`.** After `jk clean`, a build served from the
   cache and then an edit, the next compile deleted every class an annotation processor had
   generated and wrote back only those of the edited sources, so they went missing from
-  `target/classes` and the jar. That compile now recompiles the module whole once.
+  `target/classes` and the jar. The build served from the cache now lays back the record of what
+  the processors generated when it restores this checkout's own last compile, so the edit stays
+  incremental; a restore of another compile's classes recompiles the module whole once.
 - **JVM startup caches no longer pile up on a self-built JumpKick.** The caches the workers and the
   engine map to start fast (`~/.jk/state/aot/`, `~/.jk/state/engine-aot/`) now go when they have
   not been used for 12 hours on a `-SNAPSHOT` build, where every rebuild left a new set for two

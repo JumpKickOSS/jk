@@ -244,6 +244,31 @@ class JavaApIncrementalCompileTest {
     }
 
     /**
+     * {@code jk clean} takes the class output, the generated sources and the ledger beside them, and
+     * leaves the compile state. A hit of the compile the state belongs to lays its ledger back, so
+     * the first edit afterwards compiles the edited source alone and keeps the generated class.
+     */
+    @Test
+    void the_first_edit_after_a_clean_and_a_hit_stays_incremental(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir, workerJar(), isolatingProcessor(dir));
+        p.write("app/Widget.java", widget("one"));
+        p.write("app/Plain.java", "package app; public class Plain {}");
+        p.build();
+
+        for (Path d : List.of(p.out, p.genSrc, p.root.resolve("incremental"))) PathUtil.deleteRecursively(d);
+        assertThat(p.build().outcome()).startsWith("cache-hit");
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+
+        p.write("app/Plain.java", "package app; public class Plain { int v; }");
+        JavaCompile.Result edit = p.build();
+        assertThat(edit.compiledSources())
+                .extracting(s -> s.getFileName().toString())
+                .containsExactly("Plain.java");
+        assertThat(p.classFile("app/WidgetGen.class")).isRegularFile();
+        assertThat(p.invokeGreet()).isEqualTo("one");
+    }
+
+    /**
      * A forced build ({@code -F}) drops the compile state but not the record of what processors
      * generated, which lives beside the class output, so the full compile it runs still deletes the
      * merged file before the processor reads it back.

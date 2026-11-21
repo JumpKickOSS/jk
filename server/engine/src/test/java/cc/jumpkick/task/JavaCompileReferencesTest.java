@@ -10,8 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The reference index lives beside the classes, not among them: a compile served from the action
- * cache has to lay it back too, or it keeps describing whatever javac last compiled.
+ * The reference index and the generated-file ledger live beside the classes, not among them: a
+ * compile served from the action cache has to lay them back too, or they describe whatever javac
+ * last compiled, or nothing.
  */
 class JavaCompileReferencesTest {
 
@@ -39,5 +40,36 @@ class JavaCompileReferencesTest {
         Path out = Files.createDirectories(dir.resolve("module/target/classes"));
         JavaCompile.restoreReferences(cache, "never-stored", out);
         assertThat(JavaCompile.referencesDir(out)).doesNotExist();
+    }
+
+    @Test
+    void a_hit_of_the_compile_that_wrote_the_generated_file_ledger_lays_it_back(@TempDir Path dir) throws Exception {
+        Path out = Files.createDirectories(dir.resolve("module/target/classes"));
+        Path state = Files.createDirectories(dir.resolve("state"));
+        Path ledger = JavaCompile.generatedLedger(out);
+        assertThat(ledger).isEqualTo(dir.resolve("module/target/incremental/classes-generated.tsv"));
+        Files.createDirectories(ledger.getParent());
+        Files.writeString(ledger, "/w/gen/a/AGen.java\t/w/src/a/A.java\n");
+        JavaCompile.keepGeneratedLedger(state, "key-1", out);
+
+        Files.delete(ledger);
+        JavaCompile.restoreGeneratedLedger(state, "key-2", out);
+        assertThat(ledger).as("a hit of another compile's classes").doesNotExist();
+
+        JavaCompile.restoreGeneratedLedger(state, "key-1", out);
+        assertThat(ledger).hasContent("/w/gen/a/AGen.java\t/w/src/a/A.java\n");
+
+        Files.writeString(ledger, "/w/gen/b/BGen.java\t/w/src/b/B.java\n");
+        JavaCompile.restoreGeneratedLedger(state, "key-1", out);
+        assertThat(ledger).as("a ledger on disk is left alone").hasContent("/w/gen/b/BGen.java\t/w/src/b/B.java\n");
+    }
+
+    @Test
+    void a_compile_that_wrote_no_generated_file_ledger_keeps_none(@TempDir Path dir) throws Exception {
+        Path out = Files.createDirectories(dir.resolve("module/target/classes"));
+        Path state = Files.createDirectories(dir.resolve("state"));
+        Files.writeString(state.resolve(JavaCompile.GENERATED_LEDGER), "key-0\nstale\n");
+        JavaCompile.keepGeneratedLedger(state, "key-1", out);
+        assertThat(state.resolve(JavaCompile.GENERATED_LEDGER)).doesNotExist();
     }
 }
