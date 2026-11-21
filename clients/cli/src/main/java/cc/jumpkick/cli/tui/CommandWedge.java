@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
@@ -159,10 +160,11 @@ public final class CommandWedge {
 
     /**
      * Print a failure settle with leading blank only on stderr when this is first chrome; then
-     * {@link #fail}.
+     * {@link #fail}. An absolute path in {@code message}, as engine text writes one, is shown from
+     * where jk ran ({@link PathDisplay#inText}).
      */
     public static void printFail(String command, @Nullable String message) {
-        CliOutput.err(forErr(() -> fail(command, message)));
+        CliOutput.err(forErr(() -> fail(command, PathDisplay.inText(message))));
     }
 
     /**

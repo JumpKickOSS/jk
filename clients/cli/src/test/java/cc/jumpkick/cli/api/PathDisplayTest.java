@@ -88,4 +88,34 @@ class PathDisplayTest {
             }
         }
     }
+
+    private static Path workspace(Path tmp) throws IOException {
+        Files.writeString(
+                tmp.resolve("jk.toml"),
+                "group = \"x\"\nname = \"root\"\nversion = \"1\"\n[workspace]\nmodules = [\"app\"]\n");
+        Files.createDirectories(tmp.resolve("app"));
+        return tmp.toAbsolutePath().normalize();
+    }
+
+    @Test
+    void a_located_refusal_in_engine_text_names_its_file_from_the_workspace(@TempDir Path tmp) throws IOException {
+        Path ws = workspace(tmp);
+        String engine = "jk-lock.toml is stale, and updating it failed: " + ws.resolve("app/jk.toml")
+                + ":4:1: java must be a number";
+
+        assertThat(PathDisplay.inText(engine))
+                .isEqualTo("jk-lock.toml is stale, and updating it failed: app/jk.toml:4:1: java must be a number");
+    }
+
+    @Test
+    void engine_text_keeps_a_sentence_end_a_url_and_the_anchor_itself(@TempDir Path tmp) throws IOException {
+        Path ws = workspace(tmp);
+
+        assertThat(PathDisplay.inText("no jk.toml in " + ws.resolve("app") + "."))
+                .isEqualTo("no jk.toml in app.");
+        assertThat(PathDisplay.inText("could not reach https://repo.example/maven2/a/b.pom"))
+                .isEqualTo("could not reach https://repo.example/maven2/a/b.pom");
+        assertThat(PathDisplay.inText("no jk.toml in " + ws)).isEqualTo("no jk.toml in " + ws);
+        assertThat(PathDisplay.inText(null)).isNull();
+    }
 }

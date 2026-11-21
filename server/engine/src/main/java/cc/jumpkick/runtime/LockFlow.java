@@ -15,6 +15,7 @@ import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import java.io.IOException;
@@ -47,6 +48,8 @@ public final class LockFlow {
      * @param workspaceLock true when the written lock is the workspace-wide root lock (member or
      *     root entry), so the CLI can announce that clearly
      * @param lockDir directory that owns the written {@code jk-lock.toml}
+     * @param location where in the project a failure points ({@link FailureLocation#of}), when it
+     *     names a place: a manifest's refusal, at the spot in that manifest
      */
     public record Result(
             int status,
@@ -55,14 +58,15 @@ public final class LockFlow {
             @Nullable JkBuild build,
             int workspaceModuleCount,
             boolean workspaceLock,
-            @Nullable Path lockDir) {
+            @Nullable Path lockDir,
+            @Nullable SourceLocation location) {
         public Result(
                 int status,
                 @Nullable String error,
                 @Nullable Lockfile lockfile,
                 @Nullable JkBuild build,
                 int workspaceModuleCount) {
-            this(status, error, lockfile, build, workspaceModuleCount, false, null);
+            this(status, error, lockfile, build, workspaceModuleCount, false, null, null);
         }
     }
 
@@ -86,7 +90,7 @@ public final class LockFlow {
         try {
             scope = LockPlans.lockScope(dir, new FeatureSelection(features, !noDefaultFeatures));
         } catch (IOException | RuntimeException e) {
-            return new Result(Exit.CONFIG, e.getMessage(), null, null, 0);
+            return new Result(Exit.CONFIG, e.getMessage(), null, null, 0, false, null, FailureLocation.of(e, dir));
         }
         Path lockDir = scope.lockDir();
         Path lockFile = LockPaths.lockFile(lockDir);
@@ -129,23 +133,34 @@ public final class LockFlow {
             throw e; // the solver's own explanation is the message; callers render it verbatim
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return failed("interrupted", scope);
+            return failed("interrupted", null, scope);
         } catch (Exception e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (cause instanceof UnsatisfiableException unsat) throw unsat;
             if (cause instanceof InterruptedException) Thread.currentThread().interrupt();
-            return failed(Errors.text(cause) + variantUnionHint(scope.lockDir()), scope);
+            return failed(
+                    Errors.text(cause) + variantUnionHint(scope.lockDir()),
+                    FailureLocation.of(cause, scope.lockDir()),
+                    scope);
         }
     }
 
     private static Result ok(Lockfile lock, LockPlans.LockScope scope) {
-        return new Result(0, null, lock, scope.effective(), scope.moduleCount(), scope.workspace(), scope.lockDir());
+        return new Result(
+                0, null, lock, scope.effective(), scope.moduleCount(), scope.workspace(), scope.lockDir(), null);
     }
 
     /** {@link Exit#RESOLVE}: the resolve could not complete (unsatisfiable graph, unreachable repo, bad source). */
-    private static Result failed(String error, LockPlans.LockScope scope) {
+    private static Result failed(String error, @Nullable SourceLocation location, LockPlans.LockScope scope) {
         return new Result(
-                Exit.RESOLVE, error, null, scope.effective(), scope.moduleCount(), scope.workspace(), scope.lockDir());
+                Exit.RESOLVE,
+                error,
+                null,
+                scope.effective(),
+                scope.moduleCount(),
+                scope.workspace(),
+                scope.lockDir(),
+                location);
     }
 
     /**

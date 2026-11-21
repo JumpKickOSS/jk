@@ -6,7 +6,10 @@ import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.util.DirKeys;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -21,7 +24,40 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PathDisplay {
 
+    /**
+     * An absolute path standing as a word of its own: at the start, or after a space, bracket, quote
+     * or {@code =}, so the slashes of a URL and a path already painted are left alone. It stops at a
+     * colon, so a {@code :line:column} after it stays as written.
+     */
+    private static final Pattern ABSOLUTE_IN_TEXT = Pattern.compile(
+            "(?<![^\\s(\\[\"'`=])(?:[A-Za-z]:)?[/\\\\][^\\s\\u001b\"'`\\]),;:]*[^\\s\\u001b\"'`\\]),;:.]");
+
     private PathDisplay() {}
+
+    /**
+     * {@code text} with every absolute path in it shown as {@link #of(Path)} shows it: what the engine
+     * wrote of a file, such as a manifest's {@code file:line:column}, read from where jk ran. The
+     * working directory itself stays as written, since {@code .} would name nothing.
+     */
+    public static @Nullable String inText(@Nullable String text) {
+        if (text == null || (text.indexOf('/') < 0 && text.indexOf('\\') < 0)) return text;
+        Matcher m = ABSOLUTE_IN_TEXT.matcher(text);
+        StringBuilder out = new StringBuilder(text.length());
+        while (m.find()) m.appendReplacement(out, Matcher.quoteReplacement(shownInText(m.group())));
+        return m.appendTail(out).toString();
+    }
+
+    private static String shownInText(String token) {
+        Path path;
+        try {
+            path = Path.of(token);
+        } catch (InvalidPathException notAPath) {
+            return token;
+        }
+        if (!path.isAbsolute()) return token;
+        String shown = of(path);
+        return shown.equals(".") ? token : shown;
+    }
 
     /** {@link #of(Path, Path)} relativized and painted in the theme's {@code path} color. */
     public static String styled(Path target, Path workingDir) {

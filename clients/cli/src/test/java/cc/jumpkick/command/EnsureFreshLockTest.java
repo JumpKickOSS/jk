@@ -90,4 +90,22 @@ class EnsureFreshLockTest {
             assertThat(row.get("conflict")).isEqualTo(MiniJson.parse(conflict));
         });
     }
+
+    /** What the build would say of a manifest the engine refused names it from the workspace, not absolute. */
+    @Test
+    void a_failed_freshen_names_the_refused_manifest_relative(@TempDir Path tmp) throws Exception {
+        Path ws = tmp.toAbsolutePath().normalize();
+        Files.writeString(
+                ws.resolve("jk.toml"),
+                "group = \"x\"\nname = \"root\"\nversion = \"1\"\n[workspace]\nmodules = [\"app\"]\n");
+        Path app = Files.createDirectories(ws.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), "name = \"app\"\n");
+        String err = ws.resolve("app/jk.toml") + ":4:1: java must be a number";
+
+        CliOutput.beginCommand(false, false);
+        String said =
+                Capture.stderr(() -> EnsureFreshLock.failAsBuild(app, "Run", "jk-lock.toml is stale", err, 2, null));
+
+        assertThat(said).contains("app/jk.toml:4:1: java must be a number").doesNotContain(ws.toString());
+    }
 }

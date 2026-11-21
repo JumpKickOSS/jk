@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
@@ -329,7 +330,7 @@ public final class EnsureFreshLock {
         boolean unsatisfiable = err != null && err.contains("Cannot resolve dependencies");
         Path lockFile = LockPaths.lockFile(lockOwnerOrSelf(dir));
         if (!unsatisfiable && Files.isRegularFile(lockFile)) {
-            CliOutput.err("‼ jk: lock refresh failed; using the existing jk-lock.toml: " + err);
+            CliOutput.err("‼ jk: lock refresh failed; using the existing jk-lock.toml: " + PathDisplay.inText(err));
             CliOutput.err("    Run `jk lock` to see why.");
             return Exit.SUCCESS;
         }
