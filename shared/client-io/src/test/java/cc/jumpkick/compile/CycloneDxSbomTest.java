@@ -190,6 +190,66 @@ class CycloneDxSbomTest {
                 .containsEntry("pkg:maven/com.example/lib@1.0", List.of("pkg:maven/com.example/real@1.0"));
     }
 
+    @Test
+    void classifier_variants_of_one_version_are_distinct_components(@TempDir Path tmp) throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "io.example"
+                name = "app"
+                version = "0.1.0"
+
+                [dependencies]
+                lwjgl = { group = "org.lwjgl", name = "lwjgl", version = "3.3.6" }
+                natives = { group = "org.lwjgl", name = "lwjgl", version = "3.3.6", classifier = "natives-linux" }
+                """);
+        Lockfile lock = lock(
+                row("org.lwjgl:lwjgl:jar:", "3.3.6", "aaaa", List.of("com.example:core:jar:@1.0"), Scope.MAIN),
+                row("org.lwjgl:lwjgl:jar:natives-linux", "3.3.6", "bbbb", List.of(), Scope.MAIN),
+                row("com.example:core:jar:", "1.0", "cccc", List.of(), Scope.MAIN));
+
+        CycloneDxSbom.Closure closure = CycloneDxSbom.closure(lock, JkBuildParser.parse(dir.resolve("jk.toml")), dir);
+
+        String plain = "pkg:maven/org.lwjgl/lwjgl@3.3.6";
+        String natives = "pkg:maven/org.lwjgl/lwjgl@3.3.6?classifier=natives-linux";
+        assertThat(closure.components())
+                .extracting(CycloneDxSbom.Component::purl)
+                .containsExactly("pkg:maven/com.example/core@1.0", plain, natives);
+        assertThat(closure.direct()).containsExactly(plain, natives);
+        assertThat(closure.edges())
+                .as("each variant keeps its own edges")
+                .containsEntry(plain, List.of("pkg:maven/com.example/core@1.0"))
+                .containsEntry(natives, List.of());
+
+        String json = new String(CycloneDxSbom.write("io.example", "app", "0.1.0", closure), StandardCharsets.UTF_8);
+        assertThat(json).contains("\"bom-ref\": \"" + plain + "\"").contains("\"bom-ref\": \"" + natives + "\"");
+    }
+
+    @Test
+    void purl_carries_a_type_other_than_jar_and_the_classifier_as_qualifiers() {
+        assertThat(new CycloneDxSbom.Component("g", "a", "1.0", null, "jar", null).purl())
+                .isEqualTo("pkg:maven/g/a@1.0");
+        assertThat(new CycloneDxSbom.Component("g", "a", "1.0", null, "aar", null).purl())
+                .isEqualTo("pkg:maven/g/a@1.0?type=aar");
+        assertThat(new CycloneDxSbom.Component("g", "a", "1.0", "linux-x86_64", "jar", null).purl())
+                .isEqualTo("pkg:maven/g/a@1.0?classifier=linux-x86_64");
+        assertThat(new CycloneDxSbom.Component("g", "a", "1.0", "tests", "test-jar", null).purl())
+                .as("qualifiers sorted by key")
+                .isEqualTo("pkg:maven/g/a@1.0?classifier=tests&type=test-jar");
+        assertThat(new CycloneDxSbom.Component("g", "a", "1.0", "x+y/z", "jar", null).purl())
+                .as("a qualifier value outside the unreserved set is percent-encoded")
+                .isEqualTo("pkg:maven/g/a@1.0?classifier=x%2By%2Fz");
+    }
+
+    @Test
+    void a_lock_row_is_a_component_of_its_own_classifier_and_type() {
+        var natives = CycloneDxSbom.Component.of(
+                row("org.lwjgl:lwjgl:jar:natives-linux", "3.3.6", "bbbb", List.of(), Scope.MAIN));
+        assertThat(natives.classifier()).isEqualTo("natives-linux");
+        assertThat(natives.type()).isEqualTo("jar");
+        var aar = CycloneDxSbom.Component.of(row("androidx.core:core:aar:", "1.0", "dddd", List.of(), Scope.MAIN));
+        assertThat(aar.purl()).isEqualTo("pkg:maven/androidx.core/core@1.0?type=aar");
+    }
+
     private static Lockfile lock(Lockfile.Artifact... rows) {
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(rows));
     }

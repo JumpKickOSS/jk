@@ -50,6 +50,10 @@ public final class Sbom {
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),
+                CycloneDxSbom.purl(
+                        project.project().group(),
+                        project.project().name(),
+                        project.project().version()),
                 null);
         Map<String, String> ids = new HashMap<>();
         int i = 0;
@@ -57,7 +61,7 @@ public final class Sbom {
             String id = "SPDXRef-Package-" + sanitizeId(c.group() + "-" + c.artifact() + "-" + c.version()) + "-" + i++;
             ids.putIfAbsent(c.purl(), id);
             packages.append(',');
-            appendSpdxPackage(packages, id, c.group(), c.artifact(), c.version(), c.sha256());
+            appendSpdxPackage(packages, id, c.group(), c.artifact(), c.version(), c.purl(), c.sha256());
         }
         packages.append(']');
         StringBuilder relationships = new StringBuilder(256);
@@ -121,6 +125,7 @@ public final class Sbom {
             String group,
             String artifact,
             String version,
+            String purl,
             @Nullable String sha256Hex) {
         sb.append('{');
         kv(sb, "SPDXID", spdxId);
@@ -138,7 +143,7 @@ public final class Sbom {
         comma(sb);
         kv(sb, "referenceType", "purl");
         comma(sb);
-        kv(sb, "referenceLocator", "pkg:maven/" + group + "/" + artifact + "@" + version);
+        kv(sb, "referenceLocator", purl);
         sb.append("}]");
         if (sha256Hex != null) {
             comma(sb);

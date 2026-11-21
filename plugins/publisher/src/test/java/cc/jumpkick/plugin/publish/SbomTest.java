@@ -91,6 +91,29 @@ class SbomTest {
     }
 
     @Test
+    void spdx_tells_a_classifier_variant_from_the_main_jar_of_one_version() {
+        var main = new CycloneDxSbom.Component("com.example", "a", "1.0.0", "aaaa");
+        var natives = new CycloneDxSbom.Component("com.example", "a", "1.0.0", "linux", "jar", "cccc");
+        var closure = new CycloneDxSbom.Closure(
+                List.of(main, natives, B),
+                List.of(main.purl(), natives.purl()),
+                Map.of(natives.purl(), List.of(B.purl())));
+
+        String json = new String(Sbom.spdx(PROJECT, closure), StandardCharsets.UTF_8);
+
+        String a = "SPDXRef-Package-com.example-a-1.0.0-0";
+        String n = "SPDXRef-Package-com.example-a-1.0.0-1";
+        String b = "SPDXRef-Package-com.example-b-2.0.0-2";
+        assertThat(json)
+                .contains("\"referenceLocator\":\"pkg:maven/com.example/a@1.0.0?classifier=linux\"")
+                .contains("{\"spdxElementId\":\"SPDXRef-Package-Root\",\"relationshipType\":\"DEPENDS_ON\","
+                        + "\"relatedSpdxElement\":\"" + n + "\"}")
+                .contains("{\"spdxElementId\":\"" + n + "\",\"relationshipType\":\"DEPENDS_ON\","
+                        + "\"relatedSpdxElement\":\"" + b + "\"}")
+                .doesNotContain("{\"spdxElementId\":\"" + a + "\",\"relationshipType\":\"DEPENDS_ON\"");
+    }
+
+    @Test
     void spdx_renders_the_same_bytes_every_time_so_a_publish_rerun_matches_what_it_uploaded() {
         assertThat(Sbom.spdx(PROJECT, A_THEN_B)).isEqualTo(Sbom.spdx(PROJECT, A_THEN_B));
     }

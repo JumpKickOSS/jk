@@ -232,7 +232,9 @@ The CycloneDX document is deterministic (no serial number, no timestamp) and is 
 same code that embeds `META-INF/sbom/application.cdx.json` in every application jar
 ([Packaging](packaging.md)), so the sidecar of a module is the document its jar carries: the
 module's production runtime closure — the rows of `jk-lock.toml` its own dependencies and those of
-the workspace siblings it depends on reach, not every member's — each with its SHA-256. Both
+the workspace siblings it depends on reach, not every member's — each with its SHA-256 and named
+by its package URL, which carries a classifier and a type other than `jar` as qualifiers
+(`pkg:maven/org.lwjgl/lwjgl@3.3.6?classifier=natives-linux`), so every jar is its own component. Both
 documents carry the dependency graph between them: CycloneDX as `dependencies`, SPDX as a
 `DESCRIBES` relationship from the document to the module and `DEPENDS_ON` relationships from the
 module and each package to what it depends on.

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -13,6 +16,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -28,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  * Deterministic — no serial number, no timestamp — so a reproducible jar stays byte-stable and a
  * module's publish sidecar equals the copy its jar carries.
  *
- * <p>Components are sorted by {@code group}, {@code artifact}, {@code version}. {@code LockFlow}
+ * <p>Components are sorted by {@code group}, {@code artifact}, {@code version}, classifier and type. {@code LockFlow}
  * keeps solver order in memory; {@code LockfileWriter} sorts by name on disk. Without this sort the
  * first {@code jk build} (in-memory lock) and the next {@code jk run} (disk lock) embed different
  * SBOM bytes, miss the package-jar cache, and rebuild native-image.
@@ -41,27 +45,52 @@ public final class CycloneDxSbom {
     /** The JSON schema of {@link #SPEC_VERSION}, the document's {@code $schema}. */
     public static final String SCHEMA_URL = "http://cyclonedx.org/schema/bom-" + SPEC_VERSION + ".schema.json";
 
-    /** One resolved dependency: exact coordinates + the locked jar SHA-256 (nullable). */
+    /**
+     * One resolved dependency: exact coordinates and the locked jar's SHA-256 (nullable).
+     *
+     * @param classifier the jar's classifier, {@code null} for the main jar
+     * @param type the packaging type, {@code jar} by default
+     */
     public record Component(
             String group,
             String artifact,
             String version,
+            @Nullable String classifier,
+            String type,
             @Nullable String sha256) {
 
         public Component {
             Objects.requireNonNull(group, "group");
             Objects.requireNonNull(artifact, "artifact");
             Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(type, "type");
         }
 
-        /** A lock row as a component: its coordinates and the locked jar's SHA-256. */
+        /** The main jar of {@code group:artifact:version}. */
+        public Component(String group, String artifact, String version, @Nullable String sha256) {
+            this(group, artifact, version, null, "jar", sha256);
+        }
+
+        /** A lock row as a component: its coordinates, classifier and type, and the locked jar's SHA-256. */
         public static Component of(Lockfile.Artifact a) {
-            return new Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex());
+            if (!a.isAar() && !PackageId.isMavenPackageKey(a.name())) {
+                return new Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex());
+            }
+            Coordinate c = a.coordinate();
+            return new Component(c.group(), c.artifact(), c.version(), c.classifier(), c.type(), a.checksumHex());
         }
 
-        /** The component's package URL. */
+        /**
+         * The component's package URL, unique per jar: a classifier and a type other than {@code
+         * jar} ride as its {@code classifier} and {@code type} qualifiers, as the purl spec's Maven
+         * type defines them.
+         */
         public String purl() {
-            return CycloneDxSbom.purl(group, artifact, version);
+            String base = CycloneDxSbom.purl(group, artifact, version);
+            List<String> qualifiers = new ArrayList<>(2);
+            if (classifier != null && !classifier.isEmpty()) qualifiers.add("classifier=" + encode(classifier));
+            if (!type.equals("jar")) qualifiers.add("type=" + encode(type));
+            return qualifiers.isEmpty() ? base : base + "?" + String.join("&", qualifiers);
         }
     }
 
@@ -97,6 +126,8 @@ public final class CycloneDxSbom {
     private static final Comparator<Component> ORDER = Comparator.comparing(Component::group)
             .thenComparing(Component::artifact)
             .thenComparing(Component::version)
+            .thenComparing(c -> c.classifier() == null ? "" : c.classifier())
+            .thenComparing(Component::type)
             .thenComparing(c -> c.sha256() == null ? "" : c.sha256());
 
     private CycloneDxSbom() {}
@@ -218,6 +249,20 @@ public final class CycloneDxSbom {
     /** The package URL of a Maven coordinate, the reference both SBOM formats and provenance use. */
     public static String purl(String group, String artifact, String version) {
         return "pkg:maven/" + group + "/" + artifact + "@" + version;
+    }
+
+    /** A purl qualifier value: unreserved characters as they are, every other byte percent-encoded. */
+    private static String encode(String value) {
+        StringBuilder sb = new StringBuilder(value.length());
+        for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
+            char c = (char) (b & 0xff);
+            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || ".-_~".indexOf(c) >= 0) {
+                sb.append(c);
+            } else {
+                sb.append('%').append(Hashing.hex(new byte[] {b}).toUpperCase(Locale.ROOT));
+            }
+        }
+        return sb.toString();
     }
 
     private static String quote(String s) {
