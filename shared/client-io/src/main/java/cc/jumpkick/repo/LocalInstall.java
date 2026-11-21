@@ -127,11 +127,13 @@ public final class LocalInstall {
 
     /**
      * Why the lock that governs {@code dir} is stale, or null: its manifests moved ({@link
-     * LockFreshness#STALE}), or an install a row came from changed ({@link #staleReason}). Every
-     * surface that asks whether a build re-locks asks this, so the forecast and the build agree.
+     * LockFreshness#STALE}), the build JDK moved past its variants ({@link LockFreshness#jdkMoved}),
+     * or an install a row came from changed ({@link #staleReason}). Every surface that asks whether
+     * a build re-locks asks this, so the forecast and the build agree.
      */
     public static @Nullable String lockStaleReason(Path dir, Path lockFile, Path storeRoot) {
-        if (LockFreshness.isStale(dir, lockFile)) return LockFreshness.STALE;
+        String why = LockFreshness.staleReason(dir, lockFile);
+        if (why != null) return LockFreshness.jdkMoved(why) ? why : LockFreshness.STALE;
         return staleReason(lockFile, storeRoot);
     }
 

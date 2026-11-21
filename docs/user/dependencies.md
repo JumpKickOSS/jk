@@ -330,7 +330,9 @@ under Gradle (a Maven build has to declare it by hand).
 your `java` can run: a variant whose `org.gradle.jvm.version` is above it is passed over, and of
 the rest the newest JVM wins, as Gradle chooses. One lock serves a whole workspace, so it is chosen
 for the lowest `java` any member declares. Where no module declares `java` (or a `jdk`), it is
-chosen for the JDK the build runs on.
+chosen for the JDK the build runs on, and the lock's `[variants]` table records that JDK and the
+range of JDKs that would choose the same variants: a build on a JDK outside the range relocks first
+([lockfile](lockfile.md)).
 
 **Ranges in dependency POMs and Gradle module metadata** read in Maven's spelling (`[1.0,2.0)`,
 `(,2.0]`, `[1.0]`) and in the ISO spelling Gradle publishes (`[1.0,2.0[` is exclusive above,

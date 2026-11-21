@@ -50,6 +50,27 @@ public final class GradleModuleMetadata {
     }
 
     /**
+     * The {@code java} levels from {@code lowest} to {@code highest}, both inclusive, that read a
+     * module's variants as one level does: every {@code org.gradle.jvm.version} a variant declares
+     * is compatible with all of them or with none. {@code 0} below and {@link Integer#MAX_VALUE}
+     * above stand for no bound.
+     */
+    public record Levels(int lowest, int highest) {
+        /** Every level: nothing published reads differently at another. */
+        public static final Levels ALL = new Levels(0, Integer.MAX_VALUE);
+
+        /** The levels both hold for. */
+        public Levels and(Levels other) {
+            return new Levels(Math.max(lowest, other.lowest), Math.min(highest, other.highest));
+        }
+
+        /** True when no level reads differently. */
+        public boolean all() {
+            return lowest <= 0 && highest == Integer.MAX_VALUE;
+        }
+    }
+
+    /**
      * Process-wide parse memo keyed by absolute path + size + mtime. First-in-process Android locks
      * re-read the same {@code .module} files across scopes; MiniJson dominates without this.
      */
@@ -156,6 +177,25 @@ public final class GradleModuleMetadata {
             chosenLevel = level;
         }
         return chosen;
+    }
+
+    /**
+     * The levels that choose this module's variants as {@code javaLevel} does: from the highest
+     * {@code org.gradle.jvm.version} at or below it to just under the lowest above it. Every
+     * variant counts, whatever its usage or environment, so a level outside the range may choose
+     * the same variants; a level inside it never chooses others.
+     */
+    public Levels levelsLike(int javaLevel) {
+        int lowest = 0;
+        int highest = Integer.MAX_VALUE;
+        for (Map<String, Object> variant : variants) {
+            if (!(variant.get("attributes") instanceof Map<?, ?> attrs)) continue;
+            int level = jvmVersion(attrs.get("org.gradle.jvm.version"));
+            if (level <= 0) continue;
+            if (level <= javaLevel) lowest = Math.max(lowest, level);
+            else highest = Math.min(highest, level - 1);
+        }
+        return new Levels(lowest, highest);
     }
 
     /** An {@code org.gradle.jvm.version} value; 0 when absent or not a number, which every consumer accepts. */

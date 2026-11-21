@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -38,18 +39,27 @@ public final class KmpRedirects {
     /** A resolved root: the runtime target plus every platform sibling the POM must not follow. */
     public record Selection(GradleModuleMetadata.Redirect target, Set<String> allTargets) {}
 
-    /** One module's metadata facts: its runtime redirect, if any, and its version constraints. */
+    /**
+     * One module's metadata facts: its runtime redirect, if any, its version constraints, and the
+     * {@code java} levels that read them alike.
+     */
     public record ModuleFacts(
             Optional<Selection> redirect,
             List<GradleModuleMetadata.Constraint> constraints,
-            List<GradleModuleMetadata.FixtureDependency> fixtures) {
-        static final ModuleFacts NONE = new ModuleFacts(Optional.empty(), List.of(), List.of());
+            List<GradleModuleMetadata.FixtureDependency> fixtures,
+            GradleModuleMetadata.Levels levels) {
+        static final ModuleFacts NONE =
+                new ModuleFacts(Optional.empty(), List.of(), List.of(), GradleModuleMetadata.Levels.ALL);
     }
 
     private final @Nullable RepoGroup repos;
     private final String jvmEnvironment;
     private final int javaLevel;
     private final Map<String, ModuleFacts> cache = new ConcurrentHashMap<>();
+
+    /** The levels every module asked about so far reads as {@link #javaLevel} does. */
+    private final AtomicReference<GradleModuleMetadata.Levels> levels =
+            new AtomicReference<>(GradleModuleMetadata.Levels.ALL);
 
     /**
      * Process-wide selection memo: Gradle module metadata is immutable per GAV on disk, and the
@@ -132,7 +142,22 @@ public final class KmpRedirects {
         return facts(module, version).fixtures();
     }
 
+    /**
+     * The {@code java} levels that choose the variants of every module asked about so far as this
+     * instance's level did; {@link GradleModuleMetadata.Levels#ALL} when none publishes a variant
+     * per JVM.
+     */
+    public GradleModuleMetadata.Levels levels() {
+        return levels.get();
+    }
+
     private ModuleFacts facts(String module, String version) {
+        ModuleFacts facts = lookupFacts(module, version);
+        if (!facts.levels().all()) levels.accumulateAndGet(facts.levels(), GradleModuleMetadata.Levels::and);
+        return facts;
+    }
+
+    private ModuleFacts lookupFacts(String module, String version) {
         if (repos == null) return ModuleFacts.NONE;
         // Authoritative gate is the POM Gradle-metadata marker (see lookup) — not a group
         // allowlist. Missing a KMP redirect is a classpath bug; process memo makes plain-Maven
@@ -253,7 +278,8 @@ public final class KmpRedirects {
                     new ModuleFacts(
                             redirect,
                             gmm.dependencyConstraints(jvmEnvironment, javaLevel),
-                            gmm.testFixtureDependencies(jvmEnvironment, javaLevel)),
+                            gmm.testFixtureDependencies(jvmEnvironment, javaLevel),
+                            gmm.levelsLike(javaLevel)),
                     true);
         } catch (IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();

@@ -2569,6 +2569,10 @@ in     = "cc.jumpkick.lock.LockManifestDigest#MEMO"
 reason = "stamped: every manifest the digest read, every probed absence and every glob's expansion is re-checked, settle-aware, on each read; one entry per lock owner"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.lock.LockFreshness#buildJdk"
+reason = "seam: the engine's build-JDK lookup, installed once; no JDK check elsewhere"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.lock.ManifestPaths#shadows"
 reason = "seam: the engine's shadow renderer, installed once; the plain path elsewhere"
 

@@ -78,7 +78,8 @@ public final class LockSlice {
                 null,
                 lock.node(),
                 lock.tools(),
-                lock.schemas());
+                lock.schemas(),
+                null);
         return "slice:" + Hashing.sha256Hex(LockfileWriter.render(slice));
     }
 }

@@ -190,10 +190,13 @@ final class SetupSteps {
                         }
                         lock = memberView(in, Objects.requireNonNull(result.lockfile(), "lockfile"));
                     } else if (AutoLock.isStale(in.dir(), in.lockFile())) {
+                        String why = LockFreshness.staleReason(in.dir(), in.lockFile());
                         ctx.label(
-                                LockFreshness.isStale(in.dir(), in.lockFile())
-                                        ? "jk.toml changed: updating jk-lock.toml"
-                                        : "an installed dependency changed: updating jk-lock.toml");
+                                why == null
+                                        ? "an installed dependency changed: updating jk-lock.toml"
+                                        : LockFreshness.jdkMoved(why)
+                                                ? "the build JDK changed: updating jk-lock.toml"
+                                                : "jk.toml changed: updating jk-lock.toml");
                         Lockfile existing = LockfileReader.read(in.lockFile());
                         Lockfile updated;
                         try {

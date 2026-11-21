@@ -21,6 +21,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.runtime.AutoLock;
 import cc.jumpkick.runtime.ShadowManifests;
 import cc.jumpkick.runtime.base.BuildLogicKtsHost;
 import cc.jumpkick.runtime.workspace.ImportPinRaises;
@@ -106,6 +107,7 @@ public final class EngineMain {
             BuiltInPluginJars.registerMissingBuiltInFetcher();
             BuiltInPluginJars.install();
             ShadowManifests.install(dir -> ImportPinRaises.apply(dir, JkDirs.cache(), ImportProgress.NONE));
+            AutoLock.installBuildJdk();
             try {
                 UserPluginPins.install();
             } catch (RuntimeException badConfig) {

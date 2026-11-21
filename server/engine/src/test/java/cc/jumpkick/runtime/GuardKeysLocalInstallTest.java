@@ -85,7 +85,8 @@ class GuardKeysLocalInstallTest {
                 null,
                 null,
                 List.of(),
-                List.of());
+                List.of(),
+                null);
         LockfileWriter.write(lock, root.resolve("jk-lock.toml"));
     }
 

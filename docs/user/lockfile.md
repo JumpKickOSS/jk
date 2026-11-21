@@ -52,6 +52,20 @@ or `jk test` relocks first and `jk explain` says it will. A member's bytes count
 even while its manifest is refused (a table it may not set, say): fixing it and every later edit to
 it moves the digest like any other.
 
+**When the build JDK moves.** A lock no module declares `java` for chooses each Gradle module's
+runtime variant for the JDK the build runs on ([dependencies](dependencies.md)). When a module
+publishes a variant per JVM, the lock says so in a `[variants]` table: `jdk` is that JDK's feature
+version, and `jdk-lowest` and `jdk-highest` bound the JDKs that choose the same variants (an absent
+bound is no bound). A build on a JDK outside them relocks first (`jk-lock.toml is stale: its Gradle
+variants were chosen for JDK 17, not 21`); a build inside them uses the lock as it is.
+
+```toml
+[variants]
+jdk = 17
+jdk-lowest = 11
+jdk-highest = 20
+```
+
 **When the relock cannot resolve.** A stale lock is never built on in silence. If the relock fails
 (a repository unreachable or a host denied, an artifact no repository serves, an empty store with
 the network off), the build stops on its `lock` step and leaves the file as it was:

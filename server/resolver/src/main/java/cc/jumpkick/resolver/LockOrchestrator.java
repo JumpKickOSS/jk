@@ -13,6 +13,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
+import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
@@ -32,6 +33,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
@@ -533,6 +535,8 @@ public final class LockOrchestrator {
         }
         Solve union = merged.union();
         Lockfile lockfile = merged.lockfile();
+        AtomicReference<GradleModuleMetadata.Levels> levels =
+                new AtomicReference<>(union.kmp().levels());
         if (!members.isEmpty()) {
             Map<String, Set<String>> carriedBy = new HashMap<>();
             for (Member m : members) carriedBy.put(m.path(), m.carried());
@@ -550,7 +554,15 @@ public final class LockOrchestrator {
                         javaLevel(manifest));
                 if (rounds != null) {
                     MemberPartitions.MemberSolve prior = rounds.prior(member, inputs);
-                    if (prior != null) return prior;
+                    if (prior != null) {
+                        Lockfile.VariantJdk held = prior.lockfile().variants();
+                        if (held != null) {
+                            levels.accumulateAndGet(
+                                    new GradleModuleMetadata.Levels(held.lowest(), held.highest()),
+                                    GradleModuleMetadata.Levels::and);
+                        }
+                        return prior;
+                    }
                 }
                 // A member solved on its own: its rows, assembled against its own platform table.
                 LockProgress silent = new LockProgress(ResolveObserver.NOOP, (a, b, c, d, e) -> {});
@@ -572,8 +584,11 @@ public final class LockOrchestrator {
                             ga -> pinsAsFloors || carried.contains(ga));
                     steps.begin(ResolveProfile::memberAssemble);
                     silent.materializePhase(0);
-                    MemberPartitions.MemberSolve solved = new MemberPartitions.MemberSolve(
-                            assemble(solve, manifest, jkVersion, silent, pomBuilder), own);
+                    Lockfile assembled = assemble(solve, manifest, jkVersion, silent, pomBuilder);
+                    GradleModuleMetadata.Levels held = solve.kmp().levels();
+                    levels.accumulateAndGet(held, GradleModuleMetadata.Levels::and);
+                    MemberPartitions.MemberSolve solved =
+                            new MemberPartitions.MemberSolve(assembled.withVariants(variants(held)), own);
                     if (rounds != null) rounds.solvedMember(member, inputs, solved);
                     return solved;
                 } finally {
@@ -612,7 +627,15 @@ public final class LockOrchestrator {
         // as much as one during the solve, and the results name it either way.
         CentralMirror.standard().note().ifPresent(observer::onNote);
         progress.finished(lockfile.artifacts().size());
-        return lockfile;
+        return lockfile.withVariants(declaresJava(project) ? null : variants(levels.get()));
+    }
+
+    /**
+     * The build JDK the variants were chosen for, with the JDKs from {@code held} that choose them
+     * alike; null when no module publishes a variant per JVM, so no JDK reads them differently.
+     */
+    private Lockfile.@Nullable VariantJdk variants(GradleModuleMetadata.Levels held) {
+        return held.all() ? null : new Lockfile.VariantJdk(jdkLevel, held.lowest(), held.highest());
     }
 
     /** {@code versions} without the entries on {@code modules}, keyed by package or {@code group:artifact}. */
@@ -826,12 +849,23 @@ public final class LockOrchestrator {
      * declares one.
      */
     private int javaLevel(JkBuild project) {
+        int lowest = declaredJava(project);
+        return lowest > 0 ? lowest : jdkLevel;
+    }
+
+    /** True when a module this lock serves declares a {@code java}, so the build JDK chooses no variant. */
+    private boolean declaresJava(JkBuild project) {
+        return declaredJava(project) > 0;
+    }
+
+    /** The lowest {@code java} a module this lock serves declares; 0 when none does. */
+    private int declaredJava(JkBuild project) {
         int lowest = project.project().javaRelease();
         for (Member m : members) {
             int level = m.manifest().project().javaRelease();
             if (level > 0 && (lowest <= 0 || level < lowest)) lowest = level;
         }
-        return lowest > 0 ? lowest : jdkLevel;
+        return Math.max(lowest, 0);
     }
 
     /**

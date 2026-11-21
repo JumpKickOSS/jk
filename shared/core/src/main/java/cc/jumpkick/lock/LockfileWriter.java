@@ -163,6 +163,7 @@ public final class LockfileWriter {
         writeToolchain(out, "jdk", lockfile.jdk());
         writeToolchain(out, "graal", lockfile.graal());
         writeNode(out, lockfile.node());
+        writeVariants(out, lockfile.variants());
         Lockfile.NativeMetadata pin = lockfile.nativeMetadata();
         if (pin != null) {
             out.append("\n[native]\n");
@@ -469,6 +470,17 @@ public final class LockfileWriter {
     }
 
     /** The {@code [node]} table; each platform's sha is a dotted key, which the lock's row grammar reads. */
+    private static void writeVariants(StringBuilder out, Lockfile.@Nullable VariantJdk variants) {
+        if (variants == null) return;
+        out.append("\n[variants]\n");
+        out.append("jdk = ").append(variants.jdk()).append('\n');
+        if (variants.lowest() > 0)
+            out.append("jdk-lowest = ").append(variants.lowest()).append('\n');
+        if (variants.highest() != Integer.MAX_VALUE) {
+            out.append("jdk-highest = ").append(variants.highest()).append('\n');
+        }
+    }
+
     private static void writeNode(StringBuilder out, @Nullable NodePin pin) {
         if (pin == null) return;
         out.append("\n[node]\n");

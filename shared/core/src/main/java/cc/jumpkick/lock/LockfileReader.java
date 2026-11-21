@@ -57,6 +57,7 @@ public final class LockfileReader {
             "schema",
             "sdk",
             "tool",
+            "variants",
             "version");
 
     private LockfileReader() {}
@@ -270,7 +271,33 @@ public final class LockfileReader {
                 toWriterBuild(result),
                 toNodePin(tableOrFail(result, "node", origin)),
                 readTools(result),
-                SchemaEntry.read(result));
+                SchemaEntry.read(result),
+                toVariants(tableOrFail(result, "variants", origin)));
+    }
+
+    /** The keys a {@code [variants]} table holds; anything else is refused. */
+    private static final Set<String> VARIANTS_KEYS = Set.of("jdk", "jdk-lowest", "jdk-highest");
+
+    /**
+     * The {@code [variants]} table, or null when the lock has none. An absent bound is no bound; a
+     * table without its {@code jdk} is refused.
+     */
+    private static Lockfile.@Nullable VariantJdk toVariants(@Nullable LockToml table) {
+        if (table == null) return null;
+        Set<String> unknown = new TreeSet<>(table.keySet());
+        unknown.removeAll(VARIANTS_KEYS);
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "[variants] has unknown key(s) " + unknown + " — re-run `jk lock` to rewrite it");
+        }
+        Long jdk = table.getLong("jdk");
+        if (jdk == null || jdk <= 0) throw new IllegalArgumentException("[variants] names no jdk — re-run `jk lock`");
+        Long lowest = table.getLong("jdk-lowest");
+        Long highest = table.getLong("jdk-highest");
+        return new Lockfile.VariantJdk(
+                jdk.intValue(),
+                lowest == null ? 0 : lowest.intValue(),
+                highest == null ? Integer.MAX_VALUE : highest.intValue());
     }
 
     /**

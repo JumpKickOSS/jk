@@ -94,6 +94,60 @@ class LockJavaLevelVariantTest {
         assertThat(modules(onNewer)).contains("widget-jdk21").doesNotContain("widget-jdk11");
     }
 
+    /**
+     * The lock names the JDK it chose variants for and the JDKs that choose the same ones, so a
+     * build on another can tell whether it relocks.
+     */
+    @Test
+    void a_lock_with_no_java_records_the_jdks_its_variants_hold_for(@TempDir Path tmp) throws Exception {
+        Lockfile onOlder = new LockOrchestrator(repos(tmp)).withJdkLevel(17).lock(manifest("app", 0), "test");
+        Lockfile onNewer = new LockOrchestrator(repos(tmp)).withJdkLevel(25).lock(manifest("app", 0), "test");
+
+        assertThat(onOlder.variants()).isEqualTo(new Lockfile.VariantJdk(17, 11, 20));
+        assertThat(onNewer.variants()).isEqualTo(new Lockfile.VariantJdk(25, 21, Integer.MAX_VALUE));
+    }
+
+    @Test
+    void a_lock_whose_java_is_declared_records_no_jdk(@TempDir Path tmp) throws Exception {
+        Lockfile lock = new LockOrchestrator(repos(tmp)).withJdkLevel(25).lock(manifest("app", 17), "test");
+
+        assertThat(lock.variants()).isNull();
+    }
+
+    @Test
+    void a_lock_reaching_no_variant_per_jvm_records_no_jdk(@TempDir Path tmp) throws Exception {
+        Lockfile lock =
+                new LockOrchestrator(repos(tmp)).withJdkLevel(17).lock(pinning(manifest("app", 0), "2.0.0"), "test");
+
+        assertThat(lock.variants()).isNull();
+    }
+
+    /** A variant only a member's own solve reaches counts, whether that solve ran or was reused. */
+    @Test
+    void a_workspace_with_no_java_records_the_jdks_of_a_member_solved_alone(@TempDir Path tmp) throws Exception {
+        LockOrchestrator.Rounds series = new LockOrchestrator.Rounds();
+        List<LockOrchestrator.Member> members = List.of(
+                new LockOrchestrator.Member("legacy", pinning(manifest("legacy", 0), "2.0.0")),
+                new LockOrchestrator.Member("current", pinning(manifest("current", 0), "1.0.0")));
+        JkBuild root = pinning(manifest("root", 0), "2.0.0");
+
+        Lockfile solved = new LockOrchestrator(repos(tmp))
+                .withJdkLevel(17)
+                .withRounds(series)
+                .withMembers(members)
+                .lock(root, "test");
+        series.resetCounts();
+        Lockfile reused = new LockOrchestrator(repos(tmp))
+                .withJdkLevel(17)
+                .withRounds(series)
+                .withMembers(members)
+                .lock(root, "test");
+
+        assertThat(solved.variants()).isEqualTo(new Lockfile.VariantJdk(17, 11, 20));
+        assertThat(series.memberReuses()).isEqualTo(1);
+        assertThat(reused.variants()).isEqualTo(new Lockfile.VariantJdk(17, 11, 20));
+    }
+
     @Test
     void a_declared_java_outranks_the_jdk_the_project_builds_on(@TempDir Path tmp) throws Exception {
         Lockfile lock = new LockOrchestrator(repos(tmp)).withJdkLevel(25).lock(manifest("app", 17), "test");

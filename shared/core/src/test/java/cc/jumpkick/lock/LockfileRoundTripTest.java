@@ -17,6 +17,27 @@ import org.junit.jupiter.api.Test;
 class LockfileRoundTripTest {
 
     @Test
+    void the_jdk_the_variants_were_chosen_for_round_trips() {
+        Lockfile bounded = Lockfile.empty("test").withVariants(new Lockfile.VariantJdk(17, 11, 20));
+        Lockfile open = Lockfile.empty("test").withVariants(new Lockfile.VariantJdk(25, 21, Integer.MAX_VALUE));
+
+        assertThat(LockfileWriter.render(bounded)).contains("""
+
+                [variants]
+                jdk = 17
+                jdk-lowest = 11
+                jdk-highest = 20
+                """);
+        assertThat(LockfileWriter.render(open)).doesNotContain("jdk-highest");
+        assertThat(LockfileReader.parse(LockfileWriter.render(bounded)).variants())
+                .isEqualTo(bounded.variants());
+        assertThat(LockfileReader.parse(LockfileWriter.render(open)).variants()).isEqualTo(open.variants());
+        assertThat(LockfileReader.parse(LockfileWriter.render(Lockfile.empty("test")))
+                        .variants())
+                .isNull();
+    }
+
+    @Test
     void empty_lockfile_renders_deterministically() {
         Lockfile lock = Lockfile.empty("0.1.0-SNAPSHOT");
         String rendered = LockfileWriter.render(lock);

@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.LockRewriteGuard;
@@ -16,6 +17,7 @@ import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
+import cc.jumpkick.task.ToolchainPolicy;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -34,6 +36,24 @@ import org.jspecify.annotations.Nullable;
 public final class AutoLock {
 
     private AutoLock() {}
+
+    /**
+     * Make the JDK a build runs on what {@link LockFreshness} holds a lock's Gradle variants to:
+     * the one {@link LockPipeline} chooses them for.
+     */
+    public static void installBuildJdk() {
+        LockFreshness.installBuildJdk(AutoLock::buildJdkLevel);
+    }
+
+    /** The feature version of the JDK the build at {@code owner} runs on; 0 when none resolves. */
+    static int buildJdkLevel(Path owner) {
+        try {
+            return ToolchainPolicy.level(0, JavaHomes.resolveJavaHome(owner));
+        } catch (RuntimeException unresolved) {
+            Log.debug("buildJdkLevel: no JDK resolves", unresolved);
+            return 0;
+        }
+    }
 
     /**
      * Returns {@code true} when the lock no longer matches its manifests (content digest), the

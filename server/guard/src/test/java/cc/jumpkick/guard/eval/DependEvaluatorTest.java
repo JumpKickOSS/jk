@@ -89,7 +89,8 @@ class DependEvaluatorTest {
                 null,
                 null,
                 List.of(),
-                List.of());
+                List.of(),
+                null);
         LockfileWriter.write(lock, root.resolve(ManifestPaths.LOCK));
     }
 

@@ -314,6 +314,28 @@ class GradleModuleMetadataTest {
     }
 
     @Test
+    void the_levels_like_a_jvm_run_from_its_variant_to_just_under_the_next(@TempDir Path dir) throws Exception {
+        var gmm = GradleModuleMetadata.parse(Files.writeString(dir.resolve("m.module"), PER_JVM));
+
+        assertThat(gmm.levelsLike(17)).isEqualTo(new GradleModuleMetadata.Levels(11, 20));
+        assertThat(gmm.levelsLike(21)).isEqualTo(new GradleModuleMetadata.Levels(21, Integer.MAX_VALUE));
+        assertThat(gmm.levelsLike(8)).isEqualTo(new GradleModuleMetadata.Levels(0, 10));
+        assertThat(gmm.levelsLike(8).and(gmm.levelsLike(17))).isEqualTo(new GradleModuleMetadata.Levels(11, 10));
+    }
+
+    @Test
+    void a_module_with_no_variant_per_jvm_reads_alike_at_every_level(@TempDir Path dir) throws Exception {
+        Path module = Files.writeString(dir.resolve("m.module"), """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "runtimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" }
+                } ] }
+                """);
+
+        assertThat(GradleModuleMetadata.parse(module).levelsLike(17).all()).isTrue();
+    }
+
+    @Test
     void no_variant_runs_on_a_jvm_older_than_every_one_published(@TempDir Path dir) throws Exception {
         var gmm = GradleModuleMetadata.parse(Files.writeString(dir.resolve("m.module"), PER_JVM));
 

@@ -37,7 +37,8 @@ import org.jspecify.annotations.Nullable;
  * jk writes for the current manifests — the {@code [native] metadata-repository} pin, the {@code
  * [node]} pin, a {@code [[kotlin-plugins]]} jar's {@code [[plugin]]} row, a plugin tool's
  * {@code [[tool]]} row, a registry subject's {@code [[schema]]} row — and {@link #isStale} rules
- * such a lock stale.
+ * such a lock stale. So is a lock whose Gradle variants were chosen for a build JDK ({@code
+ * [variants]}) that would choose others than the JDK the build now runs on.
  */
 public final class LockFreshness {
 
@@ -48,6 +49,23 @@ public final class LockFreshness {
      * {@code jk explain} and {@code jk doctor} name it alike.
      */
     public static final String STALE = StaleLock.STALE;
+
+    /** The feature version of the JDK a build of the project at a lock's directory runs on. */
+    @FunctionalInterface
+    public interface BuildJdk {
+        /** That JDK's feature version for the lock at {@code owner}; 0 when it cannot be told. */
+        int level(Path owner);
+    }
+
+    private static volatile BuildJdk buildJdk = owner -> 0;
+
+    /**
+     * The engine installs how it finds a project's build JDK, the one the lock chooses variants for;
+     * until then no lock is stale for its JDK.
+     */
+    public static void installBuildJdk(BuildJdk jdk) {
+        buildJdk = Objects.requireNonNull(jdk, "jdk");
+    }
 
     /**
      * True when {@code lockFile} is missing, or when the lock no longer reflects manifests under
@@ -88,6 +106,8 @@ public final class LockFreshness {
      *       no {@code [[tool]]} row for: stale.
      *   <li>Digest clean but the root {@code jk-guards.toml} extends a rule pack the lock has no
      *       digest-pinned {@code [[plugin]]} row for at that version: stale.
+     *   <li>Digest clean but the lock chose its Gradle variants for a build JDK, and the JDK the
+     *       build runs on now would choose others: stale.
      * </ul>
      *
      * <p>Both the project {@code jk.toml} and the lock must exist for a non-stale answer; missing
@@ -162,12 +182,32 @@ public final class LockFreshness {
             if (LockSchemas.missing(owner, modules, lock)) {
                 return STALE_PREFIX + "it has no [[schema]] row for a registry subject";
             }
-            return null;
+            return movedJdk(owner, lock);
         } catch (UserConfigParseException unparsed) {
             throw unparsed; // config.toml's own error, with its position — never this site's fallback
         } catch (Exception e) {
             return STALE_PREFIX + "it could not be checked (" + e.getMessage() + ")"; // fail closed → re-lock
         }
+    }
+
+    /**
+     * Why {@code lock}'s Gradle variants do not hold for the JDK the build at {@code owner} runs on,
+     * or null when they do, when it chose none for a JDK, or when that JDK cannot be told.
+     */
+    private static @Nullable String movedJdk(Path owner, Lockfile lock) {
+        Lockfile.VariantJdk variants = lock.variants();
+        if (variants == null) return null;
+        int level = buildJdk.level(owner);
+        if (level <= 0 || variants.holdsFor(level)) return null;
+        return JDK_MOVED + variants.jdk() + ", not " + level;
+    }
+
+    /** What {@link #staleReason} says first for a lock whose variants the build JDK moved past. */
+    private static final String JDK_MOVED = STALE_PREFIX + "its Gradle variants were chosen for JDK ";
+
+    /** True when {@code reason} ({@link #staleReason}) is the build JDK moving past the lock's variants. */
+    public static boolean jdkMoved(@Nullable String reason) {
+        return reason != null && reason.startsWith(JDK_MOVED);
     }
 
     /**

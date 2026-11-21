@@ -15,6 +15,7 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -101,6 +102,57 @@ class LockFreshnessTest {
         assertThat(LockFreshness.isValidDigest(digest)).isTrue();
         assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
         assertThat(LockFreshness.needsRefresh(dir)).isFalse();
+    }
+
+    @Test
+    void a_lock_whose_variants_the_build_jdk_would_choose_otherwise_is_stale(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test").withVariants(new Lockfile.VariantJdk(17, 11, 20)), lockFile);
+        int[] jdk = {17};
+        LockFreshness.installBuildJdk(owner -> jdk[0]);
+        try {
+            assertThat(LockFreshness.staleReason(dir, lockFile)).isNull();
+            jdk[0] = 20;
+            assertThat(LockFreshness.staleReason(dir, lockFile)).isNull();
+            jdk[0] = 21;
+            String newer = Objects.requireNonNull(LockFreshness.staleReason(dir, lockFile));
+            jdk[0] = 8;
+            String older = LockFreshness.staleReason(dir, lockFile);
+            jdk[0] = 0;
+            String unknown = LockFreshness.staleReason(dir, lockFile);
+
+            assertThat(newer).isEqualTo("jk-lock.toml is stale: its Gradle variants were chosen for JDK 17, not 21");
+            assertThat(LockFreshness.jdkMoved(newer)).isTrue();
+            assertThat(StaleLock.refreshFailed(newer, "offline"))
+                    .startsWith(newer + ", and updating it failed: offline\n")
+                    .contains("variants chosen for another JDK");
+            assertThat(older).isEqualTo("jk-lock.toml is stale: its Gradle variants were chosen for JDK 17, not 8");
+            assertThat(unknown).isNull();
+        } finally {
+            LockFreshness.installBuildJdk(owner -> 0);
+        }
+    }
+
+    @Test
+    void a_lock_that_chose_no_variant_for_a_jdk_is_fresh_on_any(@TempDir Path dir) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        Path lockFile = dir.resolve("jk-lock.toml");
+        LockfileWriter.write(Lockfile.empty("test"), lockFile);
+        LockFreshness.installBuildJdk(owner -> 8);
+        try {
+            assertThat(LockFreshness.staleReason(dir, lockFile)).isNull();
+        } finally {
+            LockFreshness.installBuildJdk(owner -> 0);
+        }
     }
 
     @Test

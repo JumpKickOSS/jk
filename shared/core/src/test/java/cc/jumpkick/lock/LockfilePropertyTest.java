@@ -81,7 +81,8 @@ class LockfilePropertyTest {
                         null,
                         null,
                         List.of(),
-                        List.of()));
+                        List.of(),
+                        null));
     }
 
     private static List<Lockfile.Artifact> dedupeByName(List<Lockfile.Artifact> in) {

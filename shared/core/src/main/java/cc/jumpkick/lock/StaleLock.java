@@ -20,11 +20,16 @@ public final class StaleLock {
 
     /**
      * What a build says when it stops on a lock stale for {@code stale} (a {@link
-     * LockFreshness#staleReason} sentence: a moved manifest, or an install a row came from) that it
+     * LockFreshness#staleReason} sentence: a moved manifest, a moved build JDK, or an install a row came from) that it
      * could not update for {@code reason}.
      */
     public static String refreshFailed(String stale, @Nullable String reason) {
         String why = reason == null || reason.isBlank() ? "dependency resolution failed" : reason.strip();
+        if (LockFreshness.jdkMoved(stale)) {
+            return stale + ", and updating it failed: " + why
+                    + "\nThe build stops rather than run on variants chosen for another JDK: run jk lock once it"
+                    + " can resolve (online, the host allowed, the artifact published), or build on the JDK it names";
+        }
         if (!stale.equals(STALE)) {
             return stale + ", and updating it failed: " + why
                     + "\nThe build stops rather than run on bytes no install here holds: run jk install in that"

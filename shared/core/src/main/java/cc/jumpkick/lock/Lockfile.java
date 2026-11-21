@@ -47,7 +47,22 @@ public record Lockfile(
         /** The {@code [[tool]]} rows: plugin step tools pinned by digest, per platform where they follow the host. */
         List<ToolEntry> tools,
         /** The {@code [[schema]]} rows: registry schemas pinned by digest ({@link SchemaEntry}). */
-        List<SchemaEntry> schemas) {
+        List<SchemaEntry> schemas,
+        /** The build JDK the Gradle variants were chosen for; null when a module declares {@code java} or none depended on it. */
+        @Nullable VariantJdk variants) {
+
+    /**
+     * The {@code [variants]} table: the feature version of the JDK the build ran on when the lock
+     * chose its Gradle variants for it, no module declaring {@code java}, and the JDKs from {@code
+     * lowest} to {@code highest} (both inclusive) that choose the same ones. {@code 0} below and
+     * {@link Integer#MAX_VALUE} above stand for no bound.
+     */
+    public record VariantJdk(int jdk, int lowest, int highest) {
+        /** True when the variants chosen for {@link #jdk} are the ones a build on {@code level} chooses. */
+        public boolean holdsFor(int level) {
+            return level >= lowest && level <= highest;
+        }
+    }
 
     /**
      * The GraalVM reachability-metadata repository release a native build reads, resolved from
@@ -121,7 +136,8 @@ public record Lockfile(
                 null,
                 null,
                 List.of(),
-                List.of());
+                List.of(),
+                null);
     }
 
     /** This lock with the jk floor set. */
@@ -171,6 +187,11 @@ public record Lockfile(
     /** This lock with a resolved Node.js pin (null clears it). */
     public Lockfile withNode(@Nullable NodePin pin) {
         return edit(e -> e.node = pin);
+    }
+
+    /** This lock with the build JDK its Gradle variants were chosen for (null clears it). */
+    public Lockfile withVariants(@Nullable VariantJdk chosenFor) {
+        return edit(e -> e.variants = chosenFor);
     }
 
     /** This lock with a resolved GraalVM pin (null clears it). */
@@ -286,6 +307,9 @@ public record Lockfile(
         List<ToolEntry> tools;
         List<SchemaEntry> schemas;
 
+        @Nullable
+        VariantJdk variants;
+
         Edit(Lockfile l) {
             version = l.version;
             generatedBy = l.generatedBy;
@@ -306,6 +330,7 @@ public record Lockfile(
             node = l.node;
             tools = l.tools;
             schemas = l.schemas;
+            variants = l.variants;
         }
 
         Lockfile build() {
@@ -328,7 +353,8 @@ public record Lockfile(
                     writerBuild,
                     node,
                     tools,
-                    schemas);
+                    schemas,
+                    variants);
         }
     }
 
@@ -412,7 +438,8 @@ public record Lockfile(
                 null,
                 null,
                 List.of(),
-                List.of());
+                List.of(),
+                null);
     }
 
     /** Provisioned SDK component pin (sdkmanager path + revision). */

@@ -490,7 +490,8 @@ public final class LockPlans {
                 newLock.writerBuild(),
                 oldLock != null && oldLock.node() != null ? oldLock.node() : newLock.node(),
                 oldLock != null ? oldLock.tools() : newLock.tools(),
-                oldLock != null ? oldLock.schemas() : newLock.schemas());
+                oldLock != null ? oldLock.schemas() : newLock.schemas(),
+                oldLock != null ? oldLock.variants() : newLock.variants());
         pipeline.write(finalLock, manifestsSha);
         return refreshed;
     }

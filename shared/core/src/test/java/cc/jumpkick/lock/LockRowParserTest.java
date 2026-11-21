@@ -88,7 +88,8 @@ class LockRowParserTest {
                         "pnpm@10.18.1",
                         Map.of("linux-x64", "a".repeat(64), "win-arm64", "b".repeat(64))),
                 List.of(),
-                List.of());
+                List.of(),
+                null);
     }
 
     @Test

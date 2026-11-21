@@ -95,7 +95,8 @@ class WorkspacePreflightLocalInstallTest {
                 null,
                 null,
                 List.of(),
-                List.of());
+                List.of(),
+                null);
         LockfileWriter.write(lock, tmp.resolve("jk-lock.toml"));
     }
 

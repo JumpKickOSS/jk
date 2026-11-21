@@ -37,7 +37,8 @@ class PlannerKspStampDigestTest {
             null,
             null,
             List.of(),
-            List.of());
+            List.of(),
+            null);
 
     private static final String PLAIN = """
             name    = "demo"
