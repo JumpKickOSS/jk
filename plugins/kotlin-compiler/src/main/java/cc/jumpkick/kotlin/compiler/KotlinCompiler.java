@@ -4,8 +4,8 @@ package cc.jumpkick.kotlin.compiler;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
-import cc.jumpkick.host.Linking;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
@@ -131,8 +131,9 @@ public final class KotlinCompiler implements Plugin {
         List<Path> sources = spec.sources.stream().map(File::toPath).toList();
 
         CompilationResult result;
-        // Plugin jars aliased for this compile; a served worker compiles again, so they go after it.
-        List<Path> aliases = new ArrayList<>();
+        // The compiler's plugin loader skips a classpath entry not named .jar, so an extensionless
+        // plugin jar is aliased here; a served worker compiles again, so the aliases go after it.
+        Path aliasDir = spec.plugins.isEmpty() ? null : Files.createTempDirectory("jk-kotlin-plugin-");
         try (KotlinToolchains.BuildSession session = toolchains.createBuildSession()) {
             ExecutionPolicy policy = toolchains.createInProcessExecutionPolicy();
             KcLogger logger = new KcLogger(proto, sources);
@@ -144,8 +145,12 @@ public final class KotlinCompiler implements Plugin {
             if (!spec.plugins.isEmpty()) {
                 // Compiler plugins must go through the typed COMPILER_PLUGINS argument —
                 // raw -Xplugin/-P strings are silently ignored by the BTA execution path.
+                List<Path> jars = ToolJars.jarSuffixed(
+                        Objects.requireNonNull(aliasDir),
+                        spec.plugins.stream().map(p -> p.jar().toPath()).toList());
                 List<org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin> plugins = new ArrayList<>();
-                for (CompileSpec.Plugin plugin : spec.plugins) {
+                for (int i = 0; i < spec.plugins.size(); i++) {
+                    CompileSpec.Plugin plugin = spec.plugins.get(i);
                     List<org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption> options =
                             new ArrayList<>();
                     for (String opt : plugin.options()) {
@@ -154,7 +159,7 @@ public final class KotlinCompiler implements Plugin {
                                 eq < 0 ? opt : opt.substring(0, eq), eq < 0 ? "" : opt.substring(eq + 1)));
                     }
                     plugins.add(new org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin(
-                            plugin.id(), List.of(jarSuffixed(plugin.jar().toPath(), aliases)), options, Set.of()));
+                            plugin.id(), List.of(jars.get(i)), options, Set.of()));
                 }
                 op.getCompilerArguments()
                         .set(
@@ -183,7 +188,7 @@ public final class KotlinCompiler implements Plugin {
             List<String> compiled = logger.compiled();
             if (workingDir != null && compiled != null) proto.compiled(compiled);
         } finally {
-            for (Path alias : aliases) PathUtil.deleteRecursively(alias);
+            PathUtil.deleteRecursively(aliasDir);
         }
 
         proto.result(result.name());
@@ -328,20 +333,6 @@ public final class KotlinCompiler implements Plugin {
         }
         args.addAll(spec.extraArgs);
         return args;
-    }
-
-    /**
-     * The compiler's plugin loader silently ignores classpath entries that don't end in
-     * {@code .jar}. Alias any extensionless path so the plugin is actually loaded; the alias's
-     * directory is added to {@code aliases} for the caller to delete.
-     */
-    private static Path jarSuffixed(Path jar, List<Path> aliases) throws IOException {
-        if (jar.getFileName().toString().endsWith(".jar")) return jar;
-        Path dir = Files.createTempDirectory("jk-kotlin-plugin-");
-        aliases.add(dir);
-        Path suffixed = dir.resolve(jar.getFileName() + ".jar");
-        Linking.linkOrCopy(jar, suffixed);
-        return suffixed;
     }
 
     /** Comma-joined, for {@code -Xfriend-paths}: not a classpath, so not {@link Classpaths}. */
