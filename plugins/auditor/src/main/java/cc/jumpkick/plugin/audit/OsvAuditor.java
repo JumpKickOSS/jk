@@ -71,25 +71,38 @@ public final class OsvAuditor {
         }
         if (uniqueIds.isEmpty()) return new AuditReport(List.of());
 
-        // Every detail fetch at once, at most MAX_FETCHES of them in flight. The first failure
-        // fails the audit, so the fetches still waiting for a slot are not started.
-        Semaphore slots = new Semaphore(MAX_FETCHES, true);
+        // The detail fetches, at most MAX_FETCHES of them in flight. Each takes its slot here, in
+        // order, before it is started, and gives it up when it ends: the first failure is recorded
+        // before its slot comes free, so no fetch after it is started.
+        Semaphore slots = new Semaphore(MAX_FETCHES);
         AtomicReference<@Nullable Exception> failure = new AtomicReference<>();
         Map<String, CompletableFuture<OsvClient.Vulnerability>> futures = new LinkedHashMap<>();
-        for (String id : uniqueIds) {
-            String stamp = modified.get(id);
-            futures.put(id, CompletableFuture.supplyAsync(() -> fetch(id, stamp, slots, failure), JkThreads.io()));
-        }
 
         // Findings in package × vulnId order; the supply-chain report sidecar depends on it.
         List<AuditReport.Finding> findings = new ArrayList<>();
         boolean complete = false;
         try {
+            for (String id : uniqueIds) {
+                slots.acquire();
+                if (failure.get() != null) {
+                    slots.release();
+                    break;
+                }
+                String stamp = modified.get(id);
+                try {
+                    futures.put(
+                            id, CompletableFuture.supplyAsync(() -> fetch(id, stamp, slots, failure), JkThreads.io()));
+                } catch (RuntimeException notStarted) {
+                    slots.release();
+                    throw notStarted;
+                }
+            }
             for (int i = 0; i < pkgs.size(); i++) {
                 Locked pkg = pkgs.get(i);
                 for (String vulnId : results.get(i).vulnIds()) {
-                    OsvClient.Vulnerability v =
-                            Objects.requireNonNull(futures.get(vulnId), vulnId).get();
+                    CompletableFuture<OsvClient.Vulnerability> fetched = futures.get(vulnId);
+                    if (fetched == null) throw new CancellationException("another advisory fetch failed");
+                    OsvClient.Vulnerability v = fetched.get();
                     findings.add(new AuditReport.Finding(
                             pkg.ga(),
                             pkg.version(),
@@ -119,29 +132,23 @@ public final class OsvAuditor {
     }
 
     /**
-     * One advisory's details, fetched once a slot is free and only while nothing has failed. A
-     * failure is recorded in {@code failure} before its slot is given up, so the fetch that takes
-     * the slot, and every one still waiting, stops.
+     * One advisory's details, in the slot the audit took for it, which it gives up when it ends. A
+     * failure is recorded in {@code failure} before the slot comes free, so the audit starts no
+     * fetch after it.
      */
     private OsvClient.Vulnerability fetch(
             String id, @Nullable String modified, Semaphore slots, AtomicReference<@Nullable Exception> failure) {
         try {
-            slots.acquire();
-            try {
-                if (failure.get() != null) throw new CancellationException("another advisory fetch failed");
-                return client.fetchVuln(id, modified);
-            } catch (IOException | RuntimeException e) {
-                if (!(e instanceof CancellationException)) failure.compareAndSet(null, e);
-                throw e;
-            } finally {
-                slots.release();
-            }
+            if (failure.get() != null) throw new CancellationException("another advisory fetch failed");
+            return client.fetchVuln(id, modified);
         } catch (CancellationException stopped) {
             throw stopped;
         } catch (IOException | InterruptedException | RuntimeException e) {
             failure.compareAndSet(null, e);
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             throw new CompletionException(e);
+        } finally {
+            slots.release();
         }
     }
 
