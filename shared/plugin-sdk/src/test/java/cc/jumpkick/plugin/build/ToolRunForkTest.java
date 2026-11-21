@@ -2,9 +2,14 @@
 package cc.jumpkick.plugin.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JdkFingerprint;
+import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,6 +103,26 @@ class ToolRunForkTest {
         for (String arg : args) expected.add("arg=" + arg);
         expected.add("env=<unset>");
         assertThat(result.output().lines()).containsExactlyElementsOf(expected);
+    }
+
+    /**
+     * Past the argfile threshold, an argument the system encoding cannot hold is refused by name:
+     * {@code java} reads its command line in that encoding too, so forking the whole line instead
+     * would pass the argument mangled, or overflow Windows' 32 K cap.
+     */
+    @Test
+    void a_long_command_with_an_argument_the_system_encoding_cannot_hold_is_refused_by_name() {
+        String unreadable = "lib/日本.jar";
+        Charset system = Charset.forName(System.getProperty("native.encoding", "UTF-8"));
+        assumeFalse(system.newEncoder().canEncode(unreadable), "the system encoding holds every character");
+        TaskExec.ToolRun run = probe();
+        run.arg(String.join(Classpaths.SEPARATOR, "a.jar", unreadable, "b.jar"));
+        while (String.join(" ", run.command()).length() < 32_767) run.arg("x".repeat(100));
+
+        assertThatThrownBy(run::run)
+                .isInstanceOf(IOException.class)
+                .hasMessageStartingWith(unreadable + ": java")
+                .hasMessageContaining(system.name());
     }
 
     /** {@code java -cp <test classpath> EnvEchoMain} on the JVM running the test. */

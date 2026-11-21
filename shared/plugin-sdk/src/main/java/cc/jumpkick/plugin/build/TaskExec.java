@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -316,11 +317,18 @@ public interface TaskExec {
             List<String> cmd = command();
             Path argFile = null;
             if (needsArgFile(cmd)) {
+                // The java launcher reads its command line in the argfile's charset too, so an
+                // argument that charset cannot hold reaches the child mangled either way; refuse
+                // it rather than fork a line too long for the OS.
                 Charset charset = argFileCharset(cmd.get(0));
-                if (encodable(cmd, charset)) {
-                    argFile = Files.createTempFile("jk-tool-args-", ".txt");
-                    cmd = writeArgFile(cmd, argFile, charset);
+                String unreadable = unencodable(cmd, charset);
+                if (unreadable != null) {
+                    throw new IOException(
+                            unreadable + ": " + Path.of(cmd.get(0)).getFileName()
+                                    + " cannot read it in the system encoding " + charset.name());
                 }
+                argFile = Files.createTempFile("jk-tool-args-", ".txt");
+                cmd = writeArgFile(cmd, argFile, charset);
             }
             // No terminal behind a tool a step forks: a passphrase or "overwrite?" prompt reads end
             // of input and fails at once, where an open pipe nobody writes would hang the step.
@@ -357,12 +365,21 @@ public interface TaskExec {
             }
         }
 
-        private static boolean encodable(List<String> cmd, Charset charset) {
+        /**
+         * The first argument {@code charset} cannot encode, narrowed to the element of a path list
+         * that holds the character; null when every argument encodes.
+         */
+        private static @Nullable String unencodable(List<String> cmd, Charset charset) {
             CharsetEncoder encoder = charset.newEncoder();
             for (int i = 1; i < cmd.size(); i++) {
-                if (!encoder.canEncode(cmd.get(i))) return false;
+                String arg = cmd.get(i);
+                if (encoder.canEncode(arg)) continue;
+                for (String element : arg.split(Pattern.quote(Classpaths.SEPARATOR), -1)) {
+                    if (!encoder.canEncode(element)) return element;
+                }
+                return arg;
             }
-            return true;
+            return null;
         }
 
         private static void deleteQuietly(Path file) {
