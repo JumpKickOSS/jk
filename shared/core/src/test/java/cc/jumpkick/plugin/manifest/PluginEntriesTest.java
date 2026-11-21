@@ -119,11 +119,16 @@ class PluginEntriesTest {
                         Map.entry("class Hello", "final class Hello"));
     }
 
+    /** The missing key has no place in the file, so the refusal sits at the entry's table. */
     @Test
-    void an_entry_missing_a_required_key_names_the_entry() {
-        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest(), Toml.parse("[api]\nargs = []")))
+    void an_entry_missing_a_required_key_names_the_entry_at_its_table() {
+        assertThatThrownBy(() -> PluginTableRegistry.validate(manifest(), Toml.parse("\n[api]\nargs = []")))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("[entries-fixture.api] requires `tool`");
+                .hasMessageContaining("[entries-fixture.api] requires `tool`")
+                .satisfies(e -> assertThat(((JkBuildParseException) e).location())
+                        .isNotNull()
+                        .extracting(at -> at.line())
+                        .isEqualTo(2));
     }
 
     /** A key the entry schema does not declare would be read by nothing, so it is refused, not dropped. */

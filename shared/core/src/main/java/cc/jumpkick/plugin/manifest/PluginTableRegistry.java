@@ -10,6 +10,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.util.Suggest;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
@@ -364,6 +365,14 @@ public final class PluginTableRegistry {
 
     /** Schema-validate {@code table} (the raw {@code [<manifest.table>]} TOML) into a config. */
     public static PluginConfig validate(PluginDescriptor manifest, TomlTable table) {
+        return validate(manifest, table, null);
+    }
+
+    /**
+     * As {@link #validate(PluginDescriptor, TomlTable)}, with {@code at} where the manifest writes the
+     * table: a required key that is missing has no place of its own, so its refusal is located there.
+     */
+    public static PluginConfig validate(PluginDescriptor manifest, TomlTable table, @Nullable SourceLocation at) {
         rejectUnknownKeys(manifest, table);
         Map<String, Object> values = new LinkedHashMap<>();
         for (PluginDescriptor.SchemaKey key : manifest.schema().values()) {
@@ -374,7 +383,7 @@ public final class PluginTableRegistry {
             Object value = read(manifest.table(), key, table);
             if (value == null) value = key.normalizedDefault();
             if (value == null || (key.required() && isEmptyList(value))) {
-                if (key.required()) throw new JkBuildParseException(requiredMessage(manifest.table(), key));
+                if (key.required()) throw new JkBuildParseException(requiredMessage(manifest.table(), key), at);
                 continue; // tri-state: absent stays absent
             }
             values.put(key.name(), value);
@@ -395,7 +404,13 @@ public final class PluginTableRegistry {
                     throw JkBuildParseException.at(
                             groupTable, entry, "[" + whereBase + "]." + entry + " must be a table");
                 }
-                entries.put(entry, validateSub(whereBase + "." + entry, subSchema, entryTable));
+                entries.put(
+                        entry,
+                        validateSub(
+                                whereBase + "." + entry,
+                                subSchema,
+                                entryTable,
+                                JkBuildParseException.positionOf(groupTable, entry)));
             }
             values.put(group.table(), entries);
         }
@@ -417,7 +432,13 @@ public final class PluginTableRegistry {
                             "[" + manifest.table() + "." + key + "] is a [" + manifest.table()
                                     + "] key, not an entry name");
                 }
-                entries.put(key, validateSub(manifest.table() + "." + key, entrySchema, entryTable));
+                entries.put(
+                        key,
+                        validateSub(
+                                manifest.table() + "." + key,
+                                entrySchema,
+                                entryTable,
+                                JkBuildParseException.positionOf(table, key)));
             }
             if (!entries.isEmpty()) values.put(PluginConfig.ENTRIES, entries);
         }
@@ -487,10 +508,14 @@ public final class PluginTableRegistry {
 
     /**
      * One nested entry against its sub-schema — same coercion + required semantics as the table, and
-     * a key the sub-schema does not declare is refused at that key, as the table's own are.
+     * a key the sub-schema does not declare is refused at that key, as the table's own are. A
+     * missing required key is refused at {@code at}, where the entry's table is written.
      */
     private static Map<String, Object> validateSub(
-            String where, Map<String, PluginDescriptor.SchemaKey> subSchema, TomlTable entryTable) {
+            String where,
+            Map<String, PluginDescriptor.SchemaKey> subSchema,
+            TomlTable entryTable,
+            @Nullable SourceLocation at) {
         for (String raw : entryTable.keySet()) {
             if (subSchema.containsKey(raw)) continue;
             throw JkBuildParseException.at(
@@ -504,8 +529,10 @@ public final class PluginTableRegistry {
             if (value == null) value = key.normalizedDefault();
             if (value == null || (key.required() && isEmptyList(value))) {
                 if (key.required()) {
-                    throw new JkBuildParseException("[" + where + "] requires `" + key.name() + "`"
-                            + (key.example() != null ? " (e.g. " + exampleAssignment(key) + ")" : ""));
+                    throw new JkBuildParseException(
+                            "[" + where + "] requires `" + key.name() + "`"
+                                    + (key.example() != null ? " (e.g. " + exampleAssignment(key) + ")" : ""),
+                            at);
                 }
                 continue;
             }

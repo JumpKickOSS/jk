@@ -67,14 +67,23 @@ class JkBuildParserFrameworkTest {
         assertThat(b.dependencies().of(Scope.MAIN).get(0).isPlatformManaged()).isTrue();
     }
 
+    /** The missing version has no place in the file, so the refusal sits at the table that lacks it. */
     @Test
-    void spring_boot_table_requires_a_version() {
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+    void spring_boot_table_requires_a_version_at_its_table() {
+        String toml = PROJECT + """
 
                 [spring-boot]
                 include-tools = false
-                """))
-                .hasMessageContaining("[spring-boot].version is required");
+                """;
+        int table =
+                (int) toml.substring(0, toml.indexOf("[spring-boot]")).lines().count() + 1;
+
+        assertThatThrownBy(() -> JkBuildParser.parse(toml))
+                .hasMessageContaining("[spring-boot].version is required")
+                .satisfies(e -> assertThat(((JkBuildParseException) e).location())
+                        .isNotNull()
+                        .extracting(at -> at.line())
+                        .isEqualTo(table));
     }
 
     @Test

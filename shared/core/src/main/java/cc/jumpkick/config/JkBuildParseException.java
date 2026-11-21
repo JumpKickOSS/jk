@@ -48,7 +48,7 @@ public sealed class JkBuildParseException extends RuntimeException permits UserC
     }
 
     /** Where {@code key} of {@code table} sits in the text the table was parsed from, when tomlj kept it. */
-    static @Nullable SourceLocation positionOf(TomlTable table, String key) {
+    public static @Nullable SourceLocation positionOf(TomlTable table, String key) {
         TomlPosition at;
         try {
             at = table.inputPositionOf(List.of(key));

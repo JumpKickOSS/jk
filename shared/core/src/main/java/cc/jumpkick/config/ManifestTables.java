@@ -913,7 +913,10 @@ public final class ManifestTables {
         for (PluginDescriptor manifest : installed) {
             TomlTable table = root.getTable(manifest.table());
             if (table == null) continue;
-            out.put(manifest.id(), PluginTableRegistry.validate(manifest, table));
+            out.put(
+                    manifest.id(),
+                    PluginTableRegistry.validate(
+                            manifest, table, JkBuildParseException.positionOf(root, manifest.table())));
         }
         return out;
     }
