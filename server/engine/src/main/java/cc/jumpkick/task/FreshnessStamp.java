@@ -407,7 +407,7 @@ public final class FreshnessStamp {
         sb.append("RELEASE ").append(release).append('\n');
         sb.append("DIGEST ").append(optionsDigest).append('\n');
         for (Path src : sortedAbs(sources)) {
-            sb.append("SOURCE ")
+            sb.append(BuildStamps.SOURCE_LINE)
                     .append(seen(src).token())
                     .append(' ')
                     .append(src)
@@ -457,9 +457,10 @@ public final class FreshnessStamp {
                 release = Integer.parseInt(line.substring("RELEASE ".length()).trim());
             } else if (line.startsWith("DIGEST ")) {
                 optionsDigest = line.substring("DIGEST ".length()).trim();
-            } else if (line.startsWith("SOURCE ")) {
+            } else if (line.startsWith(BuildStamps.SOURCE_LINE)) {
                 // SOURCE <identity> <path>; a line in any other shape voids the stamp.
-                String[] parts = line.substring("SOURCE ".length()).trim().split(" ", 2);
+                String[] parts =
+                        line.substring(BuildStamps.SOURCE_LINE.length()).trim().split(" ", 2);
                 if (parts.length != 2) return Optional.empty();
                 if (!parts[0].equals(Seen.NONE.token()) && StatIdentity.decode(parts[0]) == null) {
                     return Optional.empty();

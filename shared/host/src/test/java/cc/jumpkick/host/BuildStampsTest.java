@@ -3,7 +3,11 @@ package cc.jumpkick.host;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class BuildStampsTest {
 
@@ -27,5 +31,17 @@ class BuildStampsTest {
         assertThat(BuildStamps.isStampFile("Main.jstamp")).isFalse();
         assertThat(BuildStamps.isStampFile("Main.class")).isFalse();
         assertThat(BuildStamps.isStampFile("")).isFalse();
+    }
+
+    @Test
+    void the_stamped_sources_are_every_stamp_s_source_lines(@TempDir Path dir) throws IOException {
+        assertThat(BuildStamps.stampedSources(dir)).isEmpty();
+        Path java = dir.resolve("src/main/java/p/A Space.java");
+        Path kotlin = dir.resolve("src/main/kotlin/K.kt");
+        Files.writeString(
+                dir.resolve(BuildStamps.JAVA),
+                "TASK t\nKEY k\n" + BuildStamps.SOURCE_LINE + "none " + java + "\nCP x\n");
+        Files.writeString(dir.resolve(BuildStamps.KOTLIN), BuildStamps.SOURCE_LINE + "1:2:3 " + kotlin + "\n");
+        assertThat(BuildStamps.stampedSources(dir)).containsExactly(java, kotlin);
     }
 }

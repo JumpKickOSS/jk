@@ -14,6 +14,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.host.BuildStamps;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
@@ -26,6 +27,8 @@ import java.util.Set;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Opcodes;
 
 class CyclesAndSplitPackageTest {
 
@@ -275,5 +278,68 @@ class CyclesAndSplitPackageTest {
         assertThat(Evaluators.forKind(literal.kind()).evaluate(literal, ws).outcome())
                 .as("no unbuilt module's sources hold p.shared, so the one indexed owner proves it is not split")
                 .isEqualTo(Outcome.STALE_ALLOW);
+    }
+
+    @Test
+    void a_class_whose_source_moved_out_of_an_unbuilt_module_does_not_split_its_package(@TempDir Path dir)
+            throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\n\n[workspace]\nmodules = [\"a\", \"b\"]\n");
+        for (String m : List.of("a", "b")) {
+            Path module = Files.createDirectories(root.resolve(m));
+            Files.writeString(module.resolve("jk.toml"), "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\n");
+        }
+        Path a = root.resolve("a");
+        Path b = root.resolve("b");
+        Files.writeString(
+                Files.createDirectories(a.resolve("src/main/java/p/shared")).resolve("A.java"), "package p.shared;\n");
+        writeClass(a, "p/shared/A", "A.java");
+        // b's last compile read Moved.java and package-info.java in p.shared; both have moved out since
+        Path bSrc = b.resolve("src/main/java");
+        Files.writeString(Files.createDirectories(bSrc.resolve("p/b")).resolve("B.java"), "package p.b;\n");
+        writeClass(b, "p/b/B", "B.java");
+        writeClass(b, "p/shared/Moved", "Moved.java");
+        writeClass(b, "p/shared/Moved$In", "Moved.java");
+        writeClass(b, "p/shared/package-info", "package-info.java");
+        Path moved = bSrc.resolve("p/shared/Moved.java");
+        Files.writeString(
+                BuildLayout.moduleTargetDir(b).resolve("classes").resolve(BuildStamps.JAVA),
+                "TASK compile-main\nKEY k\n" + BuildStamps.SOURCE_LINE + "none " + bSrc.resolve("p/b/B.java") + "\n"
+                        + BuildStamps.SOURCE_LINE + "none " + moved + "\n"
+                        + BuildStamps.SOURCE_LINE + "none " + bSrc.resolve("p/shared/package-info.java") + "\n");
+        List<Path> modules = List.of(a, b);
+        Rule split = rule(root, "split-package", "");
+        Supplier<FactsIndex> merged = EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules));
+        EvalContext ws = new EvalContext(Lane.WORKSPACE, root, "", null, modules, merged, () -> null, List::of);
+
+        assertThat(Evaluators.forKind(split.kind()).evaluate(split, ws).observations())
+                .as("b holds p.shared only as classes of sources that are gone: b no longer declares it")
+                .isEmpty();
+
+        Files.writeString(Files.createDirectories(moved.getParent()).resolve("Moved.java"), "package p.shared;\n");
+        assertThat(Evaluators.forKind(split.kind()).evaluate(split, ws).observations())
+                .as("the source is back, so its class is b's again")
+                .extracting(Observation::key)
+                .containsExactly("p.shared | a + b");
+
+        Files.delete(moved);
+        writeClass(b, "p/shared/Kept", "Kept.java");
+        assertThat(Evaluators.forKind(split.kind()).evaluate(split, ws).observations())
+                .as("a class whose source no stamp names keeps b's claim: nothing says it went")
+                .extracting(Observation::key)
+                .containsExactly("p.shared | a + b");
+    }
+
+    /** A class file compiled from {@code sourceFile} in the module's classes tree. */
+    private static void writeClass(Path module, String internal, String sourceFile) throws IOException {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, internal, null, "java/lang/Object", null);
+        cw.visitSource(sourceFile, null);
+        cw.visitEnd();
+        Path file = BuildLayout.moduleTargetDir(module).resolve("classes").resolve(internal + ".class");
+        Files.createDirectories(file.getParent());
+        Files.write(file, cw.toByteArray());
     }
 }

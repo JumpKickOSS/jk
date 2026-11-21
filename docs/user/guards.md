@@ -462,6 +462,10 @@ lanes and CI remain the enforcement.
   whose main sources declare the allowed package has no class index yet (a partly built
   worktree, `jk test -m <one module>` before the first full build), the allow is neither used
   nor stale; it is judged once every such module has been compiled.
+- **`split-package` ignores classes whose source has gone**: a module the run did not build
+  keeps the classes of a source moved or deleted since its last compile, and a package it holds
+  only through such classes is not its share of a split. A class counts as gone when its last
+  compile read its source at the class's package path and that file is no longer there.
 
 ## Related
 
