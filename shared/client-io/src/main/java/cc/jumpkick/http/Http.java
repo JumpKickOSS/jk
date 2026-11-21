@@ -25,7 +25,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,10 +39,7 @@ import org.jspecify.annotations.Nullable;
  * {@link HttpClient} wrapper: exponential backoff with jitter on 5xx and network {@link IOException}s;
  * never retries 4xx; max 5 attempts.
  *
- * <p>Redirects are followed here, not by the client, so that the policy is jk's: up to {@link
- * #MAX_REDIRECTS} hops, never from https to http, and a hop that leaves the request's origin (scheme,
- * host, port) is re-issued without {@code Authorization} or {@code Cookie}. A private repository
- * that hands a download to a CDN must not hand the CDN the repository token with it.
+ * <p>Redirects are followed here, not by the client, so that the policy is jk's ({@link Redirects}).
  *
  * <p>Whether a request goes through a proxy is decided per request by {@link ProxyEnvironment}:
  * {@code ~/.jk/config.toml [network]}, then Maven's {@code settings.xml} {@code <proxy>}, then the
@@ -53,12 +49,6 @@ import org.jspecify.annotations.Nullable;
  * of a message.
  */
 public final class Http {
-
-    /** Most redirect hops followed for one request — the JDK client's own default. */
-    static final int MAX_REDIRECTS = 5;
-
-    /** Headers that authenticate the caller to one origin and must not travel to another. */
-    private static final Set<String> CREDENTIAL_HEADERS = Set.of("authorization", "cookie");
 
     /**
      * The proxy's credential, recomputed for every hop: a redirect to a host the bypass list sends
@@ -627,7 +617,8 @@ public final class Http {
     /** A GET of {@code target} for a file asked of {@code asked}, carrying the caller's {@code headers} that may go there. */
     private HttpRequest getRequest(URI asked, URI target, Map<String, String> headers) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(target).GET().timeout(requestTimeout);
-        for (Map.Entry<String, String> e : forOrigin(asked, target, headers).entrySet()) {
+        for (Map.Entry<String, String> e :
+                Redirects.forOrigin(asked, target, headers).entrySet()) {
             builder.header(e.getKey(), e.getValue());
         }
         // Opt into transport-level gzip unless the caller already set their own Accept-Encoding;
@@ -663,20 +654,6 @@ public final class Http {
         NotOnTheMirrorException(String message) {
             super(message);
         }
-    }
-
-    /**
-     * The caller's {@code headers} for a request {@code asked} of one origin and sent to {@code
-     * routed}: all of them on the same origin, none of its credentials on another (the Central
-     * mirror), as a redirect to another origin carries none.
-     */
-    static Map<String, String> forOrigin(URI asked, URI routed, Map<String, String> headers) {
-        if (RepositorySpec.sameOrigin(asked, routed)) return headers;
-        Map<String, String> kept = new LinkedHashMap<>();
-        headers.forEach((name, value) -> {
-            if (!CREDENTIAL_HEADERS.contains(name.toLowerCase(Locale.ROOT))) kept.put(name, value);
-        });
-        return kept;
     }
 
     /**
@@ -1038,7 +1015,7 @@ public final class Http {
     /**
      * One request and the redirect chain it starts. A hop that stays on the request's origin keeps
      * every header; one that leaves it is re-issued without the caller's credentials. A downgrade
-     * from https to http, a chain longer than {@link #MAX_REDIRECTS}, a 3xx without a usable
+     * from https to http, a chain longer than {@link Redirects#MAX_HOPS}, a 3xx without a usable
      * {@code Location}, or a 3xx this client never follows (300, 305, …) is an error rather than a
      * 3xx handed back as if it were a result — a caller reading {@code status >= 400} as failure
      * would otherwise take a redirect for a success with an empty body. 304 alone is handed back:
@@ -1050,27 +1027,15 @@ public final class Http {
         checkDenied(request.uri());
         checkAddress(request.uri());
         HttpResponse<T> response = client.send(request, handler);
-        for (int hops = 0; isRedirect(response.statusCode()); hops++) {
-            URI target = redirectTarget(request.uri(), response);
-            if (target == null) {
-                // Handed back as a result, a Location-less 3xx reads as a success with an empty
-                // body to every caller that takes status >= 400 as the failure line.
-                if (drain != null) drain.handle(response);
-                throw new RedirectRefusedException(response.statusCode() + " redirect without a usable Location from "
-                        + SafeUri.forMessage(request.uri()));
-            }
-            if (hops >= MAX_REDIRECTS) {
-                if (drain != null) drain.handle(response);
-                throw new RedirectRefusedException(
-                        "too many redirects (" + MAX_REDIRECTS + ") fetching " + SafeUri.forMessage(request.uri()));
-            }
-            if (!followable(request.uri(), target)) {
-                if (drain != null) drain.handle(response);
-                throw new RedirectRefusedException("refusing a redirect from " + SafeUri.forMessage(request.uri())
-                        + " to " + SafeUri.forMessage(target) + ": https to http");
-            }
+        for (int hops = 0; Redirects.followed(response.statusCode()); hops++) {
+            URI target = Redirects.target(request.uri(), response);
             if (drain != null) drain.handle(response);
-            request = redirected(request, response.statusCode(), target);
+            // Handed back as a result, a refused 3xx reads as a success with an empty body to every
+            // caller that takes status >= 400 as the failure line.
+            String refused = Redirects.refusal(request.uri(), target, response.statusCode(), hops);
+            if (refused != null) throw new RedirectRefusedException(refused);
+            request = Redirects.hop(reissue(request, Objects.requireNonNull(target)), request, response.statusCode())
+                    .build();
             checkDenied(request.uri());
             checkAddress(request.uri());
             response = client.send(request, handler);
@@ -1084,10 +1049,6 @@ public final class Http {
         return response;
     }
 
-    /**
-     * A redirect this client will not follow — too long a chain, a downgrade to http, a 3xx naming
-     * no target, or a 3xx it never follows. Not retried: the same answer would come back.
-     */
     /**
      * A request that got no HTTP answer at all: the connection refused, reset or dropped before a
      * response, or the server silent past the timeout. Any status, 5xx included, is an answer.
@@ -1131,66 +1092,19 @@ public final class Http {
         }
     }
 
+    /**
+     * A redirect this client will not follow — too long a chain, a downgrade to http, a 3xx naming
+     * no target, or a 3xx it never follows. Not retried: the same answer would come back.
+     */
     static final class RedirectRefusedException extends IOException {
         RedirectRefusedException(String message) {
             super(message);
         }
     }
 
-    private static boolean isRedirect(int status) {
-        return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
-    }
-
-    /**
-     * {@code Location} resolved against the request, or null when the response carries none usable:
-     * absent, malformed, or naming a scheme other than http and https, which no request can be sent to.
-     */
-    private static @Nullable URI redirectTarget(URI from, HttpResponse<?> response) {
-        Optional<String> location = response.headers().firstValue("Location");
-        if (location.isEmpty() || location.get().isBlank()) return null;
-        URI target;
-        try {
-            target = from.resolve(location.get().trim());
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
-        String scheme = target.getScheme();
-        boolean web = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
-        return web && target.getHost() != null ? target : null;
-    }
-
-    /** A redirect may upgrade to https or stay put; it may never drop from https to http. */
-    static boolean followable(URI from, URI to) {
-        return !("https".equalsIgnoreCase(from.getScheme()) && "http".equalsIgnoreCase(to.getScheme()));
-    }
-
-    /**
-     * The request re-aimed at {@code target}: every header when the origin is unchanged, everything
-     * but {@link #CREDENTIAL_HEADERS} when it is not, and the proxy credential decided afresh for
-     * the target either way. Method and body are the caller's to decide.
-     */
+    /** {@link Redirects#reissue} with the proxy credential decided afresh for {@code target}. */
     private HttpRequest.Builder reissue(HttpRequest request, URI target) {
-        boolean sameOrigin = RepositorySpec.sameOrigin(request.uri(), target);
-        HttpRequest.Builder next = HttpRequest.newBuilder(request, (name, value) -> {
-                    String lower = name.toLowerCase(Locale.ROOT);
-                    if (lower.equals("proxy-authorization")) return false;
-                    return sameOrigin || !CREDENTIAL_HEADERS.contains(lower);
-                })
-                .uri(target);
-        return withProxyAuthorization(next, target);
-    }
-
-    /**
-     * The next hop of a redirect chain. A 303, or a 301/302 answering a POST, turns into a GET
-     * without the body — what browsers do and what the servers sending those statuses expect;
-     * 307 and 308 keep the method and body.
-     */
-    private HttpRequest redirected(HttpRequest request, int status, URI target) {
-        HttpRequest.Builder next = reissue(request, target);
-        if (status == 303 || ((status == 301 || status == 302) && "POST".equals(request.method()))) {
-            next.GET();
-        }
-        return next.build();
+        return withProxyAuthorization(Redirects.reissue(request, target), target);
     }
 
     private static long jittered(Duration base) {

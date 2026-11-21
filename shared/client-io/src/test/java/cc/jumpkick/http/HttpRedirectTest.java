@@ -171,11 +171,11 @@ class HttpRedirectTest {
     @Test
     void a_downgrade_from_https_to_http_is_not_followed() {
         URI secure = URI.create("https://repo.example.com/a.jar");
-        assertThat(Http.followable(secure, URI.create("http://repo.example.com/a.jar")))
+        assertThat(Redirects.followable(secure, URI.create("http://repo.example.com/a.jar")))
                 .isFalse();
-        assertThat(Http.followable(secure, URI.create("https://cdn.example.com/a.jar")))
+        assertThat(Redirects.followable(secure, URI.create("https://cdn.example.com/a.jar")))
                 .isTrue();
-        assertThat(Http.followable(URI.create("http://repo.example.com/a.jar"), secure))
+        assertThat(Redirects.followable(URI.create("http://repo.example.com/a.jar"), secure))
                 .as("upgrading is fine")
                 .isTrue();
     }
