@@ -178,7 +178,7 @@ public final class MavenPublisher {
             // alone and so is each sidecar already beside it, which makes a re-run after a partial
             // publish (or one that adds signing) upload exactly what is missing; one it holds at
             // other bytes is a version somebody already used.
-            boolean kept = a.envelope() && keepHeldEnvelope(relPath, a.file());
+            boolean kept = a.envelope() && keepHeldEnvelope(relPath, a);
             Checksums.Set sums = Checksums.of(a.file());
             boolean there = a.envelope() ? kept : presence(relPath, sums.sha1()) == Presence.SAME;
             if (there) {
@@ -364,19 +364,22 @@ public final class MavenPublisher {
 
     /**
      * Whether the repository already holds the envelope at {@code relPath} over the payload of the
-     * one in {@code file}; when it does, its bytes replace {@code file}'s, so the sidecars and the
-     * signatures beside it are of the copy that is published.
+     * one in {@code a}'s file; when it does, its bytes replace the file's, so the sidecars and the
+     * signatures beside it are of the copy that is published. An envelope whose bundle was made with
+     * it is kept only beside its held {@code .sigstore}: no other bundle verifies its signature, so
+     * without one the fresh envelope goes up over it with its own bundle.
      *
      * @throws IOException when the repository holds an envelope over another payload
      */
-    private boolean keepHeldEnvelope(String relPath, Path file) throws IOException, InterruptedException {
+    private boolean keepHeldEnvelope(String relPath, Artifact a) throws IOException, InterruptedException {
         Optional<byte[]> held = readable(relPath);
         if (held.isEmpty()) return false;
-        if (!Dsse.samePayload(held.get(), Files.readAllBytes(file))) {
+        if (!Dsse.samePayload(held.get(), Files.readAllBytes(a.file()))) {
             throw new IOException(repoBase.resolve(relPath)
                     + " is already published over another statement; raise the version in jk.toml");
         }
-        Files.write(file, held.get());
+        if (a.bundle() != null && readable(relPath + ".sigstore").isEmpty()) return false;
+        Files.write(a.file(), held.get());
         return true;
     }
 

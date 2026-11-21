@@ -355,6 +355,43 @@ class MavenPublisherTest {
     }
 
     @Test
+    void a_rerun_replaces_a_keyless_envelope_whose_bundle_never_went_up() throws Exception {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        byte[] statement = "{\"_type\":\"https://in-toto.io/Statement/v1\"}\n".getBytes(StandardCharsets.UTF_8);
+        String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl";
+        publisher.publish(project, List.of(keyless(statement, "first")), SigningOptions.none());
+        // Run 1 died between the envelope and its bundle.
+        received.remove(at + ".sigstore");
+        putLog.clear();
+
+        MavenPublisher.Artifact second = keyless(statement, "second");
+        byte[] envelope = Files.readAllBytes(second.file());
+        publisher.publish(project, List.of(second), SigningOptions.none());
+
+        assertThat(received.get(at)).as("the envelope its bundle signs").isEqualTo(envelope);
+        assertThat(new String(requireNonNull(received.get(at + ".sigstore")), StandardCharsets.UTF_8))
+                .isEqualTo("{\"bundle\":\"second\"}");
+
+        putLog.clear();
+        MavenPublisher.Result third =
+                publisher.publish(project, List.of(keyless(statement, "third")), SigningOptions.none());
+        assertThat(third.alreadyThere()).contains("com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl");
+        assertThat(putLog).as("an envelope held with its bundle is kept").doesNotContain(at, at + ".sigstore");
+        assertThat(received.get(at)).isEqualTo(envelope);
+    }
+
+    /** A keyless envelope over {@code statement} with the bundle made with it; {@code run} tells signings apart. */
+    private MavenPublisher.Artifact keyless(byte[] statement, String run) throws IOException {
+        Path file = Files.write(
+                Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"),
+                Dsse.envelope(statement, null, run.getBytes(StandardCharsets.UTF_8)));
+        Path bundle = Files.writeString(
+                Files.createTempFile(artifactFiles, "bundle", ".sigstore"), "{\"bundle\":\"" + run + "\"}");
+        return new MavenPublisher.Artifact(".intoto.jsonl", file, true, bundle);
+    }
+
+    @Test
     void signed_provenance_published_over_another_statement_is_refused(@TempDir Path tempDir) throws Exception {
         GpgSigner signer = signer(tempDir);
         MavenPublisher publisher = new MavenPublisher(base, null, null);

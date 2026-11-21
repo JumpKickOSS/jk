@@ -268,7 +268,9 @@ the envelope the repository already holds over the same statement, and refuses o
 `--sigstore` without `--sign` signs the envelope keylessly: its one signature carries no `keyid`,
 and the `.intoto.jsonl.sigstore` beside it is the Sigstore bundle of that signature (the
 certificate of the short-lived key and its transparency-log entry) rather than a bundle over the
-envelope file. Verify it against the same `pae.bin`, naming the identity you expect:
+envelope file. Only that bundle verifies the envelope, so a re-run that finds a keyless envelope
+with no bundle beside it uploads a fresh envelope and its bundle in its place. Verify it against
+the same `pae.bin`, naming the identity you expect:
 
 ```bash
 cosign verify-blob --bundle widget-1.0.0.intoto.jsonl.sigstore --new-bundle-format \
