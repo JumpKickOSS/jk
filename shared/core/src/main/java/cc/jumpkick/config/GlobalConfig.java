@@ -422,7 +422,8 @@ public final class GlobalConfig {
         try {
             return parseConfig(configFile)
                     .map(toml -> toml.getTable("node"))
-                    .map(t -> new NodeSources(blankToNull(t.getString("registry")), nodeScopes(t.getTable("scopes"))))
+                    .map(t -> new NodeSources(
+                            stringEntry(t, "registry"), nodeScopes(t.isTable("scopes") ? t.getTable("scopes") : null)))
                     .orElse(NodeSources.EMPTY);
         } catch (UserConfigParseException unparsed) {
             throw unparsed;
@@ -452,7 +453,7 @@ public final class GlobalConfig {
                     .map(t -> {
                         Map<String, String> out = new LinkedHashMap<>();
                         for (String key : t.keySet()) {
-                            String url = blankToNull(t.getString(List.of(key)));
+                            String url = stringEntry(t, key);
                             if (url != null) out.put(key, url);
                         }
                         return Map.copyOf(out);
@@ -469,10 +470,15 @@ public final class GlobalConfig {
         if (scopes == null) return Map.of();
         Map<String, String> out = new LinkedHashMap<>();
         for (String scope : scopes.keySet()) {
-            String url = blankToNull(scopes.getString(List.of(scope)));
+            String url = stringEntry(scopes, scope);
             if (url != null) out.put(scope.startsWith("@") ? scope : "@" + scope, url);
         }
         return out;
+    }
+
+    /** The string at {@code key}, trimmed; null when it is absent, blank or not a string, so one bad entry drops alone. */
+    private static @Nullable String stringEntry(TomlTable table, String key) {
+        return table.isString(List.of(key)) ? blankToNull(table.getString(List.of(key))) : null;
     }
 
     private static @Nullable String blankToNull(@Nullable String s) {

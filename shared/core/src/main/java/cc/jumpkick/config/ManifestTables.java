@@ -144,17 +144,32 @@ public final class ManifestTables {
         return new Variants.Value(extraSrc, deps, pluginOverlays);
     }
 
+    static final List<String> FORMAT_KEYS = List.of(
+            "style",
+            "java",
+            "kotlin",
+            "optimize-imports",
+            "import-order",
+            "remove-unused-imports",
+            "enforce",
+            "ratchet-from",
+            "exclude");
+
     static JkBuild.FormatConfig parseFormat(TomlTable root) {
+        if (root.contains("format") && !root.isTable("format")) {
+            throw new JkBuildParseException("`format` must be a table; use [format]");
+        }
         TomlTable format = root.getTable("format");
         if (format == null) return JkBuild.FormatConfig.EMPTY;
+        rejectUnknownKeys(format, FORMAT_KEYS, "[format]");
         return new JkBuild.FormatConfig(
                 stringOrThrow(format, "style", "format.style"),
                 stringOrThrow(format, "java", "format.java"),
                 stringOrThrow(format, "kotlin", "format.kotlin"),
-                optionalBool(format, "optimize-imports"),
-                optionalBool(format, "import-order"),
-                optionalBool(format, "remove-unused-imports"),
-                Boolean.TRUE.equals(optionalBool(format, "enforce")),
+                optionalBool(format, "optimize-imports", "format.optimize-imports"),
+                optionalBool(format, "import-order", "format.import-order"),
+                optionalBool(format, "remove-unused-imports", "format.remove-unused-imports"),
+                Boolean.TRUE.equals(optionalBool(format, "enforce", "format.enforce")),
                 stringOrThrow(format, "ratchet-from", "format.ratchet-from"),
                 format.contains("exclude") ? requireStringList(format, "exclude", "[format].exclude") : List.of());
     }
@@ -504,19 +519,18 @@ public final class ManifestTables {
         }
     }
 
-    /** Present boolean key → its value; absent → null (caller applies the default). */
-    static @Nullable Boolean optionalBool(TomlTable table, String key) {
-        return table.contains(key) ? table.getBoolean(key) : null;
+    /** Present boolean key → its value; absent → null (caller applies the default); any other type is a parse error. */
+    static @Nullable Boolean optionalBool(TomlTable table, String key, String path) {
+        if (!table.contains(key)) return null;
+        if (!table.isBoolean(key)) throw new JkBuildParseException(path + " must be true or false");
+        return table.getBoolean(key);
     }
 
     /** Read an optional string key; present-but-non-string is a parse error; absent → null. */
     static @Nullable String stringOrThrow(TomlTable table, String key, String path) {
         if (!table.contains(key)) return null;
-        String value = table.getString(key);
-        if (value == null) {
-            throw new JkBuildParseException(path + " must be a string");
-        }
-        return value;
+        if (!table.isString(key)) throw new JkBuildParseException(path + " must be a string");
+        return table.getString(key);
     }
 
     /**

@@ -845,4 +845,24 @@ class JkBuildParserProjectTest {
                         """))
                 .hasMessageContaining("[build].generated-src must be an array of directory strings");
     }
+
+    @Test
+    void format_refuses_an_unknown_key_and_a_mistyped_value() {
+        String head = """
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+
+                [format]
+                """;
+        assertThatThrownBy(() -> JkBuildParser.parse(head + "enforced = true\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[format] unknown key `enforced`");
+        assertThatThrownBy(() -> JkBuildParser.parse(head + "style = 3\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("format.style must be a string");
+        assertThatThrownBy(() -> JkBuildParser.parse(head + "enforce = \"yes\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("format.enforce must be true or false");
+    }
 }

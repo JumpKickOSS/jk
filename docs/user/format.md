@@ -96,7 +96,8 @@ style = "standard"          # optional alias → palantir + kotlinlang
 # kotlin = "meta"
 ```
 
-Unknown style names fail with the allowed list.
+Unknown style names fail with the allowed list. So does a key `[format]` does not know, and a
+value of the wrong type (`enforce = "yes"`) is refused naming the key.
 
 ### Precedence (styles)
 

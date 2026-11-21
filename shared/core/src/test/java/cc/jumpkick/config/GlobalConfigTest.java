@@ -513,4 +513,26 @@ class GlobalConfigTest {
             }
         });
     }
+
+    /** One mistyped entry is dropped on its own; the rest of the table still reads. */
+    @Test
+    void a_mistyped_mirror_or_scope_drops_only_itself(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("config.toml");
+        Files.writeString(file, """
+                [mirrors]
+                kotlin = "https://nexus.corp/kotlin/"
+                gradle = 3
+
+                [node]
+                registry = "https://nexus.corp/npm/"
+
+                [node.scopes]
+                acme = "https://npm.acme/"
+                broken = true
+                """);
+
+        assertThat(GlobalConfig.mirrors(file)).containsOnly(Map.entry("kotlin", "https://nexus.corp/kotlin/"));
+        assertThat(GlobalConfig.nodeSources(file).registry()).isEqualTo("https://nexus.corp/npm/");
+        assertThat(GlobalConfig.nodeSources(file).scopes()).containsOnly(Map.entry("@acme", "https://npm.acme/"));
+    }
 }
