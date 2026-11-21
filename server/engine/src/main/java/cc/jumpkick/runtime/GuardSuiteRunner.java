@@ -212,6 +212,8 @@ final class GuardSuiteRunner {
         };
         TestSummary summary = new JUnitLauncher()
                 .withModuleLabel("guard " + (in.module().isEmpty() ? "root" : in.module()))
+                // A guard's verdict is its report line, read by the lane: its JUnit row is no test.
+                .withoutPublishedResults()
                 .run(
                         in.javaHome(),
                         in.layout().guardClassesDir(),

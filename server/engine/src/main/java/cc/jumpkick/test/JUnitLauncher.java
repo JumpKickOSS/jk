@@ -160,6 +160,15 @@ public final class JUnitLauncher {
         return this;
     }
 
+    /** Whether this run's tests join the request's published results ({@code jk-results.md}). */
+    private boolean publishResults = true;
+
+    /** Keep this run's rows out of the request's published results: a guard suite's methods are no tests. */
+    public JUnitLauncher withoutPublishedResults() {
+        this.publishResults = false;
+        return this;
+    }
+
     /**
      * When set, the worker count passed to {@link #run} is the auto share ({@link TestWorkers#autoShare}),
      * not an explicit pin. The launcher then sizes the pool from recorded class walls.
@@ -1072,8 +1081,8 @@ public final class JUnitLauncher {
     }
 
     /** Fold this launch's JUnit events into the request's sink, which {@code jk-results.md} drains. */
-    private void publishTests(MarkdownTestReport md, Path testClassesDir, @Nullable Path testResultsDir) {
-        if (md == null) return;
+    void publishTests(MarkdownTestReport md, Path testClassesDir, @Nullable Path testResultsDir) {
+        if (md == null || !publishResults) return;
         Path scope = inferredModuleDir != null ? inferredModuleDir : testClassesDir;
         String key = "";
         if (scope != null) {

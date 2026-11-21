@@ -4,11 +4,13 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Request;
 import cc.jumpkick.guard.eval.GuardSuites;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.test.RunResults;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,7 +31,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The build's guard lane and a standalone {@code jk guard} on one tree fork the same suite into
- * the same {@code target/guard/}: two runs at once take turns, and each leaves a whole report.
+ * the same {@code target/guard/}: two runs at once take turns, and each leaves a whole report. A
+ * run's guards are reported there alone, never as the request's tests.
  */
 // Out of the unit tier: two forked suite JVMs.
 @Tag("integration")
@@ -162,6 +165,28 @@ class GuardSuiteRunnerConcurrencyTest {
             pool.shutdownNow();
             otherThread.join(TimeUnit.MINUTES.toMillis(1));
         }
+    }
+
+    /** A guard's verdict is its report line: the run's test count, the one {@code jk-results.md} gives, is not its. */
+    @Test
+    void a_suite_s_guards_are_not_counted_as_the_request_s_tests(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("tree"));
+        Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njava = 25\n");
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        Path guardClasses = layout.guardClassesDir();
+        compileSuite(tmp.resolve("suite-src"), guardClasses);
+        Path facts = FactsIndexing.indexPath(layout.buildDir(), "guard");
+        FactsIndexing.ensure(guardClasses, facts);
+        RunResults sink = new RunResults();
+
+        List<String> problems = Request.detached()
+                .with(RunResults.SLOT, sink)
+                .call(() -> GuardSuiteRunner.run(inputs(root, layout, guardClasses, facts), List.of(root)));
+
+        assertThat(problems).isEmpty();
+        assertThat(GuardSuites.readReport(GuardSuiteRunner.report(inputs(root, layout, guardClasses, facts))))
+                .containsOnlyKeys("takes-turns");
+        assertThat(sink.takeTests()).as("the request's tests").isEmpty();
     }
 
     private static GuardSuiteRunner.Inputs inputs(Path root, BuildLayout layout, Path guardClasses, Path facts) {
