@@ -7,10 +7,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.config.HeavyTtl;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.BuildIdentity;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.run.TaskNames;
@@ -21,6 +23,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -32,7 +35,9 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A packaging step's heavy output (a runtime image, a native executable, a fat jar) stays out of a
  * cache whose volume is nearly full, and the step says so with the volume's figures; with room it
- * is stored. The volume is pinned, so neither case depends on the host's free space.
+ * is stored. The volume is pinned, so neither case depends on the host's free space. {@code jk
+ * explain} names whichever of the disk, {@code [cache] heavy-ttl} and {@code [build]
+ * cache-heavy-outputs} keeps a heavy output out.
  */
 class PackagingCacheDiskGuardTest {
 
@@ -68,14 +73,39 @@ class PackagingCacheDiskGuardTest {
     void explain_names_the_disk_when_no_heavy_output_can_be_cached(@TempDir Path tmp) {
         Path cache = tmp.resolve("cache");
         try (DiskGuard.Pin full = DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(100 * GIB, GIB))) {
-            assertThat(PackagingCache.heavyNotCached(cache))
+            assertThat(PackagingCache.heavyNotCached(cache, null, HeavyTtl.DEFAULT))
                     .isEqualTo("not cached: the disk is nearly full (1.0 GiB free of 100.0 GiB (1%))");
         }
         try (DiskGuard.Pin room =
                 DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(228 * GIB, (long) (22.7 * GIB)))) {
-            assertThat(PackagingCache.heavyNotCached(cache))
+            assertThat(PackagingCache.heavyNotCached(cache, null, HeavyTtl.DEFAULT))
                     .as("under 10% of a laptop disk, but 22.7 GiB of room")
                     .isNull();
+        }
+    }
+
+    @Test
+    void explain_names_the_setting_that_keeps_heavy_outputs_out_whatever_the_disk_holds(@TempDir Path tmp)
+            throws Exception {
+        Path cache = tmp.resolve("cache");
+        Path dir = Files.createDirectories(tmp.resolve("app"));
+        JkBuild optedOut = JkBuildParser.parse(Files.writeString(dir.resolve("jk.toml"), """
+                name = "app"
+                group = "g"
+                version = "1.0"
+
+                [build]
+                cache-heavy-outputs = false
+                """));
+        try (DiskGuard.Pin room = DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(100 * GIB, 50 * GIB))) {
+            assertThat(PackagingCache.heavyNotCached(cache, null, Duration.ZERO))
+                    .as("the machine keeps no heavy output, as on CI")
+                    .isEqualTo("not cached: [cache] heavy-ttl = 0");
+            assertThat(PackagingCache.heavyNotCached(cache, optedOut, HeavyTtl.DEFAULT))
+                    .isEqualTo("not cached: [build] cache-heavy-outputs = false");
+            assertThat(PackagingCache.heavyNotCached(cache, optedOut, Duration.ZERO))
+                    .as("the machine's setting is named first")
+                    .isEqualTo("not cached: [cache] heavy-ttl = 0");
         }
     }
 

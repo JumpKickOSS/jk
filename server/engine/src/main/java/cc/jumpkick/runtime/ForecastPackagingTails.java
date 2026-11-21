@@ -63,9 +63,14 @@ final class ForecastPackagingTails {
                 restored.jarShas(),
                 knownResourceDrift,
                 restored.projectedIdentity(layout.classesDir()));
-        return hit
-                ? new TaskForecast.Task(TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.CACHED, "", null)
-                : new TaskForecast.Task(TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.RUN, "repackage", null);
+        if (hit) return new TaskForecast.Task(TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.CACHED, "", null);
+        // A fat jar is a heavy output: the cache may never have been allowed to keep the last one.
+        String notCached = PackagingCache.heavyNotCached(cache, project);
+        return new TaskForecast.Task(
+                TaskNames.PACKAGE_ASSEMBLY,
+                TaskForecast.Status.RUN,
+                notCached == null ? "repackage" : "repackage · " + notCached,
+                null);
     }
 
     /** {@code package-javadoc} — a library tail; the key is {@link PlannerJavadoc}'s. */

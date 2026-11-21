@@ -8,8 +8,12 @@ import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.JlinkImage;
 import cc.jumpkick.compile.LibDirLayout;
+import cc.jumpkick.config.DiskGuard;
 import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.engine.plugin.WorkerEnv;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
@@ -18,6 +22,7 @@ import cc.jumpkick.model.LibDir;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.run.StepForecast;
 import cc.jumpkick.run.Task;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.task.ActionKey;
@@ -29,12 +34,14 @@ import cc.jumpkick.task.ModuleEnvKeys;
 import cc.jumpkick.task.ParsedBuild;
 import cc.jumpkick.task.RecordToolchain;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code [jlink]} packaging tail: {@code target/<name>-jri/}, a runtime image of the
@@ -44,10 +51,9 @@ final class PlannerJlink {
 
     private PlannerJlink() {}
 
-    @KeyOwner(step = TaskNames.PACKAGE_JLINK, unpaired = "explain does not forecast the runtime image at all")
     static Task jlinkStep(Path cache, Path lockFile, boolean persist) {
         return Task.builder(TaskNames.PACKAGE_JLINK)
-                .forecast(StepForecast.RIDES)
+                .forecast(StepForecast.priced(s -> forecast(ForecastScope.of(s), lockFile)))
                 .stage(BuildStage.PACKAGE)
                 .label("Runtime image")
                 .kind(TaskKind.IO)
@@ -78,30 +84,15 @@ final class PlannerJlink {
                             ctx.get(PARSED_BUILD).map(ParsedBuild::release).orElse(0);
                     Path thinJar = layout.mainJar();
                     Path image = layout.jlinkImage();
-                    LibDir libConfig = project.libDir() != null ? project.libDir() : LibDir.defaults();
-                    List<LibDirLayout.Lib> libs =
-                            LibDirLayout.libs(layout.moduleRoot(), project, lockFile, JkStores.storeCas(), libConfig);
+                    List<LibDirLayout.Lib> libs = libs(project, layout, lockFile);
                     List<Path> guarded = new ArrayList<>(List.of(thinJar));
                     libs.forEach(lib -> guarded.add(lib.jar()));
                     InputGuard guard = InputGuard.of(guarded);
-                    JlinkImage.Cache cacheKind = JlinkImage.cache(config, JvmOptions.hostFeature(javaHome));
-                    List<String> tokens = tokens(
-                            guard.token(thinJar),
-                            ClasspathFingerprint.of(
-                                    libs.stream().map(LibDirLayout.Lib::jar).toList()),
-                            LibDirLayout.classPath("libs", libs),
-                            declaredMain,
-                            javaHome,
-                            release,
-                            config,
-                            cacheKind);
-                    // The training run starts the application under the module's [env].
-                    if (cacheKind != JlinkImage.Cache.NONE) {
-                        tokens = new ArrayList<>(tokens);
-                        tokens.addAll(ModuleEnvKeys.worker(project, layout.moduleRoot()));
-                    }
-                    String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JLINK, image);
-                    String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+                    PackagingKeys.Keyed keyed =
+                            key(project, layout, libs, declaredMain, javaHome, release, guard::token);
+                    String task = keyed.taskId();
+                    String key = keyed.key();
+                    List<String> tokens = keyed.tokens();
                     Path base = layout.artifactDir();
                     if (restorePackaged(cache, key, base)) {
                         // A restore writes fresh times, and the cache is judged by them.
@@ -144,6 +135,100 @@ final class PlannerJlink {
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /** The runtime jars the image links beside the thin jar, as the {@code [application]} lib directory names them. */
+    static List<LibDirLayout.Lib> libs(JkBuild project, BuildLayout layout, Path lockFile) throws IOException {
+        LibDir libConfig = project.libDir() != null ? project.libDir() : LibDir.defaults();
+        return LibDirLayout.libs(layout.moduleRoot(), project, lockFile, JkStores.storeCas(), libConfig);
+    }
+
+    /**
+     * The image's action key: the thin jar and {@code libs} read through {@code identity} (the
+     * build's input guard, or the forecast's view of a jar a restore brings back), the main class,
+     * the JDK and release, the {@code [jlink]} table and, when the image is trained, the module's
+     * {@code [env]}.
+     */
+    @KeyOwner(step = TaskNames.PACKAGE_JLINK)
+    static PackagingKeys.Keyed key(
+            JkBuild project,
+            BuildLayout layout,
+            List<LibDirLayout.Lib> libs,
+            String mainClass,
+            Path javaHome,
+            int release,
+            ClasspathFingerprint.EntryIdentity identity)
+            throws IOException {
+        Jlink config = Objects.requireNonNull(project.build().jlink(), "[jlink]");
+        JlinkImage.Cache cacheKind = JlinkImage.cache(config, JvmOptions.hostFeature(javaHome));
+        List<String> tokens = new ArrayList<>(tokens(
+                identity.of(layout.mainJar()),
+                ClasspathFingerprint.of(libs.stream().map(LibDirLayout.Lib::jar).toList(), identity),
+                LibDirLayout.classPath("libs", libs),
+                mainClass,
+                javaHome,
+                release,
+                config,
+                cacheKind));
+        // The training run starts the application under the module's [env].
+        if (cacheKind != JlinkImage.Cache.NONE) tokens.addAll(ModuleEnvKeys.worker(project, layout.moduleRoot()));
+        String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JLINK, layout.jlinkImage());
+        return new PackagingKeys.Keyed(
+                task, List.copyOf(tokens), ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens));
+    }
+
+    /**
+     * package-jlink's price, under the key {@link #key} derives for the live step. A jar this build
+     * rewrites leaves the key unknowable until it has, so the image relinks; a miss says why the
+     * cache could not have kept the last image when it could not.
+     */
+    static TaskForecast.@Nullable Task forecast(ForecastScope s, Path lockFile) throws Exception {
+        if (s.project.isWorkspaceRoot()) return null;
+        s.projectOwnOutputs();
+        if (s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty) return run("relink · compile changed");
+        // The image links the runtime siblings' jars by their bytes.
+        if (s.runtimeDepDirty) return run("relink · runtime dependency changed");
+        ForecastScope.Prepared p = s.prepared();
+        BuildLayout layout = p.parsed().layout();
+        String mainClass = PackagingKeys.mainClass(layout.moduleRoot(), s.project);
+        if (mainClass == null || mainClass.isBlank()) return run("link · [jlink] needs a main class");
+        Path image = layout.jlinkImage();
+        try {
+            PackagingKeys.Keyed keyed = key(
+                    s.project,
+                    layout,
+                    libs(s.project, layout, lockFile),
+                    mainClass,
+                    p.javaHome(),
+                    p.parsed().release(),
+                    jar -> PackagingKeys.fingerprintJarOrCached(jar, s.actionCache, s.restored.jarShas()));
+            if (ForecastSteps.present(s.actionCache, keyed.key())) {
+                return new TaskForecast.Task(
+                        TaskNames.PACKAGE_JLINK, TaskForecast.Status.CACHED, "", ForecastSteps.key8(keyed.key()));
+            }
+        } catch (IOException | RuntimeException e) {
+            Log.debug("jlink forecast: an input could not be read", e);
+            return run("link · provisional: " + Errors.text(e));
+        }
+        if (!Files.isDirectory(image)) return run("link · image missing");
+        // An image is heavy by its size: the one on disk says whether the cache may have refused it.
+        String notCached = heavy(image) ? PackagingCache.heavyNotCached(s.cache, s.project) : null;
+        return run(notCached == null ? "relink · action cache miss" : "relink · " + notCached);
+    }
+
+    private static TaskForecast.Task run(String why) {
+        return new TaskForecast.Task(TaskNames.PACKAGE_JLINK, TaskForecast.Status.RUN, why, null);
+    }
+
+    /** Whether a file of {@code image} is as large as a heavy output, so the cache treats the image as one. */
+    private static boolean heavy(Path image) {
+        boolean[] heavy = {false};
+        try {
+            PathUtil.forEachReadableFile(image, (file, attrs) -> heavy[0] |= attrs.size() >= DiskGuard.HEAVY_BYTES);
+        } catch (IOException unreadable) {
+            // an image that cannot be read says nothing about the cache
+        }
+        return heavy[0];
     }
 
     /**

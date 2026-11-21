@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -102,18 +103,16 @@ final class PackagingCache {
     }
 
     /**
-     * True when {@code artifacts} may go into the cache under {@code cacheRoot}: jk never fills a
-     * disk, so on a nearly full volume ({@link DiskGuard}) a heavy artifact stays in target/ only,
-     * the step says so, and the engine is woken to reclaim space.
+     * True when {@code artifacts} may go into the cache under {@code cacheRoot}: a heavy artifact
+     * enters only while the machine keeps heavy outputs and the module has not opted out ({@link
+     * #heavyRefused}), and jk never fills a disk, so on a nearly full volume ({@link DiskGuard}) a
+     * heavy artifact stays in target/ only, the step says so, and the engine is woken to reclaim space.
      */
     static boolean admitted(TaskContext ctx, Path cacheRoot, List<Path> artifacts, @Nullable String taskId) {
-        // A heavy output enters the cache only while the machine keeps heavy outputs at all
-        // ([cache] heavy-ttl, 0 on CI) and the module has not opted out ([build] cache-heavy-outputs).
         if (HeavyActionPolicy.classC(taskId) || largestOf(artifacts) >= DiskGuard.HEAVY_BYTES) {
-            if (!HeavyTtl.caches(HeavyTtl.resolve())) return false;
             JkBuild project =
                     ctx.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
-            if (project != null && !project.build().cacheHeavyOutputs()) return false;
+            if (heavyRefused(project, HeavyTtl.resolve()) != null) return false;
         }
         if (DiskGuard.admits(cacheRoot, artifacts)) return true;
         ctx.warn(
@@ -123,11 +122,31 @@ final class PackagingCache {
     }
 
     /**
-     * Why no heavy output can be served from the cache under {@code cacheRoot}, or null when its volume
-     * has room: what {@code jk explain} says beside a heavy step's miss.
+     * Why no heavy output of {@code project} can be served from the cache under {@code cacheRoot}, or
+     * null when one can: what {@code jk explain} says beside a heavy step's miss.
      */
-    static @Nullable String heavyNotCached(Path cacheRoot) {
+    static @Nullable String heavyNotCached(Path cacheRoot, @Nullable JkBuild project) {
+        return heavyNotCached(cacheRoot, project, HeavyTtl.resolve());
+    }
+
+    /** As {@link #heavyNotCached(Path, JkBuild)} under the machine's heavy window {@code heavyTtl}. */
+    static @Nullable String heavyNotCached(Path cacheRoot, @Nullable JkBuild project, Duration heavyTtl) {
+        String refused = heavyRefused(project, heavyTtl);
+        if (refused != null) return refused;
         return DiskGuard.critical(cacheRoot) ? diskFull(cacheRoot) : null;
+    }
+
+    /**
+     * Why a heavy output is kept out of the cache whatever room the disk has, or null when it may
+     * enter: the machine keeps none ({@code [cache] heavy-ttl}, 0 on CI), or the module opted out
+     * ({@code [build] cache-heavy-outputs}).
+     */
+    private static @Nullable String heavyRefused(@Nullable JkBuild project, Duration heavyTtl) {
+        if (!HeavyTtl.caches(heavyTtl)) return "not cached: [cache] heavy-ttl = 0";
+        if (project != null && !project.build().cacheHeavyOutputs()) {
+            return "not cached: [build] cache-heavy-outputs = false";
+        }
+        return null;
     }
 
     private static String diskFull(Path cacheRoot) {

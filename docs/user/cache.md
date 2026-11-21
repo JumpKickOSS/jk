@@ -461,7 +461,9 @@ heavy-ttl = "12h"   # 0 keeps heavy outputs out of the cache; never more than 24
 `JK_HEAVY_TTL` overrides the file. On CI (`CI` set) the default is `0`: a short-lived runner gains
 nothing from them, and a long-lived one is where a full disk does the most harm. A project can keep
 its own heavy outputs out of the cache with `[build] cache-heavy-outputs = false` in its
-`jk.toml`; it cannot lengthen the window, which is the machine's.
+`jk.toml`; it cannot lengthen the window, which is the machine's. Either setting means a heavy
+step runs on every build that schedules its module, and `jk explain` names it beside the step:
+`relink · not cached: [cache] heavy-ttl = 0`.
 
 Class-C outputs (native images, OCI tarballs, fat/minified jars) keep at most **1**
 generation of action keys **per checkout**: two worktrees of one project on
@@ -496,11 +498,11 @@ less than **10%** of it and less than **10 GiB**: 20 GiB free on a 250 GiB lapto
 not an emergency. On a critical volume no heavy output (32 MiB or more: a native image, a fat jar,
 a jlink image, a large node bundle) goes into the cache: it stays where it was built, the step
 warns `disk-low`, and the step runs again on the next build. `jk explain` gives the disk as the
-reason a native image will run. A high-priority thread in the engine looks at the cache, store and
-state volumes every 15 seconds, and at once when a write was refused; on a critical volume it
-collects the artifact store at emergency windows on the spot (safe beside a build, since nothing
-younger than an hour is touched) and prunes the cache now, or at the build boundary when a build
-is live. If the state volume is still critical after that, it deletes the JVM startup caches the
+reason a native image, fat jar or jlink image will run. A high-priority thread in the engine looks
+at the cache, store and state volumes every 15 seconds, and at once when a write was refused; on
+a critical volume it collects the artifact store at emergency windows on the spot (safe beside a
+build, since nothing younger than an hour is touched) and prunes the cache now, or at the build
+boundary when a build is live. If the state volume is still critical after that, it deletes the JVM startup caches the
 engine and its running workers do not map, least recently used first, until the volume is back
 over the line or none
 are left ([below](#jvm-startup-caches)), and records no new one until it is. It logs when the
