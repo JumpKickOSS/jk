@@ -526,7 +526,7 @@ public final class Http {
             builder.header("Accept-Encoding", "gzip");
         }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return sendWithRetry("GET", uri, request, cappedBytes(uri), null);
+        return centralsAnswer(asked, sendWithRetry("GET", uri, request, cappedBytes(uri), null), null);
     }
 
     /**
@@ -563,11 +563,31 @@ public final class Http {
         }
         HttpRequest request = withProxyAuthorization(builder, uri).build();
         // Drain the streamed body before each retry so the connection can be reused.
-        return sendWithRetry("GET", uri, request, streamedBody(uri, bodyIdle), response -> {
+        BodyDrain<InputStream> drain = response -> {
             try (var body = response.body()) {
                 body.transferTo(OutputStream.nullOutputStream());
             }
-        });
+        };
+        return centralsAnswer(asked, sendWithRetry("GET", uri, request, streamedBody(uri, bodyIdle), drain), drain);
+    }
+
+    /**
+     * {@code response} to a GET asked of {@code asked}. When Central was asked and the mirror
+     * answered 404 in its place, because Central refused this host or said nothing, nobody said
+     * the file is absent: the mirror can lag Central. That is a failure naming why the mirror was
+     * asked, never a miss a caller would report as "not found".
+     */
+    private <T> HttpResponse<T> centralsAnswer(URI asked, HttpResponse<T> response, @Nullable BodyDrain<T> drain)
+            throws IOException {
+        if (response.statusCode() != 404
+                || !centralMirror.matches(asked)
+                || centralMirror.carries(asked)
+                || !centralMirror.carries(response.request().uri())) {
+            return response;
+        }
+        if (drain != null) drain.handle(response);
+        throw new IOException("could not fetch " + SafeUri.forMessage(asked) + ": " + centralMirror.detour()
+                + " and its mirror does not have it; the artifact may exist");
     }
 
     /**

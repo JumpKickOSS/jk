@@ -117,7 +117,11 @@ with HTTP 403 carrying `Server: cloudflare` (curl from the next machine still ge
 answer on a Central request opens a four-hour **mirror window**: the refused request is reissued
 against Google's Central mirror (`maven-central.storage-download.googleapis.com/maven2`) in the
 same call, and every Central-bound request for the rest of the window — `maven-metadata.xml`,
-checksums, plugin workers' closures — goes there without asking Central first.
+checksums, plugin workers' closures — goes there without asking Central first. The mirror can
+lag Central, so a file it does not have while Central is refusing is not reported as missing: the
+fetch fails naming the refusal, `could not fetch <url>: Maven Central is rate-limiting this host
+(HTTP 429) and its mirror does not have it; the artifact may exist`. Run again once Central lets
+this host back in.
 
 Outside the window, Central vouches and the mirror carries. Release POMs and artifacts are
 downloaded from the mirror first, refused or not, since a release file never changes: a mirror

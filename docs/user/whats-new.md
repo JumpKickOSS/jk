@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A file Central's mirror lacks is no longer reported as missing from Central.** While Maven
+  Central refuses this host, its requests go to Google's mirror, which can lag Central. A file the
+  mirror does not have now fails the fetch naming Central's refusal and saying the artifact may
+  exist, instead of `not found in central`.
 - **Another web page cannot drive your engine, and a report link is not your dashboard token.** A
   request that would build, write a file, answer a decision or call MCP is refused when it comes from
   another page's origin, whatever token it carries. The coverage **HTML report** link carries a token

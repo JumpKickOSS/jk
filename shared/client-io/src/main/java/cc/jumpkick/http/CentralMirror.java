@@ -189,6 +189,19 @@ public final class CentralMirror {
         return uri != null && centralHost.equalsIgnoreCase(uri.getHost());
     }
 
+    /** True when {@code uri} is a file on the mirror. */
+    boolean carries(URI uri) {
+        return uri != null && uri.toString().startsWith(mirrorBase + "/");
+    }
+
+    /**
+     * Why a request asked of Central went to the mirror: the refusal the open window records, or
+     * Central's silence, the only other reroute.
+     */
+    String detour() {
+        return active() ? recordedCause().text : "Maven Central did not answer";
+    }
+
     /** True when {@code uri} is a Maven Central request, using the canonical host. */
     public static boolean isCentral(URI uri) {
         return uri != null && CENTRAL_HOST.equalsIgnoreCase(uri.getHost());

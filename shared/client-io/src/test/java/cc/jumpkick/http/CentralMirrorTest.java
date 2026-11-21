@@ -295,6 +295,96 @@ class CentralMirrorTest {
         }
     }
 
+    /** One loopback server: Central under {@code /maven2/} answering {@code central}, the mirror under {@code /mirror/} answering 404. */
+    private static HttpServer centralAndAMirrorWithout(int central, List<String> hits) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/maven2/", ex -> {
+            hits.add("central");
+            ex.sendResponseHeaders(central, -1);
+            ex.close();
+        });
+        server.createContext("/mirror/", ex -> {
+            hits.add("mirror");
+            ex.sendResponseHeaders(404, -1);
+            ex.close();
+        });
+        server.start();
+        return server;
+    }
+
+    private static Http http(Path dir, CentralMirror m) {
+        return new Http(
+                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+                new Duration[] {Duration.ofMillis(1)},
+                m,
+                new HostCooldown(dir.resolve("cooldown")));
+    }
+
+    /**
+     * The mirror can lag Central. When Central refused the request and the mirror answered 404,
+     * nobody said the file is absent: the fetch fails naming the refusal, never as a miss.
+     */
+    @Test
+    void a_mirror_404_after_a_central_429_is_not_a_miss(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(429, hits);
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            URI jar = URI.create("http://127.0.0.1:" + port + "/maven2/org/jspecify/jspecify/1.0.0/jspecify-1.0.0.jar");
+
+            assertThatThrownBy(() -> http(dir, m).getStream(jar, Map.of()))
+                    .isInstanceOf(IOException.class)
+                    .hasMessage("could not fetch " + jar
+                            + ": Maven Central is rate-limiting this host (HTTP 429) and its mirror does not"
+                            + " have it; the artifact may exist");
+            assertThat(hits).containsExactly("central", "mirror");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void a_mirror_404_while_the_window_is_open_is_not_a_miss(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(200, hits);
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            m.noteBlocked();
+            URI pom = URI.create("http://127.0.0.1:" + port + "/maven2/org/scala-lang/scala3-library_3/3.7.0/x.pom");
+
+            assertThatThrownBy(() -> http(dir, m).get(pom, Map.of()))
+                    .hasMessageContaining("Maven Central is blocking this host (Cloudflare) and its mirror");
+            assertThat(hits).containsExactly("mirror");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** A download asked of the mirror by name, as Central's files are by default, hears the mirror's own 404. */
+    @Test
+    void the_mirror_asked_by_name_answers_its_own_404(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(200, hits);
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            URI onMirror = m.routeForDownload(URI.create("http://127.0.0.1:" + port + "/maven2/a/b/1/b-1.jar"));
+
+            var response = http(dir, m).getStream(onMirror, Map.of());
+            response.body().close();
+
+            assertThat(response.statusCode()).isEqualTo(404);
+            assertThat(hits).containsExactly("mirror");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test
     void once_the_window_is_open_central_is_never_asked_again(@TempDir Path dir) throws Exception {
         // One 429 should cost one request to Central, not one per call.
