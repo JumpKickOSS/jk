@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.task;
+package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.config.Request;
-import cc.jumpkick.config.Session;
-import cc.jumpkick.config.SessionContext;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

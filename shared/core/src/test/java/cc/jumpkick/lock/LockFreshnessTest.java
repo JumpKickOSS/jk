@@ -3,12 +3,12 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.plugin.manifest.PluginContributions;
-import cc.jumpkick.task.IoLedger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;

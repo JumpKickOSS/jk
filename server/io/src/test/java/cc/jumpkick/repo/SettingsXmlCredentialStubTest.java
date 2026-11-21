@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.TokenStore;
@@ -13,7 +14,6 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

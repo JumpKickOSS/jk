@@ -3,9 +3,9 @@ package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;

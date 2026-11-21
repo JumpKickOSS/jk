@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkEnsure;
-import cc.jumpkick.task.RunNotices;
 
 /**
  * The fact a JDK install leaves behind, once per JDK per run: {@code installed JDK

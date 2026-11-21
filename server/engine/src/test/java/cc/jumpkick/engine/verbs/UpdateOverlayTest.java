@@ -4,12 +4,12 @@ package cc.jumpkick.engine.verbs;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.base.LockMode;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.wire.protocol.EngineProtocol;

@@ -2,7 +2,6 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.KeyedLocks;
-import cc.jumpkick.task.IoLedger;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;

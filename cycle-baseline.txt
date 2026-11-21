@@ -70,6 +70,13 @@
 # text, the syntax and stack-trace highlighting, Coords and the member-label shortener; the rail picks
 # its own style and Ctrl-C is handed the engine cancel at install. The line is gone.
 #
+# 2026-11-21, shared/core: the component was nine packages to jdeps. `util` reached `lock` only
+# for the name `config.toml`, which it now reads from host's ManifestNames, and `changes` reached
+# the component only through `util`. `task` read the session and the cache settings back:
+# the run's ledger (IoLedger), its once-per-run notices and the cache-prune scheduler moved into
+# `config` beside the Session and Request that carry the ledger, and `task` keeps the transfer
+# board, a leaf. Left: builds, config, layout, library, lock and plugin.manifest, so the line is 6.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -80,7 +87,7 @@
 # defends.
 
 server/engine 5
-shared/core 8
+shared/core 6
 clients/cli-terminal 3
 server/toolchain 3
 # shared/plugin-sdk is 3, not 2: the component is {plugin, plugin.build, plugin.protocol}, closed by

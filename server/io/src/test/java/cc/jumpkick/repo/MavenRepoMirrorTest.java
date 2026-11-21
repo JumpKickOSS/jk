@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
@@ -16,7 +17,6 @@ import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.MirrorOf;
 import cc.jumpkick.model.RepositoryMirror;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.DeadEndpoint;
 import cc.jumpkick.testing.LoopbackHttp;
 import java.net.URI;

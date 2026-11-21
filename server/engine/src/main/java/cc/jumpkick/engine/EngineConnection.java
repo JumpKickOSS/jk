@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.LockFloor;
 import cc.jumpkick.engine.api.WireWriter;
@@ -16,7 +17,6 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.BoundedLineReader;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.RemoteCacheBinding;
 import cc.jumpkick.task.WorkCounters;
 import cc.jumpkick.wire.EngineHandshake;

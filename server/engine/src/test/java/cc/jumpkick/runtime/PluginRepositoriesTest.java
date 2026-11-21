@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.credential.RepoCredential;
@@ -15,7 +16,6 @@ import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.task.IoLedger;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;

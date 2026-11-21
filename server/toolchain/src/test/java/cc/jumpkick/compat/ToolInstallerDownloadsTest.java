@@ -3,11 +3,11 @@ package cc.jumpkick.compat;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.FakeClock;

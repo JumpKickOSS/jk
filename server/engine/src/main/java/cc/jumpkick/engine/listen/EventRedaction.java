@@ -3,10 +3,10 @@ package cc.jumpkick.engine.listen;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.Redacted;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.FailureClip;
 import cc.jumpkick.test.JUnitLauncher;
 import java.nio.file.Path;

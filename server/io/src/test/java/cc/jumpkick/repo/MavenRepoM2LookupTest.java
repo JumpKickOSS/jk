@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
@@ -13,7 +14,6 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.transport.RepoTransports;
-import cc.jumpkick.task.RunNotices;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;

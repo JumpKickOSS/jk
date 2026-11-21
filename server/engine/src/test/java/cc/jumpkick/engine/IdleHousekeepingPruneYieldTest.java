@@ -4,11 +4,11 @@ package cc.jumpkick.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.CachePruneScheduler;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.task.CachePruneScheduler;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

@@ -2,9 +2,9 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectBuilds;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.guard.eval.GuardMessages;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
 import java.io.IOException;
 import java.io.UncheckedIOException;

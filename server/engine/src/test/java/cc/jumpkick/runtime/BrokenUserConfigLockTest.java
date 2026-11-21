@@ -3,9 +3,9 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Files;

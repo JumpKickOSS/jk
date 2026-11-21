@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.repo.MavenRepo.ArtifactNotFoundException;
 import cc.jumpkick.repo.MavenRepo.Fetched;
-import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;

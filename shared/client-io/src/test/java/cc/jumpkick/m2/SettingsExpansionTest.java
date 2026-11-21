@@ -4,11 +4,11 @@ package cc.jumpkick.m2;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.RequestShell;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.SafeUri;
-import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;

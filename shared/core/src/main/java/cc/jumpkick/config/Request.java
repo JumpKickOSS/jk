@@ -2,7 +2,6 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.changes.ChangeActor;
-import cc.jumpkick.task.IoLedger;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Objects;

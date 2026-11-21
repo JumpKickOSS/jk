@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.engine.api.InFlightBuilds;
@@ -13,7 +14,6 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.engine.sessions.SessionLog;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;
 import java.nio.file.Path;

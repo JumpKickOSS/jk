@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
@@ -12,7 +13,6 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
-import cc.jumpkick.task.IoLedger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

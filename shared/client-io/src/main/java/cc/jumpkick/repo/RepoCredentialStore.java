@@ -3,13 +3,13 @@ package cc.jumpkick.repo;
 
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.secret.SecretBackendException;
 import cc.jumpkick.secret.SecretItems;
 import cc.jumpkick.secret.SecretVault;
-import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;

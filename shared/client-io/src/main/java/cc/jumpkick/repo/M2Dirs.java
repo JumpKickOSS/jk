@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.m2.MavenSettings;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.util.MinimalXml;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;

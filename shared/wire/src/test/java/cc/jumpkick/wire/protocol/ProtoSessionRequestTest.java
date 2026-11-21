@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.DebugJvm;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.KeyAuditMode;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Session;
@@ -12,7 +13,6 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.TestFailureMode;
-import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;

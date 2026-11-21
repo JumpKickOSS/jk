@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.workspace;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.compile.JavaCompilerHost;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -11,7 +12,6 @@ import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.WorkerScope;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.LockPlans;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.testing.SysProps;

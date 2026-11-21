@@ -3,6 +3,7 @@ package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectIdCache;
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.model.command.Exit;
@@ -15,7 +16,6 @@ import cc.jumpkick.runtime.base.CacheBenefit;
 import cc.jumpkick.runtime.base.ChromeTimeline;
 import cc.jumpkick.runtime.base.RunMeasures;
 import cc.jumpkick.runtime.workspace.BuildService;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.test.AffectedTests;
 import cc.jumpkick.test.RunResults;
 import cc.jumpkick.test.RunShortfall;
@@ -65,7 +65,7 @@ public final class BuildAccumulator {
 
     /**
      * This run's byte accounting. The job's request carries it, so every session the request builds
-     * meters into it (see {@link cc.jumpkick.task.IoLedger}).
+     * meters into it (see {@link cc.jumpkick.config.IoLedger}).
      */
     @Getter
     private final IoLedger io = new IoLedger();

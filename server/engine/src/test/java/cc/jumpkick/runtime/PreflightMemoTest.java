@@ -6,6 +6,7 @@ import static cc.jumpkick.runtime.PreflightMemoFixtures.writeWorkspace;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
@@ -24,7 +25,6 @@ import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.runtime.workspace.BuildService;
 import cc.jumpkick.task.FileHashMemo;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;

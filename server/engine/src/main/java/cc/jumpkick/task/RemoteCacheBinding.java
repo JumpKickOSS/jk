@@ -4,6 +4,8 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.HttpCacheBackend;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.IoLedger;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.JkDirs;

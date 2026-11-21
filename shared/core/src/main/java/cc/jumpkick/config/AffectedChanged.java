@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  * Per-invocation, cross-module carrier for {@code --affected} runs: the changed production types
  * each dirty module classified at compile time ({@code FQC → "ABI" | "BODY"}), readable by every
  * dependent module's test ranking. Shared by every copy of one {@link Session} — the same
- * lifetime discipline as {@link cc.jumpkick.task.IoLedger}.
+ * lifetime discipline as {@link IoLedger}.
  *
  * <p>Ordering: a dependent's {@code run-tests} runs after its dependencies' compiles (their
  * artifacts gate its compile-test), so every classification a module's tests can name is present

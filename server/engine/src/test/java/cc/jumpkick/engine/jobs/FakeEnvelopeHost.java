@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
@@ -9,7 +10,6 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.plugin.WorkerScopes;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
 import java.io.BufferedWriter;

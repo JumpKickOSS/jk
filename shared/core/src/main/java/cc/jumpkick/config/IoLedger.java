@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.task;
+package cc.jumpkick.config;
 
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.task.TransferBoard;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

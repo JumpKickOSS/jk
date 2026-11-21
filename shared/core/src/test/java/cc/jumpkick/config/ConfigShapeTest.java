@@ -4,7 +4,6 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.model.TestFailureMode;
-import cc.jumpkick.task.IoLedger;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;

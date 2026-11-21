@@ -4,10 +4,10 @@ package cc.jumpkick.engine.listen;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.run.TestFailureInfo;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.FailureClip;
 import cc.jumpkick.test.JUnitLauncher;
 import java.io.ByteArrayOutputStream;

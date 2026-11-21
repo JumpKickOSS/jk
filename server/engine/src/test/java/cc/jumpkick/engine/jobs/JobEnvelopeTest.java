@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.JobLimits;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -19,7 +20,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.model.command.Exit;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.Sleepers;
 import cc.jumpkick.util.FileLocks;

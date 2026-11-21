@@ -4,10 +4,10 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.PluginTuning;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.task.IoLedger;
 import java.util.List;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.TimeUnit;

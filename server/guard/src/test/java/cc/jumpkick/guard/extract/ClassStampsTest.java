@@ -3,6 +3,7 @@ package cc.jumpkick.guard.extract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.guard.extract.FactsIndexing.Ensured;
@@ -10,7 +11,6 @@ import cc.jumpkick.guard.extract.fixture.FixtureBytes;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.run.StepScope;
 import cc.jumpkick.run.TaskContext;
-import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.lang.reflect.Proxy;
 import java.nio.file.Files;

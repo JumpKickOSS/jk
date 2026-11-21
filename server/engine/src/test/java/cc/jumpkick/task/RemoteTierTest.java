@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.run.BuildPlanKey;

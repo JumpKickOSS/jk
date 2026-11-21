@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;

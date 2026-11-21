@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.HeldOpen;
@@ -9,7 +10,6 @@ import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.net.URI;

@@ -6,12 +6,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.DeadEndpoint;
 import java.io.IOException;
 import java.net.ConnectException;

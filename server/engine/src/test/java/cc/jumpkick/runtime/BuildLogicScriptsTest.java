@@ -6,9 +6,9 @@ import static org.assertj.core.groups.Tuple.tuple;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
-import cc.jumpkick.task.RunNotices;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;

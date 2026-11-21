@@ -4,7 +4,6 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.JkThreads;
-import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;

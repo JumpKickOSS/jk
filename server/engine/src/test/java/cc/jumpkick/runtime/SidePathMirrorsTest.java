@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.giter8.Giter8Maven;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.m2.MavenSettings;
@@ -12,7 +13,6 @@ import cc.jumpkick.model.ToolCoordSpec;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.script.ScriptHeader;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import cc.jumpkick.tool.ToolEnv;

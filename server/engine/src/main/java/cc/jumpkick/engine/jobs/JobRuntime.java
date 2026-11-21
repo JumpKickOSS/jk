@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.jobs;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.plugin.WorkerScopes;
-import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantReadWriteLock;

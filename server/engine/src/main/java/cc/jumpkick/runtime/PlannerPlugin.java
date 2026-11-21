@@ -7,6 +7,7 @@ import static cc.jumpkick.runtime.PackagingCache.storePackaged;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.engine.plugin.HeapNotes;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -47,7 +48,6 @@ import cc.jumpkick.task.JdkToolchain;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ModuleEnvKeys;
-import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

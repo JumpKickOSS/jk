@@ -4,7 +4,6 @@ package cc.jumpkick.config;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.model.TestFailureMode;
-import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;

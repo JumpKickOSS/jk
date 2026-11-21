@@ -3,9 +3,9 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.guard.eval.GuardMessages;
 import cc.jumpkick.guard.schema.Lane;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.test.MarkdownTestReport;
 import cc.jumpkick.test.SuiteReads;
 import java.nio.file.Files;

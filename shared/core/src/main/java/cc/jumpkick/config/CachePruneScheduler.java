@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.task;
+package cc.jumpkick.config;
 
-import cc.jumpkick.config.DiskGuard;
-import cc.jumpkick.config.DiskPressure;
-import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;

@@ -4,12 +4,12 @@ package cc.jumpkick.repo;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpTimeoutException;

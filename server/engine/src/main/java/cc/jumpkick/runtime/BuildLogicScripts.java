@@ -3,9 +3,9 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.BuildLogicStems;
 import cc.jumpkick.config.BuildLogicToml;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
-import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;

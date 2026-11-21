@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.builds.RunReaper;
+import cc.jumpkick.config.CachePruneScheduler;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.config.JkHistoryConfig;
 import cc.jumpkick.config.SessionContext;
@@ -17,7 +18,6 @@ import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.runtime.CachePlans;
 import cc.jumpkick.runtime.base.BuildMetrics;
 import cc.jumpkick.task.AbiMemo;
-import cc.jumpkick.task.CachePruneScheduler;
 import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.PruneYield;

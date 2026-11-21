@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.LongAdder;
 
 /**
  * The downloads of one request as they stream: what a live display draws, whichever verb, phase or
- * caller asked for the bytes. Owned by the request's {@link IoLedger}, so it has the ledger's scope —
+ * caller asked for the bytes. Owned by the request's {@code IoLedger}, so it has the ledger's scope —
  * the runner thread and every {@code JkThreads} pool task the request hands work to — and deep code
  * reaches it the way it reaches the ledger: {@code SessionContext.current().io().transfers()}.
  *

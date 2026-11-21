@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.model.Coordinate;
-import cc.jumpkick.task.RunNotices;
 import java.io.IOException;
 import org.jspecify.annotations.Nullable;
 

@@ -2,9 +2,9 @@
 package cc.jumpkick.m2;
 
 import cc.jumpkick.config.ConfigReference;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.StampedMemo;
-import cc.jumpkick.task.RunNotices;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.api;
 
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.CachePruneScheduler;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.host.ActionTree;
@@ -10,7 +11,6 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.task.CachePruneScheduler;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.EnumSet;

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.task;
+package cc.jumpkick.config;
 
-import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.Log;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;

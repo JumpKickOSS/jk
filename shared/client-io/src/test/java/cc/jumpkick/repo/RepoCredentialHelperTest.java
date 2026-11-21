@@ -5,13 +5,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
 import cc.jumpkick.forge.TokenStore;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.testing.FakePrograms;
 import java.io.IOException;
 import java.net.URI;

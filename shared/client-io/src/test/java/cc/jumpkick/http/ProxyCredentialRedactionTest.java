@@ -5,11 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.NetworkConfig;
 import cc.jumpkick.config.ResolvedSecrets;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.m2.MavenSettings;
-import cc.jumpkick.task.RunNotices;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;

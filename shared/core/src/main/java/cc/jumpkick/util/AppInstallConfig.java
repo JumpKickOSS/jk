@@ -3,7 +3,7 @@ package cc.jumpkick.util;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.host.ManifestNames;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -43,7 +43,7 @@ public final class AppInstallConfig {
     public static Path path(JkDirs dirs, String binName) {
         Objects.requireNonNull(dirs, "dirs");
         String bin = requireBin(binName);
-        return dirs.configDir().resolve(bin).resolve(ManifestPaths.CONFIG);
+        return dirs.configDir().resolve(bin).resolve(ManifestNames.CONFIG);
     }
 
     /** Read string keys from the install config; empty map when missing/unreadable. */

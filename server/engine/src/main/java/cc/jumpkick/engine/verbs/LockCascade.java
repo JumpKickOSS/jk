@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.engine.api.CoalescingLockPackages;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.BridgingPlanListener;
@@ -21,7 +22,6 @@ import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.workspace.ManifestUpdates;
-import cc.jumpkick.task.RunNotices;
 import cc.jumpkick.wire.protocol.ProtoEvents;
 import java.io.BufferedWriter;
 import java.io.IOException;

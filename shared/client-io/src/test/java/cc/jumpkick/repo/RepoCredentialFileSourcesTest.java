@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.ResolvedSecrets;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -17,7 +18,6 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
 import cc.jumpkick.m2.MavenSettings;
 import cc.jumpkick.model.RepositorySpec;
-import cc.jumpkick.task.RunNotices;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;

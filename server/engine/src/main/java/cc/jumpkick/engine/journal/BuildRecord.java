@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.StepCache;
-import cc.jumpkick.task.IoLedger;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -598,7 +598,7 @@ public record BuildRecord(
      * published to a remote; {@code local} is build-cache traffic — {@code up} stored into the cache,
      * {@code down} restored back out of it. Every number is stat'ed off files at rest, never counted
      * through a stream. {@code cache*NotStored} count the records and blobs a writing run offered a
-     * shared cache that it did not store. See {@link cc.jumpkick.task.IoLedger}.
+     * shared cache that it did not store. See {@link cc.jumpkick.config.IoLedger}.
      */
     public record Io(
             long remoteUp,

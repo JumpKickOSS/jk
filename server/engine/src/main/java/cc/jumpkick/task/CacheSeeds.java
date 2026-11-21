@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.CacheBackend;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;

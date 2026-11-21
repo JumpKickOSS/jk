@@ -3,8 +3,8 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
-import cc.jumpkick.task.IoLedger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
