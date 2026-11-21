@@ -34,6 +34,10 @@ class ExtractorVersionTest {
             Path.of("src/main/java/cc/jumpkick/graph/JvmFacts.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmRoutes.java"),
             Path.of("src/main/java/cc/jumpkick/graph/JvmSql.java"),
+            // A script file's fragment, when oxc reads it: the script node runs, and what turns its facts
+            // into a fragment.
+            Path.of("src/main/resources/cc/jumpkick/graph/oxc-facts.cjs"),
+            Path.of("src/main/java/cc/jumpkick/graph/ScriptFacts.java"),
             // Which source a compiled class maps to, and the module and source set tables it reads.
             Path.of("src/main/java/cc/jumpkick/graph/ClassSources.java"),
             Path.of("../../shared/code-graph/src/main/java/cc/jumpkick/codegraph/Modules.java"),
