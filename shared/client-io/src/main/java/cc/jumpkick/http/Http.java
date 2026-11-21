@@ -590,7 +590,8 @@ public final class Http {
      * When the mirror does not have the file, nobody said it is absent: the mirror can lag Central.
      * Under a rate limit whose cooldown has lapsed, a file is asked of Central once more ({@link
      * CentralMirror#asksCentralFor}); otherwise the failure names the refusal, never a miss a caller
-     * would report as "not found".
+     * would report as "not found". A file the mirror, asked by name, has just answered 404 for is
+     * not asked of the mirror again ({@link CentralMirror#missed}).
      */
     private <T> HttpResponse<T> getAsked(
             URI asked,
@@ -600,13 +601,18 @@ public final class Http {
             throws IOException, InterruptedException {
         CentralMirror.Cause window = centralMirror.matches(asked) ? centralMirror.window() : null;
         if (window == null) {
-            return sendWithRetry("GET", asked, getRequest(asked, asked, headers), handler.apply(asked), drain);
+            HttpResponse<T> response =
+                    sendWithRetry("GET", asked, getRequest(asked, asked, headers), handler.apply(asked), drain);
+            if (response.statusCode() == 404 && centralMirror.carries(asked)) centralMirror.noteMiss(asked);
+            return response;
         }
         URI mirrored = centralMirror.toMirror(asked);
-        HttpResponse<T> response =
-                sendWithRetry("GET", mirrored, getRequest(asked, mirrored, headers), handler.apply(mirrored), drain);
-        if (response.statusCode() != 404) return response;
-        if (drain != null) drain.handle(response);
+        if (!centralMirror.missed(mirrored)) {
+            HttpResponse<T> response = sendWithRetry(
+                    "GET", mirrored, getRequest(asked, mirrored, headers), handler.apply(mirrored), drain);
+            if (response.statusCode() != 404) return response;
+            if (drain != null) drain.handle(response);
+        }
         if (CentralMirror.asksCentralFor(asked, window)
                 && cooldown.until(asked.getHost()).isEmpty()) {
             return sendWithRetry("GET", asked, getRequest(asked, asked, headers), handler.apply(asked), drain);

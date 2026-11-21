@@ -15,7 +15,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
@@ -100,6 +102,9 @@ public final class CentralMirror {
         }
     }
 
+    /** How long the mirror's 404 for a file asked of it by name spares the fallback that follows from asking again. */
+    static final Duration MISS_MEMORY = Duration.ofMinutes(1);
+
     /** The one instance production uses; see {@link #standard()}. */
     private static final CentralMirror STANDARD =
             new CentralMirror(JkDirs.cache(), DEFAULT_WINDOW, enabledByEnv(ProcessEnv::get));
@@ -109,6 +114,8 @@ public final class CentralMirror {
     private final boolean enabled;
     private final String centralHost;
     private final String mirrorBase;
+    /** Mirror files that answered 404 while the window was open, each with when it did. */
+    private final Map<URI, Instant> misses = new ConcurrentHashMap<>();
 
     /**
      * The test seam. Package-private so {@link #standard()} is the only way production obtains a
@@ -211,6 +218,24 @@ public final class CentralMirror {
         String path = asked.getPath();
         if (why != Cause.RATE_LIMITED || path == null) return false;
         return !path.substring(path.lastIndexOf('/') + 1).startsWith("maven-metadata.xml");
+    }
+
+    /**
+     * Record that the mirror answered 404 for {@code mirrored}, a file asked of it by name, so the
+     * fallback to Central's URL that follows does not ask the mirror again ({@link #missed}). Kept
+     * only while the window is open, the one time that fallback is routed back to the mirror.
+     */
+    void noteMiss(URI mirrored) {
+        if (!active()) return;
+        Instant now = Clock.SYSTEM.instant();
+        misses.values().removeIf(at -> at.plus(MISS_MEMORY).isBefore(now));
+        misses.put(mirrored, now);
+    }
+
+    /** True, once, when the mirror answered 404 for {@code mirrored} within {@link #MISS_MEMORY}. */
+    boolean missed(URI mirrored) {
+        Instant at = misses.remove(mirrored);
+        return at != null && !at.plus(MISS_MEMORY).isBefore(Clock.SYSTEM.instant());
     }
 
     /** True when {@code uri} is a Maven Central request, using the canonical host. */

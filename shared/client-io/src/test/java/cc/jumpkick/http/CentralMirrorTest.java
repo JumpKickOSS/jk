@@ -412,6 +412,47 @@ class CentralMirrorTest {
         }
     }
 
+    /**
+     * A download asks the mirror by name first and falls back to Central's URL when the mirror lacks
+     * the file. Inside a rate-limit window that fallback goes straight to Central: the mirror has
+     * just answered for this file, so it is not asked twice. Central and the mirror are named hosts
+     * reached through a proxy, so the mirror's URL is not Central's.
+     */
+    @Test
+    void under_a_rate_limit_a_download_the_mirror_lacks_asks_the_mirror_once(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(200, hits);
+        try {
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "central.example.test", "http://mirror.example.test/mirror");
+            m.noteRateLimited();
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .proxy(ProxySelector.of(server.getAddress()))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1)},
+                    m,
+                    new HostCooldown(dir.resolve("cooldown")));
+            URI jar = URI.create("http://central.example.test/maven2/a/b/1/b-1.jar");
+
+            var onMirror = http.getStream(m.routeForDownload(jar), Map.of());
+            onMirror.body().close();
+            var fallback = http.getStream(jar, Map.of());
+            fallback.body().close();
+
+            assertThat(onMirror.statusCode()).isEqualTo(404);
+            assertThat(fallback.statusCode()).isEqualTo(200);
+            assertThat(hits).containsExactly("mirror", "central");
+
+            // The miss spared that one fallback; a later ask of the file tries the mirror again.
+            http.getStream(jar, Map.of()).body().close();
+            assertThat(hits).containsExactly("mirror", "central", "mirror", "central");
+        } finally {
+            server.stop(0);
+        }
+    }
+
     /** Version enumeration stays on one source for the window: metadata the mirror lacks is not asked of Central. */
     @Test
     void under_a_rate_limit_metadata_the_mirror_lacks_is_not_asked_of_central(@TempDir Path dir) throws Exception {
