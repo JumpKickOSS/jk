@@ -39,8 +39,8 @@ public interface SecretCommand {
      * Both output pipes are captured through {@link Processes}, on platform threads.
      */
     SecretCommand REAL = (argv, stdin, cap) -> {
-        Processes.Captured c =
-                Processes.capture(ChildEnv.start(new ProcessBuilder(argv)), stdin, cap, Integer.MAX_VALUE);
+        ProcessBuilder pb = new ProcessBuilder(argv);
+        Processes.Captured c = Processes.capture(pb, ChildEnv.start(pb), stdin, cap, Integer.MAX_VALUE);
         if (c.timedOut()) throw new IOException(argv.get(0) + " did not answer within " + cap.toSeconds() + "s");
         return new Result(c.exit(), c.output(), c.error());
     };

@@ -65,7 +65,9 @@ class ToolRunForkTest {
 
     @Test
     void start_hands_back_the_process_for_a_caller_that_drives_its_own_drain() throws Exception {
-        Processes.Captured run = Processes.capture(probe().arg("solo").start(), Duration.ofMinutes(1));
+        // start() merges the child's stderr into its stdout; the builder says so to the drain.
+        ProcessBuilder merged = new ProcessBuilder().redirectErrorStream(true);
+        Processes.Captured run = Processes.capture(merged, probe().arg("solo").start(), Duration.ofMinutes(1));
         assertThat(run.exit()).isZero();
         assertThat(run.output()).contains("arg=solo");
     }

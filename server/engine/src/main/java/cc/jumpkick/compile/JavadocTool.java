@@ -82,7 +82,7 @@ public final class JavadocTool {
                     .directory(workdir.toFile())
                     .redirectErrorStream(true);
             Process proc = JobWorkers.start(pb);
-            Processes.Captured c = Processes.capture(proc, Duration.ofMinutes(TIMEOUT_MINUTES));
+            Processes.Captured c = Processes.capture(pb, proc, Duration.ofMinutes(TIMEOUT_MINUTES));
             if (c.timedOut()) throw new IOException("javadoc timed out after " + TIMEOUT_MINUTES + " minutes");
             return parse(c.exit(), c.output(), proc.pid());
         } finally {

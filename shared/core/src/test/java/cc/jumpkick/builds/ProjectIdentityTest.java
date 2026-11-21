@@ -18,7 +18,9 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -397,7 +399,7 @@ class ProjectIdentityTest {
     void concurrent_writers_keep_every_checkout(@TempDir Path tmp, @TempDir Path home) throws Exception {
         String id = "aabbccddeeff00112233445566778899";
         int writers = 4;
-        List<Process> running = new ArrayList<>();
+        Map<ProcessBuilder, Process> running = new LinkedHashMap<>();
         for (int i = 0; i < writers; i++) {
             Path checkout = Files.createDirectories(tmp.resolve("wt-" + i));
             List<String> cmd = new ArrayList<>(List.of(
@@ -409,10 +411,11 @@ class ProjectIdentityTest {
                     id,
                     checkout.toString(),
                     "25"));
-            running.add(new ProcessBuilder(cmd).redirectErrorStream(true).start());
+            ProcessBuilder pb = new ProcessBuilder(cmd).redirectErrorStream(true);
+            running.put(pb, pb.start());
         }
-        for (Process p : running) {
-            Processes.Captured run = Processes.capture(p, Duration.ofMinutes(2));
+        for (Map.Entry<ProcessBuilder, Process> p : running.entrySet()) {
+            Processes.Captured run = Processes.capture(p.getKey(), p.getValue(), Duration.ofMinutes(2));
             assertThat(run.exit()).as(run.output()).isZero();
         }
         assertThat(ProjectIdentity.IdentityFile.read(home).orElseThrow().checkouts())

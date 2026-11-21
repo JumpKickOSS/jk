@@ -106,8 +106,7 @@ class ChildEnvTest {
             if (captured) {
                 out = Processes.capture(pb, Duration.ofSeconds(30)).output();
             } else {
-                out = Processes.capture(ChildEnv.start(pb), Duration.ofSeconds(30))
-                        .output();
+                out = Processes.capture(pb, Duration.ofSeconds(30)).output();
             }
             assertThat(out)
                     .as(captured ? "Processes.capture" : "ChildEnv.start")
@@ -206,8 +205,7 @@ class ChildEnvTest {
             // What a child of an engine (or of a worker) started from a shell that exported it inherits.
             pb.environment().put("JK_REPO_X_TOKEN", "made-up-token-0123456789");
             if (forwarded) pb.environment().put(ChildEnv.FORWARDED, "JK_REPO_X_TOKEN");
-            String out = Processes.capture(ChildEnv.start(pb), Duration.ofSeconds(30))
-                    .output();
+            String out = Processes.capture(pb, Duration.ofSeconds(30)).output();
             if (forwarded) {
                 assertThat(out).as("forwarded").contains("JK_REPO_X_TOKEN=made-up-token-0123456789");
             } else {

@@ -31,7 +31,7 @@ final class TemplateClone {
         Map<String, String> env = ChildEnv.copyOf(BuildEnv.callerEnv());
         env.put("GIT_TERMINAL_PROMPT", "0");
         ChildEnv.replace(pb, env);
-        Processes.Captured c = Processes.capture(JobWorkers.start(pb), timeout);
+        Processes.Captured c = Processes.capture(pb, JobWorkers.start(pb), timeout);
         if (c.timedOut()) throw new IOException("git clone timed out after " + timeout.toSeconds() + "s");
         return new Result(c.exit(), c.output());
     }

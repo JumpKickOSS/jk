@@ -353,7 +353,7 @@ public final class ToolIdentity {
         ChildEnv.replace(pb, env);
         try {
             Process p = JobWorkers.start(pb);
-            Processes.Captured c = Processes.capture(p, null, Duration.ofMillis(timeoutMillis), 4096);
+            Processes.Captured c = Processes.capture(pb, p, null, Duration.ofMillis(timeoutMillis), 4096);
             if (c.timedOut()) return new Answer(NO_VERSION, true);
             String line = c.output()
                     .lines()

@@ -180,13 +180,14 @@ public final class Giter8Git {
     }
 
     private static void runGit(List<String> args) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(args).redirectErrorStream(true);
         Process proc;
         try {
-            proc = new ProcessBuilder(args).redirectErrorStream(true).start();
+            proc = pb.start();
         } catch (IOException e) {
             throw new IOException("git is required for remote templates (not found on PATH): " + e.getMessage(), e);
         }
-        Processes.Captured run = Processes.capture(proc, Duration.ofSeconds(120));
+        Processes.Captured run = Processes.capture(pb, proc, Duration.ofSeconds(120));
         if (run.timedOut()) throw new IOException("git clone timed out after 120s");
         if (run.exit() != 0) {
             String out = run.output();

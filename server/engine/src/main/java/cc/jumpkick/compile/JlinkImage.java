@@ -431,7 +431,7 @@ public final class JlinkImage {
         Process process = ChildEnv.start(pb);
         JobWorkers.register(process);
         try {
-            Processes.Captured c = Processes.capture(process, Duration.ofMinutes(TOOL_TIMEOUT_MINUTES));
+            Processes.Captured c = Processes.capture(pb, process, Duration.ofMinutes(TOOL_TIMEOUT_MINUTES));
             if (c.timedOut()) {
                 return new Tool(-1, "timed out after " + TOOL_TIMEOUT_MINUTES + " minutes: " + String.join(" ", cmd));
             }

@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -191,21 +192,21 @@ class ProjectBuildsTest {
         String classpath = System.getProperty("java.class.path");
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
 
-        List<Process> running = new ArrayList<>();
+        Map<ProcessBuilder, Process> running = new LinkedHashMap<>();
         for (int i = 0; i < processes; i++) {
-            running.add(new ProcessBuilder(
+            ProcessBuilder pb = new ProcessBuilder(
                             java.toString(),
                             "-cp",
                             classpath,
                             AllocMain.class.getName(),
                             home.toString(),
                             Integer.toString(perProcess))
-                    .redirectErrorStream(true)
-                    .start());
+                    .redirectErrorStream(true);
+            running.put(pb, pb.start());
         }
         List<String> allocated = new ArrayList<>();
-        for (Process p : running) {
-            Processes.Captured run = Processes.capture(p, Duration.ofMinutes(2));
+        for (Map.Entry<ProcessBuilder, Process> p : running.entrySet()) {
+            Processes.Captured run = Processes.capture(p.getKey(), p.getValue(), Duration.ofMinutes(2));
             for (String line : run.output().split("\n")) {
                 if (!line.isBlank()) allocated.add(line.trim());
             }

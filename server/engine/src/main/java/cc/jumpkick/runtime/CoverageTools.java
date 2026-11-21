@@ -119,12 +119,13 @@ final class CoverageTools {
         }
         Files.createDirectories(xml.toAbsolutePath().getParent());
         Files.createDirectories(html);
-        Process process = JobWorkers.start(JavaHomes.underJdk(
+        ProcessBuilder pb = JavaHomes.underJdk(
                         new ProcessBuilder(
                                 reportCommand(javaHome, tools.cliJar(), exec, classDirs, sourceDirs, xml, html, name)),
                         javaHome)
-                .redirectErrorStream(true));
-        Processes.Captured c = Processes.capture(process, REPORT_TIMEOUT);
+                .redirectErrorStream(true);
+        Process process = JobWorkers.start(pb);
+        Processes.Captured c = Processes.capture(pb, process, REPORT_TIMEOUT);
         int exit = c.exit();
         String output = c.timedOut() ? "timed out after " + REPORT_TIMEOUT.toMinutes() + " minutes" : c.output();
         if (exit != 0 || !Files.isRegularFile(xml)) {

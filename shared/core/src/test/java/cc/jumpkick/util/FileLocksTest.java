@@ -18,7 +18,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -339,12 +341,13 @@ class FileLocksTest {
         Path counter = Files.writeString(dir.resolve("counter"), "0");
         int processes = 3;
         int perProcess = 40;
-        List<Process> running = new ArrayList<>();
+        Map<ProcessBuilder, Process> running = new LinkedHashMap<>();
         for (int i = 0; i < processes; i++) {
-            running.add(fork(FoldMain.class, counter.toString(), Integer.toString(perProcess)));
+            ProcessBuilder pb = forked(FoldMain.class, counter.toString(), Integer.toString(perProcess));
+            running.put(pb, fork(pb));
         }
-        for (Process p : running) {
-            Processes.Captured run = Processes.capture(p, Duration.ofMinutes(2));
+        for (Map.Entry<ProcessBuilder, Process> p : running.entrySet()) {
+            Processes.Captured run = Processes.capture(p.getKey(), p.getValue(), Duration.ofMinutes(2));
             assertThat(run.exit())
                     .as("subprocess exit; output: " + run.output() + run.error())
                     .isZero();
@@ -357,7 +360,7 @@ class FileLocksTest {
     @EnabledOnOs(OS.LINUX)
     void a_probe_refused_by_another_process_closes_its_channel(@TempDir Path dir) throws Exception {
         Path lock = dir.resolve("build.lock");
-        Process holder = fork(HoldMain.class, lock.toString());
+        Process holder = fork(forked(HoldMain.class, lock.toString()));
         try (BufferedReader out =
                 new BufferedReader(new InputStreamReader(holder.getInputStream(), StandardCharsets.UTF_8))) {
             assertThat(out.readLine()).isEqualTo("holding");
@@ -388,14 +391,20 @@ class FileLocksTest {
 
     /** The one-shot probe {@link ProbeMain} answers: {@code held} or {@code free}. */
     private static String probeFromAnotherProcess(Path lock) throws IOException {
-        Processes.Captured run = Processes.capture(fork(ProbeMain.class, lock.toString()), Duration.ofMinutes(1));
+        ProcessBuilder probe = forked(ProbeMain.class, lock.toString());
+        Processes.Captured run = Processes.capture(probe, fork(probe), Duration.ofMinutes(1));
         String out = run.output().trim();
         assertThat(run.exit()).as(out + run.error()).isZero();
         return out;
     }
 
-    private static Process fork(Class<?> main, String... args) throws IOException {
-        Process p = start(javaCommand(main, args));
+    /** A JVM running {@code main}, its stderr merged into its stdout. */
+    private static ProcessBuilder forked(Class<?> main, String... args) {
+        return new ProcessBuilder(javaCommand(main, args)).redirectErrorStream(true);
+    }
+
+    private static Process fork(ProcessBuilder pb) throws IOException {
+        Process p = pb.start();
         try (OutputStream in = p.getOutputStream()) {
             // no stdin
         }

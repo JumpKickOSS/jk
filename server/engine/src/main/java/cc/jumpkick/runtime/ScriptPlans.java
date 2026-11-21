@@ -469,7 +469,8 @@ public final class ScriptPlans {
                         for (Path source : kotlinSources(script, bytes, header, classesDir)) cmd.add(source.toString());
                         ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), javaHome);
                         pb.redirectErrorStream(true);
-                        Processes.Captured compiled = Processes.capture(JobWorkers.start(pb), SCRIPT_COMPILE_TIMEOUT);
+                        Processes.Captured compiled =
+                                Processes.capture(pb, JobWorkers.start(pb), SCRIPT_COMPILE_TIMEOUT);
                         if (compiled.timedOut() || compiled.exit() != 0) {
                             String out = compiled.output().strip();
                             ctx.error(
@@ -612,7 +613,7 @@ public final class ScriptPlans {
                                     jar.toString()),
                             javaHome);
                     pb.redirectErrorStream(true);
-                    Processes.Captured compiled = Processes.capture(JobWorkers.start(pb), SCRIPT_COMPILE_TIMEOUT);
+                    Processes.Captured compiled = Processes.capture(pb, JobWorkers.start(pb), SCRIPT_COMPILE_TIMEOUT);
                     if (compiled.timedOut() || compiled.exit() != 0 || !Files.isRegularFile(jar)) {
                         String out = compiled.output().strip();
                         ctx.error(

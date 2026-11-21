@@ -362,7 +362,7 @@ class WorkerEnvTest {
         ProcessBuilder grandchild =
                 Os.isWindows() ? new ProcessBuilder("cmd.exe", "/c", "set") : new ProcessBuilder("/usr/bin/env");
         grandchild.environment().putAll(env);
-        assertThat(Processes.capture(ChildEnv.start(grandchild.redirectErrorStream(true)), Duration.ofSeconds(30))
+        assertThat(Processes.capture(grandchild.redirectErrorStream(true), Duration.ofSeconds(30))
                         .output())
                 .as("a program the worker starts (TaskExec), which inherits its environment")
                 .contains("JK_REPO_X_TOKEN=" + token);
@@ -372,7 +372,7 @@ class WorkerEnvTest {
     private static String seen(Map<String, String> shell, WorkerEnv env) throws Exception {
         List<String> command = Os.isWindows() ? List.of("cmd.exe", "/c", "set") : List.of("/usr/bin/env");
         ProcessBuilder pb = RequestShell.where(shell, () -> PluginProcess.builder(command, env));
-        return Processes.capture(ChildEnv.start(pb), Duration.ofSeconds(30)).output();
+        return Processes.capture(pb, Duration.ofSeconds(30)).output();
     }
 
     /**

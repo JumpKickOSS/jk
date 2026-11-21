@@ -147,7 +147,7 @@ final class KtsHostJar {
             cmd.add(src.toString());
             ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
             pb.redirectErrorStream(true);
-            Processes.Captured c = Processes.capture(JobWorkers.start(pb), COMPILE_TIMEOUT);
+            Processes.Captured c = Processes.capture(pb, JobWorkers.start(pb), COMPILE_TIMEOUT);
             if (c.timedOut()) {
                 throw new IllegalStateException(
                         "[build] logic: compiling the .kts host took over " + COMPILE_TIMEOUT.toMinutes() + " minutes");

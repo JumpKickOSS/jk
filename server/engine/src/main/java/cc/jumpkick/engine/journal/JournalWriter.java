@@ -588,11 +588,9 @@ public final class JournalWriter {
         GitHead.Head head = GitHead.of(Path.of(dir));
         if (head.known()) return head.commit();
         try {
-            Processes.Captured c = Processes.capture(
-                    JobWorkers.startDetached(
-                            new ProcessBuilder(GitCommand.of("-C", dir, "rev-parse", "--short", "HEAD"))
-                                    .redirectError(ProcessBuilder.Redirect.DISCARD)),
-                    GIT_COMMIT_WAIT);
+            ProcessBuilder pb = new ProcessBuilder(GitCommand.of("-C", dir, "rev-parse", "--short", "HEAD"))
+                    .redirectError(ProcessBuilder.Redirect.DISCARD);
+            Processes.Captured c = Processes.capture(pb, JobWorkers.startDetached(pb), GIT_COMMIT_WAIT);
             String out = c.output().trim();
             return c.ok() && !out.isEmpty() ? out : null;
         } catch (IOException | RuntimeException e) {

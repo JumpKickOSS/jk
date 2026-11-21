@@ -110,8 +110,8 @@ class JobWorkersTest {
                 .redirectErrorStream(true);
         pb.environment().put("JK_CACHE_KEY_SEED", "made-up-seed-0123456789");
         pb.environment().put("JK_SEED_NEIGHBOUR", "kept");
-        String out =
-                Processes.capture(JobWorkers.start(pb), Duration.ofSeconds(30)).output();
+        String out = Processes.capture(pb, JobWorkers.start(pb), Duration.ofSeconds(30))
+                .output();
         assertThat(out).contains("JK_SEED_NEIGHBOUR=kept").doesNotContain("made-up-seed");
     }
 

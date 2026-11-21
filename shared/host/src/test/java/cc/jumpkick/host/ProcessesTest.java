@@ -4,10 +4,14 @@ package cc.jumpkick.host;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -23,10 +27,9 @@ class ProcessesTest {
     @Test
     void a_child_that_never_exits_or_closes_its_output_times_out_and_is_killed() {
         assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
-            Process child = new ProcessBuilder(sh("echo started; sleep 60"))
-                    .redirectErrorStream(true)
-                    .start();
-            Processes.Captured c = Processes.capture(child, Duration.ofMillis(500));
+            ProcessBuilder pb = new ProcessBuilder(sh("echo started; sleep 60")).redirectErrorStream(true);
+            Process child = pb.start();
+            Processes.Captured c = Processes.capture(pb, child, Duration.ofMillis(500));
             assertThat(c.timedOut()).isTrue();
             assertThat(c.ok()).isFalse();
             assertThat(c.exit()).isEqualTo(-1);
@@ -56,17 +59,86 @@ class ProcessesTest {
                 .isFalse();
         assertThat(Processes.ownStderr(new ProcessBuilder(sh("true")))).isTrue();
 
-        Process discarded = new ProcessBuilder(sh("echo gone >&2"))
-                .redirectError(ProcessBuilder.Redirect.DISCARD)
-                .start();
-        Process own = new ProcessBuilder(sh("echo oops >&2")).start();
-        assertThat(Processes.piped(discarded.getErrorStream())).isFalse();
-        assertThat(Processes.piped(own.getErrorStream())).isTrue();
-        assertThat(Processes.capture(discarded, Duration.ofSeconds(10)).error()).isEmpty();
-        assertThat(Processes.capture(own, Duration.ofSeconds(10)).error()).isEqualTo("oops\n");
+        ProcessBuilder discard = new ProcessBuilder(sh("echo gone >&2")).redirectError(ProcessBuilder.Redirect.DISCARD);
+        ProcessBuilder keep = new ProcessBuilder(sh("echo oops >&2"));
+        assertThat(Processes.capture(discard, discard.start(), Duration.ofSeconds(10))
+                        .error())
+                .isEmpty();
+        assertThat(Processes.capture(keep, keep.start(), Duration.ofSeconds(10)).error())
+                .isEqualTo("oops\n");
         Processes.Captured merged = Processes.capture(sh("echo both >&2"), Duration.ofSeconds(10));
         assertThat(merged.output()).isEqualTo("both\n");
         assertThat(merged.error()).isEmpty();
+    }
+
+    /**
+     * A child the caller started itself from a builder that merged stderr: its stderr stream is not
+     * read on a thread of its own (on Linux it is a real pipe, so the stream alone cannot tell).
+     */
+    @Test
+    void a_started_child_whose_builder_merged_stderr_gets_no_stderr_drain() throws IOException {
+        List<String> readers = new CopyOnWriteArrayList<>();
+        boolean[] closed = {false};
+        InputStream stderr = new InputStream() {
+            @Override
+            public int read() {
+                readers.add(Thread.currentThread().getName());
+                return -1;
+            }
+
+            @Override
+            public void close() {
+                closed[0] = true;
+            }
+        };
+        Process child = new Exited(new ByteArrayInputStream("both\n".getBytes(StandardCharsets.UTF_8)), stderr);
+
+        Processes.Captured c = Processes.capture(
+                new ProcessBuilder(sh("true")).redirectErrorStream(true), child, Duration.ofSeconds(10));
+
+        assertThat(c.ok()).isTrue();
+        assertThat(c.output()).isEqualTo("both\n");
+        assertThat(readers).as("threads that read the merged stderr").isEmpty();
+        assertThat(closed[0]).as("the unread stderr is closed").isTrue();
+    }
+
+    /** A child that has already exited 0, with the given output and stderr streams. */
+    private static final class Exited extends Process {
+        private final InputStream out;
+        private final InputStream err;
+
+        Exited(InputStream out, InputStream err) {
+            this.out = out;
+            this.err = err;
+        }
+
+        @Override
+        public OutputStream getOutputStream() {
+            return OutputStream.nullOutputStream();
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return out;
+        }
+
+        @Override
+        public InputStream getErrorStream() {
+            return err;
+        }
+
+        @Override
+        public int waitFor() {
+            return 0;
+        }
+
+        @Override
+        public int exitValue() {
+            return 0;
+        }
+
+        @Override
+        public void destroy() {}
     }
 
     @Test
@@ -98,17 +170,17 @@ class ProcessesTest {
 
     @Test
     void the_limit_keeps_the_head_and_still_drains_the_rest() throws IOException {
-        Process child = new ProcessBuilder(sh("head -c 200000 /dev/zero | tr '\\0' x")).start();
-        Processes.Captured c = Processes.capture(child, null, Duration.ofSeconds(10), 4096);
+        ProcessBuilder pb = new ProcessBuilder(sh("head -c 200000 /dev/zero | tr '\\0' x"));
+        Processes.Captured c = Processes.capture(pb, pb.start(), null, Duration.ofSeconds(10), 4096);
         assertThat(c.ok()).isTrue();
         assertThat(c.output()).hasSize(4096);
     }
 
     @Test
     void stdin_is_written_and_stderr_kept_apart() throws IOException {
-        Process child = new ProcessBuilder(sh("cat; echo oops >&2; exit 3")).start();
-        Processes.Captured c =
-                Processes.capture(child, "secret".getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(10), 1 << 20);
+        ProcessBuilder pb = new ProcessBuilder(sh("cat; echo oops >&2; exit 3"));
+        Processes.Captured c = Processes.capture(
+                pb, pb.start(), "secret".getBytes(StandardCharsets.UTF_8), Duration.ofSeconds(10), 1 << 20);
         assertThat(c.exit()).isEqualTo(3);
         assertThat(c.output()).isEqualTo("secret");
         assertThat(c.error().strip()).isEqualTo("oops");
@@ -118,8 +190,9 @@ class ProcessesTest {
     @Test
     void stdin_larger_than_the_pipe_buffer_cannot_outlast_the_deadline() {
         assertTimeoutPreemptively(Duration.ofSeconds(15), () -> {
-            Process child = new ProcessBuilder(sh("sleep 60")).start();
-            Processes.Captured c = Processes.capture(child, new byte[4 << 20], Duration.ofMillis(500), 1 << 20);
+            ProcessBuilder pb = new ProcessBuilder(sh("sleep 60"));
+            Process child = pb.start();
+            Processes.Captured c = Processes.capture(pb, child, new byte[4 << 20], Duration.ofMillis(500), 1 << 20);
             assertThat(c.timedOut()).isTrue();
             assertThat(child.waitFor(5, TimeUnit.SECONDS))
                     .as("killed at the deadline")

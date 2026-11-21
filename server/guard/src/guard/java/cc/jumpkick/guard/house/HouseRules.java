@@ -213,7 +213,7 @@ final class HouseRules {
             why =
                     "reading a child's pipe to its end blocks until every holder of the pipe closes it, so a timeout waited on afterwards never starts and a child that keeps its pipe open hangs the caller",
             instead =
-                    "cc.jumpkick.host.Processes.capture(command | builder | process, timeout), or outputIfOk for a probe: it drains on platform threads and kills the tree at the deadline")
+                    "cc.jumpkick.host.Processes.capture(command | builder | builder and the process it started, timeout), or outputIfOk for a probe: it drains on platform threads and kills the tree at the deadline")
     @Fixture("server/guard/fixtures/process-output-owner")
     @Allow(
             in = "plugins/asyncapi/src/main/java/cc/jumpkick/asyncapi/Protoc.java",

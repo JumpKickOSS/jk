@@ -80,10 +80,9 @@ final class ImageSidecar {
      */
     static Optional<String> daemonImageId(String exe, String ref) {
         try {
-            Processes.Captured c = Processes.capture(
-                    JobWorkers.start(new ProcessBuilder(exe, "image", "inspect", "--format", "{{.Id}}", ref)
-                            .redirectError(ProcessBuilder.Redirect.DISCARD)),
-                    Duration.ofSeconds(10));
+            ProcessBuilder pb = new ProcessBuilder(exe, "image", "inspect", "--format", "{{.Id}}", ref)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD);
+            Processes.Captured c = Processes.capture(pb, JobWorkers.start(pb), Duration.ofSeconds(10));
             String out = c.output().strip();
             if (!c.ok() || out.isEmpty()) return Optional.empty();
             return Optional.of(out.startsWith("sha256:") ? out.substring("sha256:".length()) : out);

@@ -908,7 +908,7 @@ public final class SelfCommand extends GroupCommand {
                 Path inflater = inflaterEngineJar(engineJar, engineTmp);
                 Files.write(xzTmp, xz);
                 Path java = EngineSpawn.engineJava();
-                Process p = new ProcessBuilder(
+                ProcessBuilder pb = new ProcessBuilder(
                                 java.toString(),
                                 "-cp",
                                 inflater.toString(),
@@ -916,11 +916,11 @@ public final class SelfCommand extends GroupCommand {
                                 "--inflate-xz",
                                 WorkingDirectory.resolve(xzTmp).toString(),
                                 WorkingDirectory.resolve(out).toString())
-                        .redirectErrorStream(true)
-                        .start();
+                        .redirectErrorStream(true);
+                Process p = pb.start();
                 Processes.Captured c;
                 try (GlobalCancel.Registration onInterrupt = GlobalCancel.onInterrupt(() -> Processes.killTree(p))) {
-                    c = Processes.capture(p, INFLATE_TIMEOUT);
+                    c = Processes.capture(pb, p, INFLATE_TIMEOUT);
                 }
                 if (c.timedOut()) {
                     throw new IOException("engine xz inflate took over " + INFLATE_TIMEOUT.toMinutes() + " minutes");

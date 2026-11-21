@@ -54,19 +54,25 @@ public final class Processes {
         return captured(run(ChildEnv.start(builder), null, timeout, Integer.MAX_VALUE, ownStderr(builder)));
     }
 
-    /** As {@link #capture(List, Duration)} for a child the caller started through its own launcher. */
-    public static Captured capture(Process child, Duration timeout) throws IOException {
-        return capture(child, null, timeout, Integer.MAX_VALUE);
+    /**
+     * As {@link #capture(List, Duration)} for a child the caller started from {@code builder} through
+     * its own launcher. The builder says whether the child's stderr is a pipe of its own; the started
+     * child's stream cannot (on Linux a merged stderr is a pipe too, already at its end).
+     */
+    public static Captured capture(ProcessBuilder builder, Process child, Duration timeout) throws IOException {
+        return capture(builder, child, null, timeout, Integer.MAX_VALUE);
     }
 
     /**
-     * Capture {@code child}: write {@code stdin} to it (nothing when null) and close its input, and
-     * wait at most {@code timeout} for it all. The first {@code limit} bytes of each pipe are kept and the rest
-     * is read and dropped, so a child that prints without end neither fills memory nor blocks.
+     * Capture {@code child}, started from {@code builder}: write {@code stdin} to it (nothing when
+     * null) and close its input, and wait at most {@code timeout} for it all. The first {@code limit}
+     * bytes of each pipe are kept and the rest is read and dropped, so a child that prints without end
+     * neither fills memory nor blocks.
      */
-    public static Captured capture(Process child, byte @Nullable [] stdin, Duration timeout, int limit)
+    public static Captured capture(
+            ProcessBuilder builder, Process child, byte @Nullable [] stdin, Duration timeout, int limit)
             throws IOException {
-        return captured(run(child, stdin, timeout, limit, piped(child.getErrorStream())));
+        return captured(run(child, stdin, timeout, limit, ownStderr(builder)));
     }
 
     private static Captured captured(Ran ran) {
@@ -103,18 +109,6 @@ public final class Processes {
     /** Whether a child {@code builder} starts has a stderr pipe of its own: not merged, not redirected. */
     static boolean ownStderr(ProcessBuilder builder) {
         return !builder.redirectErrorStream() && builder.redirectError().type() == ProcessBuilder.Redirect.Type.PIPE;
-    }
-
-    /**
-     * The JDK's stream for a child's stderr redirected away from the parent: no pipe behind it. A
-     * merged stderr is not always this stream (on Linux it is a pipe already at its end), so a
-     * child known by its builder is judged by {@link #ownStderr} instead.
-     */
-    private static final String NO_PIPE = "java.lang.ProcessBuilder$NullInputStream";
-
-    /** False when {@code error}, a started child's stderr, is known to have no pipe behind it. */
-    static boolean piped(InputStream error) {
-        return !error.getClass().getName().equals(NO_PIPE);
     }
 
     /**
