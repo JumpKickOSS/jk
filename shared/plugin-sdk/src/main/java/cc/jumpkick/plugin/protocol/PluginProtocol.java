@@ -178,11 +178,12 @@ public final class PluginProtocol {
     public static final String KEY = "key";
     public static final String VALUE = "value";
     public static final String VALUES = "values";
-    public static final String CONFIG_KIND = "kind"; // string|bool|int|list
+    public static final String CONFIG_KIND = "kind"; // string|bool|int|list|map
     public static final String KIND_STRING = "string";
     public static final String KIND_BOOL = "bool";
     public static final String KIND_INT = "int";
     public static final String KIND_LIST = "list";
+    public static final String KIND_MAP = "map";
     public static final String PATH = "path";
     public static final String ROLE = "role"; // cp entry role
     public static final String ROLE_COMPILE = "compile";

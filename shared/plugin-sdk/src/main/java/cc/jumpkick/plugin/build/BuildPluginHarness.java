@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.PluginReply;
+import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
 import java.net.URI;
@@ -508,23 +509,12 @@ public final class BuildPluginHarness {
             return out;
         }
 
-        /**
-         * A {@code config} line: a top-level value, one leaf of a nested entry (key → entry → field),
-         * or an entry with no fields (an {@code entry} and no {@code field}).
-         */
+        /** A {@code config} line, read as {@link PluginSpec#addConfig} reads it; an unknown kind is refused. */
         private static void addConfig(String line, Map<String, Object> configValues) throws IOException {
-            String key = required(Jsonl.str(line, "key"), "config.key");
-            @Nullable String entry = Jsonl.str(line, "entry");
-            if (entry == null) {
-                configValues.put(key, configValue(line));
-                return;
+            if (!PluginSpec.addConfig(line, configValues)) {
+                throw new IOException("config kind `" + Jsonl.str(line, PluginProtocol.CONFIG_KIND)
+                        + "` is not one this harness reads");
             }
-            @SuppressWarnings("unchecked")
-            Map<String, Map<String, Object>> nested = (Map<String, Map<String, Object>>)
-                    configValues.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
-            Map<String, Object> fields = nested.computeIfAbsent(entry, k -> new LinkedHashMap<>());
-            @Nullable String field = Jsonl.str(line, "field");
-            if (field != null) fields.put(field, configValue(line));
         }
 
         /**
@@ -556,19 +546,6 @@ public final class BuildPluginHarness {
             siblingFiles
                     .computeIfAbsent(required(Jsonl.str(line, "key"), "sibling-files.key"), k -> new ArrayList<>())
                     .add(Path.of(required(Jsonl.str(line, "path"), "sibling-files.path")));
-        }
-
-        /** A {@code config} line's typed value. */
-        private static Object configValue(String line) throws IOException {
-            String kind = String.valueOf(Jsonl.str(line, "kind"));
-            return switch (kind) {
-                case "string" -> required(Jsonl.str(line, "value"), "config.value");
-                case "bool" -> Jsonl.bool(line, "value", false);
-                case "int" -> Jsonl.longValue(line, "value", 0);
-                case "list" -> Jsonl.strArray(line, "values");
-                case "map" -> Jsonl.strMap(line, "values");
-                default -> throw new IOException("config kind `" + kind + "` is not one this harness reads");
-            };
         }
 
         /** An {@code entry} of the test runtime closure ({@link PluginProtocol#ROLE_TEST}), not the production one. */

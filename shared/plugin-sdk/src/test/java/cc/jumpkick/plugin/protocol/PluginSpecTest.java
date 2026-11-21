@@ -9,6 +9,7 @@ import cc.jumpkick.plugin.build.ProjectFacts;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -131,6 +132,40 @@ class PluginSpecTest {
         PluginSpec parsed = PluginSpec.read(spec);
         assertThat(parsed.config().stringOpt("present")).contains("yes");
         assertThat(parsed.config().stringOpt("absent")).isEmpty();
+    }
+
+    /**
+     * A table's entries and a string-map value reach a worker as the nested maps the engine
+     * validated, the same as through the build-plugin harness: each leaf line of an entry lands
+     * under its entry, not on the table's key.
+     */
+    @Test
+    void nested_entries_and_maps_read_as_the_engine_wrote_them(@TempDir Path dir) throws Exception {
+        Map<String, Object> api = new LinkedHashMap<>();
+        api.put("tool", "org.acme:gen:1.0");
+        api.put("depth", 3L);
+        Map<String, Map<String, Object>> entries = new LinkedHashMap<>();
+        entries.put("api", api);
+        entries.put("plain", Map.of());
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("options", Map.of("k", "v"));
+        values.put(PluginConfig.ENTRIES, entries);
+        Path spec = dir.resolve("nested.spec");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_PACKAGE, null, "gen")
+                        .configValues(values)
+                        .lines(),
+                StandardCharsets.UTF_8);
+
+        PluginConfig read = PluginSpec.read(spec).config();
+        assertThat(read.stringMap("options")).containsExactly(Map.entry("k", "v"));
+        assertThat(read.entries().keySet()).containsExactly("api", "plain");
+        assertThat(read.entries().get("api"))
+                .containsEntry("tool", "org.acme:gen:1.0")
+                .containsEntry("depth", 3L);
+        assertThat(read.entries().get("plain")).isEmpty();
     }
 
     @Test

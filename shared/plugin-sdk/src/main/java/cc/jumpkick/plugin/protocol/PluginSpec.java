@@ -27,6 +27,9 @@ import org.jspecify.annotations.Nullable;
  */
 public final class PluginSpec {
 
+    /** A {@code config} line's nested-entry name and that entry's field, absent on a top-level value. */
+    private static final String CONFIG_ENTRY = "entry", CONFIG_FIELD = "field";
+
     private String op = "";
     private @Nullable String name; // step/command name from the op line
     private String pluginId = "";
@@ -72,21 +75,7 @@ public final class PluginSpec {
                     s.name = Jsonl.str(line, PluginProtocol.NAME);
                     s.pluginId = requiredString(line, PluginProtocol.PLUGIN);
                 }
-                case PluginProtocol.CONFIG -> {
-                    String key = requiredString(line, PluginProtocol.KEY);
-                    switch (String.valueOf(Jsonl.str(line, PluginProtocol.CONFIG_KIND))) {
-                        case PluginProtocol.KIND_STRING ->
-                            s.config.put(key, requiredString(line, PluginProtocol.VALUE));
-                        case PluginProtocol.KIND_BOOL ->
-                            s.config.put(key, Jsonl.bool(line, PluginProtocol.VALUE, false));
-                        case PluginProtocol.KIND_INT ->
-                            s.config.put(key, Jsonl.longValue(line, PluginProtocol.VALUE, 0));
-                        case PluginProtocol.KIND_LIST -> s.config.put(key, Jsonl.strArray(line, PluginProtocol.VALUES));
-                        default -> {
-                            // unknown kind — forward-compat
-                        }
-                    }
-                }
+                case PluginProtocol.CONFIG -> addConfig(line, s.config); // an unknown kind is skipped — forward-compat
                 case PluginProtocol.PROJECT -> {
                     group = requiredString(line, "group");
                     pname = requiredString(line, "name");
@@ -171,6 +160,48 @@ public final class PluginSpec {
         }
         s.project = new ProjectFacts(group, pname, version, javaRelease, mainClass, nativeDeclared, kotlin, s.manifest);
         return s;
+    }
+
+    /**
+     * Folds one {@code config} line into {@code values}: a top-level value, one leaf of a nested
+     * entry (key → entry → field), or an entry with no fields (an {@code entry} and no
+     * {@code field}). The one reading of the line {@link SpecWriter#configValues} writes, for this
+     * reader and the build-plugin harness alike. False, and nothing added, when the line's kind is
+     * not one this reader knows.
+     */
+    public static boolean addConfig(String line, Map<String, Object> values) {
+        String key = requiredString(line, PluginProtocol.KEY);
+        @Nullable String entry = Jsonl.str(line, CONFIG_ENTRY);
+        @Nullable String field = Jsonl.str(line, CONFIG_FIELD);
+        if (entry != null && field == null) {
+            entryFields(values, key, entry);
+            return true;
+        }
+        @Nullable Object value = configValue(line);
+        if (value == null) return false;
+        if (entry == null || field == null) values.put(key, value);
+        else entryFields(values, key, entry).put(field, value);
+        return true;
+    }
+
+    /** The fields of nested entry {@code entry} under {@code key}, made empty when the spec has not named it yet. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> entryFields(Map<String, Object> values, String key, String entry) {
+        Map<String, Map<String, Object>> nested = (Map<String, Map<String, Object>>)
+                values.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
+        return nested.computeIfAbsent(entry, k -> new LinkedHashMap<>());
+    }
+
+    /** A {@code config} line's typed value; null when its kind is not one this reader knows. */
+    private static @Nullable Object configValue(String line) {
+        return switch (String.valueOf(Jsonl.str(line, PluginProtocol.CONFIG_KIND))) {
+            case PluginProtocol.KIND_STRING -> requiredString(line, PluginProtocol.VALUE);
+            case PluginProtocol.KIND_BOOL -> Jsonl.bool(line, PluginProtocol.VALUE, false);
+            case PluginProtocol.KIND_INT -> Jsonl.longValue(line, PluginProtocol.VALUE, 0);
+            case PluginProtocol.KIND_LIST -> Jsonl.strArray(line, PluginProtocol.VALUES);
+            case PluginProtocol.KIND_MAP -> Jsonl.strMap(line, PluginProtocol.VALUES);
+            default -> null;
+        };
     }
 
     private static @Nullable Path path(@Nullable String s) {
