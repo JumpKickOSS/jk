@@ -52,6 +52,16 @@ class CodeGraphToolArgsTest {
         assertThat(request.scope()).isNull();
     }
 
+    @Test
+    void move_asks_the_move_operation_with_the_member_and_its_target() {
+        GraphRequest request = request("move", Map.of("address", "Order.join", "to", "Texts", "scope", "src"));
+
+        assertThat(request.op()).isEqualTo("move");
+        assertThat(request.args()).containsExactly("Order.join", "Texts");
+        assertThat(request.options()).isEmpty();
+        assertThat(request.scope()).isNull();
+    }
+
     private static GraphRequest request(String tool) {
         return request(tool, EVERY_SETTING);
     }

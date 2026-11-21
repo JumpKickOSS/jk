@@ -21,8 +21,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The code graph's tools, named like the {@code jk code} subcommands they answer: {@code usages}
- * and {@code rename} on the default list, {@code query}, {@code read}, {@code find} and {@code
- * delete} on the extended one.
+ * and {@code rename} on the default list, {@code query}, {@code read}, {@code find}, {@code
+ * delete} and {@code move} on the extended one.
  * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
  * {@code Owner.member()} at {@code file:line}.
  */
@@ -117,6 +117,25 @@ public final class CodeGraphTool implements McpTool {
                                 List.of("address"))),
                 "delete",
                 in -> List.of(required(in, "address")));
+    }
+
+    /**
+     * {@code move}: a static method (every overload) or static field moved to another class, enum or
+     * record in one call, every use javac bound edited, then compiled and proven, or undone whole;
+     * what would break or change without a compile error writes nothing and is listed. It writes, so
+     * it is not read-only.
+     */
+    public static McpTool move() {
+        return new CodeGraphTool(
+                new Spec(
+                        "move",
+                        "Move static Type.method (every overload) or Type.field to the class, enum or record `to`;"
+                                + " edits every use and import, proves it, or writes nothing and lists the hazards.",
+                        McpSchemas.object(
+                                props(Map.of("address", McpSchemas.string(), "to", McpSchemas.string())),
+                                List.of("address", "to"))),
+                "move",
+                in -> List.of(required(in, "address"), required(in, "to")));
     }
 
     /** {@code query}: the symbols and connections a question is about, as {@code jk code query} answers it. */
