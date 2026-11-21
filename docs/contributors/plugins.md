@@ -406,9 +406,17 @@ main-scan      = true
 layered-image  = true
 # -D flags for the module's JVM under jk run / jk dev, as your framework's build tool passes them
 run-system-properties = { "grails.project.target.dir" = "target" }
+# A runnable tree under the module's target/ that an image ships, and the jar in it to run
+app-dir        = "quarkus-app"
+app-jar        = "quarkus-run.jar"
+# A directory under the packager step's output holding the framework's native-image.args
+native-image-sources = "native-sources"
 ```
 
 Static data consulted by `jk run` / `install` / `image` without forking your code.
+`native-image-sources`, `app-dir` and `app-jar` resolve against the packager step's scratch
+root, the module's `target/` and `app-dir`. One that is absolute, empty, `.` or climbs out with
+`..` is refused when the manifest is read, in the jar and again from the copy `jk lock` stores.
 
 ### Templates and import
 

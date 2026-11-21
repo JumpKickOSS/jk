@@ -2,7 +2,9 @@
 package cc.jumpkick.plugin.manifest;
 
 import cc.jumpkick.config.JkBuildParseException;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.JkVersion;
+import java.nio.file.InvalidPathException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -247,9 +249,10 @@ public final class PluginDescriptors {
                     + ".packaging.exec-mode must be jar, classpath, binary, device, or none — got: " + execMode);
         }
         String deployCommand = packaging.getString("deploy-command");
-        String nativeImageSources = packaging.getString("native-image-sources");
-        String appDir = packaging.getString("app-dir");
-        String appJar = packaging.getString("app-jar");
+        String nativeImageSources =
+                relativeBelow(packaging, "native-image-sources", "the packager step's output", displayPath);
+        String appDir = relativeBelow(packaging, "app-dir", "the module's target/", displayPath);
+        String appJar = relativeBelow(packaging, "app-jar", "app-dir", displayPath);
         if (deployCommand != null && !"device".equals(execMode)) {
             throw new JkBuildParseException(
                     displayPath + ".packaging.deploy-command only applies to exec-mode = \"device\"");
@@ -271,11 +274,32 @@ public final class PluginDescriptors {
                 deployCommand == null ? "" : deployCommand,
                 // Default true: a packager owns the module's artifact unless it says otherwise.
                 !Boolean.FALSE.equals(packaging.getBoolean("main-artifact")),
-                nativeImageSources == null ? "" : nativeImageSources,
-                appDir == null ? "" : appDir,
-                appJar == null ? "" : appJar,
+                nativeImageSources,
+                appDir,
+                appJar,
                 runSystemProperties(packaging, displayPath),
                 variants);
+    }
+
+    /**
+     * A {@code [packaging]} path, or empty when the key is absent. Each resolves against a
+     * directory jk owns and names something read, shipped or run from it, so one that is absolute,
+     * empty or {@code .}, or climbs out with {@code ..} is refused.
+     */
+    private static String relativeBelow(TomlTable packaging, String key, String root, String displayPath) {
+        String rel = packaging.getString(key);
+        if (rel == null) return "";
+        boolean below;
+        try {
+            below = PathUtil.isStrictlyBelow(rel);
+        } catch (InvalidPathException notAPath) {
+            below = false;
+        }
+        if (!below) {
+            throw new JkBuildParseException(
+                    displayPath + ".packaging." + key + " must be a path under " + root + " — got: \"" + rel + "\"");
+        }
+        return rel;
     }
 
     // ---- [[contribute.*]] — the declarative layer (P2) --------------------------------------

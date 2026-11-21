@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A build plugin's manifest cannot point packaging outside the build.** A `[packaging]`
+  `native-image-sources`, `app-dir` or `app-jar` that is absolute, empty, `.` or climbs out with
+  `..` is refused when the plugin's manifest is read. A plugin can no longer ship a directory from
+  elsewhere on disk in a container image, run a jar from outside its own app tree, or feed
+  native-image arguments from outside its output.
 - **`jk bsp serve` follows the Build Server Protocol more closely.** Source and output paths are
   reported as directories; a module's build target lists the workspace modules it depends on; every
   diagnostics notification sets `reset`, and a file fixed since the last compile is cleared in the
