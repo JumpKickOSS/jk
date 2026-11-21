@@ -3,6 +3,7 @@ package cc.jumpkick.asyncapi;
 
 import cc.jumpkick.avro.AvroMain;
 import cc.jumpkick.generate.GeneratorEntry;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -10,9 +11,7 @@ import cc.jumpkick.plugin.build.BuildContext;
 import cc.jumpkick.plugin.build.BuildExtension;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -43,7 +42,8 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), ownJar()).task());
+        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(AsyncApiPreset.class)))
+                .task());
     }
 
     /** The generator entry the table expands to: the documents as the inputs, the keys as jsonschema2pojo's flags. */
@@ -83,28 +83,8 @@ public final class AsyncApiPreset implements Plugin, BuildExtension {
     /** {@code classpath} and the jar carrying {@link AvroMain}, which compiles the Avro payloads. */
     static List<Path> withAvroMain(List<Path> classpath) {
         List<Path> out = new ArrayList<>(classpath);
-        CodeSource source = AvroMain.class.getProtectionDomain().getCodeSource();
-        if (source != null && source.getLocation() != null) {
-            try {
-                Path jar = Path.of(source.getLocation().toURI());
-                if (!out.contains(jar)) out.add(jar);
-            } catch (URISyntaxException e) {
-                throw new IllegalStateException("the avro worker's jar has no path: " + source.getLocation(), e);
-            }
-        }
+        Path jar = ToolJars.codeSource(AvroMain.class);
+        if (!out.contains(jar)) out.add(jar);
         return out;
-    }
-
-    /** This worker's own jar (or classes directory), which carries {@link AsyncApiMain}. */
-    static List<Path> ownJar() {
-        CodeSource source = AsyncApiPreset.class.getProtectionDomain().getCodeSource();
-        if (source == null || source.getLocation() == null) {
-            throw new IllegalStateException("the asyncapi worker cannot name its own jar for the main's classpath");
-        }
-        try {
-            return List.of(Path.of(source.getLocation().toURI()));
-        } catch (URISyntaxException e) {
-            throw new IllegalStateException("the asyncapi worker's jar has no path: " + source.getLocation(), e);
-        }
     }
 }

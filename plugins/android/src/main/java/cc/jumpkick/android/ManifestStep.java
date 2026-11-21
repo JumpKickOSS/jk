@@ -3,6 +3,8 @@ package cc.jumpkick.android;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DomXml;
+
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
@@ -137,10 +139,7 @@ final class ManifestStep {
 
     /** The jars of a {@code transitive} step-dependency's lib directory, sorted. */
     static List<Path> jarsIn(Path libDir) throws IOException {
-        List<Path> jars = new ArrayList<>();
-        try (var listing = Files.list(libDir)) {
-            listing.filter(f -> f.toString().endsWith(".jar")).sorted().forEach(jars::add);
-        }
+        List<Path> jars = ToolJars.classpath(libDir);
         if (jars.isEmpty()) {
             throw new IllegalStateException("no jars in the manifest-merger tool directory: " + libDir);
         }

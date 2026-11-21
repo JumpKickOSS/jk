@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.boot;
 
-import java.util.ArrayList;
-import java.util.Arrays;
+import cc.jumpkick.host.Processes;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -134,11 +133,7 @@ record AotFailure(Kind kind, String headline, String rootCause) {
 
     /** The last {@link #TAIL_LINES} of the output, each indented under the message. */
     static String tail(String output) {
-        String[] lines = output.split("\n");
-        int from = Math.max(0, lines.length - TAIL_LINES);
-        List<String> kept = new ArrayList<>();
-        for (String line : Arrays.copyOfRange(lines, from, lines.length)) kept.add("  " + line);
-        return String.join("\n", kept);
+        return "  " + Processes.lastLines(output, TAIL_LINES).replace("\n", "\n  ");
     }
 
     /** What the step forked: the processor's main class, its JVM flags, the application class, the classpath's size. */

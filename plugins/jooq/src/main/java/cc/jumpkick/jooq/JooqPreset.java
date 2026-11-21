@@ -2,6 +2,7 @@
 package cc.jumpkick.jooq;
 
 import cc.jumpkick.generate.GeneratorEntry;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -11,9 +12,7 @@ import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.build.KeyProbe;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,7 +48,8 @@ public final class JooqPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), ctx.project(), ownJar()).task());
+        ctx.task(entry(ctx.config(), ctx.project(), List.of(ToolJars.codeSource(JooqPreset.class)))
+                .task());
     }
 
     /**
@@ -113,18 +113,5 @@ public final class JooqPreset implements Plugin, BuildExtension {
                 List.of(),
                 Map.of(),
                 secretEnv);
-    }
-
-    /** This worker's own jar (or classes directory), which carries {@link JooqMain}. */
-    static List<Path> ownJar() {
-        CodeSource source = JooqPreset.class.getProtectionDomain().getCodeSource();
-        if (source == null || source.getLocation() == null) {
-            throw new IllegalStateException("the jooq worker cannot name its own jar for the main's classpath");
-        }
-        try {
-            return List.of(Path.of(source.getLocation().toURI()));
-        } catch (URISyntaxException e) {
-            throw new IllegalStateException("the jooq worker's jar has no path: " + source.getLocation(), e);
-        }
     }
 }

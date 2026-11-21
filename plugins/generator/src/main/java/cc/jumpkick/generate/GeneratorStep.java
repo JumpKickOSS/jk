@@ -2,6 +2,7 @@
 package cc.jumpkick.generate;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -62,7 +63,7 @@ final class GeneratorStep {
         Path out = exec.outputDir(entry.out());
         List<Path> classpath = new ArrayList<>(entry.classpath());
         String toolArtifact = entry.toolArtifact();
-        if (toolArtifact != null) classpath.addAll(toolClasspath(exec.requireExtra(toolArtifact)));
+        if (toolArtifact != null) classpath.addAll(ToolJars.classpath(exec.requireExtra(toolArtifact)));
         String main = entry.main() != null ? entry.main() : mainClass(classpath, entry);
         List<String> args = Arguments.expand(
                 entry.args(), new Arguments.Scope(inputs, unpacked, out, exec.moduleDir(), exec::requireExtra));
@@ -167,17 +168,6 @@ final class GeneratorStep {
     private static String describe(List<Path> inputs, GeneratorEntry entry) {
         if (inputs.isEmpty()) return entry.unpack() != null ? "unpacked " + entry.unpack() : "live input";
         return inputs.size() + (inputs.size() == 1 ? " input" : " inputs");
-    }
-
-    /** The fetched tool as a classpath: the jar itself, or every jar of a materialized closure dir. */
-    static List<Path> toolClasspath(Path tool) throws IOException {
-        if (!Files.isDirectory(tool)) return List.of(tool);
-        List<Path> jars = new ArrayList<>();
-        PathUtil.forEachRegularFile(tool, (file, attrs) -> {
-            if (file.getFileName().toString().endsWith(".jar")) jars.add(file);
-        });
-        jars.sort(null);
-        return List.copyOf(jars);
     }
 
     /**

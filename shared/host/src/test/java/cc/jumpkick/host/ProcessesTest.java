@@ -199,4 +199,10 @@ class ProcessesTest {
                     .isTrue();
         });
     }
+
+    @Test
+    void the_last_lines_of_an_output_are_kept() {
+        assertThat(Processes.lastLines("a\nb\nc\nd", 2)).isEqualTo("c\nd");
+        assertThat(Processes.lastLines("only", 5)).isEqualTo("only");
+    }
 }

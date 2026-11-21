@@ -78,10 +78,4 @@ class AvroPresetPlanTest {
                         "ISO-8859-1",
                         "${inputs}");
     }
-
-    @Test
-    void the_worker_names_its_own_code_source() {
-        assertThat(AvroPreset.ownJar()).singleElement().satisfies(p -> assertThat(p)
-                .exists());
-    }
 }

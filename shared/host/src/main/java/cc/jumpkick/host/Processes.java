@@ -9,6 +9,7 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
@@ -177,6 +178,13 @@ public final class Processes {
         } catch (IOException closedEarly) {
             // The child already closed its input.
         }
+    }
+
+    /** The last {@code lines} lines of a child's {@code output}: where its failure is. */
+    public static String lastLines(String output, int lines) {
+        String[] all = output.split("\n");
+        int from = Math.max(0, all.length - lines);
+        return String.join("\n", Arrays.asList(all).subList(from, all.length));
     }
 
     /** Kill {@code child} and every descendant it started. */

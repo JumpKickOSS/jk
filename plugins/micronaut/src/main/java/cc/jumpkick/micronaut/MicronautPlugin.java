@@ -4,6 +4,8 @@ package cc.jumpkick.micronaut;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -17,15 +19,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -101,7 +100,7 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         Path tools = exec.requireExtra(AOT_TOOLS);
         List<Path> toolCp = new ArrayList<>();
         if (Files.isDirectory(tools)) {
-            toolCp.addAll(jarsIn(tools));
+            toolCp.addAll(ToolJars.classpath(tools));
         } else if (Files.isRegularFile(tools)) {
             toolCp.add(tools);
         } else {
@@ -233,23 +232,6 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
         return named;
     }
 
-    static List<Path> jarsIn(Path dir) throws IOException {
-        List<Path> out = new ArrayList<>();
-        try (Stream<Path> s = Files.walk(dir)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards.
-            s.filter(p -> p.getFileName().toString().endsWith(".jar"))
-                    .filter(Files::isRegularFile)
-                    .forEach(out::add);
-        }
-        // Files.walk order is directory-iteration order — it varies by filesystem and by the
-        // order entries were created. This list becomes both --classpath and the forked JVM's
-        // -cp, so an unsorted closure hands AOT a different classpath on two machines holding
-        // identical jars, and a duplicate class resolves differently.
-        out.sort(Comparator.comparing(Path::toString));
-        return out;
-    }
-
     static String joinCp(List<Path> paths) throws IOException {
         for (Path p : paths) {
             // A missing entry silently shortening the classpath is how you get an AOT run that
@@ -267,9 +249,6 @@ public final class MicronautPlugin implements Plugin, BuildExtension {
     }
 
     private static String tail(String output) {
-        if (output == null || output.isBlank()) return "(no output)";
-        String[] lines = output.split("\n");
-        int from = Math.max(0, lines.length - 40);
-        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
+        return output == null || output.isBlank() ? "(no output)" : Processes.lastLines(output, 40);
     }
 }

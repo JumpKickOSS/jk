@@ -301,7 +301,7 @@ public final class QuarkusAugmentMain {
 
         Path destApp = targetDir.resolve("quarkus-app");
         if (Files.isDirectory(destApp)) {
-            deleteTree(destApp);
+            PathUtil.deleteRecursivelyOrThrow(destApp);
         }
         // Promote the layout next to the runner (lib/app/quarkus siblings).
         Path layoutRoot = runJar.getParent();
@@ -407,10 +407,6 @@ public final class QuarkusAugmentMain {
                 from,
                 to,
                 dir -> dir.getFileName() != null && dir.getFileName().toString().startsWith(".jk-"));
-    }
-
-    private static void deleteTree(Path root) throws IOException {
-        PathUtil.deleteRecursivelyOrThrow(root);
     }
 
     private QuarkusAugmentMain() {}

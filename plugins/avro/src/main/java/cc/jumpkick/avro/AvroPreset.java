@@ -2,6 +2,7 @@
 package cc.jumpkick.avro;
 
 import cc.jumpkick.generate.GeneratorEntry;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -9,9 +10,7 @@ import cc.jumpkick.plugin.build.BuildContext;
 import cc.jumpkick.plugin.build.BuildExtension;
 import cc.jumpkick.plugin.build.BuildPluginHarness;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
-import java.net.URISyntaxException;
 import java.nio.file.Path;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,7 +40,8 @@ public final class AvroPreset implements Plugin, BuildExtension {
 
     @Override
     public void build(BuildContext ctx) {
-        ctx.task(entry(ctx.config(), ownJar()).task());
+        ctx.task(entry(ctx.config(), List.of(ToolJars.codeSource(AvroPreset.class)))
+                .task());
     }
 
     /**
@@ -72,18 +72,5 @@ public final class AvroPreset implements Plugin, BuildExtension {
                 classpath,
                 List.of(),
                 null);
-    }
-
-    /** This worker's own jar (or classes directory), which carries {@link AvroMain}. */
-    static List<Path> ownJar() {
-        CodeSource source = AvroPreset.class.getProtectionDomain().getCodeSource();
-        if (source == null || source.getLocation() == null) {
-            throw new IllegalStateException("the avro worker cannot name its own jar for the main's classpath");
-        }
-        try {
-            return List.of(Path.of(source.getLocation().toURI()));
-        } catch (URISyntaxException e) {
-            throw new IllegalStateException("the avro worker's jar has no path: " + source.getLocation(), e);
-        }
     }
 }

@@ -76,10 +76,4 @@ class LocalizerPresetPlanTest {
                         "${module.dir}/src/main/resources",
                         "${module.dir}/src/main/i18n");
     }
-
-    @Test
-    void the_worker_names_its_own_code_source() {
-        assertThat(LocalizerPreset.ownJar()).singleElement().satisfies(p -> assertThat(p)
-                .exists());
-    }
 }

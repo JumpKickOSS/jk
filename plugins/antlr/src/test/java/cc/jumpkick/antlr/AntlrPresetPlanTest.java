@@ -95,12 +95,6 @@ class AntlrPresetPlanTest {
                         "${inputs}");
     }
 
-    @Test
-    void the_worker_names_its_own_code_source() {
-        assertThat(AntlrPreset.ownJar()).singleElement().satisfies(p -> assertThat(p)
-                .exists());
-    }
-
     /** Imported grammars outside src are read by the tool, so their directory is in the key. */
     @Test
     void a_lib_outside_src_is_in_the_key() {

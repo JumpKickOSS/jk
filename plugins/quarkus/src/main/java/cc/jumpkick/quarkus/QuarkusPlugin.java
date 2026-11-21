@@ -5,6 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.PreferIpv4;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.build.BuildContext;
@@ -21,14 +22,10 @@ import cc.jumpkick.plugin.build.TestContext;
 import cc.jumpkick.plugin.build.TestExtension;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -368,15 +365,15 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      */
     private static List<Path> toolClasspath(TaskExec exec) throws IOException {
         List<Path> cp = new ArrayList<>();
-        cp.add(codeSourceOf(QuarkusPlugin.class, "jk-quarkus worker"));
+        cp.add(ToolJars.codeSource(QuarkusPlugin.class));
         // The forked mains parse their offline flag with the engine's host helpers and read the
         // repository routes with the SDK's; both jars are on the plugin's loader, never on a bare
         // fork's classpath.
-        cp.add(codeSourceOf(EnvValues.class, "engine host"));
-        cp.add(codeSourceOf(RepositoryRoute.class, "plugin sdk"));
+        cp.add(ToolJars.codeSource(EnvValues.class));
+        cp.add(ToolJars.codeSource(RepositoryRoute.class));
         Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
         if (Files.isDirectory(tools)) {
-            cp.addAll(jarsIn(tools));
+            cp.addAll(ToolJars.classpath(tools));
         } else if (Files.isRegularFile(tools)) {
             cp.add(tools);
         } else {
@@ -450,14 +447,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         throw new IOException("[quarkus] package must be \"fast-jar\" or \"uber-jar\" (got \"" + raw + "\")");
     }
 
-    private static List<Path> jarsIn(Path dir) throws IOException {
-        List<Path> jars = new ArrayList<>();
-        try (var listing = Files.list(dir)) {
-            listing.filter(f -> f.toString().endsWith(".jar")).sorted().forEach(jars::add);
-        }
-        return jars;
-    }
-
     /** What a fast-jar package lays beside its jar. */
     private static final List<String> FAST_JAR_SIBLINGS = List.of("lib", "app", "quarkus", "quarkus-app");
 
@@ -476,7 +465,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             // directory ships the old layout next to the new runner.
             for (String child : FAST_JAR_SIBLINGS) {
                 Path stale = outJar.resolveSibling(child);
-                if (Files.exists(stale)) deleteTree(stale);
+                if (Files.exists(stale)) PathUtil.deleteRecursivelyOrThrow(stale);
             }
             return;
         }
@@ -493,7 +482,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             if (Files.isDirectory(src)) {
                 Path dest = outJar.resolveSibling(child);
                 if (Files.exists(dest)) {
-                    deleteTree(dest);
+                    PathUtil.deleteRecursivelyOrThrow(dest);
                 }
                 stageTree(src, dest, "lib".equals(child) ? QuarkusPlugin::isJar : rel -> false);
                 io.produced(dest);
@@ -503,7 +492,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         // Canonical quarkus-app/ tree for docs / docker layering.
         Path appDir = outJar.resolveSibling("quarkus-app");
         if (Files.exists(appDir)) {
-            deleteTree(appDir);
+            PathUtil.deleteRecursivelyOrThrow(appDir);
         }
         stageTree(layoutRoot, appDir, rel -> rel.startsWith("lib") && isJar(rel));
         // The run jar's Class-Path needs these siblings — declare them so a packaging
@@ -559,21 +548,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     /**
-     * Where {@code type} was loaded from — a jar, or a classes directory when the worker runs from
-     * a workspace build's own output. Either is a classpath entry for the augment fork.
-     */
-    private static Path codeSourceOf(Class<?> type, String what) throws IOException {
-        try {
-            URI uri = type.getProtectionDomain().getCodeSource().getLocation().toURI();
-            Path p = Path.of(uri);
-            if (!Files.exists(p)) throw new IOException(what + " code source is missing: " + p);
-            return p;
-        } catch (Exception e) {
-            throw new IOException("cannot locate " + what + " code source", e);
-        }
-    }
-
-    /**
      * Lay {@code from} out at {@code to}, leaving out plugin scratch: {@code .jk-*} must not ride
      * into a staged layout. A file {@code link} accepts, by its path relative to {@code from}, is
      * hard-linked where the filesystem allows. That is for dependency jars, which a fast-jar lays out
@@ -590,23 +564,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     private static boolean isJar(Path rel) {
         return rel.getFileName() != null && rel.getFileName().toString().endsWith(".jar");
-    }
-
-    private static void deleteTree(Path root) throws IOException {
-        if (!Files.exists(root)) return;
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Files.deleteIfExists(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                Files.deleteIfExists(dir);
-                return FileVisitResult.CONTINUE;
-            }
-        });
     }
 
     /** How many of the fork's last lines a failure carries; Quarkus's own stack trace fits. */

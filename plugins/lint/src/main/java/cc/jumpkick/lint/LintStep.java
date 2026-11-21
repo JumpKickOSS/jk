@@ -6,6 +6,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DeterministicProperties;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
@@ -75,10 +76,10 @@ final class LintStep {
             Files.writeString(report, "");
             return;
         }
-        List<Path> classpath = new ArrayList<>(toolClasspath(exec.requireExtra(extra(tool.id(), run))));
+        List<Path> classpath = new ArrayList<>(ToolJars.classpath(exec.requireExtra(extra(tool.id(), run))));
         if (tool == LintTool.CHECKSTYLE) {
             Optional<Path> jars = exec.extra(extra("checkstyle-classpath", run));
-            if (jars.isPresent()) classpath.addAll(toolClasspath(jars.get()));
+            if (jars.isPresent()) classpath.addAll(ToolJars.classpath(jars.get()));
         }
         String missing = missingConfiguration(tool, exec.moduleDir(), config, classpath);
         if (missing != null) {
@@ -420,19 +421,9 @@ final class LintStep {
     /** The detector jars under {@code plugins} as SpotBugs's {@code -pluginList} spells them: a path list. */
     private static String pluginList(Path plugins) {
         try {
-            return Classpaths.join(toolClasspath(plugins));
+            return Classpaths.join(ToolJars.classpath(plugins));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    static List<Path> toolClasspath(Path tool) throws IOException {
-        if (!Files.isDirectory(tool)) return List.of(tool);
-        List<Path> jars = new ArrayList<>();
-        PathUtil.forEachRegularFile(tool, (file, attrs) -> {
-            if (file.getFileName().toString().endsWith(".jar")) jars.add(file);
-        });
-        jars.sort(null);
-        return List.copyOf(jars);
     }
 }

@@ -24,7 +24,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -402,8 +401,6 @@ public final class AotCachePackage {
 
     /** The last ~25 lines — JVM/App startup logs are long; the failure is at the bottom. */
     private static String tail(String output) {
-        String[] lines = output.split("\n");
-        int from = Math.max(0, lines.length - 25);
-        return String.join("\n", Arrays.copyOfRange(lines, from, lines.length));
+        return Processes.lastLines(output, 25);
     }
 }

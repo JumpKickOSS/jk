@@ -3,6 +3,7 @@ package cc.jumpkick.minified;
 
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.host.TreeContent;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
@@ -53,30 +54,6 @@ final class MinifiedJarPackager {
 
     private MinifiedJarPackager() {}
 
-    /** Alias every extensionless jar as {@code .jar} under {@code work} (R8 judges by extension). */
-    private static List<Path> jarSuffixed(Path work, List<Path> jars) throws IOException {
-        List<Path> out = new ArrayList<>(jars.size());
-        Path dir = null;
-        int i = 0;
-        for (Path jar : jars) {
-            String name = jar.getFileName().toString();
-            if (name.endsWith(".jar") || name.endsWith(".zip")) {
-                out.add(jar);
-            } else {
-                if (dir == null) dir = Files.createDirectories(work.resolve("rt-jars"));
-                Path alias = dir.resolve("rt-" + i + "-" + name + ".jar");
-                try {
-                    Files.createLink(alias, jar);
-                } catch (IOException | UnsupportedOperationException e) {
-                    Files.copy(jar, alias);
-                }
-                out.add(alias);
-            }
-            i++;
-        }
-        return out;
-    }
-
     static void produce(PackageIo io) throws Exception {
         String mainClass = io.project().mainClass();
         if (mainClass != null && mainClass.isBlank()) mainClass = null;
@@ -93,7 +70,7 @@ final class MinifiedJarPackager {
                 if (entry.jar() != null) program.add(entry.jar());
             }
             // R8 judges program inputs by extension — alias any extensionless path as .jar.
-            program = jarSuffixed(work, program);
+            program = ToolJars.jarSuffixed(work.resolve("rt-jars"), program);
 
             boolean obfuscate = io.config().bool("obfuscate", false);
             Path rules = work.resolve("keep.pro");

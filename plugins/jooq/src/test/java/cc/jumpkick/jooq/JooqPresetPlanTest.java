@@ -125,10 +125,4 @@ class JooqPresetPlanTest {
         assertThat(probe.secretEnv()).containsExactly(Map.entry("JK_JOOQ_JDBC_PASSWORD", "jdbc-password"));
         assertThat(entry.task().keyProbe()).isEqualTo(probe);
     }
-
-    @Test
-    void the_worker_names_its_own_code_source() {
-        assertThat(JooqPreset.ownJar()).singleElement().satisfies(p -> assertThat(p)
-                .exists());
-    }
 }

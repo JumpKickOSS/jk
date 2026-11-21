@@ -2,15 +2,14 @@
 package cc.jumpkick.helidon;
 
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import io.helidon.service.maven.plugin.JkCreateApplication;
 import java.io.IOException;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -125,8 +124,9 @@ final class HelidonBinding {
         if (settings.validate()) args.add("--validate");
         if (settings.failOnWarning()) args.add("--fail-on-warning");
 
-        List<Path> toolClasspath = new ArrayList<>(ownJar());
-        toolClasspath.addAll(toolClasspath(exec.requireExtra(TOOL)));
+        List<Path> toolClasspath = new ArrayList<>();
+        toolClasspath.add(ToolJars.codeSource(HelidonBinding.class));
+        toolClasspath.addAll(ToolJars.classpath(exec.requireExtra(TOOL)));
         Report report = new Report();
         int exit = exec
                 .java()
@@ -236,29 +236,5 @@ final class HelidonBinding {
         List<String> args = new ArrayList<>();
         for (Path root : roots) args.addAll(List.of(flag, root.toString()));
         return args;
-    }
-
-    /** The fetched tool as a classpath: the jar itself, or every jar of its materialized closure. */
-    static List<Path> toolClasspath(Path tool) throws IOException {
-        if (!Files.isDirectory(tool)) return List.of(tool);
-        List<Path> jars = new ArrayList<>();
-        PathUtil.forEachRegularFile(tool, (file, attrs) -> {
-            if (file.getFileName().toString().endsWith(".jar")) jars.add(file);
-        });
-        jars.sort(null);
-        return List.copyOf(jars);
-    }
-
-    /** This worker's own jar (or classes directory), which carries {@link JkCreateApplication}. */
-    static List<Path> ownJar() {
-        CodeSource source = HelidonBinding.class.getProtectionDomain().getCodeSource();
-        if (source == null || source.getLocation() == null) {
-            throw new IllegalStateException("the helidon worker cannot name its own jar for the binding fork");
-        }
-        try {
-            return List.of(Path.of(source.getLocation().toURI()));
-        } catch (URISyntaxException e) {
-            throw new IllegalStateException("the helidon worker's jar has no path: " + source.getLocation(), e);
-        }
     }
 }

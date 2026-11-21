@@ -442,7 +442,6 @@ public final class JlinkImage {
     }
 
     private static String tail(String text) {
-        String[] lines = text.strip().split("\n");
-        return "  " + String.join("\n  ", Arrays.asList(lines).subList(Math.max(0, lines.length - 15), lines.length));
+        return "  " + Processes.lastLines(text.strip(), 15).replace("\n", "\n  ");
     }
 }

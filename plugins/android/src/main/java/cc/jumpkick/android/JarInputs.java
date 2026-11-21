@@ -2,10 +2,10 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.Linking;
+import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -25,20 +25,7 @@ final class JarInputs {
 
     /** Alias every extensionless jar in {@code jars} as {@code .jar}; pass suffixed ones through. */
     static List<Path> jarSuffixed(TaskExec exec, List<Path> jars) throws IOException {
-        List<Path> out = new ArrayList<>(jars.size());
-        Path dir = null;
-        int i = 0;
-        for (Path jar : jars) {
-            String name = jar.getFileName().toString();
-            if (name.endsWith(".jar") || name.endsWith(".zip")) {
-                out.add(jar);
-            } else {
-                if (dir == null) dir = exec.privateDir("rt-jars");
-                out.add(linkOrCopy(jar, dir.resolve("rt-" + i + "-" + name + ".jar")));
-            }
-            i++;
-        }
-        return out;
+        return ToolJars.jarSuffixed(exec.privateDir("rt-jars"), jars);
     }
 
     private static Path linkOrCopy(Path source, Path alias) throws IOException {

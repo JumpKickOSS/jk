@@ -61,10 +61,4 @@ class TaglibPresetPlanTest {
                         "${module.dir}/src/main/resources",
                         "${module.dir}/src/filter/resources");
     }
-
-    @Test
-    void the_worker_names_its_own_code_source() {
-        assertThat(TaglibPreset.ownJar()).singleElement().satisfies(p -> assertThat(p)
-                .exists());
-    }
 }
