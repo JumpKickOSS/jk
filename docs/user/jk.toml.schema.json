@@ -267,11 +267,122 @@
     },
     "image": {
       "type": "object",
-      "description": "[image] table; keys are documented in docs/user."
+      "description": "[image] table: what jk image builds and where it pushes. A member's table sits over the workspace root's, which sits over ~/.jk/config.toml's. Keys are documented in docs/user/images.md.",
+      "properties": {
+        "base": {
+          "type": "string",
+          "description": "Base image reference; {java-major-version} is the module's java. Default: a slim JRE of the module's java."
+        },
+        "name": {
+          "type": "string",
+          "description": "Image repository. Default the module's artifact id. Never inherited from the workspace root."
+        },
+        "user": {
+          "type": "string",
+          "description": "The user the container runs as."
+        },
+        "ports": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 65535 },
+          "description": "Ports the image exposes. Never inherited from the workspace root."
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "Environment of the image, and of its AOT training runs. JAVA_OPTS is the JVM-flag hook: its tokens lead the entrypoint."
+        },
+        "training-env": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "Environment of the AOT training runs alone, laid over env; never in the image."
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "description": "OCI labels on the image."
+        },
+        "registry": {
+          "type": "string",
+          "description": "Push target (\"ghcr.io/acme\"). Default: load into the local daemon."
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag. Default the module version."
+        },
+        "platforms": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "OS/architecture pairs to build for (\"linux/amd64\", \"linux/arm64\")."
+        },
+        "main": {
+          "type": "string",
+          "description": "Main class the entrypoint runs. Default the module's main. Never inherited from the workspace root."
+        },
+        "docker-executable": {
+          "type": "string",
+          "description": "The docker-compatible CLI (docker, podman, nerdctl) for Dockerfile mode and container training."
+        },
+        "docker-file": {
+          "type": "string",
+          "description": "Module-relative Dockerfile; builds with docker build instead of the daemonless builder. Never inherited from the workspace root."
+        },
+        "aot-cache": {
+          "type": "boolean",
+          "description": "Train a JVM AOT cache into the image. Refused on a node module."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["static"],
+          "description": "\"static\" serves a node build's output from nginx. Omit for the module's own image."
+        }
+      },
+      "additionalProperties": false
     },
     "train": {
       "type": "object",
-      "description": "[train] table; keys are documented in docs/user."
+      "description": "[train] table: what jk train runs to record the application's reflection, resource and proxy use. Keys are documented in docs/user/dynamic-surface.md.",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Command that exercises the application under the tracing agent. Default: the tests tagged train."
+        },
+        "commit-to": {
+          "type": "string",
+          "description": "Module-relative directory the merged training output is copied to, for committing. Must stay under the module."
+        },
+        "require-fresh": {
+          "type": "boolean",
+          "description": "Fail a build whose training output is missing or out of date instead of using it. Default false."
+        },
+        "aot-cache": {
+          "type": "boolean",
+          "description": "Also write a JVM AOT cache from the training run. Default false."
+        },
+        "profile": {
+          "type": "array",
+          "description": "[[train.profile]]: training runs whose results are unioned. Default: one profile named default.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "description": "The profile's name; jk train --profile selects it." },
+              "env": {
+                "type": "object",
+                "additionalProperties": { "type": ["string", "number", "boolean"] },
+                "description": "Environment of this profile's run."
+              },
+              "properties": {
+                "type": "object",
+                "additionalProperties": { "type": ["string", "number", "boolean"] },
+                "description": "System properties of this profile's run."
+              },
+              "args": { "type": "array", "items": { "type": "string" }, "description": "Program arguments of this profile's run." }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "build": {
       "type": "object",
@@ -332,12 +443,50 @@
     },
     "test": {
       "type": "object",
-      "description": "[test] table; keys are documented in docs/user.",
+      "description": "[test] table: how this module's tests compile and run. Keys are documented in docs/user/test.md.",
       "properties": {
         "workers": {
           "type": "integer",
           "minimum": 0,
           "description": "Test JVMs for this module: 0 = the build's auto share, 1 = serial."
+        },
+        "extra-src": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Extra module-relative test source roots or single files, compiled into whichever suites are selected. Helpers a sibling consumes belong in fixtures."
+        },
+        "fixtures": {
+          "type": ["boolean", "string"],
+          "description": "A source root compiled to target/test-fixtures/classes, on every suite's classpath and never an artifact. true is src/fixtures/java; a string names the module-relative root."
+        },
+        "serial-tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Class-level JUnit tags whose classes run on one trailing worker instead of sharing the sharded pool. A no-op when workers is 1."
+        },
+        "coverage": {
+          "type": "boolean",
+          "description": "Every test JVM of this module runs under the JaCoCo agent and the module leaves its coverage report, as jk test -T does. Default false."
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "pattern": "^[^/\\\\]+$" },
+          "description": "External executables the tests run, by the bare name they invoke (a path is refused). Where each resolves on PATH and its --version are run-tests inputs."
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string", "pattern": "^[^=$]+$" },
+              { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } }
+            ]
+          },
+          "description": "Environment of each forked test JVM: a bare name forwards the caller's value when set; a table sets values (${VAR}, ${module} and ${target} expand). Laid over [env] for test JVMs. A run-tests input."
+        },
+        "guard-suites": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The suites jk test -g runs, read from the workspace root. Default [\"test\", \"integration\"]."
         },
         "assertions": {
           "type": "boolean",
@@ -450,7 +599,8 @@
             "additionalProperties": false
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "dev": {
       "type": "object",
@@ -533,7 +683,42 @@
     },
     "deny": {
       "type": "object",
-      "description": "[deny] table; keys are documented in docs/user."
+      "description": "[deny] table: the policy jk deny checks the lock against. Keys are documented in docs/user/publish.md.",
+      "properties": {
+        "sources": {
+          "type": "object",
+          "properties": {
+            "deny": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Repository hosts no locked artifact may come from; a host matches exactly or as a DNS-label suffix."
+            }
+          },
+          "additionalProperties": false
+        },
+        "licenses": {
+          "type": "object",
+          "properties": {
+            "deny": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "SPDX id globs; a row whose every licence matches is refused."
+            },
+            "allow": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "SPDX id globs; a row needs one licence that matches."
+            }
+          },
+          "additionalProperties": false
+        },
+        "yanked": {
+          "type": "string",
+          "enum": ["allow"],
+          "description": "The yanked policy. Only \"allow\" is accepted until enforcement ships."
+        }
+      },
+      "additionalProperties": false
     },
     "env": {
       "type": "object",

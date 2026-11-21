@@ -452,7 +452,7 @@ final class ManifestBuildTable {
     }
 
     /** The keys a {@code [test.suites.<name>]} table may carry, in the order errors list them. */
-    private static final List<String> SUITE_KEYS = List.of(
+    static final List<String> SUITE_KEYS = List.of(
             "classes",
             "tags",
             "exclude-classes",

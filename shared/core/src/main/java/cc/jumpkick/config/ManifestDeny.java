@@ -23,6 +23,10 @@ final class ManifestDeny {
 
     static final List<String> KEYS = List.of("sources", "licenses", "yanked");
 
+    static final List<String> SOURCES_KEYS = List.of("deny");
+
+    static final List<String> LICENSES_KEYS = List.of("deny", "allow");
+
     private ManifestDeny() {}
 
     static DenyPolicy parse(TomlTable root) {
@@ -30,9 +34,9 @@ final class ManifestDeny {
         if (deny == null) return DenyPolicy.permissive();
         rejectUnknownKeys(deny, KEYS, "[deny]");
         TomlTable sourcesTable = optionalTable(deny, "sources", "deny.sources");
-        if (sourcesTable != null) rejectUnknownKeys(sourcesTable, List.of("deny"), "[deny.sources]");
+        if (sourcesTable != null) rejectUnknownKeys(sourcesTable, SOURCES_KEYS, "[deny.sources]");
         TomlTable licensesTable = optionalTable(deny, "licenses", "deny.licenses");
-        if (licensesTable != null) rejectUnknownKeys(licensesTable, List.of("deny", "allow"), "[deny.licenses]");
+        if (licensesTable != null) rejectUnknownKeys(licensesTable, LICENSES_KEYS, "[deny.licenses]");
         List<String> sources = optionalStringList(sourcesTable, "deny", "[deny.sources] deny");
         List<String> deniedLicenses = optionalStringList(licensesTable, "deny", "[deny.licenses] deny");
         List<String> allowedLicenses = optionalStringList(licensesTable, "allow", "[deny.licenses] allow");

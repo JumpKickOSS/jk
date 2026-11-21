@@ -196,6 +196,58 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void test_properties_are_exactly_the_parser_s_test_keys() throws Exception {
+        String test = topLevel("test");
+        assertThat(keysOf(table(test, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestBuildTable.TEST_KEYS);
+        String suite = table(table(table(test, "properties"), "suites"), "additionalProperties");
+        assertThat(keysOf(table(suite, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestBuildTable.SUITE_KEYS);
+        assertThat(ownAdditionalProperties(test))
+                .as("an unknown key under [test] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
+    void image_properties_are_exactly_the_parser_s_image_keys() throws Exception {
+        String image = topLevel("image");
+        assertThat(keysOf(table(image, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestImage.KEYS);
+        assertThat(ownAdditionalProperties(image))
+                .as("an unknown key under [image] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
+    void train_properties_are_exactly_the_parser_s_train_keys() throws Exception {
+        String train = topLevel("train");
+        assertThat(keysOf(table(train, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestTrain.KEYS);
+        String profile = table(table(table(train, "properties"), "profile"), "items");
+        assertThat(keysOf(table(profile, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestTrain.PROFILE_KEYS);
+        assertThat(ownAdditionalProperties(profile))
+                .as("an unknown key on a [[train.profile]] entry is what an editor should flag")
+                .isFalse();
+        assertThat(ownAdditionalProperties(train))
+                .as("an unknown key under [train] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
+    void deny_properties_are_exactly_the_parser_s_deny_keys() throws Exception {
+        String deny = topLevel("deny");
+        assertThat(keysOf(table(deny, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestDeny.KEYS);
+        String sources = table(table(deny, "properties"), "sources");
+        assertThat(keysOf(table(sources, "properties"))).containsExactlyInAnyOrderElementsOf(ManifestDeny.SOURCES_KEYS);
+        assertThat(ownAdditionalProperties(sources)).isFalse();
+        String licenses = table(table(deny, "properties"), "licenses");
+        assertThat(keysOf(table(licenses, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestDeny.LICENSES_KEYS);
+        assertThat(ownAdditionalProperties(licenses)).isFalse();
+        assertThat(ownAdditionalProperties(deny))
+                .as("an unknown key under [deny] is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {
@@ -205,7 +257,34 @@ class JkTomlSchemaTest {
         }
     }
 
-    /** Keys of one JSON object: the names at brace depth one, in order. */
+    /** The top-level table {@code key} by position, not by its first textual match anywhere in the schema. */
+    private static String topLevel(String key) throws Exception {
+        return requireNonNull(memberOf(table(Files.readString(SCHEMA), "properties"), key), key);
+    }
+
+    /**
+     * The object's own {@code additionalProperties}, read at brace depth one so a nested table's
+     * cannot answer for it. Absent, or not a boolean, reads as JSON Schema's default: open.
+     */
+    private static boolean ownAdditionalProperties(String object) {
+        int depth = 0;
+        for (int i = 0; i < object.length(); i++) {
+            char c = object.charAt(i);
+            if (c == '"') {
+                int end = i + 1;
+                while (object.charAt(end) != '"') end += object.charAt(end) == '\\' ? 2 : 1;
+                if (depth == 1 && object.substring(i + 1, end).equals("additionalProperties")) {
+                    String rest = object.substring(end + 1).stripLeading();
+                    return !(rest.startsWith(":")
+                            && rest.substring(1).stripLeading().startsWith("false"));
+                }
+                i = end;
+            } else if (c == '{' || c == '[') depth++;
+            else if (c == '}' || c == ']') depth--;
+        }
+        return true;
+    }
+
     /** The nested object the schema is expected to carry; its absence fails the test that reads it. */
     private static String table(String json, String key) {
         return requireNonNull(Jsonl.nested(json, key), key);
@@ -266,6 +345,7 @@ class JkTomlSchemaTest {
         return null;
     }
 
+    /** Keys of one JSON object: the names at brace depth one, in order. */
     private static List<String> keysOf(String object) {
         List<String> keys = new ArrayList<>();
         int depth = 0;
