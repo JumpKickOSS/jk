@@ -233,7 +233,8 @@ public final class AffectedTestRanker {
 
         List<Scored> scored = new ArrayList<>();
         for (TestClassIndex.Entry t : in.tests() == null ? List.<TestClassIndex.Entry>of() : in.tests()) {
-            if (!tagOk(t.tags(), include, exclude)) continue;
+            // A helper or fixture under the test root runs no test: never a candidate.
+            if (!t.runsTests() || !tagOk(t.tags(), include, exclude)) continue;
             int score = 0;
             String reason = "";
             if (dirtyTestClasses.contains(t.className())) {

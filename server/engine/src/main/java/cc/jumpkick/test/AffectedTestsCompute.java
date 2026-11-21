@@ -274,7 +274,7 @@ public final class AffectedTestsCompute {
                         out.putIfAbsent(
                                 fqc,
                                 new TestClassIndex.Entry(
-                                        fqc, Set.of(), Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc)));
+                                        fqc, Set.of(), Set.of(), Set.of(), TestClassIndex.nameMatchSimple(fqc), true));
                     }
                 });
             }

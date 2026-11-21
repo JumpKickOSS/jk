@@ -175,7 +175,7 @@ class AffectedTestsComputeConeTest {
         mv.visitEnd();
     }
 
-    /** {@code com.acme.app.BarTest} holding a {@code Foo} field — an importer of the changed type. */
+    /** {@code com.acme.app.BarTest} holding a {@code Foo} field and one test — an importer of the changed type. */
     private static byte[] barTestClass(@Nullable String tag) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "com/acme/app/BarTest", null, "java/lang/Object", null);
@@ -186,6 +186,12 @@ class AffectedTestsComputeConeTest {
         }
         FieldVisitor fv = cw.visitField(Opcodes.ACC_PUBLIC, "foo", "Lcom/acme/lib/Foo;", null, null);
         fv.visitEnd();
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "reads", "()V", null, null);
+        mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
+        mv.visitCode();
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 1);
+        mv.visitEnd();
         cw.visitEnd();
         return cw.toByteArray();
     }

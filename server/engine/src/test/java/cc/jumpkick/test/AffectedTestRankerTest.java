@@ -22,7 +22,7 @@ class AffectedTestRankerTest {
         var foo = new ClassAbi.Fingerprint("api");
         var fooNow = new ClassAbi.Fingerprint("api");
         TestClassIndex.Entry test =
-                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Foo");
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Foo", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),
                 "com.acme:api",
@@ -45,9 +45,9 @@ class AffectedTestRankerTest {
         var prev = new ClassAbi.Fingerprint("api1");
         var now = new ClassAbi.Fingerprint("api2");
         TestClassIndex.Entry importer =
-                new TestClassIndex.Entry("com.acme.BarTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Bar");
+                new TestClassIndex.Entry("com.acme.BarTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Bar", true);
         TestClassIndex.Entry other =
-                new TestClassIndex.Entry("com.acme.BazTest", Set.of("com.acme.Baz"), Set.of(), Set.of(), "Baz");
+                new TestClassIndex.Entry("com.acme.BazTest", Set.of("com.acme.Baz"), Set.of(), Set.of(), "Baz", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),
                 "com.acme:api",
@@ -69,7 +69,7 @@ class AffectedTestRankerTest {
         var foo = new ClassAbi.Fingerprint("a");
         var fooNow = new ClassAbi.Fingerprint("a");
         TestClassIndex.Entry slow = new TestClassIndex.Entry(
-                "com.acme.FooTest", Set.of("com.acme.Foo"), Set.of("slow"), Set.of("slow"), "Foo");
+                "com.acme.FooTest", Set.of("com.acme.Foo"), Set.of("slow"), Set.of("slow"), "Foo", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),
                 "com.acme:api",
@@ -116,7 +116,7 @@ class AffectedTestRankerTest {
     @Test
     void dirty_main_in_test_package_name_matches_not_test_src() {
         TestClassIndex.Entry test =
-                new TestClassIndex.Entry("cc.jumpkick.test.FooTest", Set.of(), Set.of(), Set.of(), "Foo");
+                new TestClassIndex.Entry("cc.jumpkick.test.FooTest", Set.of(), Set.of(), Set.of(), "Foo", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/engine"),
                 "cc.jumpkick:engine",
@@ -137,7 +137,8 @@ class AffectedTestRankerTest {
 
     @Test
     void dirty_test_source_ranks_through_its_entry() {
-        TestClassIndex.Entry test = new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), Set.of(), "Foo");
+        TestClassIndex.Entry test =
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), Set.of(), "Foo", true);
         AffectedTests r = rankDirtyTest(TestSelection.DEFAULT, List.of(test));
         assertThat(r.refused()).isFalse();
         assertThat(r.classNames()).containsExactly("com.acme.FooTest");
@@ -154,9 +155,18 @@ class AffectedTestRankerTest {
     }
 
     @Test
+    void dirty_test_source_of_a_class_with_no_tests_is_not_ranked() {
+        TestClassIndex.Entry helper =
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), Set.of(), "Foo", false);
+        AffectedTests r = rankDirtyTest(TestSelection.DEFAULT, List.of(helper));
+        assertThat(r.refused()).isFalse();
+        assertThat(r.ranked()).isEmpty();
+    }
+
+    @Test
     void dirty_test_source_an_excluded_tag_drops_is_not_ranked() {
         TestClassIndex.Entry slow = new TestClassIndex.Entry(
-                "com.acme.FooTest", Set.of(), Set.of("integration"), Set.of("integration"), "Foo");
+                "com.acme.FooTest", Set.of(), Set.of("integration"), Set.of("integration"), "Foo", true);
         AffectedTests r =
                 rankDirtyTest(TestSelection.of(List.of(), false, List.of(), List.of("integration")), List.of(slow));
         assertThat(r.refused()).isFalse();
@@ -180,7 +190,8 @@ class AffectedTestRankerTest {
 
     @Test
     void dirty_main_name_matches_source_test_without_class_files() {
-        TestClassIndex.Entry test = new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), Set.of(), "Foo");
+        TestClassIndex.Entry test =
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of(), Set.of(), Set.of(), "Foo", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),
                 "com.acme:api",
@@ -201,8 +212,8 @@ class AffectedTestRankerTest {
     void foreign_abi_change_ranks_a_dependents_importer() {
         // Module B is a clean dependent: no local dirty paths, but its test imports a type
         // module A classified as ABI-changed.
-        TestClassIndex.Entry importer =
-                new TestClassIndex.Entry("com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), Set.of(), "Bar");
+        TestClassIndex.Entry importer = new TestClassIndex.Entry(
+                "com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), Set.of(), "Bar", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/b"),
                 "com.acme:b",
@@ -225,8 +236,8 @@ class AffectedTestRankerTest {
 
     @Test
     void foreign_body_change_ranks_importer_at_body_import() {
-        TestClassIndex.Entry importer =
-                new TestClassIndex.Entry("com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), Set.of(), "Bar");
+        TestClassIndex.Entry importer = new TestClassIndex.Entry(
+                "com.acme.b.BarTest", Set.of("com.acme.a.Foo"), Set.of(), Set.of(), "Bar", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/b"),
                 "com.acme:b",
@@ -247,7 +258,7 @@ class AffectedTestRankerTest {
     @Test
     void foreign_change_name_matches_a_dependents_test() {
         TestClassIndex.Entry named =
-                new TestClassIndex.Entry("com.acme.b.FooTest", Set.of(), Set.of(), Set.of(), "Foo");
+                new TestClassIndex.Entry("com.acme.b.FooTest", Set.of(), Set.of(), Set.of(), "Foo", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/b"),
                 "com.acme:b",
@@ -270,7 +281,7 @@ class AffectedTestRankerTest {
         var prev = new ClassAbi.Fingerprint("api1");
         var now = new ClassAbi.Fingerprint("api1");
         TestClassIndex.Entry test =
-                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Foo");
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Foo", true);
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),
                 "com.acme:api",
@@ -301,7 +312,7 @@ class AffectedTestRankerTest {
         Files.createDirectories(module.resolve("test/src/com/acme"));
 
         TestClassIndex.Entry test =
-                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Foo");
+                new TestClassIndex.Entry("com.acme.FooTest", Set.of("com.acme.Foo"), Set.of(), Set.of(), "Foo", true);
         var prev = new ClassAbi.Fingerprint("api");
         var now = new ClassAbi.Fingerprint("api");
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
@@ -353,7 +364,7 @@ class AffectedTestRankerTest {
         List<TestClassIndex.Entry> tests = new ArrayList<>();
         for (int i = 0; i < 25; i++) {
             tests.add(new TestClassIndex.Entry(
-                    "com.acme.T" + i + "Test", Set.of("com.acme.Foo"), Set.of(), Set.of(), "T" + i));
+                    "com.acme.T" + i + "Test", Set.of("com.acme.Foo"), Set.of(), Set.of(), "T" + i, true));
         }
         AffectedTests r = AffectedTestRanker.rank(new AffectedTestRanker.Inputs(
                 Path.of("/ws/api"),

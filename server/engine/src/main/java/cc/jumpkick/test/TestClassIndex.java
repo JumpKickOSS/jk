@@ -51,10 +51,17 @@ public final class TestClassIndex {
 
     /**
      * One compiled test class: {@code tags} every JUnit tag on it, its fields and its methods, and
-     * {@code classTags} those on the class itself, which every test in it inherits.
+     * {@code classTags} those on the class itself, which every test in it inherits. {@code runsTests}
+     * is false for a helper or fixture JUnit would find no test in; true when it would, or when a
+     * type it depends on could not be read.
      */
     public record Entry(
-            String className, Set<String> imports, Set<String> tags, Set<String> classTags, String nameMatchSimple) {}
+            String className,
+            Set<String> imports,
+            Set<String> tags,
+            Set<String> classTags,
+            String nameMatchSimple,
+            boolean runsTests) {}
 
     /**
      * The classes under {@code testClassesDir}, a type outside the tree (a sibling module's or
@@ -94,6 +101,7 @@ public final class TestClassIndex {
      */
     private record Raw(
             String name,
+            int access,
             List<String> supertypes,
             Set<String> classTags,
             Set<String> classAnnotations,
@@ -124,7 +132,14 @@ public final class TestClassIndex {
             for (FieldFacts f : c.fields()) annotationsOf(f.annotations(), memberTags, memberAnnotations);
             for (MethodFacts m : c.methods()) annotationsOf(m.annotations(), memberTags, memberAnnotations);
             raws.add(new Raw(
-                    c.binaryName(), supertypes, classTags, classAnnotations, memberTags, memberAnnotations, refs));
+                    c.binaryName(),
+                    c.access(),
+                    supertypes,
+                    classTags,
+                    classAnnotations,
+                    memberTags,
+                    memberAnnotations,
+                    refs));
         }
         return resolve(raws, productionFqcs, classpath);
     }
@@ -188,10 +203,108 @@ public final class TestClassIndex {
                 if (productionFqcs.contains(ref)) imports.add(ref);
             }
             out.add(new Entry(
-                    r.name(), Set.copyOf(imports), Set.copyOf(tags), Set.copyOf(classTags), nameMatchSimple(r.name())));
+                    r.name(),
+                    Set.copyOf(imports),
+                    Set.copyOf(tags),
+                    Set.copyOf(classTags),
+                    nameMatchSimple(r.name()),
+                    runsTests(r, nested.getOrDefault(r.name(), List.of()), types)));
         }
         return List.copyOf(out);
     }
+
+    /**
+     * Whether the JUnit Platform would find tests in top-level class {@code r}: it is concrete, and
+     * it, a supertype or a nested class declares a test method or test annotation, or extends a
+     * specification base. The rule the test runner applies to a class discovery dropped.
+     */
+    private static boolean runsTests(Raw r, List<Raw> nested, Types types) {
+        if ((r.access() & (Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT | Opcodes.ACC_ANNOTATION)) != 0) return false;
+        if (declaresTests(r, types)) return true;
+        for (Raw inner : nested) {
+            if (declaresTests(inner, types)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True when {@code r} or a supertype wears a test annotation, on itself or a member, or extends
+     * a specification base. A type that cannot be read counts as one that might, unless it is a
+     * platform type, so a test is never dropped on a guess.
+     */
+    private static boolean declaresTests(Raw r, Types types) {
+        Set<String> seen = new HashSet<>();
+        ArrayDeque<Raw> todo = new ArrayDeque<>(List.of(r));
+        while (!todo.isEmpty()) {
+            Raw at = todo.poll();
+            if (!seen.add(at.name())) continue;
+            for (String a : at.classAnnotations()) {
+                if (testAnnotation(a, types, new HashSet<>())) return true;
+            }
+            for (String a : at.memberAnnotations()) {
+                if (testAnnotation(a, types, new HashSet<>())) return true;
+            }
+            for (String s : at.supertypes()) {
+                if (TEST_BASES.contains(s) || s.startsWith(KOTEST_SPECS)) return true;
+                Raw sup = types.get(s);
+                if (sup != null) todo.add(sup);
+                else if (!platformType(s)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when annotation {@code type} is a test annotation or is composed of one. */
+    private static boolean testAnnotation(String type, Types types, Set<String> seen) {
+        if (TEST_ANNOTATIONS.contains(type)) return true;
+        if (!seen.add(type)) return false;
+        Raw annotation = types.get(type);
+        if (annotation == null) return !platformType(type);
+        for (String a : annotation.classAnnotations()) {
+            if (testAnnotation(a, types, seen)) return true;
+        }
+        return false;
+    }
+
+    /** A type from a namespace that defines no test annotation or test base beyond the lists here. */
+    private static boolean platformType(String name) {
+        for (String prefix : PLATFORM_PACKAGES) {
+            if (name.startsWith(prefix)) return true;
+        }
+        return false;
+    }
+
+    /** Annotations that make a class a test class when it, a member or a composed annotation wears one. */
+    private static final Set<String> TEST_ANNOTATIONS = Set.of(
+            "org.junit.jupiter.api.Test",
+            "org.junit.jupiter.api.RepeatedTest",
+            "org.junit.jupiter.api.TestFactory",
+            "org.junit.jupiter.api.TestTemplate",
+            "org.junit.jupiter.api.ClassTemplate",
+            "org.junit.jupiter.params.ParameterizedTest",
+            "org.junit.jupiter.params.ParameterizedClass",
+            "org.junit.platform.commons.annotation.Testable",
+            "org.junit.platform.suite.api.Suite",
+            "org.junit.Test",
+            "org.junit.runner.RunWith",
+            "org.testng.annotations.Test");
+
+    /** Supertypes whose concrete subclasses are specifications with no test annotation of their own. */
+    private static final Set<String> TEST_BASES = Set.of("spock.lang.Specification", "junit.framework.TestCase");
+
+    /** Kotest's spec styles all live under this package. */
+    private static final String KOTEST_SPECS = "io.kotest.core.spec.";
+
+    private static final List<String> PLATFORM_PACKAGES = List.of(
+            "java.",
+            "javax.",
+            "jdk.",
+            "kotlin.",
+            "groovy.",
+            "scala.",
+            "org.junit.",
+            "org.jetbrains.annotations.",
+            "org.jspecify.");
 
     /**
      * The tags every test of {@code r} carries: on it and on its superclasses and interfaces, each
@@ -442,6 +555,8 @@ public final class TestClassIndex {
         @Nullable
         String className;
 
+        int access;
+
         /** Its superclass, then its interfaces, by binary name. */
         final List<String> supertypes = new ArrayList<>();
 
@@ -462,6 +577,7 @@ public final class TestClassIndex {
         Raw raw(String name) {
             return new Raw(
                     name,
+                    access,
                     List.copyOf(supertypes),
                     classTags,
                     classAnnotations,
@@ -474,6 +590,7 @@ public final class TestClassIndex {
         public void visit(
                 int version, int access, String name, String signature, String superName, String[] interfaces) {
             className = Type.getObjectType(name).getClassName();
+            this.access = access;
             if (superName != null) supertypes.add(Type.getObjectType(superName).getClassName());
             if (interfaces != null) {
                 for (String i : interfaces) supertypes.add(Type.getObjectType(i).getClassName());
