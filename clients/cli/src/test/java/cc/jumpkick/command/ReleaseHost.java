@@ -17,6 +17,8 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -27,59 +29,57 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 
 /**
- * A release host on loopback: HTTPS under a self-signed certificate keytool makes for
- * 127.0.0.1, serving {@code root} under {@code /files/} and answering 302 with the Location
+ * A release host on loopback: HTTPS under a certificate for 127.0.0.1 that keytool issues from a
+ * CA of its own, serving {@code root} under {@code /files/} and answering 302 with the Location
  * {@link #redirect} gave a path. Beside it a plain HTTP server that only counts requests and
- * answers 404.
+ * answers 404. A client trusts the host by its certificate's {@link #thumbprint}, or by the CA in
+ * {@link #certificate}: curl on OpenSSL takes a CA as a trust anchor, not a self-signed server
+ * certificate.
  */
 final class ReleaseHost implements AutoCloseable {
     final HttpsServer https;
     final HttpServer http;
     final String thumbprint;
+    final Path certificate;
     final AtomicInteger plainRequests = new AtomicInteger();
     final Map<String, String> redirects = new ConcurrentHashMap<>();
 
-    private ReleaseHost(HttpsServer https, HttpServer http, String thumbprint) {
+    private ReleaseHost(HttpsServer https, HttpServer http, String thumbprint, Path certificate) {
         this.https = https;
         this.http = http;
         this.thumbprint = thumbprint;
+        this.certificate = certificate;
     }
 
     static ReleaseHost start(Path root, Path tmp) throws Exception {
         Path store = Files.createDirectories(tmp.resolve("tls")).resolve("host.p12");
         char[] password = "fixture".toCharArray();
-        Path keytool = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "keytool.exe" : "keytool");
-        Processes.Captured gen = Processes.capture(
-                List.of(
-                        keytool.toString(),
-                        "-genkeypair",
-                        "-alias",
-                        "host",
-                        "-keyalg",
-                        "RSA",
-                        "-keysize",
-                        "2048",
-                        "-dname",
-                        "CN=127.0.0.1",
-                        "-ext",
-                        "SAN=ip:127.0.0.1",
-                        "-validity",
-                        "2",
-                        "-storetype",
-                        "PKCS12",
-                        "-keystore",
-                        store.toString(),
-                        "-storepass",
-                        "fixture",
-                        "-keypass",
-                        "fixture",
-                        "-noprompt"),
-                Duration.ofSeconds(60));
-        assertThat(gen.ok()).as(gen.output()).isTrue();
+        keytool(store, "-alias", "ca", "-dname", "CN=jk release host fixture CA", "-ext", "BC:c=ca:true");
+        keytool(
+                store,
+                "-alias",
+                "host",
+                "-dname",
+                "CN=127.0.0.1",
+                "-ext",
+                "SAN=ip:127.0.0.1",
+                "-signer",
+                "ca",
+                "-signerkeypass",
+                "fixture");
         KeyStore keys = KeyStore.getInstance("PKCS12");
         try (InputStream in = Files.newInputStream(store)) {
             keys.load(in, password);
         }
+        Path certificate = store.resolveSibling("ca.pem");
+        Files.writeString(
+                certificate,
+                "-----BEGIN CERTIFICATE-----\n"
+                        + Base64.getMimeEncoder(64, new byte[] {'\n'})
+                                .encodeToString(keys.getCertificate("ca").getEncoded())
+                        + "\n-----END CERTIFICATE-----\n");
+        // The server presents the host's chain and nothing else.
+        keys.deleteEntry("ca");
         String thumbprint = HexFormat.of()
                 .withUpperCase()
                 .formatHex(MessageDigest.getInstance("SHA-1")
@@ -93,7 +93,7 @@ final class ReleaseHost implements AutoCloseable {
         https.setHttpsConfigurator(new HttpsConfigurator(tls));
         https.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        ReleaseHost host = new ReleaseHost(https, http, thumbprint);
+        ReleaseHost host = new ReleaseHost(https, http, thumbprint, certificate);
         https.createContext("/", exchange -> host.answer(exchange, root));
         http.createContext("/", exchange -> {
             host.plainRequests.incrementAndGet();
@@ -103,6 +103,31 @@ final class ReleaseHost implements AutoCloseable {
         https.start();
         http.start();
         return host;
+    }
+
+    /** One RSA key pair added to {@code store} by keytool, valid two days; {@code args} name and sign it. */
+    private static void keytool(Path store, String... args) throws Exception {
+        Path keytool = Path.of(System.getProperty("java.home"), "bin", Os.isWindows() ? "keytool.exe" : "keytool");
+        List<String> command = new ArrayList<>(List.of(keytool.toString(), "-genkeypair"));
+        command.addAll(List.of(args));
+        command.addAll(List.of(
+                "-keyalg",
+                "RSA",
+                "-keysize",
+                "2048",
+                "-validity",
+                "2",
+                "-storetype",
+                "PKCS12",
+                "-keystore",
+                store.toString(),
+                "-storepass",
+                "fixture",
+                "-keypass",
+                "fixture",
+                "-noprompt"));
+        Processes.Captured gen = Processes.capture(command, Duration.ofSeconds(60));
+        assertThat(gen.ok()).as(gen.output()).isTrue();
     }
 
     private void answer(HttpExchange exchange, Path root) throws IOException {

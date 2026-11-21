@@ -175,6 +175,13 @@ case "$CLIENT" in
   *) echo "jk wrapper: JK_CLIENT must be native or jvm, not $CLIENT — refusing." >&2; exit 1 ;;
 esac
 
+# Every download is HTTPS, redirects included: both curl calls refuse any other protocol on every
+# hop. A release host that is not https is refused here, before the download lock is taken.
+case "$RELEASES" in
+  https://?*) ;;
+  *) echo "jk wrapper: JK_RELEASES_URL must be an https:// URL, not $RELEASES — refusing." >&2; exit 1 ;;
+esac
+
 # One download per JK_HOME: mkdir is atomic, so the wrapper that creates the lock directory
 # installs and every other one waits. A lock older than ten minutes, or whose owner process on
 # this host is gone, is broken; losing that race costs a second download, never a broken
@@ -223,7 +230,7 @@ mkdir "$TMP"
 # signed object — `version <v>`, `issued <unix-seconds>`, and `signature` over those two
 # lines — and is read literally once the signature verifies; the lock's jk-min floor below is
 # what refuses a pointer rolled back to a release too old for this checkout.
-if ! curl -fsSL -o "$TMP/LATEST" "$RELEASES/latest/LATEST"; then
+if ! curl -fsSL --proto =https --proto-redir =https --max-redirs 10 -o "$TMP/LATEST" "$RELEASES/latest/LATEST"; then
   echo "jk wrapper: could not read $RELEASES/latest/LATEST — offline, or JK_RELEASES_URL is wrong." >&2
   exit 1
 fi
@@ -248,7 +255,7 @@ fi
 
 echo "jk wrapper: fetching jk $VERSION ..." >&2
 fetch() {
-  curl -fsSL -o "$TMP/$1" "$RELEASES/$VERSION/$1" || {
+  curl -fsSL --proto =https --proto-redir =https --max-redirs 10 -o "$TMP/$1" "$RELEASES/$VERSION/$1" || {
     echo "jk wrapper: could not read $RELEASES/$VERSION/$1 — the release host does not serve jk $VERSION, or JK_RELEASES_URL is wrong." >&2
     exit 1
   }

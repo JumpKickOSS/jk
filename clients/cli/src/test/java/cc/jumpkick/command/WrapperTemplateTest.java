@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import static cc.jumpkick.command.ReleaseTree.jvmClientRelease;
+import static cc.jumpkick.command.ReleaseTree.signedPointer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.toolchain.WrapperCommand;
@@ -21,25 +23,17 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.Signature;
 import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
 import java.util.regex.Pattern;
-import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -110,6 +104,15 @@ class WrapperTemplateTest {
         assertThat(sh).contains("could not read $RELEASES/latest/LATEST").contains("is not a release pointer");
         // A release file the host does not serve is refused by name, not with curl's bare status.
         assertThat(sh).contains("could not read $RELEASES/$VERSION/$1");
+        // Every download is HTTPS, redirects included, and a JK_RELEASES_URL that is not https is
+        // refused before the lock is taken.
+        assertThat(occurrences(sh, "curl -")).isEqualTo(2);
+        assertThat(occurrences(sh, "curl -fsSL --proto =https --proto-redir =https --max-redirs 10 -o "))
+                .isEqualTo(2);
+        assertThat(sh).doesNotContain("wget");
+        assertThat(sh.indexOf("JK_RELEASES_URL must be an https:// URL"))
+                .isGreaterThan(sh.indexOf("exec \"$PATH_JK\""))
+                .isLessThan(sh.indexOf("mkdir \"$LOCK\""));
         assertThat(sh).doesNotContain(".zip");
         // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness.
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
@@ -254,14 +257,17 @@ class WrapperTemplateTest {
         Files.copy(repo.resolve("jk"), copyDir.resolve("jk"));
         Files.setPosixFilePermissions(copyDir.resolve("jk"), Files.getPosixFilePermissions(repo.resolve("jk")));
 
-        for (Path onPath : List.of(repo, linkDir, copyDir)) {
-            Run run = runWrapper(repo, tmp, onPath, "file://" + tmp.resolve("no-such-releases"));
-            assertThat(run.exit())
-                    .as("PATH=%s: exits instead of looping", onPath)
-                    .isEqualTo(1);
-            assertThat(run.stderr())
-                    .as("PATH=%s", onPath)
-                    .contains("could not read file://" + tmp.resolve("no-such-releases") + "/latest/LATEST");
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            String releases = https(dead);
+            for (Path onPath : List.of(repo, linkDir, copyDir)) {
+                Run run = runWrapper(repo, tmp, onPath, releases);
+                assertThat(run.exit())
+                        .as("PATH=%s: exits instead of looping", onPath)
+                        .isEqualTo(1);
+                assertThat(run.stderr())
+                        .as("PATH=%s", onPath)
+                        .contains("could not read " + releases + "/latest/LATEST");
+            }
         }
     }
 
@@ -274,6 +280,7 @@ class WrapperTemplateTest {
         Files.writeString(real, "#!/bin/sh\necho \"real jk: $*\"\n");
         Files.setPosixFilePermissions(real, PosixFilePermissions.fromString("rwxr-xr-x"));
 
+        // A jk on PATH runs before the release host is looked at, so even a URL that is not https.
         Run run = runWrapper(repo, tmp, realBin, "file://" + tmp.resolve("no-such-releases"));
         assertThat(run.exit()).isZero();
         assertThat(run.stdout()).contains("real jk: --version");
@@ -290,18 +297,21 @@ class WrapperTemplateTest {
     void posix_wrapper_refuses_an_unreachable_malformed_or_foreign_signed_pointer(@TempDir Path tmp) throws Exception {
         if (Os.isWindows()) return;
         KeyPair release = Keys.RELEASE;
-        Path repo = materialize(tmp.resolve("repo"), spki(release));
+        Path latest = Files.createDirectories(tmp.resolve("releases/latest"));
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materialize(tmp.resolve("repo"), spki(release), host);
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
 
-        Run offline = runWrapper(repo, tmp, empty, "file://" + tmp.resolve("no-such-releases"));
-        assertThat(offline.exit()).isEqualTo(1);
-        assertThat(offline.stderr())
-                .contains("could not read")
-                .contains("latest/LATEST")
-                .doesNotContain("fetching jk");
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            Run offline = runWrapper(repo, tmp, empty, https(dead));
+            assertThat(offline.exit()).isEqualTo(1);
+            assertThat(offline.stderr())
+                    .contains("could not read")
+                    .contains("latest/LATEST")
+                    .doesNotContain("fetching jk");
+        }
 
-        Path latest = Files.createDirectories(tmp.resolve("releases/latest"));
-        String releases = "file://" + tmp.resolve("releases");
+        String releases = host.url("/files");
 
         signedPointer(latest, "\n", release);
         Run blank = runWrapper(repo, tmp, empty, releases);
@@ -324,6 +334,61 @@ class WrapperTemplateTest {
         assertThat(named.stderr())
                 .as("a verified pointer names the version to fetch")
                 .contains("fetching jk 1.0.0");
+    }
+
+    /** A release host that is not HTTPS is refused before anything is requested from it. */
+    @Test
+    void posix_wrapper_refuses_a_releases_url_that_is_not_https(@TempDir Path tmp) throws Exception {
+        if (Os.isWindows()) return;
+        Path releases = Files.createDirectories(tmp.resolve("releases"));
+        ReleaseHost host = serve(releases, tmp);
+        Path repo = materialize(tmp.resolve("repo"), spki(Keys.RELEASE), host);
+        Path empty = Files.createDirectories(tmp.resolve("empty-path"));
+
+        for (String url : List.of(host.plainUrl("/files"), releases.toUri().toString(), "https://")) {
+            Path home = Files.createTempDirectory(tmp, "home");
+            Run run = finish(startWrapper(repo, empty, url, home));
+            assertThat(host.plainRequests).as(run.stderr()).hasValue(0);
+            assertThat(run.exit()).as(url).isEqualTo(1);
+            assertThat(run.stderr()).contains("JK_RELEASES_URL must be an https:// URL, not " + url);
+            assertThat(home.resolve("bin/.jk-wrapper.lock")).doesNotExist();
+        }
+    }
+
+    /**
+     * curl's {@code -L} follows a redirect from https to http. The wrapper allows HTTPS alone for
+     * every hop: a redirect to http, after an https one or at a later download, is refused without
+     * being requested and installs nothing.
+     */
+    @Test
+    void posix_wrapper_refuses_a_redirect_off_https(@TempDir Path tmp) throws Exception {
+        if (Os.isWindows()) return;
+        Path releases = Files.createDirectories(tmp.resolve("releases"));
+        ReleaseHost host = serve(releases, tmp);
+        Path repo = materialize(tmp.resolve("repo"), spki(Keys.RELEASE), host);
+        Path empty = Files.createDirectories(tmp.resolve("empty-path"));
+        String url = host.url("/files");
+        Map<String, String> jvm = Map.of("JK_CLIENT", "jvm");
+
+        host.redirect("/files/latest/LATEST", "/hop/latest/LATEST");
+        host.redirect("/hop/latest/LATEST", host.plainUrl("/files/latest/LATEST"));
+        Path pointerHome = Files.createTempDirectory(tmp, "home");
+        Run pointer = finish(startWrapper(repo, empty, url, pointerHome, jvm));
+        assertThat(host.plainRequests).as(pointer.stderr()).hasValue(0);
+        assertThat(pointer.exit()).as(pointer.stderr()).isEqualTo(1);
+        assertThat(pointer.stderr()).contains("could not read " + url + "/latest/LATEST");
+        assertThat(pointerHome.resolve("bin/.jk-wrapper.lock")).doesNotExist();
+
+        host.redirects.clear();
+        signedPointer(Files.createDirectories(releases.resolve("latest")), "version 1.0.0\nissued 1\n", Keys.RELEASE);
+        host.redirect("/files/1.0.0/SHA256SUMS", host.plainUrl("/files/1.0.0/SHA256SUMS"));
+        Path sumsHome = Files.createTempDirectory(tmp, "home");
+        Run sums = finish(startWrapper(repo, empty, url, sumsHome, jvm));
+        assertThat(host.plainRequests).as(sums.stderr()).hasValue(0);
+        assertThat(sums.exit()).as(sums.stderr()).isEqualTo(1);
+        assertThat(sums.stderr()).contains("fetching jk 1.0.0").contains("could not read " + url + "/1.0.0/SHA256SUMS");
+        assertThat(sumsHome.resolve("lib")).doesNotExist();
+        assertThat(sumsHome.resolve("bin/.jk-wrapper.lock")).doesNotExist();
     }
 
     /** A wrapper in a module directory reads the workspace lock above it, as {@code ./jk} does. */
@@ -496,7 +561,9 @@ class WrapperTemplateTest {
         Files.writeString(lock.resolve("owner"), ProcessHandle.current().pid() + " elsewhere\n");
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
 
-        Process waiter = startWrapper(repo, empty, "file://" + tmp.resolve("no-such-releases"), home);
+        DeadEndpoint dead = DeadEndpoint.open();
+        hosts.add(dead);
+        Process waiter = startWrapper(repo, empty, https(dead), home);
         // The wrapper's first stderr line is its wait notice; read it before the lock is released.
         String notice = firstLine(waiter.getErrorStream());
         assertThat(notice).as("the wrapper waits while the lock is held").contains("waiting for it");
@@ -524,8 +591,10 @@ class WrapperTemplateTest {
             throws Exception {
         if (Os.isWindows()) return;
         KeyPair key = Keys.RELEASE;
-        Path repo = materialize(tmp.resolve("repo"), spki(key));
-        String releases = jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        jvmClientRelease(tmp.resolve("releases"), "1.0.0", key, tmp);
+        ReleaseHost host = serve(tmp.resolve("releases"), tmp);
+        Path repo = materialize(tmp.resolve("repo"), spki(key), host);
+        String releases = host.url("/files");
         Path empty = Files.createDirectories(tmp.resolve("empty-path"));
         Path home = Files.createDirectories(tmp.resolve("home"));
         Map<String, String> jvm = Map.of("JK_JAVA_HOME", System.getProperty("java.home"));
@@ -567,10 +636,14 @@ class WrapperTemplateTest {
                 .strip();
         Files.writeString(lock.resolve("owner"), gone.pid() + " " + host + "\n");
 
-        String releases = "file://" + tmp.resolve("no-such-releases");
-        Run run = finish(startWrapper(repo, Files.createDirectories(tmp.resolve("empty-path")), releases, home));
-        assertThat(run.exit()).isEqualTo(1);
-        assertThat(run.stderr()).contains("waiting for it").contains("could not read " + releases + "/latest/LATEST");
+        try (DeadEndpoint dead = DeadEndpoint.open()) {
+            String releases = https(dead);
+            Run run = finish(startWrapper(repo, Files.createDirectories(tmp.resolve("empty-path")), releases, home));
+            assertThat(run.exit()).isEqualTo(1);
+            assertThat(run.stderr())
+                    .contains("waiting for it")
+                    .contains("could not read " + releases + "/latest/LATEST");
+        }
         assertThat(lock).doesNotExist();
     }
 
@@ -772,20 +845,6 @@ class WrapperTemplateTest {
         return Base64.getEncoder().encodeToString(key.getPublic().getEncoded());
     }
 
-    /**
-     * One {@code LATEST} object: {@code body} plus a {@code signature} line over those bytes from
-     * {@code signer}, laid out as sign-latest-pointer.sh writes a well-formed pointer.
-     */
-    private static void signedPointer(Path latestDir, String body, KeyPair signer) throws Exception {
-        byte[] bytes = body.getBytes(StandardCharsets.US_ASCII);
-        Signature signature = Signature.getInstance("SHA256withRSA");
-        signature.initSign(signer.getPrivate());
-        signature.update(bytes);
-        String object = body + "signature " + Base64.getEncoder().encodeToString(signature.sign()) + "\n";
-        Files.writeString(latestDir.resolve("LATEST"), object);
-        Files.deleteIfExists(latestDir.resolve("LATEST.sig"));
-    }
-
     private record Run(int exit, String stdout, String stderr) {}
 
     /** The committed wrapper as {@code jk wrapper} writes it: {@code <dir>/jk}, executable. */
@@ -800,6 +859,24 @@ class WrapperTemplateTest {
         Files.writeString(jk, template("jk.sh").replace(ReleaseVerifier.BUILT_IN_KEY, spki));
         Files.setPosixFilePermissions(jk, PosixFilePermissions.fromString("rwxr-xr-x"));
         return dir;
+    }
+
+    /**
+     * The POSIX wrapper trusting {@code spki} as the release key and {@code host}'s self-signed
+     * certificate in both its curl calls, through {@code --cacert}; nothing else changes.
+     */
+    private static Path materialize(Path dir, String spki, ReleaseHost host) throws Exception {
+        materialize(dir, spki);
+        Path jk = dir.resolve("jk");
+        String text = Files.readString(jk);
+        assertThat(occurrences(text, "curl -fsSL ")).isEqualTo(2);
+        Files.writeString(jk, text.replace("curl -fsSL ", "curl --cacert '" + host.certificate + "' -fsSL "));
+        return dir;
+    }
+
+    /** {@code dead}'s loopback port as an https release host: every connection is dropped. */
+    private static String https(DeadEndpoint dead) {
+        return dead.uri("/releases").toString().replaceFirst("^http:", "https:");
     }
 
     /**
@@ -859,8 +936,7 @@ class WrapperTemplateTest {
      */
     private static Run runBat(Path dir, Path tmp, String onPath, Path home) throws Exception {
         try (DeadEndpoint dead = DeadEndpoint.open()) {
-            String releases = dead.uri("/releases").toString().replaceFirst("^http:", "https:");
-            return finish(startBat(dir, tmp, onPath, home, Map.of("JK_RELEASES_URL", releases)));
+            return finish(startBat(dir, tmp, onPath, home, Map.of("JK_RELEASES_URL", https(dead))));
         }
     }
 
@@ -906,67 +982,6 @@ class WrapperTemplateTest {
         return new Run(p.exitValue(), new String(out, StandardCharsets.UTF_8), new String(err, StandardCharsets.UTF_8));
     }
 
-    /**
-     * A release host under {@code root} for version {@code version}, signed by {@code key}: the
-     * {@code latest/LATEST} pointer, and a version directory holding a JVM client jar plus the
-     * {@code SHA256SUMS} and {@code SHA256SUMS.sig} that cover it, and no native client. The jar's
-     * {@code self write-launcher} writes a {@code bin/jk.bat} and a {@code bin/jk} that answer
-     * {@code jvm jk: <args>}, and counts itself in {@code <home>/launchers-written}.
-     */
-    private static String jvmClientRelease(Path root, String version, KeyPair key, Path tmp) throws Exception {
-        signedPointer(Files.createDirectories(root.resolve("latest")), "version " + version + "\nissued 1\n", key);
-        Path dir = Files.createDirectories(root.resolve(version));
-        String jarName = "jk-" + version + ".jar";
-        byte[] jar = fakeClientJar(tmp.resolve("fake-client"));
-        Files.write(dir.resolve(jarName), jar);
-        String hex =
-                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(jar));
-        byte[] sums = (hex + "  " + jarName + "\n").getBytes(StandardCharsets.US_ASCII);
-        Files.write(dir.resolve("SHA256SUMS"), sums);
-        Signature signature = Signature.getInstance("SHA256withRSA");
-        signature.initSign(key.getPrivate());
-        signature.update(sums);
-        Files.writeString(dir.resolve("SHA256SUMS.sig"), Base64.getEncoder().encodeToString(signature.sign()) + "\n");
-        return root.toUri().toString().replaceAll("/$", "");
-    }
-
-    /** A runnable jar standing in for the JVM client, compiled from source here. */
-    private static byte[] fakeClientJar(Path work) throws Exception {
-        Path src = Files.createDirectories(work.resolve("src")).resolve("FakeClient.java");
-        Files.writeString(src, """
-                import java.nio.file.*;
-                public class FakeClient {
-                    public static void main(String[] args) throws Exception {
-                        if (args.length == 2 && args[0].equals("self") && args[1].equals("write-launcher")) {
-                            Path home = Path.of(System.getenv("JK_HOME"));
-                            Files.createDirectories(home.resolve("bin"));
-                            Files.writeString(home.resolve("bin/jk.bat"), "@echo jvm jk: %*\\r\\n");
-                            Path sh = home.resolve("bin/jk");
-                            Files.writeString(sh, "#!/bin/sh\\necho \\"jvm jk: $*\\"\\n");
-                            sh.toFile().setExecutable(true);
-                            Files.writeString(home.resolve("launchers-written"), "x",
-                                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-                        }
-                    }
-                }
-                """);
-        Path classes = Files.createDirectories(work.resolve("classes"));
-        var javac = ToolProvider.getSystemJavaCompiler();
-        assertThat(javac).as("the test JVM is a JDK").isNotNull();
-        assertThat(javac.run(null, null, null, "-d", classes.toString(), src.toString()))
-                .isZero();
-        var bytes = new ByteArrayOutputStream();
-        Manifest manifest = new Manifest();
-        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, "FakeClient");
-        try (var out = new JarOutputStream(bytes, manifest)) {
-            out.putNextEntry(new JarEntry("FakeClient.class"));
-            out.write(Files.readAllBytes(classes.resolve("FakeClient.class")));
-            out.closeEntry();
-        }
-        return bytes.toByteArray();
-    }
-
     /** The Windows wrapper trusting {@code key} as the release key. */
     private static Path materializeBat(Path dir, KeyPair key) throws Exception {
         var rsa = (RSAPublicKey) key.getPublic();
@@ -980,7 +995,7 @@ class WrapperTemplateTest {
     }
 
     /**
-     * The Windows wrapper trusting {@code key} as the release key and {@code host}'s self-signed
+     * The Windows wrapper trusting {@code key} as the release key and {@code host}'s
      * certificate, by its SHA-1 thumbprint, in every PowerShell it starts; nothing else changes.
      */
     private static Path materializeBat(Path dir, KeyPair key, ReleaseHost host) throws Exception {
