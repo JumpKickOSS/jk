@@ -176,7 +176,7 @@ final class KindSchemas {
                         optional(
                                 "closed",
                                 BOOL,
-                                "an edge from a layered module to a module in no layer is a violation")),
+                                "an edge from a layered module or class to one in no layer is a violation")),
                 List.of(),
                 """
                 [guards.layers]

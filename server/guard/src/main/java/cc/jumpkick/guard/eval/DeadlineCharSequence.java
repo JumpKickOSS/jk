@@ -32,7 +32,7 @@ final class DeadlineCharSequence implements CharSequence {
 
     @Override
     public char charAt(int index) {
-        if ((++reads & 4095) == 0 && System.nanoTime() > deadlineNanos) throw new Expired(budgetMillis);
+        if ((++reads & 4095) == 0 && System.nanoTime() - deadlineNanos > 0) throw new Expired(budgetMillis);
         return text.charAt(index);
     }
 

@@ -154,6 +154,12 @@ class CyclesAndSplitPackageTest {
         Evaluation stale = Evaluators.forKind(split.kind())
                 .evaluate(rule(root, "split-package", "[[guards.r.allow]]\nin = \"p.c\"\nreason = \"gone\"\n"), ws);
         assertThat(stale.outcome()).isEqualTo(Outcome.STALE_ALLOW);
+
+        // b compiles the very class a does: one shadows the other on a classpath, the split at its worst
+        Path bIdx = FactsIndexing.indexPath(BuildLayout.moduleTargetDir(root.resolve("b")), "main");
+        FactsFormat.write(bIdx, index(cls("p/shared/A"), cls("p/b/B")));
+        Evaluation duplicate = Evaluators.forKind(split.kind()).evaluate(split, ws);
+        assertThat(duplicate.observations()).extracting(Observation::key).containsExactly("p.shared | a + b");
     }
 
     @Test

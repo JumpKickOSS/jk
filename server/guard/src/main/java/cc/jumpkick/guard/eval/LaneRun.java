@@ -8,6 +8,7 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Kind;
 import cc.jumpkick.guard.schema.Lane;
+import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.run.ParallelMap;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -135,6 +136,14 @@ public final class LaneRun {
             out.add(r);
         }
         return out;
+    }
+
+    /**
+     * Whether lane {@code lane} evaluating {@code rules} reaches a verdict, for its run and its
+     * forecast alike: with no rule and no validation it evaluates nothing and keeps nothing.
+     */
+    public static boolean judges(Lane lane, List<Rule> rules) {
+        return !rules.isEmpty() || EngineValidations.applies(lane);
     }
 
     /**

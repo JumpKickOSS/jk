@@ -6,6 +6,12 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Guards see more of the bytecode, so a rule may find sites it missed.** Type references now
+  include generic type arguments (`List<Banned>`) and record components, so `cycles`, `forbid`,
+  `layers` and `classes` rules can find new sites. `split-package` catches two modules compiling the
+  same class. A `text` count with `per = "file"` now judges files with no match. `closed = true`
+  applies to `layers` class edges too. A call's argument literals include the constant parts of a
+  string concatenation and no longer pick up a literal from another branch.
 - **`jk export gradle` writes locked versions and classifiers, and `jk export maven` keeps export
   dependencies.** `jk export gradle` writes the versions `jk-lock.toml` holds, keeps a dependency's
   classifier or `kind = "tests"`, applies `java-library` when `[export-dependencies]` become `api`,

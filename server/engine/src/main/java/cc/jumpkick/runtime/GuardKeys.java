@@ -32,7 +32,6 @@ import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.guard.schema.Lane;
-import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.layout.BuildLayout;
@@ -362,7 +361,7 @@ final class GuardKeys {
             if (modules.isEmpty() || modules.equals(List.of(root))) return Optional.empty();
             LoadResult load = PlannerGuards.rules(g);
             if (load.hasErrors()) return Optional.of(workspace("guards · jk-guards.toml does not load"));
-            if (!EngineValidations.judges(Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, load.rules(), "")))
+            if (!LaneRun.judges(Lane.WORKSPACE, LaneRun.rulesFor(Lane.WORKSPACE, load.rules(), "")))
                 return Optional.empty();
             List<String> tokens = workspaceLaneTokens(root, modules);
             addRuleTokens(tokens, load);
@@ -508,8 +507,7 @@ final class GuardKeys {
         try {
             LoadResult load = PlannerGuards.rules(g);
             if (load.hasErrors()) return Optional.of(tree("guards · jk-guards.toml does not load"));
-            if (!EngineValidations.judges(Lane.TREE, LaneRun.rulesFor(Lane.TREE, load.rules(), "")))
-                return Optional.empty();
+            if (!LaneRun.judges(Lane.TREE, LaneRun.rulesFor(Lane.TREE, load.rules(), ""))) return Optional.empty();
             List<String> tokens = treeLaneTokens(root);
             addRuleTokens(tokens, load);
             String key = laneKey(

@@ -29,6 +29,22 @@ public final class Varargs {
 
     private static String last = "";
 
+    /** A literal returned on one branch is no argument of the call on the other. */
+    static String afterABranch(boolean early) {
+        if (early) return "/orders/early";
+        return request(last);
+    }
+
+    /** Both arms of a conditional argument, and a literal ahead of a condition, are the call's. */
+    static String eitherArm(boolean a, boolean b) {
+        return request(a ? "/orders/a" : "/orders/b", a && b);
+    }
+
+    /** A concatenation's constant parts are arguments of the call it feeds. */
+    static String concatenated(int id) {
+        return request("/orders/" + id + "/lines");
+    }
+
     record Order() {
         String id() {
             return "7";

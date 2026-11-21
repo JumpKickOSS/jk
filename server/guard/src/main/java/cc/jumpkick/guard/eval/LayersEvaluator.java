@@ -182,6 +182,17 @@ final class LayersEvaluator implements Evaluator {
         private void classEdge(ClassFacts c, String module, Set<String> from, ClassFacts target, String targetModule) {
             Set<String> to = classLayers(layers, target, targetModule);
             for (String a : from) {
+                if (closed && to.isEmpty()) {
+                    if (allowedClass(rule, allowUsed, c, module)) continue;
+                    sites.add(Observation.site(
+                            c.binaryName() + " -> " + target.binaryName(),
+                            ForbidEvaluator.source(ctx, c),
+                            0,
+                            c.binaryName() + " (" + a + ") references " + target.binaryName()
+                                    + ", which is in no layer; " + a + " may depend on " + describe(access.get(a))
+                                    + " (closed)"));
+                    continue;
+                }
                 for (String b : to) {
                     if (a.equals(b) || access.getOrDefault(a, Set.of()).contains(b)) continue;
                     if (allowedClass(rule, allowUsed, c, module)) continue;

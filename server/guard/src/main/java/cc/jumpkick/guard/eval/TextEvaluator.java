@@ -48,6 +48,8 @@ final class TextEvaluator implements BatchEvaluator {
         final Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         final List<Hit> hits = new ArrayList<>();
         final List<String> unsupported = new ArrayList<>();
+        /** Examined files outside the owner: a {@code per = "file"} count judges each, one with no match too. */
+        final List<String> examined = new ArrayList<>();
         /** The {@code hit} snippet, once it has matched through the view: bite evidence on its own. */
         @Nullable
         String hit;
@@ -121,6 +123,7 @@ final class TextEvaluator implements BatchEvaluator {
                 if (p.failure != null) continue;
                 p.filesExamined++;
                 if (s.inOwner()) p.ownerSeen = true;
+                else if (p.count != null && p.count.per().equals("file")) p.examined.add(s.rel());
                 if (s.unsupported()) {
                     p.unsupported.add(s.rel());
                     continue;
@@ -368,11 +371,19 @@ final class TextEvaluator implements BatchEvaluator {
             byUnit.computeIfAbsent(unit, k -> new ArrayList<>()).add(h);
         }
         if (c.per().equals("tree") && byUnit.isEmpty()) byUnit.put("tree", List.of());
+        if (c.per().equals("file") && c.verdict(0) != null) {
+            for (String rel : p.examined) {
+                if (byUnit.containsKey(rel)) continue;
+                Allow a = allowing(p, rel);
+                if (a != null) p.allowUsed.put(a, true);
+                else byUnit.put(rel, List.of());
+            }
+        }
         for (var e : byUnit.entrySet()) {
             String verdict = c.verdict(e.getValue().size());
             if (verdict == null) continue;
             Hit first = e.getValue().isEmpty() ? null : e.getValue().get(0);
-            String where = first == null ? null : first.rel();
+            String where = first != null ? first.rel() : c.per().equals("file") ? e.getKey() : null;
             out.add(Observation.site(
                     "count | " + e.getKey(),
                     where,

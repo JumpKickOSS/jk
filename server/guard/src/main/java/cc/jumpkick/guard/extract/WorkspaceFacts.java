@@ -4,6 +4,7 @@ package cc.jumpkick.guard.extract;
 import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.guard.facts.ClassFacts;
+import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.facts.FactsFormat;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.host.Log;
@@ -14,10 +15,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -119,6 +122,29 @@ public final class WorkspaceFacts {
             } catch (RuntimeException unreadable) {
                 // A module whose index cannot be read owns no class here.
                 Log.debug("classModules: A module whose index cannot be read owns no class here", unreadable);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Every workspace package's module directories, from the index names alone: a module that
+     * compiles a class of the package, even one another module compiles too, is among them.
+     */
+    public static Map<String, Set<Path>> packageModuleDirs(Path root, List<Path> modules) {
+        Map<String, Set<Path>> out = new TreeMap<>();
+        for (Path m : modules) {
+            Path idx = indexOf(root, m);
+            if (idx == null) continue;
+            try {
+                FileStamp stamp = FileStamp.of(idx);
+                if (stamp == null) continue;
+                for (String c : names(idx, stamp))
+                    out.computeIfAbsent(Descriptors.packageOf(c), k -> new LinkedHashSet<>())
+                            .add(m);
+            } catch (RuntimeException unreadable) {
+                // A module whose index cannot be read declares no package here.
+                Log.debug("packageModules: a module whose index cannot be read declares no package here", unreadable);
             }
         }
         return out;

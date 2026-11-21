@@ -32,17 +32,29 @@ import org.objectweb.asm.Handle;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.RecordComponentVisitor;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.signature.SignatureReader;
+import org.objectweb.asm.signature.SignatureVisitor;
 
 /**
  * One class file → {@link ClassFacts}. Visits method bodies (calls, field refs, the literal loaded
  * right before an invoke, branch counts, line numbers) and every annotation the class file keeps.
- * Measured at ~40 µs per class warm; the whole jk tree is ~100 ms.
+ * Type references include the type arguments generic signatures keep ({@code List<Rule>} refers to
+ * {@code Rule}) and record components. Measured at ~40 µs per class warm; the whole jk tree is
+ * ~100 ms.
  */
 public final class FactsExtractor {
 
     /** A boxing method's descriptor: one primitive in, its box out ({@code Integer.valueOf(int)}). */
     private static final Pattern BOXING = Pattern.compile("\\([ZBCSIJFD]\\)Ljava/lang/\\w+;");
+
+    private static final String STRING_CONCAT = "java/lang/invoke/StringConcatFactory";
+
+    /** A concatenation recipe's argument and constant markers. */
+    private static final char ARG = '\u0001';
+
+    private static final char CONST = '\u0002';
 
     private FactsExtractor() {}
 
@@ -120,6 +132,7 @@ public final class FactsExtractor {
             this.interfaces = interfaces == null ? List.of() : List.of(interfaces);
             if (superName != null) refs.add(superName);
             for (String i : this.interfaces) refs.add(i);
+            refSignature(sig, false);
         }
 
         @Override
@@ -137,6 +150,7 @@ public final class FactsExtractor {
         public FieldVisitor visitField(
                 int access, String fname, String desc, @Nullable String sig, @Nullable Object value) {
             refType(desc);
+            refSignature(sig, true);
             List<AnnotationFacts> fann = new ArrayList<>();
             String constant = value == null ? null : String.valueOf(value);
             return new FieldVisitor(Opcodes.ASM9) {
@@ -157,8 +171,22 @@ public final class FactsExtractor {
         public MethodVisitor visitMethod(
                 int access, String mname, String desc, @Nullable String sig, String @Nullable [] exceptions) {
             refMethodDesc(desc);
+            refSignature(sig, false);
             if (exceptions != null) for (String e : exceptions) refs.add(e);
             return new MethodCollector(access, mname, desc);
+        }
+
+        @Override
+        public RecordComponentVisitor visitRecordComponent(String cname, String desc, @Nullable String sig) {
+            refType(desc);
+            refSignature(sig, true);
+            return new RecordComponentVisitor(Opcodes.ASM9) {
+                @Override
+                public AnnotationVisitor visitAnnotation(String adesc, boolean visible) {
+                    refType(adesc);
+                    return new AnnotationCollector(adesc, visible, a -> {}, Collector.this::refType);
+                }
+            };
         }
 
         ClassFacts finish() {
@@ -184,6 +212,40 @@ public final class FactsExtractor {
         void refMethodDesc(String desc) {
             for (Type a : Type.getArgumentTypes(desc)) refType(a.getDescriptor());
             refType(Type.getReturnType(desc).getDescriptor());
+        }
+
+        /** Every class a signature names: a field's or local's when {@code type}, else a class's or method's. */
+        void refSignature(@Nullable String sig, boolean type) {
+            if (sig == null) return;
+            SignatureReader reader = new SignatureReader(sig);
+            if (type) reader.acceptType(new SignatureRefs());
+            else reader.accept(new SignatureRefs());
+        }
+
+        /** One class type of a signature, its type arguments each read by their own visitor. */
+        private final class SignatureRefs extends SignatureVisitor {
+            private String current = "";
+
+            SignatureRefs() {
+                super(Opcodes.ASM9);
+            }
+
+            @Override
+            public void visitClassType(String name) {
+                current = name;
+                refs.add(name);
+            }
+
+            @Override
+            public void visitInnerClassType(String name) {
+                current = current + '$' + name;
+                refs.add(current);
+            }
+
+            @Override
+            public SignatureVisitor visitTypeArgument(char wildcard) {
+                return new SignatureRefs();
+            }
         }
 
         void refInternal(String internalName) {
@@ -218,9 +280,15 @@ public final class FactsExtractor {
 
             /**
              * String constants loaded since the last invoke, field write or allocation other than a
-             * varargs array's: the argument window.
+             * varargs array's: the argument window. Where control does not fall through (a return,
+             * a throw, a {@code goto}, a switch) the window ends; at a label it is the windows of the
+             * jumps to that label joined with the one falling into it, so {@code f(c ? "a" : "b")}
+             * keeps both and a literal returned on one branch is no argument on the other.
              */
             final List<String> window = new ArrayList<>();
+
+            /** The window at each forward jump not yet reached, by the label it lands on. */
+            final Map<Label, List<String>> jumpWindows = new LinkedHashMap<>();
 
             MethodCollector(int access, String mname, String desc) {
                 super(Opcodes.ASM9);
@@ -244,6 +312,24 @@ public final class FactsExtractor {
                         a -> pann.computeIfAbsent(parameter, k -> new ArrayList<>())
                                 .add(a),
                         Collector.this::refType);
+            }
+
+            @Override
+            public void visitLabel(Label label) {
+                List<String> joined = jumpWindows.remove(label);
+                if (joined != null) for (String s : joined) if (!window.contains(s)) window.add(s);
+            }
+
+            /** The window as control leaves for {@code target}; joined back in when the label is reached. */
+            private void jumpTo(Label target) {
+                if (window.isEmpty()) return;
+                List<String> at = jumpWindows.computeIfAbsent(target, k -> new ArrayList<>());
+                for (String s : window) if (!at.contains(s)) at.add(s);
+            }
+
+            /** Control does not fall through to the next instruction. */
+            private void endWindow() {
+                window.clear();
             }
 
             @Override
@@ -337,25 +423,58 @@ public final class FactsExtractor {
                         else refType(t.getDescriptor());
                     }
                 }
+                if (bsm.getOwner().equals(STRING_CONCAT)) concatConstants(args);
                 lastLdc = null;
+            }
+
+            /**
+             * A string concatenation's constant parts join the window: {@code get("/orders/" + id)}
+             * carries {@code /orders/}. The recipe marks each argument with U+0001 and each bootstrap
+             * constant with U+0002.
+             */
+            private void concatConstants(Object[] args) {
+                if (args.length == 0 || !(args[0] instanceof String recipe)) return;
+                int constant = 1;
+                StringBuilder part = new StringBuilder();
+                for (int i = 0; i <= recipe.length(); i++) {
+                    char ch = i < recipe.length() ? recipe.charAt(i) : ARG;
+                    if (ch == CONST && constant < args.length) {
+                        part.append(args[constant++]);
+                    } else if (ch == ARG) {
+                        if (!part.isEmpty() && !window.contains(part.toString())) window.add(part.toString());
+                        part.setLength(0);
+                    } else {
+                        part.append(ch);
+                    }
+                }
             }
 
             @Override
             public void visitJumpInsn(int opcode, Label label) {
                 if (opcode != Opcodes.GOTO && opcode != Opcodes.JSR) branches++;
                 lastLdc = null;
+                jumpTo(label);
+                if (opcode == Opcodes.GOTO) endWindow();
             }
 
             @Override
             public void visitTableSwitchInsn(int min, int max, Label dflt, Label... labels) {
                 branches += labels.length;
                 lastLdc = null;
+                switchTo(dflt, labels);
             }
 
             @Override
             public void visitLookupSwitchInsn(Label dflt, int[] keys, Label[] labels) {
                 branches += labels.length;
                 lastLdc = null;
+                switchTo(dflt, labels);
+            }
+
+            private void switchTo(Label dflt, Label[] labels) {
+                jumpTo(dflt);
+                for (Label l : labels) jumpTo(l);
+                endWindow();
             }
 
             @Override
@@ -369,6 +488,7 @@ public final class FactsExtractor {
             @Override
             public void visitInsn(int opcode) {
                 lastLdc = null;
+                if ((opcode >= Opcodes.IRETURN && opcode <= Opcodes.RETURN) || opcode == Opcodes.ATHROW) endWindow();
             }
 
             @Override
@@ -391,6 +511,7 @@ public final class FactsExtractor {
             public void visitLocalVariable(
                     String vname, String vdesc, @Nullable String sig, Label start, Label end, int index) {
                 refType(vdesc);
+                refSignature(sig, true);
             }
 
             @Override
@@ -412,12 +533,12 @@ public final class FactsExtractor {
         }
     }
 
-    /** Collects string-shaped attribute values; nested annotations are walked for their refs only. */
     /** A synthetic method a compiler made of a lambda body: javac's {@code lambda$m$0}, Kotlin's {@code m$lambda$0}. */
     static boolean lambdaBody(String method) {
         return method.startsWith("lambda$") || method.contains("$lambda");
     }
 
+    /** Collects string-shaped attribute values; nested annotations are walked for their refs only. */
     private static final class AnnotationCollector extends AnnotationVisitor {
         private final String desc;
         private final boolean visible;

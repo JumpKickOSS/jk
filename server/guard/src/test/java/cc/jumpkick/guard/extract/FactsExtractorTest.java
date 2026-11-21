@@ -4,6 +4,7 @@ package cc.jumpkick.guard.extract;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.guard.extract.fixture.FixtureBytes;
+import cc.jumpkick.guard.extract.fixture.Generics;
 import cc.jumpkick.guard.extract.fixture.Sample;
 import cc.jumpkick.guard.extract.fixture.Statics;
 import cc.jumpkick.guard.extract.fixture.Varargs;
@@ -150,6 +151,49 @@ class FactsExtractorTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(written.literals()).isEmpty();
+    }
+
+    private static CallSite requestIn(String method) throws IOException {
+        return FactsExtractor.extract(classBytes(Varargs.class)).methods().stream()
+                .filter(m -> m.name().equals(method))
+                .flatMap(m -> m.calls().stream())
+                .filter(s -> s.name().equals("request"))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @Test
+    void the_window_ends_where_control_does_not_fall_through_and_joins_where_branches_meet() throws IOException {
+        assertThat(requestIn("afterABranch").literals())
+                .as("the literal is returned on the other branch")
+                .isEmpty();
+        assertThat(requestIn("eitherArm").literals()).containsExactlyInAnyOrder("/orders/a", "/orders/b");
+    }
+
+    @Test
+    void a_concatenations_constant_parts_are_in_the_window() throws IOException {
+        assertThat(requestIn("concatenated").literals()).containsExactly("/orders/", "/lines");
+    }
+
+    @Test
+    void type_arguments_of_generic_signatures_are_type_references() throws IOException {
+        String p = "cc/jumpkick/guard/extract/fixture/Generics$";
+        ClassFacts c = FactsExtractor.extract(classBytes(Generics.class));
+        assertThat(c.typeRefs())
+                .as("class, field, method and local variable signatures, and an inner class of a generic")
+                .contains(
+                        p + "Bound",
+                        p + "Supplied",
+                        p + "FieldArg",
+                        p + "ParamArg",
+                        p + "ReturnArg",
+                        p + "LocalArg",
+                        p + "InnerArg",
+                        p + "Outer$Inner");
+        ClassFacts component = FactsExtractor.extract(classBytes(Generics.Component.class));
+        assertThat(component.typeRefs())
+                .as("an annotation only the record component keeps")
+                .contains(p + "OnComponent", p + "ComponentArg");
     }
 
     @Test

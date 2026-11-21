@@ -3,7 +3,6 @@ package cc.jumpkick.guard.eval;
 
 import cc.jumpkick.guard.baseline.Observation;
 import cc.jumpkick.guard.extract.WorkspaceFacts;
-import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.host.PathUtil;
@@ -13,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,13 +39,15 @@ final class SplitPackageEvaluator implements Evaluator {
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) {
         Map<String, Map<String, Path>> dirsByPackage = new TreeMap<>();
-        Map<String, Path> classDirs = WorkspaceFacts.classModuleDirs(ctx.root(), ctx.modules());
-        for (var e : classDirs.entrySet()) {
-            String module = WorkspaceModel.rel(ctx.root(), e.getValue());
-            if (!rule.applies(module)) continue;
-            dirsByPackage
-                    .computeIfAbsent(Descriptors.packageOf(e.getKey()), k -> new TreeMap<>())
-                    .put(module, e.getValue());
+        Map<String, Set<Path>> packageDirs = WorkspaceFacts.packageModuleDirs(ctx.root(), ctx.modules());
+        Set<Path> indexed = new HashSet<>();
+        for (var e : packageDirs.entrySet()) {
+            for (Path dir : e.getValue()) {
+                indexed.add(dir);
+                String module = WorkspaceModel.rel(ctx.root(), dir);
+                if (!rule.applies(module)) continue;
+                dirsByPackage.computeIfAbsent(e.getKey(), k -> new TreeMap<>()).put(module, dir);
+            }
         }
         Map<String, Set<String>> modulesByPackage = new TreeMap<>();
         for (var e : dirsByPackage.entrySet()) {
@@ -81,7 +83,7 @@ final class SplitPackageEvaluator implements Evaluator {
         if (modulesByPackage.isEmpty())
             return new Evaluation(Outcome.BLIND, population, List.of(), "no module index to read");
         List<String> stale = new ArrayList<>();
-        Unindexed unindexed = new Unindexed(ctx, rule, Set.copyOf(classDirs.values()));
+        Unindexed unindexed = new Unindexed(ctx, rule, indexed);
         for (var e : allowUsed.entrySet())
             if (!e.getValue() && !unindexed.mayDeclare(e.getKey().in()))
                 stale.add(e.getKey().in());

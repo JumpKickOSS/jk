@@ -201,6 +201,34 @@ class TextEvaluatorTest {
     }
 
     @Test
+    void count_per_file_judges_a_file_with_no_match(@TempDir Path root) throws Exception {
+        tree(root);
+        String rule = """
+                [guards.prefix-everywhere]
+                kind = "text"
+                patterns = ["##JKX:"]
+                files = ["mod-b/**", "mod-c/**"]
+                count = { min = 1 }
+                instead = "i"
+                why = "w"
+                """;
+        // Wire and Host carry the prefix; B carries none, and a file with none is below the minimum.
+        assertThat(ev(run(root, rule), "prefix-everywhere").observations())
+                .singleElement()
+                .satisfies(o -> {
+                    assertThat(o.key()).isEqualTo("count | mod-b/src/main/java/b/B.java");
+                    assertThat(o.file()).isEqualTo("mod-b/src/main/java/b/B.java");
+                    assertThat(o.detail()).contains("expected at least 1, found 0");
+                });
+        Evaluation allowed = ev(
+                run(root, rule + "allow = [{ in = \"mod-b/src/main/java/b/B.java\", reason = \"r\" }]\n"),
+                "prefix-everywhere");
+        assertThat(allowed.outcome()).as("the allow excuses B and is used").isEqualTo(Outcome.CLEAN);
+        Evaluation atMost = ev(run(root, rule.replace("min = 1", "max = 1")), "prefix-everywhere");
+        assertThat(atMost.outcome()).isEqualTo(Outcome.CLEAN);
+    }
+
+    @Test
     void owner_allow_and_stale_allow(@TempDir Path root) throws Exception {
         tree(root);
         Map<String, Evaluation> r = run(root, """
@@ -259,6 +287,14 @@ class TextEvaluatorTest {
                 .as("no catastrophic input here; the rule simply finds nothing")
                 .isEqualTo(Outcome.CLEAN);
         assertThat(Squashed.of("int  x =\n  y;").text).isEqualTo("int x=y;");
+    }
+
+    @Test
+    void a_deadline_past_the_clocks_range_has_not_passed() {
+        // the deadline wraps past Long.MAX_VALUE; only a difference of nanoTime readings is meaningful
+        CharSequence text = new DeadlineCharSequence("a".repeat(10_000), Long.MAX_VALUE / 1_000_000);
+        for (int i = 0; i < text.length(); i++) text.charAt(i);
+        assertThat(text.length()).isEqualTo(10_000);
     }
 
     @Test

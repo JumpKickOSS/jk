@@ -210,6 +210,33 @@ class LayersEvaluatorTest {
     }
 
     @Test
+    void closed_holds_on_class_edges_too(@TempDir Path dir) throws Exception {
+        Path root = workspace(dir);
+        indexes(
+                root,
+                Map.of(
+                        "web", List.of(cls("demo/web/A", "demo/service/A", "demo/repo/A")),
+                        "service", List.of(cls("demo/service/A")),
+                        "repo", List.of(cls("demo/repo/A"))));
+        // web may reach service; repo is in no layer, so with `closed` web's reference to it is a violation
+        String rule = "layers = { web = \"..web..\", service = \"..service..\" }\n"
+                + "access = { web = [\"service\"] }\nclosed = true\n";
+        for (String edges : List.of("classes", "both")) {
+            Evaluation e = run(root, rule + "edges = \"" + edges + "\"\n", Lane.WORKSPACE);
+            assertThat(e.outcome()).as(edges).isEqualTo(Outcome.VIOLATIONS);
+            assertThat(e.observations()).extracting(Observation::key).containsExactly("demo.web.A -> demo.repo.A");
+            assertThat(e.observations().get(0).detail()).contains("in no layer").contains("(closed)");
+        }
+        Evaluation open = run(root, rule.replace("closed = true\n", "") + "edges = \"classes\"\n", Lane.WORKSPACE);
+        assertThat(open.outcome()).isEqualTo(Outcome.CLEAN);
+        Evaluation allowed = run(
+                root,
+                rule + "edges = \"classes\"\n[[guards.r.allow]]\nin = \"demo.web.A\"\nreason = \"legacy\"\n",
+                Lane.WORKSPACE);
+        assertThat(allowed.outcome()).isEqualTo(Outcome.CLEAN);
+    }
+
+    @Test
     void an_out_of_root_member_is_keyed_by_its_workspace_relative_path(@TempDir Path dir) throws Exception {
         Path root = workspace(dir);
         // a member beside the root: its key is `../sib`, never the absolute path of this machine

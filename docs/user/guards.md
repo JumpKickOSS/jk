@@ -167,7 +167,7 @@ key can hold a rule back: one older than the key refuses it like any unknown key
 | layers | edges |  | string | which dependency edges are read [manifest \| classes \| both] |
 | layers | exports |  | table | module = [packages visible across modules] |
 | layers | exact |  | bool | a declared but unused module dependency is a violation |
-| layers | closed |  | bool | an edge from a layered module to a module in no layer is a violation |
+| layers | closed |  | bool | an edge from a layered module or class to one in no layer is a violation |
 | cycles | matching |  | string | slice pattern, e.g. com.acme.features.(*).. |
 | cycles | over |  | string | cycles over modules instead of packages [modules] |
 | cycles | across-modules |  | bool | follow package edges across module boundaries |
