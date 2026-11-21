@@ -20,8 +20,8 @@ import org.tomlj.TomlTable;
  *
  * <p>Default {@link #DEFAULT}, and {@code 0} on CI ({@code CI} set), where a short-lived runner gains
  * nothing from them and a long-lived one is where a full disk does the most harm. Capped at {@link
- * #MAX}. A project's {@code jk.toml} may only turn heavy caching off ({@code [cache] heavy = false}),
- * never lengthen the window: disk is the machine's.
+ * #MAX}. A project's {@code jk.toml} may only turn heavy caching off ({@code [build]
+ * cache-heavy-outputs = false}), never lengthen the window: disk is the machine's.
  */
 public final class HeavyTtl {
 
