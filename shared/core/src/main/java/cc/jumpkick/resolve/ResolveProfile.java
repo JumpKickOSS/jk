@@ -20,6 +20,8 @@ public final class ResolveProfile {
     private static final AtomicLong POM_BUILD_NS = new AtomicLong();
     private static final AtomicLong POM_BUILD_CALLS = new AtomicLong();
     private static final AtomicLong POM_BUILD_HITS = new AtomicLong();
+    private static final AtomicLong POM_PARSE_NS = new AtomicLong();
+    private static final AtomicLong POM_PARSE_CALLS = new AtomicLong();
     private static final AtomicLong DEPS_NS = new AtomicLong();
     private static final AtomicLong DEPS_CALLS = new AtomicLong();
     private static final AtomicLong VERSIONS_NS = new AtomicLong();
@@ -65,6 +67,8 @@ public final class ResolveProfile {
         POM_BUILD_NS.set(0);
         POM_BUILD_CALLS.set(0);
         POM_BUILD_HITS.set(0);
+        POM_PARSE_NS.set(0);
+        POM_PARSE_CALLS.set(0);
         DEPS_NS.set(0);
         DEPS_CALLS.set(0);
         VERSIONS_NS.set(0);
@@ -177,6 +181,16 @@ public final class ResolveProfile {
         if (cacheHit) POM_BUILD_HITS.incrementAndGet();
     }
 
+    /**
+     * Time spent reading and parsing one POM file, one call per file the process parses; a memo hit
+     * is not a call. Summed over threads, like {@link #pomBuild}, whose fetch and merge enclose most of it.
+     */
+    public static void pomParse(long nanos) {
+        if (!on()) return;
+        POM_PARSE_NS.addAndGet(nanos);
+        POM_PARSE_CALLS.incrementAndGet();
+    }
+
     public static void deps(long nanos) {
         if (!on()) return;
         DEPS_NS.addAndGet(nanos);
@@ -216,6 +230,10 @@ public final class ResolveProfile {
                 + POM_BUILD_CALLS.get()
                 + "calls hits="
                 + POM_BUILD_HITS.get()
+                + " pomParse="
+                + ms(POM_PARSE_NS)
+                + "ms/"
+                + POM_PARSE_CALLS.get()
                 + " deps="
                 + ms(DEPS_NS)
                 + "ms/"

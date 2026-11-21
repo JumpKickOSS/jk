@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.resolve.ResolveProfile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -22,8 +24,14 @@ public final class StorePoms {
 
     /** The POM at {@code pom}, parsed. */
     public static Pom parse(Path pom) throws IOException {
-        return PARSED.get(pom, file -> PomParser.parse(Files.readAllBytes(file)))
-                .orElseThrow(() -> new NoSuchFileException(pom.toString()));
+        return PARSED.get(pom, StorePoms::read).orElseThrow(() -> new NoSuchFileException(pom.toString()));
+    }
+
+    private static Pom read(Path pom) throws IOException {
+        long t0 = Clock.SYSTEM.nanos();
+        Pom parsed = PomParser.parse(Files.readAllBytes(pom));
+        ResolveProfile.pomParse(Clock.SYSTEM.nanos() - t0);
+        return parsed;
     }
 
     /** Drop the parsed POMs and return how many went; force, tests and the idle engine. */

@@ -70,6 +70,15 @@ class ResolveProfileTest {
     }
 
     @Test
+    void pom_parsing_has_its_own_line_beside_the_pom_builds() {
+        ResolveProfile.pomBuild(Duration.ofSeconds(4).toNanos(), false);
+        ResolveProfile.pomParse(Duration.ofMillis(700).toNanos());
+        ResolveProfile.pomParse(Duration.ofMillis(50).toNanos());
+
+        assertThat(ResolveProfile.report()).contains("pomBuild=4000ms/1calls hits=0 pomParse=750ms/2 deps=");
+    }
+
+    @Test
     void reset_clears_the_partition_counter_with_the_rest() {
         ResolveProfile.phasePartition(Duration.ofSeconds(3).toNanos());
         ResolveProfile.reset();

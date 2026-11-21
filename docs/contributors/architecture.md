@@ -537,7 +537,8 @@ Ship layout (`jk build`, under `target/dist/`; `<version>` carries `-SNAPSHOT` o
   to decide whether it needs a solve of its own and then to run that solve.
 - **Where a lock's time went:** with `JK_RESOLVE_PROFILE=1` (or `-Djk.resolve.profile=true`) in
   the engine's environment, `LockPipeline` logs one `resolve-profile` line per lock — POM builds
-  and their memo hits, dependency and version-catalog reads, the solve, and the prep / resolve /
+  and their memo hits, the POM files read and parsed inside them (`pomParse`, one call per file, so
+  the parser's share is read apart from fetching and merging), dependency and version-catalog reads, the solve, and the prep / resolve /
   partition / post phases in wall milliseconds. The line is logged from a `finally`, so a lock that
   dies in the solve or the partition pass reports as much as one that finishes, with the phase in
   flight credited up to the failure. The member-partition pass (`MemberPartitions`, every member
