@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.watch.AppWatchLoop.Pass;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.testing.FakeClock;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
@@ -210,6 +211,45 @@ class SourceWatchTest {
                 }
             }
         }
+    }
+
+    /** A source in a package named {@code resources} is recompiled; a file of a resource tree is copied. */
+    @Test
+    void a_source_in_a_package_named_resources_is_a_source_change(@TempDir Path tmp) throws Exception {
+        Path simple = Files.createDirectories(tmp.resolve("simple"));
+        Files.writeString(simple.resolve("jk.toml"), "name = \"simple\"\nlayout = \"simple\"\n");
+        assertPasses(
+                simple,
+                List.of("src/com/acme/resources/Foo.java", "test/src/com/acme/resources/FooTest.java"),
+                List.of("resources/com/acme/Tpl.java", "test/resources/com/acme/Tpl.java"));
+        Path traditional = Files.createDirectories(tmp.resolve("traditional"));
+        Files.writeString(traditional.resolve("jk.toml"), "name = \"traditional\"\nlayout = \"traditional\"\n");
+        assertPasses(
+                traditional,
+                List.of("src/main/java/com/acme/resources/Foo.java", "src/main/kotlin/resources/Bar.kt"),
+                List.of("src/main/resources/com/acme/Tpl.java", "src/test/resources/Tpl.java"));
+    }
+
+    /** Each of {@code sources}, written under {@code project}, is a recompile, and each of {@code resources} a copy. */
+    private static void assertPasses(Path project, List<String> sources, List<String> resources) throws IOException {
+        for (String rel : sources) Files.createDirectories(parent(project, rel));
+        for (String rel : resources) Files.createDirectories(parent(project, rel));
+        try (SourceWatch watch = SourceWatch.open(project, SourceWatch.defaultRoots(project), 0)) {
+            for (String rel : sources) assertPass(watch, project, rel, Pass.RECOMPILE);
+            for (String rel : resources) assertPass(watch, project, rel, Pass.COPY_RESOURCES);
+        }
+    }
+
+    private static Path parent(Path project, String rel) {
+        return Objects.requireNonNull(project.resolve(rel).getParent());
+    }
+
+    private static void assertPass(SourceWatch watch, Path project, String rel, Pass want) throws IOException {
+        Path file = Files.writeString(project.resolve(rel), "class Foo\n");
+        Path dir = parent(project, rel);
+        assertThat(Pass.of(Objects.requireNonNull(watch.classify(dir, file))))
+                .as(project.getFileName() + "/" + rel)
+                .isEqualTo(want);
     }
 
     /** A test suite made while {@code jk watch} runs is taken up once it holds sources; a stray file in it wakes nothing. */

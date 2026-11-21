@@ -429,15 +429,9 @@ public final class SourceWatch implements AutoCloseable {
         boolean manifest = dir.equals(projectDir) && name.equals(ManifestPaths.MANIFEST);
         Changes manifestOnly = manifest ? new Changes(false, false, true) : null;
         if (dir.equals(projectDir) && !wholeDir) return manifestOnly;
-        String relPath;
-        try {
-            relPath = projectDir.relativize(changed).toString().replace('\\', '/');
-        } catch (IllegalArgumentException e) {
-            return manifestOnly;
-        }
-        // A file under any resources/ directory, the simple layout's top-level one too, is a resource,
-        // whatever its name: a .java template there is copied, not compiled.
-        if (("/" + relPath).contains("/resources/")) return new Changes(false, true, manifest);
+        // A file in a resource tree is a resource whatever its name: a .java template there is copied,
+        // not compiled.
+        if (inResourceTree(changed)) return new Changes(false, true, manifest);
         if (name.endsWith(".java")
                 || name.endsWith(".kt")
                 || name.endsWith(".kts")
@@ -446,6 +440,41 @@ public final class SourceWatch implements AutoCloseable {
             return new Changes(true, false, manifest);
         }
         return new Changes(false, !Files.isDirectory(changed) && isInteresting(name), manifest);
+    }
+
+    /**
+     * Whether {@code changed} sits in a resource tree, told by the root holding it: a simple-layout
+     * root is one when it is a {@code resources/} tree, and in a traditional module's {@code src/}
+     * the trees are {@code src/<set>/resources/}. A source in a package named {@code resources} is
+     * not in one.
+     */
+    private boolean inResourceTree(Path changed) {
+        Path abs = changed.toAbsolutePath().normalize();
+        Path root = holdingRoot(abs);
+        Path name = root == null ? null : root.getFileName();
+        if (root == null || name == null) return false;
+        if (name.toString().equals("resources")) return true;
+        Path module = root.getParent();
+        if (!name.toString().equals("src") || module == null || !isModule(module) || ModuleLayout.isCompact(module)) {
+            return false;
+        }
+        Path rel = root.relativize(abs);
+        return rel.getNameCount() > 2 && rel.getName(1).toString().equals("resources");
+    }
+
+    /** The innermost root holding {@code abs}, an absolute normalized path; null when none does. */
+    private @Nullable Path holdingRoot(Path abs) {
+        Path found = null;
+        for (Path r : roots) {
+            if (abs.startsWith(r) && (found == null || r.getNameCount() > found.getNameCount())) found = r;
+        }
+        return found;
+    }
+
+    /** Whether {@code dir} is a module's directory, not a simple-layout suite's such as {@code test/}. */
+    private boolean isModule(Path dir) {
+        return dir.equals(projectDir.toAbsolutePath().normalize())
+                || Files.isRegularFile(ManifestPaths.manifestIn(dir));
     }
 
     private static boolean isInteresting(String name) {

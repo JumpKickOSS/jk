@@ -92,7 +92,8 @@ jk watch test -U 300
 otherwise process restart. Android projects redeploy via the packaging plugin.
 
 What a change runs before the restart: a `jk.toml` edit rebuilds the project and re-plans the
-app; a source edit runs `jk compile`; an edit to resources alone (`src/main/resources`, or any
+app; a source edit runs `jk compile`; an edit to resources alone (any file in a resource tree,
+`src/main/resources/` or the simple layout's `resources/`, a `.java` template there too; or any
 other non-source file under a watched tree) runs the same compile goal, which copies resources
 into the classes the app runs from, runs any generator that reads the edited file, and writes no
 jar (`Resources copied` in the loop's output).
