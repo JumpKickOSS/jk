@@ -76,12 +76,14 @@ final class EngineRules {
             instead = "root the test's project in a per-method @TempDir")
     void spikeCacheTempDir(Text text, Violations v) {
         String marker = "android-spike-cache";
-        String exempt = "server/engine/src/test/java/cc/jumpkick/runtime/NiaScratchTest.java";
+        String exempt = "e2e/engine/src/test/java/cc/jumpkick/runtime/NiaScratchTest.java";
         if (text.lines(exempt).isEmpty())
             throw new IllegalStateException("the one exemption " + exempt + " is gone; the rule points at nothing");
         List<String> naming = new ArrayList<>();
-        for (String rel : text.files("server/engine/src/test/java/**/*.java")) {
-            if (text.blanked(rel, Blank.NONE).contains(marker)) naming.add(rel);
+        for (String tree : List.of("server/engine/src/test/java/**/*.java", "e2e/engine/src/test/java/**/*.java")) {
+            for (String rel : text.files(tree)) {
+                if (text.blanked(rel, Blank.NONE).contains(marker)) naming.add(rel);
+            }
         }
         if (naming.size() < 10)
             throw new IllegalStateException("files naming \"" + marker + "\": " + naming.size()

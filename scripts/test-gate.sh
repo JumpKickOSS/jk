@@ -105,7 +105,7 @@ if flaky $t0 excused "$WORK/red-other.jsonl" >/dev/null; then fail "a compile er
 if flaky $t0 excused "$WORK/rerun.jsonl" >/dev/null; then fail "a run with no failure was excused"; fi
 
 # Closing a ticket releases its class, and only the passes after that count again.
-echo done >"$WORK/ka/fake-1"
+echo "done" >"$WORK/ka/fake-1"
 flaky $((t0 + 42 * day)) review >/dev/null
 got="$(flaky $t0 list)"
 [[ "$got" == 'cc.jumpkick:jk-engine a.OtherTest fake-2' ]] || fail "a closed ticket did not release its class: $got"

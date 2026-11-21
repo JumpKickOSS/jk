@@ -86,7 +86,7 @@ final class TestEnvRules {
             "server/engine/src/test/java/cc/jumpkick/runtime/TrainAotCacheE2eTest.java | env",
             Set.of("GRAALVM_HOME", "JAVA_HOME", "USERPROFILE", "HOME"),
             // Runs as the forked generator, which the build hands the variable; the test JVM never reads it.
-            "server/engine/src/test/java/cc/jumpkick/runtime/GenerateSecretStubTool.java | args[1]",
+            "e2e/engine/src/test/java/cc/jumpkick/runtime/GenerateSecretStubTool.java | args[1]",
             Set.of(),
             // The store lookup masks JK_HOME and JK_STORE_DIR, the only names a store root asks for.
             "server/resolver/src/test/java/cc/jumpkick/resolver/QuarkusLockPerfTest.java | k",

@@ -1,0 +1,86 @@
+name = "jk-engine-e2e"
+description = "End-to-end tests of the engine that build real projects through the framework and preset plugins"
+
+# Tests only: no main sources, so nothing to package or publish. What lives here is an engine test
+# that forks a plugin jar beyond the core workers, or stages a first-party rule pack. Keeping them
+# out of server/engine means an edit to one of these plugins re-runs this suite, not the engine's.
+
+[test-dependencies]
+jk-engine = { workspace = true, fixtures = true }
+jk-host = { workspace = true, fixtures = true }
+jk-core = { workspace = true, fixtures = true }
+jk-client-io = { workspace = true, fixtures = true }
+jk-resolver = { workspace = true, fixtures = true }
+assertj-core = "3.27.7"
+junit-jupiter = "6.1.3"
+
+[build]
+# Each entry is a hard build-order edge AND a content hash in the run-tests stamp, so an edit to one
+# of these re-runs this suite. Keep it to the workers and packs these tests actually locate: the
+# core workers every build forks, the framework and preset plugins the fixtures configure, and the
+# rule packs the shipped templates declare.
+test-plugin-jars = [
+  "test-runner",
+  "java-compiler",
+  "kotlin-compiler",
+  "groovy-compiler",
+  # The code graph a question on a scaffolded template asks (BuildInfoGraphCompileE2eTest).
+  "graph",
+  "spring-boot",
+  "android",
+  "protobuf",
+  "generator",
+  "openapi",
+  "jooq",
+  "minified",
+  "grails",
+  "quarkus",
+  "micronaut",
+  "helidon",
+  # Presets whose example projects the network tier builds (SchemaPresetExamplesTest and its
+  # neighbours), and the JavaFX and lint plugins' fixtures.
+  "avro",
+  "json-schema",
+  "asyncapi",
+  "jaxb",
+  "schema-registry",
+  "javafx",
+  "lint",
+  # Rule packs the shipped templates declare: staged into the test sandbox store, where a
+  # scaffolded project's lock looks for a first-party pack.
+  "cc.jumpkick.guards:spring",
+  "cc.jumpkick.guards:quarkus",
+  "cc.jumpkick.guards:helidon",
+  "cc.jumpkick.guards:android",
+  "cc.jumpkick.guards:library",
+  "cc.jumpkick.guards:monorepo",
+]
+
+[test]
+# As server/engine's test JVMs, since these tests run in-process engines the same way: four CPUs
+# per JVM, the engine's file-attribute access, and the tunneling list the engine sets for itself.
+jvm-args = [
+  "-XX:ActiveProcessorCount=4",
+  "--add-opens=java.base/sun.nio.fs=ALL-UNNAMED",
+  "-Djdk.http.auth.tunneling.disabledSchemes=",
+]
+# The builds resolve through the real Maven Central and Google Maven; the fast tier is walled off
+# from remotes.
+network = "allowed"
+env = [
+  # In-process engines share this module's sandbox JK_HOME store; a startup cache GC would race the
+  # fixtures that stage files in it.
+  { JK_AUTO_PRUNE = "false" },
+  # Narrowed so a test never reads or writes the developer's own JDK installs.
+  { JK_JDK_PROBES = "java-home,jk" },
+  # Set only to re-capture the new-project corpus's snapshots (NewProjectCorpusTest): the directory
+  # they are written to. Unset, the corpus compares and writes nothing.
+  "NEW_PROJECT_CORPUS_CAPTURE",
+  # The GraalVM the native distribution case links with (WorkspaceSiblingTailsE2eTest), when the
+  # shell running jk names one.
+  "GRAALVM_HOME",
+  # The opt-in switch and clone path of the Now-in-Android sweep (NiaScratchTest, slow tier); unset,
+  # the sweep is disabled.
+  "JK_NIA_SCRATCH",
+  "JK_NIA_ROOT",
+]

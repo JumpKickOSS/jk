@@ -36,7 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
 class OpenApiGeneratorTest {
 
     private static final Path EXAMPLE =
-            RepoRoot.find(OpenApiGeneratorTest.class).resolve("server/engine/fixtures/projects/openapi-spring");
+            RepoRoot.find(OpenApiGeneratorTest.class).resolve("e2e/engine/fixtures/projects/openapi-spring");
 
     @Test
     void the_example_generates_compiles_hits_and_regenerates_on_a_spec_edit(@TempDir Path tmp) throws Exception {

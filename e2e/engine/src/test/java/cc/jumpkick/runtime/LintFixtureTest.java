@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
 class LintFixtureTest {
 
     private static final Path EXAMPLE =
-            RepoRoot.find(LintFixtureTest.class).resolve("server/engine/fixtures/projects/lint-checkstyle");
+            RepoRoot.find(LintFixtureTest.class).resolve("e2e/engine/fixtures/projects/lint-checkstyle");
 
     @Test
     void the_example_lints_clean_hits_the_cache_and_reports_a_violation_by_rule(@TempDir Path tmp) throws Exception {

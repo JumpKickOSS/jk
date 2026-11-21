@@ -121,6 +121,8 @@ modules = [
   "plugins/javafx",
   "plugins/helidon",
   "plugins/graph",
+  # End-to-end tests that build through the plugins above
+  "e2e/engine",
 ]
 
 # ---------------------------------------------------------------------------

@@ -116,7 +116,8 @@ class SelfHostingTomlTest {
                         "plugins/intellij",
                         "plugins/javafx",
                         "plugins/helidon",
-                        "plugins/graph");
+                        "plugins/graph",
+                        "e2e/engine");
     }
 
     @Test

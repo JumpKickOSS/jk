@@ -1,10 +1,10 @@
 version = 1
-generated-by = "jk 0.53.1-SNAPSHOT"
-generated-by-build = "0f0aa8c9a55d"
-generated-by-build-time = "2026-11-21T13:24:03Z"
+generated-by = "jk 0.54.1-SNAPSHOT"
+generated-by-build = "b3126de6cf1d"
+generated-by-build-time = "2026-11-21T20:22:26Z"
 resolution-algorithm = "pubgrub-v1"
 jk-min = "0.52.0"
-manifests-sha256 = "450e48daa2a8f410db86e2f48f3d951551afde177c9868b7b42e683aa132e3bf"
+manifests-sha256 = "a8bf5f04fd2f2c17038e304982b1d9e2cc28ec03d4768cb2ef552e82f6ea8c24"
 project-id = "a66f86e5f1e675e17a67c9c36474f968"
 
 [jdk]
@@ -1897,7 +1897,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:d78396e3c5bce3f2865c9186647481e5589d34cacc632484715b686108d17c66"
 scopes   = ["test"]
 licenses = ["Apache-2.0"]
-members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "e2e/cli", "plugins/android", "plugins/antlr", "plugins/asyncapi", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
+members  = ["clients/cli", "clients/cli-terminal", "clients/intellij", "clients/maven-spy", "clients/web", "e2e/cli", "e2e/engine", "plugins/android", "plugins/antlr", "plugins/asyncapi", "plugins/auditor", "plugins/avro", "plugins/formatter", "plugins/generator", "plugins/grails", "plugins/graph", "plugins/groovy-compiler", "plugins/helidon", "plugins/image-builder", "plugins/intellij", "plugins/java-compiler", "plugins/jaxb", "plugins/jenkins-test", "plugins/jooq", "plugins/json-schema", "plugins/kotlin-compiler", "plugins/lint", "plugins/localizer", "plugins/micronaut", "plugins/minified", "plugins/openapi", "plugins/protobuf", "plugins/publisher", "plugins/quarkus", "plugins/spring-boot", "plugins/taglib", "plugins/test-runner", "server/engine", "server/guard", "server/io", "server/resolver", "server/toolchain", "shared/client-io", "shared/code-graph", "shared/core", "shared/dynamic-surface", "shared/guard-api", "shared/host", "shared/ide", "shared/jk-api", "shared/plugin-sdk", "shared/toolchain-jdk", "shared/wire"]
 
 [[artifact]]
 name     = "net.jcip:jcip-annotations:jar:"
@@ -4546,7 +4546,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:e91ff6d720609e7a194ffe758c3ed5c84e798617ae07b0a0f6a4fe229741b4bb"
 scopes   = ["main", "provided", "test"]
 licenses = ["MIT"]
-members  = ["clients/maven-spy", "e2e/cli", "server/engine", "server/toolchain", "shared/guard-api"]
+members  = ["clients/maven-spy", "e2e/cli", "e2e/engine", "server/engine", "server/toolchain", "shared/guard-api"]
 
 [[artifact]]
 name     = "org.slf4j:slf4j-api:jar:"
@@ -7230,6 +7230,15 @@ name    = "jk-cli-e2e"
 version = "0.54.1"
 java    = 25
 description = "The CLI driven against a real engine: the tests that need jk-engine and its workers"
+install.destination = "jk"
+
+[[module]]
+path    = "e2e/engine"
+group   = "cc.jumpkick"
+name    = "jk-engine-e2e"
+version = "0.54.1"
+java    = 25
+description = "End-to-end tests of the engine that build real projects through the framework and preset plugins"
 install.destination = "jk"
 
 [[module]]

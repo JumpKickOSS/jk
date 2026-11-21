@@ -270,6 +270,9 @@ population = { files = 2215 }
 "shared/toolchain-jdk" = { classes = 168, sites = 8506 }
 "shared/wire" = { classes = 246, sites = 12211 }
 
+[cause-chain-owner]
+population = { files = 3335 }
+
 [central-address]
 population = { files = 2306 }
 
@@ -736,7 +739,7 @@ population = { files = 2203 }
 population = { files = 4230 }
 
 [no-fqcn]
-population = { units = 5614 }
+population = { units = 6416 }
 [[no-fqcn.entries]]
 unit   = "clients/cli-terminal/src/main/java/cc/jumpkick/terminal/package-info.java"
 value  = 1
@@ -761,6 +764,10 @@ reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reason
 unit   = "e2e/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java"
 value  = 2
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
+[[no-fqcn.entries]]
+unit   = "e2e/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java"
+value  = 1
+reason = "RobolectricUnitTest moved to e2e/engine with its test; the same collision as before"
 [[no-fqcn.entries]]
 unit   = "plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java"
 value  = 2
@@ -839,10 +846,6 @@ value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
 unit   = "server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java"
-value  = 1
-reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
-[[no-fqcn.entries]]
-unit   = "server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java"
 value  = 1
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]

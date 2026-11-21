@@ -133,7 +133,7 @@ bundled offline floor); JumpKick's own manifests use registry names only and the
 `jk-libs.toml`. There is no host-local catalog file and no `catalog =` pin in `jk.toml`.
 
 The repo is a JumpKick **workspace** (root `jk.toml` + per-module manifests under `shared/`,
-`server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
+`server/`, `clients/`, `e2e/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers are thin
 jars whose `Main-Class` is `PluginMain` (implied by `jk-plugin.toml` / the Plugin service file —
 no `[application]` table). `jk install` shelves every module and takes the home over.
@@ -198,14 +198,16 @@ jk test --coverage && jk guard               # nightly coverage ratchet (G91)
 
 #### Engine / CLI tests under self-host
 
-`server/engine` and `e2e/cli` declare `[build].test-plugin-jars`: each name is a build-order
-edge and a `-Djk.<worker>.plugin.jar` the run-tests step hands the test JVM, so a test that forks a
-worker runs the one this build produced. The CLI's tests live in two modules. `clients/cli` holds
-the ones that talk to the wire module and to stubs; it has no test edge to `jk-engine` or to any
-worker, so an engine change that leaves `shared/wire` alone re-runs none of its suites. `e2e/cli`
-holds the ones that drive a real engine: its `jk-engine` test edge makes them spawn the assembly the
-run-tests step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME`, with no in-process dual
-path. The fast tier (`jk test`) spawns no engine in either module.
+`server/engine`, `e2e/engine` and `e2e/cli` declare `[build].test-plugin-jars`: each name is a
+build-order edge and a `-Djk.<worker>.plugin.jar` the run-tests step hands the test JVM, so a test
+that forks a worker runs the one this build produced. It is also a run-tests stamp input, so an edit
+to a listed plugin re-runs the whole suite: `server/engine` lists only the core workers (the
+compilers, the test runner, the auditor, the code graph), and an engine test that builds through a
+framework or preset plugin, or locks a template against a first-party rule pack, lives in
+`e2e/engine`, which lists those. The CLI's tests that need a real engine live in `e2e/cli` and
+spawn it from the assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox
+`JK_HOME`; `clients/cli` itself does not depend on the engine, and its fast tier (`jk test`) is the
+pure unit tier (TUI/args/jsonl) with no engine spawn.
 
 Use `-m` and `--class` mid-ticket (`jk test -m e2e/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
 the push gate is the whole of `jk install -g`. Tier model:
@@ -235,6 +237,7 @@ jk build && jk test -m cli
 | `server/guard/fixtures/` | Self-host must-bite trees for root/`@Fixture` rules |
 | `clients/` | `cli` (the native client + its tests), `web`, `vscode` (VS Code extension) |
 | `plugins/` | First-party build/worker plugins |
+| `e2e/engine` | Engine tests that build through the framework and preset plugins (tests only) |
 
 ### IDE plugins (wire-only)
 

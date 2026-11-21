@@ -123,15 +123,15 @@ the default template.
 
 ### How the catalogue and the surfaces are tested
 
-- **Golden corpus** (`NewProjectCorpusTest`, engine, fast tier). Every template under `templates/`,
+- **Golden corpus** (`NewProjectCorpusTest`, `e2e/engine`, fast tier). Every template under `templates/`,
   and every template a first-party plugin bundles (`plugins/<plugin>/src/main/resources/templates/`,
   reached by its id through the jar `test-plugin-jars` hands the test JVM), is scaffolded through
-  `NewProjectOps` once per answer vector, and its file list and `jk.toml` are compared with `server/engine/src/test/resources/new-project-corpus/<lang>-<framework>-<name>.txt`.
+  `NewProjectOps` once per answer vector, and its file list and `jk.toml` are compared with `e2e/engine/src/test/resources/new-project-corpus/<lang>-<framework>-<name>.txt`.
   The vectors come from the form (`AnswerVectors`, `:core` test fixtures): the defaults, then a
   pairwise set in which every layout and every option of every ask appears. A new option therefore
   makes a new vector, and the corpus fails until its snapshot is re-captured:
-  `NEW_PROJECT_CORPUS_CAPTURE=$PWD/server/engine/src/test/resources/new-project-corpus jk test -m
-  server/engine --class cc.jumpkick.engine.runtime.NewProjectCorpusTest`, then review the diff.
+  `NEW_PROJECT_CORPUS_CAPTURE=$PWD/e2e/engine/src/test/resources/new-project-corpus jk test -m
+  e2e/engine --class cc.jumpkick.engine.runtime.NewProjectCorpusTest`, then review the diff.
   Snapshots fix the name, group and default JDK, answer a `maven()` property with a fixed version
   instead of a repository, and write every version `…`, so `jk update` and a release leave them
   alone.

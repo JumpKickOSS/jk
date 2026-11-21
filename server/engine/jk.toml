@@ -69,36 +69,21 @@ junit-jupiter = "6.1.3"
 [build]
 # Each entry is a hard build-order edge AND a content hash in the run-tests stamp —
 # an unused name makes an unrelated plugin edit re-run this entire suite. Keep this
-# list to workers the engine test JVM actually locates (forks, or BuiltInPluginJars).
+# list to the core workers the engine test JVM forks: the compilers, the test runner,
+# the auditor and the code graph. A test that builds through a framework or preset
+# plugin, or stages a first-party rule pack, belongs in e2e/engine.
 test-plugin-jars = [
   "test-runner",
   "java-compiler",
   "kotlin-compiler",
-  "auditor",
-  "spring-boot",
-  "android",
-  "protobuf",
-  "generator",
-  "openapi",
-  "jooq",
-  "minified",
-  "grails",
   "groovy-compiler",
-  "quarkus",
-  "micronaut",
-  "helidon",
+  "auditor",
   "graph",
-  # Rule packs the shipped templates declare: staged into the test sandbox store, where a
-  # scaffolded project's lock looks for a first-party pack.
-  "cc.jumpkick.guards:spring",
-  "cc.jumpkick.guards:quarkus",
-  "cc.jumpkick.guards:helidon",
-  "cc.jumpkick.guards:android",
-  "cc.jumpkick.guards:library",
-  "cc.jumpkick.guards:monorepo",
 ]
 
 [test]
+# The helpers e2e/engine's tests share with this suite (TestInputs, SecondBuild, ToolLockFixtures).
+fixtures = true
 # Four CPUs per test JVM: its in-process engines size their carrier and worker pools from this,
 # and at the host's full count the liveness tests that pin every carrier starve the rest of the
 # tier. Four keeps the JVM's default collector. The engine's own file-attribute access rides
@@ -127,16 +112,9 @@ env = [
   # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
   # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
   { JK_JDK_PROBES = "java-home,jk" },
-  # Set only to re-capture the new-project corpus's snapshots (NewProjectCorpusTest): the directory
-  # they are written to. Unset, the corpus compares and writes nothing.
-  "NEW_PROJECT_CORPUS_CAPTURE",
   # The GraalVM the AOT-cache end-to-end test may link with (TrainAotCacheE2eTest, slow tier), when
   # the shell running jk names one.
   "GRAALVM_HOME",
-  # The opt-in switch and clone path of the Now-in-Android sweep (NiaScratchTest, slow tier); unset,
-  # the sweep is disabled.
-  "JK_NIA_SCRATCH",
-  "JK_NIA_ROOT",
   # Asserted unset by TestEnvTest: forwarded so that a stray export fails it rather than hiding.
   "JK_UNSET_ON_PURPOSE",
 ]

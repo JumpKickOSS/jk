@@ -65,8 +65,8 @@ import org.tomlj.Toml;
  * is answered with a fixed version through {@link NewProjectOps}' seam, never a repository.
  *
  * <p>A deliberate change re-captures the snapshots: {@code NEW_PROJECT_CORPUS_CAPTURE=<dir> jk test
- * -m server/engine --class cc.jumpkick.engine.runtime.NewProjectCorpusTest} writes each template's
- * snapshot into {@code <dir>} (the checkout's {@code server/engine/src/test/resources/new-project-corpus}
+ * -m e2e/engine --class cc.jumpkick.engine.runtime.NewProjectCorpusTest} writes each template's
+ * snapshot into {@code <dir>} (the checkout's {@code e2e/engine/src/test/resources/new-project-corpus}
  * to update them in place) and compares nothing; without the variable nothing is written. That
  * every vector also builds, tests and guards clean is the slow tier's {@code TemplateCatalogE2eTest},
  * which scaffolds the same vectors.
@@ -77,7 +77,7 @@ import org.tomlj.Toml;
 class NewProjectCorpusTest {
 
     private static final String CAPTURE_ENV = "NEW_PROJECT_CORPUS_CAPTURE";
-    private static final String SNAPSHOTS = "server/engine/src/test/resources/new-project-corpus";
+    private static final String SNAPSHOTS = "e2e/engine/src/test/resources/new-project-corpus";
     private static final String NAME = "demo";
     private static final String GROUP = "com.acme";
     private static final String JDK_MAJOR = "25";
@@ -251,7 +251,7 @@ class NewProjectCorpusTest {
                 jar = builtByThisWorkspace(repo.resolve("plugins").resolve(plugin));
             assertThat(jar)
                     .as(
-                            "-D%s: plugins/%s bundles templates, so test-plugin-jars in server/engine/jk.toml"
+                            "-D%s: plugins/%s bundles templates, so test-plugin-jars in e2e/engine/jk.toml"
                                     + " names it",
                             worker.jarProperty(), plugin)
                     .isNotBlank();

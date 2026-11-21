@@ -72,6 +72,7 @@
     1  clients/cli/src/main/java/cc/jumpkick/cli/Argv0.java
     2  clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java
     3  e2e/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java
+    1  e2e/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
     2  plugins/image-builder/src/main/java/cc/jumpkick/plugin/image/BaseJre.java
     5  plugins/kotlin-compiler/src/main/java/cc/jumpkick/kotlin/compiler/KotlinCompiler.java
     3  plugins/test-runner/src/main/java/cc/jumpkick/testrunner/JUnitUniqueId.java
@@ -87,7 +88,6 @@
     2  server/engine/src/test/java/cc/jumpkick/engine/runtime/CacheInventoryOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/engine/runtime/NewProjectOpsTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/CachePlansPurgeTest.java
-    1  server/engine/src/test/java/cc/jumpkick/runtime/RobolectricUnitTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEffortTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/TestEnvTest.java
     1  server/engine/src/test/java/cc/jumpkick/runtime/workspace/BuildServiceEtaParityTest.java
