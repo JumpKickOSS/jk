@@ -367,29 +367,58 @@ public final class MiniJson {
     /**
      * A literal with no fraction or exponent that fits a {@code long} is a {@link Long}, so an id or
      * a nanosecond count past 2^53 keeps every digit; any other number is a {@link Double}.
+     *
+     * <p>The whole run of number characters is checked against the RFC 8259 grammar before Java
+     * parses it, since {@code Long.parseLong} and {@code Double.parseDouble} also take a leading
+     * {@code +}, leading zeros and a bare {@code .} on either side.
      */
     private Number parseNumber() {
         int start = pos;
-        if (peek() == '-') pos++;
-        boolean integral = true;
-        while (pos < src.length() && "0123456789.eE+-".indexOf(src.charAt(pos)) >= 0) {
-            char c = src.charAt(pos++);
-            if (c < '0' || c > '9') integral = false;
-        }
+        while (pos < src.length() && "0123456789.eE+-".indexOf(src.charAt(pos)) >= 0) pos++;
         if (pos == start) throw new IllegalArgumentException("unexpected character at offset " + pos);
         String literal = src.substring(start, pos);
-        try {
-            if (integral) {
-                try {
-                    return Long.parseLong(literal);
-                } catch (NumberFormatException pastLongRange) {
-                    // A Double is the nearest a tree of Number can hold; a bare "-" fails below.
-                }
+        int fractionOrExponent = numberFractionOrExponent(literal);
+        if (fractionOrExponent < 0) throw new IllegalArgumentException("bad number at offset " + start);
+        if (fractionOrExponent == literal.length()) {
+            try {
+                return Long.parseLong(literal);
+            } catch (NumberFormatException pastLongRange) {
+                // A Double is the nearest a tree of Number can hold.
             }
-            return Double.parseDouble(literal);
-        } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("bad number at offset " + start, e);
         }
+        return Double.parseDouble(literal);
+    }
+
+    /**
+     * Where {@code s}'s fraction or exponent starts ({@code s.length()} when it has neither) when
+     * {@code s} is a JSON number, {@code -? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE] [+-]? [0-9]+)?};
+     * {@code -1} when it is not.
+     */
+    private static int numberFractionOrExponent(String s) {
+        int i = s.startsWith("-") ? 1 : 0;
+        int intStart = i;
+        i = skipDigits(s, i);
+        if (i == intStart || (s.charAt(intStart) == '0' && i > intStart + 1)) return -1;
+        int intEnd = i;
+        if (i < s.length() && s.charAt(i) == '.') {
+            int fracStart = ++i;
+            i = skipDigits(s, i);
+            if (i == fracStart) return -1;
+        }
+        if (i < s.length() && (s.charAt(i) == 'e' || s.charAt(i) == 'E')) {
+            i++;
+            if (i < s.length() && (s.charAt(i) == '+' || s.charAt(i) == '-')) i++;
+            int expStart = i;
+            i = skipDigits(s, i);
+            if (i == expStart) return -1;
+        }
+        return i == s.length() ? intEnd : -1;
+    }
+
+    private static int skipDigits(String s, int from) {
+        int i = from;
+        while (i < s.length() && s.charAt(i) >= '0' && s.charAt(i) <= '9') i++;
+        return i;
     }
 
     /**

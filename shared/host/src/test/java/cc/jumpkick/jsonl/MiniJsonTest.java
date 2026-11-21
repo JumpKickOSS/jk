@@ -58,6 +58,21 @@ class MiniJsonTest {
     }
 
     @Test
+    void numbers_follow_the_json_grammar_where_java_is_more_lenient() {
+        // Long.parseLong and Double.parseDouble take each of these; RFC 8259 takes none.
+        for (String bad : List.of("+5", "01", "-01", "00", "1.", ".5", "-.5", "1.e3", "1e", "1e+", "--1", "1.5.2")) {
+            assertThatThrownBy(() -> MiniJson.parse(bad))
+                    .as(bad)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("bad number at offset 0");
+            assertThatThrownBy(() -> MiniJson.parseRelaxed(bad)).as(bad).hasMessage("bad number at offset 0");
+        }
+        assertThatThrownBy(() -> MiniJson.parse("{\"a\":[1, 01]}")).hasMessage("bad number at offset 9");
+        assertThat(MiniJson.parse("[0, -0, 10, 0.5, -0.5, 1e5, 1E-2, 2.5e+3, -0e0]"))
+                .isEqualTo(List.of(0L, 0L, 10L, 0.5, -0.5, 1e5, 0.01, 2500.0, -0.0));
+    }
+
+    @Test
     void non_finite_numbers_write_as_null() {
         Map<String, Object> obj = new LinkedHashMap<>();
         obj.put("nan", Double.NaN);
