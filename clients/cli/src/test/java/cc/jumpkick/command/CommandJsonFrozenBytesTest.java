@@ -8,6 +8,7 @@ import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.command.project.OutdatedCommand;
 import cc.jumpkick.command.system.DoctorCommand;
+import cc.jumpkick.command.system.DoctorWorkers;
 import cc.jumpkick.command.system.EngineStatusCommand;
 import cc.jumpkick.command.system.EnvCommand;
 import cc.jumpkick.command.system.MavenSettingsRows;
@@ -162,7 +163,7 @@ class CommandJsonFrozenBytesTest {
         var warn = new DoctorCommand.Check(DoctorCommand.Status.WARN, "Cache", "large");
         var fail = new DoctorCommand.Check(DoctorCommand.Status.FAIL, "JDK", "missing \"25\"");
         assertThat(DoctorCommand.checkJson(fail)).isEqualTo("{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"}");
-        var noWorkers = new DoctorCommand.Workers(List.of(), null);
+        var noWorkers = new DoctorWorkers.Workers(List.of(), null);
         var noRepos = new RepoStores.Stores(List.of(), null);
         var noSettings = new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null);
         String emptySettings = "\"settings\":{\"files\":[],\"mirrors\":[],\"proxies\":[],\"repositories\":[]}";
@@ -207,8 +208,8 @@ class CommandJsonFrozenBytesTest {
                         + "\"m2\":{\"status\":\"fail\",\"detail\":\"missing \\\"25\\\"\"},"
                         + "\"tools\":{\"healthy\":3,\"pruned\":1,\"verified\":0,\"drifted\":0,\"firstSeen\":2,\"empty\":0,\"error\":null},"
                         + "\"workers\":[],\"repos\":[]," + emptySettings + "," + emptyLogins + ",\"windows\":[]}");
-        var one = new DoctorCommand.Workers(
-                List.of(new DoctorCommand.Worker(
+        var one = new DoctorWorkers.Workers(
+                List.of(new DoctorWorkers.Worker(
                         "jk-image-builder",
                         "0.13.3",
                         "jk-local",
@@ -266,7 +267,7 @@ class CommandJsonFrozenBytesTest {
     @Test
     void doctor_report_scan_error() {
         var ok = new DoctorCommand.Check(DoctorCommand.Status.OK, "Engine", "running");
-        var noWorkers = new DoctorCommand.Workers(List.of(), null);
+        var noWorkers = new DoctorWorkers.Workers(List.of(), null);
         var noRepos = new RepoStores.Stores(List.of(), null);
         var noSettings = new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null);
         String emptySettings = "\"settings\":{\"files\":[],\"mirrors\":[],\"proxies\":[],\"repositories\":[]}";
@@ -327,7 +328,7 @@ class CommandJsonFrozenBytesTest {
                 0,
                 0,
                 null,
-                new DoctorCommand.Workers(List.of(), null),
+                new DoctorWorkers.Workers(List.of(), null),
                 new RepoStores.Stores(List.of(), null),
                 new MavenSettingsRows.Rows(List.of(), List.of(), List.of(), List.of(), null),
                 new StoredLogins.Rows(List.of(), "file", null),

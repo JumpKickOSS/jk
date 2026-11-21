@@ -35,7 +35,7 @@ class DoctorWorkersTest {
 
     @Test
     void each_installed_worker_is_one_row_naming_its_source_and_classpath_size() {
-        DoctorCommand.Workers workers = DoctorCommand.workers(
+        DoctorWorkers.Workers workers = DoctorWorkers.of(
                 () -> CacheInventoryAck.workers(
                         List.of(IMAGE_ROW),
                         List.of(
@@ -44,12 +44,12 @@ class DoctorWorkersTest {
 
         assertThat(workers.error()).isNull();
         assertThat(workers.rows()).hasSize(1);
-        DoctorCommand.Worker w = workers.rows().get(0);
+        DoctorWorkers.Worker w = workers.rows().get(0);
         assertThat(w.source()).isEqualTo("jk-local");
         assertThat(w.declared()).isEqualTo(3);
         assertThat(w.classpath()).hasSize(2).anyMatch(p -> p.endsWith("guava-33.7.1-jre.jar"));
 
-        List<String> plain = strip(DoctorCommand.renderWorkers(workers, false, Theme.active()));
+        List<String> plain = strip(DoctorWorkers.render(workers, false, Theme.active()));
         assertThat(plain).hasSize(1);
         assertThat(plain.get(0))
                 .contains("worker:")
@@ -58,7 +58,7 @@ class DoctorWorkersTest {
                 .contains("POM declares 3 deps")
                 .contains("2 entries on the launch classpath");
 
-        List<String> verbose = strip(DoctorCommand.renderWorkers(workers, true, Theme.active()));
+        List<String> verbose = strip(DoctorWorkers.render(workers, true, Theme.active()));
         assertThat(verbose).hasSize(4);
         assertThat(verbose.get(1)).contains("pom ").contains("jk-image-builder-0.13.3.pom");
         assertThat(verbose.get(3)).contains("guava-33.7.1-jre.jar");
@@ -66,13 +66,13 @@ class DoctorWorkersTest {
 
     @Test
     void a_worker_whose_classpath_does_not_resolve_is_a_warning_carrying_the_engine_error() {
-        DoctorCommand.Workers workers =
-                DoctorCommand.workers(() -> CacheInventoryAck.workers(List.of(BROKEN_ROW), List.of()));
+        DoctorWorkers.Workers workers =
+                DoctorWorkers.of(() -> CacheInventoryAck.workers(List.of(BROKEN_ROW), List.of()));
 
-        DoctorCommand.Worker w = workers.rows().get(0);
+        DoctorWorkers.Worker w = workers.rows().get(0);
         assertThat(w.error()).isEqualTo("worker runtime dependency org.x:y:1 was not found");
         assertThat(w.classpath()).isEmpty();
-        List<String> plain = strip(DoctorCommand.renderWorkers(workers, false, Theme.active()));
+        List<String> plain = strip(DoctorWorkers.render(workers, false, Theme.active()));
         assertThat(plain.get(0))
                 .startsWith("warn:")
                 .contains("jk-formatter 0.13.3 from jumpkick")
@@ -81,37 +81,34 @@ class DoctorWorkersTest {
 
     @Test
     void a_worker_whose_descriptor_the_loader_refused_is_a_warning_naming_the_descriptor_and_the_fix() {
-        DoctorCommand.Workers workers =
-                DoctorCommand.workers(() -> CacheInventoryAck.workers(List.of(REFUSED_ROW), List.of()));
+        DoctorWorkers.Workers workers =
+                DoctorWorkers.of(() -> CacheInventoryAck.workers(List.of(REFUSED_ROW), List.of()));
 
-        DoctorCommand.Worker w = workers.rows().get(0);
+        DoctorWorkers.Worker w = workers.rows().get(0);
         assertThat(w.refused()).contains("describes plugin `spring-boot`");
         assertThat(w.error()).isNull();
-        List<String> plain = strip(DoctorCommand.renderWorkers(workers, false, Theme.active()));
+        List<String> plain = strip(DoctorWorkers.render(workers, false, Theme.active()));
         assertThat(plain).hasSize(1);
         assertThat(plain.get(0))
                 .startsWith("warn:")
                 .contains("jk-grails 0.13.3 from jk-local")
                 .contains("describes plugin `spring-boot` (table [spring-boot], worker jk-spring-boot)")
                 .contains("`jk install` from the JumpKick checkout, or `jk storage clean -w`");
-        assertThat(DoctorCommand.workersJson(workers))
-                .contains("\"refused\":\"")
-                .contains("describes plugin `spring-boot`");
+        assertThat(DoctorWorkers.json(workers)).contains("\"refused\":\"").contains("describes plugin `spring-boot`");
     }
 
     @Test
     void no_workers_and_no_engine_each_read_as_one_honest_row() {
-        DoctorCommand.Workers none = DoctorCommand.workers(() -> CacheInventoryAck.workers(List.of(), List.of()));
-        assertThat(strip(DoctorCommand.renderWorkers(none, false, Theme.active()))
-                        .get(0))
+        DoctorWorkers.Workers none = DoctorWorkers.of(() -> CacheInventoryAck.workers(List.of(), List.of()));
+        assertThat(strip(DoctorWorkers.render(none, false, Theme.active())).get(0))
                 .startsWith("ok:")
                 .contains("none installed yet");
 
-        DoctorCommand.Workers unreachable = DoctorCommand.workers(() -> {
+        DoctorWorkers.Workers unreachable = DoctorWorkers.of(() -> {
             throw new IOException("jk engine: could not start");
         });
         assertThat(unreachable.error()).contains("could not start");
-        assertThat(strip(DoctorCommand.renderWorkers(unreachable, false, Theme.active()))
+        assertThat(strip(DoctorWorkers.render(unreachable, false, Theme.active()))
                         .get(0))
                 .startsWith("warn:")
                 .contains("workers")
@@ -120,13 +117,13 @@ class DoctorWorkersTest {
 
     @Test
     void the_json_member_carries_each_worker_with_its_classpath_array() {
-        DoctorCommand.Workers workers = DoctorCommand.workers(
+        DoctorWorkers.Workers workers = DoctorWorkers.of(
                 () -> CacheInventoryAck.workers(
                         List.of(IMAGE_ROW, BROKEN_ROW),
                         List.of(
                                 "jk-image-builder|/store/repos/central/com/google/guava/guava/33.7.1-jre/guava-33.7.1-jre.jar")));
 
-        String json = DoctorCommand.workersJson(workers);
+        String json = DoctorWorkers.json(workers);
 
         assertThat(json).startsWith("[").endsWith("]");
         assertThat(json)
@@ -137,7 +134,7 @@ class DoctorWorkersTest {
                         "\"classpath\":[\"/store/repos/central/com/google/guava/guava/33.7.1-jre/guava-33.7.1-jre.jar\"]")
                 .contains("\"artifact\":\"jk-formatter\"")
                 .contains("\"error\":\"worker runtime dependency org.x:y:1 was not found\"");
-        assertThat(DoctorCommand.workersJson(new DoctorCommand.Workers(List.of(), "engine query failed: down")))
+        assertThat(DoctorWorkers.json(new DoctorWorkers.Workers(List.of(), "engine query failed: down")))
                 .isEqualTo("{\"error\":\"engine query failed: down\"}");
     }
 
@@ -147,19 +144,18 @@ class DoctorWorkersTest {
 
     @Test
     void with_no_engine_running_the_row_says_so_and_how_to_get_the_rows() {
-        DoctorCommand.Workers down = DoctorCommand.workers(() -> {
+        DoctorWorkers.Workers down = DoctorWorkers.of(() -> {
             throw new EngineClient.EngineNotRunningException();
         });
 
         assertThat(down.rows()).isEmpty();
-        String row =
-                strip(DoctorCommand.renderWorkers(down, false, Theme.active())).get(0);
+        String row = strip(DoctorWorkers.render(down, false, Theme.active())).get(0);
         assertThat(row)
                 .startsWith("warn:")
                 .contains("workers")
                 .contains("engine not running")
                 .contains("`jk doctor -e`");
-        assertThat(DoctorCommand.workersJson(down)).contains("\"error\":\"engine not running");
+        assertThat(DoctorWorkers.json(down)).contains("\"error\":\"engine not running");
 
         RepoStores.Stores repos = DoctorCommand.queryRepos(() -> {
             throw new EngineClient.EngineNotRunningException();
@@ -170,9 +166,8 @@ class DoctorWorkersTest {
 
     @Test
     void no_engine_flag_skips_the_engine_answered_rows_by_name() {
-        DoctorCommand.Workers skipped = new DoctorCommand.Workers(List.of(), DoctorCommand.ROWS_SKIPPED);
-        assertThat(strip(DoctorCommand.renderWorkers(skipped, false, Theme.active()))
-                        .get(0))
+        DoctorWorkers.Workers skipped = new DoctorWorkers.Workers(List.of(), DoctorCommand.ROWS_SKIPPED);
+        assertThat(strip(DoctorWorkers.render(skipped, false, Theme.active())).get(0))
                 .contains("workers")
                 .contains("skipped (--no-engine)");
     }
@@ -188,27 +183,27 @@ class DoctorWorkersTest {
 
     @Test
     void a_shelf_packaged_by_the_pointed_engine_is_one_ok_row() {
-        DoctorCommand.Workers workers = DoctorCommand.workers(() -> CacheInventoryAck.workers(
+        DoctorWorkers.Workers workers = DoctorWorkers.of(() -> CacheInventoryAck.workers(
                 List.of(shelved("jk-image-builder", "jk-local", LIVE), shelved("jk-formatter", "jk-local", LIVE)),
                 List.of()));
 
         assertThat(workers.rows()).allSatisfy(w -> assertThat(w.packagedBy()).isEqualTo(LIVE));
-        List<String> rows = strip(DoctorCommand.renderShelf(workers, Optional.of(LIVE), Theme.active()));
+        List<String> rows = strip(DoctorWorkers.renderShelf(workers, Optional.of(LIVE), Theme.active()));
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0)).startsWith("ok:").contains("shelf").contains("installed engine (ab12cd34ef56)");
-        assertThat(DoctorCommand.workersJson(workers)).contains("\"packagedBy\":\"" + LIVE + "\"");
+        assertThat(DoctorWorkers.json(workers)).contains("\"packagedBy\":\"" + LIVE + "\"");
     }
 
     @Test
     void a_shelf_packaged_by_another_engine_names_both_engines_the_workers_and_the_fix() {
-        DoctorCommand.Workers workers = DoctorCommand.workers(() -> CacheInventoryAck.workers(
+        DoctorWorkers.Workers workers = DoctorWorkers.of(() -> CacheInventoryAck.workers(
                 List.of(
                         shelved("jk-image-builder", "jk-local", OLD),
                         shelved("jk-formatter", "jk-local", LIVE),
                         shelved("jk-grails", "jk-local", OLD)),
                 List.of()));
 
-        List<String> rows = strip(DoctorCommand.renderShelf(workers, Optional.of(LIVE), Theme.active()));
+        List<String> rows = strip(DoctorWorkers.renderShelf(workers, Optional.of(LIVE), Theme.active()));
         assertThat(rows).hasSize(1);
         assertThat(rows.get(0))
                 .startsWith("warn:")
@@ -220,17 +215,17 @@ class DoctorWorkersTest {
 
     @Test
     void the_shelf_row_is_silent_without_a_recorded_packager_or_a_pointer() {
-        DoctorCommand.Workers published = DoctorCommand.workers(() ->
+        DoctorWorkers.Workers published = DoctorWorkers.of(() ->
                 CacheInventoryAck.workers(List.of(shelved("jk-image-builder", "jumpkick", OLD), IMAGE_ROW), List.of()));
-        assertThat(DoctorCommand.renderShelf(published, Optional.of(LIVE), Theme.active()))
+        assertThat(DoctorWorkers.renderShelf(published, Optional.of(LIVE), Theme.active()))
                 .isEmpty();
 
-        DoctorCommand.Workers local = DoctorCommand.workers(
+        DoctorWorkers.Workers local = DoctorWorkers.of(
                 () -> CacheInventoryAck.workers(List.of(shelved("jk-image-builder", "jk-local", OLD)), List.of()));
-        assertThat(DoctorCommand.renderShelf(local, Optional.empty(), Theme.active()))
+        assertThat(DoctorWorkers.renderShelf(local, Optional.empty(), Theme.active()))
                 .isEmpty();
-        assertThat(DoctorCommand.renderShelf(
-                        new DoctorCommand.Workers(List.of(), "engine not running"), Optional.of(LIVE), Theme.active()))
+        assertThat(DoctorWorkers.renderShelf(
+                        new DoctorWorkers.Workers(List.of(), "engine not running"), Optional.of(LIVE), Theme.active()))
                 .isEmpty();
     }
 }
