@@ -33,13 +33,13 @@ import org.jspecify.annotations.Nullable;
  * The doctor rows any process on this host can answer: the user config, the JumpKick directories,
  * the state directory's mode, the JDK installs, a project's lock and its Maven-local copies. {@code
  * jk doctor} runs them in the client, MCP {@code doctor} and {@code GET /api/doctor} in the engine;
- * the rows only the client can answer (its own build, the shell hooks, the tool links, the Maven
- * extension, stored logins) are {@link #unavailable} on the engine's surfaces.
+ * the rows only the client can answer (its own build, the shell hooks, the {@code jk} its {@code
+ * PATH} runs, the tool links, the Maven extension, stored logins) are {@link #unavailable} on the engine's surfaces.
  */
 public final class DoctorChecks {
 
     /** The rows only the client process can answer, in report order. */
-    public static final List<String> CLIENT_LOCAL = List.of("client", "shell", "mvn", "logins", "tools");
+    public static final List<String> CLIENT_LOCAL = List.of("client", "shell", "path", "mvn", "logins", "tools");
 
     private DoctorChecks() {}
 

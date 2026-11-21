@@ -6,6 +6,19 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk dev` answers `r`, `c` and `q`.** On a terminal, `r` rebuilds and restarts the app (every
+  member at a workspace root), `c` clears the screen and `q` stops the session. While the keys are
+  read, the app's stdin is not the terminal.
+- **`jk dev` re-plans when the workspace root's or a sibling member's `jk.toml` changes**, as it
+  does for the app's own; `jk watch` in a member rebuilds on an edit to the root's.
+- **`jk doctor` has a `path` row.** It warns when the first `jk` on `PATH` is not the one in
+  `~/.jk/bin`, so an update would not be the `jk` that runs. `--engine` with `--no-engine` is now a
+  usage error.
+- **`jk bsp serve` answers `buildTarget/inverseSources`, `resources`, `jvmRunEnvironment` and
+  `jvmTestEnvironment`**, so an IDE can find a file's target and run a main or a test class with
+  the classpath JumpKick builds.
+- **A value that starts with `-` is refused naming the `=` spelling.** `--jvm-arg -Xmx2g` says
+  to write `--jvm-arg=-Xmx2g`, instead of only that the option needs a value.
 - **`jk export` writes a workspace sibling as a project reference.** `jk export gradle` writes a
   `workspace = true` sibling as `project(":path")` and `jk export maven` as the sibling's coordinate
   at `${project.version}`, where both wrote a `workspace:` coordinate no build could resolve; a

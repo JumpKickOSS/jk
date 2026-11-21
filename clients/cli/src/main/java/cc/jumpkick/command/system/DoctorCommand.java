@@ -26,6 +26,7 @@ import cc.jumpkick.config.WorkspaceGroup;
 import cc.jumpkick.discovery.SymlinkProvisioner;
 import cc.jumpkick.doctor.DoctorChecks;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
@@ -37,6 +38,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.command.CliCommand;
+import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
@@ -103,6 +105,10 @@ public final class DoctorCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
+        if (in.isSet("engine") && in.isSet("no-engine")) {
+            CommandWedge.printFail("Doctor", "--engine and --no-engine contradict each other; pass one");
+            return Exit.USAGE;
+        }
         if (in.isSet("fix")) return DoctorFix.run(global);
         Path toolsDir = in.value("tools-dir").map(CliPaths::abs).orElse(null);
         boolean verifyLinked = in.isSet("verify-linked");
@@ -128,6 +134,7 @@ public final class DoctorCommand implements CliCommand {
         Check pins = projectRow("pins", members, dir -> check(DoctorChecks.pins(dir, JkVersion.VERSION)));
         Check suites = check(DoctorChecks.suiteReads(JkDirs.state()));
         Check shell = checkShell();
+        Check path = DoctorPath.check(ProcessEnv.get("PATH"), JkDirs.current().binDirectory(), Os.isWindows());
         Check mvn = checkMavenSpy(MavenSpyJar.current());
         Check m2 = projectRow("m2", members, dir -> check(DoctorChecks.m2(dir)));
         // At a group root: members listed with no project, and projects no entry lists.
@@ -184,6 +191,7 @@ public final class DoctorCommand implements CliCommand {
                             pins,
                             suites,
                             shell,
+                            path,
                             mvn,
                             m2,
                             healthy,
@@ -206,7 +214,7 @@ public final class DoctorCommand implements CliCommand {
         CliOutput.out(CommandWedge.menu("Doctor"));
 
         List<Check> checks = new ArrayList<>(
-                List.of(config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, shell, mvn, m2));
+                List.of(config, client, engine, cache, state, jdk, jdkPatch, lock, pins, suites, shell, path, mvn, m2));
         if (group != null) checks.add(group);
         for (Check c : checks) printCheck(c, t);
         for (String line : StoredLogins.render(logins, t)) CliOutput.out(line);
@@ -949,6 +957,7 @@ public final class DoctorCommand implements CliCommand {
                 pins,
                 null,
                 shell,
+                null,
                 mvn,
                 m2,
                 healthy,
@@ -965,7 +974,7 @@ public final class DoctorCommand implements CliCommand {
                 windows);
     }
 
-    /** As the report above, with the {@code suites} row when it is given. */
+    /** As the report above, with the {@code suites} and {@code path} rows when they are given. */
     public static String reportJson(
             Check config,
             Check client,
@@ -978,6 +987,7 @@ public final class DoctorCommand implements CliCommand {
             Check pins,
             @Nullable Check suites,
             Check shell,
+            @Nullable Check path,
             Check mvn,
             Check m2,
             int healthy,
@@ -1003,8 +1013,9 @@ public final class DoctorCommand implements CliCommand {
                 .token("lock", checkJson(lock))
                 .token("pins", checkJson(pins));
         if (suites != null) head = head.token("suites", checkJson(suites));
-        return head.token("shell", checkJson(shell))
-                .token("mvn", checkJson(mvn))
+        head = head.token("shell", checkJson(shell));
+        if (path != null) head = head.token("path", checkJson(path));
+        return head.token("mvn", checkJson(mvn))
                 .token("m2", checkJson(m2))
                 .token(
                         "tools",

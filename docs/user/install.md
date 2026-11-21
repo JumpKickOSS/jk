@@ -354,7 +354,9 @@ PowerShell 7: `activate pwsh`; Windows PowerShell 5.1: `activate powershell`.)
 
 `jk doctor` checks the login shell and the shell that launched `jk`, and warns if those
 profiles have no installer block. It does not look at unused rc files, and it never writes
-them — run `jk activate` to hook a newly installed shell.
+them — run `jk activate` to hook a newly installed shell. Its `path` row warns when the first `jk`
+on `PATH` is not the one in `~/.jk/bin` (another install shadows it, so an update would not be the
+`jk` that runs), or when `~/.jk/bin` is not on `PATH` at all.
 
 ## Windows host checks
 

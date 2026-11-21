@@ -1101,7 +1101,7 @@ was written. A refused edit or a failed lock answers `422`.
 status, detail, fix? }] }`, `status` one of `ok`, `warn`, `fail`, `unavailable`. The rows are the
 ones `jk doctor` prints, from the same checks (`DoctorChecks`): `config`, `dirs`, `state`, `jdk`,
 `lock` and `m2` for `dir` (`unavailable` when no `dir` is named), the engine's own row, the
-client's own rows (`client`, `shell`, `mvn`, `logins`, `tools`) as `unavailable`, and on Windows
+client's own rows (`client`, `shell`, `path`, `mvn`, `logins`, `tools`) as `unavailable`, and on Windows
 the host rows with their fixes. `ok` is false when any row failed. `GET /api/host` keeps serving
 the Status view's quiet Windows notes, a filter of the same Windows rows.
 
