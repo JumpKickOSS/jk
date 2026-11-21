@@ -130,7 +130,8 @@ How JumpKick is structured today. For day-to-day usage see [user documentation](
   — never rename or overwrite a jar `java.exe` may have mapped. The replacement client is staged
   beside the live one first; only then is the previous client parked as `jk.old` (`jk.exe.old` on
   Windows) and the staged one moved in, so an install that fails leaves the previous client on
-  PATH. Each install and the engine's minute tick delete the jars no pointer, rollback record or running process names, and the parked clients, once the displaced engine drains. Handshake detects skew and takes over.
+  PATH. Each install and the engine's minute tick delete the jars no pointer, rollback record or running process names, and the parked clients, once the displaced engine drains; a client a crashed install staged and
+  never moved in goes once it is an hour old. Handshake detects skew and takes over.
   **Newer always wins**: the lock's
   `jk-min` is a *floor*, never a pin — a JumpKick older than the floor refuses artifact jobs with an
   upgrade error (`jk self update`) on every surface, and nothing ever fetches or runs an older

@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -270,9 +271,10 @@ public final class EngineInstall {
     }
 
     /**
-     * {@link #gc()} with the PATH install directory ({@code jk.old} / {@code jk.exe.old}) given;
-     * {@code null} skips it. The engine jars are swept only while no install holds the install
-     * dir's lock: an install sweeps them itself once its pointer is written.
+     * {@link #gc()} with the PATH install directory ({@code jk.old} / {@code jk.exe.old}, and staged
+     * clients a crash abandoned) given; {@code null} skips it. The engine jars are swept only while
+     * no install holds the install dir's lock: an install sweeps them itself once its pointer is
+     * written.
      */
     public List<Path> gc(@Nullable Path binDir) {
         List<Path> removed = new ArrayList<>();
@@ -284,7 +286,7 @@ public final class EngineInstall {
                 // best effort: what this sweep left, the next one takes
             }
         }
-        sweepParkedClients(binDir, removed);
+        sweepParkedClients(binDir, clock.getAsLong(), removed);
         return removed;
     }
 
@@ -563,17 +565,35 @@ public final class EngineInstall {
     /** A client an install parked: {@code jk.old}, {@code jk.exe.old-<nanos>}, {@code jkx.bat.old} and so on. */
     private static final Pattern PARKED = Pattern.compile("jkx?(\\.exe|\\.bat|\\.cmd)?\\.old(-\\d+)?");
 
+    /** A client {@link #installBinaries} staged: {@code .jk-new-<nonce>}, {@code .jkx.exe-new-<nonce>} and so on. */
+    private static final Pattern STAGED = Pattern.compile("\\.jkx?(\\.exe)?-new-.+");
+
     /**
-     * Delete the clients earlier installs parked under {@code binDir}. A parked client still running
-     * keeps its file on Windows (the delete is refused while it is mapped) and is left for the next
-     * sweep; nothing else is touched. Returns how many went.
+     * How old a staged client must be before a sweep takes it. An install renames its staged pair
+     * within seconds, so one this old was left by a crash, never by an install still running.
+     */
+    private static final Duration STAGED_MAX_AGE = Duration.ofHours(1);
+
+    /** Whether {@code p} is a client a crashed install staged and never renamed into place. */
+    private static boolean isAbandonedStaged(Path p, long modifiedMillis, long nowMillis) {
+        return STAGED.matcher(p.getFileName().toString()).matches()
+                && nowMillis - modifiedMillis > STAGED_MAX_AGE.toMillis();
+    }
+
+    /**
+     * Delete the clients earlier installs parked under {@code binDir}, and the ones a crashed install
+     * staged more than {@link #STAGED_MAX_AGE} ago. A parked client still running keeps its file on
+     * Windows (the delete is refused while it is mapped) and is left for the next sweep; nothing else
+     * is touched. Returns how many went.
      */
     public static int sweepParked(Path binDir) {
         int[] removed = {0};
+        long now = Clock.SYSTEM.millis();
         try {
             PathUtil.forEachChild(binDir, (p, attrs) -> {
                 if (attrs.isRegularFile()
-                        && PARKED.matcher(p.getFileName().toString()).matches()) {
+                        && (PARKED.matcher(p.getFileName().toString()).matches()
+                                || isAbandonedStaged(p, attrs.lastModifiedTime().toMillis(), now))) {
                     try {
                         Files.delete(p);
                         removed[0]++;
@@ -1094,13 +1114,18 @@ public final class EngineInstall {
         }
     }
 
-    private static void sweepParkedClients(@Nullable Path binDir, List<Path> removed) {
+    private static void sweepParkedClients(@Nullable Path binDir, long nowMillis, List<Path> removed) {
         if (binDir == null || !Files.isDirectory(binDir)) return;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(binDir)) {
-            for (Path p : entries) {
-                if (!Files.isRegularFile(p) && !Files.isSymbolicLink(p)) continue;
-                if (isParkedClientName(p.getFileName().toString())) tryDelete(p, removed);
-            }
+        try {
+            PathUtil.forEachChild(binDir, (p, attrs) -> {
+                if (attrs.isRegularFile() || attrs.isSymbolicLink()) {
+                    if (isParkedClientName(p.getFileName().toString())
+                            || isAbandonedStaged(p, attrs.lastModifiedTime().toMillis(), nowMillis)) {
+                        tryDelete(p, removed);
+                    }
+                }
+                return true;
+            });
         } catch (IOException ignored) {
             // best-effort
         }
