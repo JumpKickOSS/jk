@@ -127,6 +127,33 @@ class ToolRunForkTest {
                 .hasMessageContaining(system.name());
     }
 
+    /**
+     * A short command is refused the same way: the {@code java} launcher decodes its command line
+     * in the system encoding whatever its length, so the argument would reach it mangled and fail
+     * later as a class not found.
+     */
+    @Test
+    void a_short_command_with_an_argument_the_system_encoding_cannot_hold_is_refused_by_name() {
+        String unreadable = "lib/日本.jar";
+        TaskExec.ToolRun run = probe().arg(String.join(Classpaths.SEPARATOR, "a.jar", unreadable, "b.jar"));
+
+        // An ANSI-like system encoding on every host, read at the fork.
+        String saved = System.getProperty("native.encoding");
+        System.setProperty("native.encoding", "US-ASCII");
+        try {
+            assertThatThrownBy(run::run)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageStartingWith(unreadable + ": java")
+                    .hasMessageContaining("US-ASCII");
+        } finally {
+            if (saved == null) {
+                System.clearProperty("native.encoding");
+            } else {
+                System.setProperty("native.encoding", saved);
+            }
+        }
+    }
+
     /** {@code java -cp <test classpath> EnvEchoMain} on the JVM running the test. */
     private static TaskExec.ToolRun probe() {
         Path javaHome = Path.of(Objects.requireNonNull(System.getProperty("java.home"), "java.home"));

@@ -316,19 +316,22 @@ public interface TaskExec {
         public Process start(ProcessBuilder.Redirect output) throws IOException {
             List<String> cmd = command();
             Path argFile = null;
-            if (needsArgFile(cmd)) {
-                // The java launcher reads its command line in the argfile's charset too, so an
-                // argument that charset cannot hold reaches the child mangled either way; refuse
-                // it rather than fork a line too long for the OS.
-                Charset charset = argFileCharset(cmd.get(0));
+            if (isJavaLauncher(cmd)) {
+                // The launcher decodes its command line in the system encoding at any length, and
+                // an argfile in its own charset, so an argument that charset cannot hold reaches
+                // the child mangled either way: a classpath entry fails later as a missing class.
+                boolean viaArgFile = needsArgFile(cmd);
+                Charset charset = viaArgFile ? argFileCharset(cmd.get(0)) : systemCharset();
                 String unreadable = unencodable(cmd, charset);
                 if (unreadable != null) {
                     throw new IOException(
                             unreadable + ": " + Path.of(cmd.get(0)).getFileName()
                                     + " cannot read it in the system encoding " + charset.name());
                 }
-                argFile = Files.createTempFile("jk-tool-args-", ".txt");
-                cmd = writeArgFile(cmd, argFile, charset);
+                if (viaArgFile) {
+                    argFile = Files.createTempFile("jk-tool-args-", ".txt");
+                    cmd = writeArgFile(cmd, argFile, charset);
+                }
             }
             // No terminal behind a tool a step forks: a passphrase or "overwrite?" prompt reads end
             // of input and fails at once, where an open pipe nobody writes would hang the step.
@@ -356,7 +359,11 @@ public interface TaskExec {
          */
         private static Charset argFileCharset(String exe) {
             String name = Path.of(exe).getFileName().toString().toLowerCase(Locale.ROOT);
-            if (name.startsWith("javac")) return StandardCharsets.UTF_8;
+            return name.startsWith("javac") ? StandardCharsets.UTF_8 : systemCharset();
+        }
+
+        /** The native (ANSI) code page the launcher decodes its command line in. */
+        private static Charset systemCharset() {
             String nativeEncoding = System.getProperty("native.encoding");
             try {
                 return nativeEncoding == null ? Charset.defaultCharset() : Charset.forName(nativeEncoding);
@@ -390,14 +397,17 @@ public interface TaskExec {
             }
         }
 
+        /** A {@code java} or {@code javac} launcher with arguments: the tools that read an argfile. */
+        private static boolean isJavaLauncher(List<String> cmd) {
+            if (cmd.size() <= 1) return false;
+            String exe = Path.of(cmd.get(0)).getFileName().toString().toLowerCase(Locale.ROOT);
+            return exe.equals("java") || exe.equals("java.exe") || exe.equals("javac") || exe.equals("javac.exe");
+        }
+
+        /** Whether a launcher's command line goes through an argfile. */
         private static boolean needsArgFile(List<String> cmd) {
             // Every OS: a classpath or a class list past the threshold is one exec away from E2BIG
             // on macOS and Linux too, not only past Windows' command-line limit.
-            if (cmd.size() <= 1) return false;
-            String exe = Path.of(cmd.get(0)).getFileName().toString().toLowerCase(Locale.ROOT);
-            if (!exe.equals("java") && !exe.equals("java.exe") && !exe.equals("javac") && !exe.equals("javac.exe")) {
-                return false;
-            }
             int chars = 0;
             for (String a : cmd) chars += a.length() + 3;
             return chars > ARG_FILE_THRESHOLD;
