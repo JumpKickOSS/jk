@@ -433,7 +433,9 @@ step too. The database must be up when the build reaches the step: one that is d
 `schema` it does not have, fails the step with the driver's message. `jk explain` connects to
 nothing, so it says the live input is probed when the step runs. Running a database for the build
 (a Testcontainer, a compose file) is the module's own affair. `jk import` writes the table from a
-POM's `jooq-codegen-maven` ([Migration](migration.md#which-maven-plugins-import-and-how-well)).
+POM's `jooq-codegen-maven` ([Migration](migration.md#which-maven-plugins-import-and-how-well)); a
+password the POM spells `${env.DB_PASSWORD}` becomes `jdbc-password = "env:DB_PASSWORD"`, and one
+written out stays out of `jk.toml`, with a row asking you to move it to `.env`.
 
 ## Related
 

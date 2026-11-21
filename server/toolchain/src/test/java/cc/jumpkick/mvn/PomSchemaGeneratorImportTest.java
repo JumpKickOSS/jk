@@ -434,10 +434,61 @@ class PomSchemaGeneratorImportTest {
         assertThat(messages(result))
                 .anyMatch(m -> m.contains("reads a live database") && m.contains("list the schema migrations in sql"))
                 .anyMatch(m -> m.contains("source root src/main/java") && m.contains("delete the checked-in copies"))
+                .anyMatch(m -> m.contains("<jdbc><password> not imported"))
                 .noneMatch(m -> m.startsWith("jooq-codegen-maven not imported"));
         String rendered = JkBuildRenderer.render(result.jkBuild());
         assertThat(rendered).contains("[jooq]").contains("jdbc-url = \"jdbc:h2:~/jooq\"");
         assertThat(JkBuildParser.parse(rendered).pluginConfig("jooq")).isPresent();
+    }
+
+    /** The password is a secret: an {@code ${env.NAME}} one is written as env:NAME, a written-out one is a row. */
+    @Test
+    void jooq_jdbc_password_is_written_only_as_an_env_reference(@TempDir Path tempDir) throws Exception {
+        PluginConfig fromEnv = jooqWithPassword(tempDir.resolve("env"), "${env.SHOP_DB_PASSWORD}")
+                .jkBuild()
+                .pluginConfig("jooq")
+                .orElseThrow();
+        assertThat(fromEnv.values()).containsEntry("jdbc-password", "env:SHOP_DB_PASSWORD");
+
+        PomImporter.Result literal = jooqWithPassword(tempDir.resolve("literal"), "s3cret");
+        assertThat(literal.jkBuild().pluginConfig("jooq").orElseThrow().values())
+                .containsEntry("jdbc-url", "jdbc:postgresql://localhost/shop")
+                .doesNotContainKey("jdbc-password");
+        assertThat(messages(literal))
+                .anyMatch(m -> m.contains("<jdbc><password> not imported")
+                        && m.contains(".env")
+                        && m.contains("jdbc-password = \"env:DB_PASSWORD\""))
+                .noneMatch(m -> m.contains("s3cret"));
+        assertThat(JkBuildRenderer.render(literal.jkBuild())).doesNotContain("s3cret");
+    }
+
+    private static PomImporter.Result jooqWithPassword(Path dir, String password) throws Exception {
+        Files.createDirectories(dir);
+        return TestImporters.importXml(dir, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>shop</artifactId>
+                  <version>1.0</version>
+                  <build>
+                    <plugins>
+                      <plugin>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq-codegen-maven</artifactId>
+                        <version>3.21.8</version>
+                        <configuration>
+                          <jdbc>
+                            <url>jdbc:postgresql://localhost/shop</url>
+                            <user>shop</user>
+                            <password>%s</password>
+                          </jdbc>
+                          <generator><target><packageName>com.acme.db</packageName></target></generator>
+                        </configuration>
+                      </plugin>
+                    </plugins>
+                  </build>
+                </project>
+                """.formatted(password));
     }
 
     /** A DDLDatabase configuration: its scripts are the preset's own input. */

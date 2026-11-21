@@ -7,6 +7,8 @@ import cc.jumpkick.model.PluginConfig;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.codehaus.plexus.util.xml.Xpp3Dom;
@@ -17,7 +19,7 @@ import org.jspecify.annotations.Nullable;
  * is {@code package}, {@code <database><inputSchema>} / {@code <includes>} / {@code <excludes>} are
  * their keys, the {@code <generate>} switches {@code records}, {@code pojos}, {@code daos} and
  * {@code fluentSetters} are theirs, a {@code <jdbc>} block with a resolvable URL is the {@code
- * jdbc-*} keys, the plugin version is {@code version} — each written only when it differs from the
+ * jdbc-*} keys (a {@code ${env.NAME}} password as {@code env:NAME}, any other a row), the plugin version is {@code version} — each written only when it differs from the
  * preset's default. A {@code DDLDatabase} configuration's {@code scripts} property is {@code sql}.
  * The target {@code <directory>} is the preset's own contribution, so an {@code add-source} root
  * inside it is not written as an {@code extra-src}; a directory under {@code src/main/java} is a
@@ -32,6 +34,7 @@ final class JooqPlugin {
 
     private static final String DEFAULT_OUTPUT = "target/generated-sources/jooq";
     private static final String DDL_DATABASE = "org.jooq.meta.extensions.ddl.DDLDatabase";
+    private static final Pattern ENV = Pattern.compile("\\$\\{env\\.([A-Za-z_][A-Za-z0-9_]*)}");
 
     /** The table (null without the plugin) and the output root the plugin fills. */
     record Mapped(@Nullable PluginConfig table, Map<String, String> outputRoots) {
@@ -133,10 +136,24 @@ final class JooqPlugin {
         values.put("jdbc-url", url);
         String user = PluginFacts.child(jdbc, "user");
         if (user != null) values.put("jdbc-user", user);
-        String password = PluginFacts.child(jdbc, "password");
-        if (password != null) values.put("jdbc-password", password);
+        password(PluginFacts.text(jdbc.getChild("password")), values, report);
         report.warning(ARTIFACT + " reads a live database; set [jooq] driver = \"group:artifact:version\" and"
                 + " list the schema migrations in sql");
         return true;
+    }
+
+    /**
+     * {@code <password>}: a secret, so only a {@code ${env.NAME}} reference is written, as {@code
+     * env:NAME}; a password written out, or behind a property the POM does not define, is a row.
+     */
+    private static void password(@Nullable String raw, Map<String, Object> values, ImportReport.Builder report) {
+        if (raw == null || raw.isBlank()) return;
+        Matcher env = ENV.matcher(raw.strip());
+        if (env.matches()) {
+            values.put("jdbc-password", "env:" + env.group(1));
+        } else {
+            report.warning(ARTIFACT + " <jdbc><password> not imported; put it in .env as DB_PASSWORD and set"
+                    + " [jooq] jdbc-password = \"env:DB_PASSWORD\"");
+        }
     }
 }
