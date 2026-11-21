@@ -73,6 +73,11 @@ fire is a module where it does, or a `fixture`. A run that compiles no tests (`j
 measured over test classes a build compiled; `jk build` and `jk test` judge it, and
 `jk guard freeze` reads the test classes the last build left.
 
+A test class is one `jk test` would find tests in: a concrete class that, a superclass, an
+interface or a nested class of which declares a test (JUnit 5, JUnit 4 or TestNG, directly or
+through an annotation composed of one), or a Spock, Kotest or JUnit 3 specification. The `tests`
+class predicate below means the same.
+
 ## Kinds
 
 <!-- guard-kinds:start -->

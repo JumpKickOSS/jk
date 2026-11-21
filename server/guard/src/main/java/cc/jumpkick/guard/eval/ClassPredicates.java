@@ -128,7 +128,7 @@ final class ClassPredicates {
             case "simple-name-ending-with" -> c -> simpleName(c).endsWith(v);
             case "named" -> c -> Rule.globMatches(v, simpleName(c));
             case "source-language" -> LANGUAGES.contains(v) ? c -> v.equals(sourceLanguage(c)) : null;
-            default -> shape(v);
+            default -> shape(v, types);
         };
     }
 
@@ -156,7 +156,7 @@ final class ClassPredicates {
     }
 
     /** The predicate for one shape name, or {@code null} for a name outside {@link #SHAPES}. */
-    static @Nullable Predicate<ClassFacts> shape(String v) {
+    static @Nullable Predicate<ClassFacts> shape(String v, TypeHierarchy types) {
         return switch (v) {
             case "interface" -> c -> c.hasFlag(Opcodes.ACC_INTERFACE) && !c.hasFlag(Opcodes.ACC_ANNOTATION);
             case "abstract" -> c -> c.hasFlag(Opcodes.ACC_ABSTRACT) && !c.hasFlag(Opcodes.ACC_INTERFACE);
@@ -168,7 +168,7 @@ final class ClassPredicates {
             case "nested" -> ClassFacts::isNested;
             case "top-level" -> c -> !c.isNested();
             case "static" -> c -> c.hasFlag(Opcodes.ACC_STATIC);
-            case "tests" -> AnnotateEvaluator::isTestClass;
+            case "tests" -> c -> types.testClasses().isTestClass(c);
             default -> null;
         };
     }

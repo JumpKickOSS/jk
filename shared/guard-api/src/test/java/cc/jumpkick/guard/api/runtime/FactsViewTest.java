@@ -205,30 +205,6 @@ class FactsViewTest {
     }
 
     @Test
-    void a_class_is_a_test_class_by_any_supported_test_annotation() {
-        assertThat(FactsView.isTestClass(test().classNamed("a/EscTest").orElseThrow()))
-                .isTrue();
-        assertThat(FactsView.isTestClass(test().classNamed("a/OldTest").orElseThrow()))
-                .isTrue();
-        assertThat(FactsView.isTestClass(test().classNamed("a/Helper").orElseThrow()))
-                .isFalse();
-        ClassFacts parameterized = cls(
-                "a/P",
-                "P.java",
-                List.of(),
-                List.of(),
-                List.of(method(
-                        "p",
-                        "(I)V",
-                        List.of(new AnnotationFacts("Lorg/junit/jupiter/params/ParameterizedTest;", true, Map.of())),
-                        List.of(),
-                        List.of(),
-                        List.of())),
-                Set.of());
-        assertThat(FactsView.isTestClass(parameterized)).isTrue();
-    }
-
-    @Test
     void constants_edges_and_class_dirs_come_from_the_main_index_and_the_config() {
         assertThat(view().constants("a.Esc")).containsExactly(Map.entry("SEP", ","));
         assertThat(view().packageEdges()).containsExactly(Map.entry("a", Set.of("b")), Map.entry("b", Set.of("a")));

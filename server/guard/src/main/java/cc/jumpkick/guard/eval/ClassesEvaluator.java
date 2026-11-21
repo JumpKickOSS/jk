@@ -63,7 +63,7 @@ final class ClassesEvaluator implements Evaluator {
         TomlTable should = t.getTable("should");
         if (should == null) return Evaluation.failed("`should` is required");
         List<Should> shoulds = new ArrayList<>();
-        String error = compileShould(should, shoulds);
+        String error = compileShould(should, shoulds, types);
         if (error != null) return Evaluation.failed("should: " + error);
         FactsIndex facts = ctx.facts();
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
@@ -138,7 +138,7 @@ final class ClassesEvaluator implements Evaluator {
             @Nullable Predicate<ClassFacts> shape) {}
 
     /** Every {@code should} value compiled, or the text of the first problem. */
-    private static @Nullable String compileShould(TomlTable should, List<Should> into) {
+    private static @Nullable String compileShould(TomlTable should, List<Should> into, TypeHierarchy types) {
         for (Map.Entry<String, Object> e : should.toMap().entrySet()) {
             String key = e.getKey();
             if (!SHOULD.contains(key)) {
@@ -149,7 +149,7 @@ final class ClassesEvaluator implements Evaluator {
                 String v = negate ? raw.substring(1) : raw;
                 Predicate<ClassFacts> shape = null;
                 if (key.equals("be") || key.equals("have-modifier")) {
-                    shape = ClassPredicates.shape(v);
+                    shape = ClassPredicates.shape(v, types);
                     if (shape == null) {
                         return key + " = \"" + raw + "\" is not understood; shapes are "
                                 + String.join(", ", ClassPredicates.SHAPES);

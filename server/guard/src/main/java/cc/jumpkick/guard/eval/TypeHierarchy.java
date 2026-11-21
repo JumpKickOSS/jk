@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.guard.extract.FactsExtractor;
 import cc.jumpkick.guard.facts.ClassFacts;
 import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.facts.FactsIndex;
+import cc.jumpkick.guard.facts.TestClassFacts;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -43,6 +45,8 @@ public final class TypeHierarchy {
     private final Supplier<List<Path>> classpath;
     private final Map<String, Optional<Supers>> memo = new HashMap<>();
     private final Map<String, Set<String>> ancestorMemo = new HashMap<>();
+    private final Map<String, Optional<ClassFacts>> factsMemo = new HashMap<>();
+    private @Nullable TestClassFacts testClasses;
     private @Nullable List<ZipFile> jars;
     private List<Path> dirs = List.of();
 
@@ -277,6 +281,33 @@ public final class TypeHierarchy {
     synchronized int openJars() {
         List<ZipFile> open = jars;
         return open == null ? 0 : open.size();
+    }
+
+    /**
+     * The facts of {@code internalName}: the module's own, else read from the classpath or the JDK;
+     * empty when unknown. Memoised.
+     */
+    public synchronized Optional<ClassFacts> classFacts(String internalName) {
+        Optional<ClassFacts> hit = factsMemo.get(internalName);
+        if (hit != null) return hit;
+        Optional<ClassFacts> found = facts.classNamed(internalName);
+        if (found.isEmpty()) {
+            byte[] bytes = bytesOf(internalName);
+            try {
+                found = bytes == null ? Optional.empty() : Optional.of(FactsExtractor.extract(bytes));
+            } catch (RuntimeException unreadable) {
+                found = Optional.empty();
+            }
+        }
+        factsMemo.put(internalName, found);
+        return found;
+    }
+
+    /** Which of the module's classes are test classes, supertypes and annotations beyond it read by {@link #classFacts}. */
+    public synchronized TestClassFacts testClasses() {
+        TestClassFacts built = testClasses;
+        if (built == null) testClasses = built = new TestClassFacts(List.of(facts), this::classFacts);
+        return built;
     }
 
     /** Close the jars opened for resolution. Idempotent. */

@@ -25,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.AnnotationVisitor;
@@ -235,6 +236,57 @@ class AnnotateEvaluatorTest {
         assertThat(e.observations())
                 .extracting(Observation::key)
                 .containsExactly("cc.jumpkick.guard.eval.AnnotateEvaluatorTest");
+    }
+
+    @Test
+    void test_class_sees_inherited_nested_only_and_specification_classes(@TempDir Path dir) throws Exception {
+        FactsIndex main = index(compiled("a/Main", Opcodes.ACC_PUBLIC, "java/lang/Object", null));
+        FactsIndex tests = testShapes();
+        Evaluation e = run(dir, "require = \"java.lang.Deprecated\"\non = \"test-class\"\n", main, tests);
+        assertThat(e.observations())
+                .extracting(Observation::key)
+                .containsExactlyInAnyOrder("a.Child", "a.Outer", "a.Outer$Inner", "a.Spec");
+    }
+
+    @Test
+    void the_tests_predicate_is_the_same_rule(@TempDir Path dir) throws Exception {
+        Evaluation e = run(
+                dir,
+                "require = \"java.lang.Deprecated\"\non = \"class\"\nmatching = { are = \"tests\" }\n",
+                testShapes());
+        assertThat(e.observations())
+                .extracting(Observation::key)
+                .containsExactlyInAnyOrder("a.Child", "a.Outer", "a.Outer$Inner", "a.Spec");
+    }
+
+    /**
+     * An abstract base with the only test method, a child inheriting it, an outer class whose test
+     * is in a nested class, a Spock specification with no annotation, and a helper.
+     */
+    private static FactsIndex testShapes() {
+        return index(
+                compiled(
+                        "a/Base",
+                        Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
+                        "java/lang/Object",
+                        "Lorg/junit/jupiter/api/Test;"),
+                compiled("a/Child", Opcodes.ACC_PUBLIC, "a/Base", null),
+                compiled("a/Outer", Opcodes.ACC_PUBLIC, "java/lang/Object", null),
+                compiled("a/Outer$Inner", Opcodes.ACC_PUBLIC, "java/lang/Object", "Lorg/junit/jupiter/api/Test;"),
+                compiled("a/Spec", Opcodes.ACC_PUBLIC, "spock/lang/Specification", null),
+                compiled("a/Helper", Opcodes.ACC_PUBLIC, "java/lang/Object", null));
+    }
+
+    /** Class {@code internal} with one method wearing {@code methodAnnotation}, when given. */
+    private static ClassFacts compiled(
+            String internal, int access, String superName, @Nullable String methodAnnotation) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V17, access, internal, null, superName, null);
+        var mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "m", "()V", null, null);
+        if (methodAnnotation != null) mv.visitAnnotation(methodAnnotation, true).visitEnd();
+        mv.visitEnd();
+        cw.visitEnd();
+        return FactsExtractor.extract(cw.toByteArray());
     }
 
     @Test

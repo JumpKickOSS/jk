@@ -11,6 +11,7 @@ import cc.jumpkick.guard.facts.Descriptors;
 import cc.jumpkick.guard.facts.FactsIndex;
 import cc.jumpkick.guard.facts.FieldFacts;
 import cc.jumpkick.guard.facts.MethodFacts;
+import cc.jumpkick.guard.facts.TestClassFacts;
 import cc.jumpkick.guard.rules.Allow;
 import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.lock.ManifestPaths;
@@ -40,15 +41,8 @@ import org.tomlj.TomlTable;
  */
 final class AnnotateEvaluator implements Evaluator {
 
-    private static final List<String> TEST_METHOD_ANNOTATIONS = List.of(
-            "org.junit.jupiter.api.Test",
-            "org.junit.jupiter.params.ParameterizedTest",
-            "org.junit.jupiter.api.RepeatedTest",
-            "org.junit.jupiter.api.TestFactory",
-            "org.junit.jupiter.api.TestTemplate",
-            "org.junit.Test",
-            "org.testng.annotations.Test",
-            "kotlin.test.Test");
+    /** The memo key of a lane run's test-class judgement over its test facts. */
+    private static final Object TEST_CLASSES = new Object();
 
     @Override
     public Evaluation evaluate(Rule rule, EvalContext ctx) {
@@ -154,7 +148,7 @@ final class AnnotateEvaluator implements Evaluator {
             for (ClassFacts c : facts.classList()) {
                 if (c.isPackageInfo() || c.hasFlag(Opcodes.ACC_SYNTHETIC)) continue;
                 if (!matching.test(c)) continue;
-                if (on.equals("test-class") && !isTestClass(c)) continue;
+                if (on.equals("test-class") && !testClasses(ctx, facts).isTestClass(c)) continue;
                 String src = ForbidEvaluator.source(ctx, c);
                 switch (on) {
                     case "class", "test-class" -> {
@@ -359,11 +353,14 @@ final class AnnotateEvaluator implements Evaluator {
         return withValue == null ? "" : " with " + withValue;
     }
 
-    /** A class with at least one test-framework-annotated method, or nested inside one. */
-    static boolean isTestClass(ClassFacts c) {
-        for (MethodFacts m : c.methods()) {
-            for (AnnotationFacts a : m.annotations()) if (TEST_METHOD_ANNOTATIONS.contains(a.typeName())) return true;
-        }
-        return false;
+    /**
+     * Which classes of the test facts are test classes: supertypes and annotations read from the
+     * test facts, the main facts, then the classpath.
+     */
+    static TestClassFacts testClasses(EvalContext ctx, FactsIndex test) {
+        return ctx.memo(TEST_CLASSES, c -> {
+            TypeHierarchy types = c.hierarchy();
+            return new TestClassFacts(List.of(test, c.facts()), types::classFacts);
+        });
     }
 }

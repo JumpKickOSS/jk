@@ -1,74 +1,58 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testrunner;
 
+import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.TestClassRule;
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Whether a class file is one the JUnit Platform would have admitted as a test class, read from
- * its bytes without loading it: a concrete class that declares a test method or a test annotation
- * (Jupiter's, JUnit 4's, TestNG's, or a project annotation composed of one), extends a class that
- * does, or extends a framework's specification base (Spock's, JUnit 3's {@code TestCase}). The probe over the classes discovery dropped
- * keeps to these, so a helper under the test root that cannot load — a fixture compiled against a
- * dependency absent at test time — is not a failed run.
+ * its bytes without loading it, by {@link TestClassRule}: its supertypes and composed annotations
+ * are read from the root, else from the loader, and its nested classes from the root. The probe
+ * over the classes discovery dropped keeps to these, so a helper under the test root that cannot
+ * load — a fixture compiled against a dependency absent at test time — is not a failed run.
  */
 final class TestClassShape {
 
-    /** Annotation descriptors that make a class a test class when it, or one of its methods, wears one. */
-    static final Set<String> TEST_ANNOTATIONS = Set.of(
-            "Lorg/junit/jupiter/api/Test;",
-            "Lorg/junit/jupiter/api/RepeatedTest;",
-            "Lorg/junit/jupiter/api/TestFactory;",
-            "Lorg/junit/jupiter/api/TestTemplate;",
-            "Lorg/junit/jupiter/params/ParameterizedTest;",
-            "Lorg/junit/jupiter/params/ParameterizedClass;",
-            "Lorg/junit/platform/commons/annotation/Testable;",
-            "Lorg/junit/platform/suite/api/Suite;",
-            "Lorg/junit/Test;",
-            "Lorg/testng/annotations/Test;");
+    /**
+     * What a class file says about itself: its name, supertypes and access flags as internal names,
+     * and every constant-pool string. The pool names every annotation the class and its members
+     * wear, so a type descriptor in it stands for an annotation of either.
+     */
+    record Facts(String name, @Nullable String superName, List<String> interfaces, int access, Set<String> strings) {
 
-    /** Supertypes whose concrete subclasses are specifications with no annotation of their own. */
-    static final Set<String> TEST_BASES = Set.of("spock/lang/Specification", "junit/framework/TestCase");
-
-    /** Kotest's spec styles all live under this package. */
-    static final String KOTEST_SPECS = "io/kotest/core/spec/";
-
-    /** Supertypes followed before a class is judged not a test class. */
-    private static final int SUPER_DEPTH = 8;
-
-    private static final int ACC_INTERFACE = 0x0200;
-    private static final int ACC_ABSTRACT = 0x0400;
-    private static final int ACC_ANNOTATION = 0x2000;
-
-    /** What a class file says about itself: its name, supertype, access flags and every constant-pool string. */
-    record Facts(String name, @Nullable String superName, int access, Set<String> strings) {
-
-        boolean concrete() {
-            return (access & (ACC_INTERFACE | ACC_ABSTRACT)) == 0;
-        }
-
-        boolean annotation() {
-            return (access & ACC_ANNOTATION) != 0;
-        }
-
-        /** True when the pool names a test annotation: the class or a member wears it. */
-        boolean declaresTest() {
-            for (String a : TEST_ANNOTATIONS) {
-                if (strings.contains(a)) return true;
+        /** These facts as the rule reads them: every type descriptor in the pool a candidate annotation. */
+        TestClassRule.Type type() {
+            List<String> supertypes = new ArrayList<>();
+            if (superName != null) supertypes.add(binary(superName));
+            for (String i : interfaces) supertypes.add(binary(i));
+            Set<String> annotations = new LinkedHashSet<>();
+            for (String s : strings) {
+                if (s.length() >= 3 && s.charAt(0) == 'L' && s.indexOf(';') == s.length() - 1) {
+                    annotations.add(binary(s.substring(1, s.length() - 1)));
+                }
             }
-            return false;
+            return new TestClassRule.Type(binary(name), access, supertypes, annotations, annotations);
         }
     }
 
     private final Path root;
     private final ClassLoader loader;
+    private final Map<String, Optional<TestClassRule.Type>> read = new HashMap<>();
 
     /** {@code root} holds the class files judged; {@code loader} supplies supertypes and annotations beyond it. */
     TestClassShape(Path root, ClassLoader loader) {
@@ -79,53 +63,51 @@ final class TestClassShape {
     /**
      * True when the class file for {@code binaryName} under the root is test-shaped. A file that
      * cannot be read or parsed is: nothing proves it a helper, and the failure it caused is kept.
+     * Any other type that cannot be read declares no test.
      */
     boolean isTestClass(String binaryName) {
-        Facts facts = facts(binaryName.replace('.', '/'));
-        if (facts == null) return true;
-        if (!facts.concrete()) return false;
-        return testShaped(facts, 0);
+        TestClassRule.Type type = type(binaryName);
+        if (type == null) return true;
+        return TestClassRule.runsTests(type, nested(binaryName), this::type, false);
     }
 
-    private boolean testShaped(Facts facts, int depth) {
-        if (facts.declaresTest() || composed(facts)) return true;
-        String sup = facts.superName();
-        if (sup == null || "java/lang/Object".equals(sup) || depth >= SUPER_DEPTH) return false;
-        if (TEST_BASES.contains(sup) || sup.startsWith(KOTEST_SPECS)) return true;
-        Facts parent = facts(sup);
-        return parent != null && testShaped(parent, depth + 1);
-    }
-
-    /**
-     * True when a type the class names is an annotation composed of a test annotation — a project's
-     * own {@code @IntegrationTest} that is itself {@code @Test}. Platform types are never that.
-     */
-    private boolean composed(Facts facts) {
-        for (String s : facts.strings()) {
-            if (s.length() < 3 || s.charAt(0) != 'L' || s.indexOf(';') != s.length() - 1) continue;
-            String internal = s.substring(1, s.length() - 1);
-            if (platformType(internal)) continue;
-            Facts a = facts(internal);
-            if (a != null && a.annotation() && a.declaresTest()) return true;
+    /** The classes declared inside {@code binaryName}, at any depth, from the class files beside it. */
+    private List<TestClassRule.Type> nested(String binaryName) {
+        Path file = root.resolve(binaryName.replace('.', '/') + ".class");
+        Path dir = file.getParent();
+        String prefix = file.getFileName().toString().replace(".class", "$");
+        List<TestClassRule.Type> out = new ArrayList<>();
+        if (dir == null) return out;
+        try {
+            PathUtil.forEachChild(dir, (f, attrs) -> {
+                String n = String.valueOf(f.getFileName());
+                if (!attrs.isRegularFile() || !n.startsWith(prefix) || !n.endsWith(".class")) return true;
+                TestClassRule.Type t =
+                        type(binaryName + n.substring(prefix.length() - 1, n.length() - ".class".length()));
+                if (t != null) out.add(t);
+                return true;
+            });
+        } catch (IOException | RuntimeException unreadable) {
+            return out;
         }
-        return false;
+        return out;
     }
 
-    private static boolean platformType(String internal) {
-        return internal.startsWith("java/")
-                || internal.startsWith("javax/")
-                || internal.startsWith("jdk/")
-                || internal.startsWith("kotlin/")
-                || internal.startsWith("scala/")
-                || internal.startsWith("groovy/");
+    /** The type named {@code binaryName}, under the root or else on the loader, read once; {@code null} when unreadable. */
+    private TestClassRule.@Nullable Type type(String binaryName) {
+        Optional<TestClassRule.Type> known = read.get(binaryName);
+        if (known == null) {
+            known = Optional.ofNullable(readType(binaryName));
+            read.put(binaryName, known);
+        }
+        return known.orElse(null);
     }
 
-    /** The class file for an internal name — under the root, else on the loader — or {@code null}. */
-    private @Nullable Facts facts(String internalName) {
-        byte[] bytes = bytes(internalName);
+    private TestClassRule.@Nullable Type readType(String binaryName) {
+        byte[] bytes = bytes(binaryName.replace('.', '/'));
         if (bytes == null) return null;
         try {
-            return read(bytes);
+            return read(bytes).type();
         } catch (IOException | RuntimeException e) {
             return null;
         }
@@ -144,7 +126,11 @@ final class TestClassShape {
         }
     }
 
-    /** {@code bytes} as {@link Facts}: the header, the constant pool, then the class's own three words. */
+    private static String binary(String internalName) {
+        return internalName.replace('/', '.');
+    }
+
+    /** {@code bytes} as {@link Facts}: the header, the constant pool, then the class's own words and its interfaces. */
     static Facts read(byte[] bytes) throws IOException {
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes));
         if (in.readInt() != 0xCAFEBABE) throw new IOException("not a class file");
@@ -171,13 +157,16 @@ final class TestClassShape {
         int access = in.readUnsignedShort();
         int thisClass = in.readUnsignedShort();
         int superClass = in.readUnsignedShort();
+        int interfaceCount = in.readUnsignedShort();
+        List<String> interfaces = new ArrayList<>();
+        for (int i = 0; i < interfaceCount; i++) interfaces.add(className(utf8, classNames, in.readUnsignedShort()));
         Set<String> strings = new HashSet<>();
         for (String s : utf8) {
             if (s != null) strings.add(s);
         }
         String name = className(utf8, classNames, thisClass);
         String sup = superClass == 0 ? null : className(utf8, classNames, superClass);
-        return new Facts(name, sup, access, strings);
+        return new Facts(name, sup, interfaces, access, strings);
     }
 
     private static String className(String[] utf8, int[] classNames, int index) throws IOException {

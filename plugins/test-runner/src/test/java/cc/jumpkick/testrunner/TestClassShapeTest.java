@@ -16,15 +16,18 @@ import org.junit.jupiter.api.io.TempDir;
 class TestClassShapeTest {
 
     @Test
-    void a_class_files_name_supertype_flags_and_strings_are_read_from_its_bytes() throws IOException {
+    void a_class_files_name_supertypes_flags_and_strings_are_read_from_its_bytes() throws IOException {
         TestClassShape.Facts facts = TestClassShape.read(bytesOf(TagEmptiedFixture.class));
 
         assertThat(facts.name()).isEqualTo("cc/jumpkick/testrunner/TagEmptiedFixture");
         assertThat(facts.superName()).isEqualTo("java/lang/Object");
-        assertThat(facts.concrete()).isTrue();
-        assertThat(facts.annotation()).isFalse();
-        assertThat(facts.declaresTest()).isTrue();
+        assertThat(facts.interfaces()).isEmpty();
         assertThat(facts.strings()).contains("Lorg/junit/jupiter/api/Test;", "untagged", "tagged");
+        assertThat(facts.type().memberAnnotations()).contains("org.junit.jupiter.api.Test");
+        assertThat(TestClassShape.read(bytesOf(InheritedFromInterfaceFixture.class))
+                        .type()
+                        .supertypes())
+                .containsExactly("java.lang.Object", InheritedFromInterfaceFixtureContract.class.getName());
     }
 
     @Test
@@ -70,6 +73,20 @@ class TestClassShapeTest {
     }
 
     @Test
+    void a_class_whose_only_test_is_in_a_nested_class_is_a_test_class(@TempDir Path tmp) throws IOException {
+        assertThat(shape(tmp, NestedOnlyFixture.class, NestedOnlyFixture.Inner.class)
+                        .isTestClass(NestedOnlyFixture.class.getName()))
+                .isTrue();
+    }
+
+    @Test
+    void a_class_inheriting_a_test_from_an_interface_is_a_test_class(@TempDir Path tmp) throws IOException {
+        assertThat(shape(tmp, InheritedFromInterfaceFixture.class)
+                        .isTestClass(InheritedFromInterfaceFixture.class.getName()))
+                .isTrue();
+    }
+
+    @Test
     void a_file_that_is_not_a_class_file_keeps_the_failure(@TempDir Path tmp) throws IOException {
         Path pkg = Files.createDirectories(tmp.resolve("a"));
         Files.write(pkg.resolve("Garbage.class"), "not a class".getBytes(StandardCharsets.UTF_8));
@@ -88,8 +105,8 @@ class TestClassShapeTest {
     }
 
     private static byte[] bytesOf(Class<?> c) throws IOException {
-        try (InputStream in =
-                Objects.requireNonNull(c.getResourceAsStream(c.getSimpleName() + ".class"), c.getName())) {
+        try (InputStream in = Objects.requireNonNull(
+                c.getResourceAsStream("/" + c.getName().replace('.', '/') + ".class"), c.getName())) {
             return in.readAllBytes();
         }
     }
