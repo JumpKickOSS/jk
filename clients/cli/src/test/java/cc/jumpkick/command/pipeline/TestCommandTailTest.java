@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
-import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.nio.file.Path;
@@ -31,26 +30,26 @@ class TestCommandTailTest {
 
     @Test
     void a_run_that_served_nothing_reads_as_before() {
-        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(3), 3, 0, 3, 0, 0, 0, 1200));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(3), 3, 0, 3, 0, 1200));
         assertThat(t).startsWith("Tests passed for 3 modules");
         assertThat(t).doesNotContain("served");
     }
 
     @Test
     void a_partly_served_run_names_the_count() {
-        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(49), 49, 47, 49, 0, 0, 0, 4600));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(49), 49, 47, 49, 0, 4600));
         assertThat(t).contains("49 modules, 47 served from cache");
     }
 
     @Test
     void a_wholly_served_run_says_so() {
-        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 4, 4, 0, 0, 0, 300));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 4, 4, 0, 300));
         assertThat(t).startsWith("Tests passed for 4 modules. Build up to date (all served from cache) ");
     }
 
     @Test
     void one_module_served() {
-        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(1), 1, 1, 1, 0, 0, 0, 30));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(1), 1, 1, 1, 0, 30));
         assertThat(t).startsWith("Tests passed. Build up to date (served from cache) ");
     }
 
@@ -60,7 +59,7 @@ class TestCommandTailTest {
      */
     @Test
     void a_run_where_no_module_had_a_suite_says_there_was_nothing_to_run() {
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(5), 5, 0, 0, 0, 0, 0, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(5), 5, 0, 0, 0, 900)))
                 .isEqualTo("No tests to run");
     }
 
@@ -111,11 +110,11 @@ class TestCommandTailTest {
     /** `jk test -m app -X` over app and three prerequisites: one module tested, the three named apart. */
     @Test
     void an_exclusive_run_counts_the_prerequisites_apart() {
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 0, 1, 3, 0, 0, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 0, 1, 3, 900)))
                 .startsWith("Tests passed; 3 prerequisites not tested (--exclusive) ");
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(5), 5, 0, 2, 3, 0, 0, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(5), 5, 0, 2, 3, 900)))
                 .startsWith("Tests passed for 2 modules; 3 prerequisites not tested (--exclusive) ");
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(2), 2, 0, 0, 1, 0, 0, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(2), 2, 0, 0, 1, 900)))
                 .isEqualTo("No tests to run; 1 prerequisite not tested (--exclusive)");
     }
 
@@ -132,28 +131,45 @@ class TestCommandTailTest {
     /** A green run with a disabled test says so: the pass is not the whole story. */
     @Test
     void a_run_with_skipped_tests_says_how_many() {
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(1), 1, 0, 1, 0, 2, 1, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(counted(new long[][] {{2, 1}}), 1, 0, 1, 0, 900)))
                 .startsWith("Tests passed; 1 test skipped ");
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(3), 3, 1, 3, 0, 40, 3, 900)))
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(
+                        counted(new long[][] {{20, 1}, {10, 2}, {10, 0}}), 3, 1, 3, 0, 900)))
                 .startsWith("Tests passed for 3 modules, 1 served from cache; 3 tests skipped ");
-        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(4), 4, 0, 1, 3, 5, 2, 900)))
+        WorkspaceResult exclusive = new WorkspaceResult(
+                true,
+                0,
+                List.of(counted(new long[][] {{5, 2}}).modules().getFirst(), outcome(1), outcome(2), outcome(3)),
+                List.of());
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(exclusive, 4, 0, 1, 3, 900)))
                 .startsWith("Tests passed; 2 tests skipped; 3 prerequisites not tested (--exclusive) ");
+    }
+
+    /** A suite replayed from its green stamp still says what it skipped: the replay is not a clean pass either. */
+    @Test
+    void a_replayed_suite_says_how_many_tests_it_skipped() {
+        assertThat(TestAnsi.strip(TestVerb.workspaceTestSuccessTail(counted(new long[][] {{12, 2}}), 1, 1, 1, 0, 30)))
+                .startsWith("Tests passed. Build up to date (served from cache); 2 tests skipped ");
     }
 
     /** `jk test --class` on a class whose only test is disabled: nothing passed, and the line must not say so. */
     @Test
     void a_run_whose_every_test_was_skipped_does_not_say_they_passed() {
-        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(modules(1), 1, 0, 1, 0, 1, 1, 900));
+        String t = TestAnsi.strip(TestVerb.workspaceTestSuccessTail(counted(new long[][] {{1, 1}}), 1, 0, 1, 0, 900));
         assertThat(t).startsWith("No test ran; 1 test skipped ");
         assertThat(t).doesNotContain("passed");
     }
 
-    @Test
-    void the_tally_adds_up_the_tests_each_class_ran_and_skipped() {
-        ServedTally tally = new ServedTally();
-        tally.testClass(TaskNames.RUN_TESTS, new TestClassResult("g:a", "a.ATest", 3, 0, 1, 10, "", List.of()));
-        tally.testClass(TaskNames.RUN_TESTS, new TestClassResult("g:a", "a.BTest", 2, 1, 2, 10, "", List.of()));
-        assertThat(tally.ranTests()).isEqualTo(5);
-        assertThat(tally.skippedTests()).isEqualTo(3);
+    private static ModuleOutcome outcome(int i) {
+        return new ModuleOutcome("g:m" + i, Path.of("/ws/m" + i), true, 0, 10, true);
+    }
+
+    /** One module per {@code {total, skipped}} pair, each carrying its suite's counts. */
+    private static WorkspaceResult counted(long[][] suites) {
+        List<ModuleOutcome> out = new ArrayList<>();
+        for (int i = 0; i < suites.length; i++) {
+            out.add(outcome(i).withTests(new ModuleOutcome.Tests(suites[i][0], suites[i][1])));
+        }
+        return new WorkspaceResult(true, 0, out, List.of());
     }
 }

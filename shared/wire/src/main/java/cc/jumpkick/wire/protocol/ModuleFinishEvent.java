@@ -14,7 +14,8 @@ import org.jspecify.annotations.Nullable;
  * tell "image module with nothing to say" from "not an image module" (see {@link EngineProtocol#MODULE_FINISH}).
  * The install fields ({@code installCoord}, {@code installJarSha256}, {@code installPomSha256}, {@code
  * installDestination}, {@code installChange}) ride only when an install pass installed the module, all together; the {@code published} object only
- * when a publish pass ran.
+ * when a publish pass ran; the {@code tests} object ({@code total}, {@code skipped}) only when the module ran a suite or
+ * replayed one that kept its counts.
  */
 public record ModuleFinishEvent(
         String dir,
@@ -27,7 +28,8 @@ public record ModuleFinishEvent(
         boolean stopped,
         ModuleOutcome.@Nullable Image image,
         ModuleOutcome.@Nullable Installed installed,
-        ModuleOutcome.@Nullable Published published) {
+        ModuleOutcome.@Nullable Published published,
+        ModuleOutcome.@Nullable Tests tests) {
     /** The terminal a finished module's outcome is sent as. */
     public static ModuleFinishEvent of(ModuleOutcome o) {
         return new ModuleFinishEvent(
@@ -41,7 +43,8 @@ public record ModuleFinishEvent(
                 o.stopped(),
                 o.image(),
                 o.installed(),
-                o.published());
+                o.published(),
+                o.tests());
     }
 
     public String encode() {
@@ -86,13 +89,24 @@ public record ModuleFinishEvent(
                                     .body()
                             + "}");
         }
+        if (tests != null) {
+            json.token(
+                    "tests",
+                    "{"
+                            + RequestJson.fields()
+                                    .number("total", tests.total())
+                                    .number("skipped", tests.skipped())
+                                    .body()
+                            + "}");
+        }
         return json.finish();
     }
 
     /** The outcome this event reports for the module at {@code dir}. */
     public ModuleOutcome outcome(Path moduleDir) {
         return new ModuleOutcome(
-                coord, moduleDir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published);
+                coord, moduleDir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published,
+                tests);
     }
 
     public static ModuleFinishEvent decode(String json) {
@@ -127,6 +141,10 @@ public record ModuleFinishEvent(
                         Jsonl.str(pub, "deploymentId"),
                         Jsonl.str(pub, "deploymentState"),
                         Jsonl.strArray(pub, "deploymentErrors"));
+        String counted = Jsonl.nested(json, "tests");
+        ModuleOutcome.Tests tests = counted == null
+                ? null
+                : new ModuleOutcome.Tests(Jsonl.longValue(counted, "total", 0), Jsonl.longValue(counted, "skipped", 0));
         return new ModuleFinishEvent(
                 Jsonl.requiredStr(json, "dir"),
                 Jsonl.requiredStr(json, "coord"),
@@ -138,6 +156,7 @@ public record ModuleFinishEvent(
                 Jsonl.bool(json, "stopped", false),
                 image,
                 installed,
-                published);
+                published,
+                tests);
     }
 }

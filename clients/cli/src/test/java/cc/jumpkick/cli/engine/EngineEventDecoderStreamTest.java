@@ -445,7 +445,8 @@ class EngineEventDecoderStreamTest {
                         ProtoEvents.planFinish("/w/a", false),
                         ProtoEvents.moduleFinish("/w/a", "g:a:1", false, 1, 5),
                         ProtoEvents.planFinish("/w/b", false),
-                        ProtoEvents.moduleFinish("/w/b", "g:b:1", false, 1, 5, true, false, true, null, null, null),
+                        ProtoEvents.moduleFinish(
+                                "/w/b", "g:b:1", false, 1, 5, true, false, true, null, null, null, null),
                         ProtoEvents.workspaceFinish(false, 1, List.of(), false),
                         ProtoLifecycle.jobFinish(54)),
                 new Recorder(),

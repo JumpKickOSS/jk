@@ -19,6 +19,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.AffectedTestsReport;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceBuildListener;
 import cc.jumpkick.wire.runtime.WorkspaceRequest;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -146,8 +147,6 @@ final class TestVerb implements BuildVerb {
                         view.servedFromCache(),
                         view.modulesWithSuite(),
                         view.prerequisitesNotTested(),
-                        view.ranTests(),
-                        view.skippedTests(),
                         BuildTails.elapsedMsSince(startNanos)),
                 r -> WorkspaceRunView.failedSubject(r, "tests") + " — failed "
                         + DurationText.took(Duration.ofMillis(BuildTails.elapsedMsSince(startNanos))));
@@ -233,20 +232,21 @@ final class TestVerb implements BuildVerb {
      * passing suite. {@code notTested} is how many prerequisites {@code --exclusive} compiled
      * without running their suites; they are named in their own clause.
      *
-     * <p>{@code ran} and {@code skipped} count the tests of the suites that ran this time, so a
-     * skipped test is never hidden behind a pass: {@code Tests passed; 1 test skipped}. When every
-     * test that ran was skipped and nothing was replayed, the line does not say anything passed:
-     * {@code No test ran; 1 test skipped}.
+     * <p>The tests each module's suite counted, run or replayed ({@link ModuleOutcome#tests}), say
+     * how many were skipped, so a skipped test is never hidden behind a pass: {@code Tests passed; 1
+     * test skipped}. When every test was skipped and nothing was replayed, the line does not say
+     * anything passed: {@code No test ran; 1 test skipped}.
      */
     static String workspaceTestSuccessTail(
-            WorkspaceResult result,
-            int planned,
-            int served,
-            int withSuite,
-            int notTested,
-            long ran,
-            long skipped,
-            long elapsedMs) {
+            WorkspaceResult result, int planned, int served, int withSuite, int notTested, long elapsedMs) {
+        long ran = 0;
+        long skipped = 0;
+        for (ModuleOutcome m : result.modules() == null ? List.<ModuleOutcome>of() : result.modules()) {
+            ModuleOutcome.Tests tests = m.tests();
+            if (tests == null) continue;
+            ran += tests.total();
+            skipped += tests.skipped();
+        }
         int n = (result.modules() == null ? 0 : result.modules().size()) - notTested;
         String untested = notTested <= 0
                 ? ""

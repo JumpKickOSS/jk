@@ -650,7 +650,8 @@ public final class ProtoEvents {
             boolean cancelled,
             ModuleOutcome.@Nullable Image image,
             ModuleOutcome.@Nullable Installed installed) {
-        return moduleFinish(dir, coord, success, exitCode, millis, didWork, cancelled, false, image, installed, null);
+        return moduleFinish(
+                dir, coord, success, exitCode, millis, didWork, cancelled, false, image, installed, null, null);
     }
 
     public static String moduleFinish(
@@ -664,9 +665,11 @@ public final class ProtoEvents {
             boolean stopped,
             ModuleOutcome.@Nullable Image image,
             ModuleOutcome.@Nullable Installed installed,
-            ModuleOutcome.@Nullable Published published) {
+            ModuleOutcome.@Nullable Published published,
+            ModuleOutcome.@Nullable Tests tests) {
         return new ModuleFinishEvent(
-                        dir, coord, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published)
+                        dir, coord, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published,
+                        tests)
                 .encode();
     }
 

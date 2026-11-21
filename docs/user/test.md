@@ -312,8 +312,9 @@ Skipped tests (`@Disabled`, a failed assumption) are counted on the terminal lin
 behind a pass: `Tests passed; 2 tests skipped`. A run whose every test was skipped, such as
 `--class` on a class whose one test is disabled, reads `No test ran; 1 test skipped`. The run
 report counts them too, `OK test app · 12 tests, 2 skipped · 1.4s`, and when every test was
-skipped it gives the reason: `OK test app · 1 test, 1 skipped · 0.6s — skipped: not on CI`. The
-terminal line counts the suites that ran this time; a replayed suite's skips are in the run report.
+skipped it gives the reason: `OK test app · 1 test, 1 skipped · 0.6s — skipped: not on CI`. A
+suite replayed from its green stamp counts the tests it skipped too:
+`Tests passed. Build up to date (served from cache); 2 tests skipped`.
 
 ## The slowest tests (`[test] fast-method-budget`)
 

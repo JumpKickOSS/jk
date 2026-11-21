@@ -307,6 +307,8 @@ final class WorkspaceRunPhase {
             if (installed != null) outcome = outcome.withInstalled(installed);
             ModuleOutcome.Published published = PublishTail.outcomeOf(module.plan());
             if (published != null) outcome = outcome.withPublished(published);
+            ModuleOutcome.Tests tests = NativePlans.testsOf(module.plan());
+            if (tests != null) outcome = outcome.withTests(tests);
             listener.onModuleFinish(outcome);
             return outcome;
         } catch (RuntimeException e) {

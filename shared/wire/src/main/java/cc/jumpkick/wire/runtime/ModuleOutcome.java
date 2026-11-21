@@ -24,6 +24,9 @@ import org.jspecify.annotations.Nullable;
  *
  * @param installed what an install pass left in the local repository for this module; {@code null} when
  * the plan carried no {@code cache-install} step, or never reached it.
+ *
+ * @param tests the tests of the suite the module ran or replayed from its green stamp; {@code null}
+ * when it had no suite, or replayed a stamp that kept no counts.
  */
 public record ModuleOutcome(
         String coord,
@@ -36,7 +39,8 @@ public record ModuleOutcome(
         boolean stopped,
         @Nullable Image image,
         @Nullable Installed installed,
-        @Nullable Published published) {
+        @Nullable Published published,
+        @Nullable Tests tests) {
 
     /**
      * Image-terminal outcome for a {@code jk image} workspace module — what the terminal step
@@ -106,23 +110,26 @@ public record ModuleOutcome(
         }
     }
 
+    /** How many tests a suite counted, skipped ones included, and how many of them were skipped. */
+    public record Tests(long total, long skipped) {}
+
     public ModuleOutcome(
             String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork, boolean cancelled) {
-        this(coord, dir, success, exitCode, millis, didWork, cancelled, false, null, null, null);
+        this(coord, dir, success, exitCode, millis, didWork, cancelled, false, null, null, null, null);
     }
 
     /** Assume work was done when the caller does not know (fail-open for "built"). */
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis) {
-        this(coord, dir, success, exitCode, millis, true, false, false, null, null, null);
+        this(coord, dir, success, exitCode, millis, true, false, false, null, null, null, null);
     }
 
     public ModuleOutcome(String coord, Path dir, boolean success, int exitCode, long millis, boolean didWork) {
-        this(coord, dir, success, exitCode, millis, didWork, false, false, null, null, null);
+        this(coord, dir, success, exitCode, millis, didWork, false, false, null, null, null, null);
     }
 
     public ModuleOutcome withStopped(boolean stop) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stop, image, installed, published);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stop, image, installed, published, tests);
     }
 
     /**
@@ -150,16 +157,22 @@ public record ModuleOutcome(
 
     public ModuleOutcome withImage(Image img) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, img, installed, published);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, img, installed, published, tests);
     }
 
     public ModuleOutcome withInstalled(Installed shelf) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelf, published);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, shelf, published, tests);
     }
 
     public ModuleOutcome withPublished(Published pub) {
         return new ModuleOutcome(
-                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, pub);
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, pub, tests);
+    }
+
+    public ModuleOutcome withTests(Tests counted) {
+        return new ModuleOutcome(
+                coord, dir, success, exitCode, millis, didWork, cancelled, stopped, image, installed, published,
+                counted);
     }
 }

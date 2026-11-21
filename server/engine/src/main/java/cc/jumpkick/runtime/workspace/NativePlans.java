@@ -6,11 +6,14 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.PlannerNative;
 import cc.jumpkick.runtime.Tail;
 import cc.jumpkick.runtime.TestClassMatch;
 import cc.jumpkick.task.TestRun;
+import cc.jumpkick.test.RunShortfall;
+import cc.jumpkick.wire.runtime.ModuleOutcome;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -101,5 +104,15 @@ public final class NativePlans {
             if (TestClassMatch.NO_TESTS_MATCHED.equals(d.code())) return Exit.USAGE;
         }
         return 1;
+    }
+
+    /**
+     * The tests of the suite {@code plan} ran, or replayed from its green stamp; {@code null} when it
+     * left no counts. The shortfall row of a stopped run is no test and is left out, as the journal does.
+     */
+    public static ModuleOutcome.@Nullable Tests testsOf(BuildPlan plan) {
+        TestSummary t = plan.get(BuildPlanner.TEST_RUN).map(TestRun::result).orElse(null);
+        if (t == null) return null;
+        return new ModuleOutcome.Tests(t.total() - RunShortfall.rows(t.failures()), t.skipped());
     }
 }

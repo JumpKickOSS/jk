@@ -162,7 +162,6 @@ final class WorkspaceRunView {
     private final AtomicInteger served = new AtomicInteger();
     private final AtomicInteger withSuite = new AtomicInteger();
     private final AtomicInteger notSelected = new AtomicInteger();
-    private final ServedTally.Counts tests = new ServedTally.Counts();
 
     /** The run's slowest tests, ranked when the verb asked for them ({@code jk test}); else null. */
     private volatile @Nullable SlowestTests slowest;
@@ -206,16 +205,6 @@ final class WorkspaceRunView {
     /** Prerequisites an {@code --exclusive} run compiled without running their suites. */
     int prerequisitesNotTested() {
         return notSelected.get();
-    }
-
-    /** Tests the suites that ran this time finished, skipped ones included; a replayed suite adds none. */
-    long ranTests() {
-        return tests.ran().get();
-    }
-
-    /** Tests the suites that ran this time skipped. */
-    long skippedTests() {
-        return tests.skipped().get();
     }
 
     /**
@@ -735,7 +724,7 @@ final class WorkspaceRunView {
      * and the slowest-tests ranking when the verb keeps one.
      */
     private BuildPlanListener counting(BuildPlanListener lis) {
-        BuildPlanListener tally = new ServedTally(served, withSuite, notSelected, tests);
+        BuildPlanListener tally = new ServedTally(served, withSuite, notSelected);
         SlowestTests ranked = slowest;
         if (ranked == null) return CompositeBuildPlanListener.of(lis, tally);
         return CompositeBuildPlanListener.of(

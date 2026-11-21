@@ -190,7 +190,8 @@ public sealed interface EngineEvent {
             boolean stopped,
             ModuleOutcome.@Nullable Image image,
             ModuleOutcome.@Nullable Installed installed,
-            ModuleOutcome.@Nullable Published published)
+            ModuleOutcome.@Nullable Published published,
+            ModuleOutcome.@Nullable Tests tests)
             implements EngineEvent {}
 
     record Eta(long remainingMs) implements EngineEvent {}

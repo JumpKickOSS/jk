@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** The image terminal, the shelf publish and a stop ride module-finish as additive fields. */
+/** The image terminal, the shelf publish, a stop and the suite's counts ride module-finish as additive fields. */
 class ProtoEventsModuleFinishTest {
 
     @Test
@@ -63,8 +63,8 @@ class ProtoEventsModuleFinishTest {
         ModuleOutcome.Published published = new ModuleOutcome.Published(
                 "https://repo.example/releases/", false, 16, 4, List.of(), List.of(), null, null, List.of());
 
-        String line =
-                ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, true, false, false, null, null, published);
+        String line = ProtoEvents.moduleFinish(
+                "/w/app", "g:app", true, 0, 12, true, false, false, null, null, published, null);
 
         assertThat(ModuleFinishEvent.decode(line).published()).isEqualTo(published);
     }
@@ -75,12 +75,28 @@ class ProtoEventsModuleFinishTest {
         assertThat(failed).doesNotContain("stopped");
         assertThat(ModuleFinishEvent.decode(failed).stopped()).isFalse();
 
-        String line = ProtoEvents.moduleFinish("/w/b", "g:b", false, 1, 12, true, false, true, null, null, null);
+        String line = ProtoEvents.moduleFinish("/w/b", "g:b", false, 1, 12, true, false, true, null, null, null, null);
         assertThat(Jsonl.bool(line, "stopped", false)).isTrue();
         assertThat(Jsonl.bool(line, "success", true)).isFalse();
         ModuleOutcome outcome = ModuleFinishEvent.decode(line).outcome(Path.of("/w/b"));
         assertThat(outcome.stopped()).isTrue();
         assertThat(outcome.success()).isFalse();
         assertThat(outcome.dir()).isEqualTo(Path.of("/w/b"));
+    }
+
+    /** A suite replayed from its green stamp reaches the client with the tests it skipped. */
+    @Test
+    void the_suite_counts_round_trip_and_are_omitted_for_a_module_with_no_suite() {
+        String plain = ProtoEvents.moduleFinish("/w/app", "g:app", true, 0, 12, false, false);
+        assertThat(plain).doesNotContain("\"tests\"");
+        assertThat(ModuleFinishEvent.decode(plain).tests()).isNull();
+
+        ModuleOutcome.Tests tests = new ModuleOutcome.Tests(12, 2);
+        String line = ModuleFinishEvent.of(
+                        new ModuleOutcome("g:app", Path.of("/w/app"), true, 0, 12, false).withTests(tests))
+                .encode();
+        assertThat(line).contains("\"tests\":{\"total\":12,\"skipped\":2}");
+        assertThat(ModuleFinishEvent.decode(line).outcome(Path.of("/w/app")).tests())
+                .isEqualTo(tests);
     }
 }

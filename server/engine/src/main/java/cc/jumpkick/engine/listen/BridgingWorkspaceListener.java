@@ -270,7 +270,8 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
                 o.stopped(),
                 o.image(),
                 o.installed(),
-                o.published()));
+                o.published(),
+                o.tests()));
         hooks.moduleFinished(o);
         BuildPlan g = moduleBuildPlans.remove(dir);
         if (g != null) hooks.testsFrom(g);
