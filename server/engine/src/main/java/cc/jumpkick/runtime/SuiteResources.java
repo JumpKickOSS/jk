@@ -212,7 +212,7 @@ record SuiteResources(Map<String, List<Path>> bySuite) {
                 List<Path> classpath = new ArrayList<>(group.getValue());
                 classpath.addAll(runtimeCp);
                 TestSummary ran = launch.run(one, classpath, shared);
-                total = total == null ? ran : JUnitLauncher.merge(total, ran);
+                total = total == null ? ran : total.plus(ran);
             }
         }
         return total != null ? total : new TestSummary(0, 0, 0, 0, List.of());

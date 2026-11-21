@@ -24,7 +24,7 @@ class JUnitLauncherSerialPartitionTest {
         TestSummary emptyShardedPool = new TestSummary(0, 0, 0, 0, List.of());
         TestSummary serialPool = new TestSummary(2, 2, 0, 0, 2, List.of(), Map.of("acme.SerialTest", 40L), 1);
 
-        TestSummary suite = JUnitLauncher.merge(emptyShardedPool, serialPool);
+        TestSummary suite = emptyShardedPool.plus(serialPool);
 
         assertThat(suite.total()).isEqualTo(2);
         assertThat(suite.classes()).isEqualTo(2);
@@ -57,6 +57,6 @@ class JUnitLauncherSerialPartitionTest {
     void the_merge_keeps_the_wider_pool_as_the_suite_concurrency() {
         TestSummary sharded = new TestSummary(4, 4, 0, 0, 4, List.of(), Map.of(), 3);
         TestSummary serial = new TestSummary(1, 1, 0, 0, 1, List.of(), Map.of(), 1);
-        assertThat(JUnitLauncher.merge(sharded, serial).workers()).isEqualTo(3);
+        assertThat(sharded.plus(serial).workers()).isEqualTo(3);
     }
 }

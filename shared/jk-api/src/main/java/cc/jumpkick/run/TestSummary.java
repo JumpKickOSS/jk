@@ -94,6 +94,27 @@ public record TestSummary(
         return new TestSummary(total, succeeded, failed, skipped, classes, tagged, classWallMs, workers);
     }
 
+    /**
+     * This summary and {@code other} as one suite result: two pools of one module (sharded and
+     * serial-tag), or two suites run apart. Concurrency is the wider of the two, since that is what
+     * shaped the wall.
+     */
+    public TestSummary plus(TestSummary other) {
+        List<TestFailureInfo> joined = new ArrayList<>(failures);
+        joined.addAll(other.failures);
+        Map<String, Long> walls = new LinkedHashMap<>(classWallMs);
+        other.classWallMs.forEach((k, v) -> walls.merge(k, v, Long::sum));
+        return new TestSummary(
+                total + other.total,
+                succeeded + other.succeeded,
+                failed + other.failed,
+                skipped + other.skipped,
+                classes + other.classes,
+                joined,
+                walls,
+                Math.max(workers, other.workers));
+    }
+
     public boolean allPassed() {
         return failed == 0;
     }

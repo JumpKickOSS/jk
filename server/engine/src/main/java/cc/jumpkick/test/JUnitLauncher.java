@@ -19,15 +19,11 @@ import cc.jumpkick.engine.plugin.WorkerExit;
 import cc.jumpkick.engine.plugin.WorkerFate;
 import cc.jumpkick.engine.plugin.WorkerLaunchClasspath;
 import cc.jumpkick.host.Classpaths;
-import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
-import cc.jumpkick.repo.M2Dirs;
-import cc.jumpkick.repo.PomRuntimeClasspath;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
-import cc.jumpkick.runtime.base.TestStorePool;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -352,51 +348,7 @@ public final class JUnitLauncher {
         }
         // Suite JVMs: the nested engines and compiler workers under a suite must not record caches.
         flags.add("-Djk.worker.aot=off");
-        // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
-        // EngineTestExtension.
-        if (!testEnv.extras().isEmpty()) {
-            flags.add("--enable-native-access=ALL-UNNAMED");
-            flags.add("-Djunit.jupiter.extensions.autodetection.enabled=true");
-            // Short /tmp factory + soft-fail delete. Nested engines
-            // hardlink into @TempDir caches; macOS can fail Standard delete. The strategy
-            // reports success anyway. Cleanup stays ALWAYS: NEVER left tens of thousands of
-            // dirs on tmpfs /tmp until the next @TempDir could not allocate an inode.
-            //
-            // Only where the classes exist. These two live in jk-cli's TEST tree, and a
-            // non-empty [test] env is not a test for "this is jk-cli" — server/engine sets one
-            // too, and named a factory it cannot load JUnit logs a stack trace per @TempDir and
-            // silently falls back, which costs the soft-fail delete this exists to provide.
-            if (shortTempDirFactory) {
-                flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.testing.ShortTempDirFactory");
-            }
-            if (cliTempDirSupport) {
-                flags.add("-Djunit.jupiter.tempdir.deletion.strategy.default="
-                        + "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
-            }
-            flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=always");
-            String jkHome = testEnv.extras().get("JK_HOME");
-            if (jkHome != null && !jkHome.isBlank()) {
-                // Sibling of the sandbox home: <slot>/test-shared-cache (TestCaches).
-                Path jkHomeParent = Path.of(jkHome).getParent();
-                if (jkHomeParent != null) {
-                    flags.add("-Djk.test.cache.dir=" + jkHomeParent.resolve("test-shared-cache"));
-                }
-                // The host pool of verified downloads every sandbox shares (TestCaches.pooled).
-                flags.add("-D" + TestStorePool.PROPERTY + "=" + TestStorePool.root());
-                // Sandbox JK_HOME hides the product store; first-party workers still resolve
-                // Zinc from the host engine's store.
-                flags.add("-D"
-                        + PomRuntimeClasspath.HOST_STORE_PROPERTY
-                        + "="
-                        + JkDirs.store().toAbsolutePath().normalize());
-                // The host store's Central artifacts live in the host's Maven local repository, not
-                // in the sandbox's.
-                flags.add("-D"
-                        + PomRuntimeClasspath.HOST_M2_PROPERTY
-                        + "="
-                        + M2Dirs.localRepository().toAbsolutePath().normalize());
-            }
-        }
+        flags.addAll(SandboxJvmFlags.of(testEnv.extras(), shortTempDirFactory, cliTempDirSupport));
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));
         // Quarkus BuildToolHelper / path resolution walk from user.dir; the same directory the
         // fork starts in, so Paths.get("") and user.dir agree.
@@ -1099,7 +1051,7 @@ public final class JUnitLauncher {
         }
         if (!serialClasses.isEmpty() && serialPoolRuns(summary, SessionCancel.cancelled())) {
             TestSummary serial = pool.run(1, serialClasses, xml, md, workers);
-            summary = merge(summary, serial);
+            summary = summary.plus(serial);
         }
         writeXml(xml, testResultsDir);
         publishTests(md, testClassesDir, testResultsDir);
@@ -1139,25 +1091,6 @@ public final class JUnitLauncher {
         if (path == null || path.isBlank()) return "";
         int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
         return slash < 0 ? path : path.substring(slash + 1);
-    }
-
-    /** Two runs of one module as one suite result: the sharded and serial-tag pools, or two suites run apart. */
-    public static TestSummary merge(TestSummary a, TestSummary b) {
-        var failures = new ArrayList<>(a.failures());
-        failures.addAll(b.failures());
-        var walls = new LinkedHashMap<>(a.classWallMs());
-        b.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
-        return new TestSummary(
-                a.total() + b.total(),
-                a.succeeded() + b.succeeded(),
-                a.failed() + b.failed(),
-                a.skipped() + b.skipped(),
-                a.classes() + b.classes(),
-                failures,
-                walls,
-                // Sharded pool + serial-tag pool: the suite's concurrency is the wider of the two,
-                // since that is what shaped its wall.
-                Math.max(a.workers(), b.workers()));
     }
 
     /**

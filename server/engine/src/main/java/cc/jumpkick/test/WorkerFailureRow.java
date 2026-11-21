@@ -48,7 +48,7 @@ final class WorkerFailureRow {
      */
     static TestSummary singleFork(ResultAggregator aggregator, String moduleLabel, RuntimeException handler) {
         TestFailureInfo row = of(moduleLabel, SINGLE_WORKER, WorkerExit.noWorker(-1), "", "", handler);
-        return JUnitLauncher.merge(aggregator.snapshot(), new TestSummary(1, 0, 1, 0, List.of(row)));
+        return aggregator.snapshot().plus(new TestSummary(1, 0, 1, 0, List.of(row)));
     }
 
     /**
