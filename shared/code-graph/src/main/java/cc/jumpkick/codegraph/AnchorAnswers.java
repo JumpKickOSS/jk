@@ -146,18 +146,20 @@ final class AnchorAnswers {
     }
 
     /**
-     * Where a use sits: main or test for a JVM source or a resource under a source set, every other
-     * file elsewhere. A front end's {@code src/app/} reads as a test suite by layout alone.
+     * Where a use sits: main or test for a JVM source or a file in a source set's resource tree, by
+     * the module's layout, every other file elsewhere. A front end's {@code src/app/} reads as a test
+     * suite by layout alone.
      */
     private Modules.SourceSet place(String rel) {
-        Modules.SourceSet set = graph.modules().sourceSet(rel);
+        Modules modules = graph.modules();
+        Modules.SourceSet set = modules.sourceSet(rel);
         if (set == Modules.SourceSet.MAIN) return set;
         String lower = rel.toLowerCase(Locale.ROOT);
         boolean jvm = lower.endsWith(".java")
                 || lower.endsWith(".kt")
                 || lower.endsWith(".groovy")
                 || lower.endsWith(".scala")
-                || lower.contains("/resources/");
+                || modules.resource(rel);
         return set == Modules.SourceSet.TEST && jvm ? set : Modules.SourceSet.OTHER;
     }
 

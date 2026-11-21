@@ -251,7 +251,7 @@ public final class GraphBuild {
         fragmentCache.retain(declarationKeys, classKeys);
         progress.phase("link");
         CodeGraph graph = Linker.link(all);
-        graph = classAnchors(graph, base, indexes, shas, textNow(base, changed));
+        graph = classAnchors(graph, base, indexes, modules, shas, textNow(base, changed));
         graph.modules(modules);
         graph.stale(stale(base, graph.stale()));
         if (!rebuild) anchorEdits(base, out, extractors, vouched, sources, changed, unreadable, indexes, graph);
@@ -282,12 +282,14 @@ public final class GraphBuild {
             CodeGraph graph,
             Path base,
             List<ClassIndex> indexes,
+            Modules modules,
             Map<String, String> shas,
             Function<String, @Nullable String> now) {
         JsonAnchors.Classfiles compiled = JsonAnchors.Classfiles.of(base, indexes);
         Set<String> files = new TreeSet<>(shas.keySet());
         JsonScriptMemo scripts = new JsonScriptMemo(base.toString(), shas);
-        CodeGraph out = ViewAnchors.add(JsonAnchors.add(graph, files, now, compiled, scripts), files, now, compiled);
+        CodeGraph out =
+                ViewAnchors.add(JsonAnchors.add(graph, files, now, compiled, scripts), files, modules, now, compiled);
         scripts.retain();
         return out;
     }

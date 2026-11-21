@@ -153,6 +153,35 @@ class AnchorsTest {
         assertThat(new GraphTools(g()).anchorUses("Cart", 2000)).isNull();
     }
 
+    /**
+     * A use in a test suite counts as a test by the module's layout: a JVM source or a file in the
+     * suite's resource tree is one, any other file in a source package named {@code resources} is not.
+     */
+    @Test
+    void aTestUseIsPlacedByTheModulesLayout() {
+        List<String> files = List.of(
+                "test/resources/shop.properties",
+                "test/src/com/acme/resources/notes.txt",
+                "lib/src/test/resources/shop.properties",
+                "lib/src/test/java/com/acme/resources/notes.txt");
+        List<GraphNode> nodes = new ArrayList<>(List.of(Anchors.node("config", "shop.currency")));
+        List<GraphEdge> edges = new ArrayList<>();
+        for (String f : files) {
+            nodes.add(new GraphNode(GraphIds.file(f), f, "code", f, ""));
+            edges.add(Anchors.edge(
+                    GraphIds.file(f), "config", "shop.currency", Relations.USES, Confidence.INFERRED, f, 1));
+        }
+        CodeGraph g = Linker.link(List.of(new Fragment(nodes, edges)));
+        g.modules(new Modules(List.of(new Modules.Module("", true), new Modules.Module("lib/", false))));
+
+        assertThat(new GraphTools(g).anchorUses("config:shop.currency", 2000))
+                .contains(
+                        "test:\n  lib/src/test/resources/shop.properties:1 (inferred)\n"
+                                + "  test/resources/shop.properties:1 (inferred)\n",
+                        "other:\n  lib/src/test/java/com/acme/resources/notes.txt:1 (inferred)\n"
+                                + "  test/src/com/acme/resources/notes.txt:1 (inferred)\n");
+    }
+
     private static CodeGraph g() {
         return app();
     }

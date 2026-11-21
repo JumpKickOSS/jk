@@ -26,9 +26,19 @@ import org.jspecify.annotations.Nullable;
 final class RenameFixture {
 
     final Path root;
+    private final boolean simple;
 
     RenameFixture(Path root, Map<String, String> files) throws IOException {
+        this(root, files, false);
+    }
+
+    /**
+     * {@code simple}: the module uses the simple layout, its sources under {@code src/} and {@code
+     * test/src/}, its resources under {@code resources/}.
+     */
+    RenameFixture(Path root, Map<String, String> files, boolean simple) throws IOException {
         this.root = Files.createDirectories(root);
+        this.simple = simple;
         Files.writeString(root.resolve("jk.toml"), """
                 group = "org.acme"
                 name = "petclinic"
@@ -55,9 +65,10 @@ final class RenameFixture {
         for (String dir : List.of("target/classes", "target/test-classes", "target/incremental")) {
             clear(root.resolve(dir));
         }
-        String main = IndexedJavac.compile(root, root.resolve("target/classes"), sources("src/main/java"), List.of());
+        String main = IndexedJavac.compile(
+                root, root.resolve("target/classes"), sources(simple ? "src" : "src/main/java"), List.of());
         if (main != null) return main;
-        List<Path> tests = sources("src/test/java");
+        List<Path> tests = sources(simple ? "test/src" : "src/test/java");
         if (tests.isEmpty()) return null;
         return IndexedJavac.compile(
                 root, root.resolve("target/test-classes"), tests, List.of(root.resolve("target/classes")));
@@ -94,7 +105,7 @@ final class RenameFixture {
                 root.resolve("target/graph"),
                 root.resolve("target/jk-cache"),
                 indexes,
-                Modules.NONE,
+                simple ? new Modules(List.of(new Modules.Module("", true))) : Modules.NONE,
                 new ScriptReader(null, null),
                 Map.of(),
                 List.of(),

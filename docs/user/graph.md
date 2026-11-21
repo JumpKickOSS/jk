@@ -226,7 +226,8 @@ property of the type before it (a getter, `isX` for a `boolean`, a public field,
 component), defined at the member's declaration, bound. A use is inferred (must change) when one type
 answers for its root; ambiguous (a judgment call) when the handlers rendering the template give that
 root different types that both carry the name; a root nothing types links nowhere. Read: Thymeleaf
-templates under `src/main/resources/templates`. Not read: JSP, FreeMarker, Mustache and other
+templates under the main resource tree's `templates/` (`src/main/resources/templates`, or
+`resources/templates` in a simple-layout module). Not read: JSP, FreeMarker, Mustache and other
 engines, a view name built at run time, a model filled outside the controller's class (an
 interceptor, a `@ControllerAdvice`), and a path built by preprocessing (`__${...}__`) other than a
 fragment's `*{__${name}__}` field. A workspace with no template, or no `@Controller` route, reads

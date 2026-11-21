@@ -9,6 +9,7 @@ import cc.jumpkick.codegraph.GraphEdge;
 import cc.jumpkick.codegraph.GraphIds;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.Linker;
+import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.host.CodeText;
 import java.lang.classfile.Annotation;
@@ -57,10 +58,11 @@ import org.jspecify.annotations.Nullable;
  * segment of a path is a property of the type the one before it names (a collection's element
  * class for {@code th:each}). A use is a place that must change when one type answers for its root,
  * a judgment call when handlers rendering the template give its root different types that both carry
- * the name; a root nothing types links nowhere. Read: Thymeleaf templates under {@code
- * src/main/resources/templates}. Not read: JSP and other engines, a view resolved at run time, a
- * model filled outside the controller's class, expressions built by preprocessing other than a
- * fragment's {@code *{__${name}__}} field.
+ * the name; a root nothing types links nowhere. Read: Thymeleaf templates under the main
+ * resource tree's {@code templates/} ({@code src/main/resources/templates}, or {@code
+ * resources/templates} in a simple-layout module). Not read: JSP and other engines, a view
+ * resolved at run time, a model filled outside the controller's class, expressions built by
+ * preprocessing other than a fragment's {@code *{__${name}__}} field.
  */
 final class ViewAnchors {
 
@@ -69,7 +71,7 @@ final class ViewAnchors {
     /** The anchor kind of a bean property a template reads. */
     static final String KIND = Anchors.BEAN;
 
-    private static final String TEMPLATES = "src/main/resources/templates/";
+    private static final String TEMPLATES = "templates/";
     private static final String SPRING = "Lorg/springframework/web/bind/annotation/";
     private static final Set<String> MODEL_OWNERS = Set.of(
             "org/springframework/ui/Model",
@@ -107,13 +109,14 @@ final class ViewAnchors {
     static CodeGraph add(
             CodeGraph g,
             Collection<String> files,
+            Modules modules,
             Function<String, @Nullable String> text,
             JsonAnchors.Classfiles compiled) {
         Map<String, String> templates = new TreeMap<>();
         for (String rel : files) {
-            int at = rel.indexOf(TEMPLATES);
+            int at = templates(modules, rel);
             if (at >= 0 && rel.endsWith(".html")) {
-                templates.put(rel.substring(at + TEMPLATES.length(), rel.length() - ".html".length()), rel);
+                templates.put(rel.substring(at, rel.length() - ".html".length()), rel);
             }
         }
         if (templates.isEmpty()) return g;
@@ -493,6 +496,22 @@ final class ViewAnchors {
     }
 
     // ---------------------------------------------------------------- templates
+
+    /**
+     * Where a view name starts in {@code rel}: just past the {@code templates/} of its module's main
+     * resource tree, {@code resources/} in a simple-layout module and {@code src/main/resources/}
+     * otherwise; -1 when {@code rel} is not under it. Without a module, the conventional layout is
+     * assumed wherever it sits.
+     */
+    static int templates(Modules modules, String rel) {
+        Modules.Module m = modules.of(rel);
+        if (m == null) {
+            int at = rel.indexOf("src/main/resources/" + TEMPLATES);
+            return at < 0 ? -1 : at + "src/main/resources/".length() + TEMPLATES.length();
+        }
+        String dir = m.prefix() + (m.compact() ? "resources/" : "src/main/resources/") + TEMPLATES;
+        return rel.startsWith(dir) ? dir.length() : -1;
+    }
 
     /** A fragment template's fragments: by name, the indexes of the parameters it binds as a selected field ({@code *{__${name}__}}). */
     private record Fragments(Map<String, Set<Integer>> fields) {

@@ -12,6 +12,7 @@ import cc.jumpkick.codegraph.GraphIds;
 import cc.jumpkick.codegraph.GraphNode;
 import cc.jumpkick.codegraph.GraphSnapshot;
 import cc.jumpkick.codegraph.Linker;
+import cc.jumpkick.codegraph.Modules;
 import cc.jumpkick.codegraph.Relations;
 import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
@@ -148,6 +149,28 @@ class ViewAnchorsTest {
     }
 
     /**
+     * A simple-layout module keeps its templates under {@code resources/templates}, Spring's {@code
+     * classpath:/templates} as much as the conventional layout's: its pages are read the same way.
+     */
+    @Test
+    void aSimpleLayoutModulesTemplatesArePairedWithTheirController(@TempDir Path dir) throws IOException {
+        Map<String, String> files = new TreeMap<>();
+        for (Map.Entry<String, String> e : petclinic().entrySet()) {
+            String rel = e.getKey().replace(TEMPLATES, "resources/templates/").replace("src/main/java/", "src/");
+            files.put(rel, e.getValue());
+        }
+        RenameFixture ws = new RenameFixture(dir, files, true);
+        AnchorEditsTest.refresh(ws);
+
+        assertThat(beanEdges(ws))
+                .contains(
+                        "uses bean:Owner.telephone resources/templates/owners/ownerDetails.html:32 inferred",
+                        "uses bean:Owner.telephone resources/templates/owners/ownersList.html:26 inferred",
+                        "defines bean:Owner.telephone src/org/springframework/samples/petclinic/owner/Owner.java:13"
+                                + " extracted");
+    }
+
+    /**
      * jk's own tree holds Thymeleaf-shaped files under src/main/resources/templates (a bench fixture,
      * the scaffold templates) and no route a JVM handler defines: the pass stops there, reading no
      * template and no class, and the graph is the one it was given.
@@ -173,6 +196,7 @@ class ViewAnchorsTest {
         CodeGraph out = ViewAnchors.add(
                 g,
                 List.of(page, doc),
+                Modules.NONE,
                 rel -> {
                     read.add(rel);
                     return "";
