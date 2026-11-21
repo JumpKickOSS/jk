@@ -125,7 +125,7 @@ terminal's, the dashboard's, and one a previous engine left open. The
 next run after it opens another session, and an agent whose session expired is asked to start a new
 one. Besides its runs, a session's timeline
 holds the MCP calls that are not runs, each as one line with its outcome and time: the code
-graph's `query`, `usages`, `read` and `find`, `rename`, and the dependency changes `deps`,
+graph's `query`, `usages`, `read` and `find`, `rename` and `delete`, and the dependency changes `deps`,
 `update` and `workspace`.
 
 A session survives the engine. When an upgrade replaces the engine, or the engine dies and the

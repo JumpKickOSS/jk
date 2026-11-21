@@ -9,6 +9,8 @@ JumpKick shows you this page's new entries after it updates itself.
 - **Code questions and refactorings move to `jk code`.** `jk code usages` (was `jk graph callers`),
   `rename`, `read`, `find` and `query`, and new `delete`, `move` and `pull-up`. The old names still
   run and print the new one. MCP `callers` is now `usages` ([Code graph](graph.md)).
+- **MCP `delete`.** Deletes a method, field or type nothing uses, then compiles; with a use left it
+  writes nothing and lists each one. On the extended tool list ([MCP](mcp.md)).
 
 ## 0.54.0
 

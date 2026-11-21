@@ -21,8 +21,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The code graph's tools, named like the {@code jk code} subcommands they answer: {@code usages}
- * and {@code rename} on the default list, {@code query}, {@code read} and {@code find} on the
- * extended one.
+ * and {@code rename} on the default list, {@code query}, {@code read}, {@code find} and {@code
+ * delete} on the extended one.
  * Each refreshes the graph first (a walk and a snapshot load when nothing changed) and answers with
  * {@code Owner.member()} at {@code file:line}.
  */
@@ -95,6 +95,28 @@ public final class CodeGraphTool implements McpTool {
                                 List.of("address", "to"))),
                 "rename",
                 in -> List.of(required(in, "address"), required(in, "to")));
+    }
+
+    /**
+     * {@code delete}: a method (every overload), a field or a type removed in one call when nothing
+     * uses it, then compiled, or undone whole when it does not compile; with a use left it writes
+     * nothing and lists the uses as {@code usages} does. It writes, so it is not read-only.
+     */
+    public static McpTool delete() {
+        return new CodeGraphTool(
+                new Spec(
+                        "delete",
+                        "Delete Type.method (every overload), Type.field or Type if nothing uses it, then compile;"
+                                + " else writes nothing and lists each use at file:line.",
+                        McpSchemas.object(
+                                props(Map.of(
+                                        "address",
+                                        McpSchemas.string(),
+                                        "kind",
+                                        McpSchemas.oneOf("method", "field", "type"))),
+                                List.of("address"))),
+                "delete",
+                in -> List.of(required(in, "address")));
     }
 
     /** {@code query}: the symbols and connections a question is about, as {@code jk code query} answers it. */

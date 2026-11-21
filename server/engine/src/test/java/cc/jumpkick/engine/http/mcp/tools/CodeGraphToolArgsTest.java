@@ -42,9 +42,23 @@ class CodeGraphToolArgsTest {
         assertThat(request.options()).contains("transitive=true");
     }
 
+    @Test
+    void delete_asks_the_delete_operation_with_its_kind_alone() {
+        GraphRequest request = request("delete", Map.of("address", "Order.legacy", "kind", "method", "scope", "src"));
+
+        assertThat(request.op()).isEqualTo("delete");
+        assertThat(request.args()).containsExactly("Order.legacy");
+        assertThat(request.options()).containsExactly("kind=method");
+        assertThat(request.scope()).isNull();
+    }
+
     private static GraphRequest request(String tool) {
+        return request(tool, EVERY_SETTING);
+    }
+
+    private static GraphRequest request(String tool, Map<String, Object> args) {
         CodeGraphTool graph = (CodeGraphTool) requireNonNull(McpTools.standard().tool(tool));
-        return graph.request(new McpCall(context(), EVERY_SETTING, null), "/ws");
+        return graph.request(new McpCall(context(), args, null), "/ws");
     }
 
     private static McpContext context() {

@@ -282,6 +282,26 @@ every caller working.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "PersonDisplayNameTests", "-S", "OwnerTests", "-S", "VetTests"]
 
+# A delete: three methods and a type planted in the owner package, each named as maybe dead. A type
+# nothing uses is the only caller of one method, so that method is dead once the type goes; another
+# is called only by reflection, through a string constant, and must stay. The hidden check reads which
+# declarations are left and calls the kept one by name. Compare the delete card listed (jk-graph)
+# with it unlisted (jk) and with no graph (jk-nograph).
+[tasks.petclinic-delete-dead-code]
+repo   = "spring-petclinic"
+kind   = "delete"
+tools  = ["jk", "mvn"]
+inject = [
+  { file = "src/main/java/org/springframework/samples/petclinic/owner/Owner.java", from = "\tpublic String getAddress() {", to = "\tpublic String formatLegacyName() {\n\t\treturn getLastName().toUpperCase() + \", \" + getFirstName();\n\t}\n\n\tpublic String describeForAudit() {\n\t\treturn \"owner \" + getId() + \" in \" + getCity();\n\t}\n\n\tpublic boolean hasPets() {\n\t\treturn !this.pets.isEmpty();\n\t}\n\n\tpublic String getAddress() {" },
+]
+prompt = """
+Clean up dead code in the owner package. Each of these may be unused: `Owner.formatLegacyName()`,
+`Owner.describeForAudit()`, `Owner.hasPets()` and the class `OwnerLegacyFormat`. Delete each one
+that nothing uses once the others you delete are gone, and keep each one that something still uses,
+by a call or any other way. Keep every test passing.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerDeadCodeTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
+
 [tasks.petclinic-rename-owner-customer]
 repo   = "spring-petclinic"
 kind   = "rename"

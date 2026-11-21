@@ -83,6 +83,22 @@ class McpActionsTest {
     }
 
     @Test
+    void a_delete_is_logged_with_what_it_deleted() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), null);
+        McpTools tools = new McpTools(List.of(tool("delete", in -> in.text("Deleted Order.legacy(), line 9\n"))));
+
+        tools.call(ctx, call("delete", Map.of("dir", project.toString(), "address", "Order.legacy")), connection, null);
+
+        SessionLog.Page page = log.session(id, 0, 10).orElseThrow();
+        assertThat(page.actions()).singleElement().satisfies(a -> assertThat(a)
+                .containsEntry("kind", "delete")
+                .containsEntry("summary", "delete Order.legacy")
+                .containsEntry("headline", "Deleted Order.legacy(), line 9"));
+    }
+
+    @Test
     void a_goal_titles_the_episode_a_call_without_one_is_served_and_a_new_goal_starts_the_next() {
         McpContext ctx = context();
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);

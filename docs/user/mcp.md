@@ -266,6 +266,7 @@ The whole registry:
 | **`query`** | A question about the code (`question`) answered in a token budget: the symbols it names as `Owner.member()` at `file:line`, and how they connect. Same as `jk code query` ([Code graph](graph.md)) |
 | **`read`** | One symbol's source or a type's members (`address` = `Type`, `Type.member`, `Type.*`, a path or glob; `#line=N,M`), in the `view` the budget fits. Same as `jk code read` |
 | **`find`** | Declarations by `kind`, `visibility`, `extends`, `implements`, `annotated` and a `name` glob. Same as `jk code find` |
+| **`delete`** | Delete a method (`address` = `Type.method`, every overload), a field (`Type.field`) or a type (`Type`) only when nothing uses it, then compile the modules it touched, undoing the delete whole when they do not compile; `kind` (`method`, `field`, `type`) when the name is ambiguous. With a use left (a call or reference, an anchor, an override, a framework annotation, an entry point, a doc link, a string naming it) it writes nothing and lists each use as `usages` does, each annotation at the `file:line` that writes it. Not read-only. Same as `jk code delete` ([Code graph](graph.md#delete-move-and-pull-up)) |
 
 Start with **`run`**. The reply is the verdict. **`diagnostics`** is the detail past its cap. Do not dump full journal records. A tool
 outside the default list is called by name once `tools/list` with `extended: true` has named it. `tools/call` accepts it either way; the bind and the session are the same.

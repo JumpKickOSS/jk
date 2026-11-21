@@ -16,14 +16,14 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The MCP calls a session's timeline shows besides its runs, in compact display form: the code
- * graph's questions, {@code rename}, and the dependency changes {@code deps}, {@code update} and
+ * graph's questions, {@code rename} and {@code delete}, and the dependency changes {@code deps}, {@code update} and
  * {@code workspace}. Every other tool reads state or starts a run, which the run's own record shows.
  */
 final class McpActions {
 
     /** Every tool a session's timeline logs. */
     static final Set<String> LOGGED =
-            Set.of("query", "usages", "read", "find", "rename", "deps", "update", "workspace");
+            Set.of("query", "usages", "read", "find", "rename", "delete", "deps", "update", "workspace");
 
     /** The tools that take {@link McpSchemas#GOAL}: the ones that start work. */
     static final Set<String> GOALS = Set.of("run", "deps", "rename", "update");
@@ -104,7 +104,7 @@ final class McpActions {
 
     private static String target(String name, McpCall call, List<String> coords) {
         return switch (name) {
-            case "rename" -> orEmpty(call.str("address"));
+            case "rename", "delete" -> orEmpty(call.str("address"));
             case "deps" -> coords.isEmpty() ? "" : coords.getFirst();
             default -> "";
         };
@@ -123,7 +123,7 @@ final class McpActions {
         String text =
                 switch (name) {
                     case "query" -> "query \"" + orEmpty(call.str("question")) + "\"";
-                    case "usages", "read" -> name + " " + orEmpty(call.str("address"));
+                    case "usages", "read", "delete" -> name + " " + orEmpty(call.str("address"));
                     case "find" -> "find " + orEmpty(call.str("name"));
                     case "rename" -> "rename " + orEmpty(call.str("address")) + " → " + orEmpty(call.str("to"));
                     case "deps" ->

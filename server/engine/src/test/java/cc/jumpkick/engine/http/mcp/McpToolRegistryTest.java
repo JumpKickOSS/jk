@@ -97,8 +97,18 @@ class McpToolRegistryTest {
         List<String> listed = names(tools.listing(McpTools.Surface.LOOP));
         assertThat(listed).containsExactly("run", "diagnostics", "deps", "usages", "rename", "skill");
         assertThat(listed).isEqualTo(tools.loopNames());
-        assertThat(listed).doesNotContain("bind", "history", "manifest", "query", "read", "find");
-        assertThat(tools.names()).contains("usages", "rename", "query", "read", "find");
+        assertThat(listed).doesNotContain("bind", "history", "manifest", "query", "read", "find", "delete");
+        assertThat(tools.names()).contains("usages", "rename", "query", "read", "find", "delete");
+    }
+
+    @Test
+    void delete_is_on_the_extended_list_and_writes() {
+        Map<String, Object> row = objects(McpTools.standard().listing(McpTools.Surface.ALL), "tools").stream()
+                .filter(t -> "delete".equals(t.get("name")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(row).doesNotContainKey("annotations");
+        assertThat(row.get("inputSchema")).asString().contains("address", "kind", "method", "field", "type");
     }
 
     @Test

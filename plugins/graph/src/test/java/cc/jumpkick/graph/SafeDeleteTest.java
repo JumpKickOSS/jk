@@ -149,8 +149,95 @@ class SafeDeleteTest {
                 .contains("overrides a method declared outside the workspace (@Override)");
         assertThat(f.delete("Order.sweep"))
                 .startsWith("Not deleted")
-                .contains("@Scheduled on it: a framework may call or create it by reflection");
+                .contains(
+                        "@Scheduled on it: a framework may call or create it by reflection  " + DIR + "Order.java:35");
         assertThat(f.read(DIR + "Order.java")).isEqualTo(ORDER);
+    }
+
+    @Test
+    void eachFrameworkAnnotationIsNamedAtTheLineThatWritesIt(@TempDir Path dir) throws IOException {
+        Map<String, String> files = shop();
+        files.put(DIR + "Job.java", """
+                package org.acme.shop;
+
+                /** Runs on a timer. */
+                @Scheduled
+                @SuppressWarnings("unused")
+                class Job {
+
+                    @Scheduled
+                    @Deprecated
+                    int every;
+
+                    @Deprecated
+                    @org.acme.shop.Scheduled
+                    void run() {}
+                }
+                """);
+        RenameFixture f = new RenameFixture(dir, files);
+
+        assertThat(f.delete("Job.every"))
+                .startsWith("Not deleted")
+                .contains("@Scheduled on it: a framework may call or create it by reflection  " + DIR + "Job.java:8");
+        assertThat(f.delete("Job"))
+                .startsWith("Not deleted")
+                .contains("@Scheduled on it: a framework may call or create it by reflection  " + DIR + "Job.java:4")
+                .contains("@Scheduled on Job.run(): a framework may call or create it by reflection  " + DIR
+                        + "Job.java:13");
+    }
+
+    @Test
+    void aMethodOnlyADeadTypeCallsGoesOnceTheTypeDoesAndOneCalledByNameStays(@TempDir Path dir) throws IOException {
+        RenameFixture f = new RenameFixture(
+                dir,
+                RenameFixture.files(
+                        DIR + "Owner.java", """
+                package org.acme.shop;
+
+                public class Owner {
+                    String name = "Ada";
+
+                    public String formatLegacyName() {
+                        return name.toUpperCase();
+                    }
+
+                    public String describeForAudit() {
+                        return "owner " + name;
+                    }
+                }
+                """, DIR + "OwnerLegacyFormat.java", """
+                package org.acme.shop;
+
+                final class OwnerLegacyFormat {
+                    static String format(Owner owner) {
+                        return owner.formatLegacyName();
+                    }
+                }
+                """, DIR + "OwnerAudit.java", """
+                package org.acme.shop;
+
+                final class OwnerAudit {
+                    static final String DESCRIBE = "describeForAudit";
+
+                    static Object line(Owner owner) throws ReflectiveOperationException {
+                        return Owner.class.getMethod(DESCRIBE).invoke(owner);
+                    }
+                }
+                """));
+
+        assertThat(f.delete("Owner.formatLegacyName"))
+                .startsWith("Not deleted")
+                .contains("OwnerLegacyFormat.format()  " + DIR + "OwnerLegacyFormat.java:5");
+        assertThat(f.delete("Owner.describeForAudit"))
+                .startsWith("Not deleted")
+                .contains("a string names it  " + DIR + "OwnerAudit.java:4");
+        assertThat(f.delete("OwnerLegacyFormat")).startsWith("Deleted org.acme.shop.OwnerLegacyFormat, its file");
+        assertThat(f.checkDelete()).isEqualTo("Proven: it compiles.");
+        assertThat(f.delete("Owner.formatLegacyName")).startsWith("Deleted Owner.formatLegacyName()");
+        assertThat(f.checkDelete()).isEqualTo("Proven: it compiles.");
+        assertThat(f.read(DIR + "Owner.java"))
+                .doesNotContain("formatLegacyName")
+                .contains("describeForAudit");
     }
 
     @Test

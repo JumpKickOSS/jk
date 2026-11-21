@@ -236,7 +236,7 @@ final class SafeDelete {
             t.also.add("  overrides a method declared outside the workspace ("
                     + (kotlinOverride ? "override" : "@Override") + "): a call to that one runs this one");
         }
-        framework(t, annotations, "it");
+        framework(t, lines(w.root(), n.sourceFile()), Decl.line(n), annotations, "it");
         if (name.equals("main")
                 && preamble.stream()
                         .anyMatch(l -> l.contains("static") || l.strip().startsWith("fun main"))) {
@@ -299,7 +299,7 @@ final class SafeDelete {
         for (int i = Math.max(1, cut[0]); i <= from && i <= lines.length; i++) written.add(lines[i - 1]);
         String head = String.join("\n", written);
         int at = head.lastIndexOf(member);
-        framework(t, annotations(List.of(), List.of(at < 0 ? head : head.substring(0, at))), "it");
+        framework(t, lines, from, annotations(List.of(), List.of(at < 0 ? head : head.substring(0, at))), "it");
         if (member.equals("serialVersionUID")) t.also.add("  serialization reads serialVersionUID");
         t.strings.add(Pattern.compile("\"" + Pattern.quote(member) + "\""));
         t.literalOnly = true;
@@ -329,11 +329,16 @@ final class SafeDelete {
             if (e.source().equals(n.id()) && Anchors.is(g.node(e.target()))) anchored = true;
         }
         if (!found.uses().isEmpty() || anchored) t.callers.addAll(GraphUses.render(g, w.root(), tools, found));
-        framework(t, annotations(Decl.annotations(n), preamble(w.root(), n)), "it");
+        framework(t, lines, from, annotations(Decl.annotations(n), preamble(w.root(), n)), "it");
         for (GraphNode m : g.nodes()) {
             if (!m.sourceFile().equals(rel) || m.id().equals(n.id()) || Decl.line(m) < from || Decl.line(m) > to)
                 continue;
-            framework(t, annotations(Decl.annotations(m), preamble(w.root(), m)), GraphQuery.clean(g.display(m.id())));
+            framework(
+                    t,
+                    lines,
+                    Decl.line(m),
+                    annotations(Decl.annotations(m), preamble(w.root(), m)),
+                    GraphQuery.clean(g.display(m.id())));
             if (bare(m.label()).equals("main") && "method".equals(Decl.kind(m))) {
                 t.also.add("  an entry point: the JVM runs " + GraphQuery.clean(g.display(m.id())));
             }
@@ -390,13 +395,43 @@ final class SafeDelete {
         return true;
     }
 
-    /** One line per annotation of {@code names} a framework may call the declaration through. */
-    private static void framework(Target t, List<String> names, String what) {
+    /**
+     * One line per annotation of {@code names} a framework may call the declaration through, at the
+     * line of {@code lines} (the target's file) that writes it, at or above the declaration's {@code line}.
+     */
+    private static void framework(Target t, String[] lines, int line, List<String> names, String what) {
         for (String a : names) {
             if (!inert(a)) {
-                t.also.add("  @" + a + " on " + what + ": a framework may call or create it by reflection");
+                t.also.add("  @" + a + " on " + what + ": a framework may call or create it by reflection  " + t.rel
+                        + ":" + written(lines, line, a));
             }
         }
+    }
+
+    /**
+     * The line writing annotation {@code simple} on the declaration at {@code line}: that line or one of
+     * the annotation lines above it, else {@code line} itself.
+     */
+    static int written(String[] lines, int line, String simple) {
+        Pattern at = Pattern.compile("@(?:[\\w$]+\\.)*" + Pattern.quote(simple) + "(?![\\w$])");
+        for (int i = Math.min(line, lines.length); i >= 1 && i > line - 30; i--) {
+            String code = lines[i - 1].strip();
+            if (i < line
+                    && (code.isEmpty()
+                            || code.endsWith(";")
+                            || code.endsWith("{")
+                            || code.endsWith("}")
+                            || code.endsWith("*/")
+                            || code.startsWith("//"))) break;
+            if (at.matcher(GraphUses.unquoted(lines[i - 1])).find()) return i;
+        }
+        return line;
+    }
+
+    /** The lines of {@code rel}, none when it cannot be read. */
+    private static String[] lines(Path root, String rel) {
+        String text = RenameText.read(root, rel);
+        return text == null ? new String[0] : text.split("\n", -1);
     }
 
     /** Whether the annotation of simple name {@code name} changes nothing at run time. */

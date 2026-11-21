@@ -723,9 +723,10 @@ jk code pull-up Book.label Item                  # an instance member up to the 
 `delete` removes a method (every overload), a field or a type only when nothing uses it: no call or
 reference in the compiled classes, no anchor it maps to, no override, no framework annotation or entry
 point, no doc link or string naming it. Otherwise it writes nothing and lists the uses as `usages`
-does. `move` takes a static Java method (every overload) or static field to another class, enum or
-record and edits every use javac bound; `pull-up` takes an instance method or field to the class its
-type extends, where its uses bind as written. Both write nothing and list what would break or change
+does, and each framework annotation that keeps it at the `file:line` that writes it. `move` takes a
+static Java method (every overload) or static field to another class, enum or record and edits
+every use javac bound; `pull-up` takes an instance method or field to the class its type extends,
+where its uses bind as written. Both write nothing and list what would break or change
 behaviour without a compile error (state the target does not have, a `super` call, a member one side
 cannot see, an override). Like `rename`, each then compiles the modules it touched and undoes the
 edit whole when they do not compile.
@@ -763,8 +764,8 @@ on every turn, and in measured agent runs `usages` and `rename` are the ones tha
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
-`query`, `read` and `find` answer as their
+`query`, `read`, `find` and `delete` answer as their
 `jk code` subcommands do and are on the extended list (`tools/list` with `extended: true`, or
 `[mcp] tools = "all"`); every tool is callable by name either way, and `callers`, the name
-`usages` had before, still answers as `usages`. `delete`, `move` and `pull-up`, and `neighbors`,
-`path` and `rules`, are shell commands alone. See [MCP](mcp.md).
+`usages` had before, still answers as `usages`. `move` and `pull-up`, and `neighbors`, `path` and
+`rules`, are shell commands alone. See [MCP](mcp.md).
