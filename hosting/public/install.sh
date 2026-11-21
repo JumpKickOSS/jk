@@ -216,24 +216,37 @@ main() {
   }
 
   # Fetches the HTTPS URL $1 into $2 with GNU wget, following redirects by hand so that each
-  # hop is HTTPS too. wget has no switch for that: --https-only governs only recursive links, and
-  # a redirect to http:// is followed with it set. So every request is made with
-  # --max-redirect=0, the Location of a 3xx is resolved against the URL that answered, and a
-  # target that is not https:// ends the download.
+  # hop is HTTPS too. Wget 1 has no switch for that: --https-only governs only recursive links,
+  # and a redirect to http:// is followed with it set; Wget2's --https-only skips such a
+  # redirect but still exits 0. So every request is made with --max-redirect=0, the Location of
+  # a 3xx is resolved against the URL that answered, and a target that is not https:// ends the
+  # download.
   wget_https() {
-    local url="$1" dest="$2" hops=0 rc status location origin
+    local url="$1" dest="$2" hops=0 rc status location origin wget2=0
     local headers="$2.headers"
+    wget --version 2>/dev/null | awk 'NR == 1 && /^GNU Wget2 / { ok = 1 } END { exit !ok }' && wget2=1
     while :; do
       case "$url" in
         [Hh][Tt][Tt][Pp][Ss]://?*) ;;
         *) err "refusing to fetch $url: not HTTPS"; return 1 ;;
       esac
       rc=0
-      LC_ALL=C wget -q -S --max-redirect=0 "$url" -O "$dest" 2>"$headers" || rc=$?
-      # -S writes each response header to stderr, indented; the last status and Location are
-      # this response's. A 3xx is a redirect whatever wget's exit status says.
-      status="$(tr -d '\r' < "$headers" | awk '{ sub(/^[ \t]+/, "") } /^HTTP\/[0-9.]+ [0-9][0-9][0-9]/ { s = $2 } END { print s }')"
-      location="$(tr -d '\r' < "$headers" | awk '{ sub(/^[ \t]+/, "") } tolower($0) ~ /^location:/ { sub(/^[^:]*:[ \t]*/, ""); l = $0 } END { print l }')"
+      # A 3xx is a redirect whatever wget's exit status says; the last status and Location
+      # printed are this response's.
+      if [ "$wget2" -eq 1 ]; then
+        # Wget2 prints nothing under -q, and no headers for a redirect under -S. Its messages on
+        # stdout name the status (HTTP response 302 Found [url], HTTP ERROR response 404 ...) and
+        # the redirect it stopped at, already resolved (URL 'https://...' not followed ...). -v
+        # undoes a quiet setting in the user's wget2rc.
+        LC_ALL=C wget -v --max-redirect=0 "$url" -O "$dest" >"$headers" 2>&1 || rc=$?
+        status="$(tr -d '\r' < "$headers" | awk '/^HTTP (ERROR )?response [0-9][0-9][0-9]/ { sub(/^HTTP (ERROR )?response /, ""); s = substr($0, 1, 3) } END { print s }')"
+        location="$(tr -d '\r' < "$headers" | awk '/^URL .* not followed/ { sub(/^URL ./, ""); sub(/. not followed.*$/, ""); l = $0 } END { print l }')"
+      else
+        # -S writes each response header to stderr, indented.
+        LC_ALL=C wget -q -S --max-redirect=0 "$url" -O "$dest" 2>"$headers" || rc=$?
+        status="$(tr -d '\r' < "$headers" | awk '{ sub(/^[ \t]+/, "") } /^HTTP\/[0-9.]+ [0-9][0-9][0-9]/ { s = $2 } END { print s }')"
+        location="$(tr -d '\r' < "$headers" | awk '{ sub(/^[ \t]+/, "") } tolower($0) ~ /^location:/ { sub(/^[^:]*:[ \t]*/, ""); l = $0 } END { print l }')"
+      fi
       rm -f "$headers"
       case "$status" in
         3??) ;;

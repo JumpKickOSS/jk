@@ -29,7 +29,7 @@ require one exact checksum entry, and hash the archive before replacing or execu
 Unix needs stock-compatible OpenSSL; Windows uses .NET RSA in PowerShell 5.1. Positional local
 file installs remain available for development and do not require release evidence.
 
-`install.sh` downloads with curl, or with GNU Wget where there is no curl, and follows a redirect
+`install.sh` downloads with curl, or with GNU Wget (1.x or Wget2) where there is no curl, and follows a redirect
 only to another HTTPS URL. BusyBox's `wget` (Alpine's only downloader until curl is installed)
 cannot be told to stop at a redirect, so a remote install refuses it and asks for curl or GNU Wget.
 

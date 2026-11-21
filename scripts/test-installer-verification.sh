@@ -272,43 +272,109 @@ done
 exit 8
 SH
 chmod +x "$WORK/wget-bin/wget"
+# A GNU Wget2 fixture, serving the same tree. Wget2 prints no headers for a redirect even under -S
+# and nothing at all under -q; its own messages on stdout name the status and the redirect it
+# stopped at, resolved against the URL that answered, and that stop exits 0.
+mkdir -p "$WORK/wget2-bin"
+cp "$WORK/bin/git" "$WORK/wget2-bin/git"
+cat >"$WORK/wget2-bin/wget" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out="" url="" follow=1 quiet=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version) echo "GNU Wget2 2.3.0 - multithreaded metalink/file/website downloader"; exit 0 ;;
+    -O) out="$2"; shift 2 ;;
+    --max-redirect=0) follow=0; shift ;;
+    -q) quiet=1; shift ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+say() { if [[ "$quiet" -eq 0 ]]; then printf '%s\n' "$1"; fi; }
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if [[ -n "${FIXTURE_WGET_LOG:-}" ]]; then printf '%s\n' "$url" >>"$FIXTURE_WGET_LOG"; fi
+  say "[0] Downloading '$url' ..."
+  path="${url#*://fixture}"
+  src="${FIXTURE_HTTP_ROOT}${path%%\?*}"
+  if [[ -f "$src.redirect" ]]; then
+    location="$(cat "$src.redirect")"
+    case "$location" in
+      *://*) next="$location" ;;
+      //*) next="${url%%://*}:$location" ;;
+      /*) next="${url%%://*}://fixture$location" ;;
+      *) next="${url%/*}/$location" ;;
+    esac
+    say "HTTP response 302 Found [$url]"
+    if [[ "$follow" -eq 0 ]]; then
+      say "URL '$next' not followed (max redirections exceeded)"
+      exit 0
+    fi
+    url="$next"
+    continue
+  fi
+  if [[ ! -f "$src" ]]; then
+    say "HTTP ERROR response 404 Not Found [$url]"
+    exit 8
+  fi
+  say "Saving '$out'"
+  say "HTTP response 200 OK [$url]"
+  cp "$src" "$out"
+  exit 0
+done
+exit 8
+SH
+chmod +x "$WORK/wget2-bin/wget"
 run_wget_installer() {
-  local home="$1" location="$2"
-  shift 2
+  local bin="$1" home="$2" location="$3"
+  shift 3
   printf '%s' "$location" >"$WORK/http/mirror/1.0.0/$ARTIFACT.redirect"
   run_installer "$home" JK_VERSION=1.0.0 JK_ARCHIVE_URL="https://fixture/mirror/1.0.0/$ARTIFACT" \
-    PATH="$WORK/wget-bin:$NOCURL_PATH" FIXTURE_WGET_LOG="$WORK/wget-calls" "$@"
+    PATH="$bin:$NOCURL_PATH" FIXTURE_WGET_LOG="$WORK/wget-calls" "$@"
 }
 
 # A mirror's archive URL that redirects and stays on HTTPS is followed, whether its Location is
 # absolute, network-path, absolute-path or relative; the archive is the signed one.
-for location in "https://fixture/releases/1.0.0/$ARTIFACT" "//fixture/releases/1.0.0/$ARTIFACT" \
-    "/releases/1.0.0/$ARTIFACT" "../../releases/1.0.0/$ARTIFACT"; do
-  rm -rf "$WORK/home-wget" "$WORK/wget-calls"
-  run_wget_installer "$WORK/home-wget" "$location" || {
-    cat "$WORK/last-install.log" >&2; echo "a wget install redirected to $location failed" >&2; exit 1; }
-  cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-wget/bin/jk" || {
-    echo "a wget install redirected to $location did not install the release" >&2; exit 1; }
-  grep -qx "https://fixture/.*releases/1\.0\.0/$ARTIFACT" "$WORK/wget-calls" || {
-    cat "$WORK/wget-calls" >&2; echo "a wget install did not follow $location to the archive" >&2; exit 1; }
-done
-pass "wget-follows-https-redirect"
+assert_wget_follows_https_redirect() {
+  local bin="$1" location
+  for location in "https://fixture/releases/1.0.0/$ARTIFACT" "//fixture/releases/1.0.0/$ARTIFACT" \
+      "/releases/1.0.0/$ARTIFACT" "../../releases/1.0.0/$ARTIFACT"; do
+    rm -rf "$WORK/home-wget" "$WORK/wget-calls"
+    run_wget_installer "$bin" "$WORK/home-wget" "$location" || {
+      cat "$WORK/last-install.log" >&2; echo "a wget install redirected to $location failed" >&2; exit 1; }
+    cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-wget/bin/jk" || {
+      echo "a wget install redirected to $location did not install the release" >&2; exit 1; }
+    grep -qx "https://fixture/.*releases/1\.0\.0/$ARTIFACT" "$WORK/wget-calls" || {
+      cat "$WORK/wget-calls" >&2; echo "a wget install did not follow $location to the archive" >&2; exit 1; }
+  done
+}
 
 # A redirect off HTTPS is refused before it is fetched, and the prior install stays.
-rm -rf "$WORK/home-wget-http" "$WORK/wget-calls"
-mkdir -p "$WORK/home-wget-http/bin"
-printf 'prior-install' >"$WORK/home-wget-http/bin/jk"
-if run_wget_installer "$WORK/home-wget-http" "http://fixture/releases/1.0.0/$ARTIFACT"; then
-  cat "$WORK/last-install.log" >&2; echo "a wget install followed a redirect to http" >&2; exit 1
-fi
-[[ "$(cat "$WORK/home-wget-http/bin/jk")" == "prior-install" ]] || {
-  echo "a refused wget redirect changed the prior installation" >&2; exit 1; }
-grep -qF "refusing to fetch http://fixture/releases/1.0.0/$ARTIFACT: not HTTPS" "$WORK/last-install.log" || {
-  cat "$WORK/last-install.log" >&2; echo "a refused wget redirect does not say why" >&2; exit 1; }
-if grep -q '^http://' "$WORK/wget-calls"; then
-  cat "$WORK/wget-calls" >&2; echo "a wget install requested a non-HTTPS URL" >&2; exit 1
-fi
+assert_wget_refuses_redirect_off_https() {
+  local bin="$1"
+  rm -rf "$WORK/home-wget-http" "$WORK/wget-calls"
+  mkdir -p "$WORK/home-wget-http/bin"
+  printf 'prior-install' >"$WORK/home-wget-http/bin/jk"
+  if run_wget_installer "$bin" "$WORK/home-wget-http" "http://fixture/releases/1.0.0/$ARTIFACT"; then
+    cat "$WORK/last-install.log" >&2; echo "a wget install followed a redirect to http" >&2; exit 1
+  fi
+  [[ "$(cat "$WORK/home-wget-http/bin/jk")" == "prior-install" ]] || {
+    echo "a refused wget redirect changed the prior installation" >&2; exit 1; }
+  grep -qF "refusing to fetch http://fixture/releases/1.0.0/$ARTIFACT: not HTTPS" "$WORK/last-install.log" || {
+    cat "$WORK/last-install.log" >&2; echo "a refused wget redirect does not say why" >&2; exit 1; }
+  if grep -q '^http://' "$WORK/wget-calls"; then
+    cat "$WORK/wget-calls" >&2; echo "a wget install requested a non-HTTPS URL" >&2; exit 1
+  fi
+}
+
+assert_wget_follows_https_redirect "$WORK/wget-bin"
+pass "wget-follows-https-redirect"
+assert_wget_refuses_redirect_off_https "$WORK/wget-bin"
 pass "wget-refuses-redirect-off-https"
+assert_wget_follows_https_redirect "$WORK/wget2-bin"
+pass "wget2-follows-https-redirect"
+assert_wget_refuses_redirect_off_https "$WORK/wget2-bin"
+pass "wget2-refuses-redirect-off-https"
 
 # A wget that is not GNU Wget (BusyBox's) cannot be stopped from following a redirect, so a remote
 # install refuses it and says what would do.
@@ -328,7 +394,7 @@ fi
   echo "a refused BusyBox wget install changed the prior installation" >&2; exit 1; }
 grep -qF "install curl or GNU Wget" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "a BusyBox wget refusal does not say what to install" >&2; exit 1; }
-rm -rf "$WORK/nocurl" "$WORK/wget-bin" "$WORK/busybox-bin" "$WORK/home-wget" "$WORK/home-wget-http" "$WORK/home-busybox" \
+rm -rf "$WORK/nocurl" "$WORK/wget-bin" "$WORK/wget2-bin" "$WORK/busybox-bin" "$WORK/home-wget" "$WORK/home-wget-http" "$WORK/home-busybox" \
   "$WORK/http/mirror" "$WORK/wget-calls"
 pass "busybox-wget-refused"
 
