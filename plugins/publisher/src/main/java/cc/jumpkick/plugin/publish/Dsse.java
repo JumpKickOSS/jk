@@ -7,12 +7,14 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A <a href="https://github.com/secure-systems-lab/dsse/blob/master/envelope.md">DSSE</a> envelope
  * over an in-toto statement, written as one JSON line: the base64 {@code payload}, its {@code
- * payloadType}, and one signature whose {@code sig} is a binary OpenPGP signature over the
- * pre-authentication encoding and whose {@code keyid} is the signing key's fingerprint.
+ * payloadType}, and one signature over the pre-authentication encoding: a binary OpenPGP signature
+ * whose {@code keyid} is the signing key's fingerprint, or a keyless Sigstore one with no {@code
+ * keyid}.
  */
 public final class Dsse {
 
@@ -24,11 +26,18 @@ public final class Dsse {
     /** The envelope over {@code statement}, signed by {@code signer}, newline-terminated. */
     public static byte[] envelope(byte[] statement, GpgSigner signer) throws IOException {
         Objects.requireNonNull(statement, "statement");
-        Objects.requireNonNull(signer, "signer");
+        return envelope(statement, signer.fingerprint(), signer.signBinary(pae(IN_TOTO, statement)));
+    }
+
+    /**
+     * The envelope over {@code statement} carrying {@code sig}, a signature over {@link #pae} of the
+     * statement as {@link #IN_TOTO}; a {@code null} {@code keyid} is left out.
+     */
+    static byte[] envelope(byte[] statement, @Nullable String keyid, byte[] sig) {
         Base64.Encoder base64 = Base64.getEncoder();
         String signature = JsonFields.object()
-                .string("keyid", signer.fingerprint())
-                .string("sig", base64.encodeToString(signer.signBinary(pae(IN_TOTO, statement))))
+                .optionalString("keyid", keyid)
+                .string("sig", base64.encodeToString(sig))
                 .finish();
         String line = JsonFields.object()
                 .string("payloadType", IN_TOTO)

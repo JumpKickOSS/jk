@@ -48,6 +48,10 @@ class MavenPublisherTest {
     private URI base;
     private final Map<String, byte[]> received = new HashMap<>();
     private final Map<String, String> authHeaders = new HashMap<>();
+
+    /** The Content-Type of each file the repository took. */
+    private final Map<String, String> contentTypes = new HashMap<>();
+
     private volatile boolean failNext;
 
     /** Every PUT the repository took, in order. */
@@ -78,6 +82,7 @@ class MavenPublisherTest {
                     return;
                 }
                 received.put(path, exchange.getRequestBody().readAllBytes());
+                contentTypes.put(path, exchange.getRequestHeaders().getFirst("Content-Type"));
                 String auth = exchange.getRequestHeaders().getFirst("Authorization");
                 if (auth != null) authHeaders.put(path, auth);
                 if (failNext) {
@@ -373,7 +378,38 @@ class MavenPublisherTest {
     private MavenPublisher.Artifact envelope(byte[] statement, GpgSigner signer) throws IOException {
         Path file = Files.write(
                 Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"), Dsse.envelope(statement, signer));
-        return new MavenPublisher.Artifact(".intoto.jsonl", file, true);
+        return new MavenPublisher.Artifact(".intoto.jsonl", file, true, null);
+    }
+
+    @Test
+    void the_provenance_envelope_goes_up_as_json(@TempDir Path tempDir) throws Exception {
+        GpgSigner signer = signer(tempDir);
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+
+        publisher.publish(project, List.of(envelope("{\"a\":1}".getBytes(StandardCharsets.UTF_8), signer)));
+
+        assertThat(contentTypes)
+                .containsEntry("/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl", "application/json");
+    }
+
+    @Test
+    void a_bundle_made_with_a_file_goes_up_as_its_sigstore_in_place_of_a_signing() throws Exception {
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        Path envelope = Files.write(Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"), new byte[] {'{'});
+        Path bundle = Files.writeString(Files.createTempFile(artifactFiles, "bundle", ".sigstore"), "{\"made\":1}");
+        SigstoreSigner fileSigner = file -> "{\"over-the-file\":1}".getBytes(StandardCharsets.UTF_8);
+
+        publisher.publish(
+                project,
+                List.of(new MavenPublisher.Artifact(".intoto.jsonl", envelope, true, bundle)),
+                SigningOptions.of(null, fileSigner));
+
+        String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl.sigstore";
+        assertThat(new String(requireNonNull(received.get(at)), StandardCharsets.UTF_8))
+                .isEqualTo("{\"made\":1}");
+        assertThat(received).containsKey(at + ".sha256");
     }
 
     @Test

@@ -58,6 +58,31 @@ public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseabl
         }
     }
 
+    /**
+     * A DSSE envelope whose one signature is keyless, and the Sigstore bundle of that signature:
+     * the certificate of its short-lived key and its transparency-log entry.
+     */
+    public record Attestation(byte[] envelope, byte[] bundle) {}
+
+    /**
+     * Attest {@code statement}: sign its DSSE pre-authentication encoding as the file {@link
+     * #signBundle} would sign, so the bundle verifies against that encoding and its signature is
+     * the envelope's.
+     */
+    public Attestation attest(byte[] statement) throws IOException {
+        Bundle bundle;
+        try {
+            bundle = signer.sign(Hashing.sha256(Dsse.pae(Dsse.IN_TOTO, statement)));
+        } catch (KeylessSignerException e) {
+            throw new IOException("Sigstore signing failed: " + e.getMessage(), e);
+        }
+        byte[] signature = bundle.getMessageSignature()
+                .orElseThrow(() -> new IOException("Sigstore signed the statement without a message signature"))
+                .getSignature();
+        return new Attestation(
+                Dsse.envelope(statement, null, signature), bundle.toJson().getBytes(StandardCharsets.UTF_8));
+    }
+
     @Override
     public void close() {
         onClose.run();

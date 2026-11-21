@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
@@ -72,12 +73,20 @@ public final class Publisher implements Plugin, PublishExtension {
     /** The transport a repository upload goes through; a test hands in one without the retry ladder. */
     private final Supplier<Http> http;
 
+    /** Opens the keyless signer of {@code --sigstore}; a test hands in one that needs no Sigstore. */
+    private final Callable<KeylessSigstoreSigner> keyless;
+
     public Publisher() {
         this(Http::new);
     }
 
     Publisher(Supplier<Http> http) {
+        this(http, KeylessSigstoreSigner::sigstorePublic);
+    }
+
+    Publisher(Supplier<Http> http, Callable<KeylessSigstoreSigner> keyless) {
         this.http = http;
+        this.keyless = keyless;
     }
 
     @Override
@@ -188,6 +197,10 @@ public final class Publisher implements Plugin, PublishExtension {
                 : null;
 
         boolean slsa = c.bool("slsa", false);
+        boolean signSigstore = c.bool("signSigstore", false);
+        // A statement only the keyless signer signs: Sigstore is not reached before the upload, so
+        // it is attested there and stays bare in a dry run.
+        byte[] keylessStatement = null;
         boolean sbom = c.bool("sbom", false);
         CycloneDxSbom.Closure closure = slsa || sbom ? runtimeClosure(projectDir, project) : CycloneDxSbom.Closure.NONE;
 
@@ -217,11 +230,16 @@ public final class Publisher implements Plugin, PublishExtension {
                     resolvedDependencies(closure));
             byte[] statement =
                     SlsaProvenance.generate(List.of(new SlsaProvenance.Subject(jarFilename, jarSha)), buildCtx);
-            String suffix = gpg == null ? ".intoto.json" : ".intoto.jsonl";
-            Path provenanceFile = Files.write(
-                    publishDir.resolve(stem + suffix), gpg == null ? statement : Dsse.envelope(statement, gpg));
-            artifacts.add(new MavenPublisher.Artifact(suffix, provenanceFile, gpg != null));
-            ctx.label("artifact " + stem + suffix);
+            if (gpg != null) {
+                Path envelope = Files.write(publishDir.resolve(stem + ".intoto.jsonl"), Dsse.envelope(statement, gpg));
+                artifacts.add(new MavenPublisher.Artifact(".intoto.jsonl", envelope, true, null));
+                ctx.label("artifact " + stem + ".intoto.jsonl");
+            } else {
+                Path bare = Files.write(publishDir.resolve(stem + ".intoto.json"), statement);
+                artifacts.add(new MavenPublisher.Artifact(".intoto.json", bare));
+                ctx.label("artifact " + stem + ".intoto.json");
+                if (signSigstore) keylessStatement = statement;
+            }
         }
 
         List<Path> written = new ArrayList<>();
@@ -242,11 +260,15 @@ public final class Publisher implements Plugin, PublishExtension {
             throw new OfflineException(repoUrl);
         }
 
-        SigstoreSigner sigstoreSigner = c.bool("signSigstore", false) ? KeylessSigstoreSigner.sigstorePublic() : null;
+        KeylessSigstoreSigner sigstoreSigner = signSigstore ? keyless.call() : null;
         SigningOptions signing = new SigningOptions(gpg, sigstoreSigner);
 
         // Upload.
         try {
+            if (sigstoreSigner != null && keylessStatement != null) {
+                attest(sigstoreSigner, keylessStatement, publishDir, stem, artifacts);
+                ctx.label("artifact " + stem + ".intoto.jsonl");
+            }
             RepoCredential cred =
                     switch (c.string("repoAuthType").toLowerCase(Locale.ROOT)) {
                         case "basic" ->
@@ -276,14 +298,28 @@ public final class Publisher implements Plugin, PublishExtension {
                     .withExisting(result.alreadyThere().size())
                     .withWritten(written);
         } finally {
-            if (signing.sigstore() instanceof AutoCloseable closeable) {
-                try {
-                    closeable.close();
-                } catch (Exception ignored) {
-                    // best-effort cleanup
-                }
-            }
+            if (sigstoreSigner != null) sigstoreSigner.close();
         }
+    }
+
+    /**
+     * Replaces the bare statement among {@code artifacts} with its keyless DSSE envelope ({@code
+     * .intoto.jsonl}), whose {@code .sigstore} is the bundle of the envelope's signature.
+     */
+    private static void attest(
+            KeylessSigstoreSigner signer,
+            byte[] statement,
+            Path publishDir,
+            String stem,
+            List<MavenPublisher.Artifact> artifacts)
+            throws IOException {
+        KeylessSigstoreSigner.Attestation attestation = signer.attest(statement);
+        Path bare = publishDir.resolve(stem + ".intoto.json");
+        Path envelope = Files.write(publishDir.resolve(stem + ".intoto.jsonl"), attestation.envelope());
+        Path bundle = Files.write(publishDir.resolve(stem + ".intoto.jsonl.sigstore"), attestation.bundle());
+        Files.delete(bare);
+        artifacts.replaceAll(
+                a -> a.file().equals(bare) ? new MavenPublisher.Artifact(".intoto.jsonl", envelope, true, bundle) : a);
     }
 
     /**

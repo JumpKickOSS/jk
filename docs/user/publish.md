@@ -264,8 +264,20 @@ gpg --verify statement.sig pae.bin
 
 The envelope's signature is new each time it is made, so a re-run after a partial publish keeps
 the envelope the repository already holds over the same statement, and refuses one over another.
-`--sigstore` alone leaves the statement bare, with its `.sigstore` bundle beside it like every
-other file.
+
+`--sigstore` without `--sign` signs the envelope keylessly: its one signature carries no `keyid`,
+and the `.intoto.jsonl.sigstore` beside it is the Sigstore bundle of that signature (the
+certificate of the short-lived key and its transparency-log entry) rather than a bundle over the
+envelope file. Verify it against the same `pae.bin`, naming the identity you expect:
+
+```bash
+cosign verify-blob --bundle widget-1.0.0.intoto.jsonl.sigstore --new-bundle-format \
+  --certificate-identity <identity> --certificate-oidc-issuer <issuer> pae.bin
+```
+
+A dry run does not reach Sigstore, so with `--sigstore` alone it writes the bare `.intoto.json`.
+With both `--sign` and `--sigstore` the envelope is the GPG-signed one, with a `.sigstore` bundle
+over the file like every other file.
 
 ## Deny policy
 

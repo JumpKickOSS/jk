@@ -5,6 +5,7 @@ import static dev.sigstore.AlgorithmRegistry.HashAlgorithm.SHA2_256;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.jsonl.Jsonl;
 import dev.sigstore.KeylessSignerException;
 import dev.sigstore.bundle.Bundle;
 import dev.sigstore.bundle.ImmutableBundle;
@@ -66,6 +67,33 @@ class KeylessSigstoreSignerTest {
     }
 
     @Test
+    void an_attestation_is_an_envelope_over_the_statement_whose_signature_the_bundle_certifies() throws Exception {
+        byte[] statement = "{\"_type\":\"https://in-toto.io/Statement/v1\"}\n".getBytes(StandardCharsets.UTF_8);
+        StubSigner stub = new StubSigner();
+
+        KeylessSigstoreSigner.Attestation attestation = new KeylessSigstoreSigner(stub, () -> {}).attest(statement);
+
+        String line = new String(attestation.envelope(), StandardCharsets.UTF_8);
+        assertThat(line).endsWith("}\n").doesNotContain("\n{");
+        assertThat(Jsonl.str(line, "payloadType")).isEqualTo(Dsse.IN_TOTO);
+        assertThat(Base64.getDecoder().decode(Jsonl.requiredStr(line, "payload")))
+                .isEqualTo(statement);
+        String signature = Jsonl.objectArray(line, "signatures").getFirst();
+        assertThat(Jsonl.has(signature, "keyid")).isFalse();
+        byte[] sig = Base64.getDecoder().decode(Jsonl.requiredStr(signature, "sig"));
+
+        byte[] pae = Dsse.pae(Dsse.IN_TOTO, statement);
+        assertThat(stub.handed)
+                .containsExactly(MessageDigest.getInstance("SHA-256").digest(pae));
+        Bundle bundle = Bundle.from(new StringReader(new String(attestation.bundle(), StandardCharsets.UTF_8)));
+        assertThat(bundle.getMessageSignature().orElseThrow().getSignature()).isEqualTo(sig);
+        Signature verify = Signature.getInstance("SHA256withECDSA");
+        verify.initVerify(bundle.getCertPath().getCertificates().getFirst().getPublicKey());
+        verify.update(pae);
+        assertThat(verify.verify(sig)).isTrue();
+    }
+
+    @Test
     void a_failed_signing_surfaces_as_an_io_exception(@TempDir Path dir) throws Exception {
         Path artifact = Files.writeString(dir.resolve("lib-1.0.jar"), "jar");
         KeylessSigstoreSigner signer = new KeylessSigstoreSigner(
@@ -91,7 +119,7 @@ class KeylessSigstoreSignerTest {
      * digest, signs it as one with a short-lived key and certifies that key. Without Fulcio and
      * Rekor the certificate is self-signed and the log entry's proofs are placeholders.
      */
-    private static final class StubSigner implements KeylessSigstoreSigner.DigestSigner {
+    static final class StubSigner implements KeylessSigstoreSigner.DigestSigner {
 
         final List<byte[]> handed = new ArrayList<>();
 

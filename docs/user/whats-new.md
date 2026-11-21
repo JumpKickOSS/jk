@@ -12,7 +12,8 @@ JumpKick shows you this page's new entries after it updates itself.
   ([Images: SBOM and provenance](images.md#sbom-and-provenance-on-a-push)).
 - **A signed `--slsa` publish uploads its provenance in a DSSE envelope.** With `--sign`, the
   in-toto statement goes up as `.intoto.jsonl`, signed by the release key, where it was a bare
-  `.intoto.json` only the `.asc` beside it vouched for
+  `.intoto.json` only the `.asc` beside it vouched for. With `--sigstore` alone the envelope is
+  signed keylessly, and the `.sigstore` beside it is the bundle of that signature
   ([Publish: SBOM](publish.md#sbom)).
 - **`jk cache gc` keeps the outputs its records name.** The sweep did not read an output written
   with its size, the form every record has had since 0.52.0, so it could delete cached outputs that

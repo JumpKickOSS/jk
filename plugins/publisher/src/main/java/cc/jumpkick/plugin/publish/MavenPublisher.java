@@ -92,11 +92,17 @@ public final class MavenPublisher {
      * .intoto.json} is the extension {@code intoto.json}, not {@code json}. Its bytes stay in {@code
      * file}: checksums, signatures and the upload each stream it, so a large jar never sits in memory.
      * An {@code envelope} is a {@link Dsse} envelope, whose signature differs from one signing to the
-     * next: one the repository holds over the same payload is kept, as a held {@code .asc} is.
+     * next: one the repository holds over the same payload is kept, as a held {@code .asc} is. A
+     * {@code bundle} is the Sigstore bundle made with the file, uploaded as its {@code .sigstore} in
+     * place of one signed over the file.
      */
-    public record Artifact(String filenameSuffix, Path file, boolean envelope) {
+    public record Artifact(
+            String filenameSuffix,
+            Path file,
+            boolean envelope,
+            @Nullable Path bundle) {
         public Artifact(String filenameSuffix, Path file) {
-            this(filenameSuffix, file, false);
+            this(filenameSuffix, file, false, null);
         }
 
         public Artifact {
@@ -185,7 +191,10 @@ public final class MavenPublisher {
                 GpgSigner gpg = signing.gpg();
                 putSignature(relPath + ".asc", there, () -> gpg.signArmored(a.file()), results, bytes);
             }
-            if (signing.sigstore() != null) {
+            if (a.bundle() != null) {
+                Path bundle = a.bundle();
+                putSignature(relPath + ".sigstore", there, () -> Files.readAllBytes(bundle), results, bytes);
+            } else if (signing.sigstore() != null) {
                 SigstoreSigner sigstore = signing.sigstore();
                 putSignature(relPath + ".sigstore", there, () -> sigstore.signBundle(a.file()), results, bytes);
             }
@@ -247,13 +256,13 @@ public final class MavenPublisher {
                 putWithChecksums(
                         relPath + ".asc", signing.gpg().signArmored(a.file()), contentType(".asc"), results, bytes);
             }
-            if (signing.sigstore() != null) {
-                putWithChecksums(
-                        relPath + ".sigstore",
-                        signing.sigstore().signBundle(a.file()),
-                        contentType(".sigstore"),
-                        results,
-                        bytes);
+            Path bundle = a.bundle();
+            SigstoreSigner sigstore = signing.sigstore();
+            byte[] sigstoreBundle = bundle != null
+                    ? Files.readAllBytes(bundle)
+                    : sigstore != null ? sigstore.signBundle(a.file()) : null;
+            if (sigstoreBundle != null) {
+                putWithChecksums(relPath + ".sigstore", sigstoreBundle, contentType(".sigstore"), results, bytes);
             }
             String classifier = a.classifier();
             entries.append("      <snapshotVersion>\n");
@@ -477,7 +486,8 @@ public final class MavenPublisher {
         if (suffix.endsWith(".jar")) return "application/java-archive";
         if (suffix.endsWith(".pom") || suffix.endsWith(".xml")) return "application/xml";
         if (suffix.endsWith(".asc")) return "application/pgp-signature";
-        if (suffix.endsWith(".sigstore") || suffix.endsWith(".json")) return "application/json";
+        if (suffix.endsWith(".sigstore") || suffix.endsWith(".json") || suffix.endsWith(".jsonl"))
+            return "application/json";
         return "application/octet-stream";
     }
 
