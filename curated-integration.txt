@@ -1,10 +1,13 @@
-# The integration classes CI's self-host job runs on every run of ci.yml.
+# The integration classes CI's self-host job runs on every run of ci.yml, and the merge queue's
+# Queue tier runs in every module a batch did not change.
 #
 # `jk test -s integration` runs more than a hundred classes; a dispatch of CI on a branch does not
 # run them all unless asked, so the self-host job runs this subset (scripts/curated-integration.sh)
-# and the full suite runs on the release tag and nightly. Membership is a duplicate execution policy,
-# not a JUnit tag: every class named here carries `@Tag("integration")` and runs in the full suite
-# too, so nothing is reclassified to make the gate pass.
+# and the full suite runs on the release tag and nightly. A class that caught a real regression in
+# the Full tier which the Queue tier missed joins this list (docs/contributors/test-suite-tiers.md).
+# Membership is a duplicate execution policy, not a JUnit tag: every class named here carries
+# `@Tag("integration")` and runs in the full suite too, so nothing is reclassified to make the gate
+# pass.
 #
 # One entry per line, five `|`-separated fields:
 #
@@ -48,6 +51,7 @@ server/engine | cc.jumpkick.runtime.KotlinDependencyApiChangeE2eTest | workspace
 e2e/cli       | cc.jumpkick.command.pipeline.InstallCommandTest         | install   | success,failure | Install writes the lib layout and launcher, publishes to the local Maven repo, and returns a usage error with no manifest.
 e2e/cli       | cc.jumpkick.command.InstallWorkspaceTest       | install   | success,failure | Installing a workspace publishes every member and not the coordinator root, and a failing member names the module instead of exiting silently.
 e2e/cli       | cc.jumpkick.cli.engine.EngineJarFetcherTest    | install   | success,failure | Materializing the engine jar into the home, and the checksum and missing-artifact refusals that keep a bad jar out.
+e2e/cli       | cc.jumpkick.command.pipeline.PublishCommandTest         | install   | success,failure | What jk publish uploads (jar, POM, checksums, signatures, SBOM and provenance) and its refusals; a publisher, packaging or SBOM change breaks it without touching e2e/cli.
 e2e/cli       | cc.jumpkick.command.project.LockCommandTest            | lock      | success,failure | The lock pipeline for Java and Kotlin, plus the offline hard-failures when the lock does not cover a declared dependency.
 e2e/cli       | cc.jumpkick.command.system.CacheCommandTest           | lock      | success,failure | The cache verbs over a real store, including the unconfirmed purge that aborts and the empty search that returns non-zero.
 e2e/cli       | cc.jumpkick.command.BuildCacheTest             | lock      | success         | Freshness stamp, action cache and rebuild bypass — the layers that decide whether a second build does work.

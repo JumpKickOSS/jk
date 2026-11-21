@@ -146,17 +146,19 @@ The client never embeds the engine. Spawning uses
 ```bash
 jk guard                                     # before every commit: formats what changed, then every house-rule lane
 jk install                                   # every module built, fast tier included, then the reinstall
-jk install -g                                # the push gate: before pushing main to origin
+jk install -g                                # every integration and e2e class: the Full tier's tests
 ```
 
-The first two are the merge gate, run before every local merge into `main`. `jk install -g`
-(the default suite, `integration` and `e2e`, against the JumpKick it installs) is the push gate: it
-runs once on the local `main` about to be pushed, covering every branch merged since the last push.
-The fleet's gate hosts run the whole gate as `scripts/gate/run.sh <n> <sha>`
-([self-host](docs/contributors/self-host.md#the-gate)).
+The first two are the merge gate, run before every local merge into `main`. A branch reaches
+`origin/main` through the merge queue, whose Queue tier is the push gate: guard, one install, the
+integration suites of the modules the batch changed and the curated lane. `jk install -g` (the
+default suite, `integration` and `e2e`, against the JumpKick it installs) is the Full tier's, which
+runs behind it. The fleet's gate hosts run either as `scripts/gate/run.sh <n> <sha>`
+([self-host](docs/contributors/self-host.md#the-gate),
+[tiers](docs/contributors/test-suite-tiers.md#gate-tiers)).
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
-The push gate is long; to chase a failure, run its suites a module at a time
+The Full tier is long; to chase a failure, run its suites a module at a time
 (`jk test -g -m jk-engine`, `-m jk-cli-e2e`, …, with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
 usually its stale test sandbox under `~/.jk/test-homes/`: delete that slot and it is reseeded.
 Tests stay portable through `cc.jumpkick.testing`: `Sleepers` for stand-in processes (never a
@@ -170,8 +172,8 @@ paths.
 | **Release CI** (`ci.yml`) | A pushed release tag `vX.Y.Z` (made by `jk release`, or the **Cut release** workflow, which dispatches it) + manual `workflow_dispatch` | The tag matches `jk.toml`; commit-authorship scan since the previous tag; the shell fixtures (on Linux and macOS); the self-host job: `jk build`, `jk install`, `jk guard`, `jk test`, the curated integration lane, the lock diff |
 | **Nightly** (`ci-nightly.yml`) | Daily cron + manual `workflow_dispatch` | `jk test -s integration`, `slow`, `network`, `bench`; the coverage ratchet (`jk test --coverage`, `jk guard`); heap guard; doc examples. macOS: product smoke (`scripts/ci-product-smoke.sh`). |
 
-Pushes to `main` and pull requests start no workflow: the merge gate and the push gate run on the
-developer's machine ([AGENTS.md](AGENTS.md)). **Cut release** (`cut-release.yml`, manual) runs
+Pushes to `main` and pull requests start no workflow: the merge gate runs on the developer's machine
+and the push gate on the merge queue's host ([AGENTS.md](AGENTS.md)). **Cut release** (`cut-release.yml`, manual) runs
 `jk release --push`, which tests and tags the declared version and starts the next one; its tag push
 starts the lane above; when it is green, **release** (`release.yml`, CD) builds every platform
 without re-running a test, then signs and publishes behind the `release` environment's approval. Coverage is a
@@ -210,7 +212,7 @@ spawn it from the assembly the same step names (`-Djk.engine.jar`), in an isolat
 pure unit tier (TUI/args/jsonl) with no engine spawn.
 
 Use `-m` and `--class` mid-ticket (`jk test -m e2e/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
-the push gate is the whole of `jk install -g`. Tier model:
+the Full tier's tests are the whole of `jk install -g`. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 
 Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).

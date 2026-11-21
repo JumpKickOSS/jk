@@ -1,6 +1,7 @@
 # Test suite tiers (one tier per tag)
 
-**Goal:** keep the merge gate under **~5 minutes** and run the full e2e before a push, nightly and on every release, not once per merge.
+**Goal:** keep the merge gate under **~5 minutes**, the gate that blocks a push under **10**, and
+run the full e2e behind the push, nightly and on every release, not once per merge.
 
 ## Commands
 
@@ -13,7 +14,7 @@ over every subset of the tag vocabulary, that each is run by exactly one suite, 
 `jk build` runs every module's fast tier (the default suite: what no suite claims); `jk install`,
 which is that same build plus the reinstall, gates every local merge into `main`; `jk install -g`,
 which runs `[test] guard-suites = ["test", "integration", "e2e"]` against the JumpKick it installs, is
-the push gate, run on the local `main` before it is pushed. The house rules run under `jk build` and `jk guard`
+the heart of the Full tier ([gate tiers](#gate-tiers)). The house rules run under `jk build` and `jk guard`
 ([self-host](self-host.md#house-rule-gate)).
 
 <!-- test-tiers:start -->
@@ -81,6 +82,33 @@ Platform from the sandbox store the engine seeds (`TestStoreSeed`), never from t
 **Every tag is run by exactly one tier.** G23 verifies the executable partition, and G52 verifies
 that the marked table above matches it.
 
+## Gate tiers
+
+Five tiers judge a change on its way to a release, each cheaper and narrower than the next. Only
+the first two block: a branch does not reach the queue without the Branch tier, and `origin/main`
+does not move without the Queue tier.
+
+| Tier | Command | What runs | When | Blocks |
+|------|---------|-----------|------|--------|
+| Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk build -e <merge-base>`: the fast tier of the modules the branch changed and their dependents | Before a branch is submitted to the merge queue | The submission |
+| Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
+| Full | `scripts/gate/run.sh <n> <sha>` (`GATE_TIER=full`) | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration` and `e2e` class); `jk test -s release`; the shell fixtures; the release notes | By hand on a gate host, under the same lock as the queue; before a release ([releases](releases.md)) | Nothing: `main` may be red on it for a cycle or two |
+| Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
+| Release | `ci.yml` on the release tag | The fast tier, the curated lane, `release`, the whole `integration` tier, Windows and macOS | `jk release` pushes a tag | The release |
+
+**What the Queue tier calls a changed module.** `changed-modules.sh` maps every file the batch
+changed since `origin/main` onto the workspace member that holds it (the deepest one, so a rule
+pack is not its parent). A file under `docs/`, `scripts/`, `.github/` or `bench/`, or a Markdown
+file at the root, selects no module: guard, the fast tier and the shell fixtures read those. Any
+other file outside every member (the root `jk.toml`, `jk-lock.toml`, `.jk/`, `templates/`)
+selects them all, and the Queue tier runs the whole `integration` suite. The changed modules'
+suites run with `--exclusive`: a module's dependents are not run, which is what the curated lane is
+for. In the other modules a curated class runs alone, so no class runs twice.
+
+**Quarantine.** A run of the Queue tier that is red only in classes `scripts/gate/flaky.sh`
+holds in quarantine passes; the Full tier judges every class
+([flaky tests](self-host.md#flaky-tests)).
+
 ## The shared-cache proof
 
 `SharedCacheAcrossCheckoutsE2eTest` (engine, `integration`) builds one workspace from two
@@ -90,7 +118,7 @@ its classpath, an API edit misses its consumer, and the first checkout keeps hit
 `ActionKeyTest` keys every family (javac, kotlinc, groovyc, artifact bags, the run-tests stamp)
 from two roots through the production task id. A key factory that hashes a location fails both.
 
-## The curated integration lane (every release tag)
+## The curated integration lane
 
 The fast tier runs no integration class, and the full suite is too slow to gate on, so a wire,
 spawn, worker, workspace, install or lock regression could merge with a deterministic integration
@@ -98,7 +126,8 @@ test — sitting in the nightly suite run — that would have caught it.
 
 `scripts/curated-integration.sh` closes that gap. It reads `curated-integration.txt` at the
 checkout root and runs one `jk test -s integration -m <module> -S …` per module the
-registry names, as a step of the self-host job on every run of `ci.yml`. JumpKick fails a run in
+registry names, as a step of the self-host job on every run of `ci.yml`. The Queue tier runs the
+same commands (`--print`) in every module the batch did not change. JumpKick fails a run in
 which no class matched, so a renamed or deleted entry fails the lane instead of shrinking it.
 
 **Curated membership is a duplicate execution policy, not a tag.** Every listed class is
@@ -136,6 +165,13 @@ exists because the full tier is what a branch gate cannot afford, and a lane tha
 full tier has stopped being a lane. Adding a class is fine when it buys a surface a path it does
 not have; adding a second class for a path a surface already covers is what the budget is there to
 refuse.
+
+**A regression the Queue tier missed is the exception.** When the Full tier, nightly or a release
+catches a real regression (not a flake) with an integration class that the Queue tier did not run,
+because the batch changed some other module, that class joins the lane in the same change that
+fixes the regression, under the surface it guards, whatever that surface already holds. Its `why`
+says which change outside its own module breaks it. If the lane then runs over budget, split it or
+drop a class that never caught anything; never the one that did.
 
 ### Why `network` is off the merge gate
 
@@ -208,13 +244,14 @@ pull request:
 
 | Run | Started by | Tiers |
 |-----|------------|-------|
-| Merge and push gates | a developer, on their own machine | `jk install` (fast tier); `jk install -g` (`test`, `integration`, `e2e`) |
+| Merge gate | a developer, on their own machine | `jk install` (fast tier) |
+| Queue and Full tiers | the merge queue's gate host | the Queue tier on every batch; the Full tier behind it ([gate tiers](#gate-tiers)) |
 | No workflow | a push to `main`, a pull request | — |
 | `ci.yml` | a release tag, or a dispatch | fast tier, curated lane, `release`; the whole `integration` tier on a tag, or on a dispatch whose `integration` input is on |
 | `ci-nightly.yml` | its schedule, when the workflow is enabled | `integration`, `slow`, `network`, `bench`, coverage, the audit at `LOW` |
 
-A commit that reaches `main` without the push gate is therefore judged by no CI until the next
-nightly or release run. Nothing runs the integration or slow tier on Windows.
+A commit that reaches `main` has passed the Queue tier; whatever only the Full tier runs judges it
+when the Full tier next runs, or the next nightly or release run. Nothing runs the integration or slow tier on Windows.
 
 - **Release (`ci.yml` on the release tag):** the self-host job (`jk install`, which builds, then
   `jk guard`, `jk test`: the fast tier and every house-rule lane, run by the checkout's own `jk`;
@@ -242,7 +279,7 @@ nightly or release run. Nothing runs the integration or slow tier on Windows.
   `scripts/example-dev-smoke.sh --examples ../jk-examples` and
   `scripts/examples-lock-drift.sh ../jk-examples`.
 - Local gate: `jk guard` (it formats what changed), `jk install` (the build plus the reinstall), `jk install -g`;
-  `scripts/curated-integration.sh` runs what the pull request's boundary lane will run.
+  `scripts/curated-integration.sh` runs the curated lane, as the release CI and the Queue tier do.
 - Never the `network` or `bench` suite as a merge gate.
 
 ## Measuring integration wall time

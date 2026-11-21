@@ -8,7 +8,7 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/user/](docs/user/README.md) (end users + coding agents), [docs/contributors/](docs/contributors/README.md) (this codebase). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md). Internal design records live in the KanArtist `jk` store ([KanArtist/jk](https://github.com/KanArtist/jk)) under `projects/jk/docs/`, not here.
 
-**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for the merge and push gates (`jk install`, `jk install -g`) — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+**Out-of-tree black-box suite / adopter examples:** [JumpKickOSS/jk-examples](https://github.com/JumpKickOSS/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for the merge and push gates (`jk install`, the Queue tier) — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
 
 ## Pre-release (override your training)
 
@@ -172,7 +172,7 @@ jk engine status          # engine answers, no version-skew crash; `Source` name
 jk new smoke-app -l java && cd smoke-app && jk build
 ```
 
-Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk install`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; `jk install -g` is the push gate, which the merge queue runs before it moves `origin/main`.
+Needs a GraalVM-capable JDK for the native client (see [CONTRIBUTING.md](CONTRIBUTING.md)). Module and class filters are fine mid-ticket; the merge gate (`jk guard`, `jk install`) and the reinstall smoke are required **before merging a code-changing ticket into local `main`**; the Queue tier is the push gate, which the merge queue runs before it moves `origin/main`, and `jk install -g` is the Full tier behind it.
 
 ## Planning / tickets (KanArtist — not this repo)
 
@@ -210,14 +210,18 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 
 - **Merge gate** — before every local merge into `main`: `jk guard` (it formats what changed), then
   `jk install` (`jk build` plus the reinstall; never run `jk build` before it).
-- **Push gate** — `jk install -g` on the exact commit that becomes `origin/main` (the test
-  classpath and the installed JumpKick must report the same `-SNAPSHOT` version; `jk test -g`
-  against a snapshot-installed JumpKick does not). The merge queue on bocabox runs it, as
-  `scripts/gate/gate.sh`, on each batch of submitted branches; nobody else pushes `main` (see
-  [Landing on `origin/main`](#landing-on-originmain)). The gate: `jk guard`, `jk install -S` (the
-  reinstall without tests), `jk install -g` (which runs the fast tier once, with the gated tiers),
-  the release suite and the shell fixtures, under the host's gate lock; a class that fails and
-  passes on re-run is recorded, and past a threshold quarantined with a ticket
+- **Push gate** — the Queue tier, on the exact commit that becomes `origin/main`. The merge queue
+  on bocabox runs it, as `scripts/gate/gate.sh` with `GATE_TIER=queue`, on each batch of submitted
+  branches under the host's gate lock; nobody else pushes `main` (see
+  [Landing on `origin/main`](#landing-on-originmain)). The Queue tier: `jk guard`, one `jk install`
+  (every module's fast tier, then the reinstall), the integration suite of each module the batch
+  changed and the [curated lane](docs/contributors/test-suite-tiers.md#the-curated-integration-lane)
+  in the others, and the shell fixtures; a failure only in a quarantined class does not block it.
+- **Full tier** — `scripts/gate/gate.sh` with `GATE_TIER=full`: `jk guard`, `jk install -S` (the
+  reinstall without tests), `jk install -g` (the fast tier once, with every integration and e2e
+  class, against the JumpKick it installed), the release suite and the shell fixtures. It does not
+  block a push, so `main` may be red on it for a cycle or two; a class that fails and passes on
+  re-run is recorded, and past a threshold quarantined with a ticket
   ([self-host](docs/contributors/self-host.md#the-gate)).
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
   which runs `jk guard` and the fast tier of the modules the branch changed, and records the pass
@@ -238,7 +242,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 | `jk guard docs` | The text rules that read Markdown, no build | A docs-only commit |
 | `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed | Before submitting a branch to the merge queue |
-| `jk install -g` | Engine/CLI e2e, workers, install, lock | Every batch the merge queue lands (the push gate) |
+| `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, one install, the changed modules' integration suites, the curated lane, the shell fixtures | Every batch the merge queue lands (the push gate) |
+| `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, behind the queue; before a release |
 | `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
@@ -269,7 +274,7 @@ scripts/queue/status.sh          # waiting, gating in batch <n>, landed as <sha>
 ```
 
 A branch that touches a framework or language plugin passes `jk test -s slow` before it is
-submitted. The queue applies everything waiting on top of `origin/main`, runs the push gate on
+submitted. The queue applies everything waiting on top of `origin/main`, runs the Queue tier on
 that commit and fast-forwards `origin/main` to it; it never force-pushes, and when `origin/main`
 moved under a gate it applies the batch again to the new one. A branch that conflicts, or that is
 red alone, is ejected with the reason and the failing classes: fix it, run the Branch tier again and

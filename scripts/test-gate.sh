@@ -5,7 +5,10 @@
 # Then the gate runs in a scratch repository against a stand-in `jk`: green on a clean tip, one
 # install that runs tests (the fast tier once, under the engine the reinstall before it installed),
 # a red push gate run once more to record its flaky classes and still red, red at the reinstall
-# when it fails, and refused on a dirty checkout.
+# when it fails, and refused on a dirty checkout. Last the Queue tier, in a scratch workspace: the
+# members a range changed (none for docs and scripts, every one for a root build file), one install
+# that runs the fast tier, the integration suite of the changed members and the curated lane in the
+# others, a red run excused only when it failed in quarantine, and none of the Full tier's steps.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -114,9 +117,10 @@ flaky $((t0 + 43 * day)) review >/dev/null
 [[ "$(tickets)" -eq 2 ]] || fail "passes before the release counted toward a new quarantine"
 
 # --- the gate, against a stand-in jk ---
-# The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set and the
-# reinstall without tests when FAIL_REINSTALL is set, prints the rerun transcript above as the
-# latest run's, and reports the checkout's HEAD as the engine's commit.
+# The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set, the
+# reinstall without tests when FAIL_REINSTALL is set and an exclusive test run when FAIL_INTEG is
+# set, prints $RERUN_JSONL as the latest run's transcript, and reports the checkout's HEAD as the
+# engine's commit.
 export HOME="$WORK/home"
 mkdir -p "$HOME/.jk/bin"
 cat >"$HOME/.jk/bin/jk" <<'EOF'
@@ -126,6 +130,7 @@ case "$1" in
   --version) echo "jk 0.0.0" ;;
   engine) [[ "${2:-}" == status ]] && echo "Version  0.0.0 (commit $(git rev-parse --short=12 HEAD))" ;;
   results) cat "$RERUN_JSONL" ;;
+  test) [[ -n "${FAIL_INTEG:-}" && " $* " == *" -X "* ]] && { echo "FAIL a.FlakyTest"; exit 4; } ;;
   install)
     [[ -n "${FAIL_REINSTALL:-}" && " $* " == *" -S "* ]] && { echo "error: compile failed"; exit 1; }
     if [[ -n "${FAIL_PUSHGATE:-}" && " $* " == *" -g "* && "$(grep -c '^install -g' "$JK_CALLS")" -eq 1 ]]; then
@@ -148,17 +153,18 @@ git -C "$repo" add -A
 git -C "$repo" -c user.name=gate -c user.email=gate@example.invalid commit -qm tip
 tip="$(git -C "$repo" rev-parse HEAD)"
 
-# gate <n> [env...]: runs the gate in the scratch repo and holds it to finishing its log. Through
-# run.sh and its lock where flock exists (Linux); macOS has no flock, so there gate.sh alone.
+# gate <n> [env...]: runs the gate in the scratch repo, the env given winning over the defaults,
+# and holds it to finishing its log. Through run.sh and its lock where flock exists (Linux); macOS
+# has no flock, so there gate.sh alone.
 launcher="$repo/scripts/gate/run.sh"
 command -v flock >/dev/null 2>&1 || launcher="$repo/scripts/gate/gate.sh"
 gate() {
   local n="$1"
   shift
   : >"$WORK/calls-$n"
-  env "$@" JK_CALLS="$WORK/calls-$n" GATE_CHECKOUT="$repo" GATE_LOG_DIR="$WORK/logs" \
+  env JK_CALLS="$WORK/calls-$n" GATE_CHECKOUT="$repo" GATE_LOG_DIR="$WORK/logs" \
     GATE_LOCK="$WORK/gate.lock" RERUN_JSONL="$WORK/rerun.jsonl" FLAKY_KA="$WORK/bin/ka" \
-    KA_STATE="$WORK/ka" bash "$launcher" "$n" "$tip" >/dev/null 2>&1
+    KA_STATE="$WORK/ka" "$@" bash "$launcher" "$n" "$tip" >/dev/null 2>&1
   tail -1 "$WORK/logs/integ-gate-$n.log" | grep -qx "GATE$n DONE" || fail "gate $n did not finish: $(cat "$WORK/logs/integ-gate-$n.log")"
 }
 verdict() { grep -E '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$WORK/logs/integ-gate-$1.log" | tail -1; }
@@ -191,4 +197,82 @@ touch "$repo/stray"
 gate 4
 [[ "$(verdict 4)" == "CHECKOUT DIRTY" ]] || fail "a dirty checkout was gated: $(cat "$WORK/logs/integ-gate-4.log")"
 
-echo "test-gate: ok (flaky record and quarantine; 4 gate runs)"
+# --- the Queue tier ---
+# A workspace of three members, one nested in another, and a curated lane over two of them.
+q="$WORK/qrepo"
+mkdir -p "$q/scripts/gate" "$q/mod/a/packs/p" "$q/mod/b" "$q/docs"
+cp "$ROOT"/scripts/gate/*.sh "$q/scripts/gate/"
+cp "$ROOT/scripts/curated-integration.sh" "$q/scripts/"
+cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$q/scripts/"
+cat >"$q/jk.toml" <<'EOF'
+[workspace]
+modules = [
+  "mod/a",
+  # a comment that names [brackets]
+  "mod/a/packs/p",
+  "mod/b", # trailing comment
+]
+
+[test]
+EOF
+cat >"$q/curated-integration.txt" <<'EOF'
+mod/a | a.CuratedATest | wire  | success | The client half.
+mod/b | b.CuratedBTest | spawn | success | The engine half.
+EOF
+for f in mod/a/A.java mod/a/packs/p/P.java mod/b/B.java docs/d.md README.md; do echo 1 >"$q/$f"; done
+qc() { git -C "$q" add -A && git -C "$q" -c user.name=gate -c user.email=gate@example.invalid commit -qm "$1"; }
+git -C "$q" init -q
+qc base
+qbase="$(git -C "$q" rev-parse HEAD)"
+changed() { (cd "$q" && bash scripts/gate/changed-modules.sh "$@" | tr '\n' ' '); }
+
+echo 2 >"$q/docs/d.md" && echo 2 >"$q/README.md" && echo 2 >"$q/scripts/notes.txt" && qc docs
+[[ "$(changed "$qbase")" == "" ]] || fail "docs, a root Markdown file and scripts selected members: $(changed "$qbase")"
+echo 2 >"$q/mod/a/packs/p/P.java" && qc pack
+[[ "$(changed "$qbase")" == "mod/a/packs/p " ]] || fail "a nested member's file did not select it alone: $(changed "$qbase")"
+echo 2 >"$q/mod/a/A.java" && qc a
+qtip="$(git -C "$q" rev-parse HEAD)"
+[[ "$(changed "$qbase")" == "mod/a mod/a/packs/p " ]] || fail "the changed members were: $(changed "$qbase")"
+echo "# root" >>"$q/jk.toml" && qc root
+qroot="$(git -C "$q" rev-parse HEAD)"
+[[ "$(changed "$qtip" "$qroot")" == "* " ]] || fail "a root build file did not select every member: $(changed "$qtip" "$qroot")"
+git -C "$q" checkout -q --detach "$qtip"
+
+repo="$q"
+launcher="$repo/scripts/gate/run.sh"
+command -v flock >/dev/null 2>&1 || launcher="$repo/scripts/gate/gate.sh"
+tip="$qtip"
+gate 5 GATE_TIER=queue GATE_BASE="$qbase"
+[[ "$(verdict 5)" == "GREEN $tip" ]] || fail "a green Queue tier was not green: $(cat "$WORK/logs/integ-gate-5.log")"
+got="$(sed -n '/^install /,$p' "$WORK/calls-5" | grep -E '^(install|engine stop|test)')"
+want="$(printf '%s\n' 'install -c' 'engine stop' \
+  'test -s integration -c -X --no-ansi -m mod/a -m mod/a/packs/p' \
+  'test -s integration --no-ansi -m mod/b --class b.CuratedBTest')"
+[[ "$got" == "$want" ]] || fail "the Queue tier ran:
+$got
+want:
+$want"
+grep -q '^CHANGED_MODULES since .*: mod/a mod/a/packs/p' "$WORK/logs/integ-gate-5.log" || fail "the log does not name the changed members"
+if grep -q '^RELEASE_SUITE_EXIT' "$WORK/logs/integ-gate-5.log"; then fail "the Queue tier ran the release suite"; fi
+
+# Red only in a quarantined class: excused, and green. Red in another class too: red, naming the run.
+printf '2000-01-01T00:00:00Z\tquarantined\tcc.jumpkick:jk-engine\ta.FlakyTest\tfake-9\n' >>"$WORK/logs/flaky-history.tsv"
+echo ready >"$WORK/ka/fake-9"
+gate 6 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red.jsonl"
+[[ "$(verdict 6)" == "GREEN $tip" ]] || fail "a run red only in quarantine was not excused: $(cat "$WORK/logs/integ-gate-6.log")"
+grep -q '^EXCUSED changed' "$WORK/logs/integ-gate-6.log" || fail "the log does not say the run was excused"
+gate 7 GATE_TIER=queue GATE_BASE="$qbase" FAIL_INTEG=1 RERUN_JSONL="$WORK/red-other.jsonl"
+[[ "$(verdict 7)" == "RED" ]] || fail "a run red outside the quarantine was not red: $(cat "$WORK/logs/integ-gate-7.log")"
+grep -q '^INTEG changed EXIT=4' "$WORK/logs/integ-gate-7.log" || fail "the log does not name the red run"
+
+# A root build file changed: the whole integration suite, and no curated lane beside it.
+tip="$qroot"
+gate 8 GATE_TIER=queue GATE_BASE="$qtip"
+[[ "$(verdict 8)" == "GREEN $tip" ]] || fail "the Queue tier over a root change was not green: $(cat "$WORK/logs/integ-gate-8.log")"
+got="$(grep -E '^test' "$WORK/calls-8")"
+[[ "$got" == 'test -s integration -c --no-ansi' ]] || fail "a root change ran: $got"
+
+gate 9 GATE_TIER=fast
+[[ "$(verdict 9)" == "RED (GATE_TIER is 'fast'; full or queue)" ]] || fail "an unknown tier was gated: $(cat "$WORK/logs/integ-gate-9.log")"
+
+echo "test-gate: ok (flaky record and quarantine; 9 gate runs)"

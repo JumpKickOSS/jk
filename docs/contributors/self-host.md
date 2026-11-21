@@ -11,27 +11,36 @@ compares JumpKick against.
 ## The gate
 
 Run in this order, in your checkout, with the installed `jk`. The first two are the merge gate,
-green before a change merges into local `main`; `jk install -g` is the push gate, green on
-the commit the [merge queue](#the-merge-queue) moves `origin/main` to:
+green before a change merges into local `main`; `jk install -g` runs every integration and e2e
+class, the heart of the Full tier:
 
 ```bash
 jk guard                         # formats what changed, then every house-rule lane, the tree lane and the fixture proofs
 jk install                       # every module compiled, packaged and its fast test tier run, then the reinstall
-jk install -g                    # the push gate: engine, e2e and worker suites against the JumpKick it installs
+jk install -g                    # engine, e2e and worker suites against the JumpKick it installs
 ```
 
-The fleet's gate hosts run the whole gate from a checkout as `scripts/gate/run.sh <n> <sha>`. It
-takes the host's gate lock (`GATE_LOCK`, default `/var/tmp/fleet-gate.lock`), detaches the checkout
-at the tip, runs `jk guard`, `jk install -S` (the reinstall without tests), `jk install -g` under
-a freshly started engine (the one run of the fast tier, with the gated tiers), a check that the
-engine which served it is the tip's, `jk test -s release`, the shell fixtures and the release
-notes, and writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under `GATE_LOG_DIR`. It never
-pushes. The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it
-against a stand-in `jk`.
+The fleet's gate hosts run a whole gate from a checkout as `scripts/gate/run.sh <n> <sha>`, in
+the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes the host's gate lock
+(`GATE_LOCK`, default `/var/tmp/fleet-gate.lock`), detaches the checkout at the tip, runs
+`jk guard`, then the tier's tests:
+
+- **`GATE_TIER=queue`**, the push gate the [merge queue](#the-merge-queue) runs on every batch:
+  `jk install -c` (every module's fast tier, then the reinstall), then under a freshly started
+  engine the integration suite of each module changed since `GATE_BASE`
+  (`scripts/gate/changed-modules.sh`) and the curated lane's classes in the other modules.
+- **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
+  under a freshly started engine (the one run of the fast tier, with the gated tiers), then
+  `jk test -s release` and the release notes.
+
+Both then check that the engine which served the tests is the tip's, run the shell fixtures, and
+write `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under `GATE_LOG_DIR`. A gate never pushes.
+The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it against a
+stand-in `jk`.
 
 ### Flaky tests
 
-A red `jk install -g` runs once more. Under the same inputs JumpKick re-runs only the classes that
+In the Full tier, a red `jk install -g` runs once more. Under the same inputs JumpKick re-runs only the classes that
 did not pass, and a class that passes now is flaky: its `test-passed-on-rerun` warning in the
 run's `details.jsonl` becomes a `rerun-pass` row of `flaky-history.tsv` under `GATE_LOG_DIR`. The
 gate stays red. `scripts/gate/flaky.sh` keeps that history:
@@ -43,9 +52,9 @@ gate stays red. `scripts/gate/flaky.sh` keeps that history:
 | `flaky.sh list` | The quarantine: `<module> <class> <ticket>` |
 | `flaky.sh excused <details.jsonl>` | Exit 0 when every error of the run is a test failure in a quarantined class |
 
-Every gate ends with `review`. The gate runs every class, quarantined or not; a tier that blocks a
-push leaves the quarantine out with `list` or `excused`. A class that cannot get a ticket is not
-quarantined.
+Every gate ends with `review`. The Full tier runs every class and judges each, quarantined or not;
+the Queue tier runs them too, but a run red only in quarantined classes passes (`excused`). A class
+that cannot get a ticket is not quarantined.
 
 ## The merge queue
 
@@ -66,8 +75,9 @@ replacing an earlier submission of the branch.
 Each batch, under the host's gate lock, the loop fetches `origin/main` and cherry-picks every
 waiting branch onto it, oldest first, skipping commits the batch already carries (a branch cut from
 another waiting branch lands its own commits only). A branch that conflicts, or that carries a
-merge commit, is ejected. It gates the result with `scripts/gate/gate.sh` and, on `GREEN`, pushes
-it to `origin/main` as a fast-forward. It never forces: when `origin/main` moved while the batch
+merge commit, is ejected. It gates the result with the Queue tier of `scripts/gate/gate.sh`
+(`QUEUE_TIER=full` gates with the Full tier instead) and, on `GREEN`, pushes it to `origin/main` as
+a fast-forward. It never forces: when `origin/main` moved while the batch
 gated, the push is refused and the next batch applies the same branches to the new `origin/main`.
 A red batch of one branch ejects it with the gate's failing lines; a red batch of several gates
 each branch alone, one batch each. The next batch starts as soon as one ends.

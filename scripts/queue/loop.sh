@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The merge queue, the only writer to origin/main. Each batch, under the host's gate lock: fetch
 # origin/main, cherry-pick every waiting branch onto it in submission order (a branch that
-# conflicts or carries a merge commit is ejected), gate that commit with scripts/gate/gate.sh and,
-# when it is GREEN, push it to origin/main as a fast-forward. It never force-pushes: when
-# origin/main moved during the gate the push is refused, the batch waits again and is applied to the
-# new origin/main. A red batch of one branch ejects it with the gate's failing lines; a red batch of
+# conflicts or carries a merge commit is ejected), gate that commit with the Queue tier of
+# scripts/gate/gate.sh and, when it is GREEN, push it to origin/main as a fast-forward. It never
+# force-pushes: when origin/main moved during the gate the push is refused, the batch waits again
+# and is applied to the new origin/main. A red batch of one branch ejects it with the gate's failing lines; a red batch of
 # several gates each branch alone, one per batch. The next batch starts as soon as one ends.
 #
 # Where each branch stands is <QUEUE_REPO>/queue-state/<branch> (scripts/queue/status.sh reads it);
@@ -17,6 +17,8 @@
 #   QUEUE_REPO      the queue's bare repository (default ~/src/jk-queue.git); created when missing
 #   QUEUE_CHECKOUT  the clean checkout batches are built and gated in; its origin holds main (required)
 #   QUEUE_GATE      the gate, run as <gate> <n> <sha> (default scripts/gate/gate.sh of the batch)
+#   QUEUE_TIER      the gate's tier, its GATE_TIER: queue (default) or full; GATE_BASE is the batch's
+#                   origin/main
 #   QUEUE_LOG_DIR   the gate logs (default /var/tmp/jk-queue)
 #   QUEUE_POLL      seconds between looks at an empty queue (default 60)
 #   GATE_LOCK       the lock every gate on this host takes (default /var/tmp/fleet-gate.lock)
@@ -107,7 +109,8 @@
   done
 
   gate="${QUEUE_GATE:-$co/scripts/gate/gate.sh}"
-  GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" bash "$gate" "$n" "$tip" </dev/null >/dev/null 2>&1
+  GATE_CHECKOUT="$co" GATE_LOG_DIR="$D" GATE_TIER="${QUEUE_TIER:-queue}" GATE_BASE="$base" \
+    bash "$gate" "$n" "$tip" </dev/null >/dev/null 2>&1
   L="$D/integ-gate-$n.log"
   verdict="$(grep -aE '^(GREEN |RED|CHECKOUT |NO CHECKOUT)' "$L" 2>/dev/null | tail -1)"
 
@@ -128,7 +131,7 @@
       fi
       ;;
     RED*)
-      fails="$(grep -aE '^(FAIL|E |T )|FAILED |^RED|^GUARD|^ENGINE NOT|^FIXTURE FAIL' "$L" | head -20)"
+      fails="$(grep -aE '^(FAIL|E |T )|FAILED |^RED|^GUARD|^INTEG .* EXIT=[1-9]|^ENGINE NOT|^FIXTURE FAIL' "$L" | head -20)"
       if [ "${#members[@]}" -eq 1 ]; then
         record "${members[0]}" "ejected ${msha[0]} batch $n: the gate is red; log $L" "$fails"
         unqueue "${members[0]}" "${msha[0]}"

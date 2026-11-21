@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# The gate a tip must pass before it is pushed to origin/main: `jk guard`, the reinstall without
-# tests (`jk install -S`), the push gate (`jk install -g -c`, the fast tier with the gated tiers,
-# run once) under a freshly started engine, the engine check, the release suite, the shell fixtures
-# and the release notes. A red push gate runs once more, only to record the classes that pass on
-# that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red. It detaches a checkout at
-# the tip and never pushes. Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
+# The gate a tip must pass, in one of two tiers. Both detach a checkout at the tip, run `jk guard`,
+# check that the engine which served the tests is the tip's, run the shell fixtures, and never push.
+#
+# The Full tier (GATE_TIER=full, the default): the reinstall without tests (`jk install -S`), then
+# `jk install -g -c` (the fast tier with the gated tiers, run once) under a freshly started engine,
+# the release suite and the release notes. A red `jk install -g` runs once more, only to record the
+# classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red.
+#
+# The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: one install
+# that runs every module's fast tier (`jk install -c`), then, under a freshly started engine, the
+# integration suite of each module changed since GATE_BASE (scripts/gate/changed-modules.sh; every
+# module when a root build file changed) and the curated lane's classes (curated-integration.txt)
+# in the other modules. A run red only in quarantined classes (`flaky.sh excused`) passes.
+#
+# Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
 # or a line starting `RED` (or the checkout's refusal), and `GATE<n> DONE` last. Per-step output
 # lands beside it as g<n>-<step>.log. Run it through scripts/gate/run.sh, which takes the host's
 # gate lock first.
@@ -14,6 +23,9 @@
 #   GATE_CHECKOUT     checkout to detach at the tip (default: the one holding this script); clean
 #   GATE_LOG_DIR      where the logs go (default /var/tmp/jk-gate)
 #   GATE_BRANCH       fetch this branch from origin before the checkout (default: no fetch)
+#   GATE_TIER         full (default) or queue
+#   GATE_BASE         the Queue tier's changed modules are those changed since this commit
+#                     (default origin/main)
 #   PRE_MODULES       modules whose whole suites run first; PRE_MODULE_SUITES their suites
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
@@ -42,6 +54,11 @@
   # The FAIL/T/E lines of the pre-run log, then the gate stops red.
   pre_red() { noansi "$D/g$n-pre.log" | grep -aE "^(FAIL|T |E )" | tail -8 >>"$L"; red "RED (pre)"; }
 
+  tier="${GATE_TIER:-full}"
+  case "$tier" in
+    full | queue) ;;
+    *) red "RED (GATE_TIER is '$tier'; full or queue)" ;;
+  esac
   cd "$checkout" || red "NO CHECKOUT"
   [ -n "$(git status --porcelain)" ] && red "CHECKOUT DIRTY"
   if [ -n "${GATE_BRANCH:-}" ]; then
@@ -52,7 +69,7 @@
     jk engine stop >/dev/null 2>&1
     echo "engine restarted under WSL_INTEROP=$WSL_INTEROP" >>"$L"
   fi
-  echo "tip $(git rev-parse --short HEAD) $(date +%H:%M:%S) jk $(jk --version)" >>"$L"
+  echo "tip $(git rev-parse --short HEAD) $(date +%H:%M:%S) jk $(jk --version) tier $tier" >>"$L"
 
   # Targeted tests first, fail fast: PRE_MODULES, then PRE_SCRIPTS.
   for pm in ${PRE_MODULES:-}; do
@@ -85,35 +102,87 @@
     red "RED (guard)"
   fi
 
-  # Reinstall without tests: the push gate below runs the fast tier with the gated tiers. A merge
-  # gate here would run the fast tier twice: a reinstall that changes the engine jar changes the stamp
-  # of every module's test run, so the push gate would not reuse a single verdict of it.
-  jk install -S >"$D/g$n-reinstall.log" 2>&1
-  m=$?
-  echo "REINSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
-  if [ "$m" -ne 0 ]; then
-    noansi "$D/g$n-reinstall.log" | grep -vE '^\s*$' | tail -20 >>"$L"
-    red "RED (reinstall)"
-  fi
-  # Stop the engine the steps above ran on so it cannot serve the push gate; the push gate starts a
-  # fresh one from the jar just installed.
-  jk engine stop >/dev/null 2>&1
+  m=0 s=0 r=0 rn=0
+  if [ "$tier" = queue ]; then
+    # The one install: every module's fast tier, then the reinstall. Nothing after it runs the fast
+    # tier again, so the reinstall's new engine stamp re-runs nothing.
+    jk install -c >"$D/g$n-install.log" 2>&1
+    m=$?
+    echo "INSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
+    if [ "$m" -ne 0 ]; then
+      noansi "$D/g$n-install.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -20 >>"$L"
+      red "RED (install)"
+    fi
+    # The integration runs below start a fresh engine from the jar just installed.
+    jk engine stop >/dev/null 2>&1
 
-  jk install -g -c >"$D/g$n-snapshot.log" 2>&1
-  s=$?
-  echo "PUSHGATE_EXIT=$s $(date +%H:%M:%S)" >>"$L"
-  [ "$s" -ne 0 ] && noansi "$D/g$n-snapshot.log" | grep -aE "FAILED |OutOfMemory" >>"$L"
-  noansi "$D/g$n-snapshot.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
-  # A red push gate runs once more under the same inputs, which runs only the classes that did not
-  # pass; those that pass now are flaky, and the history keeps them. The verdict stays red.
-  if [ "$s" -ne 0 ]; then
-    jk install -g -c >"$D/g$n-rerun.log" 2>&1
-    echo "RERUN_EXIT=$? $(date +%H:%M:%S)" >>"$L"
-    jk results -O jsonl >"$D/g$n-rerun.jsonl" 2>/dev/null
-    GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh record "$D/g$n-rerun.jsonl" "$(git rev-parse HEAD)" >>"$L" 2>&1
+    # integ <label> <jk test args...>: one integration run, red unless each failure is in a
+    # quarantined class.
+    integ() {
+      local label="$1" e
+      shift
+      jk test "$@" >"$D/g$n-$label.log" 2>&1 </dev/null
+      e=$?
+      if [ "$e" -ne 0 ]; then
+        jk results -O jsonl >"$D/g$n-$label.jsonl" 2>/dev/null </dev/null
+        if GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh excused "$D/g$n-$label.jsonl" >>"$L" 2>&1; then
+          echo "EXCUSED $label: red only in quarantined classes" >>"$L"
+          e=0
+        else
+          noansi "$D/g$n-$label.log" | grep -aE "^(FAIL|T |E )|FAILED " | tail -8 >>"$L"
+        fi
+      fi
+      echo "INTEG $label EXIT=$e $(date +%H:%M:%S)" >>"$L"
+      [ "$e" -eq 0 ] || s=1
+    }
+    base="${GATE_BASE:-origin/main}"
+    mods="$(bash scripts/gate/changed-modules.sh "$base" HEAD 2>>"$L")" || red "RED (changed modules since $base)"
+    echo "CHANGED_MODULES since $base: $(tr '\n' ' ' <<<"${mods:-<none>}")" >>"$L"
+    if [ "$mods" = "*" ]; then
+      integ changed -s integration -c --no-ansi
+    else
+      margs=()
+      for mo in $mods; do margs+=(-m "$mo"); done
+      [ "${#margs[@]}" -eq 0 ] || integ changed -s integration -c -X --no-ansi "${margs[@]}"
+      # The curated lane, one `jk test` per module, in the modules the run above did not cover.
+      while read -r -a cmd; do
+        cm=""
+        for k in "${!cmd[@]}"; do [ "${cmd[$k]}" = -m ] && cm="${cmd[$((k + 1))]}"; done
+        grep -Fxq -- "$cm" <<<"$mods" && continue
+        integ "curated-${cm//\//-}" "${cmd[@]:2}"
+      done < <(JK=jk bash scripts/curated-integration.sh --print)
+    fi
+  else
+    # Reinstall without tests: `jk install -g` below runs the fast tier with the gated tiers. A merge
+    # gate here would run the fast tier twice: a reinstall that changes the engine jar changes the
+    # stamp of every module's test run, so `jk install -g` would not reuse a single verdict of it.
+    jk install -S >"$D/g$n-reinstall.log" 2>&1
+    m=$?
+    echo "REINSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
+    if [ "$m" -ne 0 ]; then
+      noansi "$D/g$n-reinstall.log" | grep -vE '^\s*$' | tail -20 >>"$L"
+      red "RED (reinstall)"
+    fi
+    # Stop the engine the steps above ran on so it cannot serve the tests; `jk install -g` starts a
+    # fresh one from the jar just installed.
+    jk engine stop >/dev/null 2>&1
+
+    jk install -g -c >"$D/g$n-snapshot.log" 2>&1
+    s=$?
+    echo "PUSHGATE_EXIT=$s $(date +%H:%M:%S)" >>"$L"
+    [ "$s" -ne 0 ] && noansi "$D/g$n-snapshot.log" | grep -aE "FAILED |OutOfMemory" >>"$L"
+    noansi "$D/g$n-snapshot.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
+    # A red `jk install -g` runs once more under the same inputs, which runs only the classes that
+    # did not pass; those that pass now are flaky, and the history keeps them. The verdict stays red.
+    if [ "$s" -ne 0 ]; then
+      jk install -g -c >"$D/g$n-rerun.log" 2>&1
+      echo "RERUN_EXIT=$? $(date +%H:%M:%S)" >>"$L"
+      jk results -O jsonl >"$D/g$n-rerun.jsonl" 2>/dev/null
+      GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh record "$D/g$n-rerun.jsonl" "$(git rev-parse HEAD)" >>"$L" 2>&1
+    fi
   fi
 
-  # The engine's commit, read after the push gate ran under a freshly started engine. It counts when
+  # The engine's commit, read after the tests ran under a freshly started engine. It counts when
   # it is the tip, or when no build input changed between it and the tip (a reused engine jar keeps
   # its parent's stamp). Empty or unknown does not count.
   ec=$(jk engine status 2>&1 | noansi | grep -m1 "Version" | grep -oE "commit [0-9a-f]+" | cut -d" " -f2)
@@ -131,13 +200,15 @@
     eng=0
     echo "ENGINE CHECK: engine commit $(git rev-parse --short=12 "$ecf") differs from the tip only in .github/docs/scripts/bench (no build input changed): counts" >>"$L"
   else
-    echo "ENGINE NOT AT TIP: the engine that served the push gate ($(git rev-parse --short=12 "$ecf")) is not the tip's and build inputs differ: $(git diff --name-only "$ecf" HEAD -- "${not_inputs[@]}" | head -5 | tr '\n' ' '); this gate does not count" >>"$L"
+    echo "ENGINE NOT AT TIP: the engine that served the tests ($(git rev-parse --short=12 "$ecf")) is not the tip's and build inputs differ: $(git diff --name-only "$ecf" HEAD -- "${not_inputs[@]}" | head -5 | tr '\n' ' '); this gate does not count" >>"$L"
   fi
 
-  jk test -s release >"$D/g$n-release.log" 2>&1
-  r=$?
-  echo "RELEASE_SUITE_EXIT=$r $(date +%H:%M:%S)" >>"$L"
-  noansi "$D/g$n-release.log" | grep -E "^(FAIL|T |OK|E )" | tail -4 >>"$L"
+  if [ "$tier" = full ]; then
+    jk test -s release >"$D/g$n-release.log" 2>&1
+    r=$?
+    echo "RELEASE_SUITE_EXIT=$r $(date +%H:%M:%S)" >>"$L"
+    noansi "$D/g$n-release.log" | grep -E "^(FAIL|T |OK|E )" | tail -4 >>"$L"
+  fi
 
   ff=0
   for t in scripts/test-*.sh; do
@@ -151,11 +222,13 @@
     echo "POST $ps EXIT=$pe: $(tail -2 "$pl" | tr '\n' ' ' | cut -c1-200)" >>"$L"
     [ "$pe" -ne 0 ] && ff=1
   done
-  bash scripts/release-notes.sh 0.51.0 >/dev/null 2>>"$L"
-  rn=$?
-  echo "RELEASE_NOTES_EXIT=$rn" >>"$L"
-  w=$(env -u CLAUDECODE -u AI_AGENT jk web -O jsonl 2>/dev/null | head -c 8)
-  echo "jk web -O jsonl starts with: $w" >>"$L"
+  if [ "$tier" = full ]; then
+    bash scripts/release-notes.sh 0.51.0 >/dev/null 2>>"$L"
+    rn=$?
+    echo "RELEASE_NOTES_EXIT=$rn" >>"$L"
+    w=$(env -u CLAUDECODE -u AI_AGENT jk web -O jsonl 2>/dev/null | head -c 8)
+    echo "jk web -O jsonl starts with: $w" >>"$L"
+  fi
   git status --porcelain >>"$L"
 
   if [ "$eng" -eq 0 ] && [ "$m" -eq 0 ] && [ "$s" -eq 0 ] && [ "$r" -eq 0 ] && [ "$ff" -eq 0 ] \
@@ -169,6 +242,7 @@
   GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh review >>"$L" 2>&1 || echo "FLAKY review failed" >>"$L"
 
   # What a no-op build after the gate would still do: a gate that leaves work behind is a finding.
+  [ "$tier" = full ] || done_gate
   for ex in "explain -g" "explain"; do
     xl="$D/g$n-noop-${ex// /_}.log"
     # shellcheck disable=SC2086 # $ex is a verb and its flag, split on purpose
