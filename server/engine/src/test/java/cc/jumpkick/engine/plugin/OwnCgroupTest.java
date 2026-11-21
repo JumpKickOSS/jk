@@ -53,6 +53,16 @@ class OwnCgroupTest {
     }
 
     @Test
+    void a_usage_of_zero_is_an_empty_group_where_a_limit_of_zero_is_none() {
+        assertThat(OwnCgroup.usage("0\n")).isZero();
+        assertThat(OwnCgroup.limit("0\n")).isEqualTo(-1);
+        assertThat(OwnCgroup.usage("4096\n")).isEqualTo(4096);
+        assertThat(OwnCgroup.usage("")).isEqualTo(-1);
+        assertThat(OwnCgroup.usage("-1")).isEqualTo(-1);
+        assertThat(OwnCgroup.usage(null)).isEqualTo(-1);
+    }
+
+    @Test
     void the_tightest_limit_is_the_smallest_finite_memory_max_on_the_chain() throws Exception {
         Path scope = group("user.slice/jk.scope");
         self("0::/user.slice/jk.scope\n");

@@ -323,6 +323,10 @@ class WorkerLeasesOverbookTest {
         assertThat(OverbookSignals.cgroupFree("max\n", "400\n", null)).isEqualTo(-1);
         assertThat(OverbookSignals.cgroupFree("100\n", "400\n", null)).isEqualTo(-1);
         assertThat(OverbookSignals.cgroupFree(null, "1\n", null)).isEqualTo(-1);
+        assertThat(OverbookSignals.cgroupFree("1000\n", "0\n", null))
+                .as("an empty limited group has its whole limit free")
+                .isEqualTo(1000);
+        assertThat(OverbookSignals.cgroupFree("1000\n", "", null)).isEqualTo(-1);
         String stat = "anon 100\nfile 300\nactive_file 120\ninactive_file 250\nshmem 30\n";
         assertThat(OverbookSignals.cgroupFree("1000\n", "400\n", stat))
                 .as("inactive file cache is not used memory")

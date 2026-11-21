@@ -110,6 +110,20 @@ final class OwnCgroup {
     }
 
     /**
+     * A usage file's bytes, such as {@code memory.current}: {@code 0} for an empty group, {@code -1}
+     * when it is absent or does not parse.
+     */
+    static long usage(@Nullable String text) {
+        if (text == null) return -1L;
+        try {
+            long v = Long.parseLong(text.trim());
+            return v < 0 ? -1L : v;
+        } catch (NumberFormatException e) {
+            return -1L;
+        }
+    }
+
+    /**
      * Null when the file cannot be read; an empty file is an empty string. Read through an {@link
      * InputStream}: cgroup and proc files report a size of zero, which a size-based read takes as empty.
      */

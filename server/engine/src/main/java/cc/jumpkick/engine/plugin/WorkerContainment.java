@@ -694,7 +694,7 @@ public final class WorkerContainment {
     private static boolean atMax(Path workers) {
         long max = OwnCgroup.limit(readQuiet(workers.resolve("memory.max")));
         if (max <= 0) return false;
-        long current = OwnCgroup.limit(readQuiet(workers.resolve("memory.current")));
+        long current = OwnCgroup.usage(readQuiet(workers.resolve("memory.current")));
         return current >= max;
     }
 

@@ -238,11 +238,11 @@ public final class OverbookSignals {
     /**
      * {@code memory.max} less what the group uses: {@code memory.current} without the inactive file
      * cache {@code memory.stat} names, which the kernel drops before it kills anything (the working
-     * set Kubernetes acts on). {@code -1} when either limit is missing or unlimited.
+     * set Kubernetes acts on). {@code -1} when the limit is missing or unlimited, or the usage unreadable.
      */
     static long cgroupFree(@Nullable String maxText, @Nullable String currentText, @Nullable String statText) {
-        long max = parseLimit(maxText);
-        long current = parseLimit(currentText);
+        long max = OwnCgroup.limit(maxText);
+        long current = OwnCgroup.usage(currentText);
         if (max < 0 || current < 0) return -1L;
         long used = Math.max(0, current - MemoryProbe.inactiveFileBytes(statText));
         return used > max ? -1L : max - used;
@@ -326,20 +326,6 @@ public final class OverbookSignals {
             return Double.parseDouble(line.substring(start, end));
         } catch (NumberFormatException e) {
             return null;
-        }
-    }
-
-    /** {@code -1} for absent, blank, {@code max}, or a value the kernel uses as unlimited. */
-    private static long parseLimit(@Nullable String text) {
-        if (text == null) return -1L;
-        String s = text.trim();
-        if (s.isEmpty() || "max".equals(s)) return -1L;
-        try {
-            long v = Long.parseLong(s);
-            if (v <= 0 || v >= MemoryProbe.CGROUP_UNLIMITED) return -1L;
-            return v;
-        } catch (NumberFormatException e) {
-            return -1L;
         }
     }
 
