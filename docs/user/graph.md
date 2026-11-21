@@ -501,7 +501,8 @@ The graph is build output: nothing of it is in the tree or committed. `target/gr
 checkout's state, gone with `jk clean`: `graph.bin` (the linked graph), `files.tsv` (each file's
 stat, so a refresh reads only what moved), `anchors/stale` (the places hand edits left under an
 old name, [After a hand edit](#after-a-hand-edit)) and `anchors/watch` (the files whose edit could
-leave one, with their hashes). The fragments it is linked from are action-cache entries,
+leave one, with their hashes and the anchors each defines or uses, which is how two sessions'
+verdicts tell that their edits meet at an anchor, [MCP](mcp.md)). The fragments it is linked from are action-cache entries,
 one per file and one per compiled class set, shared by every checkout on the machine and reclaimed
 by `jk cache clean` like any other. None of it is an exchange format. A `.jk/graph/` directory left
 in a checkout is removed by the next refresh.

@@ -311,18 +311,17 @@ public final class GraphBuild {
     /**
      * Writes the files a build's verdict checks before it waits for the refresh that build started
      * ({@link AnchorWatch}): those that define or use an anchor in {@code graph}, and those the stale
-     * record names, each with the hash and stat {@code stats} holds for it. Best-effort: with no list
+     * record names, each with the hash and stat {@code stats} holds for it and the anchors it names. Best-effort: with no list
      * the verdict waits, as it did before there was one.
      */
     private static void watch(Path out, CodeGraph graph, StatIndex stats) {
         try {
-            Set<String> rels = AnchorEdits.watched(graph, out);
+            Map<String, Map<String, Boolean>> rels = AnchorEdits.watched(graph, out);
             List<AnchorWatch.Entry> entries = new ArrayList<>(rels.size());
-            for (String rel : rels) {
+            rels.forEach((rel, anchors) -> {
                 StatIndex.Stat st = stats.stat(rel);
-                if (st == null) continue;
-                entries.add(new AnchorWatch.Entry(st.sha(), st.identity(), rel));
-            }
+                if (st != null) entries.add(new AnchorWatch.Entry(st.sha(), st.identity(), rel, anchors));
+            });
             AnchorWatch.write(out, entries);
         } catch (IOException | RuntimeException failed) {
             try {

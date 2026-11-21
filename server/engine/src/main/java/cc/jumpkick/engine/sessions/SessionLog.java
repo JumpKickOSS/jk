@@ -104,7 +104,7 @@ public final class SessionLog {
 
     private final SessionWrites store;
 
-    private final Overlaps overlaps = new Overlaps();
+    private final Overlaps overlaps = new Overlaps(new EditedAnchors()::of);
 
     /** Whether {@link #adopt} has run. */
     private boolean adopted;
@@ -690,8 +690,8 @@ public final class SessionLog {
 
     /**
      * The line episode {@code episode}'s verdict carries when another live session's open episode, in
-     * the same project or another checkout of it, edited a file this one edited too; null when there
-     * is nothing it was not told already.
+     * the same project or another checkout of it, edited a file this one edited too, or one that meets
+     * this one's at an anchor ({@link Overlaps}); null when there is nothing it was not told already.
      */
     public @Nullable String overlap(@Nullable String episode) {
         if (episode == null || episode.isBlank()) return null;

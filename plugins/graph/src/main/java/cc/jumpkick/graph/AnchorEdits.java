@@ -267,19 +267,30 @@ final class AnchorEdits {
     /**
      * The files an edit could leave an anchor stale through, after a refresh that wrote {@code g}
      * under {@code out}: each that defines or uses an anchor in {@code g} (a variable that sets a
-     * key too), and each the record names, as a place or as the edit that left it.
+     * key too), and each the record names, as a place or as the edit that left it. Each maps to the
+     * anchors it defines or uses, by id, each to whether it defines it; a variable brings the key it
+     * binds to.
      */
-    static Set<String> watched(CodeGraph g, Path out) {
-        Set<String> rels = new TreeSet<>();
+    static Map<String, Map<String, Boolean>> watched(CodeGraph g, Path out) {
+        Map<String, Map<String, Boolean>> rels = new TreeMap<>();
         for (GraphNode n : g.nodes()) {
             if (!Anchors.is(n)) continue;
+            // A variable sets the key it binds to, so a file naming the one names the other.
+            List<String> named = new ArrayList<>(List.of(n.id()));
+            for (GraphEdge b : g.incident(n.id())) {
+                if (b.relation().equals(Relations.BINDS) && b.source().equals(n.id())) named.add(b.target());
+            }
             for (GraphEdge e : g.incident(n.id())) {
-                if (!e.sourceFile().isEmpty()) rels.add(e.sourceFile());
+                if (e.sourceFile().isEmpty()) continue;
+                Map<String, Boolean> anchors = rels.computeIfAbsent(e.sourceFile(), k -> new TreeMap<>());
+                if (!e.target().equals(n.id()) || !link(e)) continue;
+                boolean defines = e.relation().equals(Relations.DEFINES);
+                for (String id : named) anchors.merge(id, defines, Boolean::logicalOr);
             }
         }
         for (Row r : read(out.resolve(DIR).resolve(FILE))) {
-            rels.add(r.rel());
-            if (!r.edited().isEmpty()) rels.add(r.edited());
+            rels.computeIfAbsent(r.rel(), k -> new TreeMap<>());
+            if (!r.edited().isEmpty()) rels.computeIfAbsent(r.edited(), k -> new TreeMap<>());
         }
         return rels;
     }

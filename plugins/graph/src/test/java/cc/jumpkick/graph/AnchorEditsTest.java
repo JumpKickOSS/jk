@@ -25,6 +25,7 @@ class AnchorEditsTest {
     static final String MYSQL = "src/main/resources/db/mysql/schema.sql";
     static final String OWNER = "src/main/java/org/springframework/samples/petclinic/owner/Owner.java";
     static final String PROPERTIES = "src/main/resources/application.properties";
+    static final String VISIT_LIMITS = "src/main/java/org/springframework/samples/petclinic/system/VisitLimits.java";
 
     static Map<String, String> petclinic() {
         return RenameFixture.files(
@@ -71,7 +72,7 @@ class AnchorEditsTest {
                     }
                 }
                 """,
-                "src/main/java/org/springframework/samples/petclinic/system/VisitLimits.java",
+                VISIT_LIMITS,
                 """
                 package org.springframework.samples.petclinic.system;
 
@@ -281,10 +282,33 @@ class AnchorEditsTest {
         assertThat(watched(graph)).as("the record's prose place").contains("README.md");
     }
 
+    /**
+     * The list names each file's anchors, so two edits that meet only at an anchor can be told
+     * apart from two that do not: the properties file defines the key the bound class uses, compose
+     * sets it through the variable that binds to it, and a schema defines the column the entity maps.
+     */
+    @Test
+    void theListNamesTheAnchorsEachFileDefinesOrUses(@TempDir Path dir) throws IOException {
+        RenameFixture ws = new RenameFixture(dir, petclinic());
+        refresh(ws);
+        Map<String, Map<String, Boolean>> anchors = AnchorWatch.anchors(ws.root.resolve("target/graph"));
+        String key = "config:petclinic.visits.maxperday";
+        assertThat(anchors.get(PROPERTIES)).containsEntry(key, true);
+        assertThat(anchors.get(VISIT_LIMITS)).containsEntry(key, false);
+        assertThat(anchors.get("docker-compose.yml"))
+                .containsEntry("env:PETCLINIC_VISITS_MAXPERDAY", true)
+                .containsEntry(key, true);
+        assertThat(anchors.get(H2)).containsEntry("column:owners.telephone", true);
+        assertThat(anchors.get(OWNER))
+                .containsEntry("column:owners.telephone", false)
+                .doesNotContainKey(key);
+        assertThat(anchors).doesNotContainKey("README.md");
+    }
+
     private static List<String> watched(Path graph) throws IOException {
         return Files.readAllLines(AnchorWatch.file(graph)).stream()
                 .skip(1)
-                .map(l -> l.substring(l.lastIndexOf('\t') + 1))
+                .map(l -> l.split("\t", -1)[2])
                 .toList();
     }
 }

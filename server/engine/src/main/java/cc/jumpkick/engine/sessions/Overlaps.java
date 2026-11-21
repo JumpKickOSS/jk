@@ -2,6 +2,8 @@
 package cc.jumpkick.engine.sessions;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -13,9 +15,11 @@ import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The line a verdict carries when another live session's episode edited a file this episode
- * edited too. Each episode hears of one shared file from one other episode once; a verdict with
- * nothing new to say carries nothing.
+ * The line a verdict carries when another live session's episode edited a file this episode edited
+ * too, or a file that meets one of this episode's at an anchor (a config key, a column, a route, …)
+ * that one of the two defines, as each checkout's graph lists them ({@link EditedAnchors}). Each
+ * episode hears of one shared file or anchor from one other episode once; a verdict with nothing new
+ * to say carries nothing.
  */
 final class Overlaps {
 
@@ -33,10 +37,26 @@ final class Overlaps {
      */
     record Open(String episode, String who, String project, boolean working, Set<String> edited) {}
 
-    /** Another session's open episode and the files it shares with the one asking. */
-    record Other(String episode, String who, Set<String> shared) {}
+    /**
+     * Another session's open episode and what it shares with the one asking.
+     *
+     * @param shared the files both edited
+     * @param anchors the anchors, by id, that the files only one of them edited meet at
+     */
+    record Other(String episode, String who, Set<String> shared, Set<String> anchors) {}
 
-    /** Per episode, each {@code <other episode> \t <file>} it was told of. */
+    /** The anchors a project's files define or use, each to whether one of them defines it. */
+    interface Anchors {
+        Map<String, Boolean> of(String project, Collection<String> files);
+    }
+
+    private final Anchors anchors;
+
+    Overlaps(Anchors anchors) {
+        this.anchors = anchors;
+    }
+
+    /** Per episode, each {@code <other episode> \t <file>} and {@code <other episode> \t\t <anchor>} it was told of. */
     private final Map<String, Set<String>> told = new LinkedHashMap<>(16, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<String, Set<String>> eldest) {
@@ -56,14 +76,40 @@ final class Overlaps {
         String key = projectKey.apply(own.project());
         String session = sessionOf(episode);
         List<Other> others = new ArrayList<>();
+        Map<Set<String>, Map<String, Boolean>> ownAnchors = new HashMap<>();
         for (Open o : open) {
             if (!o.working() || sessionOf(o.episode()).equals(session)) continue;
             if (!key.equals(projectKey.apply(o.project()))) continue;
             Set<String> shared = new TreeSet<>(o.edited());
             shared.retainAll(own.edited());
-            if (!shared.isEmpty()) others.add(new Other(o.episode(), o.who(), shared));
+            Set<String> met = met(own, o, shared, ownAnchors);
+            if (!shared.isEmpty() || !met.isEmpty()) others.add(new Other(o.episode(), o.who(), shared, met));
         }
         return others.isEmpty() ? null : line(episode, others);
+    }
+
+    /**
+     * The anchors where the files only {@code own} edited meet the files only {@code other} edited,
+     * one side defining the anchor: two classes that merely read one key do not meet. {@code
+     * ownAnchors} keeps {@code own}'s lookups across the other episodes of one verdict.
+     */
+    private Set<String> met(
+            Open own, Open other, Set<String> shared, Map<Set<String>, Map<String, Boolean>> ownAnchors) {
+        Set<String> theirs = new LinkedHashSet<>(other.edited());
+        theirs.removeAll(shared);
+        if (theirs.isEmpty()) return Set.of();
+        Set<String> mine = new LinkedHashSet<>(own.edited());
+        mine.removeAll(shared);
+        if (mine.isEmpty()) return Set.of();
+        Map<String, Boolean> a = ownAnchors.computeIfAbsent(mine, files -> anchors.of(own.project(), files));
+        if (a.isEmpty()) return Set.of();
+        Map<String, Boolean> b = anchors.of(other.project(), theirs);
+        Set<String> met = new TreeSet<>();
+        a.forEach((id, defines) -> {
+            Boolean theirsDefine = b.get(id);
+            if (theirsDefine != null && (defines || theirsDefine)) met.add(id);
+        });
+        return met;
     }
 
     /** How a verdict names a session: its label, else its client, else its origin. */
@@ -79,8 +125,8 @@ final class Overlaps {
     }
 
     /**
-     * {@code W <who> is also editing <types>} for the shared files {@code episode} was not told of
-     * yet, marking them told; null when every one was.
+     * {@code W <who> is also editing <types and anchors>} for the shared files and anchors {@code
+     * episode} was not told of yet, marking them told; null when every one was.
      */
     synchronized @Nullable String line(String episode, List<Other> others) {
         Set<String> heard = told.computeIfAbsent(episode, k -> new HashSet<>());
@@ -91,6 +137,11 @@ final class Overlaps {
                 if (!heard.add(o.episode() + "\t" + file)) continue;
                 who.add(o.who());
                 symbols.add(EditedFiles.symbol(file));
+            }
+            for (String anchor : o.anchors()) {
+                if (!heard.add(o.episode() + "\t\t" + anchor)) continue;
+                who.add(o.who());
+                symbols.add(anchor);
             }
         }
         if (who.isEmpty()) return null;

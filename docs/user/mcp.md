@@ -166,12 +166,16 @@ FAIL test jk · 9.5s — --class named 1 class the tag filter excluded: com.exam
 When another live session, in this checkout or another checkout of the same project, has an open
 [episode](web.md#sessions-and-episodes) whose runs saw a file changed that this run's episode
 changed too, the verdict ends with one line naming that session and the types (or, for a file
-that is not JVM source, the files) both are editing. Each session hears of one shared file once,
-in its next verdict; a verdict with no overlap carries nothing more.
+that is not JVM source, the files) both are editing. Two different files meet too when the
+[graph](graph.md#anchors) of each checkout says one defines an anchor (a config key, a variable, a
+column, a route) that the other defines or uses, and the line names the anchor: editing
+`application.properties` and a class bound to one of its keys is an overlap, two classes that only
+read one key are not. Each session hears of one shared file or anchor once, in its next verdict; a
+verdict with no overlap carries nothing more, and a checkout with no graph compares files alone.
 
 ```
 OK test core · 41 tests · 3.2s
-W codex 91be is also editing Pricing, QuoteTest
+W codex 91be is also editing Pricing, QuoteTest, config:hotel.rate.weekend
 ```
 
 Paths are relative to the project directory. A quoted source row is its line number, `|`, a

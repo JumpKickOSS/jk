@@ -5,13 +5,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.JobDelta;
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.layout.AnchorWatch;
+import cc.jumpkick.layout.GraphLayout;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-/** Two live sessions editing the same code: the modules each works in, and the one line each verdict carries. */
+/**
+ * Two live sessions editing the same code, or code that meets at an anchor: the modules each works
+ * in, and the one line each verdict carries.
+ */
 class SessionOverlapTest {
 
     private static final long T = 1_700_000_000_000L;
@@ -20,6 +32,8 @@ class SessionOverlapTest {
     private static final String PRICING = "core/src/main/java/dev/hotel/Pricing.java";
     private static final String QUOTE_TEST = "core/src/test/java/dev/hotel/QuoteTest.java";
     private static final String ROUTES = "web/src/main/java/dev/hotel/Routes.java";
+    private static final String QUOTE = "core/src/main/java/dev/hotel/Quote.java";
+    private static final String PROPERTIES = "core/src/main/resources/application.properties";
 
     private final AtomicLong now = new AtomicLong(T);
 
@@ -66,6 +80,37 @@ class SessionOverlapTest {
     }
 
     @Test
+    void two_files_that_meet_at_an_anchor_one_of_them_defines_are_an_overlap(@TempDir Path tmp) throws IOException {
+        Path a = checkout(tmp.resolve("hotel-a"));
+        Path b = checkout(tmp.resolve("hotel-b"));
+        SessionLog log = hotel();
+        String claude = finish(log, CLAUDE, a.toString(), T, PROPERTIES);
+        String codex = finish(log, CODEX, b.toString(), T + 1_000, PRICING);
+
+        assertThat(log.overlap(codex))
+                .as("the properties file defines the key Pricing reads, in another worktree")
+                .isEqualTo("W claude-code 3f9a is also editing config:hotel.rate.weekend");
+        assertThat(log.overlap(codex)).as("told once").isNull();
+        assertThat(log.overlap(claude)).isEqualTo("W codex 91be is also editing config:hotel.rate.weekend");
+
+        finish(log, CLAUDE, a.toString(), T + 2_000, PRICING);
+        assertThat(log.overlap(codex))
+                .as("a file both edit is named as itself, its anchors not again")
+                .isEqualTo("W claude-code 3f9a is also editing Pricing");
+    }
+
+    @Test
+    void two_files_that_only_read_one_key_do_not_meet(@TempDir Path tmp) throws IOException {
+        Path a = checkout(tmp.resolve("hotel-a"));
+        SessionLog log = hotel();
+        String claude = finish(log, CLAUDE, a.toString(), T, PRICING);
+        String codex = finish(log, CODEX, a.toString(), T + 1_000, QUOTE);
+
+        assertThat(log.overlap(claude)).isNull();
+        assertThat(log.overlap(codex)).isNull();
+    }
+
+    @Test
     void a_session_that_ended_overlaps_nobody() {
         String claude = finish(CLAUDE, "/wt/a", T, PRICING);
         String codex = finish(CODEX, "/wt/b", T + 1_000, PRICING);
@@ -106,8 +151,44 @@ class SessionOverlapTest {
         assertThat(line).hasSizeLessThanOrEqualTo(Overlaps.WIDTH).endsWith(" more)");
     }
 
-    /** Place and finish one green run of {@code label}'s session in {@code dir} that saw {@code edited} changed. */
+    /** A log over checkouts whose directory names {@code hotel} as one project. */
+    private SessionLog hotel() {
+        return new SessionLog(
+                null,
+                now::get,
+                EpisodeInference.DEFAULT_IDLE_GAP_MILLIS,
+                SessionExpiry.DEFAULT.toMillis(),
+                new ProjectIdMemo(dir -> dir.contains("hotel") ? "hotel" : "other"));
+    }
+
+    /**
+     * A checkout whose graph lists the anchors: the properties file defines the weekend rate,
+     * Pricing and Quote read it.
+     */
+    private static Path checkout(Path root) throws IOException {
+        Files.createDirectories(root);
+        Files.writeString(root.resolve("jk.toml"), "[project]\nname = \"hotel\"\n");
+        String key = "config:hotel.rate.weekend";
+        Map<String, Map<String, Boolean>> anchors =
+                Map.of(PROPERTIES, Map.of(key, true), PRICING, Map.of(key, false), QUOTE, Map.of(key, false));
+        List<AnchorWatch.Entry> entries = new ArrayList<>();
+        for (Map.Entry<String, Map<String, Boolean>> e : anchors.entrySet()) {
+            Path file = root.resolve(e.getKey());
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, e.getKey());
+            entries.add(
+                    new AnchorWatch.Entry(Hashing.sha256Hex(file), StatIdentity.of(file), e.getKey(), e.getValue()));
+        }
+        AnchorWatch.write(GraphLayout.dir(root), entries);
+        return root;
+    }
+
     private String finish(String label, String dir, long at, String... edited) {
+        return finish(log, label, dir, at, edited);
+    }
+
+    /** Place and finish one green run of {@code label}'s session in {@code dir} that saw {@code edited} changed. */
+    private String finish(SessionLog log, String label, String dir, long at, String... edited) {
         now.set(at);
         String episode = Objects.requireNonNull(log.placeRun("mcp", label, "test", dir, at));
         log.runFinished(new FinishedRun(

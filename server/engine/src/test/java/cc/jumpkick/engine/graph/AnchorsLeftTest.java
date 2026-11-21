@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
@@ -385,7 +386,8 @@ class AnchorsLeftTest {
         Files.writeString(schema, "CREATE TABLE owners (\n  phone VARCHAR(20)\n);\n");
         Path graph = root.resolve("target/graph");
         AnchorWatch.write(
-                graph, List.of(new AnchorWatch.Entry(Hashing.sha256Hex(schema), StatIdentity.of(schema), MYSQL)));
+                graph,
+                List.of(new AnchorWatch.Entry(Hashing.sha256Hex(schema), StatIdentity.of(schema), MYSQL, Map.of())));
         Path key = GraphRunner.rootOf(root);
         GraphRunner.holdSlot(key);
         try {
