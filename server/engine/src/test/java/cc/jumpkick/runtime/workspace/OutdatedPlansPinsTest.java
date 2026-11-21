@@ -193,6 +193,52 @@ class OutdatedPlansPinsTest {
         assertThat(report.rows().getFirst().canMove()).isTrue();
     }
 
+    /** A relocation may name a property its parent defines; the row names the valued coordinate. */
+    @Test
+    void a_relocation_naming_a_parent_property_names_the_valued_coordinate(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                old = "com.acme:old:1.0"
+                """);
+        MavenStub upstream = new MavenStub(http);
+        upstream.pom("com.acme", "acme-parent", "1", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId>
+                  <artifactId>acme-parent</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <properties><next.group>org.acme.next</next.group></properties>
+                </project>
+                """);
+        upstream.pom("com.acme", "old", "1.0", MavenStub.emptyPom("com.acme", "old", "1.0"));
+        upstream.pom("com.acme", "old", "1.1", """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>com.acme</groupId><artifactId>acme-parent</artifactId><version>1</version></parent>
+                  <artifactId>old</artifactId>
+                  <version>1.1</version>
+                  <distributionManagement>
+                    <relocation><groupId>${next.group}</groupId><version>2.0</version></relocation>
+                  </distributionManagement>
+                </project>
+                """);
+        upstream.metadata("com.acme", "old", "1.0", "1.1");
+        published(upstream, "org.acme.next", "old", "2.0", "2.3");
+
+        OutdatedReport report = OutdatedPlans.compute(
+                project, project.resolve("cache"), http.base(), false, OutdatedPlans.Progress.NONE);
+
+        assertThat(report.rows())
+                .extracting(r -> r.coordinate(), r -> r.latest(), r -> r.relocated())
+                .containsExactly(tuple("com.acme:old", "2.3", "org.acme.next:old"));
+    }
+
     /** Testcontainers 2.0 renamed its modules without a relocation POM; the bundled rename names the new one. */
     @Test
     void a_known_rename_is_reported_when_the_new_coordinate_publishes_past_it(@TempDir Path project) throws Exception {

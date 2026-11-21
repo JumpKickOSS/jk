@@ -3,15 +3,14 @@ package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.Pom;
-import cc.jumpkick.repo.PomParser;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -84,14 +83,15 @@ final class MovedCoordinates {
         return null;
     }
 
-    /** The other {@code group:artifact} the POM of {@code module} at {@code version} relocates to, or null. */
+    /**
+     * The other {@code group:artifact} the POM of {@code module} at {@code version} relocates to, or
+     * null. The effective model values a relocation spelled with a parent's property.
+     */
     private static @Nullable String relocation(String module, String version, RepoGroup repos) {
         Coordinate coord = Coordinate.ofModule(module, version);
         try {
-            Optional<RepoGroup.RepoFetched> pom = repos.tryFetchPom(coord);
-            if (pom.isEmpty()) return null;
-            Pom parsed = PomParser.parse(Files.readAllBytes(pom.get().fetched().cachePath()));
-            Pom.Relocation moved = parsed.relocation();
+            if (repos.tryFetchPom(coord).isEmpty()) return null;
+            Pom.Relocation moved = new EffectivePomBuilder(repos).build(coord).relocation();
             if (moved == null) return null;
             Coordinate to = moved.applyTo(coord);
             String target = to.group() + ":" + to.artifact();
