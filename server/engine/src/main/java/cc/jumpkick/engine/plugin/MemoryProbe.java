@@ -26,8 +26,8 @@ import org.jspecify.annotations.Nullable;
  *   <li><b>Linux</b> — {@code /proc/meminfo} {@code MemAvailable} (same as {@code free -h}'s
  *       "available" column: free + reclaimable page cache), plus cgroup limits when present.
  *       Not {@code MemFree} / MXBean free, which under-report on aggressive file-cache hosts.
- *   <li><b>macOS</b> — {@code host_statistics64} reclaimable pages (free + inactive + speculative +
- *       purgeable), not MXBean free alone.
+ *   <li><b>macOS</b> — {@code host_statistics64} reclaimable pages (free + inactive + purgeable;
+ *       free already holds the speculative pages), not MXBean free alone.
  *   <li><b>else</b> (Windows, …) — {@code OperatingSystemMXBean} total/free physical memory.
  * </ul>
  *
@@ -158,74 +158,106 @@ public final class MemoryProbe {
     /** {@code mach/host_info.h}: the {@code HOST_VM_INFO64} flavor selector for {@code host_statistics64}. */
     private static final int HOST_VM_INFO64 = 4;
 
-    /** {@code HOST_VM_INFO64_COUNT}: {@code sizeof(vm_statistics64_data_t) / sizeof(integer_t)}. */
+    /**
+     * {@code HOST_VM_INFO64_REV1_COUNT}: the struct up to {@code swapped_count}, in {@code integer_t}s.
+     * The kernel fills only as much as this asks for, so newer revisions' fields need no room.
+     */
     private static final int HOST_VM_INFO64_COUNT = 38;
 
     /** {@code KERN_SUCCESS} in {@code mach/kern_return.h}. */
     private static final int KERN_SUCCESS = 0;
 
-    // Byte offsets into vm_statistics64_data_t (mach/host_info.h) of the fields we read: natural_t
-    // (4-byte) fields packed until a uint64_t field forces 8-byte alignment. Verified against this
-    // struct's known layout and cross-checked against `vm_stat`'s own output (see MemoryProbeTest).
-    private static final long FREE_COUNT_OFFSET = 0;
-    private static final long INACTIVE_COUNT_OFFSET = 8;
-    private static final long PURGEABLE_COUNT_OFFSET = 88;
-    private static final long SPECULATIVE_COUNT_OFFSET = 92;
+    // Byte offsets into vm_statistics64_data_t (mach/vm_statistics.h, declared aligned(8)) of the
+    // fields we read: natural_t (4-byte) fields packed until a uint64_t field forces 8-byte alignment.
+    static final long FREE_COUNT_OFFSET = 0;
+    static final long INACTIVE_COUNT_OFFSET = 8;
+    static final long PURGEABLE_COUNT_OFFSET = 88;
+    static final long SPECULATIVE_COUNT_OFFSET = 92;
 
-    private static final FunctionDescriptor MACH_HOST_SELF = FunctionDescriptor.of(ValueLayout.JAVA_INT);
-    private static final FunctionDescriptor HOST_PAGE_SIZE =
-            FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
-    private static final FunctionDescriptor HOST_STATISTICS64 = FunctionDescriptor.of(
-            ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+    private static final @Nullable Mac MAC = Os.isDarwin() ? Mac.load() : null;
 
     /**
-     * macOS: reclaimable pages (free + inactive + speculative + purgeable) times the page size,
-     * matching how Activity Monitor and other macOS tools report "available" memory — as opposed to
-     * {@code com.sun.management}'s free-memory figure, which counts only truly-idle pages. Reads
-     * {@code vm_statistics64_data_t} straight from the kernel via the same {@code
-     * mach_host_self}/{@code host_statistics64} calls {@code vm_stat} itself makes — no subprocess, no
-     * text parsing. {@code null} on any failure (missing symbol, non-zero {@code kern_return_t}, no
-     * native access), so the caller falls back to {@link #fromBean()}.
+     * macOS: reclaimable pages (free + inactive + purgeable) times the page size, matching how
+     * Activity Monitor and other macOS tools report "available" memory — as opposed to {@code
+     * com.sun.management}'s free-memory figure, which counts only truly-idle pages. Reads {@code
+     * vm_statistics64_data_t} straight from the kernel via the same {@code host_statistics64} call
+     * {@code vm_stat} itself makes — no subprocess, no text parsing. {@code null} on any failure
+     * (missing symbol, non-zero {@code kern_return_t}, no native access), so the caller falls back
+     * to {@link #fromBean()}.
      */
     private static @Nullable Memory fromMachHostStatistics64() {
+        Mac m = MAC;
+        if (m == null) return null;
         try {
-            Linker linker = Linker.nativeLinker();
-            var lookup = linker.defaultLookup();
-            MethodHandle machHostSelf =
-                    linker.downcallHandle(lookup.find("mach_host_self").orElseThrow(), MACH_HOST_SELF);
-            MethodHandle hostPageSize =
-                    linker.downcallHandle(lookup.find("host_page_size").orElseThrow(), HOST_PAGE_SIZE);
-            MethodHandle hostStatistics64 =
-                    linker.downcallHandle(lookup.find("host_statistics64").orElseThrow(), HOST_STATISTICS64);
+            return m.read();
+        } catch (Throwable t) {
+            Log.debug("host memory: host_statistics64 failed", t);
+            return null;
+        }
+    }
 
-            try (Arena arena = Arena.ofConfined()) {
+    /**
+     * The host port, its page size and the {@code host_statistics64} handle, looked up once.
+     * {@code mach_host_self} adds a send-right reference on every call, so the port is taken once
+     * and held for the life of the process rather than per reading.
+     */
+    private record Mac(int hostPort, long pageSize, MethodHandle hostStatistics64) {
+
+        static @Nullable Mac load() {
+            try {
+                Linker linker = Linker.nativeLinker();
+                var lookup = linker.defaultLookup();
+                MethodHandle machHostSelf = linker.downcallHandle(
+                        lookup.find("mach_host_self").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));
+                MethodHandle hostPageSize = linker.downcallHandle(
+                        lookup.find("host_page_size").orElseThrow(),
+                        FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+                MethodHandle hostStatistics64 = linker.downcallHandle(
+                        lookup.find("host_statistics64").orElseThrow(),
+                        FunctionDescriptor.of(
+                                ValueLayout.JAVA_INT,
+                                ValueLayout.JAVA_INT,
+                                ValueLayout.JAVA_INT,
+                                ValueLayout.ADDRESS,
+                                ValueLayout.ADDRESS));
                 int hostPort = (int) machHostSelf.invokeExact();
+                try (Arena arena = Arena.ofConfined()) {
+                    MemorySegment pageSizeOut = arena.allocate(ValueLayout.JAVA_LONG);
+                    if ((int) hostPageSize.invokeExact(hostPort, pageSizeOut) != KERN_SUCCESS) return null;
+                    return new Mac(hostPort, pageSizeOut.get(ValueLayout.JAVA_LONG, 0), hostStatistics64);
+                }
+            } catch (Throwable unavailable) {
+                Log.debug("host memory: host_statistics64 unavailable", unavailable);
+                return null;
+            }
+        }
 
-                MemorySegment pageSizeOut = arena.allocate(ValueLayout.JAVA_LONG);
-                if ((int) hostPageSize.invokeExact(hostPort, pageSizeOut) != KERN_SUCCESS) return null;
-                long pageSize = pageSizeOut.get(ValueLayout.JAVA_LONG, 0);
-
-                MemorySegment info = arena.allocate((long) HOST_VM_INFO64_COUNT * Integer.BYTES);
+        @Nullable
+        Memory read() throws Throwable {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment info = arena.allocate((long) HOST_VM_INFO64_COUNT * Integer.BYTES, Long.BYTES);
                 MemorySegment countInOut = arena.allocate(ValueLayout.JAVA_INT);
                 countInOut.set(ValueLayout.JAVA_INT, 0, HOST_VM_INFO64_COUNT);
                 if ((int) hostStatistics64.invokeExact(hostPort, HOST_VM_INFO64, info, countInOut) != KERN_SUCCESS) {
                     return null;
                 }
-
-                long free = pages(info, FREE_COUNT_OFFSET);
-                long inactive = pages(info, INACTIVE_COUNT_OFFSET);
-                long speculative = pages(info, SPECULATIVE_COUNT_OFFSET);
-                long purgeable = pages(info, PURGEABLE_COUNT_OFFSET);
-                long available = (free + inactive + speculative + purgeable) * pageSize;
-
+                long available = availableBytes(info, pageSize);
                 long total =
                         ((OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean()).getTotalMemorySize();
                 return available > 0 ? new Memory(total, available) : null;
             }
-        } catch (Throwable t) {
-            // Best-effort: symbol missing, native access not granted, bad kern_return_t — fall back.
-            return null;
         }
+    }
+
+    /**
+     * Free, inactive and purgeable pages of a {@code vm_statistics64_data_t}, in bytes. Not {@code
+     * speculative_count}: those pages are already inside {@code free_count}.
+     */
+    static long availableBytes(MemorySegment info, long pageSize) {
+        long free = pages(info, FREE_COUNT_OFFSET);
+        long inactive = pages(info, INACTIVE_COUNT_OFFSET);
+        long purgeable = pages(info, PURGEABLE_COUNT_OFFSET);
+        return (free + inactive + purgeable) * pageSize;
     }
 
     /** {@code natural_t} (unsigned 32-bit) page count at {@code byteOffset} into a vm_statistics64_data_t. */

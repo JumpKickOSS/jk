@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **On macOS the engine no longer leaks a Mach port reference on every memory reading.** The engine
+  reads host memory several times a second, and each reading took a reference to the host's Mach
+  port that was never given back. Its available-memory figure also counted speculative pages twice,
+  so memory admission now sees slightly less available RAM (tens of MiB on a 16 GiB machine), about
+  what `vm_stat` reports as reclaimable.
 - **A cancelled HTTP or MCP job that ignores the cancel ends in seconds, not at its one-hour
   deadline.** Time the machine slept or the engine was stopped no longer counts against a job's
   deadline. An engine fault while a job was starting no longer leaves the project unbuildable or the

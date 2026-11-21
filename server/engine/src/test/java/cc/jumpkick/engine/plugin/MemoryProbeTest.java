@@ -4,6 +4,13 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Assumptions;
@@ -105,6 +112,63 @@ class MemoryProbeTest {
                     .isNotEqualTo(stale);
         } finally {
             MemoryProbe.forTests(null);
+        }
+    }
+
+    @Test
+    void speculative_pages_are_counted_once_as_part_of_free() {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment info = arena.allocate(38 * Integer.BYTES, 8);
+            info.set(ValueLayout.JAVA_INT, MemoryProbe.FREE_COUNT_OFFSET, 100);
+            info.set(ValueLayout.JAVA_INT, MemoryProbe.SPECULATIVE_COUNT_OFFSET, 40);
+            info.set(ValueLayout.JAVA_INT, MemoryProbe.INACTIVE_COUNT_OFFSET, 300);
+            info.set(ValueLayout.JAVA_INT, MemoryProbe.PURGEABLE_COUNT_OFFSET, 7);
+            // The kernel's free_count already holds the speculative pages; vm_stat prints
+            // free_count - speculative_count as "Pages free" for that reason.
+            assertThat(MemoryProbe.availableBytes(info, 16384)).isEqualTo((100L + 300 + 7) * 16384);
+        }
+    }
+
+    @Test
+    void reading_macos_memory_takes_no_lasting_reference_to_the_host_port() throws Throwable {
+        Assumptions.assumeTrue(Os.isDarwin());
+        Linker linker = Linker.nativeLinker();
+        SymbolLookup libc = linker.defaultLookup();
+        MethodHandle hostSelf = linker.downcallHandle(
+                libc.find("mach_host_self").orElseThrow(), FunctionDescriptor.of(ValueLayout.JAVA_INT));
+        MethodHandle getRefs = linker.downcallHandle(
+                libc.find("mach_port_get_refs").orElseThrow(),
+                FunctionDescriptor.of(
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.JAVA_INT,
+                        ValueLayout.ADDRESS));
+        MethodHandle deallocate = linker.downcallHandle(
+                libc.find("mach_port_deallocate").orElseThrow(),
+                FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT));
+        int task = libc.find("mach_task_self_")
+                .orElseThrow()
+                .reinterpret(Integer.BYTES)
+                .get(ValueLayout.JAVA_INT, 0);
+        int sendRight = 0; // MACH_PORT_RIGHT_SEND
+
+        MemoryProbe.current(); // the first reading may set up what later ones reuse
+        int host = (int) hostSelf.invokeExact();
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment refs = arena.allocate(ValueLayout.JAVA_INT);
+            assertThat((int) getRefs.invokeExact(task, host, sendRight, refs)).isZero();
+            int before = refs.get(ValueLayout.JAVA_INT, 0);
+            int readings = 10_000;
+            for (int i = 0; i < readings; i++) MemoryProbe.current();
+            assertThat((int) getRefs.invokeExact(task, host, sendRight, refs)).isZero();
+            // The JVM takes references of its own while the readings run (the JIT asks for free
+            // memory the same way), so the bound is far under one reference per reading, not zero.
+            assertThat(refs.get(ValueLayout.JAVA_INT, 0) - before)
+                    .as("send-right references on the host port gained over " + readings + " readings")
+                    .isLessThan(readings / 10);
+        } finally {
+            int ignored = (int) deallocate.invokeExact(task, host);
         }
     }
 }
