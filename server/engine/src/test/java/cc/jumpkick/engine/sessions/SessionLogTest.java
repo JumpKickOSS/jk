@@ -716,7 +716,8 @@ class SessionLogTest {
                 Fact.action(T + 5_000, 3, "/ws/lib", Fact.Kind.UPDATE, true, "", 14),
                 "update",
                 "update 14 pins",
-                null);
+                null,
+                0);
 
         List<Map<String, Object>> rows = log.sessions(10);
         assertThat(rows).extracting(r -> r.get("id")).containsExactly(second, first);
@@ -763,7 +764,8 @@ class SessionLogTest {
                 Fact.action(T, 1, "/ws/app", Fact.Kind.GRAPH, true, "", 0),
                 "query",
                 "query \"where\"",
-                null);
+                null,
+                0);
         assertThat(memory.session(id, 0, 10).orElseThrow().actions()).hasSize(1);
         memory.end("mcp", LABEL);
         assertThat(memory.session(id, 0, 10)).isEmpty();
@@ -829,7 +831,8 @@ class SessionLogTest {
                 Fact.action(T, 4, dir, Fact.Kind.GRAPH, true, "", 0),
                 "query",
                 "query \"where is s3cret-token-value read\"",
-                "uses s3cret-tok" + ActionRecord.CLIP);
+                "uses s3cret-tok" + ActionRecord.CLIP,
+                0);
 
         assertThat(actions).hasSize(1);
         assertThat(actions.getFirst().get("action"))
@@ -857,7 +860,8 @@ class SessionLogTest {
                 Fact.action(at, 4, "/ws/app", Fact.Kind.GRAPH, true, "", 0),
                 "callers",
                 "callers PricingRules.weekendUplift",
-                "3 callers");
+                "3 callers",
+                0);
     }
 
     private static String sessionOf(@Nullable String placed) {

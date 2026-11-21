@@ -52,6 +52,7 @@ import { installData, installMethods, registerWorker } from './pwa.js';
 import { RunCoverage } from './coverage.js';
 import { RunDelta } from './delta.js';
 import { projectComputed, projectMethods } from './projects.js';
+import { savingsComputed, savingsData, savingsMethods } from './savings.js';
 import { FailReport } from './report.js';
 import { buildProjectHash, routeFromHash } from './route.js';
 import { sessionMethods } from './sessions.js';
@@ -106,6 +107,7 @@ export const appOptions = {
     ...noticeData(),
     ...activityData(routeFromHash()),
     ...installData(),
+    ...savingsData(),
     view: routeFromHash().view, // 'console' | 'projects' | 'project' | 'status' | 'new' | 'activity'
     selectedProjectId: routeFromHash().projectId, // durable id (#project/<id>)
     filesOpen: !!routeFromHash().files, // #project/<id>/files[/<rel>]
@@ -225,6 +227,7 @@ export const appOptions = {
     },
     ...wizardComputed,
     ...projectComputed,
+    ...savingsComputed,
     ...consoleComputed,
   },
   watch: {
@@ -239,6 +242,7 @@ export const appOptions = {
   },
   methods: {
     ...projectMethods,
+    ...savingsMethods,
     ...consoleMethods,
     ...decisionMethods,
     ...notifyMethods,
@@ -475,6 +479,7 @@ export const appOptions = {
               if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
                 this.refreshMetrics();
               }
+              if (this.view === 'projects' || this.view === 'project') this.loadSavings();
               // A build can change the open project's coord/description/dir (manifest edits,
               // branch switches) — re-pull the header meta in place.
               this.refreshProjectMeta();
@@ -523,6 +528,7 @@ export const appOptions = {
       }
       if (view === 'projects') {
         this.loadProjectHistory();
+        this.loadSavings();
         this.refreshMetrics(); // view-scoped, not a global timer
       }
       if (view === 'activity') {
@@ -602,6 +608,7 @@ export const appOptions = {
       if (r.view === 'projects') {
         this.loadProjectHistory();
         this.refreshMetrics();
+        this.loadSavings();
       }
       if (r.view === 'status') this.refresh();
       if (r.view === 'machine') this.loadMachine();
@@ -686,6 +693,7 @@ export const appOptions = {
         this.handleHttpError(e);
       }
       if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
+      this.loadSavings();
     },
     /**
      * Re-pull the open project's meta in place — coord/description/dir go stale after a manifest

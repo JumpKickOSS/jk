@@ -122,6 +122,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final HttpCoverageReport coverageReport;
     private final HttpProjectApi projectApi;
     private final HttpReadApi readApi;
+    private final HttpStatsApi statsApi;
 
     /**
      * Currently-running jobs (from {@code EngineServer}'s in-flight registry). Used to enrich
@@ -174,6 +175,7 @@ public final class HttpEngineServer implements AutoCloseable {
         HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions);
         api.register("GET", "/api/sessions", sessionsApi::handleSessions);
         api.registerPrefix("GET", HttpSessionsApi.PREFIX, sessionsApi::handleSession);
+        statsApi.sessions(sessions);
         if (mcp != null) mcp.sessions(sessions);
     }
 
@@ -425,6 +427,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.mcpFront = this.mcp == null ? null : new McpFront(this.mcp, sse, version);
         this.historyApi = new HttpHistoryApi(journal, () -> this.liveRuns.get());
         this.coverageReport = new HttpCoverageReport(journal, tokens, Clock.SYSTEM);
+        this.statsApi = new HttpStatsApi(journal, Clock.SYSTEM);
         this.projectApi = new HttpProjectApi();
         NewProjectWizard wizard = new NewProjectWizard(this::url);
         if (this.mcp != null) this.mcp.wizard(wizard);
@@ -452,6 +455,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("DELETE", "/api/history", historyApi::handleHistoryDelete);
         api.register("GET", HttpCoverageReport.TOKEN, coverageReport::handleToken);
         api.register("GET", "/api/metrics", readApi::handleMetrics);
+        api.register("GET", "/api/stats", statsApi::handle);
         api.register("GET", "/api/cache", readApi::handleCache);
         api.register("GET", "/api/host", new HttpHostApi()::handle);
         api.register("GET", "/api/doctor", HttpHostApi::handleDoctor);

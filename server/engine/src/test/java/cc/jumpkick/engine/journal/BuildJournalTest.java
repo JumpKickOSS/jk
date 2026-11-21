@@ -66,6 +66,55 @@ class BuildJournalTest {
                 List.of());
     }
 
+    /** The savings ledger reads whole runs finished in its period: newest first, none older, none running. */
+    @Test
+    void the_runs_finished_since_a_time_are_read_whole_newest_first() {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord.Diag warning = new BuildRecord.Diag("warning", "/proj", "run-tests", "w", "kept", null, null);
+        j.append(record(1_000, true, "g:a"), BuildJournal.Snapshot.NONE);
+        BuildRecord plain = record(2_000, true, "g:a");
+        j.append(
+                new BuildRecord(
+                        null,
+                        0L,
+                        BuildRecord.SCHEMA,
+                        plain.kind(),
+                        plain.dir(),
+                        plain.coord(),
+                        null,
+                        plain.startedAt(),
+                        plain.finishedAt(),
+                        plain.millis(),
+                        true,
+                        false,
+                        0,
+                        plain.jkVersion(),
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of(warning),
+                        "cli",
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        0L,
+                        null,
+                        List.of()),
+                BuildJournal.Snapshot.NONE);
+        j.append(record(3_000, false, "g:a"), BuildJournal.Snapshot.NONE);
+
+        List<BuildRecord> since = j.finishedSince(1_500);
+
+        assertThat(since).extracting(BuildRecord::finishedAt).containsExactly(3_000L, 2_000L);
+        assertThat(since.get(1).diagnostics())
+                .as("read whole, tail included")
+                .singleElement()
+                .satisfies(d -> assertThat(d.code() + ": " + d.message()).isEqualTo("w: kept"));
+        assertThat(j.finishedSince(0)).hasSize(3);
+    }
+
     /**
      * Build numbers restart at 1 in every project home, so two projects on one home both own a
      * {@code runs/1}. The directory a record resolves to is the one under its own project: the

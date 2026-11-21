@@ -40,7 +40,8 @@ final class RunFacts {
                 r.millis(),
                 r.episode(),
                 r.dir() == null || r.dir().isBlank() ? null : r.dir(),
-                r.buildNumber());
+                r.buildNumber(),
+                0);
     }
 
     /** The failing tests of a run, {@code SimpleClass#method}, each once, in the order the record lists them. */

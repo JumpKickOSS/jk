@@ -21,9 +21,6 @@ import org.jspecify.annotations.Nullable;
  */
 final class McpActions {
 
-    /** The code-graph questions: inference reads a session that only asks these as exploring. */
-    static final Set<String> GRAPH = Set.of("query", "callers", "read", "find");
-
     /** Every tool a session's timeline logs. */
     static final Set<String> LOGGED =
             Set.of("query", "callers", "read", "find", "rename", "deps", "update", "workspace");
@@ -57,7 +54,20 @@ final class McpActions {
                 fact,
                 name,
                 summary(name, call, result),
-                result == null ? "failed" : headline(result));
+                result == null ? "failed" : headline(result),
+                ok ? edits(name, call, coords) : 0);
+    }
+
+    /**
+     * The changes a call that succeeded wrote ({@link ActionRecord#edits}): none for a question, a
+     * rename (counted as one of its own) or a preview.
+     */
+    static int edits(String name, McpCall call, List<String> coords) {
+        return switch (name) {
+            case "deps" -> call.flag("preview") ? 0 : coords.size();
+            case "update", "workspace" -> call.flag("apply") ? 1 : 0;
+            default -> 0;
+        };
     }
 
     /**
@@ -77,7 +87,8 @@ final class McpActions {
     }
 
     static Fact.Kind kind(String name, McpCall call) {
-        if (GRAPH.contains(name)) return Fact.Kind.GRAPH;
+        // Inference reads a session that only asks the code graph as exploring.
+        if (ActionRecord.GRAPH.contains(name)) return Fact.Kind.GRAPH;
         return switch (name) {
             case "rename" -> Fact.Kind.RENAME;
             case "update" -> Fact.Kind.UPDATE;

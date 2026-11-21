@@ -75,6 +75,7 @@ import cc.jumpkick.command.system.ResultsCommand;
 import cc.jumpkick.command.system.SelfCommand;
 import cc.jumpkick.command.system.ShowCommand;
 import cc.jumpkick.command.system.SkillCommand;
+import cc.jumpkick.command.system.StatsCommand;
 import cc.jumpkick.command.system.StatusCommand;
 import cc.jumpkick.command.system.StorageCommand;
 import cc.jumpkick.command.system.TasksCommand;
@@ -139,6 +140,7 @@ public final class CommandDispatch {
             new SelfCommand(),
             new WrapperCommand(),
             new HistoryCommand(),
+            new StatsCommand(),
             new ActivityCommand(), // name() = jobs; activity/act aliases
             new ResultsCommand(),
             new SkillCommand(),

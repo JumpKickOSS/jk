@@ -53,6 +53,16 @@ final class StoredSessions {
         return read;
     }
 
+    /** The actions of every stored session active at or after {@code since}, oldest first within a session. */
+    static List<ActionRecord> actionsSince(SessionJournal journal, long since) {
+        List<ActionRecord> out = new ArrayList<>();
+        for (SessionRecord r : newestFirst(journal)) {
+            if (r.lastActiveAt() < since) break;
+            out.addAll(actions(journal, r.id()));
+        }
+        return out;
+    }
+
     /**
      * Up to {@code limit} of {@code actions} older than {@code before} ({@code 0}: the newest),
      * oldest first.

@@ -550,6 +550,25 @@ public final class BuildJournal {
         return out;
     }
 
+    /**
+     * Every finished, non-synthetic run that finished at or after {@code since} (epoch millis),
+     * read whole, newest first.
+     */
+    public List<BuildRecord> finishedSince(long since) {
+        List<BuildRecord> out = new ArrayList<>();
+        for (JournalIndex.Entry e : runs.newest()) {
+            if (e.synthetic() || e.running()) continue;
+            Optional<Head> head = headOf(e);
+            if (head.isEmpty()) continue;
+            BuildRecord r = head.get().record();
+            long at = r.finishedAt() > 0 ? r.finishedAt() : r.startedAt();
+            if (at < since) break;
+            if (r.synthetic() || r.running()) continue;
+            readRecord(e.dir()).ifPresent(out::add);
+        }
+        return out;
+    }
+
     /** {@code e}'s head parsed from the index's text, or read whole when that text stopped short of the tail. */
     private Optional<Head> headOf(JournalIndex.Entry e) {
         if (e.headComplete()) {

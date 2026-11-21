@@ -6,6 +6,7 @@ import cc.jumpkick.jsonl.MiniJson;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,6 +25,9 @@ import org.jspecify.annotations.Nullable;
  * @param episode the episode it belongs to
  * @param project the checkout it acted on, or null when it named none
  * @param buildNumber a run's build number; 0 for an action or an unnumbered run
+ * @param edits the changes it wrote: the coordinates a {@code deps} call added, removed or pinned,
+ *     1 for an applied {@code update} or {@code workspace} change; 0 for a run, a question, a
+ *     rename, a preview or a failed call
  */
 public record ActionRecord(
         long seq,
@@ -35,9 +39,15 @@ public record ActionRecord(
         long millis,
         String episode,
         @Nullable String project,
-        long buildNumber) {
+        long buildNumber,
+        int edits) {
 
     public static final String RUN = "run";
+    public static final String RENAME = "rename";
+
+    /** The code-graph questions: {@code query}, {@code callers}, {@code read}, {@code find}. */
+    public static final Set<String> GRAPH = Set.of("query", "callers", "read", "find");
+
     public static final String OK = "ok";
     public static final String ERROR = "error";
 
@@ -45,7 +55,8 @@ public record ActionRecord(
     public static final String CLIP = "…";
 
     public ActionRecord withSeq(long seq) {
-        return new ActionRecord(seq, at, kind, summary, headline, outcome, millis, episode, project, buildNumber);
+        return new ActionRecord(
+                seq, at, kind, summary, headline, outcome, millis, episode, project, buildNumber, edits);
     }
 
     /** This action with its summary and headline masked as {@link EventRedaction} masks a run's free text. */
@@ -54,7 +65,7 @@ public record ActionRecord(
         String h = headline == null ? null : EventRedaction.redactClipped(project, headline, CLIP);
         return s.equals(summary) && Objects.equals(h, headline)
                 ? this
-                : new ActionRecord(seq, at, kind, s, h, outcome, millis, episode, project, buildNumber);
+                : new ActionRecord(seq, at, kind, s, h, outcome, millis, episode, project, buildNumber, edits);
     }
 
     public Map<String, Object> toMap() {
@@ -69,6 +80,7 @@ public record ActionRecord(
         m.put("episode", episode);
         if (project != null) m.put("project", project);
         if (buildNumber > 0) m.put("buildNumber", buildNumber);
+        if (edits > 0) m.put("edits", edits);
         return m;
     }
 
@@ -83,6 +95,7 @@ public record ActionRecord(
                 Episode.num(m, "millis"),
                 Episode.text(m, "episode"),
                 MiniJson.str(m, "project"),
-                Episode.num(m, "buildNumber"));
+                Episode.num(m, "buildNumber"),
+                (int) Episode.num(m, "edits"));
     }
 }

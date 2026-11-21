@@ -112,7 +112,8 @@ class EventCatalogSseTest {
                 Fact.action(now[0], 1, "/ws/app", Fact.Kind.RENAME, true, "PricingRules.weekendUplift", 0),
                 "rename",
                 "rename PricingRules.weekendUplift → uplift",
-                null);
+                null,
+                0);
         now[0] += EpisodeInference.DEFAULT_IDLE_GAP_MILLIS + 1;
         log.sweep();
         log.end("mcp", "claude-code 3f9a");

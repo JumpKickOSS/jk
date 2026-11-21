@@ -115,6 +115,32 @@ class McpActionsTest {
                 .containsExactly("Add Postgres/goal/1", "Rename post to record/goal/3");
     }
 
+    /** What a call wrote is on its action: the coordinates a deps change took, one applied update, none for a preview. */
+    @Test
+    void an_action_counts_the_edits_it_wrote_and_none_for_a_preview_or_a_failure() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), project.toString());
+        McpTools tools = new McpTools(List.of(
+                tool("deps", in -> in.text("added\n")),
+                tool("update", in -> in.text("updated\n")),
+                tool("workspace", in -> in.error("no such member\n")),
+                tool("rename", in -> in.text("renamed 3 calls\n"))));
+        String dir = project.toString();
+        List<String> two = List.of("org.postgresql:postgresql", "org.flywaydb:flyway-core");
+
+        tools.call(ctx, call("deps", Map.of("dir", dir, "coords", two)), connection, null);
+        tools.call(ctx, call("deps", Map.of("dir", dir, "coords", two, "preview", true)), connection, null);
+        tools.call(ctx, call("update", Map.of("dir", dir, "apply", true)), connection, null);
+        tools.call(ctx, call("update", Map.of("dir", dir)), connection, null);
+        tools.call(ctx, call("workspace", Map.of("dir", dir, "apply", true, "path", "lib")), connection, null);
+        tools.call(ctx, call("rename", Map.of("dir", dir, "address", "Ledger.post", "to", "record")), connection, null);
+
+        assertThat(log.session(id, 0, 10).orElseThrow().actions())
+                .extracting(a -> a.get("kind") + "=" + a.getOrDefault("edits", 0))
+                .containsExactly("deps=2", "deps=0", "update=1", "update=0", "workspace=0", "rename=0");
+    }
+
     @Test
     void a_call_that_throws_is_logged_as_failed_and_still_throws() {
         McpContext ctx = context();

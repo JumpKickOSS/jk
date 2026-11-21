@@ -11,6 +11,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.HistoryDeleteRequest;
 import cc.jumpkick.wire.protocol.HistoryListRequest;
+import cc.jumpkick.wire.protocol.StatsRequest;
 import java.io.BufferedWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -84,6 +85,29 @@ class HistoryVerbsTest {
         assertThat(journal.runDir("g:a", "/proj", 4))
                 .as("the finished run is removed")
                 .isEmpty();
+    }
+
+    /** {@code jk stats} streams the ledger's rows, overall first, each the object the dashboard reads. */
+    @Test
+    void stats_streams_the_total_then_each_project_and_ends_with_its_count() {
+        BuildJournal journal = new BuildJournal(dir);
+        journal.append(finished(1, "build", "/projA", "g:a", T0), BuildJournal.Snapshot.NONE);
+        journal.append(finished(1, "build", "/projB", "g:b", T0 + 1_000), BuildJournal.Snapshot.NONE);
+        journal.append(finished(2, "build", "/projB", "g:b", T0 - 60_000), BuildJournal.Snapshot.NONE);
+        RecordingHost host = new RecordingHost(journal);
+
+        new StatsVerb(host).run(new StatsRequest(T0 - 1).encode(), Session.CancelToken.live(), null);
+
+        List<String> rows = host.ofType(EngineProtocol.STATS);
+        assertThat(rows).extracting(l -> Jsonl.str(l, "scope")).containsExactly("all", "project", "project");
+        assertThat(Jsonl.longValue(rows.getFirst(), "runs", -1))
+                .as("the run before the period is not counted")
+                .isEqualTo(2);
+        assertThat(rows.subList(1, 3))
+                .extracting(l -> Jsonl.str(l, "dir"))
+                .containsExactlyInAnyOrder("/projA", "/projB");
+        assertThat(Jsonl.longValue(host.ofType(EngineProtocol.STATS_DONE).getFirst(), "count", -1))
+                .isEqualTo(3);
     }
 
     private static final class RecordingHost extends InertVerbHost {

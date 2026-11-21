@@ -9,6 +9,7 @@ import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -185,6 +186,11 @@ public interface VerbHost {
 
     default BuildJournal journal() {
         throw new UnsupportedOperationException("journal");
+    }
+
+    /** The engine's session log; null for a host that keeps none. */
+    default @Nullable SessionLog sessionLog() {
+        return null;
     }
 
     default JkHistoryConfig historyConfig() {

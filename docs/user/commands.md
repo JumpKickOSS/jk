@@ -47,6 +47,7 @@ Canonical names. Hidden aliases (Maven/Gradle muscle memory) are listed in
 | `jk jobs` / `jk cancel` | Running work | [Engine](engine.md) |
 | `jk decide` | Decisions an agent's operation waits on: list them, answer one (at a terminal, or `-y` / `-d` anywhere) | [MCP](mcp.md#decisions) |
 | `jk results` | Latest human report (`jk-results.md`); under `--agent` the verdict. `--all` prints every problem in the agent format, `--details` dumps `details.jsonl` | [Machine output](machine-output.md) |
+| `jk stats` | What the cache, the code graph and the guards saved over the last days (`-d N`; 0 for all the history kept), overall and per project | [Web](web.md#what-jumpkick-saved) |
 | `jk skill` | Skill for agents (core, one topic, install the folder, or update AGENTS.md) | [Skill](skill.md) |
 | `jk cache …` / `jk storage …` | Disk hygiene | [Cache](cache.md) |
 | `jk clean` | Delete `target/` | [Cache](cache.md) |

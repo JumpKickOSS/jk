@@ -167,7 +167,7 @@ export JK_OUTPUT=jsonl     # the same for every command that has machine output
 - Commands with machine output: the build verbs (`build`, `compile`, `test`, `native`, `train`,
   `image`, `sync`, `assemble`, `javadoc`, `run`, `install`, `release`, `publish`,
   `watch`, `dev`), `lock`, `update`, `audit`, `guard` (also `-O sarif`), `outdated`, `doctor`,
-  `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`,
+  `status`, `env`, `engine status`, the `node` family, `jobs`, `history list`, `history show`, `stats`,
   `cancel`, `tree`, `why`, `tool list`, `jdk list`, `cache usage` and `storage usage`, and the
   commands in [Command rows](#command-rows): `results`, `explain`, the `graph` family, `tasks`,
   `inspect`, `add`, `remove`, `format`, `deny`, `verify`, `clean`, `cache clean`, `storage clean`,

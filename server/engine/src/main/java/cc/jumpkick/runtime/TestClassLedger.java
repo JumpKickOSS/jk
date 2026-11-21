@@ -45,15 +45,6 @@ import org.jspecify.annotations.Nullable;
  */
 final class TestClassLedger {
 
-    /** The warning a run that leaves passed classes out carries, so a fast red re-run says why it was fast. */
-    static final String NOT_RERUN = "tests-not-rerun";
-
-    /** {@link #NOT_RERUN}'s text for {@code n} settled classes. */
-    static String notRerun(int n) {
-        return n + " test class" + (n == 1 ? "" : "es")
-                + " passed earlier under these same inputs and are not run again; running the rest (--redo runs every class)";
-    }
-
     /** The warning a red class that passed on an unchanged re-run carries. */
     static final String PASSED_ON_RERUN = "test-passed-on-rerun";
 
@@ -120,14 +111,14 @@ final class TestClassLedger {
     /**
      * The ledger under {@code stampKey}; a run that runs its {@code whole} selection (forced,
      * debug, coverage, affected) leaves nothing out. A run that may leave classes out says so with
-     * {@link #NOT_RERUN}.
+     * {@link TestsNotRerun}.
      */
     static TestClassLedger begin(
             TaskContext ctx, ActionCache cache, @Nullable String stampKey, String module, String tier, boolean whole) {
         TestClassLedger ledger = load(cache, stampKey, module, tier);
         ledger.whole = whole;
         int settled = whole ? 0 : ledger.settledInAnyLaunch();
-        if (settled > 0) ctx.warn(NOT_RERUN, notRerun(settled));
+        if (settled > 0) ctx.warn(TestsNotRerun.CODE, TestsNotRerun.message(settled));
         return ledger;
     }
 

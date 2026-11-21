@@ -10,6 +10,7 @@ import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.JournalWriter;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.engine.verbs.VerbHost;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.run.BuildPlan;
@@ -51,6 +52,7 @@ public final class EngineVerbBridge implements VerbHost {
     private final JkHistoryConfig historyConfig;
     private final Supplier<BuildMetrics> metrics;
     private final InFlightBuilds inFlight;
+    private final SessionLog sessionLog;
 
     @Override
     public long eventRequestId() {
@@ -209,6 +211,11 @@ public final class EngineVerbBridge implements VerbHost {
     @Override
     public BuildJournal journal() {
         return journal;
+    }
+
+    @Override
+    public SessionLog sessionLog() {
+        return sessionLog;
     }
 
     @Override

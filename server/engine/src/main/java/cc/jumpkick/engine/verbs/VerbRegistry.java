@@ -95,6 +95,7 @@ public final class VerbRegistry {
                 new ModuleGraphVerb(host),
                 new CalibrateVerb(host),
                 new MetricsVerb(host),
+                new StatsVerb(host),
                 new HistoryListVerb(host),
                 new HistoryShowVerb(host),
                 new HistoryDeleteVerb(host)));

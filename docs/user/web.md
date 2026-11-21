@@ -180,6 +180,31 @@ first, with the episodes it spent here (title, outcome, runs, actions, wall, whe
 "what happened here yesterday". A session's name opens it on the console. **Build** in the header
 starts a build of the checkout the page shows; the page then follows it.
 
+### What JumpKick saved
+
+The Projects tab opens with a **saved** panel for every project, and a project's Runs tab with the
+same panel for that project. Both cover the last 7 days and show what `jk stats` prints:
+
+| Figure | What it counts |
+| --- | --- |
+| time avoided | Build and test time the cache avoided. An estimate: each run's cold-cache critical path less its wall ([Cache](cache.md)); `measured` is the share of cache hits backed by a measured time |
+| steps from cache | Steps whose result came from the cache instead of running, and of those, test suites |
+| classes not re-run | Test classes a red re-run left out because they passed under the same inputs ([Test](test.md)) |
+| graph answers | Code-graph questions an agent asked through MCP (`query`, `callers`, `read`, `find`) |
+| renames · edits | Renames applied, and dependency edits made: each coordinate a `deps` call added, removed or pinned, each applied `update` or `workspace` change |
+| guard stops | Guard-rule violations a run stopped, and the runs they stopped |
+
+```bash
+jk stats            # the last 7 days
+jk stats -d 30      # the last 30 days; -d 0 reads all the history kept
+jk stats -O jsonl   # one `stats` object per row: `scope` `all` first, then one per project
+```
+
+Nothing new is recorded for it: the engine adds up the run records and session actions it keeps,
+so a period reaches back only as far as `[history]` keeps runs and a session keeps its last 1000
+actions. `GET /api/stats?since=<epoch ms>` answers the same rows
+([HTTP](../contributors/http.md#get-apistats)).
+
 ### The run page
 
 The Runs tab shows one run above the build history: the **newest** by default (a live one first),

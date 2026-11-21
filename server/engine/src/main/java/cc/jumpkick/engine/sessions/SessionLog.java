@@ -577,7 +577,7 @@ public final class SessionLog {
     /**
      * Log a non-run action of the session behind {@code origin} and {@code label}, placing it in an
      * episode. {@code fact} carries what inference reads; {@code kind}, {@code summary} and {@code
-     * headline} are what the timeline shows.
+     * headline} are what the timeline shows; {@code edits} is what it wrote ({@link ActionRecord#edits}).
      */
     public void action(
             String origin,
@@ -586,7 +586,8 @@ public final class SessionLog {
             Fact fact,
             String kind,
             String summary,
-            @Nullable String headline) {
+            @Nullable String headline,
+            int edits) {
         if (!ownsTrigger(origin)) return;
         resolveIds(origin, label, fact.project());
         synchronized (this) {
@@ -620,7 +621,8 @@ public final class SessionLog {
                     fact.millis(),
                     p.episode(),
                     project.isBlank() ? null : project,
-                    0);
+                    0,
+                    Math.max(0, edits));
             ActionRecord logged = append(live, action);
             persist(live);
             publish(live, changes);
@@ -767,6 +769,30 @@ public final class SessionLog {
         out.sort(Comparator.comparingLong((Map<String, Object> m) -> Episode.num(m, "lastActiveAt"))
                 .reversed());
         return out.size() > limit ? List.copyOf(out.subList(0, limit)) : out;
+    }
+
+    /** One action a session took, with the id of the project it acted on, or null when it has none. */
+    public record Acted(ActionRecord action, @Nullable String projectId) {}
+
+    /**
+     * Every non-run action any session kept that started at or after {@code since} (epoch millis),
+     * oldest first within a session. A session keeps its last {@link #KEPT_ACTIONS} actions.
+     */
+    public List<Acted> actionsSince(long since) {
+        sweep();
+        SessionJournal stored = journal;
+        List<ActionRecord> found = new ArrayList<>();
+        if (stored != null) found.addAll(StoredSessions.actionsSince(stored, since));
+        else
+            synchronized (this) {
+                for (Live l : byId.values()) found.addAll(l.memory);
+            }
+        List<Acted> out = new ArrayList<>();
+        for (ActionRecord a : found) {
+            if (a.at() < since || ActionRecord.RUN.equals(a.kind())) continue;
+            out.add(new Acted(a, a.project() == null ? null : projectIds.idOf(a.project())));
+        }
+        return out;
     }
 
     /** One page of a session's timeline. */

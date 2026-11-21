@@ -358,6 +358,13 @@
         <span class="spacer"></span>
         <button type="button" class="new-project" @click="openNewProject()"><jk-icon name="plus"></jk-icon>New project</button>
       </div>
+      <!-- What jk saved across every project: GET /api/stats, the rows `jk stats` prints. -->
+      <section v-if="savingsAll" class="panel wide savings-panel">
+        <div class="panel-head"><span class="lbl">saved, every project</span><span class="spacer"></span><span class="mono dim">last {{ savingsDays }} days · <code>jk stats</code></span></div>
+        <div class="tiles">
+          <div v-for="t in savingsTiles(savingsAll)" :key="t.key" class="tile" :data-tip="t.tip"><span class="lbl">{{ t.label }}</span><span class="kpi">{{ t.value }}</span><span v-if="t.note" class="kpi-sm dim">{{ t.note }}</span></div>
+        </div>
+      </section>
       <p v-if="projectsList.length === 0" class="empty">
         No projects yet. <a href="#" @click.prevent="openNewProject()">Create one</a>, or run <code>jk build</code> in a workspace.
       </p>
@@ -496,6 +503,14 @@
                 :data-tip="fmtDateTime(projectDetail.lastFinishedAt) || undefined">{{ agoLong(projectDetail.lastFinishedAt) }}</span></div>
         </div>
       </template>
+
+      <!-- What jk saved on this project: its GET /api/stats row. -->
+      <section v-if="savingsProject" class="panel wide savings-panel">
+        <div class="panel-head"><span class="lbl">saved on this project</span><span class="spacer"></span><span class="mono dim">last {{ savingsDays }} days · <code>jk stats</code></span></div>
+        <div class="tiles">
+          <div v-for="t in savingsTiles(savingsProject)" :key="t.key" class="tile" :data-tip="t.tip"><span class="lbl">{{ t.label }}</span><span class="kpi">{{ t.value }}</span><span v-if="t.note" class="kpi-sm dim">{{ t.note }}</span></div>
+        </div>
+      </section>
 
       <!-- above build history; closed by default; fetch + echarts only when open. -->
       <section v-if="projectGraphOpen && projectDir()" class="panel wide dep-graph-panel">

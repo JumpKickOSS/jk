@@ -499,8 +499,10 @@ public final class EventCatalog {
                 EngineProtocol.HISTORY_DONE,
                 EngineProtocol.HISTORY_DELETED,
                 EngineProtocol.METRICS_ENTRY,
-                EngineProtocol.METRICS_DONE)) {
-            out.put(row, "a row of a history or metrics reply");
+                EngineProtocol.METRICS_DONE,
+                EngineProtocol.STATS,
+                EngineProtocol.STATS_DONE)) {
+            out.put(row, "a row of a history, metrics or stats reply");
         }
         for (String node : List.of(
                 EngineProtocol.NODE_LIST,

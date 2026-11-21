@@ -728,6 +728,18 @@ public final class EngineProtocol {
     /** Server → client: terminal for a metrics stream ({@code count} rows emitted). */
     public static final String METRICS_DONE = "metrics-done";
 
+    // ---- the savings ledger ({@code jk stats}) ---------------------------------------
+    // What the cache, the code graph and the guards saved over a period, added up from the journal.
+
+    /** Client → server: stream the savings rows for the runs and actions since {@code since}. */
+    public static final String STATS_REQUEST = "stats-request";
+
+    /** Server → client, repeated: one savings row, {@code scope} {@code all} first, then each project. */
+    public static final String STATS = "stats";
+
+    /** Server → client: terminal for a stats stream ({@code count} rows emitted). */
+    public static final String STATS_DONE = "stats-done";
+
     /** Frozen handshake version. Add fields freely; never rename/retype/remove. */
     public static final int PROTOCOL = 1;
 

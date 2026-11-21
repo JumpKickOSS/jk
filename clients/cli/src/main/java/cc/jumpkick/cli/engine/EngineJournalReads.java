@@ -8,6 +8,7 @@ import cc.jumpkick.wire.protocol.HistoryDeleteRequest;
 import cc.jumpkick.wire.protocol.HistoryListRequest;
 import cc.jumpkick.wire.protocol.HistoryShowRequest;
 import cc.jumpkick.wire.protocol.MetricsRequest;
+import cc.jumpkick.wire.protocol.StatsRequest;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -22,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Thin RPC over the engine's build journal and metrics store: flat JSONL reply lines collected up
  * to the terminal. The terminal rule is asymmetric on purpose — the stream stops <em>before</em>
- * {@code history-done} / {@code metrics-done} and <em>after</em> {@code history-deleted} or an
+ * {@code history-done} / {@code metrics-done} / {@code stats-done} and <em>after</em> {@code history-deleted} or an
  * {@code error}, so a caller always sees the line that carries the answer.
  */
 public final class EngineJournalReads {
@@ -57,6 +58,11 @@ public final class EngineJournalReads {
         return streamHistory(paths, new MetricsRequest(dir).encode());
     }
 
+    /** The savings rows ({@code stats} flat JSONL) for the runs and actions since {@code since}, overall first. */
+    public static List<String> stats(EnginePaths.Paths paths, long since) throws IOException {
+        return streamHistory(paths, new StatsRequest(since).encode());
+    }
+
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
     private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
         EngineWire.ensured(paths);
@@ -71,7 +77,9 @@ public final class EngineJournalReads {
             String line;
             while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.HISTORY_DONE.equals(type) || EngineProtocol.METRICS_DONE.equals(type)) break;
+                if (EngineProtocol.HISTORY_DONE.equals(type)
+                        || EngineProtocol.METRICS_DONE.equals(type)
+                        || EngineProtocol.STATS_DONE.equals(type)) break;
                 out.add(line);
                 if (EngineProtocol.HISTORY_DELETED.equals(type) || EngineProtocol.ERROR.equals(type)) break;
             }

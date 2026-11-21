@@ -2,6 +2,7 @@
 package cc.jumpkick.run;
 
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Canonical step-name constants (the {@code {phase}-{step}} step names (their place in the run hierarchy is {@code plan/phase/step}) used by {@link
@@ -98,6 +99,16 @@ public final class TaskNames {
 
     /** The fixture proof at the root: every fixture-bearing rule bites; {@code --guard} and {@code jk guard} only. */
     public static final String GUARD_FIXTURES = "guard-fixtures";
+
+    /** Whether {@code step} is one of the guard lanes, whose errors are house rules a run enforced. */
+    public static boolean isGuardLane(@Nullable String step) {
+        return GUARD.equals(step)
+                || GUARD_MODEL.equals(step)
+                || GUARD_WORKSPACE.equals(step)
+                || GUARD_TREE.equals(step)
+                || GUARD_OUTPUT.equals(step)
+                || GUARD_FIXTURES.equals(step);
+    }
 
     public static final String ENSURE_JDK = "ensure-jdk";
 

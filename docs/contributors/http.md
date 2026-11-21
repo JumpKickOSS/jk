@@ -934,6 +934,17 @@ arithmetic-free. `?dir=<path>` keeps that project's rows plus the always-include
 The tier names come from `BuildMetrics.SCOPE_*`; the socket `metrics-entry` frame carries the same
 `scope` values.
 
+### `GET /api/stats`
+
+The savings ledger: `{ rows: [...] }`, the row with `scope` `all` first, then one `project` row per
+project (`projectId`, its newest `dir` and `coord`), the one with the most saved first.
+`?since=<epoch ms>` opens the period (absent: every run the journal keeps); a value that is not a
+number is a **400**. Each row is `Savings.toMap()`: the run count, the cache's `savedMillis` and
+`estimatedUncachedMillis` with the `coveredSkips` / `estimatedSkips` behind them, `stepsSkipped`,
+`suitesSkipped`, `testClassesNotRerun`, `graphCalls`, `renames`, `edits`, `guardViolations` and
+`guardStops`. `SavingsLedger` adds them up from `BuildJournal.finishedSince` and
+`SessionLog.actionsSince`; the socket's `stats` rows (`jk stats -O jsonl`) carry the same fields.
+
 ### `GET /api/config`
 
 Effective machine `~/.jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,

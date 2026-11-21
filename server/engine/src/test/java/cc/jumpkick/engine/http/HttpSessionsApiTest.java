@@ -49,7 +49,8 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                     Fact.action(now[0] + i, 2, "/ws/app", Fact.Kind.GRAPH, true, "", 0),
                     "query",
                     "query \"where is the weekend uplift applied\"",
-                    "PricingRules.weekendUplift");
+                    "PricingRules.weekendUplift",
+                    0);
         }
     }
 
@@ -98,7 +99,8 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 Fact.action(now[0] + 10, 2, dir, Fact.Kind.GRAPH, true, "", 0),
                 "query",
                 summary,
-                "s3cret-in-a-question is read by Config.token");
+                "s3cret-in-a-question is read by Config.token",
+                0);
 
         String masked = EventRedaction.redactText(dir, summary);
         assertThat(masked).isEqualTo("query \"who reads " + SecretRedactor.MASK + "\"");
@@ -159,7 +161,8 @@ class HttpSessionsApiTest extends HttpEngineServerHarness {
                 Fact.action(now[0] + offset, 2, dir.toString(), Fact.Kind.GRAPH, true, "", 0),
                 "query",
                 "query \"rates\"",
-                "Rates.of");
+                "Rates.of",
+                0);
     }
 
     @Test
