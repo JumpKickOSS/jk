@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.DomXml;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
@@ -13,8 +14,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipFile;
 import org.jspecify.annotations.Nullable;
 
@@ -51,13 +50,16 @@ final class AndroidDeps {
             }
         }
 
-        /** The AAR's package/namespace, parsed from its manifest's {@code package} attribute. */
+        /**
+         * The AAR's package/namespace: its manifest root's {@code package} attribute, or null when
+         * there is no manifest or no such attribute. {@link DomXml} refuses a DOCTYPE, as for every
+         * downloaded resource.
+         */
         @Nullable
         String namespace() throws IOException {
             if (!Files.isRegularFile(manifest())) return null;
-            String xml = Files.readString(manifest());
-            Matcher m = Pattern.compile("package\\s*=\\s*\"([^\"]+)\"").matcher(xml);
-            return m.find() ? m.group(1) : null;
+            String pkg = DomXml.parse(manifest()).getDocumentElement().getAttribute("package");
+            return pkg.isEmpty() ? null : pkg;
         }
     }
 
@@ -97,9 +99,14 @@ final class AndroidDeps {
         return Files.exists(traditional) ? traditional : simple;
     }
 
-    /** AAR native libs: {@code jni/<abi>/*.so} → APK {@code lib/<abi>/*.so} keys. */
+    /**
+     * The native libs under APK {@code lib/<abi>/*.so} keys: the module's own {@code jniLibs/<abi>/}
+     * first, then each AAR's {@code jni/<abi>/} in classpath order, the first writer winning as for
+     * {@link #mergedAssets}.
+     */
     static Map<String, Path> nativeLibs(PackageIo io) throws IOException {
         Map<String, Path> out = new LinkedHashMap<>();
+        collectTree(androidFile(io.moduleDir(), "jniLibs"), out);
         for (Aar aar : aars(io.runtimeEntries())) {
             collectTree(aar.container().resolve("jni"), out);
         }
@@ -137,6 +144,26 @@ final class AndroidDeps {
             throw new IOException("cannot mark " + out + " executable");
         }
         return out;
+    }
+
+    /**
+     * The merged manifest the packager leaves beside {@code artifact} for {@code deploy}, which
+     * has no step outputs to read: {@code <artifact file name>.AndroidManifest.xml}, so a debug
+     * APK's and a release AAB's never share a path.
+     */
+    static Path mergedManifest(Path artifact) {
+        return artifact.resolveSibling(artifact.getFileName() + ".AndroidManifest.xml");
+    }
+
+    /** Copy {@code android-manifest}'s merged manifest to {@link #mergedManifest}, cached with the artifact. */
+    static void publishMergedManifest(PackageIo io) throws IOException {
+        Path merged = io.stepOutput("android-manifest")
+                .map(dir -> dir.resolve("merged").resolve("AndroidManifest.xml"))
+                .filter(Files::isRegularFile)
+                .orElseThrow(() -> new IllegalStateException("android-manifest produced no merged manifest"));
+        Path out = mergedManifest(io.artifactPath());
+        Files.copy(merged, out, StandardCopyOption.REPLACE_EXISTING);
+        io.produced(out);
     }
 
     /**

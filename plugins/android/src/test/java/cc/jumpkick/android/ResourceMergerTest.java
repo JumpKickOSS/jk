@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.w3c.dom.Element;
 
 /**
  * The AAR resource merge — the half of {@link ResourceMerger} that runs on a healthy build.
@@ -166,6 +167,59 @@ class ResourceMergerTest {
     }
 
     /**
+     * A generated prefix such as {@code ns1} means whatever each library's merger bound it to. Two
+     * dependencies binding it to different URIs must each keep their own URI in the merged file,
+     * and a URI two of them share needs one declaration.
+     */
+    @Test
+    void a_prefix_two_dependencies_bind_to_different_uris_keeps_each_uri(@TempDir Path tmp) throws Exception {
+        Path first = aar(tmp, "first");
+        Path second = aar(tmp, "second");
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), """
+                <resources xmlns:ns1="http://schemas.android.com/tools">
+                    <string name="a" ns1:ignore="MissingTranslation">A</string>
+                </resources>
+                """);
+        FakeBuildIo.write(second.resolve("res/values/strings.xml"), """
+                <resources xmlns:ns1="urn:oasis:names:tc:xliff:document:1.2" xmlns:t="http://schemas.android.com/tools">
+                    <string name="b"><ns1:g id="count" t:ignore="x">%d</ns1:g> items</string>
+                </resources>
+                """);
+
+        Path out = merge(tmp, first, second);
+
+        Element root = DomXml.parse(out.resolve("values/values.xml")).getDocumentElement();
+        Element a = string(root, "a");
+        Element g = DomXml.childElements(string(root, "b")).getFirst();
+        assertThat(uri(root, prefixedAttribute(a))).isEqualTo(TOOLS);
+        assertThat(uri(root, g.getTagName())).isEqualTo("urn:oasis:names:tc:xliff:document:1.2");
+        assertThat(prefixedAttribute(g))
+                .as("the tools URI the second file spelled t: is the one the first declared")
+                .isEqualTo(prefixedAttribute(a));
+        assertThat(root.getAttributes().getLength())
+                .as("one declaration per URI")
+                .isEqualTo(2);
+    }
+
+    /**
+     * The whitespace inside a value is part of it: a string with markup must come out with no
+     * line breaks or indent the merge added around its children.
+     */
+    @Test
+    void a_strings_whitespace_comes_out_as_it_went_in(@TempDir Path tmp) throws Exception {
+        Path first = aar(tmp, "first");
+        String body = "Hello <b>world</b>, <i>you</i>";
+        FakeBuildIo.write(first.resolve("res/values/strings.xml"), resources("""
+                <string name="greeting">%s</string>
+                """.formatted(body)));
+
+        Path out = merge(tmp, first);
+
+        assertThat(out.resolve("values/values.xml")).content().contains(">" + body + "</string>");
+    }
+
+    /**
+     * No dependency carries resources, so there is nothing to link against    /**
      * No dependency carries resources, so there is nothing to link against and the caller must be
      * told — {@code ResourceStep} passes no dep input to aapt2 at all in that case.
      */
@@ -256,6 +310,30 @@ class ResourceMergerTest {
                     .sorted()
                     .toList();
         }
+    }
+
+    private static final String TOOLS = "http://schemas.android.com/tools";
+
+    /** The child of {@code root} named {@code name}. */
+    private static Element string(Element root, String name) {
+        return DomXml.childElements(root).stream()
+                .filter(el -> name.equals(el.getAttribute("name")))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    /** The URI {@code root} binds {@code qname}'s prefix to. */
+    private static String uri(Element root, String qname) {
+        return root.getAttribute("xmlns:" + qname.substring(0, qname.indexOf(':')));
+    }
+
+    /** The name of {@code el}'s one prefixed attribute. */
+    private static String prefixedAttribute(Element el) {
+        var attrs = el.getAttributes();
+        for (int a = 0; a < attrs.getLength(); a++) {
+            if (attrs.item(a).getNodeName().contains(":")) return attrs.item(a).getNodeName();
+        }
+        throw new AssertionError("no prefixed attribute on " + el.getTagName());
     }
 
     /** The {@code name="…"} attributes of a merged values document, in document order. */

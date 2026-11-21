@@ -16,9 +16,11 @@ import java.nio.file.attribute.FileAttribute;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyStore;
 import java.security.PrivateKey;
+import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Android signing: debug ({@link DebugKeystore}, v1+v2) or release from {@code
@@ -99,11 +101,7 @@ final class Signing {
         if (key == null) {
             throw new IllegalStateException("no key `" + alias + "` in " + storeFile.getFileName());
         }
-        List<X509Certificate> certs = new ArrayList<>();
-        for (var cert : ks.getCertificateChain(alias)) {
-            certs.add((X509Certificate) cert);
-        }
-        return new Identity(key, certs, alias, true);
+        return new Identity(key, certificates(ks.getCertificateChain(alias), alias, storeFile), alias, true);
     }
 
     /** The stable debug identity — generated on first use, then reused for every later build. */
@@ -114,11 +112,27 @@ final class Signing {
             ks.load(in, DebugKeystore.PASSWORD.toCharArray());
         }
         PrivateKey key = (PrivateKey) ks.getKey(DebugKeystore.ALIAS, DebugKeystore.PASSWORD.toCharArray());
+        return new Identity(
+                key,
+                certificates(ks.getCertificateChain(DebugKeystore.ALIAS), DebugKeystore.ALIAS, keystore),
+                DebugKeystore.ALIAS,
+                false);
+    }
+
+    /**
+     * {@code chain}, the certificates {@link KeyStore#getCertificateChain} stored with {@code
+     * alias}'s key, as a signer takes them. A PKCS12 store can hold a key with no certificate
+     * ({@code chain} null), and a signer needs one, so that store is refused by name.
+     */
+    static List<X509Certificate> certificates(Certificate @Nullable [] chain, String alias, Path store) {
+        if (chain == null || chain.length == 0) {
+            throw new IllegalStateException("key `" + alias + "` in " + store.getFileName() + " has no certificate");
+        }
         List<X509Certificate> certs = new ArrayList<>();
-        for (var cert : ks.getCertificateChain(DebugKeystore.ALIAS)) {
+        for (Certificate cert : chain) {
             certs.add((X509Certificate) cert);
         }
-        return new Identity(key, certs, DebugKeystore.ALIAS, false);
+        return certs;
     }
 
     /** The debug keystore file itself (jarsigner and bundletool's build-apks want the file). */

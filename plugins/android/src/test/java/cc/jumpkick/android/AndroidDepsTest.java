@@ -100,6 +100,23 @@ class AndroidDepsTest {
         assertThat(new AndroidDeps.Aar("bare.aar", without).namespace()).isNull();
     }
 
+    /**
+     * The package is the manifest root's attribute as XML reads it: single-quoted, and not a
+     * commented-out {@code package="…"} that comes first in the file.
+     */
+    @Test
+    void an_aars_namespace_is_the_manifest_roots_attribute_however_it_is_quoted(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        Path aar = io.container("widgets.aar");
+        FakeBuildIo.write(aar.resolve("AndroidManifest.xml"), """
+                <!-- moved from package="com.example.old" -->
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+                    package='com.example.widgets' />
+                """);
+
+        assertThat(new AndroidDeps.Aar("widgets.aar", aar).namespace()).isEqualTo("com.example.widgets");
+    }
+
     /** An empty {@code res/} is not resources; the merge must not add it as a link input. */
     @Test
     void an_empty_or_absent_res_directory_is_not_resources(@TempDir Path tmp) throws Exception {
@@ -151,6 +168,23 @@ class AndroidDepsTest {
         Map<String, Path> libs = AndroidDeps.nativeLibs(io);
 
         assertThat(Files.readString(libs.get("arm64-v8a/dup.so"))).isEqualTo("ELF-first");
+    }
+
+    /**
+     * The module's own {@code jniLibs/<abi>/} ships in the APK, in either layout, and beats an AAR
+     * shipping a library at the same path, as the module's assets do.
+     */
+    @Test
+    void the_modules_own_jni_libs_ship_and_beat_an_aars(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = AndroidIo.packager(tmp, "app.apk");
+        FakeBuildIo.write(io.moduleDir().resolve("src/main/jniLibs/arm64-v8a/dup.so"), "ELF-module");
+        FakeBuildIo.write(io.moduleDir().resolve("src/main/jniLibs/x86_64/libown.so"), "ELF-own");
+        FakeBuildIo.write(io.container("first.aar").resolve("jni/arm64-v8a/dup.so"), "ELF-first");
+
+        Map<String, Path> libs = AndroidDeps.nativeLibs(io);
+
+        assertThat(libs).containsOnlyKeys("arm64-v8a/dup.so", "x86_64/libown.so");
+        assertThat(Files.readString(libs.get("arm64-v8a/dup.so"))).isEqualTo("ELF-module");
     }
 
     /**

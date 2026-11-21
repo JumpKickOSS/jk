@@ -98,6 +98,20 @@ class SigningTest {
     }
 
     /**
+     * A PKCS12 store can hold a key with no certificate. JCA reads its chain as null, and a signer
+     * cannot sign without one, so the key and the file are named.
+     */
+    @Test
+    @SuppressWarnings("NullAway") // deliberate: null is what JCA returns for a key with no chain
+    void a_key_with_no_certificate_is_refused_by_name() {
+        assertThatThrownBy(() -> Signing.certificates(null, "upload", Path.of("release.p12")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("upload")
+                .hasMessageContaining("release.p12")
+                .hasMessageContaining("no certificate");
+    }
+
+    /**
      * A keystore in the older JKS format opens and yields its alias — the case a team migrating an
      * existing Gradle release key hits first.
      *

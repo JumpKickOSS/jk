@@ -51,6 +51,7 @@ final class ApkPackager {
         } finally {
             PathUtil.deleteRecursively(work);
         }
+        AndroidDeps.publishMergedManifest(io);
         AndroidDeps.copyRetraceArtifacts(io);
     }
 

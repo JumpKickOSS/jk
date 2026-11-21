@@ -51,6 +51,17 @@ class AarPackagerTest {
         assertThat(text(io.artifactPath(), "R.txt")).contains("int string app_name");
     }
 
+    /** A library's own {@code jniLibs/<abi>/} ships as the AAR's {@code jni/<abi>/}, where an app reads it. */
+    @Test
+    void the_librarys_jni_libs_ship_under_jni(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = library(tmp);
+        FakeBuildIo.write(io.moduleDir().resolve("jniLibs/arm64-v8a/libnative.so"), "ELF");
+
+        AarPackager.produce(io);
+
+        assertThat(entries(io.artifactPath())).containsKey("jni/arm64-v8a/libnative.so");
+    }
+
     /**
      * Resource entries are {@code /}-separated whatever the host separator is, and the qualifier
      * directory is part of the entry name — flatten it and every non-default configuration

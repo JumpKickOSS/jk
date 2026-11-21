@@ -366,6 +366,14 @@ Start from the `android/compose` template (`jk new my-app -t android/compose`) â
 Compose app with a JVM unit test and the `jk run` deploy path; see
 [Templates](templates.md).
 
+The APK (or the release AAB) carries the module's `assets/` and native libraries from
+`jniLibs/<abi>/` (either at the module root or under `src/main/`), then those of each AAR
+dependency; the module's own file wins a path two of them share. A library module's AAR ships its
+`jniLibs/` as `jni/`. Beside the artifact the packager writes the merged manifest
+(`target/<artifact>.AndroidManifest.xml`, such as `app-1.0.0.apk.AndroidManifest.xml`), and
+`jk run` launches the first enabled `<activity>` or `<activity-alias>` in it with a MAIN action and
+LAUNCHER category in one intent filter.
+
 JVM unit tests run under Robolectric when it is on the test classpath: `android-test-config`
 writes its `test_config.properties`, naming a unit-test manifest and a unit-test resource package.
 That manifest is the module's own merged as an application with every AAR on the test runtime

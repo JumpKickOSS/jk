@@ -2469,6 +2469,10 @@ unit   = "clients/cli/src/main/java/cc/jumpkick/command/toolchain/JdkInstallWiza
 value  = 1
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
 [[single-truth-set.entries]]
+unit   = "plugins/android/src/main/java/cc/jumpkick/android/DeployCommand.java"
+value  = 1
+reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"
+[[single-truth-set.entries]]
 unit   = "plugins/quarkus/src/main/java/cc/jumpkick/quarkus/LockedClosure.java"
 value  = 1
 reason = "readers of foreign formats (POM, giter8, JDK catalog, plugin manifests) compare against the format's own truth words; ratchet down, never exempt"

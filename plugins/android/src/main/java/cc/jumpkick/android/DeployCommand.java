@@ -11,7 +11,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.zip.ZipFile;
 import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
 
 /**
  * {@code deploy} — {@code adb install -r} the built APK and {@code am start} its launcher.
@@ -30,7 +29,7 @@ final class DeployCommand {
         }
         Path adb = adbPath(exec);
         String namespace = exec.config().string("namespace");
-        String activity = launcherActivity(AndroidDeps.androidFile(exec.moduleDir(), "AndroidManifest.xml"), namespace);
+        String activity = launcherActivity(AndroidDeps.mergedManifest(artifact), namespace);
         // A release AAB deploys locally through bundletool: build-apks --mode universal against
         // the debug identity (local testing — Play signs the real install artifacts), then the
         // extracted universal.apk installs like any APK. The directory it is built in lives
@@ -128,29 +127,47 @@ final class DeployCommand {
     }
 
     /**
-     * The MAIN/LAUNCHER activity from the module's manifest, as {@code am start} wants it —
-     * relative names ({@code .MainActivity}) resolve against the app id.
+     * The first enabled {@code <activity>} or {@code <activity-alias>} of the merged manifest with
+     * a MAIN/LAUNCHER intent filter, as {@code am start} wants it: a relative name
+     * ({@code .MainActivity}, {@code MainActivity}) resolves against the app id.
      */
     static String launcherActivity(Path manifest, String namespace) throws Exception {
         if (!Files.isRegularFile(manifest)) {
-            throw new IllegalStateException("no AndroidManifest.xml at " + manifest);
+            throw new IllegalStateException("no merged manifest at " + manifest + "; run jk build first");
         }
-        NodeList activities = DomXml.parse(manifest).getElementsByTagName("activity");
-        for (int i = 0; i < activities.getLength(); i++) {
-            Element activity = (Element) activities.item(i);
-            NodeList actions = activity.getElementsByTagName("action");
-            boolean main = false;
-            for (int j = 0; j < actions.getLength(); j++) {
-                if ("android.intent.action.MAIN".equals(((Element) actions.item(j)).getAttribute("android:name"))) {
-                    main = true;
-                }
-            }
-            if (!main) continue;
-            String name = activity.getAttribute("android:name");
-            if (name.startsWith(".")) return namespace + name;
-            return name;
+        Element application = DomXml.childElement(DomXml.parse(manifest).getDocumentElement(), "application");
+        for (Element component : DomXml.childElements(application)) {
+            String tag = component.getTagName();
+            if (!tag.equals("activity") && !tag.equals("activity-alias")) continue;
+            if ("false".equals(component.getAttribute("android:enabled"))) continue;
+            if (launches(component)) return className(component.getAttribute("android:name"), namespace);
         }
         throw new IllegalStateException(
                 "no MAIN/LAUNCHER activity in " + manifest + "; declare one so the app can launch");
+    }
+
+    /** Whether one of {@code component}'s intent filters has both the MAIN action and the LAUNCHER category. */
+    private static boolean launches(Element component) {
+        for (Element filter : DomXml.childElements(component, "intent-filter")) {
+            if (names(filter, "action", "android.intent.action.MAIN")
+                    && names(filter, "category", "android.intent.category.LAUNCHER")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean names(Element filter, String tag, String name) {
+        for (Element el : DomXml.childElements(filter, tag)) {
+            if (name.equals(el.getAttribute("android:name"))) return true;
+        }
+        return false;
+    }
+
+    /** A manifest class name as a full one: Android reads a name with no dot, or a leading one, as relative. */
+    private static String className(String name, String namespace) {
+        if (name.startsWith(".")) return namespace + name;
+        if (name.indexOf('.') < 0) return namespace + "." + name;
+        return name;
     }
 }

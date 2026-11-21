@@ -171,6 +171,25 @@ class AabPackagerTest {
         assertThat(result.isVerifiedUsingV3Scheme()).isFalse();
     }
 
+    /**
+     * A bundle jarsigner refuses never reaches the artifact path: the last good artifact stays,
+     * rather than an unsigned bundle that looks like a successful build's output.
+     */
+    @Test
+    void a_failed_sign_leaves_the_artifact_path_as_it_was(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = release(tmp)
+                .config("signing.store-file", tmp.resolve("nowhere.jks").toString())
+                .config("signing.key-alias", "upload");
+        Path unsigned = FakeBuildIo.write(tmp.resolve("unsigned.aab"), "unsigned bundle");
+        FakeBuildIo.write(io.artifactPath(), "last good bundle");
+
+        assertThatThrownBy(() -> AabPackager.signBundle(io, unsigned, io.artifactPath()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("jarsigner failed");
+
+        assertThat(io.artifactPath()).hasContent("last good bundle");
+    }
+
     /** An empty dex directory would assemble a bundle with no code in it. */
     @Test
     void a_dex_directory_with_no_dex_files_in_it_is_refused(@TempDir Path tmp) throws Exception {

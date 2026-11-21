@@ -64,10 +64,7 @@ final class R8Step {
         }
         // Retrace outputs ride a generated fragment (they are -print* directives, not flags).
         Path outputs = exec.scratch().resolve("output-rules.pro");
-        Files.writeString(
-                outputs,
-                "-printseeds " + mappingOut.resolve("seeds.txt").toAbsolutePath() + "\n" + "-printusage "
-                        + mappingOut.resolve("usage.txt").toAbsolutePath() + "\n");
+        Files.writeString(outputs, retraceRules(mappingOut));
         rules.add(outputs);
 
         exec.label("R8 (" + classFiles.size() + " classes + " + runtimeJars.size() + " jars)");
@@ -92,5 +89,15 @@ final class R8Step {
         if (result.exit() != 0) {
             throw new IllegalStateException("R8 failed:\n" + result.output());
         }
+    }
+
+    /**
+     * The {@code -printseeds} and {@code -printusage} rules writing into {@code mappingOut}. The
+     * paths are quoted: the rules parser ends a file name at whitespace, and a checkout or home
+     * directory may have a space in it.
+     */
+    static String retraceRules(Path mappingOut) {
+        return "-printseeds \"" + mappingOut.resolve("seeds.txt").toAbsolutePath() + "\"\n" + "-printusage \""
+                + mappingOut.resolve("usage.txt").toAbsolutePath() + "\"\n";
     }
 }

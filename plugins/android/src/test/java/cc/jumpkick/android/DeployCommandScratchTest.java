@@ -39,12 +39,15 @@ class DeployCommandScratchTest {
             zip.putNextEntry(new ZipEntry("README"));
             zip.closeEntry();
         }
-        Files.writeString(tmp.resolve("AndroidManifest.xml"), """
+        Files.writeString(AndroidDeps.mergedManifest(aab), """
                 <?xml version="1.0" encoding="utf-8"?>
                 <manifest package="com.example.app">
                   <application>
                     <activity android:name=".MainActivity">
-                      <intent-filter><action android:name="android.intent.action.MAIN"/></intent-filter>
+                      <intent-filter>
+                        <action android:name="android.intent.action.MAIN"/>
+                        <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
                     </activity>
                   </application>
                 </manifest>

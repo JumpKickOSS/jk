@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
@@ -9,7 +10,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.zip.ZipEntry;
@@ -63,6 +63,7 @@ final class AabPackager {
         } finally {
             PathUtil.deleteRecursively(work);
         }
+        AndroidDeps.publishMergedManifest(io);
         AndroidDeps.copyRetraceArtifacts(io);
     }
 
@@ -115,8 +116,9 @@ final class AabPackager {
 
     /**
      * jarsigner over the bundle: the release identity when configured, else the debug keystore.
-     * Package-private, like {@link #assembleBase}, so the debug arm can run end to end in a test
-     * without a bundletool fork.
+     * {@code unsigned} is signed in place and reaches {@code out} only once jarsigner succeeds, so a
+     * failed sign leaves no unsigned bundle at the artifact path. Package-private, like {@link
+     * #assembleBase}, so the debug arm can run end to end in a test without a bundletool fork.
      */
     static void signBundle(PackageIo io, Path unsigned, Path out) throws Exception {
         Path keystore;
@@ -134,13 +136,12 @@ final class AabPackager {
             storePass = DebugKeystore.PASSWORD;
             keyPass = DebugKeystore.PASSWORD;
         }
-        Files.copy(unsigned, out, StandardCopyOption.REPLACE_EXISTING);
         // The release password reaches jarsigner on a 0600 file, not on argv — see
         // Signing.passwordFile. Both files are gone before this method returns.
         try (Signing.PasswordFile store = Signing.passwordFile(storePass);
                 Signing.PasswordFile key = Signing.passwordFile(keyPass)) {
             TaskExec.ToolRun.Result signed = io.tool("jarsigner")
-                    .args(jarsignerArgs(keystore, store, key, out, alias))
+                    .args(jarsignerArgs(keystore, store, key, unsigned, alias))
                     .run();
             if (signed.exit() != 0) {
                 // jarsigner's stdout/stderr alone: the command line names two temp paths and
@@ -148,6 +149,7 @@ final class AabPackager {
                 throw new IllegalStateException("jarsigner failed:\n" + signed.output());
             }
         }
+        AtomicWrites.copy(unsigned, out);
     }
 
     /**
@@ -156,7 +158,7 @@ final class AabPackager {
      * is <em>not</em> in it.
      */
     static List<String> jarsignerArgs(
-            Path keystore, Signing.PasswordFile store, Signing.PasswordFile key, Path out, String alias) {
+            Path keystore, Signing.PasswordFile store, Signing.PasswordFile key, Path jar, String alias) {
         return List.of(
                 "-keystore",
                 keystore.toAbsolutePath().toString(),
@@ -164,7 +166,7 @@ final class AabPackager {
                 store.arg(),
                 "-keypass:file",
                 key.arg(),
-                out.toAbsolutePath().toString(),
+                jar.toAbsolutePath().toString(),
                 alias);
     }
 }

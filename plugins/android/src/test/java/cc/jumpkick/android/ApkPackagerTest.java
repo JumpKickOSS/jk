@@ -92,6 +92,21 @@ class ApkPackagerTest {
                 .containsEntry("assets/config.json", ZipEntry.DEFLATED);
     }
 
+    /**
+     * {@code deploy} reads the launcher activity off the merged manifest and has no step outputs,
+     * so the packager leaves that manifest beside the artifact, cached and restored with it.
+     */
+    @Test
+    void the_merged_manifest_is_left_beside_the_apk(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = app(tmp);
+
+        ApkPackager.produce(io);
+
+        Path manifest = AndroidDeps.mergedManifest(io.artifactPath());
+        assertThat(manifest).hasContent("<manifest package=\"com.example.app\"/>");
+        assertThat(io.produced()).contains(manifest);
+    }
+
     /** AGP's precedence: the module's own assets win a path conflict with a dependency's. */
     @Test
     void the_modules_own_asset_beats_a_dependencys_at_the_same_path(@TempDir Path tmp) throws Exception {
@@ -226,6 +241,9 @@ class ApkPackagerTest {
     @Test
     void a_build_with_no_dex_output_at_all_is_refused(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = AndroidIo.packager(tmp, "app-1.0.0.apk");
+        FakeBuildIo.write(
+                io.step("android-manifest").resolve("merged/AndroidManifest.xml"),
+                "<manifest package=\"com.example.app\"/>");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
 
         assertThatThrownBy(() -> ApkPackager.produce(io))
@@ -247,6 +265,9 @@ class ApkPackagerTest {
     @Test
     void a_dex_directory_with_no_dex_files_in_it_is_refused(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = AndroidIo.packager(tmp, "app-1.0.0.apk");
+        FakeBuildIo.write(
+                io.step("android-manifest").resolve("merged/AndroidManifest.xml"),
+                "<manifest package=\"com.example.app\"/>");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
         Files.createDirectories(io.step("android-dex").resolve("dex"));
 
@@ -279,6 +300,9 @@ class ApkPackagerTest {
     /** The app after the resource and dex steps, with no signing config yet — the debug-arm shape. */
     private static FakeBuildIo builtApp(Path root) throws Exception {
         FakeBuildIo io = AndroidIo.packager(Files.createDirectories(root), "app-1.0.0.apk");
+        FakeBuildIo.write(
+                io.step("android-manifest").resolve("merged/AndroidManifest.xml"),
+                "<manifest package=\"com.example.app\"/>");
         resourcePackage(io.step("android-res").resolve("packaged/resources.ap_"));
         FakeBuildIo.write(io.step("android-dex").resolve("dex/classes.dex"), "dex-one");
         FakeBuildIo.write(io.step("android-dex").resolve("dex/classes2.dex"), "dex-two");

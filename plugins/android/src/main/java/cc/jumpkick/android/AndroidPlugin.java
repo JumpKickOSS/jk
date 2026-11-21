@@ -91,7 +91,13 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
             // A library packages an AAR (classes.jar without R classes + raw res + merged
             // manifest + R.txt) and is never dexed or deployed — consumers dex it.
             ctx.packaging(PackagerSpec.replacingMainArtifact("aar")
-                    .inputs(In.classes(), In.stepOutput("android-res"), In.stepOutput("android-manifest"), In.config())
+                    .inputs(
+                            In.classes(),
+                            In.stepOutput("android-res"),
+                            In.stepOutput("android-manifest"),
+                            In.projectFiles("jniLibs"),
+                            In.projectFiles("src/main/jniLibs"),
+                            In.config())
                     .produce(AarPackager::produce));
         } else {
             String dexStep;
@@ -121,31 +127,28 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
             // The signing identity is part of the artifact, so the keystore is a declared input
             // like any other file: rotating a key at the same path re-signs instead of restoring
             // an artifact that still carries the old signature. An AAR is never signed.
-            if (release) {
-                // The release artifact is the Play-uploadable AAB ([[packaging.variant]] picks
-                // the extension); bundletool assembles from the proto-format link.
-                ctx.packaging(PackagerSpec.replacingMainArtifact("aab")
-                        .inputs(
-                                In.stepOutput("android-res"),
-                                In.stepOutput(dexStep),
-                                In.runtimeEntries(),
-                                In.projectFiles("assets"),
-                                In.projectFiles("src/main/assets"),
-                                Signing.keystoreInput(ctx.config()),
-                                In.config())
-                        .produce(AabPackager::produce));
-            } else {
-                ctx.packaging(PackagerSpec.replacingMainArtifact("apk")
-                        .inputs(
-                                In.stepOutput("android-res"),
-                                In.stepOutput(dexStep),
-                                In.runtimeEntries(),
-                                In.projectFiles("assets"),
-                                In.projectFiles("src/main/assets"),
-                                Signing.keystoreInput(ctx.config()),
-                                In.config())
-                        .produce(ApkPackager::produce));
-            }
+            // The release artifact is the Play-uploadable AAB ([[packaging.variant]] picks the
+            // extension); bundletool assembles it from the proto-format link.
+            In[] inputs = {
+                In.stepOutput("android-manifest"),
+                In.stepOutput("android-res"),
+                In.stepOutput(dexStep),
+                In.runtimeEntries(),
+                In.projectFiles("assets"),
+                In.projectFiles("src/main/assets"),
+                In.projectFiles("jniLibs"),
+                In.projectFiles("src/main/jniLibs"),
+                Signing.keystoreInput(ctx.config()),
+                In.config()
+            };
+            ctx.packaging(
+                    release
+                            ? PackagerSpec.replacingMainArtifact("aab")
+                                    .inputs(inputs)
+                                    .produce(AabPackager::produce)
+                            : PackagerSpec.replacingMainArtifact("apk")
+                                    .inputs(inputs)
+                                    .produce(ApkPackager::produce));
             ctx.command(PluginCommandSpec.named("deploy")
                     .description("Install the built APK/AAB on a device and launch it")
                     .run(DeployCommand::run));

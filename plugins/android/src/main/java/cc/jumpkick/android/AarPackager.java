@@ -53,6 +53,11 @@ final class AarPackager {
                     }
                 }
             }
+            // The module's native libs ship as the AAR's jni/<abi>/, where a consuming app reads them.
+            Path jniLibs = AndroidDeps.androidFile(io.moduleDir(), "jniLibs");
+            for (Path file : ResourceStep.filesUnder(jniLibs, "")) {
+                ZIP.writeEntry(zip, "jni/" + jniLibs.relativize(file).toString().replace('\\', '/'), file);
+            }
         }
     }
 
