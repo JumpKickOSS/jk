@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.terminal.Ansi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;

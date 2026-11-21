@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.JkDarkTheme;
+import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Style;

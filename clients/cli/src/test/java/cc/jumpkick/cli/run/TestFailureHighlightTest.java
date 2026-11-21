@@ -5,9 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Coords;
 import cc.jumpkick.cli.tui.RenderContext;
+import cc.jumpkick.cli.tui.SyntaxHighlight;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Size;
 import cc.jumpkick.terminal.Width;
@@ -525,28 +526,6 @@ class TestFailureHighlightTest {
                 .get(2);
         assertThat(warning).contains("48;2;84;67;15").doesNotContain("48;2;84;27;46");
         assertThat(error).contains("48;2;84;27;46").doesNotContain("48;2;84;67;15");
-    }
-
-    @Test
-    void shortDisplayLabel_strips_package_fqcns() {
-        assertThat(TestFailureHighlight.shortDisplayLabel("cc.jumpkick.runtime.FooTest.freshen(java.nio.file.Path)"))
-                .isEqualTo("FooTest.freshen(Path)");
-        assertThat(TestFailureHighlight.shortDisplayLabel("FooTest.bar(java.lang.String, java.util.List)"))
-                .isEqualTo("FooTest.bar(String, List)");
-        assertThat(TestFailureHighlight.shortDisplayLabel("org.opentest4j.AssertionFailedError"))
-                .isEqualTo("AssertionFailedError");
-        assertThat(TestFailureHighlight.shortDisplayLabel("FooTest.bar(Path)  [w2]"))
-                .isEqualTo("FooTest.bar(Path)  [w2]");
-        assertThat(TestFailureHighlight.shortDisplayLabel("bar(java.nio.file.Path)"))
-                .isEqualTo("bar(Path)");
-        assertThat(TestFailureHighlight.shortDisplayLabel("foo(java.lang.String)[#2]"))
-                .isEqualTo("foo(String)[#2]");
-        // Prose / versions / jars must not be mangled.
-        assertThat(TestFailureHighlight.shortDisplayLabel("package jk-engine-0.12.0.jar"))
-                .isEqualTo("package jk-engine-0.12.0.jar");
-        assertThat(TestFailureHighlight.shortDisplayLabel("compiling 12 sources"))
-                .isEqualTo("compiling 12 sources");
-        assertThat(TestFailureHighlight.shortDisplayLabel("1.2.3")).isEqualTo("1.2.3");
     }
 
     @Test

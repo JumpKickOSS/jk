@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.ShelfManifest;
 import cc.jumpkick.cli.testing.NoAnsi;
-import cc.jumpkick.cli.theme.Coords;
+import cc.jumpkick.cli.tui.Coords;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.InstallDestination;

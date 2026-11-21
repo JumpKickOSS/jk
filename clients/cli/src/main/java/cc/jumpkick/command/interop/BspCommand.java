@@ -2,13 +2,13 @@
 package cc.jumpkick.command.interop;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
-import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.bsp.BspServer;
 import cc.jumpkick.cli.ide.IdeEngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.command.EnsureFreshLock;
+import cc.jumpkick.command.ProjectContext;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.ide.BspConnectionFile;
 import cc.jumpkick.lock.ManifestPaths;

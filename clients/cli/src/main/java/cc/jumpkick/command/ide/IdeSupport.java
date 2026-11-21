@@ -3,7 +3,6 @@ package cc.jumpkick.command.ide;
 
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.ActiveJobs;
@@ -11,6 +10,7 @@ import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.command.EnsureFreshLock;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.ide.IdeException;
 import cc.jumpkick.ide.IdeModel;

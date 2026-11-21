@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.run;
+package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.run.SyntaxHighlight.Role;
-import cc.jumpkick.cli.run.SyntaxHighlight.Rule;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.SyntaxHighlight.Role;
+import cc.jumpkick.cli.tui.SyntaxHighlight.Rule;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

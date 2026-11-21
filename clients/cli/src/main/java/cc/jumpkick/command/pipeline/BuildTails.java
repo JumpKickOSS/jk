@@ -6,6 +6,7 @@ import cc.jumpkick.cli.engine.RunSuspensions;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Coord;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.host.time.Clock;
@@ -39,7 +40,7 @@ final class BuildTails {
     /**
      * A finished unit's live-tail line: {@code ✓ [01 of 16] group:artifact took 16ms}. No leading
      * indent (it is complete, not active); the numerator is zero-padded to the denominator's width;
-     * the duration is normalized like every other jk duration ({@link ConsoleSpec#took}). Colors:
+     * the duration is normalized like every other jk duration ({@link DurationText#took}). Colors:
      * green check, bright-black brackets around a plain {@code NN of MM} count, the
      * {@code group:artifact} in green with strikethrough (done, web success color), and the
      * bright-black italic {@code took …} suffix. A failed unit keeps the red cross and
@@ -67,7 +68,7 @@ final class BuildTails {
             // Green + strike matches web success modules (was plain white strike).
             sb.append(Theme.colorize(coord, th.success().crossedOut()))
                     .append(' ')
-                    .append(ConsoleSpec.took(Duration.ofMillis(millis)));
+                    .append(DurationText.took(Duration.ofMillis(millis)));
         } else if (stopped) {
             sb.append(JkManager.coloredModule(coord)).append(' ').append(Theme.colorize("— stopped", th.midGray()));
         } else {
@@ -86,7 +87,7 @@ final class BuildTails {
      * naming the time the engine was suspended when it was ({@link RunSuspensions}).
      */
     static @Nullable String elapsedSince(long startNanos) {
-        return ConsoleSpec.took(Duration.ofMillis(elapsedMsSince(startNanos)), RunSuspensions.wallMs());
+        return DurationText.took(Duration.ofMillis(elapsedMsSince(startNanos)), RunSuspensions.wallMs());
     }
 
     /**

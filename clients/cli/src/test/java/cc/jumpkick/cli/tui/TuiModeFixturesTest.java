@@ -4,7 +4,6 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
@@ -125,7 +124,7 @@ class TuiModeFixturesTest {
     @Test
     void format_settle_plain_shape_matches_wedge_and_took() throws Exception {
         NoAnsi.withConfig(noAnsiConfig(), () -> {
-            String took = ConsoleSpec.took(Duration.ofMillis(547));
+            String took = DurationText.took(Duration.ofMillis(547));
             String settle = CommandWedge.ok("Format", "Already formatted " + took, NerdFontCaps.NONE);
             assertThat(settle).isEqualTo("jk: + Format > Already formatted - took 547ms");
             assertThat(settle).doesNotContain(CSI).doesNotContain(Glyphs.CHECK);

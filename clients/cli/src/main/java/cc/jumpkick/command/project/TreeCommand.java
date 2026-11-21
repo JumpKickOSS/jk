@@ -2,20 +2,20 @@
 package cc.jumpkick.command.project;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
-import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coords;
 import cc.jumpkick.cli.tui.Icon;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
+import cc.jumpkick.command.EnsureFreshLock;
+import cc.jumpkick.command.ProjectContext;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.ConfigSources;
 import cc.jumpkick.config.GlobalConfig;

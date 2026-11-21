@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.Osc;
-import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
@@ -534,7 +534,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
                 plain.printDone();
             }
             // Ctrl-C: "by user" + took duration.
-            String took = ConsoleSpec.took(Duration.ofMillis(elapsedMillis()));
+            String took = DurationText.took(Duration.ofMillis(elapsedMillis()));
             out.println(JkWedge.cancelled(planName(), true, took).renderLine(view.headerContext()));
             out.flush();
             return true;

@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.Task;
@@ -27,7 +28,7 @@ public final class StageLines {
         Theme t = Theme.active();
         String mark = ok ? Theme.colorize(Glyphs.check(), t.success()) : Theme.colorize(Glyphs.cross(), t.error());
         String body = detail == null || detail.isBlank() ? stage : stage + " · " + detail;
-        return mark + " " + body + " " + ConsoleSpec.took(took);
+        return mark + " " + body + " " + DurationText.took(took);
     }
 
     /** The display name of {@code step} among {@code steps}: its label, else its name. */

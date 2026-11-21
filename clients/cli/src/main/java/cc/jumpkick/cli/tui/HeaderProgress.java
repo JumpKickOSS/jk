@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.wire.runtime.progress.ClockProgressStrategy;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressState;
 import cc.jumpkick.wire.runtime.progress.HeaderProgressStrategy;

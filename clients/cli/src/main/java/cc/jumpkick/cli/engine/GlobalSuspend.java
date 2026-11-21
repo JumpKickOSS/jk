@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.tui;
+package cc.jumpkick.cli.engine;
 
-import cc.jumpkick.cli.engine.EngineJobControl;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;

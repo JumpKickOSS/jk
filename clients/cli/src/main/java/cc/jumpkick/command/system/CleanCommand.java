@@ -7,10 +7,10 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.ProjectInfos;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.WorkspaceScan;
@@ -146,7 +146,7 @@ public final class CleanCommand implements CliCommand {
             CommandWedge.printOk("Clean", "Nothing to remove");
         } else {
             String removed = Theme.colorize("Removed", Theme.active().focused());
-            String inTime = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+            String inTime = DurationText.took(Duration.ofMillis(elapsedMs));
             CommandWedge.printOk("Clean", removed + " " + stats + " " + inTime);
         }
 

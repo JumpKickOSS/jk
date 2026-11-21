@@ -4,6 +4,7 @@ package cc.jumpkick.cli.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.terminal.Ansi;
 import org.junit.jupiter.api.Test;

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.tui;
+package cc.jumpkick.cli.theme;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.NoAnsi;
-import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.JkWedge;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +35,21 @@ class PlainAsciiTest {
         assertThat(PlainAscii.transform("·")).isEqualTo("-");
         assertThat(PlainAscii.transform("⊛ cancelled")).isEqualTo("o cancelled");
         assertThat(PlainAscii.transform("Tasks — g:n")).isEqualTo("Tasks -- g:n");
+    }
+
+    @Test
+    void each_glyph_rewrites_to_its_plain_form() {
+        assertThat(PlainAscii.transform(Glyphs.CHECK)).isEqualTo(Glyphs.CHECK_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.CROSS)).isEqualTo(Glyphs.CROSS_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.BANG)).isEqualTo(Glyphs.BANG_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.PLAY)).isEqualTo(Glyphs.PLAY_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.STOP)).isEqualTo(Glyphs.STOP_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.MENU)).isEqualTo(Glyphs.MENU_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.PULSE)).isEqualTo(Glyphs.PULSE_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.WAITING)).isEqualTo(Glyphs.WAITING_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.BULLET)).isEqualTo(Glyphs.BULLET_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.PENDING)).isEqualTo(Glyphs.PENDING_PLAIN);
+        assertThat(PlainAscii.transform(Glyphs.CANCELLED)).isEqualTo(Glyphs.CANCELLED_PLAIN);
     }
 
     @Test

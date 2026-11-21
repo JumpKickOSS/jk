@@ -14,20 +14,17 @@ public final class Rail {
 
     private Rail() {}
 
-    public enum RailGlyph {
-        OPEN,
-        MID,
-        CLOSE,
-        /**
-         * Step header bullet; used for active, completed, and inactive steps (color varies by state).
-         */
-        BULLET
-    }
-
     public enum StepState {
         COMPLETED,
         ACTIVE,
         INACTIVE
+    }
+
+    /** The style of every rail glyph of a step in {@code state}: lit while active, dim otherwise. */
+    public static Style style(StepState state) {
+        return state == StepState.ACTIVE
+                ? Theme.active().activeStep()
+                : Theme.active().darkGray();
     }
 
     private static final String OPEN_CHAR = "╭";
@@ -49,7 +46,7 @@ public final class Rail {
 
     /** {@code ╭── <title>} — first line of the frame. */
     public static Styled opener(String title, StepState state) {
-        var cornerStyle = Theme.active().railStyle(state, RailGlyph.OPEN);
+        var cornerStyle = style(state);
         return new StyledBuilder()
                 .append(OPEN_CHAR, cornerStyle)
                 .append(CORNER_DASHES, cornerStyle)
@@ -60,7 +57,7 @@ public final class Rail {
 
     /** Same as {@link #opener(String, StepState)} but the title carries its own styling. */
     public static Styled opener(Styled styledTitle, StepState state) {
-        var cornerStyle = Theme.active().railStyle(state, RailGlyph.OPEN);
+        var cornerStyle = style(state);
         return new StyledBuilder()
                 .append(OPEN_CHAR, cornerStyle)
                 .append(CORNER_DASHES, cornerStyle)
@@ -72,7 +69,7 @@ public final class Rail {
     /** {@code │ <text>} — interior line, with text styled by caller. */
     public static Styled mid(Styled text, StepState state) {
         return new StyledBuilder()
-                .append(MID_CHAR, Theme.active().railStyle(state, RailGlyph.MID))
+                .append(MID_CHAR, style(state))
                 .append("  ")
                 .append(text)
                 .build();
@@ -80,7 +77,7 @@ public final class Rail {
 
     public static Styled mid(String text, StepState state, Style textStyle) {
         return new StyledBuilder()
-                .append(MID_CHAR, Theme.active().railStyle(state, RailGlyph.MID))
+                .append(MID_CHAR, style(state))
                 .append("  ")
                 .append(text, textStyle)
                 .build();
@@ -88,9 +85,7 @@ public final class Rail {
 
     /** Bare {@code │} (no following text). */
     public static Styled midBlank(StepState state) {
-        return new StyledBuilder()
-                .append(MID_CHAR, Theme.active().railStyle(state, RailGlyph.MID))
-                .build();
+        return new StyledBuilder().append(MID_CHAR, style(state)).build();
     }
 
     /** {@code ╰── [text]} — final line; trailing text is omitted when empty. */
@@ -100,7 +95,7 @@ public final class Rail {
 
     /** {@code ╰── [text]} with explicit rail state (controls the corner-glyph color). */
     public static Styled closer(String text, Style textStyle, StepState state) {
-        var cornerStyle = Theme.active().railStyle(state, RailGlyph.CLOSE);
+        var cornerStyle = style(state);
         var sb = new StyledBuilder().append(CLOSE_CHAR, cornerStyle).append(CORNER_DASHES, cornerStyle);
         if (text != null && !text.isEmpty()) {
             sb.append(" ").append(text, textStyle);
@@ -121,7 +116,7 @@ public final class Rail {
                 };
         var bullet = state == StepState.ACTIVE ? BULLET_CHAR : BULLET_CHAR_EMPTY;
         return new StyledBuilder()
-                .append(bullet, Theme.active().railStyle(state, RailGlyph.BULLET))
+                .append(bullet, style(state))
                 .append("  ")
                 .append(prompt, promptStyle)
                 .build();

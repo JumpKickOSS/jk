@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -160,12 +159,13 @@ public final class GlobalCancel {
     /**
      * Ctrl-C, and the two ways a process is told to go without one: SIGTERM and SIGHUP. All three
      * take the same path, so the children a verb owns stop whichever arrives; without a handler
-     * SIGTERM and SIGHUP end the process outright and leave them running.
+     * SIGTERM and SIGHUP end the process outright and leave them running. {@code engineCancel}
+     * sends the engine its {@code cancel-request}s; it runs on a thread of its own and may block.
      */
-    public static void install() {
-        Signals.register("INT", () -> onSignal(Exit.INTERRUPTED));
-        Signals.register("TERM", () -> onSignal(TERMINATED));
-        Signals.register("HUP", () -> onSignal(HUNG_UP));
+    public static void install(Runnable engineCancel) {
+        Signals.register("INT", () -> onSignal(Exit.INTERRUPTED, engineCancel));
+        Signals.register("TERM", () -> onSignal(TERMINATED, engineCancel));
+        Signals.register("HUP", () -> onSignal(HUNG_UP, engineCancel));
     }
 
     /**
@@ -189,7 +189,7 @@ public final class GlobalCancel {
         for (Supplier<Session> session : INVOCATIONS) session.get().cancel().cancel();
     }
 
-    private static void onSignal(int exitCode) {
+    private static void onSignal(int exitCode, Runnable engineCancel) {
         // Each signal runs this on a thread of its own; a second Ctrl-C while the first is still
         // settling would print the cancel twice and run every hook twice. The first one halts.
         if (!HANDLING.compareAndSet(false, true)) return;
@@ -200,10 +200,7 @@ public final class GlobalCancel {
         // background thread so the user sees the cancelled settle immediately instead of a
         // still-animating spinner while a wedged engine eats socket watchdogs.
         cancelInvocations();
-        Thread rpc = Thread.ofPlatform()
-                .daemon(true)
-                .name("jk-sigint-cancel")
-                .start(EngineCancel::cancelBestEffortForInterrupt);
+        Thread rpc = Thread.ofPlatform().daemon(true).name("jk-sigint-cancel").start(engineCancel);
         // 2) Settle the live region (plan → cancelled job line) or a one-line notice.
         settleAsCanceled();
 

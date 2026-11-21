@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.api;
+package cc.jumpkick.command;
 
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.config.WorkspaceGroup;

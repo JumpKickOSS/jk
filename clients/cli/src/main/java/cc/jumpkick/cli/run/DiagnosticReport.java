@@ -2,10 +2,10 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.api.PathDisplay;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
+import cc.jumpkick.cli.tui.Coords;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.run.BuildStage;
 import cc.jumpkick.terminal.Style;

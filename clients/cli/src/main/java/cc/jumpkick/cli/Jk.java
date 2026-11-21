@@ -5,12 +5,13 @@ import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.args.ArgParser;
 import cc.jumpkick.cli.engine.BuildStamps;
+import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.engine.EngineProbe;
+import cc.jumpkick.cli.engine.GlobalSuspend;
 import cc.jumpkick.cli.engine.ProjectInfos;
+import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.GlobalCancel;
-import cc.jumpkick.cli.tui.GlobalSuspend;
-import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.StartupPulse;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkConfigLoader;
@@ -97,7 +98,7 @@ public final class Jk {
             System.exit(superseded.getAsInt());
             return;
         }
-        GlobalCancel.install();
+        GlobalCancel.install(EngineCancel::cancelBestEffortForInterrupt);
         GlobalSuspend.install();
         // Threads this command starts journal their changes as its doing too.
         ChangeActor.setProcessDefault(shellActor(args));

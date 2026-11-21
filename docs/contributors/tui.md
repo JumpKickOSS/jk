@@ -18,7 +18,7 @@
 
 ## What a stream may carry
 
-`cli/api/StreamCaps` is the one owner of the plain-or-terminal decision; the theme, `CliOutput`,
+`cli/theme/StreamCaps` is the one owner of the plain-or-terminal decision; the theme, `CliOutput`,
 live regions, hyperlinks (`Osc.hyperlink`) and build notifications all ask it. A stream that is not
 a terminal is plain, whether it is a file or a pipe: no colour, no cursor or OSC sequence, no live
 region, chrome rewritten to ASCII. In order:
@@ -407,7 +407,7 @@ Under `-O jsonl`, suppress human chrome (no envelope, no wedge). See [machine-ou
 | Styled text | `cli/tui/RichText.java` — markup (`[bold]`, `[#hex]`, `[link url]`, theme tokens) |
 | Settled wedge | `cli/tui/JkWedge.java` (`CommandWedge` formats wedges and opens the envelope on a caller-supplied stream; `CliOutput` owns the envelope lifecycle) |
 | Pill | `cli/tui/Pill.java` — nerd `label` / ansi padded / plain `[label]` |
-| Coord | `cli/tui/Coord.java` + `theme/Coords` RichText factories |
+| Coord | `cli/tui/Coord.java` + `tui/Coords` RichText factories |
 | Code | `SourceCode.java` / `JavaCode` / `KotlinCode` / `GroovyCode` |
 | Prompt | `Prompt.java`, `Confirmation.java` (`Confirm` façade) |
 | Wizard parts | `Wizard` (ANSI key loop), `CookedWizard` (plain line prompts), `WizardSection`, `TextInput`, `Checkbox`, `RadioButton`, `RadioButtonGroup` |

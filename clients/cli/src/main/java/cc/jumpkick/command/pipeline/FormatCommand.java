@@ -4,17 +4,17 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
-import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.command.ProjectContext;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
@@ -237,7 +237,7 @@ public final class FormatCommand implements CliCommand {
             return 0;
         }
         if (!global.outputIsJson()) {
-            String took = ConsoleSpec.took(Duration.ofMillis(Clock.SYSTEM.millis() - startMs));
+            String took = DurationText.took(Duration.ofMillis(Clock.SYSTEM.millis() - startMs));
             Summary summary = summarize(check, redo(global), counts[0], counts[1], counts[2], took);
             if (summary.failed()) {
                 CommandWedge.printFail("Format", summary.body());
@@ -312,7 +312,7 @@ public final class FormatCommand implements CliCommand {
             }
 
             cm.stepDone("", "fmt", counts[2] == 0, "Formatting files…");
-            String took = ConsoleSpec.took(Duration.ofMillis(Clock.SYSTEM.millis() - startMs));
+            String took = DurationText.took(Duration.ofMillis(Clock.SYSTEM.millis() - startMs));
             if (counts[2] > 0) {
                 String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s");
                 cm.finishBuildPlanFailure(errTail);

@@ -63,6 +63,13 @@
 # and admission seams, the progress-token registry, the status and cache snapshots) into the leaf
 # `http.api`. Left: compile/task/runtime.base and jobs/journal, so the line is 5.
 #
+# 2026-11-21, clients/cli: the shell's packages are one stack, each reading only the ones below it:
+# `theme` (now also StreamCaps and PlainAscii, which the theme itself reads), `api`, `tui`, `engine`,
+# `run`. The verbs' lock freshen and project context went to `command`, the Graal provisioning to
+# `command.pipeline`, the timeline flag to `api`, Ctrl-Z to `engine`; the widgets took the duration
+# text, the syntax and stack-trace highlighting, Coords and the member-label shortener; the rail picks
+# its own style and Ctrl-C is handed the engine cancel at install. The line is gone.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -73,7 +80,6 @@
 # defends.
 
 server/engine 5
-clients/cli 5
 shared/core 8
 clients/cli-terminal 3
 server/toolchain 3

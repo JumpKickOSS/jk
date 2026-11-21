@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.api;
 
 import cc.jumpkick.cli.args.ParseException;
-import cc.jumpkick.cli.engine.TimelineOpts;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.Jobs;

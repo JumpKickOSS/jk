@@ -2,8 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.Osc;
-import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.task.TransferBoard;
@@ -90,7 +88,7 @@ final class JkManagerView {
      * {@code job was cancelled took …} — no "by user".
      */
     public void finishBuildPlanCancelled(List<String> above) {
-        String took = ConsoleSpec.took(Duration.ofMillis(m.elapsedMillis()));
+        String took = DurationText.took(Duration.ofMillis(m.elapsedMillis()));
         m.settle(JkWedge.cancelled(m.planName(), false, took).renderLine(headerContext()), above);
     }
 

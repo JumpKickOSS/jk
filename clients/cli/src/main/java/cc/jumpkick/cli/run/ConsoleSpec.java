@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.run.BuildPlanResult;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -60,27 +61,6 @@ public record ConsoleSpec(
             boolean chip,
             boolean exec) {
         this(command, onSuccess, onFailure, chip, exec, null);
-    }
-
-    /**
-     * Duration suffix for settle lines. ANSI: dim italic {@code took Xms}. Plain ({@code
-     * --no-ansi}): {@code - took Xms} so the dash substitutes for color separation.
-     */
-    public static String took(Duration d) {
-        return took(d, 0);
-    }
-
-    /**
-     * As {@link #took(Duration)} for a run whose engine was not running for {@code suspendedMs} (the
-     * machine slept or the engine was stopped): {@code took 3m 37s, suspended 4m 34s}.
-     */
-    public static String took(Duration d, long suspendedMs) {
-        String body = "took " + fmtDuration(d)
-                + (suspendedMs > 0 ? ", suspended " + fmtDuration(Duration.ofMillis(suspendedMs)) : "");
-        if (!Theme.active().isAnsi()) {
-            return "- " + body;
-        }
-        return Theme.paint(body, Theme.active().darkGray().italic());
     }
 
     /**

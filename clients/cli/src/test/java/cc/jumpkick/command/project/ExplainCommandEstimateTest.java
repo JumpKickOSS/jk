@@ -4,9 +4,9 @@ package cc.jumpkick.command.project;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.run.TaskForecast;
 import java.nio.file.Path;

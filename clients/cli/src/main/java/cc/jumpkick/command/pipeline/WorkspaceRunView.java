@@ -17,6 +17,7 @@ import cc.jumpkick.cli.run.SlowestTestsBlock;
 import cc.jumpkick.cli.run.TailLines;
 import cc.jumpkick.cli.run.TestFailureHighlight;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.host.time.Clock;
@@ -589,7 +590,7 @@ final class WorkspaceRunView {
     /** A headless run the user cancelled: the cancelled line, the terminal event, exit 1. */
     int settleHeadlessCancelled(long elapsedMs) {
         if (!toStdout) {
-            String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
+            String took = DurationText.took(Duration.ofMillis(elapsedMs));
             CommandWedge.printCancelled(chrome.planName(), took);
         }
         if (session != null) session.wedge(chrome.planName() + " job was cancelled");

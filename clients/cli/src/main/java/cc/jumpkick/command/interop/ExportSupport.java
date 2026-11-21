@@ -2,12 +2,12 @@
 package cc.jumpkick.command.interop;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.command.EnsureFreshLock;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;

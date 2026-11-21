@@ -307,7 +307,7 @@ public final class Wizard {
             for (var line : state.render()) {
                 out.add(INDENT + Rail.mid(line, Rail.StepState.ACTIVE).toAnsi());
             }
-            out.add(Theme.colorize("╰──────", Theme.active().railStyle(Rail.StepState.ACTIVE, Rail.RailGlyph.CLOSE)));
+            out.add(Theme.colorize("╰──────", Rail.style(Rail.StepState.ACTIVE)));
             return out;
         }
     }

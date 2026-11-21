@@ -2,7 +2,6 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EngineJournalReads;
@@ -10,13 +9,14 @@ import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
-import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coords;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.JkWedge;
 import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.command.EnsureFreshLock;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;

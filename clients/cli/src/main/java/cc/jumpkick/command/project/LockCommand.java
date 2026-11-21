@@ -5,7 +5,6 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineCatalogFreshen;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
@@ -14,11 +13,13 @@ import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.SessionMirrorListener;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coords;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.command.ProjectContext;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
@@ -417,7 +418,7 @@ public final class LockCommand implements CliCommand {
                     .append(String.join(", ", insecureRepos));
         }
         return tail.append(' ')
-                .append(ConsoleSpec.took(Duration.ofMillis((Clock.SYSTEM.nanos() - startNanos) / 1_000_000)))
+                .append(DurationText.took(Duration.ofMillis((Clock.SYSTEM.nanos() - startNanos) / 1_000_000)))
                 .toString();
     }
 }

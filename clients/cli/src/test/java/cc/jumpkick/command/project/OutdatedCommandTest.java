@@ -7,9 +7,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cli.TestAnsi;
-import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.cli.testing.MockMavenServer;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.command.DefaultTestDepsFixture;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.terminal.Width;

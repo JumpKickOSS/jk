@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.StackTraceHighlight;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;

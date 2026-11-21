@@ -3,7 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
-import cc.jumpkick.cli.api.StreamCaps;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;

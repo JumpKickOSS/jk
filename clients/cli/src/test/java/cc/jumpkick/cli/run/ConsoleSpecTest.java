@@ -5,13 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.testing.NoAnsi;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.DurationText;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 /**
  * {@link ConsoleSpec#fmtDuration} is the settled took-line face of {@link DurationText}: bare millis
  * below a second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping
- * at days. Also covers plain-mode {@link ConsoleSpec#took}.
+ * at days. Also covers plain-mode {@link DurationText#took}.
  */
 class ConsoleSpecTest {
 
@@ -65,10 +66,10 @@ class ConsoleSpecTest {
     @Test
     void took_plain_prefixes_dash_separator() throws Exception {
         NoAnsi.forced(() -> {
-            assertThat(ConsoleSpec.took(Duration.ofMillis(547))).isEqualTo("- took 547ms");
-            assertThat(ConsoleSpec.took(Duration.ofMillis(1200))).isEqualTo("- took 1.2s");
+            assertThat(DurationText.took(Duration.ofMillis(547))).isEqualTo("- took 547ms");
+            assertThat(DurationText.took(Duration.ofMillis(1200))).isEqualTo("- took 1.2s");
             // Callers keep a single space before took → "Already formatted - took 547ms"
-            assertThat("Already formatted " + ConsoleSpec.took(Duration.ofMillis(547)))
+            assertThat("Already formatted " + DurationText.took(Duration.ofMillis(547)))
                     .isEqualTo("Already formatted - took 547ms");
             return null;
         });
@@ -77,7 +78,7 @@ class ConsoleSpecTest {
     @Test
     void took_ansi_is_dim_italic_without_dash() throws Exception {
         // When ANSI is available the body is styled "took …" (no leading dash).
-        String took = ConsoleSpec.took(Duration.ofMillis(100));
+        String took = DurationText.took(Duration.ofMillis(100));
         if (Theme.active().isAnsi()) {
             assertThat(took).contains("took 100ms");
             assertThat(took).doesNotStartWith("- ");

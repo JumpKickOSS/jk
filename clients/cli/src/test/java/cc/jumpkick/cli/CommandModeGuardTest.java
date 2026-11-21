@@ -4,8 +4,8 @@ package cc.jumpkick.cli;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
-import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;

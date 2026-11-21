@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
-import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.SessionContext;

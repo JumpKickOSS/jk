@@ -2,14 +2,14 @@
 package cc.jumpkick.command.project;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coords;
+import cc.jumpkick.command.EnsureFreshLock;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;

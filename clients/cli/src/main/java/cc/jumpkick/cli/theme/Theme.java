@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
-import cc.jumpkick.cli.api.StreamCaps;
-import cc.jumpkick.cli.tui.PlainAscii;
-import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.terminal.Style;
 import java.util.Locale;
@@ -270,9 +267,6 @@ public interface Theme {
      * ({@code 1;38;2;R;G;B}).
      */
     String gradientHeaderAnsi(String text);
-
-    /** Maps (state, glyph) to the style used to render that rail glyph. */
-    Style railStyle(Rail.StepState state, Rail.RailGlyph glyph);
 
     // --- static, theme-independent helpers --------------------------------
 

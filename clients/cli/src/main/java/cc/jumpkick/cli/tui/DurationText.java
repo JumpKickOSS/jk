@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.run;
+package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.theme.Theme;
 import java.time.Duration;
 import java.util.ArrayList;
 import org.jspecify.annotations.NullMarked;
@@ -25,6 +26,27 @@ import org.jspecify.annotations.NullMarked;
 public final class DurationText {
 
     private DurationText() {}
+
+    /**
+     * Duration suffix for settle lines. ANSI: dim italic {@code took Xms}. Plain ({@code
+     * --no-ansi}): {@code - took Xms} so the dash substitutes for color separation.
+     */
+    public static String took(Duration d) {
+        return took(d, 0);
+    }
+
+    /**
+     * As {@link #took(Duration)} for a run whose engine was not running for {@code suspendedMs} (the
+     * machine slept or the engine was stopped): {@code took 3m 37s, suspended 4m 34s}.
+     */
+    public static String took(Duration d, long suspendedMs) {
+        String body =
+                "took " + human(d) + (suspendedMs > 0 ? ", suspended " + human(Duration.ofMillis(suspendedMs)) : "");
+        if (!Theme.active().isAnsi()) {
+            return "- " + body;
+        }
+        return Theme.paint(body, Theme.active().darkGray().italic());
+    }
 
     /**
      * {@code 14s} / {@code 1m 02s} / {@code 1h 05m 09s} from a whole-second counter. Dual-clock

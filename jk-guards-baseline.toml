@@ -1234,7 +1234,7 @@ population = { files = 2203 }
 
 [package-cycles]
 [package-cycles.populations]
-"clients/cli" = { edges = 79, slices = 18 }
+"clients/cli" = { edges = 94, slices = 20 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/android" = { edges = 0, slices = 1 }
 "plugins/formatter" = { edges = 0, slices = 1 }
@@ -1262,11 +1262,6 @@ population = { files = 2203 }
 "shared/wire" = { edges = 4, slices = 5 }
 [package-cycles.scope-reasons]
 "server/resolver" = "the resolver module has no package cycle left: StallWatch and ResolveProcessCacheControl moved"
-[[package-cycles.entries]]
-in     = "clients/cli"
-unit   = "clients/cli:cli.api"
-value  = 5
-reason = "banked 2026-09-07: the engine root and the CLI shell stopped being hubs — engine 15 slices became 4+3+2, cli 10 became 5+4; the count only goes down from here"
 [[package-cycles.entries]]
 in     = "clients/cli-terminal"
 unit   = "clients/cli-terminal:terminal"

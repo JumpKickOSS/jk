@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.JkDarkTheme;
+import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
@@ -335,7 +336,7 @@ public final class JkWedge implements Widget {
      *
      * <p>One chrome for every cancel: the gray scope-badge chip, the {@code ⊛} icon, {@code cancelled}
      * in bold, and whatever {@code tookTail} the caller measured (already dark-gray italic if it came
-     * from {@code ConsoleSpec.took}). The subject is the only thing that varies, which is why it is a
+     * from {@code DurationText.took}). The subject is the only thing that varies, which is why it is a
      * parameter and not a second renderer — the JDK download had grown its own red wedge and red bar,
      * a look that appeared nowhere else in the product.
      */

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.run.SyntaxHighlight;
 import java.util.ArrayList;
 import java.util.List;
 

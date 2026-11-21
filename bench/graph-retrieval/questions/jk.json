@@ -972,7 +972,7 @@
    "question": "What implements PlainAscii.Rewriting?",
    "subject": {
     "label": "PlainAscii.Rewriting",
-    "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/PlainAscii.java",
+    "path": "clients/cli/src/main/java/cc/jumpkick/cli/theme/PlainAscii.java",
     "lines": [
      100,
      100
@@ -993,7 +993,7 @@
       120,
       135
      ],
-     "path": "clients/cli/src/main/java/cc/jumpkick/cli/tui/PlainAscii.java"
+     "path": "clients/cli/src/main/java/cc/jumpkick/cli/theme/PlainAscii.java"
     }
    ]
   },

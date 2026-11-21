@@ -5,11 +5,11 @@ import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineCatalogFreshen;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Coords;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
@@ -148,7 +148,7 @@ public final class LibraryUpdateCommand implements CliCommand {
                         + " — "
                         + Theme.colorize(String.valueOf(total), Style.EMPTY.bold())
                         + " entries cached "
-                        + ConsoleSpec.took(elapsed));
+                        + DurationText.took(elapsed));
         if (diff.isEmpty()) {
             if (fetched) CliOutput.out("\n  (no changes from previous version)");
             return;

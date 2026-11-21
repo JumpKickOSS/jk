@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.api;
+package cc.jumpkick.command.pipeline;
 
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.run.BuildPlanConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.SessionContext;
@@ -243,11 +245,13 @@ public final class GraalResolver {
      */
     private @Nullable Choice install(String spec, JdkRegistry registry, String announce) {
         if (!HostPlatform.supported()) {
-            CliOutput.err("jk native: this host ("
-                    + HostPlatform.currentOs()
-                    + "/"
-                    + HostPlatform.currentArch()
-                    + ") has no installable GraalVM; set $GRAALVM_HOME");
+            CommandWedge.printFail(
+                    "Native",
+                    "this host ("
+                            + HostPlatform.currentOs()
+                            + "/"
+                            + HostPlatform.currentArch()
+                            + ") has no installable GraalVM; set $GRAALVM_HOME");
             return null;
         }
         return Choice.toInstall(spec);

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.run;
+package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.terminal.Style;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -27,7 +26,7 @@ public final class SyntaxHighlight {
     }
 
     /** A colorable token class; maps to a {@link Theme} style via {@link #styleFor}. */
-    enum Role {
+    public enum Role {
         KEYWORD,
         TYPE,
         FUNCTION,
@@ -272,7 +271,7 @@ public final class SyntaxHighlight {
     }
 
     /** Map a token {@link Role} onto the active theme's style. */
-    static Style styleFor(Role role) {
+    public static Style styleFor(Role role) {
         Theme t = Theme.active();
         return switch (role) {
             case KEYWORD -> t.synKeyword();

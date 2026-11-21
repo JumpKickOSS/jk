@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.api.StreamCaps;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.terminal.Terminals;
 import org.jspecify.annotations.Nullable;
 

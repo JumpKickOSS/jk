@@ -3,8 +3,8 @@ package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.command.ProjectContext;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;

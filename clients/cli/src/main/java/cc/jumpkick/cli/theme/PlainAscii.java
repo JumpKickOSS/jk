@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.tui;
+package cc.jumpkick.cli.theme;
 
-import cc.jumpkick.cli.theme.Theme;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import org.jspecify.annotations.Nullable;
@@ -9,7 +8,7 @@ import org.jspecify.annotations.Nullable;
 /**
  * Unicode → ASCII rewrites for {@code --no-ansi} / plain human chrome.
  *
- * <p>Wedges already pick ASCII icons via {@link Glyphs} helpers, but free-form messages still
+ * <p>Wedges already pick ASCII icons through the {@code Glyphs} helpers, but free-form messages still
  * embed ellipsis, bullets, and pulse circles (e.g. {@code Locking g:n…}, {@code building…}).
  * Call {@link #apply(String)} at print boundaries so every human line is ASCII-clean without
  * each call site hand-substituting.
@@ -71,17 +70,17 @@ public final class PlainAscii {
                 case 0x25CB -> sb.append('o'); // ○ white circle / radio off
                 case 0x203A -> sb.append('>'); // › single right angle quote / separator
                 case 0x2502 -> sb.append('|'); // │ light vertical bar / gutter rail
-                case 0x2713, 0x2714 -> sb.append(Glyphs.CHECK_PLAIN); // ✓ ✔
-                case 0x2718, 0x2717 -> sb.append(Glyphs.CROSS_PLAIN); // ✘ ✗
-                case 0x203C -> sb.append(Glyphs.BANG_PLAIN); // ‼
-                case 0x25B6 -> sb.append(Glyphs.PLAY_PLAIN); // ▶
-                case 0x25A0 -> sb.append(Glyphs.STOP_PLAIN); // ■
-                case 0x2261 -> sb.append(Glyphs.MENU_PLAIN); // ≡
-                case 0x25A1 -> sb.append(Glyphs.PENDING_PLAIN); // □ → [ ]
+                case 0x2713, 0x2714 -> sb.append('+'); // ✓ ✔
+                case 0x2718, 0x2717 -> sb.append('!'); // ✘ ✗
+                case 0x203C -> sb.append('!'); // ‼
+                case 0x25B6 -> sb.append('>'); // ▶
+                case 0x25A0 -> sb.append('x'); // ■
+                case 0x2261 -> sb.append('='); // ≡
+                case 0x25A1 -> sb.append("[ ]"); // □ → [ ]
                 case 0x00B7 -> sb.append('-'); // · middle dot (header separators)
                 case 0x2812 -> sb.append('-'); // ⠒ braille dots-25 (Ctrl-O peek rule)
                 case 0x2191 -> sb.append('^'); // ↑ up arrow (Ctrl-O "↑ output ↑" caption)
-                case 0x229B -> sb.append(Glyphs.CANCELLED_PLAIN); // ⊛ circled asterisk (cancelled)
+                case 0x229B -> sb.append('o'); // ⊛ circled asterisk (cancelled)
                 case 0x2014 -> sb.append("--"); // — em dash (table titles, n/a durations)
                 case 0x2013 -> sb.append('-'); // – en dash (ranges)
                 case 0x2192, 0x279C -> sb.append("->"); // → ➜ (results, settled answers)

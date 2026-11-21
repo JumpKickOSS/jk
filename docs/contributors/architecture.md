@@ -415,6 +415,12 @@ the dispatcher (selective's re-entry, the completion scripts' command table) tak
 constructor, so no verb imports the dispatcher's package (`cc.jumpkick.cli` itself) and the
 dispatcher is outside every cycle.
 
+The shell under the dispatcher is one stack with no cycle, each package reading only those below it:
+`cli.theme` (the style tables, what each stream may carry, the ASCII rewrite of a plain one),
+`cli.api`, `cli.tui` (the widgets and the highlighting), `cli.engine` (the wire client) and
+`cli.run` (the run listeners). A widget that must reach the engine is handed the call at install, as
+Ctrl-C is handed the engine cancel.
+
 Ship layout (`jk build`, under `target/dist/`; `<version>` carries `-SNAPSHOT` outside a release): slim native `jk` + `lib/jk-engine-<version>.jar` + `lib/jk-<version>.jar` (the JVM client, for hosts with no native `jk`) + `repos/jk-local/` (every module's thin jar and POM in Maven layout; `install.sh` shelves it so the installed engine runs the workers built beside it).
 
 ## Dependency resolution

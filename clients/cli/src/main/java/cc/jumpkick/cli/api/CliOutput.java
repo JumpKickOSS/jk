@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.api;
 
-import cc.jumpkick.cli.tui.PlainAscii;
+import cc.jumpkick.cli.theme.PlainAscii;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.terminal.Terminals;
 import cc.jumpkick.terminal.Width;
 import java.io.IOException;

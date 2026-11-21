@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
@@ -77,7 +76,7 @@ public final class OutdatedBar implements AutoCloseable {
 
     /** What a cancelled read settles on: the same chrome a cancelled build gets. */
     private String cancelledLine() {
-        String took = ConsoleSpec.took(Duration.ofMillis(Math.max(0L, clock.millis() - startedAtMillis)));
+        String took = DurationText.took(Duration.ofMillis(Math.max(0L, clock.millis() - startedAtMillis)));
         return JkWedge.cancelled("Outdated", "outdated check", true, took).renderLine(context(0));
     }
 

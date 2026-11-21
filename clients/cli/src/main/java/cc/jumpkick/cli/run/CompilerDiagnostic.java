@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.SyntaxHighlight;
 import cc.jumpkick.diagnostic.CompilerLocus;
 import cc.jumpkick.host.WorkingDirectory;
 import java.net.URI;

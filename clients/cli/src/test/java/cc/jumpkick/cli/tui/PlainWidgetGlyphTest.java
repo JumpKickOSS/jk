@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.theme.PlainAscii;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import org.junit.jupiter.api.Test;

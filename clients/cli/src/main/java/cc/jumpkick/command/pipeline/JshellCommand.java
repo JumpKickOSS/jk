@@ -3,13 +3,13 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CliPaths;
-import cc.jumpkick.cli.api.EnsureFreshLock;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.watch.ProcessTrees;
+import cc.jumpkick.command.EnsureFreshLock;
+import cc.jumpkick.command.ProjectContext;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;

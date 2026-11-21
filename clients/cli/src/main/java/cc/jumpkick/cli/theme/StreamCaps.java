@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.api;
+package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.EnvValues;

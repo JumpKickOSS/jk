@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.run.SyntaxHighlight;
-import cc.jumpkick.cli.run.TestFailureHighlight;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.jdk.JdkProgressLabel;
 import cc.jumpkick.run.TestFailureInfo;
@@ -39,7 +36,7 @@ public final class JkManagerColor {
      *
      * <ul>
      * <li><b>{@code Class.method(…)} form only</b> (run-tests live labels): Java {@link
-     * cc.jumpkick.cli.run.SyntaxHighlight} — not every step under the Test phase (compile-test
+     * cc.jumpkick.cli.tui.SyntaxHighlight} — not every step under the Test phase (compile-test
      * is phase Test too and must stay prose gray)
      * <li><b>Everything else</b>: prose in mid-gray ({@link Theme#midGray} {@code #A0A0A0}), never
      * cyan and never dim bright-black, with:
@@ -47,7 +44,7 @@ public final class JkManagerColor {
      * <li>integers / counts / sizes → yellow ({@link Theme#warning})
      * <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
      * <li>artifact filenames and path-like tokens → {@link Theme#path}
-     * <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
+     * <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.tui.Coords}
      * <li>fetched short-names / bare library ids after resolve verbs → coord short-name
      * <li>short cache key hex → dimmest gray
      * </ul>
@@ -75,7 +72,7 @@ public final class JkManagerColor {
             return worker.isEmpty() ? nativePainted : nativePainted + Theme.colorize(worker, t.midGray());
         }
         // Wire may carry FQCNs (java.nio.file.Path, pkg.FooTest); display simple names only.
-        body = TestFailureHighlight.shortDisplayLabel(body);
+        body = MemberLabel.shorten(body);
         // Only syntax-highlight true member refs (FooTest.bar). Phase "Test" also hosts
         // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
         // (SyntaxHighlight paints unmatched text as terminal default/white).

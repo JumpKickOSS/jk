@@ -3,8 +3,8 @@ package cc.jumpkick.command.pipeline;
 
 import cc.jumpkick.cli.api.CliPaths;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.Coords;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;

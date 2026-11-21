@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.TimelineOpts;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.DebugJvm;

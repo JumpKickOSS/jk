@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.api;
+package cc.jumpkick.command;
 
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;

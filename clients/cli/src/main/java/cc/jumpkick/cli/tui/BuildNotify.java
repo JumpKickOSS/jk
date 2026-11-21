@@ -3,7 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.StreamCaps;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.terminal.Ansi;

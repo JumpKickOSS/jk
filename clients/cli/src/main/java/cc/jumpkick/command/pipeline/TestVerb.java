@@ -4,11 +4,11 @@ package cc.jumpkick.command.pipeline;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.engine.RunSuspensions;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.DebugAttach;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.RenderContext;
 import cc.jumpkick.cli.tui.Table;
 import cc.jumpkick.config.DebugJvm;
@@ -148,7 +148,7 @@ final class TestVerb implements BuildVerb {
                         view.prerequisitesNotTested(),
                         BuildTails.elapsedMsSince(startNanos)),
                 r -> WorkspaceRunView.failedSubject(r, "tests") + " — failed "
-                        + ConsoleSpec.took(Duration.ofMillis(BuildTails.elapsedMsSince(startNanos))));
+                        + DurationText.took(Duration.ofMillis(BuildTails.elapsedMsSince(startNanos))));
     }
 
     /**
@@ -240,7 +240,7 @@ final class TestVerb implements BuildVerb {
         if (n <= 0 || planned == 0 || withSuite == 0) {
             return "No tests to run" + skipped;
         }
-        String took = ConsoleSpec.took(Duration.ofMillis(elapsedMs), RunSuspensions.wallMs());
+        String took = DurationText.took(Duration.ofMillis(elapsedMs), RunSuspensions.wallMs());
         String lead = n == 1 ? "Tests passed" : "Tests passed for " + BuildTails.modules(n);
         String line;
         if (served <= 0) line = lead;

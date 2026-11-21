@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.testing.ForcedAnsi;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.terminal.Ansi;
 import org.junit.jupiter.api.Test;

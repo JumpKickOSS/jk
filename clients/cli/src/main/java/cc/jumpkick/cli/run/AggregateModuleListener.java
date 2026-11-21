@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.OutputPane;
+import cc.jumpkick.cli.tui.StackTraceHighlight;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;

@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.GlobalOptions;
-import cc.jumpkick.cli.api.StreamCaps;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.config.JkConfig;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;

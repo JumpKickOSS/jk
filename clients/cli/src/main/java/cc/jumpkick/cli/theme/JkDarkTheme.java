@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.theme;
 
-import cc.jumpkick.cli.api.StreamCaps;
-import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Style;
 import org.jspecify.annotations.Nullable;
@@ -490,16 +488,5 @@ public final class JkDarkTheme implements Theme {
         }
         sb.append(Ansi.RESET);
         return sb.toString();
-    }
-
-    @Override
-    public Style railStyle(Rail.StepState state, Rail.RailGlyph glyph) {
-        return switch (glyph) {
-            case BULLET, OPEN, MID, CLOSE ->
-                switch (state) {
-                    case ACTIVE -> activeStep();
-                    case COMPLETED, INACTIVE -> darkGray();
-                };
-        };
     }
 }

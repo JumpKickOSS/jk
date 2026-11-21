@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -35,7 +36,7 @@ class JsonlHoldTest {
 
     @Test
     void the_summary_names_the_time_suspended_beside_the_time_the_work_took() {
-        assertThat(ConsoleSpec.took(Duration.ofSeconds(217), 274_000)).contains("took 3m 37s, suspended 4m 34s");
-        assertThat(ConsoleSpec.took(Duration.ofSeconds(217))).doesNotContain("suspended");
+        assertThat(DurationText.took(Duration.ofSeconds(217), 274_000)).contains("took 3m 37s, suspended 4m 34s");
+        assertThat(DurationText.took(Duration.ofSeconds(217))).doesNotContain("suspended");
     }
 }

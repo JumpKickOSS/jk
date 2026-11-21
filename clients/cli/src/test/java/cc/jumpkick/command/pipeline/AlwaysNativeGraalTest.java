@@ -4,7 +4,6 @@ package cc.jumpkick.command.pipeline;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.io.IOException;
 import java.nio.file.Files;

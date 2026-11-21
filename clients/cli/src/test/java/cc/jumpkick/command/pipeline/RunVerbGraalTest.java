@@ -3,7 +3,6 @@ package cc.jumpkick.command.pipeline;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.cli.api.GraalResolver;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.runtime.WorkspaceSpec;
 import cc.jumpkick.wire.runtime.WorkspaceTarget;

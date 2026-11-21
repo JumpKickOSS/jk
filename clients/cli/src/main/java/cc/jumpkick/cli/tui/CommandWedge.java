@@ -2,7 +2,7 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.CliOutput;
-import cc.jumpkick.cli.api.StreamCaps;
+import cc.jumpkick.cli.theme.StreamCaps;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import java.io.PrintStream;

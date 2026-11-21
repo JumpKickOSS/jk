@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.theme;
+package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.tui.RichText;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.terminal.Style;
 import org.jspecify.annotations.Nullable;

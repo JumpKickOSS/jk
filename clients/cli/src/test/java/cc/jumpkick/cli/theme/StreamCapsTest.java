@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.api;
+package cc.jumpkick.cli.theme;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.NoAnsi;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.JkConfig;
 import org.junit.jupiter.api.Test;
 
