@@ -377,8 +377,10 @@ LAUNCHER category in one intent filter.
 An app installs as its `namespace` plus the selected variant's `application-id-suffix`:
 `[variants.build-type.debug.android] application-id-suffix = ".debug"` installs `com.example.app`
 as `com.example.app.debug`. The suffix reaches the APK or AAB manifest, `BuildConfig.APPLICATION_ID`,
-`jk run` and `jk test --device`. Classes and `R` stay in the namespace, and `${applicationId}` in
-the manifest still reads the namespace. A minified build leaves R8's `mapping.txt`, `seeds.txt` and
+`jk run` and `jk test --device`, and `${applicationId}` in a manifest reads it, so a provider's
+`${applicationId}.androidx-startup` authority differs between the debug and release installs.
+Classes and `R` stay in the namespace: a relative class name such as `.MainActivity` names
+`com.example.app.MainActivity`. A minified build leaves R8's `mapping.txt`, `seeds.txt` and
 `usage.txt` in `target/r8/`, which a cached build restores with the artifact.
 
 JVM unit tests run under Robolectric when it is on the test classpath: `android-test-config`

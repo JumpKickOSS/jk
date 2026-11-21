@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.DomXml;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
@@ -59,6 +60,17 @@ final class ManifestStep {
         }
         Path mergerLib = exec.requireExtra("manifest-merger");
         String namespace = exec.config().string("namespace");
+        // The merger substitutes PACKAGE for ${applicationId}, so an app merges as its suffixed
+        // id. It qualifies the main manifest's relative class names against that manifest's own
+        // package, so a copy that names none is given the namespace, where the classes live.
+        String applicationId = libraryMode ? namespace : AndroidDeps.applicationId(exec.config());
+        if (!applicationId.equals(namespace)
+                && !DomXml.parse(manifest).getDocumentElement().hasAttribute("package")) {
+            Path named = exec.scratch().resolve("namespaced/AndroidManifest.xml");
+            Files.createDirectories(named.getParent());
+            Files.writeString(named, withPackage(Files.readString(manifest), namespace));
+            manifest = named;
+        }
         long compileSdk = exec.config().intValue("compile-sdk", 0);
         long minSdk = exec.config().intValue("min-sdk", 0);
         Files.createDirectories(merged.getParent());
@@ -78,8 +90,7 @@ final class ManifestStep {
         // A LIBRARY merge runs in the merger's LIBRARY mode (AGP semantics): placeholders like
         // ${applicationId} stay literal — androidx.startup's per-package provider authorities
         // must all become the APP's id at the one real merge, not each library's namespace, or
-        // the app merge sees N conflicting values. An app merge substitutes for real (the
-        // merger derives the applicationId placeholder from PACKAGE).
+        // the app merge sees N conflicting values. An app merge substitutes for real.
         if (libraryMode) {
             merger.arg("--merge-type").arg("LIBRARY");
         } else {
@@ -88,7 +99,7 @@ final class ManifestStep {
             merger.arg("--remove-tools-declarations");
         }
         TaskExec.ToolRun.Result result = merger.arg("--property")
-                .arg("PACKAGE=" + namespace)
+                .arg("PACKAGE=" + applicationId)
                 .arg("--property")
                 .arg("MIN_SDK_VERSION=" + minSdk)
                 .arg("--property")
@@ -99,6 +110,29 @@ final class ManifestStep {
         if (result.exit() != 0 || !Files.isRegularFile(merged)) {
             throw new IllegalStateException("manifest-merger failed:\n" + result.output());
         }
+    }
+
+    /**
+     * {@code xml} with {@code package="namespace"} on its root {@code <manifest>}, every other byte
+     * as written, so the merger's line numbers still match the module's file. Comments and the XML
+     * declaration before the root are skipped; a DOCTYPE never gets here, since the parse that
+     * checked for a package attribute refuses one.
+     */
+    static String withPackage(String xml, String namespace) {
+        int open = xml.indexOf('<');
+        while (open >= 0 && (xml.startsWith("<!--", open) || xml.startsWith("<?", open))) {
+            String close = xml.startsWith("<!--", open) ? "-->" : "?>";
+            int end = xml.indexOf(close, open);
+            open = end < 0 ? -1 : xml.indexOf('<', end + close.length());
+        }
+        int name = open + "<manifest".length();
+        if (open >= 0
+                && xml.startsWith("<manifest", open)
+                && name < xml.length()
+                && !Character.isLetterOrDigit(xml.charAt(name))) {
+            return xml.substring(0, name) + " package=\"" + namespace + "\"" + xml.substring(name);
+        }
+        throw new IllegalStateException("the module's AndroidManifest.xml has no <manifest> root element");
     }
 
     /** The jars of a {@code transitive} step-dependency's lib directory, sorted. */

@@ -92,12 +92,15 @@ class AndroidSpikeTest {
     void jk_build_produces_a_signed_apk_over_the_public_spi() throws Exception {
         Built b = built();
         Path project = b.project();
-        // manifest-merger ran: package + <uses-sdk> injected into the merged manifest.
+        // manifest-merger ran: package + <uses-sdk> injected into the merged manifest. The package
+        // and ${applicationId} are the suffixed id; relative class names stay in the namespace.
         Path merged = project.resolve("target/plugin/android-manifest/merged/AndroidManifest.xml");
         assertThat(merged).exists();
         assertThat(Files.readString(merged))
-                .contains("package=\"com.example.hello\"")
-                .contains("android:minSdkVersion=\"24\"");
+                .contains("package=\"com.example.hello.debug\"")
+                .contains("android:minSdkVersion=\"24\"")
+                .contains("android:name=\"com.example.hello.MainActivity\"")
+                .contains("android:authorities=\"com.example.hello.debug.startup\"");
 
         // R.java generated (before compile) and contributed to the source set.
         Path rJava = project.resolve("target/plugin/android-res/gen/com/example/hello/R.java");
@@ -337,6 +340,8 @@ class AndroidSpikeTest {
                                 <category android:name="android.intent.category.LAUNCHER"/>
                             </intent-filter>
                         </activity>
+                        <provider android:name=".Startup" android:authorities="${applicationId}.startup"
+                            android:exported="false"/>
                     </application>
                 </manifest>
                 """);

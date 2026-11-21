@@ -130,6 +130,54 @@ class TestConfigStepTest {
     }
 
     /**
+     * With an application-id-suffix the merger is given the suffixed id as PACKAGE, the value it
+     * substitutes for {@code ${applicationId}}, and a main manifest naming the namespace as its
+     * package, the one its relative class names are qualified against.
+     */
+    @Test
+    void a_suffixed_app_merges_as_its_application_id_with_class_names_in_the_namespace(@TempDir Path tmp)
+            throws Exception {
+        FakeBuildIo exec = step(tmp).config("application-id-suffix", ".debug");
+        exec.step("android-res");
+        Path own = Files.writeString(exec.moduleDir().resolve("AndroidManifest.xml"), """
+                <?xml version="1.0" encoding="utf-8"?>
+                <!-- <manifest> in a comment is not the root -->
+                <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                  <application><activity android:name=".MainActivity"/></application>
+                </manifest>
+                """);
+
+        TestConfigStep.run(exec);
+
+        String merged = Files.readString(Path.of(written(exec).getProperty("android_merged_manifest")));
+        assertThat(merged)
+                .contains("PACKAGE=com.example.app.debug")
+                .contains("<!-- <manifest> in a comment is not the root -->")
+                .contains("<manifest package=\"com.example.app\" xmlns:android=");
+        assertThat(own)
+                .as("the module's own manifest is left as written")
+                .content()
+                .doesNotContain("package=");
+    }
+
+    /** A main manifest that names its own package keeps it: that is the one it qualifies against. */
+    @Test
+    void a_main_manifest_naming_its_package_is_merged_as_written(@TempDir Path tmp) throws Exception {
+        FakeBuildIo exec = step(tmp).config("application-id-suffix", ".debug");
+        exec.step("android-res");
+        Files.writeString(
+                exec.moduleDir().resolve("AndroidManifest.xml"), "<manifest package=\"com.example.legacy\"/>\n");
+
+        TestConfigStep.run(exec);
+
+        String merged = Files.readString(Path.of(written(exec).getProperty("android_merged_manifest")));
+        assertThat(merged)
+                .contains("PACKAGE=com.example.app.debug")
+                .contains("<manifest package=\"com.example.legacy\"/>")
+                .doesNotContain("package=\"com.example.app\"");
+    }
+
+    /**
      * Robolectric's binary-resources mode reads the manifest compiled into the resource package, so
      * the step links its own: the test closure's AAR resources (a test-scope AAR's manifest names
      * its own themes) and the module's, against the unit-test manifest, with the main link's ids.
