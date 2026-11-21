@@ -4,6 +4,8 @@ package cc.jumpkick.jooq;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -161,6 +163,53 @@ class JooqMainTest {
         assertThatThrownBy(() -> digest(url, "SHOP"))
                 .hasMessageContaining("schema SHOP is not in")
                 .hasMessageContaining("PUBLIC");
+    }
+
+    /** The printed URL keeps the database's address and drops every place a credential rides. */
+    @Test
+    void a_printed_url_carries_no_credential() {
+        assertThat(JooqMain.redactUrl("jdbc:postgresql://db.acme.test:5432/shop?user=app&password=hunter22"))
+                .isEqualTo("jdbc:postgresql://db.acme.test:5432/shop");
+        assertThat(JooqMain.redactUrl("jdbc:mysql://app:hunter22@db.acme.test/shop"))
+                .isEqualTo("jdbc:mysql://db.acme.test/shop");
+        assertThat(JooqMain.redactUrl("jdbc:sqlserver://db.acme.test:1433;user=app;password=hunter22"))
+                .isEqualTo("jdbc:sqlserver://db.acme.test:1433");
+        assertThat(JooqMain.redactUrl("jdbc:oracle:thin:app/hunter22@db.acme.test:1521:orcl"))
+                .isEqualTo("jdbc:oracle:thin:@db.acme.test:1521:orcl");
+        assertThat(JooqMain.redactUrl("jdbc:oracle:thin:@//db.acme.test:1521/svc"))
+                .isEqualTo("jdbc:oracle:thin:@//db.acme.test:1521/svc");
+    }
+
+    /** A URL no driver answers is refused by DriverManager quoting it; the quote loses the credential. */
+    @Test
+    void a_refused_connection_does_not_echo_the_credentials() {
+        JooqMain.Options options = JooqMain.parse(
+                new String[] {
+                    "--schema-digest", "--jdbc-url", "jdbc:nodriver://app:hunter22@db.acme.test/shop?password=hunter22"
+                },
+                "hunter22");
+
+        assertThatThrownBy(() -> JooqMain.schemaDigest(options))
+                .hasMessageContaining("jdbc:nodriver://db.acme.test/shop")
+                .hasStackTraceContaining("No suitable driver")
+                .satisfies(e -> assertThat(stackTrace(e)).doesNotContain("hunter22"));
+    }
+
+    @Test
+    void a_schema_the_database_lacks_is_named_without_the_url_credentials(@TempDir Path tmp) throws Exception {
+        Path schema = write(tmp.resolve("schema.sql"), V1);
+        String url =
+                "jdbc:h2:mem:redacted;INIT=RUNSCRIPT FROM '" + schema.toString().replace('\\', '/') + "'";
+
+        assertThatThrownBy(() -> digest(url, "SHOP"))
+                .hasMessageContaining("schema SHOP is not in jdbc:h2:mem:redacted; it has")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("INIT="));
+    }
+
+    private static String stackTrace(Throwable t) {
+        StringWriter out = new StringWriter();
+        t.printStackTrace(new PrintWriter(out));
+        return out.toString();
     }
 
     @Test

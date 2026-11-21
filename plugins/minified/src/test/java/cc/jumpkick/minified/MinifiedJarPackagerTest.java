@@ -5,37 +5,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.BuildStamps;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/**top-level `$` class names vs nested types, and the output jar's directory-entry contract. */
+/** Library keep rules, the R8 program input, and the output jar's entries and manifest. */
 class MinifiedJarPackagerTest {
-
-    @Test
-    void nested_class_with_outer_peer_is_skipped() {
-        Set<String> paths = Set.of("com/ex/Outer.class", "com/ex/Outer$Inner.class");
-        assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Outer$Inner.class", paths))
-                .isTrue();
-        assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Outer.class", paths))
-                .isFalse();
-    }
-
-    @Test
-    void top_level_dollar_name_without_outer_is_kept() {
-        // Legal JVM top-level simple name containing `$` — no Outer.class peer.
-        Set<String> paths = Set.of("com/ex/Foo$Bar.class");
-        assertThat(MinifiedJarPackager.isNestedClassFile("com/ex/Foo$Bar.class", paths))
-                .isFalse();
-    }
 
     @Test
     void classes_input_leaves_the_compile_freshness_stamps_behind(@TempDir Path tmp) throws Exception {
@@ -69,7 +54,7 @@ class MinifiedJarPackagerTest {
         }
 
         Path artifact = tmp.resolve("app-min.jar");
-        MinifiedJarPackager.writeOutputJar(shrunk, artifact, "com.ex.A");
+        MinifiedJarPackager.writeOutputJar(shrunk, artifact, "com.ex.A", Map.of());
 
         List<String> names = entryNames(artifact);
         assertThat(names)
@@ -83,8 +68,35 @@ class MinifiedJarPackagerTest {
 
         // Determinism: a second rewrite is byte-identical.
         Path again = tmp.resolve("again-min.jar");
-        MinifiedJarPackager.writeOutputJar(shrunk, again, "com.ex.A");
+        MinifiedJarPackager.writeOutputJar(shrunk, again, "com.ex.A", Map.of());
         assertThat(Files.readAllBytes(again)).isEqualTo(Files.readAllBytes(artifact));
+    }
+
+    @Test
+    void output_jar_carries_the_manifest_table_in_declaration_order(@TempDir Path tmp) throws Exception {
+        Path shrunk = tmp.resolve("shrunk.jar");
+        try (OutputStream out = Files.newOutputStream(shrunk);
+                JarOutputStream jos = new JarOutputStream(out)) {
+            jos.putNextEntry(new JarEntry("com/ex/A.class"));
+            jos.write(new byte[] {1});
+            jos.closeEntry();
+        }
+        Map<String, String> attributes = new LinkedHashMap<>();
+        attributes.put("Implementation-Version", "1.2.3");
+        attributes.put("Automatic-Module-Name", "com.ex");
+
+        Path artifact = tmp.resolve("lib-min.jar");
+        MinifiedJarPackager.writeOutputJar(shrunk, artifact, null, attributes);
+
+        try (JarFile jar = new JarFile(artifact.toFile())) {
+            String manifest = new String(
+                    jar.getInputStream(jar.getEntry(JarFile.MANIFEST_NAME)).readAllBytes(), StandardCharsets.UTF_8);
+            assertThat(manifest)
+                    .isEqualTo("Manifest-Version: 1.0\r\n"
+                            + "Implementation-Version: 1.2.3\r\n"
+                            + "Automatic-Module-Name: com.ex\r\n"
+                            + "\r\n");
+        }
     }
 
     private static List<String> entryNames(Path jar) throws Exception {
@@ -98,7 +110,7 @@ class MinifiedJarPackagerTest {
     }
 
     @Test
-    void appendModuleClassKeeps_includes_top_level_dollar_class(@TempDir Path tmp) throws Exception {
+    void appendModuleClassKeeps_keeps_nested_and_top_level_dollar_classes(@TempDir Path tmp) throws Exception {
         Path classes = tmp.resolve("classes");
         Path pkg = classes.resolve("com/ex");
         Files.createDirectories(pkg);
@@ -111,6 +123,7 @@ class MinifiedJarPackagerTest {
         String rules = pro.toString();
         assertThat(rules).contains("-keep class com.ex.Outer ");
         assertThat(rules).contains("-keep class com.ex.Foo$Bar ");
-        assertThat(rules).doesNotContain("-keep class com.ex.Outer$Inner ");
+        // A keep on Outer covers its members only; a library's callers use Outer.Inner directly.
+        assertThat(rules).contains("-keep class com.ex.Outer$Inner ");
     }
 }

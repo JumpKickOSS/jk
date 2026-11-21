@@ -538,7 +538,9 @@ The r8 jar is a `[[tool]]` row in `jk-lock.toml`, pinned by digest at `jk lock`
 JumpKick derives keep rules from by-name indexes (`META-INF/services/*` and
 `META-INF/<vendor>/<interface>/<impl>` markers) and composes GraalVM metadata published
 under `META-INF/native-image`. The effective rule set is written next to the artifact as
-`<name>-keep.pro`.
+`<name>-keep.pro`. With no `[application] main`, every class the module compiles is kept,
+nested classes included. The jar's manifest is the `[manifest]` table, plus `Main-Class` when
+`[application] main` is set.
 
 Missing optional classes (Netty/Micronaut `Class.forName` probes) are **warnings** by
 default (`strict-warnings = true` to fail). After shrink, an **audit** fails the build if

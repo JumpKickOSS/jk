@@ -6,6 +6,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.build.RepositoryRoute;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -81,15 +82,20 @@ final class RepositoryRoutes {
         Files.write(file, lines, StandardCharsets.UTF_8);
     }
 
-    /** Read the file {@link #write} produced; a blank line is skipped, a line without id or url refused. */
+    /**
+     * Read the file {@link #write} produced; a blank line is skipped, a line without id or url
+     * refused by its number, never its text, which may hold a credential.
+     */
     static RepositoryRoutes read(Path file) throws IOException {
         List<Route> out = new ArrayList<>();
+        int number = 0;
         for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            number++;
             if (line.isBlank()) continue;
             @Nullable String id = Jsonl.str(line, ID);
             @Nullable String url = Jsonl.str(line, URL);
             if (id == null || url == null) {
-                throw new IOException("repository route without id or url: " + line);
+                throw new IOException("repository route without id or url on line " + number);
             }
             out.add(new Route(id, url, Jsonl.str(line, USERNAME), Jsonl.str(line, SECRET), Jsonl.str(line, PROXY)));
         }
@@ -231,17 +237,27 @@ final class RepositoryRoutes {
     /** Aether's per-repository header table key ({@code ConfigurationProperties.HTTP_HEADERS}). */
     static final String HTTP_HEADERS = "aether.connector.http.headers";
 
-    /** The ids in order — for the augment's log line. */
+    /** The ids and URLs in order, for the augment's log line; no credential a URL carries. */
     String describe() {
         StringBuilder b = new StringBuilder();
         for (Route r : routes) {
             if (b.length() > 0) b.append(", ");
-            b.append(r.id()).append('=').append(r.url());
+            b.append(r.id()).append('=').append(withoutCredentials(r.url()));
             Proxy proxy = proxyOf(r);
             // Where the proxy listens, never its credential.
             if (proxy != null)
                 b.append(" via proxy ").append(proxy.getHost()).append(':').append(proxy.getPort());
         }
         return b.toString();
+    }
+
+    /** {@code url} without its user info, query or fragment, where a token can ride. */
+    static String withoutCredentials(String url) {
+        try {
+            URI uri = new URI(url);
+            return new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(), uri.getPath(), null, null).toString();
+        } catch (URISyntaxException malformed) {
+            return "(malformed url)";
+        }
     }
 }

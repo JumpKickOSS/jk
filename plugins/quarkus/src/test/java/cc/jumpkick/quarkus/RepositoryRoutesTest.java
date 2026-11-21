@@ -129,6 +129,34 @@ class RepositoryRoutesTest {
                 .hasMessageContaining("without id or url");
     }
 
+    /** The line is the one place a route's credential sits, so a refusal names its number only. */
+    @Test
+    void a_refused_line_is_named_by_number_never_by_its_credential(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("routes.jsonl");
+        Files.writeString(
+                file,
+                "{\"id\":\"central\",\"url\":\"" + MIRROR + "\"}\n{\"id\":\"nexus\",\"secret\":\"s3cr3t-token\"}\n",
+                StandardCharsets.UTF_8);
+        assertThatThrownBy(() -> RepositoryRoutes.read(file))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("line 2")
+                .message()
+                .doesNotContain("s3cr3t-token");
+    }
+
+    /** The augment logs each remote; user info and a query token in its URL stay out of the log. */
+    @Test
+    void the_logged_remotes_carry_no_credential_from_a_url() {
+        RepositoryRoutes routes = RepositoryRoutes.of(List.of(
+                new RepositoryRoutes.Route(
+                        "nexus", "https://deploy:pa55word@nexus.example.test:8443/repo/?token=abc123", null, null),
+                new RepositoryRoutes.Route("central", MIRROR.toString(), null, null)));
+
+        assertThat(routes.describe())
+                .isEqualTo("nexus=https://nexus.example.test:8443/repo/, central=" + MIRROR)
+                .doesNotContain("pa55word", "abc123", "deploy");
+    }
+
     @Test
     void an_empty_file_is_no_remotes_at_all(@TempDir Path tmp) throws Exception {
         Path file = tmp.resolve("routes.jsonl");

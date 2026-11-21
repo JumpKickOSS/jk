@@ -170,8 +170,9 @@ class BootJarPackagerTest {
         try (JarFile jar = new JarFile(out.toFile())) {
             assertThat(jar.getEntry("BOOT-INF/lib/util-1.0.jar")).isNotNull(); // first keeps the plain name
             assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0.jar")).isNotNull();
-            // Same group twice: the group cannot separate them, so an ordinal says so out loud.
-            assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0.jar.2"))
+            // Same group twice: the group cannot separate them, so an ordinal says so out loud,
+            // ahead of the extension so the entry is still a .jar.
+            assertThat(jar.getEntry("BOOT-INF/lib/com.example.b-util-1.0-2.jar"))
                     .isNotNull();
             // A workspace sibling has no coordinate to borrow.
             assertThat(jar.getEntry("BOOT-INF/lib/dup-util-1.0.jar")).isNotNull();
@@ -182,9 +183,108 @@ class BootJarPackagerTest {
             assertThat(entryText(jar, "BOOT-INF/classpath.idx"))
                     .isEqualTo("- \"BOOT-INF/lib/util-1.0.jar\"\n"
                             + "- \"BOOT-INF/lib/com.example.b-util-1.0.jar\"\n"
-                            + "- \"BOOT-INF/lib/com.example.b-util-1.0.jar.2\"\n"
+                            + "- \"BOOT-INF/lib/com.example.b-util-1.0-2.jar\"\n"
                             + "- \"BOOT-INF/lib/dup-util-1.0.jar\"\n");
         }
+    }
+
+    /** Three workspace siblings of one name: the third is numbered and keeps its extension. */
+    @Test
+    void a_third_colliding_name_is_numbered_before_its_extension(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(
+                                new BootJarPackager.Lib(
+                                        "util.jar", writeJar(tmp.resolve("a.jar"), "a/A.class"), false, ""),
+                                new BootJarPackager.Lib(
+                                        "util.jar", writeJar(tmp.resolve("b.jar"), "b/B.class"), false, ""),
+                                new BootJarPackager.Lib(
+                                        "util.jar", writeJar(tmp.resolve("c.jar"), "c/C.class"), false, "")),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        Map.of(),
+                        new byte[0],
+                        List.of(),
+                        0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(jar.stream()
+                            .map(JarEntry::getName)
+                            .filter(n -> n.startsWith("BOOT-INF/lib/") && !n.endsWith("/")))
+                    .containsExactly(
+                            "BOOT-INF/lib/util.jar", "BOOT-INF/lib/dup-util.jar", "BOOT-INF/lib/dup-util-2.jar");
+        }
+    }
+
+    /**
+     * A registration file the classes and an AOT root both carry is merged: a flattened {@code
+     * BOOT-INF/classes} has room for one copy, and keeping the first dropped the other root's
+     * services, auto-configurations and AOT contributions.
+     */
+    @Test
+    void registration_files_several_roots_carry_are_merged(@TempDir Path tmp) throws Exception {
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path aot = Files.createDirectories(tmp.resolve("aot"));
+        write(classes, "META-INF/services/com.example.Spi", "# app\ncom.example.AppSpi\n");
+        write(aot, "META-INF/services/com.example.Spi", "com.example.AotSpi\ncom.example.AppSpi\n");
+        write(
+                classes,
+                "META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports",
+                "com.example.A\n");
+        write(
+                aot,
+                "META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports",
+                "com.example.B\n");
+        write(classes, "META-INF/spring/aot.factories", "org.example.Contributor=\\\n  com.example.One\n");
+        write(
+                aot,
+                "META-INF/spring/aot.factories",
+                "org.example.Contributor=com.example.Two\norg.example.Other=com.example.Three\n");
+        write(classes, "application.properties", "from=app\n");
+        write(aot, "application.properties", "from=aot\n");
+        Path loader = writeJar(tmp.resolve("loader.jar"), "org/springframework/boot/loader/launch/JarLauncher.class");
+
+        Path out = tmp.resolve("app.jar");
+        new BootJarPackager()
+                .packageBootJar(new BootJarPackager.BootJarRequest(
+                        classes,
+                        List.of(),
+                        loader,
+                        out,
+                        "com.example.App",
+                        "4.0.0",
+                        Map.of(),
+                        new byte[0],
+                        List.of(aot),
+                        0L));
+
+        try (JarFile jar = new JarFile(out.toFile())) {
+            assertThat(entryText(jar, "BOOT-INF/classes/META-INF/services/com.example.Spi"))
+                    .isEqualTo("com.example.AppSpi\ncom.example.AotSpi\n");
+            assertThat(
+                            entryText(
+                                    jar,
+                                    "BOOT-INF/classes/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports"))
+                    .isEqualTo("com.example.A\ncom.example.B\n");
+            assertThat(entryText(jar, "BOOT-INF/classes/META-INF/spring/aot.factories"))
+                    .isEqualTo("org.example.Contributor=com.example.One,com.example.Two\n"
+                            + "org.example.Other=com.example.Three\n");
+            // Anything else still goes to the application's copy.
+            assertThat(entryText(jar, "BOOT-INF/classes/application.properties"))
+                    .isEqualTo("from=app\n");
+        }
+    }
+
+    private static void write(Path root, String rel, String text) throws IOException {
+        Path file = root.resolve(rel);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, text);
     }
 
     /**

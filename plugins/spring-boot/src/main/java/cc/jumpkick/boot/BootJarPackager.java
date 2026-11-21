@@ -7,18 +7,23 @@ import cc.jumpkick.host.TreeContent;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -74,15 +79,29 @@ public final class BootJarPackager {
 
             // 2. Application classes + resources under BOOT-INF/classes/, then any AOT
             //    output roots (generated classes + GraalVM hint resources) — app files win
-            //    on collision, AOT roots in the given order after that.
+            //    on collision, AOT roots in the given order after that. A registration file
+            //    several roots carry is merged instead: one root's services would vanish.
             Set<String> classEntries = new HashSet<>();
             List<Path> roots = new ArrayList<>();
             roots.add(request.classesDir());
             roots.addAll(request.aotDirs());
+            Map<Path, List<Path>> filesByRoot = new LinkedHashMap<>();
+            Map<String, List<Path>> descriptors = new HashMap<>();
             for (Path root : roots) {
                 List<Path> files = collectFiles(root);
                 files.sort(Comparator.comparing(p -> normalize(root, p)));
+                filesByRoot.put(root, files);
                 for (Path file : files) {
+                    String name = normalize(root, file);
+                    if (mergeKind(name) != Merge.NONE)
+                        descriptors
+                                .computeIfAbsent(name, k -> new ArrayList<>())
+                                .add(file);
+                }
+            }
+            for (Map.Entry<Path, List<Path>> rootFiles : filesByRoot.entrySet()) {
+                Path root = rootFiles.getKey();
+                for (Path file : rootFiles.getValue()) {
                     String name = normalize(root, file);
                     if (name.equals("META-INF/MANIFEST.MF")) continue;
                     if (!TreeContent.isContent(name)) continue;
@@ -90,7 +109,12 @@ public final class BootJarPackager {
                     if (request.sbom().length > 0 && SBOM_ENTRY.equals(CLASSES_PREFIX + name)) continue;
                     if (!classEntries.add(name)) continue;
                     zip.writeParentDirs(jos, CLASSES_PREFIX + name, dirsWritten);
-                    zip.writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file));
+                    List<Path> sources = descriptors.getOrDefault(name, List.of());
+                    if (sources.size() > 1) {
+                        zip.writeEntry(jos, CLASSES_PREFIX + name, merge(mergeKind(name), sources));
+                    } else {
+                        zip.writeEntryStreaming(jos, CLASSES_PREFIX + name, Files.newInputStream(file));
+                    }
                 }
             }
 
@@ -114,6 +138,58 @@ public final class BootJarPackager {
             zip.writeEntry(jos, LAYERS_IDX, layersIndex(nested));
         }
         return request.outputJar();
+    }
+
+    /** How a registration file several roots carry is combined. */
+    private enum Merge {
+        NONE,
+        LINES,
+        FACTORIES
+    }
+
+    /**
+     * {@code META-INF/services/*} and Spring's {@code META-INF/spring/*.imports} list one name per
+     * line; {@code spring.factories} and {@code aot.factories} map a key to a comma list.
+     */
+    private static Merge mergeKind(String name) {
+        if (name.startsWith(SERVICES_PREFIX) && name.indexOf('/', SERVICES_PREFIX.length()) < 0) return Merge.LINES;
+        if (name.startsWith("META-INF/spring/") && name.endsWith(".imports")) return Merge.LINES;
+        if (name.equals("META-INF/spring.factories") || name.equals("META-INF/spring/aot.factories"))
+            return Merge.FACTORIES;
+        return Merge.NONE;
+    }
+
+    /** Every root's registrations in root order, each once; comments and blank lines dropped. */
+    private static byte[] merge(Merge kind, List<Path> sources) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        if (kind == Merge.LINES) {
+            Set<String> lines = new LinkedHashSet<>();
+            for (Path source : sources) {
+                for (String line : Files.readAllLines(source, StandardCharsets.UTF_8)) {
+                    int hash = line.indexOf('#');
+                    String entry = (hash < 0 ? line : line.substring(0, hash)).strip();
+                    if (!entry.isEmpty()) lines.add(entry);
+                }
+            }
+            for (String line : lines) sb.append(line).append('\n');
+        } else {
+            Map<String, Set<String>> factories = new TreeMap<>();
+            for (Path source : sources) {
+                Properties props = new Properties();
+                try (Reader in = Files.newBufferedReader(source, StandardCharsets.UTF_8)) {
+                    props.load(in);
+                }
+                for (String key : new TreeSet<>(props.stringPropertyNames())) {
+                    Set<String> values = factories.computeIfAbsent(key.strip(), k -> new LinkedHashSet<>());
+                    for (String value : props.getProperty(key).split(",")) {
+                        if (!value.isBlank()) values.add(value.strip());
+                    }
+                }
+            }
+            factories.forEach((key, values) ->
+                    sb.append(key).append('=').append(String.join(",", values)).append('\n'));
+        }
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
     /** The libs that belong under {@code BOOT-INF/lib}, in the given order. */
@@ -318,9 +394,13 @@ public final class BootJarPackager {
                 if (!seen.add(lib.fileName())) {
                     String prefixed =
                             lib.group().isEmpty() ? "dup-" + lib.fileName() : lib.group() + "-" + lib.fileName();
+                    // The ordinal goes before the extension: launchers and tools look for ".jar".
+                    int dot = prefixed.lastIndexOf('.');
+                    String stem = dot > 0 ? prefixed.substring(0, dot) : prefixed;
+                    String ext = dot > 0 ? prefixed.substring(dot) : "";
                     int n = 2;
                     String candidate = prefixed;
-                    while (!seen.add(candidate)) candidate = prefixed + "." + n++;
+                    while (!seen.add(candidate)) candidate = stem + "-" + n++ + ext;
                     effective = new Lib(candidate, lib.jar(), lib.snapshot(), lib.group());
                 }
                 out.add(effective);

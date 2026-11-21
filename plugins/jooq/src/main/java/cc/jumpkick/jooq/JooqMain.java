@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,7 +88,7 @@ public final class JooqMain {
         }
         System.out.println("jooq: " + options.scripts().size()
                 + (options.scripts().size() == 1 ? " script" : " scripts")
-                + (options.jdbcUrl() == null ? "" : " (schema read from " + options.jdbcUrl() + ")")
+                + (options.jdbcUrl() == null ? "" : " (schema read from " + redactUrl(options.jdbcUrl()) + ")")
                 + " -> " + options.out());
         return 0;
     }
@@ -180,7 +181,7 @@ public final class JooqMain {
         Class<?> context = Class.forName("org.jooq.DSLContext", true, loader);
         Class<?> metaType = Class.forName("org.jooq.Meta", true, loader);
         Method nameOf = Class.forName("org.jooq.Named", true, loader).getMethod("getName");
-        try (Connection connection = DriverManager.getConnection(url, options.jdbcUser(), options.jdbcPassword())) {
+        try (Connection connection = connect(options)) {
             Object meta = context.getMethod("meta")
                     .invoke(dsl.getMethod("using", Connection.class).invoke(null, connection));
             Predicate<Object> wanted = schema -> options.schema().equals(name(nameOf, schema));
@@ -191,7 +192,7 @@ public final class JooqMain {
                 for (Object schema : (List<?>) metaType.getMethod("getSchemas").invoke(meta))
                     present.add(name(nameOf, schema));
                 throw new IllegalArgumentException(
-                        "schema " + options.schema() + " is not in " + url + "; it has " + present);
+                        "schema " + options.schema() + " is not in " + redactUrl(url) + "; it has " + present);
             }
             String ddl = String.valueOf(metaType.getMethod("ddl").invoke(filtered));
             return Hashing.sha256Hex(ddl);
@@ -199,6 +200,40 @@ public final class JooqMain {
             if (e.getCause() instanceof Exception cause) throw cause;
             throw e;
         }
+    }
+
+    /**
+     * The connection the digest reads through. A driver's refusal (and {@code DriverManager}'s own
+     * "no suitable driver") can quote the URL, so its message is rewritten without the URL's
+     * credentials or the password, and nothing of the original is chained.
+     */
+    private static Connection connect(Options options) throws SQLException {
+        String url = Objects.requireNonNull(options.jdbcUrl(), "--jdbc-url");
+        try {
+            return DriverManager.getConnection(url, options.jdbcUser(), options.jdbcPassword());
+        } catch (SQLException e) {
+            String message = String.valueOf(e.getMessage()).replace(url, redactUrl(url));
+            String password = options.jdbcPassword();
+            if (password != null && !password.isEmpty()) message = message.replace(password, "***");
+            throw new SQLException(message, e.getSQLState(), e.getErrorCode());
+        }
+    }
+
+    /**
+     * {@code url} as it may be printed: no parameters (after {@code ?} or {@code ;}, where {@code
+     * password=} rides) and no {@code user:password@} or Oracle {@code user/password@} before the host.
+     */
+    static String redactUrl(String url) {
+        String shown = url;
+        for (char separator : new char[] {'?', ';'}) {
+            int at = shown.indexOf(separator);
+            if (at >= 0) shown = shown.substring(0, at);
+        }
+        int at = shown.lastIndexOf('@');
+        if (at < 0) return shown;
+        int slashes = shown.lastIndexOf("//", at);
+        if (slashes >= 0) return shown.substring(0, slashes + 2) + shown.substring(at + 1);
+        return shown.substring(0, shown.lastIndexOf(':', at) + 1) + shown.substring(at);
     }
 
     private static String name(Method nameOf, @Nullable Object named) {

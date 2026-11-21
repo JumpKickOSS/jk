@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.boot;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;
@@ -182,10 +183,11 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
         // `java -jar`. SpringProperties reads classpath-root spring.properties, so
         // activation can ship inside the jar. App files win collisions in the packager, so a
         // user-authored spring.properties is respected — with a warning when it forgot the key.
+        Path activate = null;
         if (!aotDirs.isEmpty()) {
             Path userProps = io.classesDir().resolve("spring.properties");
             if (!Files.isRegularFile(userProps)) {
-                Path activate = Files.createDirectories(io.artifactPath().resolveSibling(".jk-aot-activate"));
+                activate = Files.createDirectories(io.artifactPath().resolveSibling(".jk-aot-activate"));
                 Files.writeString(
                         activate.resolve("spring.properties"),
                         "# Written by jk: activate the AOT artifacts built into this jar.\n"
@@ -201,18 +203,23 @@ public final class SpringBootPlugin implements Plugin, BuildExtension, PackageEx
 
         io.label("package " + io.artifactPath().getFileName() + " (boot)");
         Map<String, String> attributes = new LinkedHashMap<>(io.project().manifest());
-        new BootJarPackager()
-                .packageBootJar(new BootJarPackager.BootJarRequest(
-                        io.classesDir(),
-                        libs,
-                        inputs.loaderJar(),
-                        io.artifactPath(),
-                        inputs.startClass(),
-                        inputs.bootVersion(),
-                        attributes,
-                        sbom,
-                        aotDirs,
-                        0L));
+        try {
+            new BootJarPackager()
+                    .packageBootJar(new BootJarPackager.BootJarRequest(
+                            io.classesDir(),
+                            libs,
+                            inputs.loaderJar(),
+                            io.artifactPath(),
+                            inputs.startClass(),
+                            inputs.bootVersion(),
+                            attributes,
+                            sbom,
+                            aotDirs,
+                            0L));
+        } finally {
+            // The staged spring.properties lives in the jar; the directory is not an output.
+            PathUtil.deleteRecursively(activate);
+        }
     }
 
     /**

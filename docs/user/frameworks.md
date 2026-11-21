@@ -30,7 +30,7 @@ packaging). DevTools is picked up by [`jk watch run` / `jk dev`](run.md).
 
 | key | default | what |
 |---|---|---|
-| `aot` | on when `[native]` is declared, else off | run Spring's AOT processor (`SpringApplicationAotProcessor`) before packaging; the generated classes and hints go into the Boot jar with `spring.aot.enabled=true` |
+| `aot` | on when `[native]` is declared, else off | run Spring's AOT processor (`SpringApplicationAotProcessor`) before packaging; the generated classes and hints go into the Boot jar with `spring.aot.enabled=true`; a `META-INF/services` file, `spring.factories`, `aot.factories` or `*.imports` file both the application and the AOT output carry is merged, any other path is the application's |
 | `aot-jvm-args` | `[]` | flags for the processor's JVM — the `--add-opens` a library needs on JDK 17+, a heap size |
 | `aot-args` | `[]` | arguments handed to the application while it starts under processing |
 | `include-tools` | `true` | nest `spring-boot-jarmode-tools` so `java -Djarmode=tools -jar app.jar` works |

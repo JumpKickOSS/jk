@@ -6,6 +6,15 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Spring Boot jars keep the AOT output's service registrations, and a minified library keeps its
+  nested classes.** A Boot jar merges `META-INF/services` files, `spring.factories`, `aot.factories`
+  and `*.imports` files that both the application and the Spring AOT output carry, instead of
+  keeping only the application's copy; a third nested jar with the same name is `name-2.jar`, not
+  `name.jar.2`; and no `target/.jk-aot-activate` folder is left behind. A minified library jar keeps
+  nested public classes (`Outer.Inner`) and carries the `[manifest]` table. Quarkus no longer leaves
+  its repository-credentials temp file behind when a later temp file cannot be created, and its logs
+  and errors no longer show a repository credential. The jOOQ preset prints JDBC URLs without user,
+  password or parameters.
 - **`jk image` keeps training secrets off the container runtime's command line.** With `aot-cache =
   true`, `[image.env]` and `[image.training-env]` values were passed as `-e KEY=VALUE`, where any
   user of the host could read them; the runtime now reads them from an owner-only env file that is

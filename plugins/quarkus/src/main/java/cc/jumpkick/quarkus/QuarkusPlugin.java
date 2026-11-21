@@ -138,10 +138,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         String quarkusVersion = quarkusVersion(exec);
         String packageType =
                 normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
-        Path routes = writeRepositoryRoutes(exec);
+        // The routes file carries credentials: written inside the try, so the finally removes it.
         Path notices = Files.createTempFile("jk-quarkus-notices-", ".txt");
+        Path routes = null;
         TaskExec.ToolRun.Result run;
         try {
+            routes = writeRepositoryRoutes(exec);
             run = exec.java()
                     .classpath(cp)
                     .arg(PreferIpv4.JVM_FLAG)
@@ -156,7 +158,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     .run();
             ForkNotices.relay(notices, exec);
         } finally {
-            Files.deleteIfExists(routes);
+            if (routes != null) Files.deleteIfExists(routes);
             Files.deleteIfExists(notices);
         }
         if (run.exit() != 0) {
@@ -192,10 +194,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path scratch = exec.scratch();
         Path list = writeRuntimeList(entries, scratch.resolve(name + "-jars.tsv"));
         Path out = scratch.resolve(name + ".txt");
-        Path routes = writeRepositoryRoutes(exec);
         Path notices = Files.createTempFile("jk-quarkus-notices-", ".txt");
+        Path routes = null;
         TaskExec.ToolRun.Result run;
         try {
+            routes = writeRepositoryRoutes(exec);
             run = exec.java()
                     .classpath(toolClasspath(exec))
                     .arg(ForkNotices.flag(notices))
@@ -216,7 +219,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     .run();
             ForkNotices.relay(notices, exec);
         } finally {
-            Files.deleteIfExists(routes);
+            if (routes != null) Files.deleteIfExists(routes);
             Files.deleteIfExists(notices);
         }
         if (run.exit() != 0 || !Files.isRegularFile(out)) {
@@ -250,10 +253,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path outDir = exec.outputDir(TEST_MODEL_DIR);
         Path listFile = writeRuntimeList(exec, exec.scratch().resolve("test-runtime-jars.tsv"));
         exec.label("quarkus test model (" + exec.project().name() + ")");
-        Path routes = writeRepositoryRoutes(exec);
         Path notices = Files.createTempFile("jk-quarkus-notices-", ".txt");
+        Path routes = null;
         TaskExec.ToolRun.Result run;
         try {
+            routes = writeRepositoryRoutes(exec);
             run = exec.java()
                     .classpath(toolClasspath(exec))
                     .arg(PreferIpv4.JVM_FLAG)
@@ -265,7 +269,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     .run();
             ForkNotices.relay(notices, exec);
         } finally {
-            Files.deleteIfExists(routes);
+            if (routes != null) Files.deleteIfExists(routes);
             Files.deleteIfExists(notices);
         }
         if (run.exit() != 0) {
@@ -321,7 +325,12 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
      */
     private static Path writeRepositoryRoutes(TaskExec exec) throws IOException {
         Path routes = Files.createTempFile("jk-quarkus-repositories-", ".jsonl");
-        RepositoryRoutes.write(exec.repositories(), routes);
+        try {
+            RepositoryRoutes.write(exec.repositories(), routes);
+        } catch (IOException | RuntimeException e) {
+            Files.deleteIfExists(routes);
+            throw e;
+        }
         return routes;
     }
 

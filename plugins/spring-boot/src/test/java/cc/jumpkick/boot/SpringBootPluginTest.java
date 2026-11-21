@@ -88,6 +88,21 @@ class SpringBootPluginTest {
         }
     }
 
+    /** The staged {@code spring.properties} reaches the jar, and its staging directory goes. */
+    @Test
+    void aot_activation_ships_in_the_jar_and_leaves_no_staging_directory(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = fake(tmp, Map.of("version", "latest", "include-tools", Boolean.FALSE));
+        io.entry("spring-boot-4.1.2.jar", "org.springframework.boot", "spring-boot", "4.1.2");
+        FakeBuildIo.write(io.step("spring-aot").resolve("classes/com/example/App__BeanDefinitions.class"), "x");
+
+        SpringBootPlugin.produceBootJar(io);
+
+        try (JarFile jar = new JarFile(io.artifactPath().toFile())) {
+            assertThat(jar.getEntry("BOOT-INF/classes/spring.properties")).isNotNull();
+        }
+        assertThat(io.artifactPath().resolveSibling(".jk-aot-activate")).doesNotExist();
+    }
+
     /** No Boot in the closure means no Boot to launch — that fails here, not at `java -jar`. */
     @Test
     void a_closure_without_spring_boot_is_refused(@TempDir Path tmp) throws Exception {

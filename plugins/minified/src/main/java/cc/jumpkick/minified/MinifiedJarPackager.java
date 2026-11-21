@@ -217,7 +217,7 @@ final class MinifiedJarPackager {
                 // jar carries no evidence the signatures are needed.
                 io.label(signatureWarning(signatures));
             }
-            writeOutputJar(shrunk, io.artifactPath(), mainClass);
+            writeOutputJar(shrunk, io.artifactPath(), mainClass, io.project().manifest());
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
             PathUtil.deleteRecursively(work);
@@ -365,8 +365,9 @@ final class MinifiedJarPackager {
     }
 
     /**
-     * Keep every top-level class compiled for this module. Inner classes are covered by their
-     * outer keep when present; anonymous/local types stay reachable from kept members.
+     * Keep every class compiled for this module, nested ones included: a keep on {@code Outer}
+     * covers its members, not {@code Outer$Inner}, and a library's callers reach nested types
+     * directly.
      */
     static void appendModuleClassKeeps(StringBuilder pro, Path classesDir) throws IOException {
         if (classesDir == null || !Files.isDirectory(classesDir)) {
@@ -383,14 +384,8 @@ final class MinifiedJarPackager {
                     .filter(Files::isRegularFile)
                     .sorted(Comparator.naturalOrder())
                     .toList();
-            // Relative paths present in the tree (for outer-class peer checks).
-            Set<String> classPaths = new HashSet<>();
-            for (Path file : classes) {
-                classPaths.add(classesDir.relativize(file).toString().replace('\\', '/'));
-            }
             for (Path file : classes) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
-                if (isNestedClassFile(name, classPaths)) continue; // outer keep retains nested types
                 String fqcn =
                         name.substring(0, name.length() - ".class".length()).replace('/', '.');
                 pro.append("-keep class ").append(fqcn).append(" { *; }\n");
@@ -398,22 +393,6 @@ final class MinifiedJarPackager {
             }
         }
         if (kept == 0) pro.append("-dontshrink\n");
-    }
-
-    /**
-     * True when {@code relClassPath} is a javac nested type ({@code Outer$Inner.class}) whose
-     * outer {@code Outer.class} is also present. Top-level names that merely contain {@code $}
-     * (legal on the JVM) have no outer peer and must still get a keep rule.
-     */
-    static boolean isNestedClassFile(String relClassPath, Set<String> classPaths) {
-        String fileName = relClassPath;
-        int slash = relClassPath.lastIndexOf('/');
-        if (slash >= 0) fileName = relClassPath.substring(slash + 1);
-        if (!fileName.endsWith(".class") || !fileName.contains("$")) return false;
-        String beforeDollar = fileName.substring(0, fileName.indexOf('$'));
-        if (beforeDollar.isEmpty()) return false;
-        String outerRel = (slash >= 0 ? relClassPath.substring(0, slash + 1) : "") + beforeDollar + ".class";
-        return classPaths.contains(outerRel);
     }
 
     /** A project-relative path for a declared keep-file. */
@@ -448,19 +427,25 @@ final class MinifiedJarPackager {
 
     /**
      * R8's output jar, rewritten with a deterministic order/times. Sets {@code Main-Class} only when
-     * {@code mainClass} is non-null (library fat/shrunk jars need no entry point).
+     * {@code mainClass} is non-null (library fat/shrunk jars need no entry point), then the {@code
+     * [manifest]} attributes in declaration order.
      *
      * <p>R8's output carries no directory entries; {@link DeterministicZip#writeParentDirs}
      * synthesizes them, because frameworks that enumerate resource directories from the classpath
      * resolve them that way.
      */
     // Package-private for MinifiedJarPackagerTest.
-    static void writeOutputJar(Path shrunk, Path artifact, @Nullable String mainClass) throws IOException {
+    static void writeOutputJar(Path shrunk, Path artifact, @Nullable String mainClass, Map<String, String> attributes)
+            throws IOException {
         Files.createDirectories(artifact.getParent());
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         if (mainClass != null && !mainClass.isBlank()) {
             manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
+        }
+        for (Map.Entry<String, String> e : attributes.entrySet()) {
+            if (e.getKey().isBlank() || e.getValue() == null) continue;
+            manifest.getMainAttributes().put(new Attributes.Name(e.getKey()), e.getValue());
         }
         try (JarFile in = new JarFile(shrunk.toFile(), false);
                 OutputStream out = DeterministicZip.archiveStream(artifact);
