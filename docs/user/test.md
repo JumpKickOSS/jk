@@ -250,6 +250,9 @@ same cone for `jk build` and `jk test`. To reach one module's class from the wor
 name the class: `jk test -m clients/cli -S SelfNukeCommandTest` runs it in `clients/cli`
 and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
+The run's count is the whole cone's: `jk test -m clients/cli` reports that module's tests
+plus those of every module it builds on, and the Tests table of `jk-results.md` splits the total
+by module. `--exclusive` below counts the selected modules alone.
 
 `--exclusive` (`-X`) runs **exactly** the selected modules' suites. Prerequisites still compile,
 main and test, but their suites do not run: each one's `run-tests` step reads

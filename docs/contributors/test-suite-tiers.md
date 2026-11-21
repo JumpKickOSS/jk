@@ -420,6 +420,7 @@ CLI tier leaves no slot per fixture behind. A slot a live launch holds is never 
 | Extra suite | `jk test -s integration` or put e2e under `integration/` |
 | Everything | `jk test -A` / `jk build -A` (every suite but the explicit ones) |
 | Tag filter | `jk test -E slow` / `--include-tags smoke` |
+| One module | `jk test -m <module>` (its prerequisites' suites run and count too; `-X` for that module's alone) |
 | One class | `jk test -m <module> -S <fqcn>` (`-s integration` for a tagged one) |
 
 Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for
