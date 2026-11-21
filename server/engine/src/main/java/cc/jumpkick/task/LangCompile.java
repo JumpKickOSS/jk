@@ -162,11 +162,18 @@ public final class LangCompile {
             }
         }
 
+        // Under --redo the compile runs whole: a state that agrees with its tree would compile
+        // nothing and record whatever the output dir holds. The dir is the Kotlin compile's alone.
+        if (!useCache) {
+            if (workingDir != null) PathUtil.deleteRecursively(workingDir);
+            PathUtil.deleteRecursively(request.outputDir());
+        }
         Files.createDirectories(request.outputDir());
         // Incremental state is only valid alongside the outputs it produced: if the output
         // dir is empty of classes, or short of one the state's compile wrote (a cleaned target/,
         // a write cut short, a restore of another tree), BTA would compile "only what changed"
-        // and record the short tree. Start the IC state over instead.
+        // and record the short tree. Start the IC state over instead; a rebuild from no state
+        // clears the output dir before it writes.
         if (request.incremental()
                 && workingDir != null
                 && Files.isDirectory(workingDir)

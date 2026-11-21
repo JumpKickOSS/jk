@@ -6,6 +6,9 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk build --redo` recompiles a Kotlin module from scratch.** Under `--redo` (and `--force`)
+  Kotlin's incremental compile found nothing to do, kept whatever classes were in `target/kotlin/`,
+  damaged or stray ones included, and stored them in the action cache as a fresh result.
 - **Cache keys follow package annotations, classpath order and processors found on the classpath.**
   `@NullMarked` on a package, or an annotation on an enum constant, now recompiles Kotlin code that
   reads the Java source; swapping the components of a Kotlin `@JvmRecord` recompiles its Java

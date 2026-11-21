@@ -229,14 +229,54 @@ class KotlinCompileTest {
         assertThat(state.resolve("caches.bin")).doesNotExist();
     }
 
-    /** A compile with no record: the bogus worker cannot run it, so only what happens before the fork is observed. */
+    /**
+     * Under {@code --redo} the compile runs whole: an incremental state that matches its tree would
+     * otherwise compile nothing and record whatever the output dir holds, a stray or damaged class
+     * included, under the real key.
+     */
+    @Test
+    void a_redo_starts_the_state_over_and_clears_the_output_dir(@TempDir Path dir) throws IOException {
+        Cas cas = new Cas(dir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, dir.resolve("actions"));
+        Path src = write(dir.resolve("A.kt"), "package x\nclass A");
+        Path out = dir.resolve("out");
+        Path state = dir.resolve("ic");
+        KotlincRequest req = KotlincRequest.builder()
+                .sources(List.of(src))
+                .classpath(List.of())
+                .outputDir(out)
+                .jvmTarget(21)
+                .workerClasspath(List.of(write(dir.resolve("worker.jar"), "not a real jar")))
+                .javaHome(Path.of(System.getProperty("java.home")))
+                .workingDir(state)
+                .build();
+        Files.createDirectories(out.resolve("x"));
+        write(out.resolve("x/A.class"), "DAMAGED");
+        write(out.resolve("x/Stray.class"), "STRAY");
+        Files.createDirectories(state);
+        write(state.resolve("caches.bin"), "state");
+        LangCompile.recordTree(state, "the-state-key", Map.of("x/A.class", "aa", "x/Stray.class", "bb"));
+        CompileWarnings.writeLedger(state, List.of());
+
+        compileMissing(req, cas, cache, /* useCache= */ false);
+
+        assertThat(state.resolve("caches.bin")).doesNotExist();
+        assertThat(out.resolve("x/A.class")).doesNotExist();
+        assertThat(out.resolve("x/Stray.class")).doesNotExist();
+    }
+
     private static void compileMissing(KotlincRequest req, Cas cas, ActionCache cache) {
+        compileMissing(req, cas, cache, true);
+    }
+
+    /** A compile with no record: the bogus worker cannot run it, so only what happens before the fork is observed. */
+    private static void compileMissing(KotlincRequest req, Cas cas, ActionCache cache, boolean useCache) {
         try {
             LangCompile.run(
                     "compile-kotlin",
                     req,
                     "jk-test",
-                    true,
+                    useCache,
                     cas,
                     cache,
                     WorkerEnv.strict(),
