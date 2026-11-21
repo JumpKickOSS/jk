@@ -4,7 +4,7 @@ package cc.jumpkick.resolver.pubgrub;
 import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.resolve.ResolveProfile;
-import cc.jumpkick.resolver.StallWatch;
+import cc.jumpkick.resolver.stall.StallWatch;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.resolve;
+package cc.jumpkick.resolver;
 
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.repo.RepoProcessMemos;
-import cc.jumpkick.resolver.KmpRedirects;
 
 /**
  * Fan-out over every process-wide resolve memo. {@code --force} and force-revalidate {@link

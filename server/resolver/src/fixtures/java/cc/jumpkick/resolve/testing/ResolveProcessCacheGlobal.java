@@ -2,7 +2,7 @@
 package cc.jumpkick.resolve.testing;
 
 import cc.jumpkick.config.testing.BoundedGlobal;
-import cc.jumpkick.resolve.ResolveProcessCacheControl;
+import cc.jumpkick.resolver.ResolveProcessCacheControl;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 

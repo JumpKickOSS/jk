@@ -877,10 +877,6 @@ in     = "cc.jumpkick.repo"
 reason = "The client's half is the read/link/transport slice a thin client must have (locator, transports, CAS read, m2 layout); the engine's half is POM and Gradle-module-metadata parsing, which the native client must never link. (server/io,shared/client-io)"
 
 [[guards.one-module-per-package.allow]]
-in     = "cc.jumpkick.resolve"
-reason = "ResolveProfile and its package-info are the reporting surface both sides read; ResolveProcessCacheControl clears the solver's process memos and only the engine has them. (server/resolver,shared/core)"
-
-[[guards.one-module-per-package.allow]]
 in     = "cc.jumpkick.resolver"
 reason = "The dependency and lock model the client reads to render `jk tree` / `jk why` is client-safe; the PubGrub solve, orchestrator and artifact materializer are engine-only. (server/resolver,shared/core)"
 

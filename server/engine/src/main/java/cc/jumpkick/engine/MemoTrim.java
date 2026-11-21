@@ -5,7 +5,7 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TomlScan;
 import cc.jumpkick.config.TrimRegistry;
 import cc.jumpkick.host.Interned;
-import cc.jumpkick.resolve.ResolveProcessCacheControl;
+import cc.jumpkick.resolver.ResolveProcessCacheControl;
 import cc.jumpkick.task.AbiMemo;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.version.Versions;

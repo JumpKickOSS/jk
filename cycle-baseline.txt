@@ -50,6 +50,12 @@
 # the dispatcher quartet is gone; the CLI's one remaining component is the api/engine/run/theme/tui
 # quintet, so the line is 5.
 #
+# 2026-11-21, server/resolver: the pubgrub solver read StallWatch from the resolver package that
+# drives it, and the module's own `resolve` package (ResolveProcessCacheControl) read KmpRedirects
+# while the resolver read shared/core's ResolveProfile under the same package name. StallWatch is
+# the leaf `resolver.stall`, the cache control lives in `resolver`, and the module has no `resolve`
+# package left: the line is gone.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -63,7 +69,6 @@ server/engine 7
 clients/cli 5
 shared/core 8
 clients/cli-terminal 3
-server/resolver 3
 server/toolchain 3
 # shared/plugin-sdk is 3, not 2: the component is {plugin, plugin.build, plugin.protocol}, closed by
 # plugin -> plugin.protocol -> plugin and plugin.protocol -> plugin.build -> plugin.protocol. The

@@ -284,7 +284,7 @@ public final class IdleHousekeeping {
                 Class.forName("cc.jumpkick.resolver.MavenPackageSource");
                 Class.forName("cc.jumpkick.resolver.LockOrchestrator");
                 Class.forName("cc.jumpkick.repo.EffectivePomBuilder");
-                Class.forName("cc.jumpkick.resolve.ResolveProcessCacheControl");
+                Class.forName("cc.jumpkick.resolver.ResolveProcessCacheControl");
             } catch (ClassNotFoundException | LinkageError ignored) {
                 // best-effort
             }

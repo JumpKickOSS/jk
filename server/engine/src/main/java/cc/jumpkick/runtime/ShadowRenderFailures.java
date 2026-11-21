@@ -3,7 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.ManifestPaths;
-import cc.jumpkick.resolver.StallWatch;
+import cc.jumpkick.resolver.stall.StallWatch;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;

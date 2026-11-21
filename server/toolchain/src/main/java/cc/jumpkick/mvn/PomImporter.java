@@ -32,7 +32,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.PomParseException;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.resolver.StallWatch;
+import cc.jumpkick.resolver.stall.StallWatch;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;

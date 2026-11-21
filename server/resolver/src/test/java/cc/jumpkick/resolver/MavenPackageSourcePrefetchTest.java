@@ -16,7 +16,6 @@ import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.repo.RepoGroup;
-import cc.jumpkick.resolve.ResolveProcessCacheControl;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
 import cc.jumpkick.testing.Await;

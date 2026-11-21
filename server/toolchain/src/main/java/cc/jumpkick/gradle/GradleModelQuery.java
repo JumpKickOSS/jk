@@ -19,7 +19,7 @@ import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.jdk.JdkInstallListener;
 import cc.jumpkick.mvn.PomImporter;
-import cc.jumpkick.resolver.StallWatch;
+import cc.jumpkick.resolver.stall.StallWatch;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
