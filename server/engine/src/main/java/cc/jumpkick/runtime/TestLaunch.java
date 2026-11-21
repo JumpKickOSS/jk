@@ -63,7 +63,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -436,14 +435,6 @@ final class TestLaunch {
         // Standalone auto has no plan share. Alone, the share is the whole jobs budget.
         if (running <= 0) return jobs;
         return TestWorkers.liveShare(1, jobs, running);
-    }
-
-    /**
-     * {@link #dispatchWorkers} read again each time it is asked, for an auto pool to widen to as the
-     * build narrows. Read on the thread that runs the suite, whose job's units it counts.
-     */
-    static IntSupplier liveWorkers(BuildPlanner.Inputs in, BuildBlock module, @Nullable PluginDeclarations decls) {
-        return () -> dispatchWorkers(in, module, decls);
     }
 
     /** True when {@link #dispatchWorkers} returned a share for {@link TestWorkers#autoCount} to cap. */

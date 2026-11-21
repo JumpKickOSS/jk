@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.plugin.HeapScope;
 import cc.jumpkick.engine.plugin.JvmOptions;
@@ -8,7 +9,6 @@ import cc.jumpkick.engine.plugin.PluginLoader;
 import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.engine.plugin.WorkerExit;
-import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestFailureInfo;
@@ -18,6 +18,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
@@ -26,7 +27,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -55,9 +55,6 @@ final class PullWorkerPool {
     /** The classes the last {@link #run} left queued: every worker had ended before they were dispatched. */
     private List<String> undispatched = List.of();
 
-    /** Workers the last {@link #run} started. */
-    private int started;
-
     PullWorkerPool(
             JUnitLauncher launcher,
             Path javaHome,
@@ -72,23 +69,9 @@ final class PullWorkerPool {
         this.moduleLabel = launcher.moduleLabel();
     }
 
-    /** How often a pool that may widen re-reads its share. */
-    static final long WIDEN_EVERY_MS = 2_000;
-
-    /**
-     * One pull-queue pool over {@code classes}; report accumulation stays with the caller. A {@code
-     * widen} of non-null is the count the suite would start at now: while classes are still queued
-     * the pool re-reads it every {@link #WIDEN_EVERY_MS} and starts more workers up to it, one at a
-     * time and only while the lease ledger has a free JVM slot and the memory for one more
-     * ({@link #roomFor}). It never stops a worker it started.
-     */
+    /** One pull-queue pool over {@code classes}; report accumulation stays with the caller. */
     TestSummary run(
-            int workers,
-            List<String> classes,
-            @Nullable XmlTestReport xml,
-            MarkdownTestReport md,
-            int workerIdBase,
-            @Nullable IntSupplier widen)
+            int workers, List<String> classes, @Nullable XmlTestReport xml, MarkdownTestReport md, int workerIdBase)
             throws IOException, InterruptedException {
         // Don't waste workers on small suites — N workers > N classes leaves
         // some idle waiting for a class that'll never come.
@@ -97,37 +80,70 @@ final class PullWorkerPool {
         // The suite's first pool is the JVMs its classes run side by side on: the sharded pool's, or
         // the serial-tag pool's one when every class is serial-tagged (the CLI's integration suite
         // was handed 8 and ran its 119 classes one after the other).
-        boolean first = !announced;
-        if (first) {
+        if (!announced) {
             announced = true;
             listener.onWorkers(actualWorkers);
         }
 
         undispatched = List.of();
         var queue = new ConcurrentLinkedDeque<>(classes);
-        var shards = new ArrayList<Shard>();
-        // A pool that may grow isolates its first worker too: a later sibling must not share its
-        // temp root or home.
-        boolean isolate = actualWorkers > 1 || widen != null;
-        for (int w = 0; w < actualWorkers; w++) start(shards, queue, workerIdBase, actualWorkers, isolate, xml, md);
-        if (widen != null) widen(shards, queue, workerIdBase, classes.size(), widen, first, xml, md);
+        var aggregators = new ArrayList<ResultAggregator>();
+        var workerThreads = new ArrayList<Thread>();
+        // A worker whose thread never stored an exit — its body threw — is a death, not a clean 0.
+        WorkerExit[] exits = new WorkerExit[actualWorkers];
+        Arrays.fill(exits, WorkerExit.noWorker(-1));
+        var dones = new ArrayList<AtomicBoolean>();
+        var captures = new ArrayList<CaptureBuffer>();
+        var lastClasses = new ArrayList<AtomicReference<String>>();
+        var handlerFailures = new ArrayList<AtomicReference<@Nullable RuntimeException>>();
+        var commands = new ArrayList<AtomicReference<List<String>>>();
+        SecretRedactor secrets = launcher.secrets();
+
+        for (int w = 0; w < actualWorkers; w++) {
+            // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
+            // per-worker temp/state suffixes and failure attributions never collide.
+            final int workerId = workerIdBase + w + 1;
+            final int idx = w;
+            List<String> args = launcher.pullWorkerArgs(workerId, testClassesDir);
+            var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel, secrets);
+            aggregators.add(agg);
+            final var crash = new CaptureBuffer();
+            captures.add(crash);
+            final var done = new AtomicBoolean();
+            dones.add(done);
+            final var last = new AtomicReference<String>("");
+            lastClasses.add(last);
+            final var handlerFailure = new AtomicReference<@Nullable RuntimeException>();
+            handlerFailures.add(handlerFailure);
+            final var command = new AtomicReference<List<String>>(List.of());
+            commands.add(command);
+            final int totalWorkers = actualWorkers;
+            // Virtual: the thread blocks on the child's stdout for the worker's whole life —
+            // exactly the shape VT is for.
+            Thread t = SessionContext.startVirtual(
+                    "jk-test-worker-" + workerId,
+                    () -> exits[idx] = driveWorker(
+                            workerId, totalWorkers, args, queue, agg, crash, done, last, handlerFailure, command));
+            workerThreads.add(t);
+        }
         // Each worker thread owns its process (via PluginProcess.converse) and
         // returns its exit code once stdout is fully drained and the process
         // has exited. Join them and take the worst exit.
-        for (Shard shard : shards) Objects.requireNonNull(shard.thread).join();
-        started = shards.size();
+        for (Thread t : workerThreads) t.join();
         WorkerExit worstExit = WorkerExit.noWorker(0);
+        boolean[] incomplete = new boolean[actualWorkers];
         boolean anyIncomplete = false;
-        for (Shard shard : shards) {
-            if (shard.exit.code() != 0) worstExit = shard.exit;
-            anyIncomplete |= shard.incomplete();
+        for (int i = 0; i < actualWorkers; i++) {
+            if (exits[i].code() != 0) worstExit = exits[i];
+            incomplete[i] = exits[i].code() != 0 || !dones.get(i).get();
+            anyIncomplete |= incomplete[i];
         }
         // Merge per-worker aggregators into one TestSummary.
         long total = 0, succeeded = 0, failed = 0, skipped = 0, classCount = 0;
         var allFailures = new ArrayList<TestFailureInfo>();
         var walls = new LinkedHashMap<String, Long>();
-        for (Shard shard : shards) {
-            var r = shard.aggregator.snapshot();
+        for (var agg : aggregators) {
+            var r = agg.snapshot();
             total += r.total();
             succeeded += r.succeeded();
             failed += r.failed();
@@ -137,19 +153,19 @@ final class PullWorkerPool {
             r.classWallMs().forEach((k, v) -> walls.merge(k, v, Long::sum));
         }
         undispatched = List.copyOf(queue);
-        boolean handlerFailed = shards.stream().anyMatch(s -> s.handlerFailure.get() != null);
+        boolean handlerFailed = handlerFailures.stream().anyMatch(f -> f.get() != null);
         if (total == 0 && anyIncomplete && !handlerFailed) {
             // No test events but a worker died — the launcher failed before any test ran; what
             // the crashed worker(s) printed (the dropped stderr) is the evidence, and how the
             // first of them was started is the evidence when they printed nothing.
             StringBuilder crash = new StringBuilder();
             List<String> command = List.of();
-            for (Shard shard : shards) {
-                if (!shard.incomplete()) continue;
-                if (command.isEmpty()) command = shard.command.get();
-                if (!shard.crash.isEmpty()) {
+            for (int i = 0; i < actualWorkers; i++) {
+                if (!incomplete[i]) continue;
+                if (command.isEmpty()) command = commands.get(i).get();
+                if (!captures.get(i).isEmpty()) {
                     if (crash.length() > 0) crash.append('\n');
-                    crash.append(shard.crash.text());
+                    crash.append(captures.get(i).text());
                 }
             }
             throw TestLauncherFailure.runner(moduleLabel, worstExit, crash.toString(), command);
@@ -161,17 +177,17 @@ final class PullWorkerPool {
         // parent's own handler ended as the parent-side bug it is. Skipped on user cancel: those
         // exits are the kill we asked for, and the shortfall row below says so.
         if (anyIncomplete && !SessionCancel.cancelled()) {
-            for (Shard shard : shards) {
-                if (!shard.incomplete()) continue;
+            for (int i = 0; i < actualWorkers; i++) {
+                if (!incomplete[i]) continue;
                 total += 1;
                 failed += 1;
                 allFailures.add(WorkerFailureRow.of(
                         moduleLabel,
-                        shard.workerId,
-                        shard.exit,
-                        shard.lastClass.get(),
-                        shard.crash.text(),
-                        shard.handlerFailure.get()));
+                        workerIdBase + i + 1,
+                        exits[i],
+                        lastClasses.get(i).get(),
+                        captures.get(i).text(),
+                        handlerFailures.get(i).get()));
             }
         }
         TestFailureInfo shortfall =
@@ -181,89 +197,7 @@ final class PullWorkerPool {
             failed += 1;
             allFailures.add(shortfall);
         }
-        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, shards.size());
-    }
-
-    /**
-     * Start more workers while classes are queued and {@code widen} asks for more than are running,
-     * until every worker has ended, the queue is empty or the run is cancelled.
-     */
-    private void widen(
-            List<Shard> shards,
-            ConcurrentLinkedDeque<String> queue,
-            int workerIdBase,
-            int classCount,
-            IntSupplier widen,
-            boolean announce,
-            @Nullable XmlTestReport xml,
-            MarkdownTestReport md)
-            throws InterruptedException {
-        while (true) {
-            Thread alive = null;
-            for (Shard shard : shards) {
-                Thread t = Objects.requireNonNull(shard.thread);
-                if (t.isAlive()) {
-                    alive = t;
-                    break;
-                }
-            }
-            if (alive == null) return;
-            alive.join(WIDEN_EVERY_MS);
-            if (queue.isEmpty() || SessionCancel.cancelled()) return;
-            int want = Math.min(Math.min(widen.getAsInt(), classCount), shards.size() + queue.size());
-            if (want <= shards.size()) continue;
-            long lease = leaseOf(shards);
-            if (lease < 0 || !roomFor(WorkerLeases.engine().snapshot(), lease)) continue;
-            start(shards, queue, workerIdBase, want, true, xml, md);
-            if (announce) listener.onWorkers(shards.size());
-        }
-    }
-
-    /**
-     * Whether the ledger can take one more test JVM leased at {@code leaseBytes} without anyone
-     * waiting: nothing is queued for a lease, a JVM slot is free and the bytes fit the budget.
-     */
-    static boolean roomFor(WorkerLeases.Snapshot ledger, long leaseBytes) {
-        if (ledger.queued() > 0 || ledger.runningJvms() >= ledger.cpuCap()) return false;
-        return ledger.budgetBytes() - ledger.leasedBytes() >= leaseBytes;
-    }
-
-    /**
-     * The lease the pool's first worker's heap asks for, what one more worker would take; {@code -1}
-     * before that worker has built its command.
-     */
-    private static long leaseOf(List<Shard> shards) {
-        List<String> command = shards.getFirst().command.get();
-        if (command.isEmpty()) return -1;
-        return WorkerLeases.jvmLease(
-                Math.max(0, JvmOptions.HeapChoice.inspect(command).xmxBytes()));
-    }
-
-    /** Start worker {@code shards.size() + 1} of the pool, its JVM sized for {@code concurrency}. */
-    private void start(
-            List<Shard> shards,
-            ConcurrentLinkedDeque<String> queue,
-            int workerIdBase,
-            int concurrency,
-            boolean isolate,
-            @Nullable XmlTestReport xml,
-            MarkdownTestReport md) {
-        // workerIdBase keeps ids unique across the sharded and serial-tag pools, so the
-        // per-worker temp/state suffixes and failure attributions never collide.
-        int workerId = workerIdBase + shards.size() + 1;
-        var shard =
-                new Shard(workerId, new ResultAggregator(listener, workerId, xml, md, moduleLabel, launcher.secrets()));
-        List<String> args = launcher.pullWorkerArgs(workerId, testClassesDir);
-        // Virtual: the thread blocks on the child's stdout for the worker's whole life —
-        // exactly the shape VT is for.
-        shard.thread = SessionContext.startVirtual(
-                "jk-test-worker-" + workerId, () -> shard.exit = driveWorker(shard, concurrency, isolate, args, queue));
-        shards.add(shard);
-    }
-
-    /** How many workers the last {@link #run} started, the ones it widened to included. */
-    int started() {
-        return started;
+        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures, walls, actualWorkers);
     }
 
     /** The classes the last {@link #run} never dispatched; a heap retry runs them with the worker's own class. */
@@ -309,24 +243,29 @@ final class PullWorkerPool {
      * other parent-side throw ends it with {@code -1} and its stack in the worker's output.
      */
     private WorkerExit driveWorker(
-            Shard shard, int concurrency, boolean isolate, List<String> args, ConcurrentLinkedDeque<String> queue) {
-        int workerId = shard.workerId;
-        CaptureBuffer crash = shard.crash;
-        ResultAggregator aggregator = shard.aggregator;
-        BiConsumer<String, PluginProcess.Conversation> handler =
-                pullHandler(queue, aggregator, shard.done, shard.lastClass);
+            int workerId,
+            int totalWorkers,
+            List<String> args,
+            ConcurrentLinkedDeque<String> queue,
+            ResultAggregator aggregator,
+            CaptureBuffer crash,
+            AtomicBoolean done,
+            AtomicReference<String> lastClass,
+            AtomicReference<@Nullable RuntimeException> handlerFailure,
+            AtomicReference<List<String>> command) {
+        BiConsumer<String, PluginProcess.Conversation> handler = pullHandler(queue, aggregator, done, lastClass);
         Consumer<String> passthrough = line -> {
             crash.add(aggregator.userOutput(line));
         };
 
         try {
             WorkerEnv testEnv = launcher.testEnv();
-            Path tmp = TestTmpDir.forWorker(launcher.testTmpDir(), workerId, isolate);
-            WorkerEnv env = isolate && tmp != null
+            Path tmp = TestTmpDir.forWorker(launcher.testTmpDir(), workerId, totalWorkers);
+            WorkerEnv env = totalWorkers > 1 && tmp != null
                     ? TestWorkerEnv.forWorker(testEnv, workerId, tmp, launcher.workerHomes())
                     : testEnv;
-            List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, concurrency, tmp);
-            shard.command.set(PluginLoader.command(javaHome, classpath, flags, args));
+            List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
+            command.set(PluginLoader.command(javaHome, classpath, flags, args));
             HeapScope.Key key = SuiteRetry.key(
                     SuiteRetry.project(launcher.inferredModuleDir()), moduleLabel, JvmOptions.hostFeature(javaHome));
             if (key == null) {
@@ -365,7 +304,7 @@ final class PullWorkerPool {
                 throw new IOException(e);
             }
         } catch (PluginProcess.HandlerFailure e) {
-            shard.handlerFailure.set(e.handler());
+            handlerFailure.set(e.handler());
             listener.onUserOutput(workerId, Objects.requireNonNull(e.getMessage()));
             return WorkerExit.noWorker(-1);
         } catch (IOException e) {
@@ -381,33 +320,6 @@ final class PullWorkerPool {
             crash.add(text);
             listener.onUserOutput(workerId, text);
             return WorkerExit.noWorker(-1);
-        }
-    }
-
-    /** One worker JVM of a pool and what its driver thread leaves behind. */
-    private static final class Shard {
-        final int workerId;
-        final ResultAggregator aggregator;
-        final CaptureBuffer crash = new CaptureBuffer();
-        /** Set once the parent told the worker {@code DONE}: it owes nothing more. */
-        final AtomicBoolean done = new AtomicBoolean();
-
-        final AtomicReference<String> lastClass = new AtomicReference<>("");
-        final AtomicReference<@Nullable RuntimeException> handlerFailure = new AtomicReference<>();
-        final AtomicReference<List<String>> command = new AtomicReference<>(List.of());
-        /** A worker whose thread never stored an exit (its body threw) is a death, not a clean 0. */
-        volatile WorkerExit exit = WorkerExit.noWorker(-1);
-
-        @Nullable
-        Thread thread;
-
-        Shard(int workerId, ResultAggregator aggregator) {
-            this.workerId = workerId;
-            this.aggregator = aggregator;
-        }
-
-        boolean incomplete() {
-            return exit.code() != 0 || !done.get();
         }
     }
 }

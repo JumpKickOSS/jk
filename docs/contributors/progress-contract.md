@@ -117,9 +117,7 @@ and the suite is held open for the recorded wall of every class still running: t
 
 **A suite's workers.** The build picks a suite's test JVMs as it starts, from what else is running
 then (`TestWorkers.liveShare`): the engine's integration suite got 2 in one run and 4 in the next and
-took 239 s and 145 s. An auto suite re-reads that share while classes are queued and adds JVMs as
-the build narrows and the lease ledger has room (`PullWorkerPool`); each addition is told to the
-model as a new count. Each run records the most JVMs each suite ran on (the sharded pool's, one when every class is
+took 239 s and 145 s. Each run records each suite's JVMs (the sharded pool's, one when every class is
 serial-tagged) with its classes' recorded walls, their sum and the longest; a suite is priced at the
 JVMs its newest sample ran on, its other samples read at that count, and once it starts on another
 count it is re-priced at it. A wall goes with the suite's parallel bound, `max(longest class, class

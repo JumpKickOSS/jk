@@ -65,7 +65,7 @@ final class TestTmpDir {
 
     /**
      * Worker {@code workerId}'s temp root: its own subdirectory of the module's when the pool is
-     * {@code split} (more than one worker, or one that may widen), the module's itself when it is not.
+     * split, the module's itself when it is not.
      *
      * <p>Mill-class isolation, but a subdirectory rather than a fresh directory under the
      * host temp dir: nothing a suite writes escapes the module's root, which {@code jk clean}
@@ -73,8 +73,8 @@ final class TestTmpDir {
      * Isolation is best-effort: when the subdirectory cannot be made, the shared module root is still the better
      * of the two answers available, so it is the one the worker gets.
      */
-    static @Nullable Path forWorker(@Nullable Path moduleTmp, int workerId, boolean split) {
-        if (moduleTmp == null || !split) return moduleTmp;
+    static @Nullable Path forWorker(@Nullable Path moduleTmp, int workerId, int totalWorkers) {
+        if (moduleTmp == null || totalWorkers <= 1) return moduleTmp;
         try {
             return Files.createDirectories(moduleTmp.resolve("w" + workerId));
         } catch (IOException isolationFailed) {

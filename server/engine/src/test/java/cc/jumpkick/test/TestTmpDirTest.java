@@ -44,8 +44,8 @@ class TestTmpDirTest {
         // Files.createTempDirectory puts the worker's root under the host temp dir.
         Path root = Files.createDirectories(tmp.resolve("target/tmp"));
 
-        Path w0 = TestTmpDir.forWorker(root, 0, true);
-        Path w1 = TestTmpDir.forWorker(root, 1, true);
+        Path w0 = TestTmpDir.forWorker(root, 0, 4);
+        Path w1 = TestTmpDir.forWorker(root, 1, 4);
 
         assertThat(w0).isDirectory().isNotEqualTo(w1);
         assertThat(w1).isDirectory();
@@ -56,12 +56,12 @@ class TestTmpDirTest {
     @Test
     void an_unsplit_pool_uses_the_module_root_itself() throws Exception {
         Path root = Files.createDirectories(tmp.resolve("target/tmp"));
-        assertThat(TestTmpDir.forWorker(root, 0, false)).isEqualTo(root);
+        assertThat(TestTmpDir.forWorker(root, 0, 1)).isEqualTo(root);
     }
 
     @Test
     void no_module_root_stays_no_module_root() {
-        assertThat(TestTmpDir.forWorker(null, 0, true)).isNull();
-        assertThat(TestTmpDir.forWorker(null, 0, false)).isNull();
+        assertThat(TestTmpDir.forWorker(null, 0, 4)).isNull();
+        assertThat(TestTmpDir.forWorker(null, 0, 1)).isNull();
     }
 }

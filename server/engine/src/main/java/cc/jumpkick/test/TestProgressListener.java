@@ -24,9 +24,8 @@ public interface TestProgressListener {
     default void onDiscoveryTotal(int classes, int tests) {}
 
     /**
-     * The suite runs on {@code workers} test JVMs, decided as it starts: before its first test, and
-     * again each time an auto pool widens. The estimate prices a suite at the count its history ran
-     * on and re-prices it at this one.
+     * The suite runs on {@code workers} test JVMs, decided as it starts: before its first test. The
+     * estimate prices a suite at the count its history ran on and re-prices it at this one.
      */
     default void onWorkers(int workers) {}
 
