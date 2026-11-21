@@ -85,9 +85,9 @@ public final class WorkspaceProgressTracker {
 
     /**
      * What the bar shows now. {@code lowMs} and {@code highMs} bound {@code remainingMs}: the
-     * estimate's likely range at the same anchor, {@code -1} when there is none (JK-4TEZ7); {@code
+     * estimate's likely range at the same anchor, {@code -1} when there is none; {@code
      * confidence} is the probability that the truth lands within ±10% of {@code remainingMs},
-     * {@code -1} when there is none (JK-R0N5S).
+     * {@code -1} when there is none.
      */
     public record Snapshot(
             long numerator,
@@ -225,8 +225,8 @@ public final class WorkspaceProgressTracker {
     }
 
     /**
-     * The estimate's relative spread as it stands, one sigma of {@code ln(truth / remaining)}
-     * (JK-R0N5S): the snapshot's likely range and confidence are read from it at the residual it
+     * The estimate's relative spread as it stands, one sigma of {@code ln(truth / remaining)}:
+     * the snapshot's likely range and confidence are read from it at the residual it
      * publishes, so the range rides the residual's anchor.
      */
     public synchronized void noteSpread(double sigma) {

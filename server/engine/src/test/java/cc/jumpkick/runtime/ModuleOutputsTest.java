@@ -181,7 +181,7 @@ class ModuleOutputsTest {
     }
 
     /**
-     * JK-1N6CS: a Kotlin module with a KSP processor (Micronaut's) has the round's bytecode copied
+     * A Kotlin module with a KSP processor (Micronaut's) has the round's bytecode copied
      * into its classes tree beside kotlinc's. The round's record owns it, so the tree is whole, and
      * the second build of a fresh kotlin/micronaut/hello scaffold is not a restore of a tree it
      * called incomplete.

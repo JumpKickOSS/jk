@@ -22,7 +22,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A suite's discovered reads through the build's remote tier (JK-02G9W). A suite's stamp folds in
+ * A suite's discovered reads through the build's remote tier. A suite's stamp folds in
  * the files it was found to read, which a host learns only by running it; a host that never ran the
  * suite takes the stamp without them (the base) and would run the suite once before it could share.
  * So a writing build sends the read list with the green result, filed under the base, and a host

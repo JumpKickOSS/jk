@@ -197,7 +197,7 @@ final class HeaderProgress {
     }
 
     /**
-     * The estimate's likely range as gaps below and above the residual (JK-4TEZ7): it rides the
+     * The estimate's likely range as gaps below and above the residual: it rides the
      * countdown, so the range decays with it between engine samples.
      */
     public void setEtaRange(long belowMillis, long aboveMillis) {
@@ -223,7 +223,7 @@ final class HeaderProgress {
     static final long WIDE_RANGE_MIN_MS = 10_000;
 
     /**
-     * The countdown's text for {@code remainingMs} (JK-R0N5S): the plain countdown {@code 1m 32s}
+     * The countdown's text for {@code remainingMs}: the plain countdown {@code 1m 32s}
      * when the likely range is narrow (within about ±20%) or little is left; {@code ~1m 20s–1m
      * 50s} when it is wide, since a point would claim a precision the estimate does not have; and
      * {@code ~12m (rough)} past about ±50%, where the range's ends say no more than that. With no

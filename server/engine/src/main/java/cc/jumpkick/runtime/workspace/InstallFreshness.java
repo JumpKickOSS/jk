@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  * installs the jar already on disk as it is: when that jar was packaged from other classes, the
  * install ships them. One did: a
  * snapshot trusted a build's clean claim, installed the -SNAPSHOT jars an earlier snapshot left,
- * and the engine and client it installed failed every command (JK-MAG71).
+ * and the engine and client it installed failed every command.
  */
 final class InstallFreshness {
 

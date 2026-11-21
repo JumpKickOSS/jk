@@ -70,7 +70,7 @@ public final class WorkspaceLock {
         } catch (UnsatisfiableException e) {
             return new BuildService.LockGuard(Exit.RESOLVE, e.getMessage(), FailureLocation.of(e, root));
         } catch (Exception e) {
-            // Never carry on with a stale lock in silence (JK-K43HA): the build stops, naming why.
+            // Never carry on with a stale lock in silence: the build stops, naming why.
             String reason = Errors.text(e);
             return new BuildService.LockGuard(
                     Exit.RESOLVE, onDisk ? AutoLock.RefreshFailed.message(staleness, reason) : reason, null);

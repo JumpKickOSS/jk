@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * One rename shape for every kind (JK-MXDGC), shown on a method: the bound edits applied, the uses
+ * One rename shape for every kind, shown on a method: the bound edits applied, the uses
  * the compiler did not bind returned as graded candidates with ids, {@code also} applying chosen ones
  * in a later call, and the proof after the compile settling or undoing the edit.
  */

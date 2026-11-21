@@ -224,7 +224,7 @@ class JdkResolutionTest {
         assertThat(r.wouldInstall()).isFalse();
     }
 
-    /** jdk = { version = ">=25.0.5", required = true }: a CVE floor binds the JDK on every path (JK-74S9K). */
+    /** jdk = { version = ">=25.0.5", required = true }: a CVE floor binds the JDK on every path. */
     @Test
     void a_required_patch_floor_never_settles_below_it(@TempDir Path tmp) throws IOException {
         Path jdks = jdks(tmp);

@@ -48,7 +48,7 @@ class BridgingWorkspaceListenerTest {
 
     @Test
     void a_workspace_module_step_finish_carries_what_the_estimate_priced_it_at() {
-        // JK-626GS: the corpus's first run carried no rung on any of its 920 task-finish events; the
+        // The corpus's first run carried no rung on any of its 920 task-finish events; the
         // workspace's hooks did not pass the lookup through.
         RecordingEventSink sink = new RecordingEventSink();
         StepCost compile = new StepCost("compile-java", 20, StepCost.Kind.PRE, 0.45, 0, StepCost.Rung.CALIBRATION);

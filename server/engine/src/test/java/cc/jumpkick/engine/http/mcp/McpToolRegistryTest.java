@@ -219,7 +219,7 @@ class McpToolRegistryTest {
     /**
      * Grok and Cursor show the model this text and not the tool cards. With only "callers(address)" in it,
      * grok fetched the skill page before 3 renames in 4 and cursor grepped after the answer; with both calls
-     * whole here neither did (bench tier 0/1, JK-XP4B9). It is sent once per session, so its ceiling is loose.
+     * whole here neither did (bench tier 0/1). It is sent once per session, so its ceiling is loose.
      */
     @Test
     void the_instructions_carry_the_graph_calls_whole_for_clients_without_cards() {

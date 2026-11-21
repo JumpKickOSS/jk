@@ -64,7 +64,7 @@ class ModuleEnvKeysTest {
     /**
      * What the test JVM is handed keys its suite by digest: a forwarded name the caller lacks as
      * {@code unset}, a literal and a forwarded value by their digests, so the run-tests record that
-     * carries these tokens holds no control character and no value (JK-ANWXB).
+     * carries these tokens holds no control character and no value.
      */
     @Test
     void a_test_env_token_holds_no_value_and_no_control_character() throws Exception {

@@ -37,7 +37,7 @@ class HeaderProgressStrategyTest {
 
     /**
      * A cold integration run's suite priced at 54 s ran 638 s: peak-held, the bar sat still for
-     * minutes while the ETA grew (JK-ZJ8D9). Held, it moves at the pace the remainder sets, and never
+     * minutes while the ETA grew. Held, it moves at the pace the remainder sets, and never
      * reaches the cap while work is left.
      */
     @Test

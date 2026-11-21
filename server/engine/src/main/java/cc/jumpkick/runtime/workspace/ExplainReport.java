@@ -20,8 +20,8 @@ import java.util.List;
  * One {@code jk explain} answer for every surface: the forecast plan plus both ETAs — the
  * incremental estimate and the same graph priced as a full rebuild. The wire verb streams the
  * plan's module/step/edge burst; MCP encodes a budgeted summary. Both compute here. {@code
- * lowMillis} and {@code highMillis} bound the incremental estimate: its likely range (JK-4TEZ7);
- * {@code confidence} is the probability that the truth lands within ±10% of it (JK-R0N5S).
+ * lowMillis} and {@code highMillis} bound the incremental estimate: its likely range;
+ * {@code confidence} is the probability that the truth lands within ±10% of it.
  */
 public record ExplainReport(
         ExplainPlan plan,
@@ -32,7 +32,7 @@ public record ExplainReport(
         double confidence,
         /**
          * The estimate's critical path, first module first: the chain of modules, each admitted by
-         * the classes of the one before, that ends with the module finishing last (JK-47ZGV).
+         * the classes of the one before, that ends with the module finishing last.
          */
         List<Path> criticalPath) {
 

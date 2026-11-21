@@ -95,7 +95,7 @@ final class TestCompileSteps {
                 List.of(TaskNames.BUILD_LOGIC_AFTER_COMPILE, TaskNames.RESOLVE_DEPS, TaskNames.COPY_RESOURCES));
         if (hasFixtures) requires.add(TaskNames.COMPILE_TEST_FIXTURES);
         // So do build-info and module-services, which write that tree after the compile: a key taken
-        // before META-INF/build-info.properties landed differs from one taken after (JK-NVBS1).
+        // before META-INF/build-info.properties landed differs from one taken after.
         requires.addAll(lateWriters);
         requires.addAll(testSourceGenSteps(pluginDecls));
         return Task.builder(TaskNames.COMPILE_TEST)

@@ -418,7 +418,7 @@ public final class PlannerResources {
      * The planned steps that write the main classes tree after {@link #CLASSES_WHOLE}: {@code
      * build-info} and {@code module-services}, empty when neither is. A step that keys the tree (a
      * test compile reads its {@code META-INF} resources) waits for them, or its key depends on which
-     * one the scheduler ran first (JK-NVBS1).
+     * one the scheduler ran first.
      */
     static List<String> lateClassesWriters(boolean buildInfo, boolean moduleServices) {
         List<String> out = new ArrayList<>();

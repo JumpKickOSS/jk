@@ -68,7 +68,7 @@ class HttpDecisionsApiTest extends HttpEngineServerHarness {
 
     /**
      * The link a decision is answered with — {@code jk decide}'s and {@code jk doctor --fix}'s ack,
-     * an MCP result, the API — carries no token: it lands in transcripts and logs (JK-JDT0Y).
+     * an MCP result, the API — carries no token: it lands in transcripts and logs.
      */
     @Test
     void a_decisions_link_and_the_list_never_carry_the_token() throws Exception {

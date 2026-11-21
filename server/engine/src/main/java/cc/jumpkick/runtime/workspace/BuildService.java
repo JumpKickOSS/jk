@@ -235,7 +235,7 @@ public final class BuildService {
         }
 
         /**
-         * The estimate with its spread (JK-R0N5S): its steps' spreads propagated through its
+         * The estimate with its spread: its steps' spreads propagated through its
          * schedule ({@link RemainingWork#residual}), anchored at {@link #etaMs}. An estimate with no
          * steps carries the spread of a module priced by weight alone. {@code correlation} is how
          * strongly the host's step errors go the same way ({@code RungBias#correlation}).

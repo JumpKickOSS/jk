@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A class renamed (JK-PSJ0A), a package renamed (JK-W6DYS) and a type moved (JK-DX4VH) on the
+ * A class renamed, a package renamed and a type moved on the
  * petclinic-shaped fixture: every name javac resolved to the type is edited, its file moves; a
  * services file is a declared candidate, a JPQL entity name a must-review, a test named after the
  * type a judgment call; the proof after the compile holds.

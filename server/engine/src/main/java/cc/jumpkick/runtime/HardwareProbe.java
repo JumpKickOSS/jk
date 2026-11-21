@@ -61,7 +61,7 @@ final class HardwareProbe {
     /**
      * The bytes the hash probe digests: enough that a millisecond is noise. At 8 MiB it took 3 to 5
      * ms, counted in whole milliseconds and read at its slowest sample, and that one number moved
-     * every cold price of jk's first build by 30% from one fresh home to the next (JK-7R038).
+     * every cold price of jk's first build by 30% from one fresh home to the next.
      */
     static final int HASH_BYTES = 64 * 1024 * 1024;
 

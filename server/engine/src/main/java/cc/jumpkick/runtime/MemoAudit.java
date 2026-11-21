@@ -26,7 +26,7 @@ public final class MemoAudit {
      * An audited build ({@link KeyAudit}) holds every row its memo certifies, {@code certified}, to
      * the module's fingerprint taken again once the build has ended: a row the next preflight would
      * not match schedules a module nothing changed, as the guard salt digesting a pack the first
-     * build unpacked did (JK-D15HE). {@code preflight} is what the snapshot took, whose tokens the
+     * build unpacked did. {@code preflight} is what the snapshot took, whose tokens the
      * audit kept. Each module's manifest is read again from its directory, as the next preflight reads it.
      */
     public static void auditCertified(boolean skipTests, Map<Path, String> preflight, Map<Path, String> certified) {

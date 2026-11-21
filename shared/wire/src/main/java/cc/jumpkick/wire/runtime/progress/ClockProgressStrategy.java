@@ -20,7 +20,7 @@ package cc.jumpkick.wire.runtime.progress;
  * step running far past its price), it closes the gap to the cap by the share of the whole run
  * each repaint's interval is, {@code (cap - peak) * dt / (elapsed + remaining)}. A cold integration
  * run's suite priced at 54 s ran 638 s; peak-held, its bar sat still for 56% of the wall (at 99%
- * while the ETA read 3 s, JK-ZJ8D9). Replayed over jk's 2026-11-13 corpus, this pace held the cold
+ * while the ETA read 3 s). Replayed over jk's 2026-11-13 corpus, this pace held the cold
  * runs' longest plateau to a quarter of the wall and left the warm runs' bar error where it was;
  * a pace of {@code dt / (dt + remaining)} ran the gap down to the cap within minutes and stalled
  * there, and added up to 12 points of error to warm runs.

@@ -119,7 +119,7 @@ public final class RunShapes {
 
     /**
      * {@code requestId} started under {@code busy} external load ({@link HostBusy#external}): its
-     * run is recorded with it, so a replay under another load is re-priced (JK-6BJTV).
+     * run is recorded with it, so a replay under another load is re-priced.
      */
     public static void markHostBusy(@Nullable Long requestId, double busy) {
         if (requestId == null || requestId <= 0 || busy < 0) return;

@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A root {@code jk.toml} that groups self-contained workspaces (JK-WC9HW), end to end on a forked
+ * A root {@code jk.toml} that groups self-contained workspaces, end to end on a forked
  * client against a private {@code JK_HOME} seeded with the sandbox's engine, as {@link
  * cc.jumpkick.command.pipeline.VerbMatrixNoopE2eTest} is.
  *

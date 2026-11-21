@@ -354,7 +354,7 @@ public final class RemainingWork {
     }
 
     /**
-     * What remains and how sure the estimate is of it (JK-R0N5S): {@code remainingMs} is the
+     * What remains and how sure the estimate is of it: {@code remainingMs} is the
      * schedule of what is left; {@code spread} the build's relative spread, one sigma of {@code
      * ln(truth / remainingMs)}, from each unfinished step's spread over what it has left ({@link
      * EtaSpread#build}). It narrows as steps finish, since a finished step leaves no spread behind.
@@ -517,7 +517,7 @@ public final class RemainingWork {
      * 110 s from its default profile's wall ran 249 s, and held at a twentieth of its price it read
      * 4 s left for its last three minutes. Capped at what the high bound leaves, the share went to
      * nothing as the bound passed: a cold integration run's suite priced at 54 s from calibration ran
-     * 638 s, and its ETA read 3.3 s for the last six minutes (JK-ZJ8D9).
+     * 638 s, and its ETA read 3.3 s for the last six minutes.
      */
     private static double overrun(double w, double elapsed) {
         return Math.max(OVERRUN_FLOOR * w, OVERRUN_SHARE * elapsed);

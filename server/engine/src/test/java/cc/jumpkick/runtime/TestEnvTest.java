@@ -217,7 +217,7 @@ class TestEnvTest {
 
     /**
      * The OS keychain is the sandbox's: a test JVM keeps a login's secret in a directory under its
-     * sandbox home, and a backend over the user's real keychain refuses there (JK-PB8M1).
+     * sandbox home, and a backend over the user's real keychain refuses there.
      */
     @Test
     void the_keychain_is_the_sandboxs_not_the_users(@TempDir Path tmp) throws Exception {

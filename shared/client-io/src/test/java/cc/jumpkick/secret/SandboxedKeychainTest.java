@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.Test;
 
 /**
- * A test JVM jk launched never reaches the OS keychain of whoever runs it (JK-PB8M1): the vault it
+ * A test JVM jk launched never reaches the OS keychain of whoever runs it: the vault it
  * builds keeps logins in the sandbox keychain the launcher names, and a backend over the real
  * Secret Service or macOS Keychain refuses. Every backend here is built over a session with no bus
  * and nothing on {@code PATH} and is never asked to store or read, so even where the sandbox were

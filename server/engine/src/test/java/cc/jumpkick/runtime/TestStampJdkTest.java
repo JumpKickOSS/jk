@@ -18,7 +18,7 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A run-tests stamp names the suite's Java level, not the JDK it runs on (JK-74S9K): the module's
+ * A run-tests stamp names the suite's Java level, not the JDK it runs on: the module's
  * {@code java}, else the major of its test JDK, so the level in the key is always concrete. The JDK
  * that ran is the green marker's TOOLCHAIN, matched by the reader's policy (same major by default),
  * so a patch, a vendor or a platform keeps the stamp and the policy decides; the level moves it.

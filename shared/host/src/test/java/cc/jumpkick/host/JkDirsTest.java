@@ -521,7 +521,7 @@ class JkDirsTest {
     /**
      * The home follows {@code $HOME}, as the shell does: a JVM's {@code user.home} comes from the
      * password database, so {@code HOME=/x jk} resolved the client and the engine it spawned to
-     * different homes (JK-TCMEN). Windows keeps {@code user.home}; an in-process change of {@code
+     * different homes. Windows keeps {@code user.home}; an in-process change of {@code
      * user.home} and a {@code jk.env.HOME} override win.
      */
     @Test

@@ -654,7 +654,7 @@ class ActionKeyTest {
         // charset stops being a cache hit. A source- and classpath-free request keeps the preimage
         // free of temp-dir paths, so the thing being hashed can be spelled out in full — which also
         // pins the `java:` line: the module's Java level, never the JDK that ran javac (that JDK is
-        // the record's TOOLCHAIN, JK-74S9K).
+        // the record's TOOLCHAIN).
         CompileRequest request = CompileRequest.builder()
                 .outputDir(tempDir.resolve("out"))
                 .release(25)
@@ -790,7 +790,7 @@ class ActionKeyTest {
     }
 
     /**
-     * A kotlinc key names the module's Java level, not the JDK kotlinc links against (JK-74S9K):
+     * A kotlinc key names the module's Java level, not the JDK kotlinc links against:
      * jk.toml moving `jdk = 17` to `jdk = 21` with jvmTarget left alone keeps the key, and the record's
      * TOOLCHAIN, which the reader's policy matches, says which JDK made it. The level moves the key.
      */
@@ -821,7 +821,7 @@ class ActionKeyTest {
     }
 
     /**
-     * A javac key names the module's Java level, not the JDK that runs javac (JK-74S9K): a pinned
+     * A javac key names the module's Java level, not the JDK that runs javac: a pinned
      * JDK moving from 21 to 23 under `java = 17` keeps the key, and the record says which JDK made it;
      * the reader's policy (same major by default) decides whether another host's record serves. The
      * level moves the key; the freshness stamp, this checkout's own, still names the JDK.

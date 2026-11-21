@@ -24,7 +24,7 @@ public record WorkModel(
         Map<Path, List<StepCost>> steps,
         /**
          * {@code 0} for the build's seed; {@code n} for its n-th re-pricing, once a module the
-         * estimate guessed at compiled and settled what its dependents run (JK-0PDBN). A revision
+         * estimate guessed at compiled and settled what its dependents run. A revision
          * replaces the residual and keeps the clock the seed anchored.
          */
         int revision) {

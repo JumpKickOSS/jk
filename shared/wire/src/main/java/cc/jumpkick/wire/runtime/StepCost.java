@@ -10,7 +10,7 @@ import java.util.Objects;
  * length. {@link Kind} places it in the module's shape: the compile prefix, the suite, or a
  * packaging tail that runs beside the suite. {@code spread} is the price's relative uncertainty, one
  * sigma of {@code ln(wall / price)} ({@link EtaSpread}): the layer that priced it, the step's own
- * run-to-run spread and how far this run is from its samples (JK-R0N5S). {@code workers} is, for a
+ * run-to-run spread and how far this run is from its samples. {@code workers} is, for a
  * suite, the test JVMs its price assumes ({@code 0} when unknown): the build picks the count when
  * the suite starts, from what else is running then, and a suite that gets other than it was priced
  * at is re-priced ({@link #scale(int, int, long, long)}).
@@ -18,7 +18,7 @@ import java.util.Objects;
 public record StepCost(String step, int weight, Kind kind, double spread, int workers, Rung rung) {
 
     /**
-     * Which layer of what the estimate knows priced the step, narrowest first (JK-9BSXK): the step's
+     * Which layer of what the estimate knows priced the step, narrowest first: the step's
      * own recent walls replayed; this module's own rates (a filtered suite from its classes' walls,
      * a compile from its own full rebuild); the project's (a compile from the other modules'); the
      * host's means across projects; the host's calibration. {@link #TOKEN} is a touch, priced at

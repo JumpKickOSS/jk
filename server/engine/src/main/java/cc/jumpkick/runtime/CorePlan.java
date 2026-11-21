@@ -520,10 +520,10 @@ final class CorePlan {
     /**
      * The steps that finish the main classes tree after the compile, the same for every plan that
      * compiles: the after-compile scripts, then build-info and module-services when planned. The test
-     * compiles, the guard suite's and a classes-reading plugin step wait for them (JK-NVBS1), so a
+     * compiles, the guard suite's and a classes-reading plugin step wait for them, so a
      * plan that carries one of those without them fails ("requires unknown 'build-info'"), as the
-     * test-compile goal a graph question runs did on every project with {@code [build-info]}
-     * (JK-3MF95). A step nothing in the plan requires is pruned with the terminal.
+     * test-compile goal a graph question runs did on every project with {@code [build-info]}.
+     * A step nothing in the plan requires is pruned with the terminal.
      */
     private static void addClassesTail(BuildPlan.Builder b, BuildPlanner.Ctx cx, Steps s) {
         // Build-logic AFTER_COMPILE: the resources and AFTER_RESOURCES ran before the compile.

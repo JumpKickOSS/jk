@@ -13,7 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code jk doctor}'s {@code jdk-patch} row says, as a note, which JDK major a project builds on and
  * which cached results serve it under the cache's {@code jdk-match}; when no JDK of the project's
- * level is installed it names the two ways out (JK-74S9K).
+ * level is installed it names the two ways out.
  */
 class DoctorJdkPatchRowTest {
 

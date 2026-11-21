@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** task-finish carries what the estimate priced the task at, and which layer priced it (JK-626GS). */
+/** task-finish carries what the estimate priced the task at, and which layer priced it. */
 class TaskFinishEventTest {
 
     @Test

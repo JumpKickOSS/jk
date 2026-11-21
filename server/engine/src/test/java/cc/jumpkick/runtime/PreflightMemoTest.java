@@ -315,7 +315,7 @@ class PreflightMemoTest {
             long readsAfterPreflight = FileHashMemo.contentReads();
             assertThat(readsAfterPreflight)
                     .as("manifest, lock and the two sources, each read once; the suite keys the Java level, so"
-                            + " no JDK file is read (JK-74S9K)")
+                            + " no JDK file is read")
                     .isEqualTo(4);
 
             TestStamp.computeKey(List.of(testSrc), tmp.resolve("target/classes"), List.of(), List.of(), List.of());

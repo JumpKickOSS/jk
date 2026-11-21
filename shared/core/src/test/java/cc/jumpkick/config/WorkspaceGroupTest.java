@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A root {@code jk.toml} that groups self-contained workspaces: its members, exclusions with their
  * reasons, the profiles that add excluded members back, the order {@code path} dependencies give,
- * and what it refuses (JK-WC9HW).
+ * and what it refuses.
  */
 class WorkspaceGroupTest {
 

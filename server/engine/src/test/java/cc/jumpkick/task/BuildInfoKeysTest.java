@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * {@code [build-info]}'s files key a suite or a test compile by their stable entries: the commit,
- * branch, dirty state and times move without the project moving (JK-M9055), the name and version do
+ * branch, dirty state and times move without the project moving, the name and version do
  * not.
  */
 class BuildInfoKeysTest {

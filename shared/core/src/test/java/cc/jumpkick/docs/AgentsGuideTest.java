@@ -129,8 +129,8 @@ class AgentsGuideTest {
 
     /**
      * "Done when the gate is OK" alone sent codex to run the gate after every rename whose answer had
-     * already run tests and guards and said the task was done: one turn per rename (bench tier 0/1,
-     * JK-XP4B9). The done line names rename's own verdict as an end.
+     * already run tests and guards and said the task was done: one turn per rename (bench tier
+     * 0/1). The done line names rename's own verdict as an end.
      */
     @Test
     void a_rename_that_says_done_is_an_end_as_the_gate_is() {

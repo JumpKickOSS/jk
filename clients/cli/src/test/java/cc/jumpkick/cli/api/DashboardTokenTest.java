@@ -9,7 +9,7 @@ import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
-/** A printed dashboard link carries the engine's token only for a person at a terminal (JK-JDT0Y). */
+/** A printed dashboard link carries the engine's token only for a person at a terminal. */
 class DashboardTokenTest {
 
     private static Function<String, @Nullable String> env(Map<String, String> vars) {

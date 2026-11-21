@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A field renamed as a bean property, on a petclinic-shaped fixture with the traps the rename bench
- * hides (JK-N63YH): a template bean path that must change, a SQL column and a message key that must
+ * hides: a template bean path that must change, a SQL column and a message key that must
  * not change unasked, a JPA entity whose column follows the field's name, a local variable of the
  * same name, a reflection string, a JPQL path and a Kotlin source javac does not index.
  */

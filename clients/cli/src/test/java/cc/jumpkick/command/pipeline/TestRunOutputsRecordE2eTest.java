@@ -26,8 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * What a module's outputs record names, and when it is written, decide whether {@code jk explain}
- * after a green run calls the module's outputs "built from other inputs" (JK-NVBS1:
- * hotel-reservations, every module, with every step cached). Two causes, one test each, on the
+ * after a green run calls the module's outputs "built from other inputs"
+ * (hotel-reservations, every module, with every step cached). Two causes, one test each, on the
  * smallest workspace that shows them: {@code lib}, whose jar {@code app} reads, and {@code app}.
  * ({@code jk explain -m} does not check a module's outputs record, so these forecast the whole
  * workspace.)

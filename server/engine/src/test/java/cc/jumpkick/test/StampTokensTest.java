@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A forecast whose suite key misses names what moved since the last green run, so jk explain never
- * schedules a suite as a bare "run tests" when it can say why (JK-E7GKJ).
+ * schedules a suite as a bare "run tests" when it can say why.
  */
 class StampTokensTest {
 
@@ -51,7 +51,7 @@ class StampTokensTest {
     /**
      * A file a suite was found to read keys the whole selection: jk-core's repo-scanning tests re-ran
      * 273 classes for an assertion edited in jk-resolver, read as "ExclusionLedgerTest.java changed".
-     * The reason names the file by its whole path and the suites it keys (JK-K4920).
+     * The reason names the file by its whole path and the suites it keys.
      */
     @Test
     void a_read_file_is_named_whole_with_the_suites_it_keys() {

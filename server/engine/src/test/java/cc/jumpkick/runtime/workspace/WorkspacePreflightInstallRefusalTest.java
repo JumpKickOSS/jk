@@ -118,7 +118,7 @@ class WorkspacePreflightInstallRefusalTest {
 
     @Test
     void a_module_whose_jar_holds_other_classes_is_rebuilt_with_its_dependents() throws Exception {
-        // JK-MAG71: a clean claim skipped the module, and the install shipped a jar packaged earlier.
+        // A clean claim skipped the module, and the install shipped a jar packaged earlier.
         BuildGraph.BuildUnit lib = module("1.0.0-SNAPSHOT");
         Path appDir = Files.createDirectories(tmp.resolve("app"));
         Files.writeString(

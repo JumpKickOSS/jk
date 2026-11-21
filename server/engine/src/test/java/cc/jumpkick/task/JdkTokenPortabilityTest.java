@@ -114,7 +114,7 @@ class JdkTokenPortabilityTest {
      * worker in each home's store) and two JDK homes of one build that differ in OS, architecture,
      * libc and build host: javac, kotlinc and package-jar keys are equal. A patch apart they are equal
      * too: compile keys name the Java level, and the JDK is the record's TOOLCHAIN, which the reader's
-     * policy matches (JK-74S9K).
+     * policy matches.
      */
     @Test
     void a_module_keys_alike_on_two_machines_and_across_a_patch(@TempDir Path tmp) throws IOException {

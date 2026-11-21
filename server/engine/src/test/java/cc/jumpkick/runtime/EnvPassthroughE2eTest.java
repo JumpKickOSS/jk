@@ -46,7 +46,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A test JVM reads the caller's whole environment, a variable at a time, and its suite's result is
- * keyed on what it read (JK-ZENNA). Each build here runs as a request from a client whose shell is
+ * keyed on what it read. Each build here runs as a request from a client whose shell is
  * a map the test controls: the request carries nothing of it but what the suite was found to read
  * before, and the rest is asked of the "client" just in time, as the CLI answers on the job's
  * connection.
@@ -450,7 +450,7 @@ class EnvPassthroughE2eTest {
     // ---- fixture ------------------------------------------------------------------------------------
 
     /**
-     * Micronaut's shape (JK-Q8GEX): a test calls its own server at the {@code HOSTNAME} the shell
+     * Micronaut's shape: a test calls its own server at the {@code HOSTNAME} the shell
      * exports, a name that reaches this host over IPv6 alone (here {@code ::1}; on the Fedora host
      * where it was seen, link-local addresses). Under Surefire and Gradle that connects; jk's test
      * JVM preferred the IPv4 stack, so the call never did. It keeps both stacks now, and where the

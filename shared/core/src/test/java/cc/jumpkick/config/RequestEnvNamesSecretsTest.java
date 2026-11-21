@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * The client forwards the engine what it reads for itself, and a CI server's, a cloud SDK's or a
- * tool's secrets are not among it: those prefixes are named one by one or not at all (JK-7A19A).
+ * tool's secrets are not among it: those prefixes are named one by one or not at all.
  */
 class RequestEnvNamesSecretsTest {
 

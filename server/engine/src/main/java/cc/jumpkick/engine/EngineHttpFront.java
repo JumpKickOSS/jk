@@ -343,7 +343,7 @@ public final class EngineHttpFront {
         EngineIdentity id = candidate.identity();
         if (id == null || id.guest().kind() != Guest.Kind.WSL || !id.guest().interop()) return;
         SessionContext.startVirtual("jk-engine-guest-pairing", () -> {
-            // The Windows engine is the front door: make sure it runs (JK-2JFBT).
+            // The Windows engine is the front door: make sure it runs.
             long asked = Clock.SYSTEM.millis();
             WindowsHostEngine.Outcome host = WindowsHostEngine.ensure(
                     id.guest(),

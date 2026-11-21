@@ -10,7 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The reader's policy over a record's TOOLCHAIN (JK-74S9K): {@code major} by default takes any
+ * The reader's policy over a record's TOOLCHAIN: {@code major} by default takes any
  * vendor and patch of this build's major, {@code level} any JDK at or above the module's level,
  * {@code build} only the same build; a JDK below the level never; a binding requirement only what it
  * admits; and among acceptable records the closest first.

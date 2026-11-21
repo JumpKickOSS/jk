@@ -11,9 +11,9 @@ import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
  * {@code heldMs} is the time the build has been on hold for memory ({@link EngineProtocol#HOLD_START}),
  * -1 when it is not: a held event carries {@code "state": "on-hold"} and the held time, and its
  * remaining time is the countdown frozen where the hold found it. {@code etaLowMs} and {@code
- * etaHighMs} bound {@code remainingMs}, the estimate's likely range at the same anchor (JK-4TEZ7);
+ * etaHighMs} bound {@code remainingMs}, the estimate's likely range at the same anchor;
  * -1 when it has none. {@code confidence} is the probability that the truth lands within ±10% of
- * {@code remainingMs} (JK-R0N5S); -1 when there is none.
+ * {@code remainingMs}; -1 when there is none.
  */
 public record WorkspaceProgressEvent(
         String dir,

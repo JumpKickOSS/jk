@@ -44,8 +44,7 @@ import org.junit.jupiter.api.Test;
  * engine: the request carries what the client forwards ({@link RequestEnvNames}), the run's record
  * names the CI run, and no secret's value appears in the record, the journal on disk or the HTTP
  * history answer. A suite run with secrets the client should never have sent, and credentials it
- * sends for the engine's own resolvers, sees none of them in its test JVM's environment
- * (JK-7A19A).
+ * sends for the engine's own resolvers, sees none of them in its test JVM's environment.
  *
  * <p>A whole build through a real engine is the integration tier's (about 16 s here; the fast tier
  * stops a method at 20 s).

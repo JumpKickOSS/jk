@@ -101,7 +101,7 @@ class McpConnectionTest {
         assertThat(DashboardLinks.decision(null, "d1")).isNull();
     }
 
-    /** What the engine opens or shows itself is signed the way the SPA adopts it (JK-JDT0Y). */
+    /** What the engine opens or shows itself is signed the way the SPA adopts it. */
     @Test
     void a_signed_link_puts_the_token_where_the_dashboard_adopts_it() {
         assertThat(DashboardLinks.signed("http://127.0.0.1:8910/", "T")).isEqualTo("http://127.0.0.1:8910/#t=T");

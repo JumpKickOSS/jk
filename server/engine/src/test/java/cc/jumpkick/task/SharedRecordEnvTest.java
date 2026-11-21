@@ -125,7 +125,7 @@ class SharedRecordEnvTest {
      * A run-tests record as jk 0.52 wrote it for a module whose {@code [test] env} forwards an unset
      * variable and sets literals (the dojo-4 study's writer, jk-cli and jk-client-io): the sentinel
      * holds U+0000, the literals stand as the values, and a forwarded value's digest sits under a
-     * name that kept its word. Its shared form names each variable and holds none of that (JK-ANWXB).
+     * name that kept its word. Its shared form names each variable and holds none of that.
      */
     @Test
     void the_shared_form_of_a_suite_record_names_its_test_env_and_holds_no_value_and_no_nul() {

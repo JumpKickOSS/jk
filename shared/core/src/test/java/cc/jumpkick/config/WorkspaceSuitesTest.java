@@ -16,7 +16,7 @@ import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A workspace root's {@code [test.suites.<name>]} tables are every member's (JK-CWJGR). */
+/** A workspace root's {@code [test.suites.<name>]} tables are every member's. */
 class WorkspaceSuitesTest {
 
     private static final String ROOT = """

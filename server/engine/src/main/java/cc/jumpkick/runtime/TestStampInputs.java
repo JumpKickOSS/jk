@@ -422,7 +422,7 @@ public record TestStampInputs(
      * The worker jar of {@code dir}'s run-tests stamp ({@link #testStampWorkerJars})
      * that one of {@code rebuilding}, dirty siblings it reaches only by build order, makes; null when
      * none does. Such a sibling prices no compile here, but the stamp hashes its jar's bytes, so the
-     * suite runs once the jar is rebuilt (JK-W25W0).
+     * suite runs once the jar is rebuilt.
      */
     static @Nullable String rebuildingWorker(Path dir, JkBuild project, List<Path> rebuilding) throws IOException {
         if (rebuilding.isEmpty()) return null;

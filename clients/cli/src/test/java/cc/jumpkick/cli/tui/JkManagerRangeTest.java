@@ -13,7 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * The countdown is plain when the estimate's likely range is narrow, the range with a {@code ~} when
- * it is wide, and a rough figure past about ±50% (JK-4TEZ7, JK-R0N5S).
+ * it is wide, and a rough figure past about ±50%.
  */
 @ExtendWith(ForcedAnsi.class)
 class JkManagerRangeTest {

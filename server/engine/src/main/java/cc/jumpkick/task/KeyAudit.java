@@ -28,8 +28,8 @@ import org.jspecify.annotations.Nullable;
  * own build writes</em>. A key taken before a file the same build then writes existed (a node step's
  * tree walk before a sibling file appeared, a plugin step's classes token before build-info wrote
  * into the tree, the preflight memo's guard salt before a pack was unpacked) keys build 2
- * differently, so the second build of an unchanged tree runs the step again and stores it again
- * (JK-875KR). On content the action cache has seen before both keys hit, so the defect hides.
+ * differently, so the second build of an unchanged tree runs the step again and stores it again.
+ * On content the action cache has seen before both keys hit, so the defect hides.
  *
  * <p>Under {@link KeyAuditMode} ({@code JK_KEY_AUDIT}), every step that keys its work registers the
  * key it looked up or stored under, the named tokens it derived it from, and a {@link Rekey}: a

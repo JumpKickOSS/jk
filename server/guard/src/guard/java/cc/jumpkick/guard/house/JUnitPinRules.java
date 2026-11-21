@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
  * <p>A guard and not the JUnit class {@code JUnitPinParityTest} it was: that class walked the whole
  * checkout (over 100,000 entries, {@code node_modules} included) from a fast-tier test JVM while the
  * build running it wrote the same volume, the disease that timed out {@code WireKeyClosureTest}
- * (JK-SQMRZ) and {@code LockRowParserTest} (JK-GQPRX). Here the walk is the guard's text view, and
+ * and {@code LockRowParserTest}. Here the walk is the guard's text view, and
  * the check is keyed to the text it reads.
  */
 @GuardSuite(scope = Scope.WORKSPACE)

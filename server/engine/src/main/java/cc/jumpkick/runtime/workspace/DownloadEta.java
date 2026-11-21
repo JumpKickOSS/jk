@@ -142,7 +142,7 @@ final class DownloadEta {
      * tree read 49 s left at 2.5 s of 12. A file not started is priced at the median of the files
      * whose size is known (the landed ones at their mean, each body in flight at its declared
      * length), not their mean, so the 645 MB IDE zip in flight does not price each of 200 small jars
-     * queued behind it as a twentieth of itself (JK-RYA7W).
+     * queued behind it as a twentieth of itself.
      */
     private long measured(TransferBoard.Snapshot d, int remaining, long now) {
         window.addLast(new long[] {now, d.bytes()});

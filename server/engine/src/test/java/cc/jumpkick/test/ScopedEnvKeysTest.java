@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 /**
  * Under {@code [env] scope} a suite keys on what its test JVM could be handed and nothing else, and
  * no value by a plain digest: without a remote cache's seed the result stays here, under one two
- * homes key alike (JK-2M8VG, JK-1QNSV). The names are the dojo-5 study's scoped spring-petclinic record's: the
+ * homes key alike. The names are the dojo-5 study's scoped spring-petclinic record's: the
  * writer's suite had read them before the module scoped, and kept them.
  */
 class ScopedEnvKeysTest {

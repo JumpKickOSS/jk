@@ -120,8 +120,7 @@ final class ToolClosures {
             staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
             // The closure's jars at once, as a declared set on the run's board: the sync stage and
             // its estimate then see every file still to come, not only the one streaming. One by
-            // one, jk's IntelliJ plugin tools took 19 s after the IDE zip with the bar at its top
-            // (JK-RYA7W).
+            // one, jk's IntelliJ plugin tools took 19 s after the IDE zip with the bar at its top.
             TransferBoard board = SessionContext.current().io().transfers();
             List<ArtifactFanOut.Fetch<Fetched>> fetches = new ArrayList<>(pinned.size());
             for (Coordinate coord : pinned.keySet()) {

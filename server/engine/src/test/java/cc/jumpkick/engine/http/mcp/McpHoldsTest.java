@@ -11,7 +11,7 @@ import java.util.Objects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-/** An agent parked on a job learns of its hold for memory without polling (JK-VYJ4X). */
+/** An agent parked on a job learns of its hold for memory without polling. */
 class McpHoldsTest {
 
     private static final long JID = 9_200_001L;

@@ -87,7 +87,7 @@ class SuiteReadListsTest {
     }
 
     /**
-     * The programs a suite started travel with its list (JK-EV4F4): a tool by its bare name, a POSIX
+     * The programs a suite started travel with its list: a tool by its bare name, a POSIX
      * utility named by path as a system path (read back with this host's separators), a workspace script and the store's node by their
      * root, a program named relative to the test's directory as written; another checkout reads
      * each back as its own.
@@ -127,7 +127,7 @@ class SuiteReadListsTest {
     }
 
     /**
-     * What a suite read of the caller's environment travels with its list by name alone (JK-2M8VG):
+     * What a suite read of the caller's environment travels with its list by name alone:
      * a host that never ran a scoped Spring Boot suite keys its listing and the names it read as the
      * writer did. A list from elsewhere names a variable only as a shell spells one.
      */

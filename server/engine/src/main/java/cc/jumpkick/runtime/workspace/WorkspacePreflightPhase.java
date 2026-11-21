@@ -436,7 +436,7 @@ public final class WorkspacePreflightPhase {
             listener.onPreflight("checking", 0, 0, "Testing all selected modules…");
             dirty = Set.copyOf(moduleDirs);
             // What the outputs this run leaves are built from, taken before it starts: a source
-            // saved while it runs is not among them (JK-NVBS1).
+            // saved while it runs is not among them.
             testRunFingerprints =
                     PreflightMemo.snapshotFingerprints(graph, false).fingerprints();
             listener.onPreflight("checking", 1, 1, dirty.size() + " module(s)");

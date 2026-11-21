@@ -77,7 +77,7 @@ class JavaHomesTest {
     /**
      * A launch, the IDE model and the engine's forked tools take their JDK here: a required patch
      * floor holds them as it holds the build, never settling on an installed 25.0.4 or on jk's own
-     * runtime below it (JK-74S9K).
+     * runtime below it.
      */
     @Test
     void a_required_patch_floor_holds_the_launch_jdk(@TempDir Path tmp) throws IOException {

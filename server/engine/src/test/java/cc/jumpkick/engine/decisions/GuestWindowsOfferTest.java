@@ -50,8 +50,8 @@ class GuestWindowsOfferTest {
 
     /**
      * An install outlives the latch: after the installer returns it remembers the answer in the memo
-     * under {@link #tmp}, so a test that ended at the latch had JUnit deleting the dir while it wrote
-     * (JK-VT1QM). Every test waits its install out before the dir goes.
+     * under {@link #tmp}, so a test that ended at the latch had JUnit deleting the dir while it wrote.
+     * Every test waits its install out before the dir goes.
      */
     @AfterEach
     void noInstallOutlivesTheTest() throws InterruptedException {

@@ -7,7 +7,7 @@ import cc.jumpkick.host.time.Clock;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
-/** A build on hold for memory (JK-VYJ4X): the tracker's clock stands still and resumes where it was. */
+/** A build on hold for memory: the tracker's clock stands still and resumes where it was. */
 class WorkspaceProgressTrackerHoldTest {
 
     private final AtomicLong nanos = new AtomicLong(5_000_000_000L);

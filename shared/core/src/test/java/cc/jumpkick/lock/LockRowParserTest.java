@@ -205,7 +205,7 @@ class LockRowParserTest {
     /**
      * The repository's locks are the ones {@code repository-locks.txt} names, not a walk of the
      * checkout: a walk from a test JVM takes the filesystem's time under the build running it, over
-     * 100,000 entries, and timed out at the fast tier's 20 s in gate 94's merge gate (JK-SQMRZ). The
+     * 100,000 entries, and timed out at the fast tier's 20 s in gate 94's merge gate. The
      * workspace guard {@code lock-list-complete} holds the list to the tree.
      */
     @Test

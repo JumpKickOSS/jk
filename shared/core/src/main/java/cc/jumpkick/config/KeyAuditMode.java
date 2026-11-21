@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
  * {@code JK_KEY_AUDIT}: whether a build, once it has succeeded, takes the key of every step it ran
  * or hit again from the tree as the build left it, and what a key that moved does. A step's key
  * must not depend on what its own build writes; one that does misses on the next build of an
- * unchanged tree, runs again and stores again (JK-875KR).
+ * unchanged tree, runs again and stores again.
  */
 public enum KeyAuditMode {
     /** No audit: the default, since it costs one more key derivation per step. */

@@ -7,7 +7,7 @@ import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
-/** A build on hold for memory in the jsonl stream (JK-VYJ4X). */
+/** A build on hold for memory in the jsonl stream. */
 class JsonlHoldTest {
 
     @Test

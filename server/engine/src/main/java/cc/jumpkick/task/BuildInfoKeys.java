@@ -19,7 +19,7 @@ import java.util.TreeMap;
  * META-INF/build-info.properties} carry the checkout's commit, branch, dirty state and times beside
  * the project's name and version. The volatile values move with every commit, and {@code git.dirty}
  * with the first edit anywhere in the checkout, so a stamp that hashed the files whole re-ran the
- * module's suite for an edit it cannot observe (JK-M9055).
+ * module's suite for an edit it cannot observe.
  *
  * <p>The rule is the one jk keys its own engine by ({@code BuildIdentity.keyId} leaves the
  * packaging's {@code Build-Commit} and {@code Build-Time} stamps out of the code's identity), the

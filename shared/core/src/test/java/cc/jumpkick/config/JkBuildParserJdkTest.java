@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jdk} is a table, the one spelling of a project's JDK vendor and version (JK-74S9K):
+ * {@code jdk} is a table, the one spelling of a project's JDK vendor and version:
  * {@code vendor} and {@code version} each optional, {@code version} a major, an exact build or a
  * floor within one major, {@code required} binding them; the string forms are retired.
  */

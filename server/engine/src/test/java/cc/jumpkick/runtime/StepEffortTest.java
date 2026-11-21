@@ -11,7 +11,7 @@ import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A step kind a module has no walls of is priced from one cheap measure of its effort (JK-PMF9X). */
+/** A step kind a module has no walls of is priced from one cheap measure of its effort. */
 class StepEffortTest {
 
     @TempDir

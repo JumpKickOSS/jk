@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The built-in {@code integration} suite: with no {@code [test.suites]} table, tests tagged
  * {@code integration} leave the default suite for it, while another tag ({@code smoke}) and a
- * Failsafe-style class name ({@code *IT}) leave a test where it is (JK-1A2W0).
+ * Failsafe-style class name ({@code *IT}) leave a test where it is.
  */
 // Out of the unit tier: network resolve + real forked test JVMs.
 @Tag("integration")

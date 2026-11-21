@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * META-INF/build-info.properties}) in its classes tree, which the run-tests stamp hashes. Keyed by
  * their bytes, the first edit anywhere in the checkout after a clean tree ({@code git.dirty}) and
  * every commit re-ran the module's whole suite, Testcontainers tests and all, for a change no test
- * observes: hotel-reservations' rest ran 28.8 s for an assertion edited in core (JK-M9055). The
+ * observes: hotel-reservations' rest ran 28.8 s for an assertion edited in core. The
  * stamp keys those files by their stable entries, unless the suite's sources name a volatile one.
  */
 class BuildInfoTestStampTest {

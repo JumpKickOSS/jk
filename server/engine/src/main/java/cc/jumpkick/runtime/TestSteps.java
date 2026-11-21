@@ -451,7 +451,7 @@ final class TestSteps {
             Map<String, String> workerJars)
             throws IOException {
         // Not the lock: the stamp keys the jars the suite resolves, not the workspace's lock file, so a
-        // suite that reads the file itself keys it as a discovered input (JK-VW9QQ).
+        // suite that reads the file itself keys it as a discovered input.
         List<Path> roots = new ArrayList<>(List.of(ctx.require(PARSED_BUILD).testClassesDir(), mainClasses(ctx)));
         // The temp roots the suite was handed: what it makes there is its own.
         for (String name : List.of("TMPDIR", "TMP", "TEMP")) {

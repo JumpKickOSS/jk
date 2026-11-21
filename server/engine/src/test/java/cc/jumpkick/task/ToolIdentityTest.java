@@ -102,7 +102,7 @@ class ToolIdentityTest {
     /**
      * A binary of its own is asked its version once while its file holds still; a script, as an
      * asdf shim is, or a link to a binary named otherwise, as a mise or volta shim is, is asked per
-     * request, since its answer follows the directory (JK-EV4F4).
+     * request, since its answer follows the directory.
      */
     @Test
     void only_a_binary_of_its_own_is_asked_once_for_the_engines_life(@TempDir Path tmp) throws Exception {
@@ -160,7 +160,7 @@ class ToolIdentityTest {
                 .isEqualTo("v3");
     }
 
-    /** A tool whose version line is translated reads alike under every caller locale (JK-7AA0Z). */
+    /** A tool whose version line is translated reads alike under every caller locale. */
     @Test
     void the_version_is_asked_in_the_c_locale(@TempDir Path tmp) throws Exception {
         assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");
@@ -179,7 +179,7 @@ class ToolIdentityTest {
         assertThat(german).isEqualTo(english).isEqualTo("GNU bash, version 5.3");
     }
 
-    /** A credential the request forwarded for the engine's resolvers never reaches a tool asked its version (JK-7A19A). */
+    /** A credential the request forwarded for the engine's resolvers never reaches a tool asked its version. */
     @Test
     void a_forwarded_credential_never_reaches_the_version_probe(@TempDir Path tmp) throws Exception {
         assumeFalse(Os.isWindows(), "a shell script tool is POSIX-only");

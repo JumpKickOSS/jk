@@ -108,7 +108,7 @@ final class StageProgress implements AutoCloseable {
     /**
      * A stage no declared set moves, that downloads anyway: a tool or plugin sync fetches its files
      * one by one, a 645 MB IDE distribution among them for jk's own tree, and the band sat still for
-     * the 55 s it took (JK-RYA7W). Its fraction is the bytes this stage moved of those plus what the
+     * the 55 s it took. Its fraction is the bytes this stage moved of those plus what the
      * bodies streaming now still owe, reported in {@link #BYTE_UNITS}; a body of unknown length owes
      * nothing known, so the fraction rides the ones that declared theirs.
      */

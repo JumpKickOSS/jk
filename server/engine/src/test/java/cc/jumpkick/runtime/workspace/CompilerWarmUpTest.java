@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** A compile's price is carried to this build's worker only when its walls are another kind's (JK-D3785). */
+/** A compile's price is carried to this build's worker only when its walls are another kind's. */
 class CompilerWarmUpTest {
 
     private static StepCost compile(String step, int weight) {

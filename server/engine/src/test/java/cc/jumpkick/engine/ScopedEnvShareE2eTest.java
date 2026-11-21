@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * A suite that reads the caller's whole shell, as a Spring Boot suite does, between two homes and
- * jk's {@code FakeCacheServer} (JK-2M8VG): under {@code [env] scope} and a team's key seed another
+ * jk's {@code FakeCacheServer}: under {@code [env] scope} and a team's key seed another
  * user with another token replays it; with no seed its result stays on the host that ran it, scoped
  * or not. The workspace, shells and helpers are {@link RemoteCacheE2eTest}'s; the seed
  * is made up.
@@ -95,7 +95,7 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
 
     /**
      * A scoped suite that reads the whole shell is shared and replayed by a home with another user,
-     * token file and cache token (JK-2M8VG): the names its module's scope hides key nothing, even
+     * token file and cache token: the names its module's scope hides key nothing, even
      * the ones a run before the scope kept, and its read list names what it did read so the other
      * home keys it alike under the team's seed. The dojo-5 study's spring-petclinic, in small.
      */
@@ -152,7 +152,7 @@ class ScopedEnvShareE2eTest extends EngineServerHarness {
 
     /**
      * The same suite with no scope keys on what it read, by this home's secret: its result stays on
-     * this host and is not uploaded, and another user runs it (JK-2M8VG's note).
+     * this host and is not uploaded, and another user runs it.
      */
     @Test
     void an_unscoped_suite_that_reads_the_whole_shell_stays_on_its_host_and_is_not_uploaded() throws Exception {

@@ -15,7 +15,7 @@ import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A jar an install would ship as it is holds the classes compiled in its module's tree (JK-MAG71). */
+/** A jar an install would ship as it is holds the classes compiled in its module's tree. */
 class InstallFreshnessTest {
 
     private static JkBuild module() {

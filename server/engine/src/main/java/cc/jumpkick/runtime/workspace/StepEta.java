@@ -153,7 +153,7 @@ public final class StepEta {
                 // A cold suite's price names no JVM count: its constants were fit to walls on the
                 // JVMs those suites got, so neither the dispatch share nor the live model re-scales
                 // it. Tagged one JVM, the live model divided it by the two the engine's first-build
-                // suite started on and counted down from 61 s for 102 (JK-9BSXK).
+                // suite started on and counted down from 61 s for 102.
                 int suiteWorkers = kind != StepCost.Kind.TEST || shape.filtered() || priced.cold()
                         ? 0
                         : ledger.workers(dir.toString(), t.name(), "SUCCESS", shape, frontier);
@@ -285,7 +285,7 @@ public final class StepEta {
             if (own == null || running == null || walls == null) continue;
             // The JVMs the launcher will start: the live share, capped as autoCount caps it by the
             // suite's class walls. The engine's suite got 5 of a share of 8 (its walls over its
-            // longest class), and priced at 8 it read 44 s for 70 (JK-EQVYV).
+            // longest class), and priced at 8 it read 44 s for 70.
             int share = requestedWorkers > 0
                     ? requestedWorkers
                     : TestWorkers.autoCount(TestWorkers.liveShare(planShare, jobs, running), dir, List.of(), 0);
@@ -311,8 +311,8 @@ public final class StepEta {
     }
 
     /**
-     * One forecast step's price in ms, and what its uncertainty carries beyond its layer's
-     * (JK-R0N5S): {@code own}, the step's own run-to-run spread, and {@code context}, how far the
+     * One forecast step's price in ms, and what its uncertainty carries beyond its layer's:
+     * {@code own}, the step's own run-to-run spread, and {@code context}, how far the
      * samples it was read from are from this run ({@link StepLedger.Spread}). A price from a prior
      * carries neither: its layer's learned spread is all there is to it.
      */

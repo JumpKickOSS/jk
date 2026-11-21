@@ -13,7 +13,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * What a build's compiles cost on a fresh compiler worker against a lingering one (JK-D3785). The
+ * What a build's compiles cost on a fresh compiler worker against a lingering one. The
  * resident worker lingers between builds; after an engine start, or once its linger ran out, the
  * build's first compile starts a JVM and every compile runs on a cold JIT for a while. Measured by
  * forcing the same build on a fresh engine and again on the lingering worker ({@code

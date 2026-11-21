@@ -390,7 +390,7 @@ public final class PlannerKsp {
 
     /**
      * The options digest a round's action key hashes: {@link #roundDigest}'s, naming the Java level
-     * ({@code java:<level>}) where the stamp names the JDK, as every compile key does (JK-74S9K);
+     * ({@code java:<level>}) where the stamp names the JDK, as every compile key does;
      * the record names the JDK that ran and the reader's policy decides ({@link #expectRound}).
      */
     @KeyOwner(step = TaskNames.KSP)

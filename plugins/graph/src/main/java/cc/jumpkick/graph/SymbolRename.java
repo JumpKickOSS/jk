@@ -505,7 +505,7 @@ final class SymbolRename {
      * A field rename that changes behaviour with no compile error: a JPA column named after the field,
      * a JSON property named after it, a serialized form. Each with the pin that keeps the old name.
      * A JPA column is a shared-surface name the graph's anchors model; until they answer for it, the
-     * pin is offered here (see JK-Q6VJ6).
+     * pin is offered here.
      */
     private static void fieldHazards(Ctx c, RenamePlan plan, Type owner, ClassFacts facts, String name) {
         String text = c.text(owner.rel());

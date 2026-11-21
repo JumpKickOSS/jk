@@ -28,7 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * test-classes tree and ran the default suite with them; a plain build compiled the default suite
  * alone, so it took the gate's tree for another build's outputs ("its outputs on disk were built
  * from other inputs"), recompiled the tests and ran the default suite a second time, and the gate
- * after it recompiled them back (JK-YEHQT). The fixture has what makes the shapes differ: a member
+ * after it recompiled them back. The fixture has what makes the shapes differ: a member
  * with an {@code integration} suite directory beside {@code src/test}, each with resources.
  *
  * <p>Proven on a forked client against a private {@code JK_HOME} seeded with the sandbox's engine,

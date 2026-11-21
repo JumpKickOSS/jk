@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A guard lane's key names what the lane reads and the Java major, never the JDK build or the
  * operating system, so a verdict made on macOS with JDK 25.0.2 is one Linux on 25.0.5 takes; only a
- * lane that runs a guard suite, code that may skip itself on one OS, keys the OS (JK-F48TW).
+ * lane that runs a guard suite, code that may skip itself on one OS, keys the OS.
  */
 class GuardKeyPortabilityTest {
 

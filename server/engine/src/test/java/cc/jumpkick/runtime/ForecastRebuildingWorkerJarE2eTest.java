@@ -31,7 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
  * prerequisite, so it prices no compile in the consumer, and the forecast keyed the suite on the jar
  * still on disk and called it cached; the build then rebuilt the jar and ran the suite: jk-engine's
  * 4,794 tests after a jk-generator edit were missing from {@code jk explain} until the plugin was
- * rebuilt (JK-W25W0). The forecast now names the worker, and the build agrees.
+ * rebuilt. The forecast now names the worker, and the build agrees.
  */
 @Tag("integration")
 class ForecastRebuildingWorkerJarE2eTest {

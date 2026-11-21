@@ -16,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * How far each prior layer of the estimate misses on this host, per step kind: the factor its next
- * prices are corrected by (JK-626GS, JK-D3785). A step priced from a prior ({@link
+ * prices are corrected by. A step priced from a prior ({@link
  * StepCost.Rung#prior}: the project's rates, the host's means, the calibration) is a guess at work
  * never measured; once it runs, its wall against its price says how far that layer guesses wrong for
  * that kind of step here, and every project built on the host teaches it.
@@ -28,7 +28,7 @@ import org.jspecify.annotations.Nullable;
  * run is smoothed; a key's first run sets it outright. The factor is clamped to {@link #MIN_FACTOR}
  * to {@link #MAX_FACTOR}.
  *
- * <p>Beside the bias, every rung but a touch keeps the scale of its spread per kind (JK-R0N5S): how
+ * <p>Beside the bias, every rung but a touch keeps the scale of its spread per kind: how
  * far its steps' {@code ln(wall / price)} reach against the spread each was priced with, the root
  * of their price-weighted mean square {@code (residual / spread)²}, moved {@link #ALPHA_SPREAD} of
  * the way toward each run's. The layer's spread is its {@link EtaSpread#defaultFor default} times
@@ -171,7 +171,7 @@ public final class RungBias {
     /**
      * A suite whose run includes tags (integration, slow, network), as the bias names it: its own
      * kind, since its cold price is its own rate. Learned under the unit tier's suites, the bias
-     * scaled jk's first integration run after a first build by 1.4 and read it 38% long (JK-D3785).
+     * scaled jk's first integration run after a first build by 1.4 and read it 38% long.
      */
     public static final String SLOW_TIER_SUITE = TaskNames.RUN_TESTS + TaskNames.SUITE_SEPARATOR + "slow-tier";
 

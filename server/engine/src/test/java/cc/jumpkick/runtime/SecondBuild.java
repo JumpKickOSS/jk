@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * The invariant every e2e fixture owes the next build: the second build of an unchanged tree runs
- * nothing (JK-875KR). The first build runs under {@code JK_KEY_AUDIT=strict}, so a step whose key
+ * nothing. The first build runs under {@code JK_KEY_AUDIT=strict}, so a step whose key
  * moved because of what the build wrote fails it, naming the step and the token; then {@code jk
  * explain} forecasts nothing; then the second build runs no productive step and every module it
  * entered reads up to date. A failure names the steps that ran with what they said.

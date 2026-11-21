@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A test JVM runs in a fixed locale, {@code en-US} unless the module's {@code [test] locale} names
  * another, so the caller's {@code LANG} and {@code LC_*} neither reach the suite nor key it and hosts
- * on {@code en_US}, {@code C.UTF-8} and {@code de_DE} share its result (JK-0AWDT). Under {@code
+ * on {@code en_US}, {@code C.UTF-8} and {@code de_DE} share its result. Under {@code
  * [test] locale = "inherit"} the locale variables a suite is keyed on are the caller's, the shell
  * running {@code jk}, and so are the ones its test JVM gets: {@code LC_TIME=de_DE.UTF-8 jk test}
  * reaches the suite and its key. The terminal is not: a test JVM's {@code TERM} is a fixed {@code dumb} and no other terminal

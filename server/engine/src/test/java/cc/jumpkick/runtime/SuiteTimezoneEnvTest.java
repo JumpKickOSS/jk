@@ -21,7 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A test JVM runs in a fixed time zone, UTC unless the module's {@code [test] timezone} names
  * another, so neither the zone the engine was started in nor the caller's {@code TZ} decides what a
- * suite computes, and two hosts in two zones share its result (JK-9CSPY). Under {@code timezone =
+ * suite computes, and two hosts in two zones share its result. Under {@code timezone =
  * "inherit"} the caller's {@code TZ} (the request's, not the engine's) reaches the JVM and keys the
  * suite.
  */

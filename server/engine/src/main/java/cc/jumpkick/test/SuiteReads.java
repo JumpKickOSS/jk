@@ -552,7 +552,7 @@ public final class SuiteReads {
      * for the project, not under {@code target}, so a clean build is keyed as the build before it was.
      * The directory is named by the module's portable tag ({@link ActionKey#taskTag}: the project id
      * and the module's workspace-relative path), never its checkout path, so another checkout of the
-     * project, here or on a host the cache is shared with, finds it (JK-PCXMC).
+     * project, here or on a host the cache is shared with, finds it.
      */
     static Path discoveredFile(Path moduleDir, TestSelection selection) {
         String tier = Hashing.sha256Hex(selection.identityToken()).substring(0, 12);

@@ -8,7 +8,7 @@ import cc.jumpkick.wire.protocol.EtaEvent;
 import cc.jumpkick.wire.protocol.WorkspaceProgressEvent;
 import org.junit.jupiter.api.Test;
 
-/** The estimate's spread, range and confidence (JK-R0N5S). */
+/** The estimate's spread, range and confidence. */
 class EtaSpreadTest {
 
     @Test

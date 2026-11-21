@@ -96,7 +96,7 @@ final class CompilerWorker {
     /**
      * Compiles this worker has answered: how far its JIT is past its warm-up. A worker's first
      * compile ran 3.2 times its warm wall, and its compiles came within a tenth of warm after about
-     * nine (JK-D3785); the estimate prices a build's first compiles by it.
+     * nine; the estimate prices a build's first compiles by it.
      */
     private final AtomicInteger answered = new AtomicInteger();
 

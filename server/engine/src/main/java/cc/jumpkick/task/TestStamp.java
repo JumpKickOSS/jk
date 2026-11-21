@@ -17,7 +17,7 @@ import org.jspecify.annotations.Nullable;
  * under this key (survives {@code jk clean}); a later matching key skips the runner. Inputs: test
  * sources, main classes, suite resource dirs, runtime classpath by content
  * ({@link ClasspathFingerprint}), and toolchain/runner tokens. Not the lockfile: a workspace has one,
- * and a member's tests see of it only the jars they resolve, which the classpath keys (JK-VW9QQ). {@link #computeKey} returns
+ * and a member's tests see of it only the jars they resolve, which the classpath keys. {@link #computeKey} returns
  * {@code null} on any I/O failure — callers treat that as uncached and retest.
  */
 public final class TestStamp {

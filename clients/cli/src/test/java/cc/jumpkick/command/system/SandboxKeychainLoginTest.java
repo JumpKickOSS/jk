@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 /**
  * {@code jk repo login} in a test JVM, with no {@code --credentials-dir} and a store that insists on
  * a keychain, puts the secret in the sandbox keychain the launcher named and never in the OS
- * keychain of whoever runs the suite; {@code jk repo logout} removes it from there (JK-PB8M1). This
+ * keychain of whoever runs the suite; {@code jk repo logout} removes it from there. This
  * is the path {@code PublishCentralCommandTest} took to the real Secret Service's {@code
  * repo/central}.
  */

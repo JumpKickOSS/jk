@@ -495,7 +495,7 @@ class EngineEventDecoderStreamTest {
 
     @Test
     void a_priced_task_finish_reaches_the_run_s_transcript_with_its_price_and_rung() {
-        // JK-626GS: the engine sent predictedMs and rung, and the client's transcript (the run's
+        // The engine sent predictedMs and rung, and the client's transcript (the run's
         // details.jsonl) dropped both: it rebuilds each line from the listener's calls.
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         BuildPlanListener transcript = CompositeBuildPlanListener.of(

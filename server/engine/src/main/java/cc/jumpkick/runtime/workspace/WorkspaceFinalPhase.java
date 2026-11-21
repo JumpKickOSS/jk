@@ -218,7 +218,7 @@ final class WorkspaceFinalPhase {
      * it tested and whose jar it packaged or which has none: {@code jk test} runs every module's
      * steps through its jar for the siblings that read it, so its outputs are the ones those inputs
      * produce, and with no record the next forecast called every module "built from other inputs"
-     * until a {@code jk build} (JK-NVBS1: hotel-reservations after a relock and a green {@code jk test
+     * until a {@code jk build} (hotel-reservations after a relock and a green {@code jk test
      * -g}, and on a fresh clone). A module the run tested without packaging keeps the record it had:
      * a jar there may be an older build's. Only the provenance record is written; the clean memo
      * stays the build's, which runs the whole lifecycle.

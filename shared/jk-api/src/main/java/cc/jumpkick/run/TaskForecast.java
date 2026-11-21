@@ -74,7 +74,7 @@ public final class TaskForecast {
         /**
          * Whether the verdict waits on a sibling this build has yet to compile: the source-diff
          * hint's guess or a recompile that runs only if the sibling's API moved, which a lookup
-         * settles once the sibling has compiled (JK-0PDBN).
+         * settles once the sibling has compiled.
          */
         public boolean provisional() {
             return text.contains(LIKELY_UP_TO_DATE)

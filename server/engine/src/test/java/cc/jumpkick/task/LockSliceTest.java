@@ -15,7 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * A module's outputs record reads the rows of the workspace lock it builds from, not the file: on
  * hotel-reservations a relock that gave service its own postgresql left contract, core, frontend and
- * rest "built from other inputs" with every step cached (JK-NVBS1). A row the module resolves, its
+ * rest "built from other inputs" with every step cached. A row the module resolves, its
  * own or a sibling's it inherits, still moves it.
  */
 class LockSliceTest {

@@ -97,7 +97,7 @@ public final class Calibration {
      * compiles: 0.45 s each on a host at 0.55 scale, priced at 2 s by a fixed 3.5 s, which read their
      * first builds 2 to 6 times too long). Not the learned per-source rate: that folds an incremental
      * compile's fixed cost into its few sources, and would price an 800-source first compile at
-     * minutes (JK-D3785).
+     * minutes.
      */
     static final long BASELINE_COLD_COMPILE_FIXED_MS = 460;
 
@@ -134,7 +134,7 @@ public final class Calibration {
      * engines or containers: jk's own integration suites ran 0.4 to 3 s a method on a host at the
      * least scale (jk-cli's 738 in 654 s, jk-engine's 655 in 291 s, six small suites about 0.9 s a
      * method past their JVM), where the unit tier's rate priced jk-cli's at 60 s and held the bar at
-     * 84% a quarter into a 12-minute run (JK-D3785). Fitted to jk alone: the rung bias corrects it per
+     * 84% a quarter into a 12-minute run. Fitted to jk alone: the rung bias corrects it per
      * host from the first run that measures one.
      */
     static final long BASELINE_COLD_SLOW_TIER_METHOD_MS = 1_200;

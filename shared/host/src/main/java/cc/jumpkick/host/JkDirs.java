@@ -110,7 +110,7 @@ public final class JkDirs {
      * say, on every OS but Windows (there {@code user.home}, the profile directory). A JVM does not
      * take {@code user.home} from {@code $HOME} but from the password database, so {@code HOME=/x
      * jk …} once resolved the client to one home and the engine and workers it spawned to the real
-     * one (JK-TCMEN); reading {@code $HOME} itself makes the client, the engine and every worker,
+     * one; reading {@code $HOME} itself makes the client, the engine and every worker,
      * native or JVM, agree with each other and with the shell. A {@code user.home} this process set
      * on purpose after it started wins, as does a {@code jk.env.HOME} override; with no {@code
      * HOME} at all, {@code user.home}.

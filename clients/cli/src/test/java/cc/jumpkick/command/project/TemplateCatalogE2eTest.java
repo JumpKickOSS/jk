@@ -44,7 +44,7 @@ import org.junit.jupiter.api.io.TempDir;
  * answer reaches is built too, and an option added to a template is built as soon as it is asked.
  * A plugin template builds against the SDK it pins, and its jar is checked for a plugin's shape:
  * from a release, the SDK this checkout publishes; from a {@code -SNAPSHOT}, which no repository
- * serves, the newest published release at or below it, from jumpkick.build (JK-CBKBT). A
+ * serves, the newest published release at or below it, from jumpkick.build. A
  * template that asks for a native binary is also linked with {@code jk native},
  * once, where a GraalVM is available ({@code GRAALVM_HOME} with {@code native-image}); elsewhere
  * that test is skipped by assumption. An Android template is scaffolded and format-checked

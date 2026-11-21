@@ -51,7 +51,7 @@ public final class EtaModels {
             BY_REQUEST.keySet().stream().min(Long::compare).ifPresent(BY_REQUEST::remove);
         }
         List<Seed> seeds = BY_REQUEST.computeIfAbsent(requestId, k -> new ArrayList<>());
-        // A re-pricing arrives on its own thread (JK-0PDBN), beside the journal's drain.
+        // A re-pricing arrives on its own thread, beside the journal's drain.
         synchronized (seeds) {
             seeds.add(new Seed(Clock.SYSTEM.millis(), model));
         }

@@ -20,7 +20,7 @@ import java.util.TreeSet;
  *
  * <p>A declared list and this guard, not a walk of the checkout from the test: the test walked about
  * 100,000 entries from a test JVM while the build that ran it wrote the same volume, so its time was
- * the filesystem's, and it timed out at the fast tier's 20 s in gate 94's merge gate (JK-SQMRZ). The
+ * the filesystem's, and it timed out at the fast tier's 20 s in gate 94's merge gate. The
  * walk here is the guard's text view, done once for every text guard of the run.
  */
 @GuardSuite(scope = Scope.WORKSPACE)

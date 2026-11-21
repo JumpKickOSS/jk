@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
  * the lock), with every other section kept and the writer's stamps left out. A module's outputs record
  * named the whole file, so a relock that moved one member's dependency, or only the jk that wrote the
  * lock, made every module's outputs "built from other inputs" and left that verdict standing until a
- * {@code jk build} (JK-NVBS1: hotel-reservations, six modules, after a relock and a green {@code jk
+ * {@code jk build} (hotel-reservations, six modules, after a relock and a green {@code jk
  * test -g}).
  */
 public final class LockSlice {

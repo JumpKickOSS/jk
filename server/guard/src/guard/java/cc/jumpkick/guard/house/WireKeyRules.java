@@ -32,7 +32,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>A guard and not a JUnit class in the wire module: the check reads every module's production
  * source, so it is keyed to that text here, and it never walks the checkout from a test JVM while
- * the build that runs it is writing the tree (JK-YFNCP).
+ * the build that runs it is writing the tree.
  *
  * <p><strong>What the patterns can see</strong>, because a guard's count is bounded by its detection
  * pattern and not by the defect:

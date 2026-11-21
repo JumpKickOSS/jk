@@ -135,7 +135,7 @@ public final class AutoLock {
             // Network, a denied host, a missing artifact, an empty store: the build stops here
             // rather than run on pins jk.toml no longer names. Carrying on cost a CI run its
             // cause: a test failed far from it, and the next checkout's forecast waited on the
-            // same update (JK-K43HA).
+            // same update.
             throw new RefreshFailed(stale, e);
         }
     }

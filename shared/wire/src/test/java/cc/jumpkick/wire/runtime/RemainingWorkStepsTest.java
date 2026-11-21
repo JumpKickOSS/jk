@@ -158,7 +158,7 @@ class RemainingWorkStepsTest {
     /**
      * An integration suite priced at 110 s from its default profile's wall ran 249 s, and held at a
      * twentieth of its price it read 4 s left for its last three minutes: a running step never has
-     * less left than a quarter of the time it has run, past its high bound too (JK-ZJ8D9: capped at
+     * less left than a quarter of the time it has run, past its high bound too (capped at
      * what the bound left, a suite priced at 54 s that ran 638 s read 3.3 s left for six minutes).
      */
     @Test
@@ -370,7 +370,7 @@ class RemainingWorkStepsTest {
 
     /**
      * The build's spread is its unfinished steps' spreads over what each has left, half of it as one
-     * error and half as independent ones (JK-R0N5S); the likely range is the 10th to 90th
+     * error and half as independent ones; the likely range is the 10th to 90th
      * percentile around the remainder, and it narrows as steps finish: a finished step leaves no
      * spread behind.
      */

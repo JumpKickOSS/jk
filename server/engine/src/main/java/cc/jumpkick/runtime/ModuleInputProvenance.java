@@ -169,7 +169,7 @@ public final class ModuleInputProvenance {
      * packaged ({@code packaged}: the jars a sibling reads, which a test run builds) or which has no
      * jar on disk. A test run builds every module's steps through its jar for the siblings that read
      * it, so its outputs are the ones those inputs produce; with no record the next forecast called
-     * every module "built from other inputs" until a {@code jk build} (JK-NVBS1). A module tested
+     * every module "built from other inputs" until a {@code jk build}. A module tested
      * without packaging keeps the record it had: a jar there may be an older build's.
      */
     public static void recordTestRun(

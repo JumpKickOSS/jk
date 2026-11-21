@@ -1068,7 +1068,7 @@ public class Replay {
             while (nextSeed < seeds.size() && num(seeds.get(nextSeed), "ts") <= ts) {
                 Map<?, ?> s = seeds.get(nextSeed++);
                 List<ModuleWorkCost> costs = costs(s);
-                // A revision (JK-0PDBN) replaces the residual and keeps the seed's clock, as the
+                // A revision replaces the residual and keeps the seed's clock, as the
                 // engine's does.
                 boolean revision = num(s, "revision") > 0 && st.seededAt > 0;
                 st.seed(

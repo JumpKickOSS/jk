@@ -19,7 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
  * [build-info]} writes {@code META-INF/build-info.properties} into that tree after the compile. With
  * no edge between them a compile-test the scheduler ran first keyed the tree without the file and
  * one it ran after keyed it with, so one tree took two compile keys and the suite, whose stamp names
- * the compile key, ran again under the verb that drew the other order (JK-NVBS1: hotel-reservations'
+ * the compile key, ran again under the verb that drew the other order (hotel-reservations'
  * rest, {@code jk build -g} after an up-to-date {@code jk test -g}). Every step that compiles against
  * the tree now waits for the steps that write it last.
  */

@@ -438,7 +438,7 @@ public final class EngineServer implements AutoCloseable {
                 ? MachineEnvironments.windows(this::frontDoorEngines, this.version)
                 : null;
         MachineSetupDecisions.watch(decisions, setupRows());
-        // A WSL guest's own engine offers JumpKick for Windows once, when Windows has none (JK-YK3TB).
+        // A WSL guest's own engine offers JumpKick for Windows once, when Windows has none.
         this.guestOffer = Os.isWindows() ? null : GuestWindowsOffer.forThisEngine(Guest.detect(), this.version);
         if (guestOffer != null) guestOffer.watch(decisions);
         this.notices = new Notices(JkDirs.state().resolve(Notices.FILE), Clock.SYSTEM);

@@ -53,7 +53,7 @@ class BuildIdentityTest {
     /**
      * A compile keys by the version and salt alone: an engine rebuilt from other sources under one
      * -SNAPSHOT version recompiles nothing, while its artifact keys and test stamps (cacheKeyVersion)
-     * still move with it (JK-VWZ0B).
+     * still move with it.
      */
     @Test
     void a_compile_keys_no_engine_identity() {
@@ -134,7 +134,7 @@ class BuildIdentityTest {
      * The engine jar of each commit carries that commit and its time in its manifest, so an engine
      * module repackaged for a test-only edit is another file with the same code. Keyed by the whole
      * file, every action key of the next build moved after such an install and the push gate ran
-     * every suite again (JK-E7GKJ); the code's identity holds, and a changed class or another
+     * every suite again; the code's identity holds, and a changed class or another
      * manifest attribute still moves it.
      */
     @Test

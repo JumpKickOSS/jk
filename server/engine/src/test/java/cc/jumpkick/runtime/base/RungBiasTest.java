@@ -14,7 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A cold rung's next prices move toward how far it missed on this host (JK-626GS). */
+/** A cold rung's next prices move toward how far it missed on this host. */
 class RungBiasTest {
 
     @TempDir
@@ -45,7 +45,7 @@ class RungBiasTest {
                 .isEqualTo(1.0);
     }
 
-    /** A unit tier's suites run long cold; that says nothing of an integration tier's own rate (JK-D3785). */
+    /** A unit tier's suites run long cold; that says nothing of an integration tier's own rate. */
     @Test
     void a_slow_tier_s_suites_keep_their_own_bias() {
         RungBias.learn(

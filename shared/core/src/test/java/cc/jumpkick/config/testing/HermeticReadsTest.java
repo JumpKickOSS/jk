@@ -46,7 +46,7 @@ class HermeticReadsTest {
                 .isTrue();
         assertThat(fence.denies(home.resolve("store/repos/google/x.jk"))).isTrue();
         assertThat(fence.deniesRead(home.resolve("store/repos/google/x.jk")))
-                .as("read on purpose until JK-S589D, never written")
+                .as("read on purpose, never written")
                 .isFalse();
         assertThat(fence.deniesRead(home.resolve("state/engine/0e14fb085585546e.endpoint")))
                 .isTrue();
@@ -100,7 +100,7 @@ class HermeticReadsTest {
                 .isTrue();
     }
 
-    /** A keychain tool started from a test JVM is caught wherever it runs (JK-PB8M1). */
+    /** A keychain tool started from a test JVM is caught wherever it runs. */
     @Test
     void a_keychain_tool_is_an_offence_and_other_commands_are_not() {
         assertThat(HermeticReads.isKeychainTool("secret-tool lookup service jk account repo/central"))

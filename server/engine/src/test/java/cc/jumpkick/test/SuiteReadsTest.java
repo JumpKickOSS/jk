@@ -279,7 +279,7 @@ class SuiteReadsTest {
 
     /**
      * What a suite was found to read is kept under the module's portable tag with checkout-relative
-     * names: another checkout of the project finds it and reads it as its own files (JK-PCXMC).
+     * names: another checkout of the project finds it and reads it as its own files.
      */
     @Test
     void another_checkout_of_the_project_finds_the_reads_as_its_own_files(@TempDir Path tmp) throws Exception {
@@ -306,7 +306,7 @@ class SuiteReadsTest {
      * Two jk homes on one machine, each with its own store, state and Maven local repository holding
      * the same content: a suite that read a POM in the repository and a library jk unpacked into its
      * state, and started the store's node, keys alike in both, every path named by its root's word
-     * and none by a home's absolute path (JK-FNM8N; the dojo-4 study's jk-engine, jumpkick-intellij
+     * and none by a home's absolute path (the dojo-4 study's jk-engine, jumpkick-intellij
      * and jk-web).
      */
     @Test
@@ -324,7 +324,7 @@ class SuiteReadsTest {
     }
 
     /**
-     * How a started program keys (JK-EV4F4), as the dojo-4 study's records named them: {@code
+     * How a started program keys, as the dojo-4 study's records named them: {@code
      * /bin/sh} and {@code sh} are one POSIX utility keyed by OS family, as are {@code sleep} and
      * {@code ps} (whose {@code --version} a Mac answers "illegal option"); a declared tool defers to
      * its declaration; a program named relative to the test's directory keys as such; a tool an

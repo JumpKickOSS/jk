@@ -34,8 +34,8 @@ import org.junit.jupiter.api.io.TempDir;
  * tree after the compile, and compile-test keys that tree with its {@code META-INF} resources. With
  * no edge between the two steps, whichever the scheduler ran first decided the test compile's key,
  * and the suite, whose stamp names that key, ran again under the verb that drew the other order:
- * {@code jk build -g} after an up-to-date {@code jk test -g} re-ran the Boot member's suite
- * (JK-NVBS1). The walk removes the files {@code build-info} writes before every fourth verb, as a
+ * {@code jk build -g} after an up-to-date {@code jk test -g} re-ran the Boot member's suite.
+ * The walk removes the files {@code build-info} writes before every fourth verb, as a
  * restore that prunes them does, so the step writes while compile-test is ready to run. Which step
  * the scheduler takes first is not the test's to choose: on this small fixture it took {@code
  * build-info} first on the base too, so the edge itself is pinned by {@code

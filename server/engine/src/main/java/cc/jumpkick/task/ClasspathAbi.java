@@ -130,7 +130,7 @@ public final class ClasspathAbi {
                     String name = e.getName();
                     if (e.isDirectory() || !name.startsWith("META-INF/") || name.endsWith(".class")) continue;
                     byte[] bytes = zip.readAllBytes();
-                    // Its commit time moves with every commit; no compile reads it (JK-M9055).
+                    // Its commit time moves with every commit; no compile reads it.
                     found.put(
                             name,
                             name.equals(BuildInfoKeys.BOOT_ENTRY)

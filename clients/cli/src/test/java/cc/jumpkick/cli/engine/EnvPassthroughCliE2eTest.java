@@ -30,8 +30,8 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code jk test} hands a test JVM the variables of the shell that ran it, over the real wire: the
  * first run's test JVM asks the engine, which asks this client on the job's connection; the next
  * request ships the value up front because the engine named the variable in its project summary.
- * The result holds only while the variable has the value it was read with (the owner's case,
- * JK-ZENNA). Nothing a test JVM is handed lands in any file a run writes, nor stays in the engine's
+ * The result holds only while the variable has the value it was read with (the owner's case).
+ * Nothing a test JVM is handed lands in any file a run writes, nor stays in the engine's
  * heap once the build is done.
  */
 @Tag("integration")

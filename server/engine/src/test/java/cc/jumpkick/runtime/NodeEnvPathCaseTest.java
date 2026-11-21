@@ -12,7 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A node step's environment on Windows, where the engine's search path is spelled {@code Path}: the
- * provisioned Node goes in front of that search path rather than replacing it (JK-639V4).
+ * provisioned Node goes in front of that search path rather than replacing it.
  */
 class NodeEnvPathCaseTest {
 

@@ -25,7 +25,7 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A WSL guest's offer of JumpKick for Windows (JK-YK3TB): after a person's build, when Windows has no
+ * A WSL guest's offer of JumpKick for Windows: after a person's build, when Windows has no
  * JumpKick and the person never answered, the engine raises the setup decision with the one row
  * "JumpKick for Windows" as a notification (a Windows toast through interop, which opens this
  * engine's dashboard on it), once. Accepting installs it through {@code powershell.exe} as {@link

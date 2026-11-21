@@ -18,7 +18,7 @@ import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A WSL guest offers, and installs, JumpKick for Windows (JK-YK3TB). */
+/** A WSL guest offers, and installs, JumpKick for Windows. */
 class WindowsFromGuestTest {
 
     @TempDir

@@ -39,7 +39,7 @@ import org.junit.jupiter.api.io.TempDir;
  * commit and commit time it was packaged from, so a gate after a test-only edit to the engine
  * module installs a jar of other bytes and the same code. Every action key used to fold in the
  * whole jar's sha, so the next gate on the unchanged tree rebuilt every module and ran every suite
- * again (JK-E7GKJ); keyed by the code, it replays.
+ * again; keyed by the code, it replays.
  *
  * <p>Proven on a forked client against a private {@code JK_HOME} seeded with the sandbox's engine,
  * as {@link InstallFixedPointE2eTest} is: the property lives in the engine process's own identity,

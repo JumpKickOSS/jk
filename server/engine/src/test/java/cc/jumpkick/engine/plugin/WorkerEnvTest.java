@@ -62,7 +62,7 @@ class WorkerEnvTest {
     /**
      * What a request forwards for the engine's own resolvers, and a secret nothing declares that an
      * over-forwarding client sent anyway, stay in the engine: a compiler, plugin or test worker that
-     * has not declared them starts without them (JK-7A19A).
+     * has not declared them starts without them.
      */
     @Test
     void a_requests_credentials_and_undeclared_secrets_reach_no_worker() throws Exception {
@@ -96,7 +96,7 @@ class WorkerEnvTest {
     /**
      * A module that says nothing of [env] lets its test JVMs read the caller's shell (through the
      * environment broker, a variable at a time), never its compiler or any other worker: their
-     * environment is the allow-list, as before (JK-ZENNA).
+     * environment is the allow-list, as before.
      */
     @Test
     void a_default_module_hands_its_compiler_no_undeclared_variable(@TempDir Path dir) throws Exception {

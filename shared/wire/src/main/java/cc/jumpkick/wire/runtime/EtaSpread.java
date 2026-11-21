@@ -4,7 +4,7 @@ package cc.jumpkick.wire.runtime;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The estimate's uncertainty, on a log scale (JK-R0N5S). A step's price carries a relative spread
+ * The estimate's uncertainty, on a log scale. A step's price carries a relative spread
  * σ: its wall is read as lognormal around the price, {@code ln(wall / price) ~ N(0, σ²)}. The
  * build's spread {@link #build combines} the unfinished steps' spreads over what each has left, the
  * likely range is that distribution's 10th to 90th percentile around the remaining estimate, and
@@ -53,7 +53,7 @@ public final class EtaSpread {
 
     /**
      * Each rung's spread when this host has learned none for the kind (expected order from the
-     * scorer's per-layer results, JK-626GS).
+     * scorer's per-layer results).
      */
     public static double defaultFor(StepCost.Rung rung) {
         return switch (rung) {

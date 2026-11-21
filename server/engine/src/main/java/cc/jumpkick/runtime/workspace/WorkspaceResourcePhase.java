@@ -52,7 +52,7 @@ final class WorkspaceResourcePhase {
 
         /**
          * {@code dir}'s classes are published: when a module the estimate priced on a guess reads
-         * them, its verdicts are lookups now, and the estimate is re-priced (JK-0PDBN).
+         * them, its verdicts are lookups now, and the estimate is re-priced.
          */
         void classesPublished(Path dir) {
             if (provisional.waitsOn(dir)) eta.reprice();

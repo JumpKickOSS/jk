@@ -81,7 +81,7 @@ public final class BuildIdentity {
      * stamps name the checkout the jar was packaged from and move with every commit that repackages
      * the engine, a test-only edit to its module included, while the code that keys, compiles and
      * packages stays byte for byte what it was: keyed by the whole archive, every action key of the
-     * next build moved after each such install, and the push gate ran every suite again (JK-E7GKJ).
+     * next build moved after each such install, and the push gate ran every suite again.
      * {@link #buildId()} stays the whole archive's: a client tells one installed engine from another
      * by it.
      */
@@ -114,7 +114,7 @@ public final class BuildIdentity {
      * groovyc's closures), with the compiler JDK, the options the engine derives and every source
      * and classpath entry; the engine's own code reaches its output only through those. So an engine
      * rebuilt from other sources, a one-line edit to jk-engine installed with {@code jk install -S},
-     * recompiles nothing (JK-VWZ0B): before, every compile of the next build missed. Engine code that
+     * recompiles nothing: before, every compile of the next build missed. Engine code that
      * changes what a compile records (which outputs it keeps, how it lays them out) turns the salt,
      * as on a release build, where no key folds the code. Artifact keys keep the producer ({@link
      * #cacheKeyVersion}, {@code producer:} in {@code ActionKey.forArtifact}), and so does a run-tests

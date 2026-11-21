@@ -57,7 +57,7 @@ class EtaModelsTest {
 
     @Test
     void each_step_carries_the_rung_that_priced_it_and_the_seed_answers_for_it() throws Exception {
-        // JK-626GS: the scorer judges each pricing layer against the walls it priced.
+        // The scorer judges each pricing layer against the walls it priced.
         Path lib = Path.of("/ws/lib");
         StepCost compile = new StepCost("compile-java", 20, StepCost.Kind.PRE, 0.45, 0, StepCost.Rung.CALIBRATION);
         StepCost suite = new StepCost("run-tests", 60, StepCost.Kind.TEST, 0.08, 4, StepCost.Rung.REPLAY);

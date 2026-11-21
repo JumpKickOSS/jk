@@ -471,7 +471,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     /**
      * A suite whose module forwards a variable the caller lacks and sets another is shared and
      * replayed: its record holds no U+0000, which the service's index refuses, and names each
-     * variable without its value (JK-ANWXB).
+     * variable without its value.
      */
     @Test
     void a_suite_whose_module_forwards_an_unset_variable_is_shared_and_replayed_elsewhere() throws Exception {
@@ -496,7 +496,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
 
             List<String> again = build(b, root.resolve("cache-b"), service(service, FakeCacheServer.READER, false));
             assertThat(succeeded(again)).as("B builds: " + again).isTrue();
-            // A hit either way: one the forecast restored is told as local (JK-501G8).
+            // A hit either way: one the forecast restored is told as local.
             assertThat(suite(settled(b)).outcome()).as("B replayed A's result").isNotEqualTo(StepCache.Outcome.MISS);
         }
     }
@@ -504,7 +504,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
     /**
      * A suite that starts {@code sh} and {@code sleep} sends its read list, programs named: a host
      * that never ran it takes the result by the list, keying both by name and OS family as the
-     * writer did, and runs no test (JK-EV4F4: the dojo-4 study's same-machine misses).
+     * writer did, and runs no test (the dojo-4 study's same-machine misses).
      */
     @Test
     void a_host_that_never_ran_a_suite_that_starts_programs_takes_its_result_by_read_list() throws Exception {
@@ -544,7 +544,7 @@ class RemoteCacheE2eTest extends EngineServerHarness {
 
     /**
      * A host whose tool answers another version runs the suite, and its miss names the tool: the
-     * result on offer was made with another one, which {@code no-record} hid (JK-EV4F4).
+     * result on offer was made with another one, which {@code no-record} hid.
      */
     @Test
     void a_host_whose_tool_says_another_version_runs_the_suite_and_names_the_tool() throws Exception {

@@ -81,7 +81,7 @@ class StageProgressTest {
 
     @Test
     void a_stage_no_declared_set_moves_moves_by_the_bytes_its_bodies_stream() {
-        // JK-RYA7W: a tool sync fetched a 645 MB IDE zip with no declared set, and the band sat still.
+        // A tool sync fetched a 645 MB IDE zip with no declared set, and the band sat still.
         var r = new StageProgress.Reported(snap(0, 0));
         List<TransferBoard.Row> rows =
                 List.of(new TransferBoard.Row("com.jetbrains.intellij.idea:ideaIC:262.1", 129 * MB, 645 * MB));

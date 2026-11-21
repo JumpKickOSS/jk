@@ -26,9 +26,9 @@ import org.junit.jupiter.params.provider.ValueSource;
  * The test-compile goal (what a graph question runs to compile a module's tests, {@code jk build
  * --target test-compile}) compiles the tests with the steps the build compiles them with: the
  * compile-test step and every step it waits for, with the same edges. The goal's plan once lacked
- * the {@code build-info} step that compile-test waits for since JK-NVBS1, so on any project with
+ * the {@code build-info} step that compile-test waits for, so on any project with
  * {@code [build-info]} (the library template writes it) it failed to plan ("step 'compile-test'
- * requires unknown 'build-info'") and every graph answer left src/test out (JK-3MF95).
+ * requires unknown 'build-info'") and every graph answer left src/test out.
  *
  * <p>Checked over every core template's own {@code jk.toml} as {@code jk new} writes it with its
  * default answers, and over the tables no template writes that add a step the test compile waits

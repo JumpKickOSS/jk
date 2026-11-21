@@ -131,7 +131,7 @@ class TestStampTest {
 
     /**
      * The workspace's one {@code jk-lock.toml} is no stamp input: a member's tests are keyed on the
-     * jars they run with, so a dependency another member bumped leaves them replayed (JK-VW9QQ),
+     * jars they run with, so a dependency another member bumped leaves them replayed,
      * and a bump that reaches this member's runtime classpath re-runs them through those jars.
      */
     @Test

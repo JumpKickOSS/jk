@@ -73,7 +73,7 @@ class PortablePathJkRootsTest {
      * The roots a suite's stamp met by absolute path in the dojo-4 study, each by its word: a POM in
      * the Maven local repository (jk-engine, 328 of them), a library jk unpacked into its state
      * (jumpkick-intellij's {@code -Djna.boot.library.path}), a JDK jk installed; jk's own root names
-     * a path the jk home holds too (JK-FNM8N).
+     * a path the jk home holds too.
      */
     @Test
     void the_maven_repository_and_jks_state_and_jdks_are_named_by_their_word(@TempDir Path tmp) {

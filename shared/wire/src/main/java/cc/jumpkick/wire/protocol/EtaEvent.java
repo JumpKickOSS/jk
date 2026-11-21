@@ -7,9 +7,9 @@ import cc.jumpkick.wire.runtime.EtaSpread;
 /**
  * Remaining wall-work in ms; {@code millis} duplicates {@code remainingMs} for older readers, {@code
  * fullMillis} rides only when non-negative (see {@link EngineProtocol#ETA}). {@code lowMs} and
- * {@code highMs} bound {@code remainingMs}, its likely range (JK-4TEZ7); -1 when there is none.
- * {@code confidence} is the probability that the truth lands within ±10% of {@code remainingMs}
- * (JK-R0N5S); -1 when there is none.
+ * {@code highMs} bound {@code remainingMs}, its likely range; -1 when there is none.
+ * {@code confidence} is the probability that the truth lands within ±10% of {@code remainingMs};
+ * -1 when there is none.
  */
 public record EtaEvent(long remainingMs, long fullMillis, long lowMs, long highMs, double confidence) {
 

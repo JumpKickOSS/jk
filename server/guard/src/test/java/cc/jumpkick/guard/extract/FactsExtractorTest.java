@@ -285,7 +285,7 @@ class FactsExtractorTest {
     /**
      * A guard lane keys on the facts digest, so the digest is a function of the class bytes alone:
      * the same in a fresh JVM, whose identity hashes and {@code Set.copyOf} salt are its own
-     * (JK-E5WNZ: an {@code int[]} annotation value read as {@code [I@3e36122f}, type refs written in
+     * (an {@code int[]} annotation value read as {@code [I@3e36122f}, type refs written in
      * a per-JVM order).
      */
     @Test

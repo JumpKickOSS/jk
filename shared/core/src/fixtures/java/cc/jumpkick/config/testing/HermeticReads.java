@@ -41,8 +41,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  *
  * <p>Each of these is outside what a suite's key names. A read of the checkout's {@code .git} made
  * the suite's discovered inputs name {@code .git/config}, so a {@code git worktree add} or a branch
- * made elsewhere in the repository re-ran it (JK-Z4M9V); a read of another home's engine endpoint
- * re-ran it whenever any engine on the machine started (JK-3VXSB); a read of {@code ~/.gitconfig}
+ * made elsewhere in the repository re-ran it; a read of another home's engine endpoint
+ * re-ran it whenever any engine on the machine started; a read of {@code ~/.gitconfig}
  * makes a commit in a fixture repository depend on whoever runs the suite. jk already gives every
  * test JVM a home of its own under {@code <home>/test-homes} and points git's global configuration
  * at it; a test reaching past that is a test to fix, not an input to key.
@@ -145,7 +145,7 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
      * every class's window. Starting or stopping any JFR recording rotates the chunk of every
      * recording running in the JVM, the suite's own among them, and each chunk repeats the event
      * metadata: a stream per class made jk-engine's suite recording 831 chunks and 155 MB for 12 MB
-     * of events, nine times main's, and the engine parses it after the suite (JK-7SPZ1). One stream
+     * of events, nine times main's, and the engine parses it after the suite. One stream
      * for the JVM's life leaves the suite recording at its two chunks; a class's events are told
      * apart by when they happened, inside its window.
      */
@@ -537,8 +537,8 @@ public final class HermeticReads implements BeforeAllCallback, AfterAllCallback 
             Path p = entry.isBlank() ? null : path(entry);
             if (p != null) addBoth(allowed, p);
         }
-        // Read (and stamped in its access ledger) on purpose until JK-S589D: a workspace-built worker's POM closure is
-        // read from the developer's real store and Maven-local tree
+        // TODO(JK-S589D): stop reading these. Read (and stamped in its access ledger) on purpose: a
+        // workspace-built worker's POM closure is read from the developer's real store and Maven-local tree
         // (PomRuntimeClasspath.unsandboxedProductStore), on a resolver thread no frame ties to it.
         List<Path> readable = new ArrayList<>();
         addBoth(readable, realHome.resolve("store"));

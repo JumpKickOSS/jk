@@ -78,7 +78,7 @@ class PlannerKspStampDigestTest {
 
     /**
      * The round's key names the Java level as every compile key does; its stamp, which says whether
-     * this checkout's outputs are current, keeps the exact JDK (JK-74S9K).
+     * this checkout's outputs are current, keeps the exact JDK.
      */
     @Test
     void the_round_key_names_the_level_and_the_stamp_the_jdk(@TempDir Path tmp) throws Exception {

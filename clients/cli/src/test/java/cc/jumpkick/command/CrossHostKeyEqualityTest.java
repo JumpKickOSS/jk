@@ -42,15 +42,15 @@ import org.junit.jupiter.api.io.TempDir;
  * side's JDK root ({@code JK_JDKS_DIR}, the only place it looks: {@code JK_JDK_PROBES=jk}, its own
  * {@code $HOME}, no {@code JAVA_HOME}) holds one JDK, Temurin 25.0.5 on one and an OpenJDK 27.0.1
  * build on the other (the running JDK under a {@code release} file of each name). Compile and test
- * keys name the level, not the JDK, so they match; each record names the JDK that made it
- * (JK-74S9K). Both share the Maven local repository the tier points at, so nothing is fetched.
+ * keys name the level, not the JDK, so they match; each record names the JDK that made it.
+ * Both share the Maven local repository the tier points at, so nothing is fetched.
  *
  * <p>Then the 27 side takes the 25 side's cache: under {@code jdk-match = level} its build is
  * served, with a note naming the JDK the results were made on; under the default {@code major} it
  * builds again on its own and says once why, naming both ways out. A third host on Temurin
  * 25.0.7, another patch of the first host's major, handed the first host's cache, replays its suite
  * under the default match with no test JVM started: what the suite was found to read is kept under
- * the module's portable tag with checkout-relative names, so another checkout finds it (JK-PCXMC).
+ * the module's portable tag with checkout-relative names, so another checkout finds it.
  *
  * <p>The comparison is over each home's task pointers ({@code cache/actions/tasks/<step>@<tag>},
  * the tag being the project id and the output's workspace-relative path, both portable). A key that

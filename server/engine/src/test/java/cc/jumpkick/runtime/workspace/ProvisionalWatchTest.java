@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** The estimate re-prices when a module it guessed at can be read off a sibling's outputs (JK-0PDBN). */
+/** The estimate re-prices when a module it guessed at can be read off a sibling's outputs. */
 class ProvisionalWatchTest {
 
     private static final Path CORE = Path.of("/ws/core");

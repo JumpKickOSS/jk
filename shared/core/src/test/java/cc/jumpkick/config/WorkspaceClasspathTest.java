@@ -297,7 +297,7 @@ class WorkspaceClasspathTest {
      * The closure walks a module's tables in {@link Scope} order, whatever set names them: a
      * {@code Set.of} iterates in an order salted per JVM, so the fixtures sibling a test table names
      * sat before or after the main siblings from one engine to the next, and compile-test-fixtures
-     * and compile-guard keyed two classpaths for one tree (JK-F6SS0). Main edges come first, as
+     * and compile-guard keyed two classpaths for one tree. Main edges come first, as
      * Maven puts compile dependencies ahead of test ones.
      */
     @Test

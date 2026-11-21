@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * No command that prints a dashboard URL prints the engine's token where its output is captured:
- * machine output ({@code -O jsonl}), agent output ({@code --agent}) and piped output (JK-JDT0Y).
+ * machine output ({@code -O jsonl}), agent output ({@code --agent}) and piped output.
  * Every run here is piped, as an agent's tool call and a CI step are. The token is the engine's,
  * read from its owner-only file; the one explicit ask, {@code jk web -O jsonl --with-token}, still
  * hands it over.

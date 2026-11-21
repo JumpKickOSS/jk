@@ -34,7 +34,7 @@ import org.junit.jupiter.api.io.TempDir;
  * {@code [build-info]}, compiles the project's tests and answers with their calls. The test-compile
  * goal the question runs once failed to plan on any such project ("step 'compile-test' requires
  * unknown 'build-info'"), so every answer said "compile skipped" and sent the agent to search
- * src/test (JK-3MF95). The compiler here runs the goals the engine's {@link GraphCompiles} submits
+ * src/test. The compiler here runs the goals the engine's {@link GraphCompiles} submits
  * ({@code compile}, then {@code test-compile}) as the workspace build, in process.
  */
 @Tag("integration")

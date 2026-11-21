@@ -93,7 +93,7 @@ class ClassFactsTest {
 
     /**
      * The facts digest writes type refs in iteration order, so the order is part of the facts: sorted,
-     * never the per-JVM salted order a {@code Set.copyOf} iterates in (JK-E5WNZ).
+     * never the per-JVM salted order a {@code Set.copyOf} iterates in.
      */
     @Test
     void type_refs_iterate_sorted_whatever_order_they_were_given_in() {

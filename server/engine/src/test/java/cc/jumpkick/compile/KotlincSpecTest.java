@@ -43,7 +43,7 @@ class KotlincSpecTest {
      * The pairing the cache depends on: whatever JDK reaches kotlinc as {@code -jdk-home} is the
      * JDK the reader's expectation names. The key names the Java level, so a switch from JDK 17 to
      * 21 at one {@code jvmTarget} keeps it; the record names the JDK that made it, and a reader on
-     * 21 under the default {@code jdk-match = "major"} takes nothing 17 made (JK-74S9K). Break
+     * 21 under the default {@code jdk-match = "major"} takes nothing 17 made. Break
      * either half and a project that switches JDKs silently restores bytecode linked against 17.
      */
     @Test

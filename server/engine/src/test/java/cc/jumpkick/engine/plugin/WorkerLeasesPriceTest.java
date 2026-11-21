@@ -81,7 +81,7 @@ class WorkerLeasesPriceTest {
     /**
      * Idle warm compilers whose -Xmx leases fill the heap ceiling, while their prices leave most of
      * the budget free, exit for a fork that fits the budget: the head of the line is not left to give
-     * up after ten minutes with memory free (JK-KHY9B).
+     * up after ten minutes with memory free.
      */
     @Test
     void idle_residents_whose_heaps_fill_the_ceiling_exit_for_a_fork_whose_price_fits() throws Exception {

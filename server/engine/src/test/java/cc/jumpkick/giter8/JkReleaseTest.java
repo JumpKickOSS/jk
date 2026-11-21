@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@code $jk_release$}: a development build names the newest published release at or below it, so
  * the plugin template's SDK pin, which only a release publishes, never names a {@code -SNAPSHOT}
- * that the library pack's {@code no-snapshot-versions} refuses (JK-CBKBT).
+ * that the library pack's {@code no-snapshot-versions} refuses.
  */
 class JkReleaseTest {
 

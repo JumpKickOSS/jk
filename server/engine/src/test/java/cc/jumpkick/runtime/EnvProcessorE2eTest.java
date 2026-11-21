@@ -96,7 +96,7 @@ class EnvProcessorE2eTest {
                     .findFirst()
                     .map(TaskForecast.Task::cached);
             // A forecast that threw degrades to a module with no steps and a reason; name it, so a
-            // failure under load says why the compile is missing (JK-9MA5G).
+            // failure under load says why the compile is missing.
             if (cached.isEmpty()) {
                 throw new AssertionError("no " + TaskNames.COMPILE_JAVA + " in app's forecast under " + mode
                         + ": reason " + app.reason() + ", steps "

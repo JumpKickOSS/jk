@@ -451,7 +451,7 @@ class StepLedgerTest {
 
     @Test
     void a_projects_first_run_is_read_only_until_a_later_run_measures_the_step(@TempDir Path home) {
-        // JK-D3785: two-frontends' node install replayed a first build's download into an empty cache.
+        // Two-frontends' node install replayed a first build's download into an empty cache.
         StepLedger.append(home, DEFAULT, List.of(new StepLedger.Sample("/ws/web", "node-install", "SUCCESS", 9_000)));
         StepLedger first = StepLedger.load(home);
         assertThat(first.firstRunOnly("/ws/web", "node-install", "SUCCESS")).isTrue();

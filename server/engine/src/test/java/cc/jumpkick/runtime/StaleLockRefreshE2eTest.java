@@ -49,7 +49,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * A lock jk.toml moved past that cannot be updated is never carried silently (JK-K43HA). With an
+ * A lock jk.toml moved past that cannot be updated is never carried silently. With an
  * empty store and the only repository a host that denies every request (403), the build stops on
  * the workspace's lock step naming the stale lock and the reason; the module path that freshens
  * on its own does the same; {@code jk explain}'s reason, {@code jk doctor}'s lock row and the agent

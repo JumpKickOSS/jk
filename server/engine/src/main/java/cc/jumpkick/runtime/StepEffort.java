@@ -19,7 +19,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * What a step kind the estimate has no history of in a module costs, from one cheap measure of its
- * effort and what that kind took on this host in every project before (JK-PMF9X). A step kind the
+ * effort and what that kind took on this host in every project before. A step kind the
  * host has never seen was priced as a touch: a node install that took 6 s, an AOT run 3.5 s, a jOOQ
  * generation 1.5 s, each at 150 ms.
  *

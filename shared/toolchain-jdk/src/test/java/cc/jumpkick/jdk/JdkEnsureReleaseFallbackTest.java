@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * An unpinned module whose release build is not installed builds on the installed JDK that
- * satisfies it, under CI as anywhere: no failure, no download, no warning to act on (JK-ADBJV).
+ * satisfies it, under CI as anywhere: no failure, no download, no warning to act on.
  */
 class JdkEnsureReleaseFallbackTest {
 

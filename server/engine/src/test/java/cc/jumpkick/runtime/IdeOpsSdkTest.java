@@ -62,7 +62,7 @@ class IdeOpsSdkTest {
         assertThat(model.error()).isNull();
 
         int legacy = model.names().indexOf("legacy");
-        // No JDK 17 installed: the nearest newer major builds level 17 (JK-74S9K).
+        // No JDK 17 installed: the nearest newer major builds level 17.
         assertThat(model.sdkNames().get(legacy)).isEqualTo("jk-temurin-21");
         assertThat(model.sdkLevels().get(legacy)).isEqualTo("17");
         assertThat(model.sdkVersions().get(legacy)).isEqualTo("21.0.5");

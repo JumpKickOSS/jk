@@ -495,7 +495,7 @@ public final class ExplainCommand implements CliCommand {
     /**
      * {@link #buildTimeEstimateValue(long, boolean)} with the estimate's likely range when it has
      * one wider than a second either way: {@code ~1m 11s (likely 59s – 1m 30s)}. The truth falls
-     * inside the range about four runs in five (JK-4TEZ7).
+     * inside the range about four runs in five.
      */
     static String buildTimeEstimateValue(long etaMillis, long lowMillis, long highMillis, boolean fullyCached) {
         String point = buildTimeEstimateValue(etaMillis, fullyCached);

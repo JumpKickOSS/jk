@@ -142,7 +142,7 @@ public final class StampTokens {
         String first = describe(name);
         String reason = moved.size() == 1 ? first : first + " (+" + (moved.size() - 1) + " more)";
         // A file the suite was found to read keys the whole selection, wherever in the tree it is:
-        // say which suites it keys, so a repo-scanning test's reach is legible (JK-K4920).
+        // say which suites it keys, so a repo-scanning test's reach is legible.
         if (name.startsWith("x:read:") || name.startsWith("x:list:")) {
             String suites = suitesRun(now);
             if (suites != null) reason += " · keys suites " + suites;

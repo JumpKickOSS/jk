@@ -35,10 +35,10 @@ public final class HttpLive {
             long denominator,
             List<Module> modules,
             List<Task> tasks,
-            /** The likely range of {@code remainingMs}, {@code -1} each when there is none (JK-4TEZ7). */
+            /** The likely range of {@code remainingMs}, {@code -1} each when there is none. */
             long lowMs,
             long highMs,
-            /** The probability that the truth lands within 10% of {@code remainingMs}, {@code -1} when none (JK-R0N5S). */
+            /** The probability that the truth lands within 10% of {@code remainingMs}, {@code -1} when none. */
             double confidence) {
 
         public Run {

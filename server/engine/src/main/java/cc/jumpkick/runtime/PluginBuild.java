@@ -459,7 +459,7 @@ public final class PluginBuild {
      * as one declared set, before {@link #fetchTools} takes them one tool at a time from the store.
      * One by one, jk's IntelliJ plugin fetched its 645 MB IDE zip alone, then its closure's 254 jars:
      * the zip was no declared set, so the sync stage and its estimate saw one body streaming and
-     * nothing after it (JK-RYA7W). A fetch that fails here is left to the loop, which reports it as
+     * nothing after it. A fetch that fails here is left to the loop, which reports it as
      * it always has.
      */
     private static void prefetch(
