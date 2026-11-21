@@ -3,11 +3,11 @@ package cc.jumpkick.engine.verbs;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
 import cc.jumpkick.engine.graph.ApiBreaks;
+import cc.jumpkick.engine.graph.DependencyUsages;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
@@ -17,7 +17,6 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.runtime.LockPlans;
 import cc.jumpkick.runtime.ReleaseSession;
-import cc.jumpkick.runtime.RepoGroupBuilder;
 import cc.jumpkick.runtime.base.LockGate;
 import cc.jumpkick.runtime.base.LockMode;
 import cc.jumpkick.runtime.workspace.AddedPackages;
@@ -118,7 +117,7 @@ public final class Updates {
         RepoGroup repos;
         try {
             lockDir = LockPlans.lockScope(entryDir).lockDir();
-            repos = RepoGroupBuilder.buildFor(JkBuildParser.parse(ManifestPaths.manifestIn(lockDir)), repoUrl, cas);
+            repos = DependencyUsages.repositories(lockDir, repoUrl, cas);
         } catch (UserConfigParseException unparsed) {
             throw unparsed;
         } catch (IOException | RuntimeException unreadable) {
@@ -186,8 +185,9 @@ public final class Updates {
 
     /**
      * {@code preview} as the bounded JSON object REST answers and MCP returns: each move as {@code
-     * {manifest, module, table, handle, coordinate, from, to, adds?, breaks?}}, at most {@link #MAX_ROWS} per
-     * list with {@code moreRewrites}/{@code moreAvailable} counting the rest.
+     * {manifest, module, table, handle, coordinate, from, to, adds?, breaks?, usages?}}, at most
+     * {@link #MAX_ROWS} per list with {@code moreRewrites}/{@code moreAvailable} counting the rest.
+     * {@code usages} is the address {@code usages} lists the {@code breaks} under.
      */
     public static Map<String, Object> structured(Preview preview) {
         Map<String, Object> m = new LinkedHashMap<>();
@@ -218,7 +218,10 @@ public final class Updates {
             List<String> adds = adding.getOrDefault(r, List.of());
             if (!adds.isEmpty()) row.put("adds", adds);
             Integer broken = breaks.get(r);
-            if (broken != null) row.put("breaks", broken);
+            if (broken != null) {
+                row.put("breaks", broken);
+                row.put("usages", DependencyUsages.address(r.module(), r.to()));
+            }
             rows.add(row);
         }
         return rows;

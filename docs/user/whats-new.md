@@ -11,6 +11,10 @@ JumpKick shows you this page's new entries after it updates itself.
   run and print the new one. MCP `callers` is now `usages` ([Code graph](graph.md)).
 - **MCP `delete`.** Deletes a method, field or type nothing uses, then compiles; with a use left it
   writes nothing and lists each one. On the extended tool list ([MCP](mcp.md)).
+- **What another version of a dependency breaks, before you move it.**
+  `jk code usages dep:guava@33.4.8-jre` lists the API that version removes, renames or changes, up
+  or down, and each place in your code that uses it. MCP `update`'s preview counts them per move
+  ([Code graph](graph.md#what-another-version-of-a-dependency-breaks)).
 
 ## 0.54.0
 

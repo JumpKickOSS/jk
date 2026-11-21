@@ -213,6 +213,9 @@ class McpUpdateTest {
             assertThat(row.get("breaks"))
                     .as("App.run calls the trim 1.1.0 drops")
                     .isEqualTo(1);
+            assertThat(row.get("usages"))
+                    .as("the usages address that lists them")
+                    .isEqualTo("dep:com.acme:text@1.1.0");
         });
     }
 

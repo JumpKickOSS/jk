@@ -613,6 +613,25 @@ name, and the rest of the list is still exact. An unused field, type or annotati
 `No Java source uses it.` under the same rule, so "no uses" is a fact you can delete on, not a missed
 search. Reflection and names in strings are not uses.
 
+### What another version of a dependency breaks
+
+`jk code usages dep:<group:artifact>@<version>` (MCP `usages`, the same address) answers what in
+this project breaks if a locked dependency were at another version, newer or older than the locked
+one. The artifact alone works when one locked module has that name.
+
+```bash
+jk code usages dep:com.google.guava:guava@33.4.8-jre
+jk code usages dep:guava@32.1.3-jre     # a downgrade reads the same way
+```
+
+It compares the public and protected classes, methods, constructors and fields of the locked jar
+with the jar of that version, fetched through the project's repositories, and lists each one gone
+as removed, renamed (one new name takes its place) or signature changed (a member of the same name
+remains). A member moved up to a superclass in the jar is not gone. Under each change it lists the
+places this project's compiled classes call it, read it or extend it, at `file:line`, then the
+changes nothing here uses. The [update](mcp.md) preview counts these places for each move and names
+this address.
+
 ### What a change reaches
 
 A `usages` answer carries what else a change to the symbol reaches, so one question does the work

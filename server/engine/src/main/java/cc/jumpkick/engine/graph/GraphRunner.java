@@ -152,6 +152,11 @@ public final class GraphRunner {
                 return GraphAck.error(String.valueOf(refused.getMessage()));
             }
             Compiled compiled = req.noRefresh() || !compile ? Compiled.NOTHING : compileStale(root);
+            if (DependencyUsages.asks(req)) {
+                GraphAck ack = DependencyUsages.answer(root, req);
+                String skipped = compiled.line();
+                return skipped == null ? ack : withLine(ack, skipped);
+            }
             Path cache = JkDirs.cache();
             // A rename or a delete reads every class set's index, and -r maps every set again.
             boolean index = RenameCheck.EDITS.contains(req.op()) || req.rebuild();
