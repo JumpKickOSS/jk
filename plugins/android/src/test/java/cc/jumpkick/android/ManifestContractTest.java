@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.BuildPluginContext;
+import cc.jumpkick.plugin.build.In;
 import cc.jumpkick.plugin.build.PackagerSpec;
 import cc.jumpkick.plugin.build.PluginCommandSpec;
 import cc.jumpkick.plugin.build.ProjectFacts;
@@ -176,6 +177,26 @@ class ManifestContractTest {
                 .doesNotContain("adb", "sdk-root");
     }
 
+    /**
+     * The engine keys a step by its declared inputs alone. The AAR resources compile in a step that
+     * declares the dependency set and nothing else, so an edit to the module's resources, manifest
+     * or {@code [android]} table leaves its key, and the compiled dependency resources, as they were.
+     */
+    @Test
+    void the_dependency_resource_compile_is_keyed_by_the_dependency_set_alone() {
+        Map<String, TaskSpec> tasks = register(Map.of()).tasks;
+
+        assertThat(tasks.get(ResourceStep.DEPS_STEP))
+                .isNotNull()
+                .extracting(TaskSpec::declaredInputs)
+                .isEqualTo(List.of(In.runtimeEntries()));
+        for (String consumer : List.of("android-res", "android-test-config")) {
+            assertThat(Objects.requireNonNull(tasks.get(consumer)).declaredInputs())
+                    .as(consumer)
+                    .contains(In.stepOutput(ResourceStep.DEPS_STEP));
+        }
+    }
+
     private static List<String> artifacts(String lane) {
         return DESCRIPTOR.array(lane).stream().map(t -> t.string("artifact")).toList();
     }
@@ -226,6 +247,7 @@ class ManifestContractTest {
     private static final class Registrations implements BuildPluginContext {
         private final PluginConfig config;
         private final List<String> commands = new ArrayList<>();
+        private final Map<String, TaskSpec> tasks = new LinkedHashMap<>();
         private @Nullable PackagerSpec packager;
 
         private Registrations(PluginConfig config) {
@@ -243,7 +265,9 @@ class ManifestContractTest {
         }
 
         @Override
-        public void task(TaskSpec spec) {}
+        public void task(TaskSpec spec) {
+            tasks.put(spec.name(), spec);
+        }
 
         @Override
         public void packaging(PackagerSpec spec) {

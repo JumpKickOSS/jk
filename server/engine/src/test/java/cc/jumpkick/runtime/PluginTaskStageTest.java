@@ -45,11 +45,12 @@ class PluginTaskStageTest {
         m.put(
                 "android-manifest",
                 decl("android-manifest", List.of("project-files", "config"), List.of(), List.of(), null));
+        m.put("android-res-deps", decl("android-res-deps", List.of("runtime-entries"), List.of(), List.of(), null));
         m.put(
                 "android-res",
                 decl(
                         "android-res",
-                        List.of("project-files", "step:android-manifest"),
+                        List.of("project-files", "step:android-manifest", "step:android-res-deps"),
                         List.of("gen"),
                         List.of(),
                         null));
@@ -57,7 +58,7 @@ class PluginTaskStageTest {
                 "android-test-config",
                 decl(
                         "android-test-config",
-                        List.of("step:android-manifest", "step:android-res"),
+                        List.of("step:android-manifest", "step:android-res", "step:android-res-deps"),
                         List.of(),
                         List.of("cp"),
                         null));
@@ -87,6 +88,8 @@ class PluginTaskStageTest {
         // android-manifest runs in the pre-compile window (no classes input, no contributions),
         // so it is `generate` — not `compile` by name, which is what made android-res illegal.
         assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-manifest"))))
+                .isEqualTo(BuildStage.GENERATE);
+        assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-res-deps"))))
                 .isEqualTo(BuildStage.GENERATE);
         assertThat(PlannerPlugin.pluginStage(requireNonNull(decls.get("android-res"))))
                 .isEqualTo(BuildStage.GENERATE);

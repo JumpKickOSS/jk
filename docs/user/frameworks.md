@@ -374,6 +374,10 @@ dependency; the module's own file wins a path two of them share. A library modul
 `jk run` launches the first enabled `<activity>` or `<activity-alias>` in it with a MAIN action and
 LAUNCHER category in one intent filter.
 
+The AARs' resources are merged and compiled in a step of their own, `android-res-deps`, which
+runs again only when the dependencies change: an edit to the module's resources, manifest or
+`[android]` table relinks them without compiling them again.
+
 An app installs as its `namespace` plus the selected variant's `application-id-suffix`:
 `[variants.build-type.debug.android] application-id-suffix = ".debug"` installs `com.example.app`
 as `com.example.app.debug`. The suffix reaches the APK or AAB manifest, `BuildConfig.APPLICATION_ID`,

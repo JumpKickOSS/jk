@@ -14,16 +14,43 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * {@code android-res} step: aapt2 compile+link → {@code resources.ap_}, {@code R.txt}, {@code
- * R.java}, {@code raw-res/}. Deps merge first ({@link ResourceMerger}); module resources overlay.
- * Non-transitive R: apps regenerate each AAR's R with final ids; libraries ship {@code R.txt}. The
- * link's resource ids land in {@code packaged/ids.txt} so {@link #linkUnitTestApk} keeps them.
+ * R.java}, {@code raw-res/}. The AAR resources are merged ({@link ResourceMerger}) and compiled by
+ * {@code android-res-deps} ({@link #compileDeps(TaskExec)}), a step keyed by the dependency set alone;
+ * module resources overlay them. Non-transitive R: apps regenerate each AAR's R with final ids;
+ * libraries ship {@code R.txt}. The link's resource ids land in {@code packaged/ids.txt} so {@link
+ * #linkUnitTestApk} keeps them.
  */
 final class ResourceStep {
+
+    /** The step that compiles the production closure's AAR resources. */
+    static final String DEPS_STEP = "android-res-deps";
+
+    /** {@link #DEPS_STEP}'s output dir. */
+    static final String DEPS_OUT = "compiled";
+
+    /** The compiled AAR resources under {@link #DEPS_OUT}; absent when no AAR carries resources. */
+    private static final String DEPS_FLATS = "deps-compiled.zip";
+
+    /** The AAR {@code res/} dirs merged into {@link #DEPS_FLATS}, one absolute path per line, in merge order. */
+    private static final String DEPS_DIRS = "deps-res-dirs.txt";
 
     /** The main link's {@code --emit-ids} file under {@code packaged/}: one {@code name = id} per line. */
     private static final String IDS = "ids.txt";
 
     private ResourceStep() {}
+
+    /**
+     * The {@code android-res-deps} step: every AAR's resources on the production runtime closure,
+     * merged and compiled once into {@link #DEPS_FLATS}, with the dirs it merged in {@link #DEPS_DIRS}.
+     */
+    static void compileDeps(TaskExec exec) throws Exception {
+        List<AndroidDeps.Aar> aars = AndroidDeps.aars(exec.runtimeEntries());
+        Path out = exec.outputDir(DEPS_OUT);
+        List<String> dirs = resDirs(aars).stream().map(Path::toString).toList();
+        Files.write(out.resolve(DEPS_DIRS), dirs);
+        if (dirs.isEmpty()) return;
+        compileMergedDeps(exec, extractAapt2(exec), aars, exec.privateDir("work"), out.resolve(DEPS_FLATS));
+    }
 
     static void run(TaskExec exec) throws Exception {
         Path aapt2 = extractAapt2(exec);
@@ -44,7 +71,7 @@ final class ResourceStep {
         Path rawRes = exec.outputDir("raw-res");
         Path work = exec.privateDir("work");
 
-        List<Path> depFlats = compileDeps(exec, aapt2, aars, work);
+        Path depFlats = depsFlats(exec.requireStepOutput(DEPS_STEP));
         Path ownFlats = null;
         if (Files.isDirectory(res)) {
             exec.label("aapt2 compile");
@@ -126,8 +153,10 @@ final class ResourceStep {
     /**
      * Link the unit-test resource package into {@code out}: the resources of every AAR on this
      * step's runtime closure plus the module's own, against {@code manifest}. {@code android-res}'s
-     * ids stay stable, so the module's compiled {@code R} matches the package. Runs in a step that
-     * has the {@code aapt2} and {@code android-jar} tools.
+     * ids stay stable, so the module's compiled {@code R} matches the package. The AAR resources
+     * are {@link #DEPS_STEP}'s when this closure merges the same {@code res/} dirs in the same order,
+     * and compiled here only when it does not. Runs in a step that has the {@code aapt2} and {@code
+     * android-jar} tools.
      */
     static void linkUnitTestApk(TaskExec exec, Path manifest, Path out) throws Exception {
         Path aapt2 = extractAapt2(exec);
@@ -135,7 +164,11 @@ final class ResourceStep {
         Path rawRes = res.resolve("raw-res");
         Path ids = res.resolve("packaged").resolve(IDS);
         Path work = exec.privateDir("work");
-        List<Path> depFlats = compileDeps(exec, aapt2, AndroidDeps.aars(exec.runtimeEntries()), work);
+        List<AndroidDeps.Aar> aars = AndroidDeps.aars(exec.runtimeEntries());
+        Path deps = exec.requireStepOutput(DEPS_STEP);
+        Path depFlats = sameDirs(resDirs(aars), deps.resolve(DEPS_OUT).resolve(DEPS_DIRS))
+                ? depsFlats(deps)
+                : compileMergedDeps(exec, aapt2, aars, work, work.resolve(DEPS_FLATS));
         Path ownFlats = null;
         if (Files.isDirectory(rawRes)) {
             ownFlats = compileRes(exec, aapt2, rawRes, work.resolve("res-compiled.zip"));
@@ -175,7 +208,7 @@ final class ResourceStep {
             long compileSdk,
             long minSdk,
             boolean library,
-            List<Path> depFlats,
+            @Nullable Path depFlats,
             @Nullable Path ownFlats,
             Path out,
             @Nullable Path gen,
@@ -208,7 +241,7 @@ final class ResourceStep {
             link.arg("--proguard").arg(keepRules.toAbsolutePath().toString());
         if (proto) link.arg("--proto-format");
         if (library) link.arg("--non-final-ids");
-        for (Path dep : depFlats) link.arg(dep.toAbsolutePath().toString());
+        if (depFlats != null) link.arg(depFlats.toAbsolutePath().toString());
         if (ownFlats != null) {
             link.arg("-R").arg(ownFlats.toAbsolutePath().toString());
         }
@@ -216,16 +249,39 @@ final class ResourceStep {
     }
 
     /**
-     * Merge every AAR's resources into one tree and compile it once (AGP semantics: two androidx
-     * AARs can define the same value resource, and aapt2 rejects value conflicts across separate
-     * link inputs; the merger resolves them per resource, earlier classpath entry wins).
+     * Merge every AAR's resources into one tree and compile it once into {@code out} (AGP semantics:
+     * two androidx AARs can define the same value resource, and aapt2 rejects value conflicts across
+     * separate link inputs; the merger resolves them per resource, earlier classpath entry wins).
+     * Returns {@code out}, or null when the merged tree holds no file and nothing was written.
      */
-    private static List<Path> compileDeps(TaskExec exec, Path aapt2, List<AndroidDeps.Aar> aars, Path work)
-            throws Exception {
+    private static @Nullable Path compileMergedDeps(
+            TaskExec exec, Path aapt2, List<AndroidDeps.Aar> aars, Path work, Path out) throws Exception {
         Path merged = ResourceMerger.mergeDepRes(aars, work.resolve("merged-dep-res"));
-        if (merged == null || !PathUtil.anyRegularFile(merged, dir -> false, file -> true)) return List.of();
+        if (merged == null || !PathUtil.anyRegularFile(merged, dir -> false, file -> true)) return null;
         exec.label("aapt2 compile (deps)");
-        return List.of(compileRes(exec, aapt2, merged, work.resolve("deps-compiled.zip")));
+        return compileRes(exec, aapt2, merged, out);
+    }
+
+    /** The {@code res/} dirs {@link ResourceMerger} merges from {@code aars}, in merge order. */
+    private static List<Path> resDirs(List<AndroidDeps.Aar> aars) throws IOException {
+        List<Path> out = new ArrayList<>();
+        for (AndroidDeps.Aar aar : aars) {
+            if (aar.hasRes()) out.add(aar.res().toAbsolutePath());
+        }
+        return out;
+    }
+
+    /** Whether {@code dirs} are exactly the ones {@link #DEPS_STEP} recorded in {@code recorded}. */
+    private static boolean sameDirs(List<Path> dirs, Path recorded) throws IOException {
+        if (!Files.isRegularFile(recorded)) return false;
+        return Files.readAllLines(recorded)
+                .equals(dirs.stream().map(Path::toString).toList());
+    }
+
+    /** {@link #DEPS_STEP}'s compiled archive, or null when no AAR carried resources. */
+    private static @Nullable Path depsFlats(Path depsStep) {
+        Path flats = depsStep.resolve(DEPS_OUT).resolve(DEPS_FLATS);
+        return Files.isRegularFile(flats) ? flats : null;
     }
 
     private static Path compileRes(TaskExec exec, Path aapt2, Path resDir, Path out) throws Exception {

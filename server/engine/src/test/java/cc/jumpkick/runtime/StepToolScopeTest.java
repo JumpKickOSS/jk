@@ -208,8 +208,8 @@ class StepToolScopeTest {
                 """);
         PluginBuild.StepTools tools = new PluginBuild.StepTools();
 
-        for (String consumer :
-                List.of("android-manifest", "android-res", "android-test-config", "android-dex", "apk")) {
+        for (String consumer : List.of(
+                "android-manifest", "android-res-deps", "android-res", "android-test-config", "android-dex", "apk")) {
             assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), consumer))
                     .as("debug consumer %s", consumer)
                     .extracting(PluginContributions.StepDep::artifact)
@@ -221,6 +221,10 @@ class StepToolScopeTest {
         assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-manifest"))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("manifest-merger");
+        assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-res-deps"))
+                .as("compiling the AAR resources reads no platform jar, so compile-sdk is not in its key")
+                .extracting(PluginContributions.StepDep::artifact)
+                .containsExactly("aapt2");
         assertThat(tools.forConsumer(build, tmp, tmp.resolve("jk-lock.toml"), "android-res"))
                 .extracting(PluginContributions.StepDep::artifact)
                 .containsExactly("aapt2", "android-jar");

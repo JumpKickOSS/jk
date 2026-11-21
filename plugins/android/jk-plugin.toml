@@ -115,7 +115,7 @@ when = { config = "hilt", equals = "true" }
 [[contribute.step-dependency]]
 artifact   = "aapt2"
 coordinate = "com.android.tools.build:aapt2:9.3.1-15703166:${host.os}"
-for-step   = ["android-res", "android-test-config"]
+for-step   = ["android-res-deps", "android-res", "android-test-config"]
 
 # d8 lives in the r8 jar (com.android.tools.r8.D8) — a plain JVM tool. One of the two dex
 # steps is registered per build (R8 when minifying, d8 otherwise).

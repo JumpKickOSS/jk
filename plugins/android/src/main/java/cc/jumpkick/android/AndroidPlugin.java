@@ -47,11 +47,18 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                         In.config())
                 .outputs("merged")
                 .run(ManifestStep::run));
+        // The AAR resources compile in a step of their own, keyed by the dependency set alone: an
+        // edit to the module's resources, manifest or config relinks without recompiling them.
+        ctx.task(TaskSpec.named(ResourceStep.DEPS_STEP)
+                .inputs(In.runtimeEntries())
+                .outputs(ResourceStep.DEPS_OUT)
+                .run(ResourceStep::compileDeps));
         ctx.task(TaskSpec.named("android-res")
                 .inputs(
                         In.projectFiles("res"),
                         In.projectFiles("src/main/res"),
                         In.stepOutput("android-manifest"),
+                        In.stepOutput(ResourceStep.DEPS_STEP),
                         In.runtimeEntries(),
                         In.config())
                 .outputs("gen", "packaged", "raw-res")
@@ -66,6 +73,7 @@ public final class AndroidPlugin implements Plugin, BuildPlugin {
                         In.projectFiles("src/main/AndroidManifest.xml"),
                         In.testRuntimeEntries(),
                         In.stepOutput("android-res"),
+                        In.stepOutput(ResourceStep.DEPS_STEP),
                         In.config())
                 .outputs("cp", "manifest", "packaged", TestConfigStep.TEST_JVM)
                 .contributesTestClasspath("cp")

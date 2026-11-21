@@ -244,6 +244,41 @@ class TestConfigStepTest {
     }
 
     /**
+     * A test closure that merges the same AAR {@code res/} dirs as the production closure links the
+     * archive {@code android-res-deps} compiled: the step compiles the module's resources alone.
+     */
+    @Test
+    void a_test_closure_with_the_production_closures_resources_links_the_dependency_steps_archive(@TempDir Path tmp)
+            throws Exception {
+        FakeBuildIo exec = step(tmp);
+        Path resStep = exec.step("android-res");
+        Files.writeString(
+                Files.createDirectories(resStep.resolve("raw-res/values")).resolve("strings.xml"),
+                "<resources><string name=\"app\">x</string></resources>");
+        Path aar = exec.container("androidx-core");
+        Files.writeString(
+                Files.createDirectories(aar.resolve("res/values")).resolve("values.xml"),
+                "<resources><string name=\"core\">y</string></resources>");
+        FakeBuildIo deps = AndroidIo.step(Files.createDirectories(tmp.resolve("deps-step")))
+                .extra("aapt2", fakeAapt2(tmp));
+        deps.entry(exec.runtimeEntries().getFirst());
+        ResourceStep.compileDeps(deps);
+        Files.delete(tmp.resolve("aapt2-compile.txt"));
+        exec.step(ResourceStep.DEPS_STEP, deps.scratch());
+
+        TestConfigStep.run(exec);
+
+        assertThat(Files.readAllLines(tmp.resolve("aapt2-compile.txt")))
+                .containsExactly(resStep.resolve("raw-res").toAbsolutePath().toString());
+        assertThat(Files.readAllLines(tmp.resolve("aapt2-link.txt")))
+                .contains(deps.scratch()
+                        .resolve(ResourceStep.DEPS_OUT)
+                        .resolve("deps-compiled.zip")
+                        .toAbsolutePath()
+                        .toString());
+    }
+
+    /**
      * A step fixture whose {@code manifest-merger} is {@link #FAKE_MERGER}, compiled into a jar, and
      * whose {@code aapt2} is {@link #fakeAapt2}.
      */
@@ -269,6 +304,7 @@ class TestConfigStepTest {
         FakeBuildIo exec = AndroidIo.step(Files.createDirectories(tmp.resolve("module")));
         Files.writeString(exec.moduleDir().resolve("AndroidManifest.xml"), "<manifest/>\n");
         Path platformJar = Files.writeString(tmp.resolve("android.jar"), "");
+        exec.step(ResourceStep.DEPS_STEP);
         return exec.extra("manifest-merger", lib).extra("aapt2", fakeAapt2(tmp)).extra("android-jar", platformJar);
     }
 
@@ -277,7 +313,7 @@ class TestConfigStepTest {
      * aapt2-compile.txt}, records a link's argv to {@code aapt2-link.txt}, and links by packaging the
      * {@code --manifest} file as the {@code -o} archive's {@code AndroidManifest.xml}.
      */
-    private static Path fakeAapt2(Path tmp) throws Exception {
+    static Path fakeAapt2(Path tmp) throws Exception {
         Path jarTool = Path.of(System.getProperty("java.home"), "bin", "jar");
         String script = """
                 #!/bin/sh
