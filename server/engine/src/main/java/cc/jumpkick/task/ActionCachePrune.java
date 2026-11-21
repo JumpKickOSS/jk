@@ -70,7 +70,10 @@ import org.jspecify.annotations.Nullable;
 public final class ActionCachePrune {
 
     private static final Pattern TASK = Pattern.compile("^TASK (\\S+)", Pattern.MULTILINE);
-    private static final Pattern OUTPUT_SHA = Pattern.compile("^OUTPUT ([0-9a-fA-F]{64}) ", Pattern.MULTILINE);
+    /** An output line's blob, with or without the {@code /<bytes>} size a record writes after it. */
+    private static final Pattern OUTPUT_SHA =
+            Pattern.compile("^OUTPUT ([0-9a-fA-F]{64})(?:/\\d+)? ", Pattern.MULTILINE);
+
     private static final int[] NO_BLOBS = new int[0];
 
     private ActionCachePrune() {}

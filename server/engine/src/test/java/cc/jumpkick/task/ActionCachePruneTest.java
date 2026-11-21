@@ -729,16 +729,27 @@ class ActionCachePruneTest {
         return Hashing.sha256Hex(payload);
     }
 
-    /** Write an action record plus its task pointer, backdating the record by {@code ageMillis}. */
+    /**
+     * Write an action record plus its task pointer, backdating the record by {@code ageMillis}. Each
+     * output whose blob is in the store carries its size, as the records the engine stores do.
+     */
     private static Path key(Path cacheRoot, String actionKey, String taskId, long ageMillis, String... shas)
             throws IOException {
+        Cas cas = new Cas(cacheRoot);
         Map<String, String> outputs = new LinkedHashMap<>();
-        for (int i = 0; i < shas.length; i++) outputs.put("out/" + i + ".bin", shas[i]);
+        Map<String, Long> sizes = new LinkedHashMap<>();
+        for (int i = 0; i < shas.length; i++) {
+            String rel = "out/" + i + ".bin";
+            outputs.put(rel, shas[i]);
+            Path blob = cas.pathFor(shas[i]);
+            if (Files.exists(blob)) sizes.put(rel, Files.size(blob));
+        }
         Path keyFile = cacheRoot.resolve("actions").resolve("keys").resolve(actionKey);
         Files.createDirectories(keyFile.getParent());
+        ActionRecordText.Meta sized = new ActionRecordText.Meta(0, null, null, null, null, null, null, null, -1, sizes);
         Files.writeString(
                 keyFile,
-                ActionRecordText.render(taskId, actionKey, Map.of(), outputs, Set.of()),
+                ActionRecordText.render(taskId, actionKey, Map.of(), outputs, Set.of(), List.of(), sized),
                 StandardCharsets.UTF_8);
         pointAt(cacheRoot, taskId, actionKey);
         backdate(keyFile, ageMillis);

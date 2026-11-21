@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cache.ActionRecordText;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.repo.ArtifactMemo;
@@ -11,6 +12,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -46,6 +49,30 @@ class CacheRootsLocalRepoTest {
                 .as("published jar survives the repo GC")
                 .isTrue();
         assertThat(report.deleted()).isZero();
+    }
+
+    @Test
+    void an_output_a_record_names_with_its_size_is_a_sweep_root(@TempDir Path cacheRoot) throws IOException {
+        Cas cas = new Cas(cacheRoot);
+        byte[] classes = "compiled classes".getBytes();
+        Path blob = cas.put(classes);
+        String hex = Hashing.sha256Hex(classes);
+        Files.setLastModifiedTime(blob, FileTime.fromMillis(System.currentTimeMillis() - 24L * 60 * 60 * 1000));
+        Path record = cacheRoot.resolve("actions/keys/compile-key");
+        Files.createDirectories(record.getParent());
+        ActionRecordText.Meta sized = new ActionRecordText.Meta(
+                0, null, null, null, null, null, null, null, -1, Map.of("classes.jar", (long) classes.length));
+        String text = ActionRecordText.render(
+                "compile@app", "compile-key", Map.of(), Map.of("classes.jar", hex), Set.of(), List.of(), sized);
+        assertThat(text).as("the record names the blob with its size").contains("OUTPUT " + hex + "/" + classes.length);
+        Files.writeString(record, text);
+
+        Set<String> roots = CacheRoots.collect(cas, cacheRoot.resolve("actions"));
+        assertThat(roots).contains(hex);
+        assertThat(CasSweep.sweep(cas, roots, false).deleted()).isZero();
+        assertThat(Files.exists(blob))
+                .as("a recorded output survives the sweep")
+                .isTrue();
     }
 
     @Test

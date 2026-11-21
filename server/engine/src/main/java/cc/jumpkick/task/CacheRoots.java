@@ -80,15 +80,19 @@ public final class CacheRoots {
      */
     private static void addExplicitShaTokens(String body, Set<String> refs) {
         // 64-char lowercase hex, surrounded by start-of-line / whitespace /
-        // a `sha256:` prefix. Anchor on whitespace either side so we don't
-        // catch hex fragments inside longer strings.
+        // a `sha256:` prefix, with the `/<bytes>` size of an output line allowed
+        // after it. Anchor on whitespace either side so we don't catch hex
+        // fragments inside longer strings.
         Matcher m = EXPLICIT_SHA.matcher(body);
         while (m.find()) {
             refs.add(m.group(1));
         }
     }
 
-    /** 64 hex chars, optionally preceded by {@code sha256:}. */
+    /**
+     * 64 hex chars, optionally preceded by {@code sha256:} and followed by {@code /<bytes>}, the
+     * size an action record writes after each output blob.
+     */
     private static final Pattern EXPLICIT_SHA =
-            Pattern.compile("(?:^|[\\s:])(?:sha256:)?([0-9a-f]{64})(?:$|[\\s\\n])", Pattern.MULTILINE);
+            Pattern.compile("(?:^|[\\s:])(?:sha256:)?([0-9a-f]{64})(?:/\\d+)?(?:$|\\s)", Pattern.MULTILINE);
 }

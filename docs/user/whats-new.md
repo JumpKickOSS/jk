@@ -6,6 +6,9 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk cache gc` keeps the outputs its records name.** The sweep did not read an output written
+  with its size, the form every record has had since 0.52.0, so it could delete cached outputs that
+  were still in use and the prune did not count them; a build then ran the step again.
 - **`jk dev` answers `r`, `c` and `q`.** On a terminal, `r` rebuilds and restarts the app (every
   member at a workspace root), `c` clears the screen and `q` stops the session. While the keys are
   read, the app's stdin is not the terminal.
