@@ -4,14 +4,11 @@ package cc.jumpkick.repo;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
-import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.http.CentralMirror;
-import cc.jumpkick.http.ConnectFaults;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.RepositorySpec;
@@ -29,7 +26,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
@@ -127,30 +123,14 @@ public final class MavenRepo {
     /** The network leg: stream under the host's permit, hash, verify against the published sidecar. */
     private final DownloadLeg download;
 
-    /**
-     * The fault that put this repository out of the job, once a request met one — nothing answers
-     * at its address, a request got no answer within the timeout, or a {@linkplain #passable
-     * passable} one refuses access — so it is asked nothing more for the rest of the job; else null.
-     * The job is this object's life: a resolve builds its repositories afresh, so the next one asks
-     * again. An address that refuses connections is also remembered process-wide by {@link
-     * ConnectFaults}, so a fresh object over the same URL is refused before it dials as well.
-     */
-    private final AtomicReference<@Nullable OutOfJob> unreachable = new AtomicReference<>();
-
-    /**
-     * What put a repository out of the job, the failure it was read from (null for a refusal no
-     * request met), and whether the resolve goes on without it.
-     */
-    private record OutOfJob(String fault, @Nullable Throwable met, boolean passedOver) {}
+    /** Whether this repository is still asked in this job, and what a request throws once it is not. */
+    private final RepoReachability reachability;
 
     /**
      * The sha256 of each store file verified in this job, by relative path, so a copy still holding
      * those bytes is not confirmed again (a caller can reach the store before the group's memo).
      */
     private final ConcurrentHashMap<String, String> verified = new ConcurrentHashMap<>();
-
-    /** Why every request to this repository is refused before it is sent; null when requests go out. */
-    private volatile @Nullable String refusal;
 
     /** {@code optional = true} on the declaring table, or a repository a dependency's POM declares. */
     private final boolean optional;
@@ -326,7 +306,7 @@ public final class MavenRepo {
      * before the repository is shared.
      */
     public MavenRepo refusingRequests(String why) {
-        this.refusal = Objects.requireNonNull(why, "why");
+        reachability.refuseRequests(why);
         return this;
     }
 
@@ -437,12 +417,8 @@ public final class MavenRepo {
         this.servesSnapshots = servesSnapshots;
         this.optional = optional;
         this.http = httpOrNull;
-        // Under the permit, a request is refused once this repository is out of the job, and its
-        // silence or a refused address puts the repository out before the permit goes to a request
-        // queued behind it.
-        RequestGate gate = new RequestGate(this::refuseIfUnreachable, failure -> {
-            if (outOfJobSilence(failure) != null || addressRefusal(failure) != null) unreachableOr(failure);
-        });
+        this.reachability = new RepoReachability(name, this.baseUrl, mirror, passable());
+        RequestGate gate = reachability.gate();
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
         // with an Http client but must keep enumerating via the transport. A loopback port names
@@ -455,9 +431,6 @@ public final class MavenRepo {
                 : null;
         this.download =
                 new DownloadLeg(name, this.fetchBase, gate.over(transport), credential, storeDir(), allowUnverified);
-        if (mirror != null && mirror.refusal() != null) {
-            unreachable.set(new OutOfJob("JumpKick refuses it: " + mirror.refusal(), null, false));
-        }
     }
 
     /**
@@ -526,7 +499,7 @@ public final class MavenRepo {
 
     /** The fault that put this repository out of the rest of the job, or null. */
     public @Nullable String unreachableFault() {
-        return unreachable.get() instanceof OutOfJob out ? out.fault() : null;
+        return reachability.fault();
     }
 
     /**
@@ -535,7 +508,7 @@ public final class MavenRepo {
      * got no answer within the timeout. Otherwise its fault stops the resolve.
      */
     public boolean passedOver() {
-        return unreachable.get() instanceof OutOfJob out && out.passedOver();
+        return reachability.passedOver();
     }
 
     /** True when {@code version} is of a kind this repository is asked for; see {@link #servesSnapshots()}. */
@@ -697,7 +670,7 @@ public final class MavenRepo {
      * VersionDirectories}).
      */
     private List<String> listedVersions(Coordinate coord) throws IOException, InterruptedException {
-        refuseIfUnreachable();
+        reachability.refuseIfUnreachable();
         URI uri = fetchBase.resolve(MavenLayout.metadataPath(coord));
         byte[] xml;
         try {
@@ -707,7 +680,7 @@ public final class MavenRepo {
         } catch (ArtifactNotFoundException notFound) {
             return local() ? VersionDirectories.of(fetchBase, coord) : List.of();
         } catch (IOException transport) {
-            throw unreachableOr(transport);
+            throw reachability.unreachableOr(transport);
         }
         return CatalogVersions.of(xml, coord, name, uri, metadataCache);
     }
@@ -785,7 +758,7 @@ public final class MavenRepo {
                     if (local.isPresent()) return local.get();
                 }
             }
-            refuseIfUnreachable();
+            reachability.refuseIfUnreachable();
             URI uri = fetchBase.resolve(sourcePath(relativePath));
             storeMissed.run();
             // The same file into the same store under the same pin and credential: one download,
@@ -882,7 +855,7 @@ public final class MavenRepo {
         } catch (FetchAbortedException aborted) {
             throw aborted;
         } catch (IOException transport) {
-            throw unreachableOr(transport);
+            throw reachability.unreachableOr(transport);
         }
     }
 
@@ -930,7 +903,7 @@ public final class MavenRepo {
      * Whether a request refused with {@code used} may be sent once more: true when the credential
      * is now a fresh one — this call re-ran its helper, or a concurrent request already did — and
      * false when there is nothing to refresh or the failure is not a refusal. Runs before {@link
-     * #unreachableOr}, so a refused credential is refreshed before the refusal can put a passable
+     * RepoReachability#unreachableOr}, so a refused credential is refreshed before the refusal can put a passable
      * repository out of the job, and {@link RepoMisses} records only absences, never refusals.
      *
      * @throws CredentialNotRefreshedException when the helper could not supply another credential,
@@ -939,7 +912,7 @@ public final class MavenRepo {
     private boolean refreshedAfter(IOException failure, RepoCredential used) throws IOException {
         Supplier<RepoCredential> refresh = credentialRefresh;
         if (refresh == null) return false;
-        String refused = refusal(failure);
+        String refused = RepoReachability.refusal(failure);
         if (refused == null) return false;
         synchronized (refreshLock) {
             if (credential != used) return true;
@@ -964,7 +937,7 @@ public final class MavenRepo {
      * refusal, the failure says the fresh value was refused too, since the helper ran again for it.
      */
     private IOException refusedAgain(IOException failure) {
-        String refused = refusal(failure);
+        String refused = RepoReachability.refusal(failure);
         if (refused == null || failure instanceof CredentialNotRefreshedException) return failure;
         return new CredentialNotRefreshedException(
                 name, refused, "the credential helper's new value was refused too", failure);
@@ -981,96 +954,6 @@ public final class MavenRepo {
         if (!centralMirror.matches(uri)) return DownloadLeg.Vouch.beside(uri);
         URI at = centralMirror.route(uri);
         return new DownloadLeg.Vouch(at, true, !at.equals(uri));
-    }
-
-    /**
-     * The fault an earlier request met, thrown again without a request, once this repository is
-     * unreachable; or the reason it refuses every request ({@link #refusingRequests}). The failure
-     * carries the one that request met: a download's body refused because a checksum asked beside
-     * it met the silence first reads as the request that met it does, and not as another event.
-     */
-    private void refuseIfUnreachable() throws IOException {
-        String why = refusal;
-        if (why != null) {
-            throw new IOException(
-                    "repository " + name + " at " + SafeUri.forMessage(baseUrl) + " is not asked: " + why);
-        }
-        if (unreachable.get() instanceof OutOfJob out) throw unreachableFailure(out.fault(), out.met());
-    }
-
-    /** The failure for {@code fault}: naming the mirror when one stands in for this repository. */
-    private RepositoryUnreachableException unreachableFailure(String fault, @Nullable Throwable cause) {
-        Mirror through = mirror;
-        if (through == null) return new RepositoryUnreachableException(name, baseUrl, fault, cause);
-        return RepositoryUnreachableException.throughMirror(name, baseUrl, through, fault, cause);
-    }
-
-    /**
-     * {@code transport} as this repository's unreachable failure when its cause is connect-level,
-     * when it waited out the request timeout, or — for a {@linkplain #passable passable} one, or one
-     * a mirror stands in for — when it got no HTTP answer at all (reset, dropped) or an answer
-     * refusing access (401, 403), which Maven passes over as well: remembered, so the repository is
-     * asked nothing more. Else {@code transport} itself. A request that meets such a fault after
-     * another put the repository out gets that one's failure: a body and the checksums asked beside
-     * it can meet one dropped connection as a reset and as an empty response, and the repository
-     * is out once, for the first.
-     */
-    private IOException unreachableOr(IOException transport) {
-        boolean answersMatter = passable() || mirror != null;
-        String fault = ConnectFaults.describe(transport);
-        String silent = fault == null ? outOfJobSilence(transport) : null;
-        if (silent != null) fault = silent;
-        if (fault == null) fault = addressRefusal(transport);
-        if (fault == null && answersMatter) fault = refusal(transport);
-        if (fault == null) return transport;
-        String unrefreshed = notRefreshed(transport);
-        if (unrefreshed != null) fault = fault + "; " + unrefreshed;
-        OutOfJob first = unreachable.compareAndExchange(
-                null, new OutOfJob(fault, transport, mirror == null && (silent != null || passable())));
-        if (first == null || first.met() == null) return unreachableFailure(fault, transport);
-        return unreachableFailure(first.fault(), first.met());
-    }
-
-    /**
-     * The silence in {@code failure} that puts this repository out of the job, as one line, or null.
-     * A timeout does for any repository: asked again, it would only wait as long, and a GitLab
-     * registry asked for Central's artifacts would cost the timeout per coordinate. A reset or a
-     * dropped request does only for a passable or mirrored one; elsewhere it is that request's alone.
-     */
-    private @Nullable String outOfJobSilence(Throwable failure) {
-        if (ConnectFaults.describe(failure) != null) return null;
-        if (!RequestGate.timedOut(failure) && !passable() && mirror == null) return null;
-        return RequestGate.silence(failure);
-    }
-
-    /**
-     * Why a refused credential was not replaced, from {@code failure}'s cause chain, or null: the
-     * credential helper's own explanation, which the fault alone ({@code HTTP 401}) does not give.
-     */
-    private static @Nullable String notRefreshed(Throwable failure) {
-        for (Throwable t : Errors.chain(failure)) {
-            if (t instanceof CredentialNotRefreshedException helper) return helper.why();
-        }
-        return null;
-    }
-
-    /** The address refusal in {@code failure}'s cause chain as one line naming it, or null. */
-    private static @Nullable String addressRefusal(Throwable failure) {
-        for (Throwable t = failure; t != null; t = t.getCause() == t ? null : t.getCause()) {
-            if (t instanceof Http.AddressRefusedException refused) return "JumpKick refuses it: " + refused.reason();
-        }
-        return null;
-    }
-
-    /** The 401 or 403 in {@code failure}'s cause chain as one line naming it, or null. */
-    private static @Nullable String refusal(Throwable failure) {
-        for (Throwable t : Errors.chain(failure)) {
-            if (t instanceof HttpStatusException answer && answer.refusesAccess()) {
-                return "HTTP " + answer.status()
-                        + (answer.status() == 401 ? ": it asks for credentials" : ": access refused");
-            }
-        }
-        return null;
     }
 
     /**
@@ -1197,7 +1080,7 @@ public final class MavenRepo {
             LocalMirrorVerifier.noteUnverifiedOffline(coord);
             return Optional.empty();
         }
-        if (abort.getAsBoolean() || unreachable.get() != null) {
+        if (abort.getAsBoolean() || reachability.out()) {
             return unvouched ? Optional.empty() : Optional.of(local);
         }
         RepoCredential used = credential;
@@ -1224,7 +1107,7 @@ public final class MavenRepo {
             // Nothing answered for the sidecar: a vouched copy answers, as it does offline. A dead
             // address is remembered so the rest of the job stops dialing it.
             Log.debug("confirmed: " + coord + " from " + name + " unconfirmed", transport);
-            unreachableOr(transport);
+            reachability.unreachableOr(transport);
             return unvouched ? Optional.empty() : Optional.of(local);
         }
     }
