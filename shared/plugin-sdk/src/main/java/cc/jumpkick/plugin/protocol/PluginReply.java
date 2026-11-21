@@ -54,9 +54,18 @@ public final class PluginReply {
         return "{\"t\":\"provenance\",\"gen\":" + Jsonl.quote(generated) + ",\"src\":" + Jsonl.array(sources) + "}";
     }
 
-    /** An audit vulnerability finding; {@code fixedIn} rides only when the feed named a fixed version. */
+    /**
+     * An audit vulnerability finding; {@code fixedIn} rides only when the feed named a fixed version,
+     * {@code aliases} only when the advisory has other ids.
+     */
     public static String finding(
-            String module, String version, String id, String severity, String summary, @Nullable String fixedIn) {
+            String module,
+            String version,
+            String id,
+            String severity,
+            String summary,
+            @Nullable String fixedIn,
+            List<String> aliases) {
         StringBuilder b = new StringBuilder("{\"t\":\"finding\",\"module\":")
                 .append(Jsonl.quote(module))
                 .append(",\"version\":")
@@ -68,6 +77,7 @@ public final class PluginReply {
                 .append(",\"summary\":")
                 .append(Jsonl.quote(summary));
         if (fixedIn != null) b.append(",\"fixedIn\":").append(Jsonl.quote(fixedIn));
+        if (!aliases.isEmpty()) b.append(",\"aliases\":").append(Jsonl.array(aliases));
         return b.append('}').toString();
     }
 

@@ -79,6 +79,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.GROOVY_SCRIPTS, root -> in(root, CacheTree.GROOVY_SCRIPTS, "dead.jar", "x", OLD));
         m.put(CacheTree.TOOL_SCRIPTS, root -> subtree(root, CacheTree.TOOL_SCRIPTS, "deadkey", OLD));
         m.put(CacheTree.ENV_READS, root -> in(root, CacheTree.ENV_READS, "dead.reads", "x", OLD));
+        m.put(CacheTree.OSV_VULNS, root -> in(root, CacheTree.OSV_VULNS, "GHSA-dead.json", "x", OLD));
         // Bookkeeping entries seed a file that must SURVIVE; see the dedicated test below.
         m.put(CacheTree.LAST_PRUNED, root -> null);
         m.put(CacheTree.PRUNE_LOCK, root -> null);

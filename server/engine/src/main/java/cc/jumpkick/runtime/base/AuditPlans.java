@@ -76,6 +76,7 @@ public final class AuditPlans {
                         runWorker(
                                 workerJar,
                                 lockPath,
+                                cache,
                                 osvBatchUrl,
                                 osvVulnsUrl,
                                 finding -> {
@@ -127,12 +128,13 @@ public final class AuditPlans {
     private static void runWorker(
             Path workerJar,
             Path lockPath,
+            Path cache,
             @Nullable URI osvBatchUrl,
             @Nullable URI osvVulnsUrl,
             Consumer<AuditReport.Finding> observer,
             Consumer<String> onOutput) {
         try {
-            Path spec = writeSpec(lockPath, osvBatchUrl, osvVulnsUrl);
+            Path spec = writeSpec(lockPath, cache, osvBatchUrl, osvVulnsUrl);
             try {
                 @Nullable String[] error = {null};
                 // Bounded: a worker that fails by printing megabytes must not be the reason the
@@ -186,7 +188,8 @@ public final class AuditPlans {
                 id,
                 Jsonl.requiredStr(json, "summary"),
                 AuditReport.Severity.parse(Jsonl.str(json, "severity")),
-                Jsonl.str(json, "fixedIn"));
+                Jsonl.str(json, "fixedIn"),
+                Jsonl.strArray(json, "aliases"));
     }
 
     /** How much of a failed worker's own output rides its exception. */
@@ -198,11 +201,12 @@ public final class AuditPlans {
         return System.lineSeparator() + String.join(System.lineSeparator(), tail);
     }
 
-    private static Path writeSpec(Path lockPath, @Nullable URI osvBatchUrl, @Nullable URI osvVulnsUrl)
+    private static Path writeSpec(Path lockPath, Path cache, @Nullable URI osvBatchUrl, @Nullable URI osvVulnsUrl)
             throws IOException {
         SpecWriter spec = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "audit", "jk-auditor")
-                .configString("lockfile", lockPath.toAbsolutePath().toString());
+                .configString("lockfile", lockPath.toAbsolutePath().toString())
+                .configString("cacheDir", cache.toAbsolutePath().toString());
         if (osvBatchUrl != null) spec.configString("batchUrl", osvBatchUrl.toString());
         if (osvVulnsUrl != null) spec.configString("vulnsUrl", osvVulnsUrl.toString());
         Path file = Files.createTempFile("jk-audit-", ".spec");

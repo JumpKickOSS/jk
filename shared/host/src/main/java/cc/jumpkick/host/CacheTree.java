@@ -96,6 +96,8 @@ public enum CacheTree {
     TOOL_SCRIPTS("tool-scripts"),
     /** The environment reads a dependency jar's classes make, one file per jar content hash. */
     ENV_READS("env-reads"),
+    /** OSV advisory bodies {@code jk audit} fetched, one file per advisory id, written by the auditor worker. */
+    OSV_VULNS("osv-vulns"),
 
     /** Cadence bookkeeping for the prune itself: {@code <millis> <finalActionBytes>}. */
     LAST_PRUNED(".last-pruned", "constant-size cadence sentinel"),

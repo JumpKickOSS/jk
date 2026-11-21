@@ -134,17 +134,52 @@ class OsvAuditorTest {
     }
 
     /**
-     * A CVSS vector is not a label. Reading {@code severity[].score} as one classified every
-     * advisory as UNKNOWN; and because UNKNOWN did not satisfy any threshold, nothing gated. An
-     * unclassifiable advisory must still be reported at every threshold.
+     * An advisory with a CVSS v3 vector and no label is rated by the vector's base score, the
+     * highest when it has several, so a gate at HIGH does not stop on a LOW one.
      */
     @Test
-    void a_cvss_vector_only_advisory_is_unknown_and_still_gates() throws Exception {
+    void a_cvss_v3_vector_without_a_label_is_rated_by_its_base_score() throws Exception {
         AuditReport report = auditOne("""
                 {
                   "id":"CVE-2025-0001",
                   "summary":"vector only",
+                  "severity":[
+                    {"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:N/A:N"},
+                    {"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}
+                  ]
+                }
+                """);
+        assertThat(report.findings().getFirst().severity()).isEqualTo(AuditReport.Severity.CRITICAL);
+    }
+
+    /** A label, when OSV gives one, wins over the vector. */
+    @Test
+    void a_label_wins_over_a_cvss_vector() throws Exception {
+        AuditReport report = auditOne("""
+                {
+                  "id":"GHSA-both",
+                  "summary":"both",
+                  "database_specific":{"severity":"LOW"},
                   "severity":[{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}]
+                }
+                """);
+        assertThat(report.findings().getFirst().severity()).isEqualTo(AuditReport.Severity.LOW);
+    }
+
+    /**
+     * A CVSS v4 vector alone, or a v3 vector that does not parse, is not scored: the advisory stays
+     * UNKNOWN and is reported at every threshold.
+     */
+    @Test
+    void an_unscored_vector_only_advisory_is_unknown_and_still_gates() throws Exception {
+        AuditReport report = auditOne("""
+                {
+                  "id":"CVE-2025-0002",
+                  "summary":"v4 only",
+                  "severity":[
+                    {"type":"CVSS_V4","score":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"},
+                    {"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N"}
+                  ]
                 }
                 """);
         AuditReport.Finding f = report.findings().getFirst();
@@ -152,7 +187,16 @@ class OsvAuditorTest {
         assertThat(report.filterAtLeast(AuditReport.Severity.CRITICAL))
                 .as("an unclassified advisory fails closed")
                 .extracting(AuditReport.Finding::vulnId)
-                .containsExactly("CVE-2025-0001");
+                .containsExactly("CVE-2025-0002");
+    }
+
+    /** The advisory's aliases ride the finding, so an ignore written for its CVE id covers it. */
+    @Test
+    void a_findings_aliases_are_the_advisorys() throws Exception {
+        AuditReport report = auditOne("""
+                {"id":"GHSA-alias","summary":"s","aliases":["CVE-2026-1234"],"database_specific":{"severity":"HIGH"}}
+                """);
+        assertThat(report.findings().getFirst().aliases()).containsExactly("CVE-2026-1234");
     }
 
     /** The vuln id is remote input; URI.resolve on it would otherwise retarget the host. */

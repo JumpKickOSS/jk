@@ -2,7 +2,9 @@
 package cc.jumpkick.plugin.audit;
 
 import cc.jumpkick.audit.AuditReport;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.command.Exit;
@@ -23,7 +25,7 @@ import java.util.Optional;
  * The {@code jk-auditor} plugin (op {@code command}/{@code audit}): queries the OSV vulnerability
  * API in an isolated child JVM so Jackson and the OSV HTTP client never load in jk's own process.
  * Speaks the unified plugin wire — the spec is JSONL ({@code config}: {@code lockfile},
- * {@code batchUrl}?, {@code vulnsUrl}?) and the reply is {@code finding} lines + a terminal
+ * {@code cacheDir}?, {@code batchUrl}?, {@code vulnsUrl}?) and the reply is {@code finding} lines + a terminal
  * {@code done}. Exit codes are {@link Exit}: 0 success, 1 network/parse error, {@link Exit#USAGE}
  * bad command line, {@link Exit#NO_INPUT} unreadable spec, {@link Exit#DATA_ERR} spec missing a key.
  */
@@ -80,11 +82,14 @@ public final class Auditor implements Plugin {
             return 1;
         }
 
-        OsvClient client = (batchUrl != null || vulnsUrl != null)
-                ? new OsvClient(
-                        batchUrl != null ? batchUrl : OsvClient.DEFAULT_BATCH,
-                        vulnsUrl != null ? vulnsUrl : OsvClient.DEFAULT_VULNS)
-                : new OsvClient();
+        Path cacheDir = config.stringOpt("cacheDir")
+                .map(dir -> CacheTree.OSV_VULNS.under(Path.of(dir)))
+                .orElse(null);
+        OsvClient client = new OsvClient(
+                batchUrl != null ? batchUrl : OsvClient.DEFAULT_BATCH,
+                vulnsUrl != null ? vulnsUrl : OsvClient.DEFAULT_VULNS,
+                new Http(),
+                cacheDir);
 
         AuditReport report;
         try {
@@ -97,7 +102,7 @@ public final class Auditor implements Plugin {
 
         for (AuditReport.Finding f : report.findings()) {
             out.emit(PluginReply.finding(
-                    f.module(), f.version(), f.vulnId(), f.severity().name(), f.summary(), f.fixedIn()));
+                    f.module(), f.version(), f.vulnId(), f.severity().name(), f.summary(), f.fixedIn(), f.aliases()));
         }
         return 0;
     }

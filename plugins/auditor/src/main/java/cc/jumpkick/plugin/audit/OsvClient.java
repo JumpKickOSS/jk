@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -46,6 +47,7 @@ public final class OsvClient {
     private final Http http;
     private final URI batchUrl;
     private final URI vulnsUrl;
+    private final @Nullable Path cacheDir;
 
     public OsvClient() {
         this(DEFAULT_BATCH, DEFAULT_VULNS);
@@ -57,9 +59,18 @@ public final class OsvClient {
 
     /** Every collaborator explicit — a test pairs a stub endpoint with a client it can watch. */
     public OsvClient(URI batchUrl, URI vulnsUrl, Http http) {
+        this(batchUrl, vulnsUrl, http, null);
+    }
+
+    /**
+     * As {@link #OsvClient(URI, URI, Http)}, keeping each advisory's body under {@code cacheDir}
+     * (none when null) so an audit fetches only the advisories OSV has modified since.
+     */
+    public OsvClient(URI batchUrl, URI vulnsUrl, Http http, @Nullable Path cacheDir) {
         this.batchUrl = Objects.requireNonNull(batchUrl, "batchUrl");
         this.vulnsUrl = directory(Objects.requireNonNull(vulnsUrl, "vulnsUrl"));
         this.http = Objects.requireNonNull(http, "http");
+        this.cacheDir = cacheDir;
     }
 
     /**
@@ -74,9 +85,14 @@ public final class OsvClient {
 
     public record Query(String ecosystem, String name, String version) {}
 
-    public record Result(List<String> vulnIds) {
+    /**
+     * One query's advisories. {@code modified} maps an id to the time OSV last changed that
+     * advisory, as the batch reported it; an id OSV gave no time for is absent.
+     */
+    public record Result(List<String> vulnIds, Map<String, String> modified) {
         public Result {
             vulnIds = List.copyOf(vulnIds);
+            modified = Map.copyOf(modified);
         }
 
         public boolean clean() {
@@ -87,12 +103,18 @@ public final class OsvClient {
     /**
      * One advisory. {@code fixedVersions} maps each affected Maven package ({@code group:artifact})
      * to the versions its ranges name as {@code fixed}, in feed order; a package with no fix, or an
-     * advisory with no Maven ranges, is simply absent.
+     * advisory with no Maven ranges, is simply absent. {@code aliases} are its other ids.
      */
     public record Vulnerability(
-            String id, String summary, String severity, String details, Map<String, List<String>> fixedVersions) {
+            String id,
+            String summary,
+            String severity,
+            String details,
+            Map<String, List<String>> fixedVersions,
+            List<String> aliases) {
         public Vulnerability {
             fixedVersions = Map.copyOf(fixedVersions);
+            aliases = List.copyOf(aliases);
         }
 
         /** The fixed versions OSV lists for {@code mavenPackage}; empty when it names none. */
@@ -110,9 +132,11 @@ public final class OsvClient {
     public List<Result> queryBatch(List<Query> queries) throws IOException, InterruptedException {
         if (queries.isEmpty()) return List.of();
         List<LinkedHashSet<String>> ids = new ArrayList<>(queries.size());
+        List<Map<String, String>> modified = new ArrayList<>(queries.size());
         Map<Integer, @Nullable String> pending = new LinkedHashMap<>();
         for (int i = 0; i < queries.size(); i++) {
             ids.add(new LinkedHashSet<>());
+            modified.add(new LinkedHashMap<>());
             pending.put(i, null);
         }
         for (int page = 0; !pending.isEmpty(); page++) {
@@ -137,13 +161,14 @@ public final class OsvClient {
                     int index = batch.get(p).getKey();
                     Page result = pages.get(p);
                     ids.get(index).addAll(result.vulnIds());
+                    modified.get(index).putAll(result.modified());
                     if (result.nextPageToken() != null) next.put(index, result.nextPageToken());
                 }
             }
             pending = next;
         }
         List<Result> out = new ArrayList<>(queries.size());
-        for (LinkedHashSet<String> found : ids) out.add(new Result(List.copyOf(found)));
+        for (int i = 0; i < ids.size(); i++) out.add(new Result(List.copyOf(ids.get(i)), modified.get(i)));
         return out;
     }
 
@@ -174,36 +199,64 @@ public final class OsvClient {
         return new String(response.body(), StandardCharsets.UTF_8);
     }
 
-    /** Fetch full vulnerability metadata. */
-    public Vulnerability fetchVuln(String vulnId) throws IOException, InterruptedException {
+    /**
+     * Fetch full vulnerability metadata, from the cache when it holds the body OSV served at
+     * {@code modified} (the batch's time for this advisory; null skips the cache).
+     */
+    public Vulnerability fetchVuln(String vulnId, @Nullable String modified) throws IOException, InterruptedException {
         // vulnId comes from the batch response, so it is remote input. `URI.resolve` on
         // "//evil.example/x" or "../" retargets the host or escapes the path, so the id is
-        // validated as a bare advisory identifier before it is ever resolved.
+        // validated as a bare advisory identifier before it is ever resolved, or used as a file name.
         if (!VULN_ID.matcher(vulnId).matches()) {
             throw new IOException("refusing to fetch a malformed OSV vulnerability id: " + vulnId);
+        }
+        VulnCache cached = cacheDir == null || modified == null || modified.isBlank()
+                ? null
+                : new VulnCache(cacheDir.resolve(vulnId + ".json"), modified);
+        if (cached != null) {
+            String body = cached.read();
+            if (body != null) {
+                try {
+                    return parseVuln(vulnId, body);
+                } catch (RuntimeException unreadable) {
+                    // fetched again below, and the entry rewritten
+                }
+            }
         }
         var url = vulnsUrl.resolve(vulnId);
         HttpResponse<byte[]> response = http.documents().get(url);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("OSV vuln fetch failed for " + vulnId + ": HTTP " + response.statusCode());
         }
+        String body = text(response);
+        Vulnerability vuln;
         try {
-            Map<?, ?> node = object(MiniJson.parse(text(response)));
-            return new Vulnerability(
-                    vulnId,
-                    textOrEmpty(node, "summary"),
-                    extractSeverity(node),
-                    textOrEmpty(node, "details"),
-                    extractFixedVersions(node));
+            vuln = parseVuln(vulnId, body);
         } catch (RuntimeException e) {
             throw new IOException("failed to parse OSV vuln body for " + vulnId, e);
         }
+        if (cached != null) cached.write(body);
+        return vuln;
+    }
+
+    private static Vulnerability parseVuln(String vulnId, String body) {
+        Map<?, ?> node = object(MiniJson.parse(body));
+        return new Vulnerability(
+                vulnId,
+                textOrEmpty(node, "summary"),
+                extractSeverity(node),
+                textOrEmpty(node, "details"),
+                extractFixedVersions(node),
+                strings(node.get("aliases")));
     }
 
     // --- helpers ---------------------------------------------------------
 
     /** One page of one query's hits; {@code nextPageToken} is null when OSV has no more. */
-    private record Page(List<String> vulnIds, @Nullable String nextPageToken) {}
+    private record Page(
+            List<String> vulnIds,
+            Map<String, String> modified,
+            @Nullable String nextPageToken) {}
 
     private static List<Page> parseBatchResponse(String body, int expectedSize) throws IOException {
         List<Page> out = new ArrayList<>(expectedSize);
@@ -214,13 +267,17 @@ public final class OsvClient {
             }
             for (Object entry : rows) {
                 List<String> ids = new ArrayList<>();
+                Map<String, String> modified = new LinkedHashMap<>();
                 if (object(entry).get("vulns") instanceof List<?> vulns) {
                     for (Object v : vulns) {
-                        if (object(v).get("id") instanceof String id) ids.add(id);
+                        if (!(object(v).get("id") instanceof String id)) continue;
+                        ids.add(id);
+                        String stamp = textOrEmpty(object(v), "modified");
+                        if (!stamp.isEmpty()) modified.put(id, stamp);
                     }
                 }
                 String token = textOrEmpty(object(entry), "next_page_token");
-                out.add(new Page(ids, token.isEmpty() ? null : token));
+                out.add(new Page(ids, modified, token.isEmpty() ? null : token));
             }
         } catch (RuntimeException e) {
             throw new IOException("failed to parse OSV batch response", e);
@@ -237,17 +294,34 @@ public final class OsvClient {
     }
 
     /**
-     * The advisory's severity <em>label</em>.
-     *
-     * <p>{@code severity[].score} is a CVSS <em>vector</em> ({@code CVSS:3.1/AV:N/...}), not a label,
-     * so it is never returned as one — reading it was why every advisory classified as
-     * {@code UNKNOWN}. {@code database_specific.severity} is the label OSV and GitHub actually
-     * publish. An advisory with only a vector stays unclassified and gates anyway, because
-     * {@code Severity.UNKNOWN} fails closed.
+     * The advisory's severity <em>label</em>: {@code database_specific.severity}, the label OSV and
+     * GitHub publish; failing that, the rating of the highest base score among its CVSS v3 vectors
+     * ({@code severity[].score}, {@code CVSS:3.1/AV:N/...}), which is never a label itself. An
+     * advisory with neither (a CVSS v4 vector alone) stays {@code UNKNOWN}, which fails closed.
      */
     private static String extractSeverity(Map<?, ?> node) {
         Object label = object(node.get("database_specific")).get("severity");
-        return label instanceof String s ? s : "UNKNOWN";
+        if (label instanceof String s && !s.isBlank()) return s;
+        Double best = null;
+        if (node.get("severity") instanceof List<?> scores) {
+            for (Object entry : scores) {
+                if (!"CVSS_V3".equals(textOrEmpty(object(entry), "type"))) continue;
+                Double score = Cvss.baseScore(textOrEmpty(object(entry), "score"));
+                if (score != null && (best == null || score > best)) best = score;
+            }
+        }
+        return best == null ? "UNKNOWN" : Cvss.label(best);
+    }
+
+    /** {@code value}'s string elements when it is a JSON array; empty otherwise. */
+    private static List<String> strings(@Nullable Object value) {
+        List<String> out = new ArrayList<>();
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                if (item instanceof String s && !s.isBlank()) out.add(s);
+            }
+        }
+        return out;
     }
 
     /**

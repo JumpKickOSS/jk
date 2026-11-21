@@ -163,7 +163,7 @@ public final class AuditCommand implements CliCommand {
 
     /**
      * One {@code -O jsonl} line per finding. {@code fixedIn} rides when OSV named a fixed
-     * version; {@code reason} and {@code until} ride when an ignore entry names the advisory, and
+     * version, {@code aliases} when the advisory has other ids; {@code reason} and {@code until} ride when an ignore entry names the advisory, and
      * {@code ignoreExpired} only when that entry has lapsed — in which case {@code ignored} is
      * {@code false} and the finding counts toward the exit status again.
      */
@@ -175,6 +175,7 @@ public final class AuditCommand implements CliCommand {
                 .string("severity", f.severity().name())
                 .string("summary", f.summary())
                 .optionalString("fixedIn", f.fixedIn())
+                .optionalArray("aliases", f.aliases())
                 .bool("ignored", f.ignored());
         AuditReport.Ignore ignore = f.ignore();
         if (ignore != null) {

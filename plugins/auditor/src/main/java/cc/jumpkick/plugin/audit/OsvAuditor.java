@@ -8,6 +8,7 @@ import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,8 +24,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk audit} orchestration: lockfile → OSV batch query → concurrent detail fetch for hits.
- * Findings emit in deterministic package × result order.
+ * {@code jk audit} orchestration: lockfile → OSV batch query → concurrent detail fetch for hits,
+ * each answered from the client's cache while OSV reports the advisory unmodified. Findings emit in
+ * deterministic package × result order.
  */
 public final class OsvAuditor {
 
@@ -62,7 +64,11 @@ public final class OsvAuditor {
         // can apply to multiple packages, and we don't want to fetch its
         // details N times.
         Set<String> uniqueIds = new LinkedHashSet<>();
-        for (OsvClient.Result r : results) uniqueIds.addAll(r.vulnIds());
+        Map<String, String> modified = new HashMap<>();
+        for (OsvClient.Result r : results) {
+            uniqueIds.addAll(r.vulnIds());
+            modified.putAll(r.modified());
+        }
         if (uniqueIds.isEmpty()) return new AuditReport(List.of());
 
         // Every detail fetch at once, at most MAX_FETCHES of them in flight. The first failure
@@ -71,7 +77,8 @@ public final class OsvAuditor {
         AtomicReference<@Nullable Exception> failure = new AtomicReference<>();
         Map<String, CompletableFuture<OsvClient.Vulnerability>> futures = new LinkedHashMap<>();
         for (String id : uniqueIds) {
-            futures.put(id, CompletableFuture.supplyAsync(() -> fetch(id, slots, failure), JkThreads.io()));
+            String stamp = modified.get(id);
+            futures.put(id, CompletableFuture.supplyAsync(() -> fetch(id, stamp, slots, failure), JkThreads.io()));
         }
 
         // Findings in package × vulnId order; the supply-chain report sidecar depends on it.
@@ -89,7 +96,8 @@ public final class OsvAuditor {
                             vulnId,
                             v.summary(),
                             AuditReport.Severity.parse(v.severity()),
-                            fixedIn(v.fixedVersions(pkg.ga()), pkg.version())));
+                            fixedIn(v.fixedVersions(pkg.ga()), pkg.version()),
+                            v.aliases()));
                 }
             }
             complete = true;
@@ -114,12 +122,13 @@ public final class OsvAuditor {
      * One advisory's details, fetched once a slot is free and only while nothing has failed. A
      * failure is recorded in {@code failure}, so every fetch still waiting stops.
      */
-    private OsvClient.Vulnerability fetch(String id, Semaphore slots, AtomicReference<@Nullable Exception> failure) {
+    private OsvClient.Vulnerability fetch(
+            String id, @Nullable String modified, Semaphore slots, AtomicReference<@Nullable Exception> failure) {
         try {
             slots.acquire();
             try {
                 if (failure.get() != null) throw new CancellationException("another advisory fetch failed");
-                return client.fetchVuln(id);
+                return client.fetchVuln(id, modified);
             } finally {
                 slots.release();
             }

@@ -31,6 +31,23 @@ class AuditReportTest {
                 .isNull();
     }
 
+    /**
+     * OSV reports a Maven advisory under its GHSA id; an entry written for the CVE it aliases
+     * covers it too, and keeps covering it after the finding moves through the wire.
+     */
+    @Test
+    void an_entry_naming_an_alias_ignores_the_advisory() {
+        Finding withAlias = new Finding("g:a", "1.0", "GHSA-xxxx", "s", Severity.HIGH, null, List.of("CVE-2026-1"));
+        Finding judged =
+                withAlias.under(List.of(new BuildBlock.AuditIgnore("cve-2026-1", "not reachable", null)), TODAY);
+        assertThat(judged.ignored()).isTrue();
+        assertThat(judged.aliases()).containsExactly("CVE-2026-1");
+        assertThat(withAlias
+                        .under(List.of(new BuildBlock.AuditIgnore("CVE-2026-2", "another", null)), TODAY)
+                        .ignore())
+                .isNull();
+    }
+
     /** OSV spells the suffix in lower case; a hand-typed entry may not. */
     @Test
     void ids_match_case_insensitively() {

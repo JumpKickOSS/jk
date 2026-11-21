@@ -467,6 +467,7 @@ class EngineProtocolTest {
                 "bad news",
                 AuditReport.Severity.HIGH,
                 "1.1",
+                List.of("CVE-2026-0001"),
                 new AuditReport.Ignore("not reachable", LocalDate.of(2027, 1, 31), false));
         String json = ProtoEvents.auditFinding("", judged);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.AUDIT_FINDING);
@@ -476,6 +477,7 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(json, "severity")).isEqualTo("HIGH");
         assertThat(Jsonl.str(json, "summary")).isEqualTo("bad news");
         assertThat(Jsonl.str(json, "fixedIn")).isEqualTo("1.1");
+        assertThat(Jsonl.strArray(json, "aliases")).containsExactly("CVE-2026-0001");
         assertThat(AuditFindingEvent.decode(json).toFinding()).isEqualTo(judged);
 
         // A finding nothing in the manifest names decodes with no ignore at all, not an empty one.

@@ -273,11 +273,17 @@ jk audit -O jsonl              # one JSON line per finding
 ### Exit status
 
 The exit status is the verdict. `jk audit` exits **0** when no finding at or above
-`--severity` (default `LOW`) is outstanding, and **1** when one is. An advisory whose severity
-OSV does not label counts at every threshold — the audit fails closed rather than hide what it
-cannot classify. A finding covered by an unexpired `[audit] ignore` entry is reported but never
-counted. `--offline` is refused before anything is queried: an audit has no cached answer, and a
-clean report produced without asking OSV would be a claim about safety nobody made.
+`--severity` (default `LOW`) is outstanding, and **1** when one is. An advisory OSV gives no
+severity label is rated by the highest base score of its CVSS v3 vectors (9.0 and up `CRITICAL`,
+7.0 `HIGH`, 4.0 `MEDIUM`, below that `LOW`). One with neither (a CVSS v4 vector alone) counts at
+every threshold — the audit fails closed rather than hide what it cannot classify. A finding
+covered by an unexpired `[audit] ignore` entry is reported but never counted. `--offline` is
+refused before anything is queried: an audit has no cached answer, and a clean report produced
+without asking OSV would be a claim about safety nobody made.
+
+Each advisory's details are kept in the cache root's `osv-vulns/` and fetched again only when OSV
+reports the advisory changed, so a repeat audit asks OSV one batch query; an entry no audit has
+read for 30 days goes.
 
 The run's verdict says the same: with a blocking finding the audit fails, one error per finding
 (severity, package and version, advisory, summary, the fix when OSV names one), so an agent's
@@ -301,9 +307,10 @@ With `-O jsonl` every finding is one line in the [machine envelope](machine-outp
 |-------|---------|
 | `id` | The advisory id as OSV reports it (`GHSA-…`, `CVE-…`) |
 | `package` / `version` | The locked package (`group:artifact`) and version the advisory applies to |
-| `severity` | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` when OSV gave no label |
+| `severity` | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` when OSV gave neither a label nor a CVSS v3 vector |
 | `summary` | OSV's one-line summary |
 | `fixedIn` | The nearest fixed version above the locked one; absent when OSV names none |
+| `aliases` | The advisory's other ids (the `CVE-…` of a `GHSA-…`); absent when it has none |
 | `ignored` | `true` when an unexpired `[audit] ignore` entry covers the finding |
 | `reason`, `until` | The covering entry's reason and last day, when an entry names the advisory |
 | `ignoreExpired` | `true` when that entry has lapsed — the finding counts again |
@@ -323,8 +330,9 @@ ignore = [
 ]
 ```
 
-Every entry needs its `reason` — an ignore nobody can review is refused at parse. `until` is
-optional and an ISO date (`YYYY-MM-DD`): the entry ignores through that day, on the local
+An entry's `id` may name the advisory or any of its aliases: OSV reports a Maven advisory under
+its `GHSA-…` id, and an entry for the `CVE-…` it aliases covers it too. Every entry needs its
+`reason` — an ignore nobody can review is refused at parse. `until` is optional and an ISO date (`YYYY-MM-DD`): the entry ignores through that day, on the local
 calendar where `jk audit` runs, and expires after it.
 The text report says `ignored (reason)` for a covered finding and `ignore expired (reason, until
 …)` for a lapsed one; the JSON carries the same state. Unknown keys on either level are

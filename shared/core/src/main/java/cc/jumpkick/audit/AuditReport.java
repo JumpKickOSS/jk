@@ -74,8 +74,9 @@ public final class AuditReport {
 
     /**
      * One advisory against one locked package. {@code fixedIn} is the first version above the
-     * locked one that OSV lists as fixed, or {@code null} when OSV names none; {@code ignore} is the
-     * manifest entry naming this advisory, or {@code null} when there is none.
+     * locked one that OSV lists as fixed, or {@code null} when OSV names none; {@code aliases} are
+     * the advisory's other ids ({@code CVE-…} for a {@code GHSA-…}); {@code ignore} is the manifest
+     * entry naming this advisory, or {@code null} when there is none.
      */
     public record Finding(
             String module,
@@ -84,6 +85,7 @@ public final class AuditReport {
             String summary,
             Severity severity,
             @Nullable String fixedIn,
+            List<String> aliases,
             @Nullable Ignore ignore) {
         public Finding {
             Objects.requireNonNull(module, "module");
@@ -92,6 +94,7 @@ public final class AuditReport {
             Objects.requireNonNull(severity, "severity");
             if (summary == null) summary = "";
             if (fixedIn != null && fixedIn.isBlank()) fixedIn = null;
+            aliases = aliases == null ? List.of() : List.copyOf(aliases);
         }
 
         /** A finding as the worker reports it: nothing in the manifest has judged it yet. */
@@ -101,8 +104,20 @@ public final class AuditReport {
                 String vulnId,
                 String summary,
                 Severity severity,
+                @Nullable String fixedIn,
+                List<String> aliases) {
+            this(module, version, vulnId, summary, severity, fixedIn, aliases, null);
+        }
+
+        /** As the worker reports an advisory with no other ids. */
+        public Finding(
+                String module,
+                String version,
+                String vulnId,
+                String summary,
+                Severity severity,
                 @Nullable String fixedIn) {
-            this(module, version, vulnId, summary, severity, fixedIn, null);
+            this(module, version, vulnId, summary, severity, fixedIn, List.of(), null);
         }
 
         /** True when an unexpired {@code [audit] ignore} entry covers this finding. */
@@ -116,15 +131,27 @@ public final class AuditReport {
         }
 
         public Finding withIgnore(@Nullable Ignore ignore) {
-            return new Finding(module, version, vulnId, summary, severity, fixedIn, ignore);
+            return new Finding(module, version, vulnId, summary, severity, fixedIn, aliases, ignore);
         }
 
-        /** This finding as {@code ignores} judges it on {@code today}; the first entry naming the advisory wins. */
+        /**
+         * This finding as {@code ignores} judges it on {@code today}; the first entry naming the
+         * advisory, by its id or one of its aliases, wins.
+         */
         public Finding under(List<BuildBlock.AuditIgnore> ignores, LocalDate today) {
             for (BuildBlock.AuditIgnore entry : ignores) {
-                if (entry.id().equalsIgnoreCase(vulnId)) return withIgnore(Ignore.of(entry, today));
+                if (names(entry.id())) return withIgnore(Ignore.of(entry, today));
             }
             return withIgnore(null);
+        }
+
+        /** True when {@code id} is this advisory's id or one of its aliases, in any case. */
+        public boolean names(String id) {
+            if (id.equalsIgnoreCase(vulnId)) return true;
+            for (String alias : aliases) {
+                if (id.equalsIgnoreCase(alias)) return true;
+            }
+            return false;
         }
     }
 

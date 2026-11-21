@@ -4,11 +4,12 @@ package cc.jumpkick.wire.protocol;
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.jsonl.Jsonl;
 import java.time.LocalDate;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
  * One OSV finding as the engine has judged it — the worker's fields plus the {@code [audit] ignore}
- * entry naming it, if any. Plain structured fields, no theming (see
+ * entry naming it, if any. {@code aliases} rides only when the advisory has other ids. Plain structured fields, no theming (see
  * {@link EngineProtocol#AUDIT_FINDING}).
  */
 public record AuditFindingEvent(
@@ -19,6 +20,7 @@ public record AuditFindingEvent(
         String severity,
         String summary,
         @Nullable String fixedIn,
+        List<String> aliases,
         @Nullable String ignoreReason,
         @Nullable String ignoreUntil,
         boolean ignoreExpired) {
@@ -33,6 +35,7 @@ public record AuditFindingEvent(
                 f.severity().name(),
                 f.summary(),
                 f.fixedIn(),
+                f.aliases(),
                 ignore == null ? null : ignore.reason(),
                 ignore == null || ignore.until() == null ? null : ignore.until().toString(),
                 ignore != null && ignore.expired());
@@ -47,6 +50,7 @@ public record AuditFindingEvent(
                 .string("severity", severity)
                 .string("summary", summary)
                 .string("fixedIn", fixedIn)
+                .optionalArray("aliases", aliases)
                 .string("ignoreReason", ignoreReason)
                 .string("ignoreUntil", ignoreUntil)
                 .bool("ignoreExpired", ignoreExpired)
@@ -62,6 +66,7 @@ public record AuditFindingEvent(
                 Jsonl.requiredStr(json, "severity"),
                 Jsonl.requiredStr(json, "summary"),
                 Jsonl.str(json, "fixedIn"),
+                Jsonl.strArray(json, "aliases"),
                 Jsonl.str(json, "ignoreReason"),
                 Jsonl.str(json, "ignoreUntil"),
                 Jsonl.bool(json, "ignoreExpired", false));
@@ -74,6 +79,6 @@ public record AuditFindingEvent(
                 : new AuditReport.Ignore(
                         ignoreReason, ignoreUntil == null ? null : LocalDate.parse(ignoreUntil), ignoreExpired);
         return new AuditReport.Finding(
-                pkg, version, id, summary, AuditReport.Severity.parse(severity), fixedIn, ignore);
+                pkg, version, id, summary, AuditReport.Severity.parse(severity), fixedIn, aliases, ignore);
     }
 }

@@ -214,6 +214,7 @@ class ProtoEventsFrozenBytesTest {
                                 "bad",
                                 AuditReport.Severity.HIGH,
                                 "1.3",
+                                List.of(),
                                 new AuditReport.Ignore("test only", LocalDate.of(2026, 12, 31), true))))
                 .isEqualTo(
                         "{\"type\":\"audit-finding\",\"dir\":\"a/b\",\"package\":\"g:x\",\"version\":\"1.2\",\"id\":\"GHSA-1\",\"severity\":\"HIGH\",\"summary\":\"bad\",\"fixedIn\":\"1.3\",\"ignoreReason\":\"test only\",\"ignoreUntil\":\"2026-12-31\",\"ignoreExpired\":true}");

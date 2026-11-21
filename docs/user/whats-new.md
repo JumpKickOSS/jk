@@ -12,13 +12,19 @@ JumpKick shows you this page's new entries after it updates itself.
   `[workspace.dependencies]` entry is written as its coordinate. A `[war]` module exports as `war`
   packaging, and dropped `[dev-dependencies]` are a report row.
 
+
+- **`[audit] ignore` matches an advisory's aliases.** An entry written for `CVE-2026-1234` now
+  covers the `GHSA-…` advisory OSV reports for it, and `-O jsonl` lists each finding's `aliases`.
+- **An advisory with a CVSS v3 vector and no severity label gets a severity.** `jk audit` rates it
+  by the vector's base score instead of `UNKNOWN`, so `-s HIGH` no longer stops on a low-scored
+  advisory GitHub never labelled. A CVSS v4 vector alone still fails closed.
+- **A repeat `jk audit` fetches only the advisories OSV changed.** Each advisory's details are kept
+  in the cache's `osv-vulns/` until OSV reports it modified.
 - **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and
   `BuildConfig.VERSION_CODE`, which were always 1.
 - **The JRE `jk image` trains an AOT cache with keeps its base image's links.** A JDK package's
   links into the image, such as `lib/security/cacerts -> /etc/ssl/certs/java/cacerts`, were dropped
   when the JRE was extracted; they are kept now, and a link that leads out of the image is skipped.
-- **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and
-  `BuildConfig.VERSION_CODE`, which were always 1.
 - **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
   failing the next `jk lock` with no place to look.
