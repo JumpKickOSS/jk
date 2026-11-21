@@ -466,7 +466,8 @@ lanes and CI remain the enforcement.
   by directory, so a Kotlin file whose package differs from its folder can hide behind it.
 - **`split-package` judges an allow only from a full view of its package**: while a module
   whose main sources declare the allowed package has no class index yet (a partly built
-  worktree, `jk test -m <one module>` before the first full build), the allow is neither used
+  worktree, `jk test -m <one module>` before the first full build), or holds a source there
+  that its last compile did not read (one added or moved in since), the allow is neither used
   nor stale; it is judged once every such module has been compiled.
 - **`split-package` ignores classes whose source has gone**: a module the run did not build
   keeps the classes of a source moved or deleted since its last compile, and a package it holds

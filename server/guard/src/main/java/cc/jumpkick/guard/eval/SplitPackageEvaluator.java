@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -31,7 +32,8 @@ import org.jspecify.annotations.Nullable;
  * the package with the reason it is legal. The fingerprint carries the module pair, so a split that
  * gains a third module is a new site; an allow whose package is no longer split is stale, red. A
  * lane that read no index for a module whose main sources declare the allow's package (a partly
- * built worktree) does not judge that allow: it cannot see whether the split is still there.
+ * built worktree), or whose index predates a source there that its last compile did not read, does
+ * not judge that allow: it cannot see whether the split is still there.
  *
  * <p>A module whose share of a split package is generated code only — the package's directory sits
  * under a generated-sources tree ({@code target/generated-sources/*}, {@code target/ksp/*}) and
@@ -91,9 +93,9 @@ final class SplitPackageEvaluator implements Evaluator {
         if (modulesByPackage.isEmpty())
             return new Evaluation(Outcome.BLIND, population, List.of(), "no module index to read");
         List<String> stale = new ArrayList<>();
-        Unindexed unindexed = new Unindexed(ctx, rule, indexed);
+        Unseen unseen = new Unseen(ctx, rule, indexed);
         for (var e : allowUsed.entrySet())
-            if (!e.getValue() && !unindexed.mayDeclare(e.getKey().in()))
+            if (!e.getValue() && !unseen.mayDeclare(e.getKey().in()))
                 stale.add(e.getKey().in());
         if (!stale.isEmpty()) {
             return new Evaluation(
@@ -106,26 +108,32 @@ final class SplitPackageEvaluator implements Evaluator {
     }
 
     /**
-     * The modules this lane read no index for — not built yet in this worktree, or built before its
-     * index could be written. An allow is judged only by a lane that saw every module that may own
-     * its package: while one of these declares a matching package in its main sources, the split
-     * may still be there, and calling the allow stale would be a guess.
+     * The modules this lane cannot see whole: those it read no index for — not built yet in this
+     * worktree, or built before its index could be written — and those whose main sources hold a
+     * file their last compile did not read. An allow is judged only by a lane that saw every module
+     * that may own its package: while one of these declares a matching package in sources its index
+     * does not reflect, the split may still be there, and calling the allow stale would be a guess.
      */
-    private static final class Unindexed {
-        private final List<Path> modules = new ArrayList<>();
+    private static final class Unseen {
+        private final List<Path> unindexed = new ArrayList<>();
+        private final List<Path> indexed = new ArrayList<>();
         private @Nullable Set<String> packages;
 
-        Unindexed(EvalContext ctx, Rule rule, Set<Path> indexed) {
+        Unseen(EvalContext ctx, Rule rule, Set<Path> read) {
             for (Path m : ctx.modules()) {
-                if (!indexed.contains(m) && rule.applies(WorkspaceModel.rel(ctx.root(), m))) modules.add(m);
+                if (!rule.applies(WorkspaceModel.rel(ctx.root(), m))) continue;
+                (read.contains(m) ? indexed : unindexed).add(m);
             }
         }
 
-        /** Whether an unindexed module's main sources hold a package {@code in} names. */
+        /** Whether a package {@code in} names is in sources the lane's indexes do not reflect. */
         boolean mayDeclare(String in) {
-            if (modules.isEmpty()) return false;
             Set<String> declared = packages;
-            if (declared == null) packages = declared = sourcePackages(modules);
+            if (declared == null) {
+                declared = sourcePackages(unindexed);
+                declared.addAll(unreadPackages(indexed));
+                packages = declared;
+            }
             for (String pkg : declared) {
                 if (pkg.equals(in) || Rule.globMatches(in, pkg)) return true;
             }
@@ -183,21 +191,51 @@ final class SplitPackageEvaluator implements Evaluator {
     /** Every package with at least one file in a main source root of {@code modules}. */
     static Set<String> sourcePackages(List<Path> modules) {
         Set<String> out = new TreeSet<>();
+        for (Path module : modules) packagesOf(module, file -> true, out);
+        return out;
+    }
+
+    /**
+     * Every package of a compilable source in a main root of {@code modules} that the stamps of the
+     * module's last compile do not name: a source added or moved in since, which its index cannot
+     * show. A module with no stamp names nothing it could be behind.
+     */
+    static Set<String> unreadPackages(List<Path> modules) {
+        Set<String> out = new TreeSet<>();
         for (Path module : modules) {
-            for (Path root : SourcePaths.mainRoots(module, ModuleLayout.isCompact(module))) {
-                if (!Files.isDirectory(root)) continue;
-                try {
-                    PathUtil.forEachReadableFile(root, (file, attrs) -> {
-                        Path dir = root.relativize(file).getParent();
-                        if (dir != null)
-                            out.add(dir.toString().replace(dir.getFileSystem().getSeparator(), "."));
-                    });
-                } catch (IOException unreadable) {
-                    // A tree the lane cannot list declares nothing it could defend an allow with.
-                }
-            }
+            List<Path> stamped = BuildStamps.stampedSources(
+                    BuildLayout.moduleTargetDir(module).resolve("classes"));
+            if (stamped.isEmpty()) continue;
+            Set<Path> read = new HashSet<>();
+            for (Path source : stamped) read.add(source.toAbsolutePath().normalize());
+            packagesOf(
+                    module,
+                    file -> compilable(file)
+                            && !read.contains(file.toAbsolutePath().normalize()),
+                    out);
         }
         return out;
+    }
+
+    private static boolean compilable(Path file) {
+        String name = String.valueOf(file.getFileName());
+        return name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".groovy");
+    }
+
+    /** Adds to {@code out} the package of each file {@code take} accepts in a main source root of {@code module}. */
+    private static void packagesOf(Path module, Predicate<Path> take, Set<String> out) {
+        for (Path root : SourcePaths.mainRoots(module, ModuleLayout.isCompact(module))) {
+            if (!Files.isDirectory(root)) continue;
+            try {
+                PathUtil.forEachReadableFile(root, (file, attrs) -> {
+                    Path dir = root.relativize(file).getParent();
+                    if (dir != null && take.test(file))
+                        out.add(dir.toString().replace(dir.getFileSystem().getSeparator(), "."));
+                });
+            } catch (IOException unreadable) {
+                // A tree the lane cannot list declares nothing it could defend an allow with.
+            }
+        }
     }
 
     /** Whether {@code pkg}'s directory is under one of the module's generated trees and none of its source roots. */

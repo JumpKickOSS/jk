@@ -281,6 +281,56 @@ class CyclesAndSplitPackageTest {
     }
 
     @Test
+    void a_module_whose_index_is_behind_its_sources_leaves_an_allow_unjudged(@TempDir Path dir) throws Exception {
+        Path root = Files.createDirectories(dir.resolve("ws"));
+        Files.writeString(
+                root.resolve("jk.toml"),
+                "group = \"t\"\nname = \"ws\"\nversion = \"0.0.1\"\n\n[workspace]\nmodules = [\"a\", \"b\"]\n");
+        for (String m : List.of("a", "b")) {
+            Path module = Files.createDirectories(root.resolve(m));
+            Files.writeString(module.resolve("jk.toml"), "group = \"t\"\nname = \"" + m + "\"\nversion = \"0.0.1\"\n");
+        }
+        Path a = root.resolve("a");
+        Path b = root.resolve("b");
+        Files.writeString(
+                Files.createDirectories(a.resolve("src/main/java/p/shared")).resolve("A.java"), "package p.shared;\n");
+        writeClass(a, "p/shared/A", "A.java");
+        // b's last compile read B.java alone; Half.java in p.shared was added after it
+        Path bSrc = b.resolve("src/main/java");
+        Files.writeString(Files.createDirectories(bSrc.resolve("p/b")).resolve("B.java"), "package p.b;\n");
+        writeClass(b, "p/b/B", "B.java");
+        Path stamp = BuildLayout.moduleTargetDir(b).resolve("classes").resolve(BuildStamps.JAVA);
+        Files.writeString(
+                stamp,
+                "TASK compile-main\nKEY k\n" + BuildStamps.SOURCE_LINE + "none " + bSrc.resolve("p/b/B.java") + "\n");
+        Path half = Files.createDirectories(bSrc.resolve("p/shared")).resolve("Half.java");
+        Files.writeString(half, "package p.shared;\n");
+        List<Path> modules = List.of(a, b);
+        Rule allowed = rule(root, "split-package", "[[guards.r.allow]]\nin = \"p.shared\"\nreason = \"two halves\"\n");
+        Supplier<FactsIndex> merged = EvalContext.lazy(() -> WorkspaceFacts.merged(root, modules));
+        EvalContext ws = new EvalContext(Lane.WORKSPACE, root, "", null, modules, merged, () -> null, List::of);
+
+        assertThat(Evaluators.forKind(allowed.kind()).evaluate(allowed, ws).outcome())
+                .as("b's index predates Half.java, which holds p.shared: the lane cannot see the split")
+                .isEqualTo(Outcome.CLEAN);
+
+        Files.writeString(half.resolveSibling("notes.txt"), "");
+        Files.delete(half);
+        assertThat(Evaluators.forKind(allowed.kind()).evaluate(allowed, ws).outcome())
+                .as("a file b's compile would not read declares no package")
+                .isEqualTo(Outcome.STALE_ALLOW);
+
+        Files.writeString(half, "package p.shared;\n");
+        Files.writeString(
+                stamp,
+                "TASK compile-main\nKEY k\n" + BuildStamps.SOURCE_LINE + "none " + bSrc.resolve("p/b/B.java") + "\n"
+                        + BuildStamps.SOURCE_LINE + "none " + half + "\n");
+        assertThat(Evaluators.forKind(allowed.kind()).evaluate(allowed, ws).outcome())
+                .as("b's last compile read Half.java and its index holds no p.shared: the allow is stale")
+                .isEqualTo(Outcome.STALE_ALLOW);
+    }
+
+    @Test
     void a_class_whose_source_moved_out_of_an_unbuilt_module_does_not_split_its_package(@TempDir Path dir)
             throws Exception {
         Path root = Files.createDirectories(dir.resolve("ws"));
