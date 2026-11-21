@@ -211,7 +211,10 @@ class ApkPackagerTest {
                 .isFalse();
     }
 
-    /** R8's mapping/seeds/usage land at the stable {@code target/r8/} the retrace tooling reads. */
+    /**
+     * R8's mapping/seeds/usage land at the stable {@code target/r8/} the retrace tooling reads, and
+     * are declared produced so the packaging cache stores and restores them with the APK.
+     */
     @Test
     void the_r8_retrace_artifacts_are_copied_beside_the_target_tree(@TempDir Path tmp) throws Exception {
         FakeBuildIo io = app(tmp);
@@ -227,6 +230,9 @@ class ApkPackagerTest {
         Path r8 = io.moduleDir().resolve("target/r8");
         assertThat(r8.resolve("mapping.txt")).exists().content().contains("a.a:");
         assertThat(r8.resolve("seeds.txt")).exists();
+        assertThat(io.produced())
+                .as("declared, so a cached package restores target/r8/ after jk clean")
+                .contains(r8);
     }
 
     /** A minified build dexes through R8, so its output is the one the APK must be built from. */

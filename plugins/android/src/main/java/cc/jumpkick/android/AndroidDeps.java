@@ -169,7 +169,8 @@ final class AndroidDeps {
     /**
      * Copy the R8 retrace artifacts ({@code mapping.txt}, {@code seeds.txt}, {@code usage.txt})
      * from the step's cached scratch to the module's stable {@code target/r8/} — the path release
-     * tooling (Play upload, crash retrace) reads.
+     * tooling (Play upload, crash retrace) reads — and declare the directory produced, so a cached
+     * package restores it with the artifact.
      */
     static void copyRetraceArtifacts(PackageIo io) throws IOException {
         Path mapping =
@@ -185,5 +186,6 @@ final class AndroidDeps {
                 Files.copy(file, targetR8.resolve(file.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
             }
         }
+        io.produced(targetR8);
     }
 }
