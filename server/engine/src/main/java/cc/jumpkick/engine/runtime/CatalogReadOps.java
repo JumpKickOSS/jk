@@ -4,7 +4,7 @@ package cc.jumpkick.engine.runtime;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.library.LibraryCatalog;
-import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.CachedModules;
 import cc.jumpkick.version.Versions;
 import cc.jumpkick.wire.protocol.CatalogReadAck;
 import java.nio.file.Path;
@@ -58,7 +58,7 @@ public final class CatalogReadOps {
                 // repos/ lives under the STORE root — the same tree MavenRepo writes through
                 // cas.root; the cache root never holds repo artifacts.
                 Path store = req.store() != null ? req.store() : JkStores.store();
-                List<String> versions = new ArrayList<>(RepoArtifactStore.allVersions(
+                List<String> versions = new ArrayList<>(CachedModules.allVersions(
                         store, src.module().group(), src.module().artifact()));
                 versions.sort((a, b) -> Versions.compare(b, a));
                 cached = List.copyOf(versions);

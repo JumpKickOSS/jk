@@ -4,6 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.repo.CachedModules;
 import cc.jumpkick.repo.RepoArtifactStore;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -59,7 +60,7 @@ class NearMissesTest {
         Files.writeString(central.resolve(".access/com/ninjasquad/springmockk/1.0/springmockk-1.0.pom"), "");
         for (int i = 0; i < 40; i++) module(central, "org.filler" + i, "lib" + i, "lib-1.0.pom");
 
-        List<String> everyModule = RepoArtifactStore.allModules(store).stream()
+        List<String> everyModule = CachedModules.allModules(store).stream()
                 .map(RepoArtifactStore.Module::moduleKey)
                 .toList();
         LibraryCatalog none = LibraryCatalog.of(Map.of());
@@ -98,9 +99,9 @@ class NearMissesTest {
         module(central, "com.ninja-squad", "springmockk", "springmockk-4.0.2.pom");
 
         Listings pruned = new Listings(NearMisses.near("com.ninjasquad", "springmockk"), false);
-        List<String> near = RepoArtifactStore.moduleKeys(store, pruned);
+        List<String> near = CachedModules.moduleKeys(store, pruned);
         Listings everything = new Listings(NearMisses.near("com.ninjasquad", "springmockk"), true);
-        RepoArtifactStore.moduleKeys(store, everything);
+        CachedModules.moduleKeys(store, everything);
 
         assertThat(near).containsExactly("com.ninja-squad:springmockk");
         assertThat(NearMisses.of("com.ninjasquad", "springmockk", store, LibraryCatalog.of(Map.of())))
@@ -112,12 +113,12 @@ class NearMissesTest {
     }
 
     /** Counts the directories one walk lists; {@code everything} admits every directory, as a full listing does. */
-    private static final class Listings implements RepoArtifactStore.ModuleFilter {
-        private final RepoArtifactStore.ModuleFilter filter;
+    private static final class Listings implements CachedModules.ModuleFilter {
+        private final CachedModules.ModuleFilter filter;
         private final boolean everything;
         int opened;
 
-        Listings(RepoArtifactStore.ModuleFilter filter, boolean everything) {
+        Listings(CachedModules.ModuleFilter filter, boolean everything) {
             this.filter = filter;
             this.everything = everything;
         }

@@ -2,7 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.library.LibraryCatalog;
-import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.repo.CachedModules;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -31,7 +31,7 @@ public final class NearMisses {
     /** Near misses of {@code group:artifact} among the store under {@code store} and {@code catalog}. */
     public static List<String> of(String group, String artifact, @Nullable Path store, LibraryCatalog catalog) {
         Set<String> known = new LinkedHashSet<>();
-        if (store != null) known.addAll(RepoArtifactStore.moduleKeys(store, near(group, artifact)));
+        if (store != null) known.addAll(CachedModules.moduleKeys(store, near(group, artifact)));
         for (String name : catalog.names()) {
             catalog.lookup(name).ifPresent(m -> known.add(m.moduleKey()));
         }
@@ -78,11 +78,11 @@ public final class NearMisses {
      * close to some prefix of the group, since no longer path can come closer to the whole.
      */
     /** The filter {@link #of} walks the store with for {@code group:artifact}. */
-    static RepoArtifactStore.ModuleFilter near(String group, String artifact) {
+    static CachedModules.ModuleFilter near(String group, String artifact) {
         return new Near(group, artifact);
     }
 
-    private static final class Near implements RepoArtifactStore.ModuleFilter {
+    private static final class Near implements CachedModules.ModuleFilter {
         private final String group;
         private final String artifact;
 

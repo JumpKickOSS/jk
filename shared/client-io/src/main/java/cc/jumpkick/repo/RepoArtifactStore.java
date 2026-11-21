@@ -29,14 +29,11 @@ import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -118,7 +115,7 @@ public final class RepoArtifactStore {
         this(dirFor(cacheRoot, storeId), null, false, null, null, false);
     }
 
-    private static Path dirFor(Path cacheRoot, String storeId) {
+    static Path dirFor(Path cacheRoot, String storeId) {
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(storeId, "storeId");
         // An id may echo a raw substring of the project's config or lockfile; refuse one that
@@ -833,120 +830,6 @@ public final class RepoArtifactStore {
                 .toList();
     }
 
-    /**
-     * Every {@code group:artifact} cached under any known store in {@code cacheRoot}, merged by
-     * module key — the repo-agnostic view {@code jk repo search} and {@code jk library search
-     * --offline} want, since neither is scoped to one particular declared repository.
-     */
-    public static List<Module> allModules(Path cacheRoot) {
-        Map<String, String[]> ga = new LinkedHashMap<>();
-        Map<String, Set<String>> versionsByModule = new LinkedHashMap<>();
-        for (String storeId : storeIds(cacheRoot)) {
-            for (Module m : forStoreId(cacheRoot, storeId).modules()) {
-                ga.putIfAbsent(m.moduleKey(), new String[] {m.group(), m.artifact()});
-                versionsByModule
-                        .computeIfAbsent(m.moduleKey(), k -> new LinkedHashSet<>())
-                        .addAll(m.versions());
-            }
-        }
-        List<Module> out = new ArrayList<>();
-        for (var e : versionsByModule.entrySet()) {
-            String[] parts = Objects.requireNonNull(ga.get(e.getKey()));
-            out.add(new Module(parts[0], parts[1], List.copyOf(e.getValue())));
-        }
-        return out;
-    }
-
-    /** Narrows {@link #moduleKeys} to the modules a caller can use, so the walk skips the rest of the tree. */
-    public interface ModuleFilter {
-
-        /** False when no wanted module's group starts with {@code groupPrefix}'s segments: that directory is not listed. */
-        boolean mayHold(String groupPrefix);
-
-        /** True when {@code group:artifact} is wanted; only then is its directory read for a version. */
-        boolean wants(String group, String artifact);
-
-        /** Called once for each directory the walk lists, before it is read. */
-        default void listing(Path dir) {}
-    }
-
-    /**
-     * The keys of {@link #allModules} that {@code filter} wants, in that list's order. Only the
-     * group directories {@link ModuleFilter#mayHold} admits are listed, and only a wanted
-     * artifact's version directories, so the cost follows the filter and not the store's size.
-     */
-    public static List<String> moduleKeys(Path cacheRoot, ModuleFilter filter) {
-        Set<String> out = new LinkedHashSet<>();
-        for (String storeId : storeIds(cacheRoot)) {
-            Path tree;
-            try {
-                tree = dirFor(cacheRoot, storeId).toRealPath();
-            } catch (IOException e) {
-                continue;
-            }
-            Set<String> keys = new TreeSet<>();
-            collectKeys(tree, "", filter, keys);
-            out.addAll(keys);
-        }
-        return List.copyOf(out);
-    }
-
-    private static void collectKeys(Path dir, String group, ModuleFilter filter, Set<String> keys) {
-        for (Path child : subdirectories(dir, filter)) {
-            String name = child.getFileName().toString();
-            if (!group.isEmpty() && filter.wants(group, name) && holdsVersion(child, filter))
-                keys.add(group + ":" + name);
-            String deeper = group.isEmpty() ? name : group + "." + name;
-            if (filter.mayHold(deeper)) collectKeys(child, deeper, filter, keys);
-        }
-    }
-
-    /** The real directories under {@code dir}, not the ledger: a link to a directory is not entered, as {@link #modules} does not. */
-    private static List<Path> subdirectories(Path dir, ModuleFilter filter) {
-        filter.listing(dir);
-        List<Path> out = new ArrayList<>();
-        try {
-            PathUtil.forEachChild(dir, (child, attrs) -> {
-                if (attrs.isDirectory() && !isAccessDir(child)) out.add(child);
-                return true;
-            });
-        } catch (IOException e) {
-            return List.of();
-        }
-        return out;
-    }
-
-    /** True when a version directory under {@code artifactDir} holds a tracked file: a module as {@link #modules} counts one. */
-    private static boolean holdsVersion(Path artifactDir, ModuleFilter filter) {
-        for (Path version : subdirectories(artifactDir, filter)) {
-            boolean[] tracked = {false};
-            filter.listing(version);
-            try {
-                PathUtil.forEachChild(version, (file, attrs) -> {
-                    boolean regular = attrs.isRegularFile() || (attrs.isSymbolicLink() && Files.isRegularFile(file));
-                    if (regular && !isBookkeeping(file.getFileName().toString())) tracked[0] = true;
-                    return !tracked[0];
-                });
-            } catch (IOException e) {
-                continue;
-            }
-            if (tracked[0]) return true;
-        }
-        return false;
-    }
-
-    /**
-     * Versions of {@code group:artifact} cached under any known store in {@code cacheRoot}, merged
-     * and deduplicated — the repo-agnostic counterpart to {@link #versions(String, String)}.
-     */
-    public static List<String> allVersions(Path cacheRoot, String group, String artifact) {
-        Set<String> out = new LinkedHashSet<>();
-        for (String storeId : storeIds(cacheRoot)) {
-            out.addAll(forStoreId(cacheRoot, storeId).versions(group, artifact));
-        }
-        return List.copyOf(out);
-    }
-
     /** The root directory ({@code <store>/repos/<id>}), or {@code null} for {@link #NONE}. */
     public @Nullable Path root() {
         return root;
@@ -1200,7 +1083,7 @@ public final class RepoArtifactStore {
      * A jk-owned side file of the tree, not an artifact: the origin marker, a checksum sidecar, the
      * shelf lock, a write still staged.
      */
-    private static boolean isBookkeeping(String fileName) {
+    static boolean isBookkeeping(String fileName) {
         return ORIGIN_FILE.equals(fileName)
                 || fileName.endsWith(".sha256")
                 || SHELF_LOCK_NAME.equals(fileName)

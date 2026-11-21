@@ -27,6 +27,7 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositoryMirror;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.ArtifactMemo;
+import cc.jumpkick.repo.CachedModules;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.LocalInstall;
 import cc.jumpkick.repo.M2Dirs;
@@ -298,7 +299,7 @@ public final class CacheInventoryOps {
 
     private static CacheInventoryAck repoSearch(Path storeRoot, List<String> terms) {
         List<String> lower = terms.stream().map(t -> t.toLowerCase(Locale.ROOT)).toList();
-        List<RepoArtifactStore.Module> hits = RepoArtifactStore.allModules(storeRoot).stream()
+        List<RepoArtifactStore.Module> hits = CachedModules.allModules(storeRoot).stream()
                 .filter(m -> allMatch(
                         lower, m.group().toLowerCase(Locale.ROOT), m.artifact().toLowerCase(Locale.ROOT)))
                 .sorted(Comparator.comparing(RepoArtifactStore.Module::moduleKey))
