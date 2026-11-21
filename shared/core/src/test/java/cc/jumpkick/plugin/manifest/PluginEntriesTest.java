@@ -126,6 +126,41 @@ class PluginEntriesTest {
                 .hasMessageContaining("[entries-fixture.api] requires `tool`");
     }
 
+    /** A key the entry schema does not declare would be read by nothing, so it is refused, not dropped. */
+    @Test
+    void an_entry_key_the_schema_does_not_declare_is_refused() {
+        assertThatThrownBy(() -> PluginTableRegistry.validate(
+                        manifest(), Toml.parse("[api]\ntool = \"org.acme:api-gen:1.0\"\nagrs = [\"-v\"]")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[entries-fixture.api].agrs is not a key of this entry")
+                .hasMessageContaining("did you mean args?");
+    }
+
+    /** A named group's definition ({@code [<table>.<group>.<name>]}) is held to its sub-schema the same way. */
+    @Test
+    void a_group_definition_key_the_schema_does_not_declare_is_refused() {
+        PluginDescriptor manifest = PluginDescriptors.parse("""
+                [plugin]
+                id = "groups-fixture"
+                table = "groups-fixture"
+
+                [schema]
+                signing = { type = "string" }
+
+                [sub-tables.signing]
+                schema = "signer"
+
+                [sub-schema.signer]
+                key = { type = "string", required = true }
+                """, "groups-fixture.toml");
+
+        assertThatThrownBy(() -> PluginTableRegistry.validate(
+                        manifest, Toml.parse("[signing.release]\nkey = \"k\"\nkye-id = \"x\"")))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[groups-fixture.signing.release].kye-id is not a key of this entry")
+                .hasMessageContaining("(keys: key)");
+    }
+
     @Test
     void a_per_entry_tool_expands_once_per_entry() {
         PluginTableRegistry.putBuiltIn(manifest(), null);

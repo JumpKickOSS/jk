@@ -9,6 +9,7 @@ import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.util.Suggest;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.io.InputStream;
@@ -448,9 +449,20 @@ public final class PluginTableRegistry {
         return raw instanceof TomlTable t ? t : null;
     }
 
-    /** One nested entry against its sub-schema — same coercion + required semantics as the table. */
+    /**
+     * One nested entry against its sub-schema — same coercion + required semantics as the table, and
+     * a key the sub-schema does not declare is refused at that key, as the table's own are.
+     */
     private static Map<String, Object> validateSub(
             String where, Map<String, PluginDescriptor.SchemaKey> subSchema, TomlTable entryTable) {
+        for (String raw : entryTable.keySet()) {
+            if (subSchema.containsKey(raw)) continue;
+            String hint = Suggest.closest(raw, subSchema.keySet())
+                    .map(name -> "; did you mean " + name + "?")
+                    .orElse(" (keys: " + String.join(", ", subSchema.keySet()) + ")");
+            throw JkBuildParseException.at(
+                    entryTable, raw, "[" + where + "]." + raw + " is not a key of this entry" + hint);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         for (PluginDescriptor.SchemaKey key : subSchema.values()) {
             Object value = read(where, key, entryTable);

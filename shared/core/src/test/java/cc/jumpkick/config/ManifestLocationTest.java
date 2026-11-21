@@ -39,6 +39,15 @@ class ManifestLocationTest {
     }
 
     @Test
+    void an_unknown_key_in_a_generate_entry_is_refused_at_the_key(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir, HEAD + "java = 25\n\n[generate.api]\ntool = \"org.acme:gen:1.0\"\nsecret-evn = { A = \"b\" }\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[generate.api].secret-evn").hasMessageContaining("secret-env");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 8, 1));
+    }
+
+    @Test
     void a_value_of_the_wrong_type_is_located_at_its_key(@TempDir Path dir) throws Exception {
         Path file = write(dir, HEAD + "java = \"twenty-five\"\n");
         assertThat(locationOf(file)).isEqualTo(new SourceLocation(file.toString(), 4, 1));
