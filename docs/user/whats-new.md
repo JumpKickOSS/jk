@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A dependency's POM cannot send the resolve into your network.** A repository a POM declares
+  whose host resolves to a private, link-local, unique-local or loopback address is not used, and
+  `jk lock` notes it, unless the project already resolves through that host. Declare it under
+  `[repositories]` to use it.
 - **A sibling a workspace member uses only from its tests no longer weighs on its main classpath.**
   A member that depends on a sibling only from its tests now resolves that sibling's dependencies in
   its test graph, so they can no longer move a version on its main classpath, and `jk outdated`

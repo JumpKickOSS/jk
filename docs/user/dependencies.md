@@ -337,7 +337,21 @@ with one rule:
   `file:` tree, any scheme other than https (`s3://`, `ftp://`, …) and a loopback address
   (`localhost`, `127.*`, `::1`) are not used and the lock notes each. The one exception is a
   loopback repository when the project itself resolves through one (a local proxy or a test stub,
-  directly or as a mirror). Declare a repository under `[repositories]` to use it anyway.
+  directly or as a mirror), and then on any loopback port. Declare a repository under
+  `[repositories]` to use it anyway.
+- For the same reason a named host is looked up before it is used, and it is not used when any
+  address it resolves to is this machine's (unless the project resolves through loopback, as
+  above) or internal: private (`10.*`, `172.16-31.*`, `192.168.*`), shared (`100.64.0.0/10`),
+  link-local (`169.254.*`, where clouds serve instance credentials, and `fe80::/10`),
+  unique-local (`fc00::/7`), unspecified or multicast. A host one of the project's own
+  repositories or mirrors names is exempt, so a corporate repository's POM may name another path
+  on it. A mirror that stands in for the declared repository is asked in its place, so its
+  address is not checked; a name that does not resolve is not refused, since nothing reaches it.
+  The lookup happens once per lock, so a name whose DNS answer changes between the lookup and a
+  later download is not caught. Maven checks none of this.
+- A repository in the lock's `source` is as trusted as `[repositories]`, since whoever can edit
+  the lock can edit `jk.toml` too: `jk build`, `jk sync`, `jk lock -s` and `jk why` ask it without
+  these checks. A source only a dependency's POM introduced reached the lock through them.
 - Its `<releases>` and `<snapshots>` policies are read as Maven reads them: a repository declared
   with `<releases><enabled>false</enabled></releases>` is asked for `-SNAPSHOT` versions only, and
   one with snapshots disabled is never asked for a snapshot.

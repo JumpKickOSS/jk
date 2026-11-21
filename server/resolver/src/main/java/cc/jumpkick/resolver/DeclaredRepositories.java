@@ -11,8 +11,12 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.repo.RepoMirrors;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -33,10 +37,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Trust is the project-declared rule with no way to opt out, and narrower: only an {@code
  * https://} repository on a named host is used. A plaintext {@code http://} one, a {@code file:}
- * tree or any other scheme is not, nor is a loopback address unless the project itself resolves
- * through one; the lock says so. An artifact without a published checksum fails
- * the lock naming the repository, as it would for a {@code [repositories]} entry without {@code
- * allow-unverified}. A row a declared repository serves records it in {@code source}, and every
+ * tree or any other scheme is not, nor is a host on this machine unless the project itself resolves
+ * through one, nor a host whose address is internal (private, link-local, unique-local, shared or
+ * unspecified) unless the project already resolves through that host; the lock says so. A mirror
+ * that stands in for the repository is asked in its place, so its address is not checked. An
+ * artifact without a published checksum fails the lock naming the repository, as it would for a
+ * {@code [repositories]} entry without {@code allow-unverified}. A row a declared repository serves records it in {@code source}, and every
  * repository that served a row is named once in a lock note with the POM that introduced it; a
  * repository merely declared earns none.
  */
@@ -45,11 +51,22 @@ final class DeclaredRepositories {
     /** One group with the grant appended and the POM builder over it. */
     private record Scoped(RepoGroup repos, EffectivePomBuilder builder) {}
 
+    /** The addresses a host name resolves to; {@link InetAddress#getAllByName} outside tests. */
+    @FunctionalInterface
+    interface HostAddresses {
+        InetAddress[] of(String host) throws UnknownHostException;
+    }
+
     private final RepoGroup base;
     private final EffectivePomBuilder baseBuilder;
 
     /** Whether the project itself resolves through this machine, so a POM may name a loopback repository too. */
     private final boolean projectOnLoopback;
+
+    /** The hosts the project's repositories and mirrors name, lower-cased: a POM may send the resolve there. */
+    private final Set<String> projectHosts;
+
+    private final HostAddresses addresses;
 
     /** {@code group:artifact} → the repositories granted to it, in the order they were granted. */
     private final ConcurrentHashMap<String, Set<Pom.Repository>> granted = new ConcurrentHashMap<>();
@@ -67,9 +84,15 @@ final class DeclaredRepositories {
     private final ConcurrentHashMap<String, Pom.Repository> declared = new ConcurrentHashMap<>();
 
     DeclaredRepositories(RepoGroup base, EffectivePomBuilder baseBuilder) {
+        this(base, baseBuilder, InetAddress::getAllByName);
+    }
+
+    DeclaredRepositories(RepoGroup base, EffectivePomBuilder baseBuilder, HostAddresses addresses) {
         this.base = base;
         this.baseBuilder = baseBuilder;
         this.projectOnLoopback = onLoopback(base);
+        this.projectHosts = hosts(base);
+        this.addresses = addresses;
     }
 
     /**
@@ -158,17 +181,70 @@ final class DeclaredRepositories {
             refuse(repository, why);
             return null;
         }
-        return built.computeIfAbsent(
-                repository.url(),
-                k -> RepoMirrors.apply(base.repos()
-                        .getFirst()
-                        .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots())));
+        MavenRepo repo = RepoMirrors.apply(base.repos()
+                .getFirst()
+                .declaredByPom(repository.id(), url, repository.releases(), repository.snapshots()));
+        if (repo.mirror().isEmpty()) {
+            String internal = addressRefusal(url.getHost());
+            if (internal != null) {
+                refuse(repository, internal);
+                return null;
+            }
+        }
+        MavenRepo raced = built.putIfAbsent(repository.url(), repo);
+        return raced != null ? raced : repo;
     }
 
     /**
-     * Why a POM may not send the resolve to {@code url}, or null when it may. Only {@code https}
-     * to a named host is asked: a {@code file:} tree is this machine's disk, and a loopback address
-     * is this machine's services, unless the project itself resolves through one.
+     * Why a POM may not send the resolve to {@code host} by the addresses it resolves to, or null
+     * when it may. Every address counts, since the client may connect to any of them. A name that
+     * does not resolve is let through: no request reaches it either.
+     */
+    private @Nullable String addressRefusal(String host) {
+        if (projectHosts.contains(host.toLowerCase(Locale.ROOT))) return null;
+        InetAddress[] resolved;
+        try {
+            resolved = addresses.of(host);
+        } catch (UnknownHostException | SecurityException unresolved) {
+            return null;
+        }
+        for (InetAddress address : resolved) {
+            if (address.isLoopbackAddress()) {
+                if (projectOnLoopback) continue;
+                return "it resolves to this machine (" + address.getHostAddress()
+                        + "); declare it in [repositories] to use it";
+            }
+            if (internal(address)) {
+                return "it resolves to an internal address (" + address.getHostAddress()
+                        + "); declare it in [repositories] to use it";
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether {@code address} is one no public repository has: unspecified or {@code 0.0.0.0/8},
+     * private, shared ({@code 100.64.0.0/10}), link-local (a cloud's metadata service among them),
+     * unique-local ({@code fc00::/7}), site-local or multicast.
+     */
+    private static boolean internal(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) return true;
+        byte[] b = address.getAddress();
+        if (address instanceof Inet4Address) {
+            int first = b[0] & 0xff;
+            return first == 0 || (first == 100 && (b[1] & 0xc0) == 64);
+        }
+        return address instanceof Inet6Address && (b[0] & 0xfe) == 0xfc;
+    }
+
+    /**
+     * Why a POM may not send the resolve to {@code url} by its spelling, or null when it may. Only
+     * {@code https} to a named host is asked: a {@code file:} tree is this machine's disk, and a
+     * loopback address is this machine's services, unless the project itself resolves through one.
+     * {@link #addressRefusal} then reads what the host resolves to.
      */
     private @Nullable String refusal(URI url) {
         String scheme = url.getScheme() == null ? "" : url.getScheme().toLowerCase(Locale.ROOT);
@@ -183,6 +259,17 @@ final class DeclaredRepositories {
         }
         if (scheme.equals("http")) return "plain http; add it to [repositories] with allow-insecure = true to use it";
         return null;
+    }
+
+    /** The hosts of the repositories the project resolves through and of the mirrors they are asked through. */
+    private static Set<String> hosts(RepoGroup group) {
+        Set<String> out = new LinkedHashSet<>();
+        for (MavenRepo repo : group.repos()) {
+            String host = repo.baseUrl().getHost();
+            if (host != null) out.add(host.toLowerCase(Locale.ROOT));
+            repo.mirror().map(m -> m.url().getHost()).ifPresent(h -> out.add(h.toLowerCase(Locale.ROOT)));
+        }
+        return Set.copyOf(out);
     }
 
     /** Whether a repository the project resolves through, or the mirror one is asked through, is on loopback. */
