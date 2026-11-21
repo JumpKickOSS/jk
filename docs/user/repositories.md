@@ -118,14 +118,14 @@ answer on a Central request opens a four-hour **mirror window**: the refused req
 against Google's Central mirror (`maven-central.storage-download.googleapis.com/maven2`) in the
 same call, and every Central-bound request for the rest of the window — `maven-metadata.xml`,
 checksums, plugin workers' closures — goes there without asking Central first. The mirror can
-lag Central. Under a rate limit, a POM or artifact the mirror does not have is asked of Central
-once more, with its `.sha1`, once Central's own pause after the 429 is over (five minutes unless
-Central's `Retry-After` names another). Otherwise a file the mirror does not have is not reported
-as missing: the fetch fails naming the refusal, `could not fetch <url>: Maven Central is
-rate-limiting this host (HTTP 429) and its mirror does not have it; the artifact may exist`. That
-is the answer for `maven-metadata.xml`, so one window reads versions from one place, and for
-everything under a Cloudflare block, which more requests only prolong. Run again once Central
-lets this host back in.
+lag Central. Under a rate limit, a POM or artifact the mirror does not have, or the `.sha1` that
+verifies one, is asked of Central once more, once Central's own pause after the 429 is over
+(five minutes unless Central's `Retry-After` names another). Otherwise a file the mirror does
+not have is not reported as missing: the fetch fails naming the refusal, `could not fetch <url>:
+Maven Central is rate-limiting this host (HTTP 429) and its mirror does not have it; the artifact
+may exist`. That is the answer for `maven-metadata.xml`, so one window reads versions from one
+place, and for everything under a Cloudflare block, which more requests only prolong. Run again
+once Central lets this host back in.
 
 Outside the window, Central vouches and the mirror carries. Release POMs and artifacts are
 downloaded from the mirror first, refused or not, since a release file never changes: a mirror

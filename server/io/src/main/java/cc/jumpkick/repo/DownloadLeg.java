@@ -112,9 +112,9 @@ final class DownloadLeg {
      * ({@link ChecksumSidecars#startSha1First}). {@code mirror} is set for a check made on Central's
      * behalf: a checksum its mirror answers with is the mirror vouching for itself, because Central
      * is refusing this host, and is counted for the run's note. It is counted by the URL that
-     * answered, not by where the read was addressed: the transport may send a read for Central to
-     * the mirror as it goes out, when the window opened after the read was addressed or the read
-     * itself was refused.
+     * answered, since the transport decides as the read goes out: a read for Central goes to the
+     * mirror while the window is open, or once the read itself is refused, and back to Central for
+     * a checksum the mirror lacks.
      */
     record Vouch(URI artifact, boolean sha1First, @Nullable CentralMirror mirror) {
         /** The repository's own sidecars beside {@code artifact}, strongest first. */

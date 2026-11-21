@@ -9,9 +9,14 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.CentralMirror;
+import cc.jumpkick.http.Http;
+import cc.jumpkick.http.ProxiedCentral;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.task.TransferBoard;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -33,13 +38,16 @@ import org.junit.jupiter.api.io.TempDir;
  * reads no checksum at all, and {@code maven-metadata.xml} stays on Central. While Central refuses
  * this host the mirror vouches for its own bytes, and the run says so.
  *
- * <p>Driven against Central's canonical host through a fake transport, so every URL the repository
- * asks for is visible and nothing reaches the network.
+ * <p>Outside the window, driven against Central's canonical host through a fake transport that
+ * routes nothing, so every URL the repository addresses is visible. Inside it, through {@link Http}'s
+ * own routing to Central and a mirror on named hosts that a loopback server answers as a proxy.
  */
 class CentralVouchesTest {
 
     private static final URI CENTRAL = URI.create("https://repo.maven.apache.org/maven2/");
     private static final String MIRROR = CentralMirror.MIRROR_BASE + "/";
+    private static final String ROUTED_CENTRAL = "http://central.example.test/maven2/";
+    private static final String ROUTED_MIRROR = "http://mirror.example.test/maven2/";
     private static final Coordinate WIDGET = Coordinate.of("com.example", "widget", "1.0");
     private static final String JAR = MavenLayout.artifactPath(WIDGET);
     private static final String POM = MavenLayout.pomPath(WIDGET);
@@ -153,19 +161,20 @@ class CentralVouchesTest {
 
     @Test
     void while_central_refuses_the_mirror_vouches_for_itself_and_the_run_says_so(@TempDir Path tmp) throws Exception {
-        publishJar(JAR_BYTES, JAR_BYTES);
-        transport.publish(MIRROR + JAR + ".sha1", sha1(JAR_BYTES));
-        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
-        window.noteRateLimited();
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            routed.publishJar(JAR_BYTES, JAR_BYTES);
+            routed.publish(ROUTED_MIRROR + JAR + ".sha1", sha1(JAR_BYTES));
+            routed.window.noteRateLimited();
 
-        MavenRepo repo = repo(tmp, window);
-        repo.fetchArtifact(WIDGET);
+            MavenRepo repo = routed.repo(RepoCredential.ANONYMOUS);
+            repo.fetchArtifact(WIDGET);
 
-        assertThat(transport.requests).containsExactlyInAnyOrder(MIRROR + JAR, MIRROR + JAR + ".sha1");
-        assertThat(repo.checksumNotes())
-                .singleElement()
-                .asString()
-                .startsWith("1 file from central verified by the mirror's checksums only");
+            assertThat(routed.requests).containsExactlyInAnyOrder(ROUTED_MIRROR + JAR, ROUTED_MIRROR + JAR + ".sha1");
+            assertThat(repo.checksumNotes())
+                    .singleElement()
+                    .asString()
+                    .startsWith("1 file from central verified by the mirror's checksums only");
+        }
     }
 
     /**
@@ -189,33 +198,76 @@ class CentralVouchesTest {
                 .startsWith("1 file from central verified by the mirror's checksums only");
     }
 
-    /** The checksum read addressed to the mirror but answered by Central is Central's word, not counted. */
+    /**
+     * While Central rate-limits this host, a checksum the mirror lacks for a file it carries is asked
+     * of Central, once, and is Central's word: not counted as the mirror's.
+     */
     @Test
-    void a_checksum_central_answers_is_not_counted_as_the_mirrors(@TempDir Path tmp) throws Exception {
-        publishJar(JAR_BYTES, JAR_BYTES);
-        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
-        window.noteRateLimited();
-        transport.reroute(MIRROR + JAR + ".sha1");
+    void while_central_refuses_a_checksum_the_mirror_lacks_is_asked_of_central(@TempDir Path tmp) throws Exception {
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            routed.publishJar(JAR_BYTES, JAR_BYTES);
+            routed.window.noteRateLimited();
 
-        MavenRepo repo = repo(tmp, window);
-        repo.fetchArtifact(WIDGET);
+            MavenRepo repo = routed.repo(RepoCredential.ANONYMOUS);
+            MavenRepo.Fetched fetched = repo.fetchArtifact(WIDGET);
 
-        assertThat(transport.requests).containsExactlyInAnyOrder(MIRROR + JAR, MIRROR + JAR + ".sha1");
-        assertThat(repo.checksumNotes()).isEmpty();
+            assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(JAR_BYTES));
+            assertThat(routed.requests)
+                    .containsExactlyInAnyOrder(
+                            ROUTED_MIRROR + JAR, ROUTED_MIRROR + JAR + ".sha1", ROUTED_CENTRAL + JAR + ".sha1");
+            assertThat(routed.requests.indexOf(ROUTED_MIRROR + JAR + ".sha1"))
+                    .isLessThan(routed.requests.indexOf(ROUTED_CENTRAL + JAR + ".sha1"));
+            assertThat(repo.checksumNotes()).isEmpty();
+        }
+    }
+
+    /** A store copy is confirmed the same way: by Central's .sha1 when the mirror has none. */
+    @Test
+    void while_central_refuses_a_store_copy_the_mirror_has_no_checksum_for_is_confirmed_by_central(@TempDir Path tmp)
+            throws Exception {
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            routed.publish(ROUTED_CENTRAL + JAR + ".sha1", sha1(JAR_BYTES));
+            routed.window.noteRateLimited();
+            MavenRepo repo = routed.repo(RepoCredential.ANONYMOUS);
+            Path seed = Files.write(tmp.resolve("seed.jar"), JAR_BYTES);
+            RepoArtifactStore.forRepository(tmp.resolve("cas"), "central", repo.baseUrl(), false)
+                    .materialize(JAR, seed, Hashing.sha256Hex(JAR_BYTES));
+
+            Optional<MavenRepo.Fetched> local = repo.tryLocalArtifact(WIDGET, null, () -> false);
+
+            assertThat(local).isPresent();
+            assertThat(routed.requests).containsExactly(ROUTED_MIRROR + JAR + ".sha1", ROUTED_CENTRAL + JAR + ".sha1");
+        }
+    }
+
+    /** Under a Cloudflare block, which more traffic prolongs, a checksum the mirror lacks is not asked of Central. */
+    @Test
+    void while_central_blocks_a_checksum_the_mirror_lacks_is_not_asked_of_central(@TempDir Path tmp) throws Exception {
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            routed.publishJar(JAR_BYTES, JAR_BYTES);
+            routed.window.noteBlocked();
+
+            assertThatThrownBy(() -> routed.repo(RepoCredential.ANONYMOUS).fetchArtifact(WIDGET))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("Maven Central is blocking this host (Cloudflare) and its mirror");
+            assertThat(routed.requests).noneMatch(url -> url.startsWith(ROUTED_CENTRAL));
+        }
     }
 
     /** While Central rate-limits this host, a file the mirror lacks comes from Central, checked by Central's .sha1. */
     @Test
     void while_central_refuses_a_file_the_mirror_lacks_is_checked_by_centrals_sha1(@TempDir Path tmp) throws Exception {
-        transport.publish(CENTRAL + JAR, JAR_BYTES);
-        transport.publish(CENTRAL + JAR + ".sha1", sha1(JAR_BYTES));
-        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
-        window.noteRateLimited();
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            routed.publish(ROUTED_CENTRAL + JAR, JAR_BYTES);
+            routed.publish(ROUTED_CENTRAL + JAR + ".sha1", sha1(JAR_BYTES));
+            routed.window.noteRateLimited();
 
-        MavenRepo.Fetched fetched = repo(tmp, window).fetchArtifact(WIDGET);
+            MavenRepo.Fetched fetched = routed.repo(RepoCredential.ANONYMOUS).fetchArtifact(WIDGET);
 
-        assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(JAR_BYTES));
-        assertThat(transport.requests).contains(MIRROR + JAR, CENTRAL + JAR, CENTRAL + JAR + ".sha1");
+            assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(JAR_BYTES));
+            assertThat(routed.requests)
+                    .contains(ROUTED_MIRROR + JAR, ROUTED_CENTRAL + JAR, ROUTED_CENTRAL + JAR + ".sha1");
+        }
     }
 
     @Test
@@ -232,16 +284,16 @@ class CentralVouchesTest {
 
     @Test
     void while_central_refuses_its_credential_goes_nowhere(@TempDir Path tmp) throws Exception {
-        publishJar(JAR_BYTES, JAR_BYTES);
-        transport.publish(MIRROR + JAR + ".sha1", sha1(JAR_BYTES));
-        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
-        window.noteRateLimited();
+        try (RoutedCentral routed = new RoutedCentral(tmp)) {
+            routed.publishJar(JAR_BYTES, JAR_BYTES);
+            routed.publish(ROUTED_MIRROR + JAR + ".sha1", sha1(JAR_BYTES));
+            routed.window.noteRateLimited();
 
-        repo(tmp, window, new RepoCredential.Bearer("central-token")).fetchArtifact(WIDGET);
+            routed.repo(new RepoCredential.Bearer("central-token")).fetchArtifact(WIDGET);
 
-        assertThat(transport.credentials)
-                .containsOnlyKeys(MIRROR + JAR, MIRROR + JAR + ".sha1")
-                .allSatisfy((url, credential) -> assertThat(credential).isEqualTo(RepoCredential.ANONYMOUS));
+            assertThat(routed.requests).containsExactlyInAnyOrder(ROUTED_MIRROR + JAR, ROUTED_MIRROR + JAR + ".sha1");
+            assertThat(routed.authorized).isEmpty();
+        }
     }
 
     @Test
@@ -332,13 +384,83 @@ class CentralVouchesTest {
         return Hashing.hashHex("SHA-1", bytes).getBytes(StandardCharsets.UTF_8);
     }
 
+    /**
+     * Central and its mirror on named hosts, one loopback server answering both as their proxy:
+     * serves what was published, 404s the rest, and records every URL that reached it and every one
+     * that carried a credential. Requests go through {@link Http}, which routes them by {@link
+     * #window} as it does in production.
+     */
+    private static final class RoutedCentral implements AutoCloseable {
+        private final Map<String, byte[]> files = new ConcurrentHashMap<>();
+        final List<String> requests = new CopyOnWriteArrayList<>();
+        final List<String> authorized = new CopyOnWriteArrayList<>();
+        final CentralMirror window;
+        private final Path tmp;
+        private final HttpServer server;
+
+        RoutedCentral(Path tmp) throws IOException {
+            this.tmp = tmp;
+            this.window = ProxiedCentral.mirror(
+                    tmp.resolve("cache"),
+                    URI.create(ROUTED_CENTRAL).getHost(),
+                    ROUTED_MIRROR.substring(0, ROUTED_MIRROR.length() - 1));
+            this.server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+            server.createContext("/", exchange -> {
+                String url = "http://" + exchange.getRequestHeaders().getFirst("Host")
+                        + exchange.getRequestURI().getRawPath();
+                requests.add(url);
+                if (exchange.getRequestHeaders().containsKey("Authorization")) authorized.add(url);
+                byte[] body = files.get(url);
+                if (body == null) {
+                    exchange.sendResponseHeaders(404, -1);
+                } else {
+                    exchange.sendResponseHeaders(200, body.length);
+                    exchange.getResponseBody().write(body);
+                }
+                exchange.close();
+            });
+            server.start();
+        }
+
+        void publish(String url, byte[] body) {
+            files.put(url, body);
+        }
+
+        /** The mirror serves {@code mirrorBytes}; Central serves {@code centralBytes} and their {@code .sha1}. */
+        void publishJar(byte[] mirrorBytes, byte[] centralBytes) {
+            publish(ROUTED_MIRROR + JAR, mirrorBytes);
+            publish(ROUTED_CENTRAL + JAR, centralBytes);
+            publish(ROUTED_CENTRAL + JAR + ".sha1", sha1(centralBytes));
+        }
+
+        MavenRepo repo(RepoCredential credential) {
+            Http http = ProxiedCentral.http(server.getAddress(), window, tmp.resolve("cooldown"));
+            return MavenRepo.overTransport(
+                            "central",
+                            URI.create(ROUTED_CENTRAL),
+                            new HttpTransport(http),
+                            new Cas(tmp.resolve("cas")),
+                            credential,
+                            http,
+                            false,
+                            false,
+                            false)
+                    .withCentralMirror(window);
+        }
+
+        @Override
+        public void close() {
+            server.stop(0);
+        }
+    }
+
     /** Serves what was published, 404s the rest, and records every URL asked for. */
     private static final class FakeTransport implements RepoTransport {
         private final Map<String, byte[]> files = new ConcurrentHashMap<>();
         final List<String> requests = new CopyOnWriteArrayList<>();
         final Map<String, RepoCredential> credentials = new ConcurrentHashMap<>();
 
-        /** URLs answered by the other side of Central and its mirror, as Http answers a request it reroutes. */
+        /** Central URLs the mirror answers, as Http answers a request it sends to the mirror. */
         private final Set<String> rerouted = ConcurrentHashMap.newKeySet();
 
         void publish(String url, byte[] body) {
@@ -359,11 +481,8 @@ class CentralVouchesTest {
             requests.add(uri.toString());
             credentials.put(uri.toString(), credential);
             String from = uri.toString();
-            if (rerouted.contains(from)) {
-                from = from.startsWith(MIRROR)
-                        ? CENTRAL + from.substring(MIRROR.length())
-                        : MIRROR + from.substring(CENTRAL.toString().length());
-            }
+            if (rerouted.contains(from))
+                from = MIRROR + from.substring(CENTRAL.toString().length());
             URI answered = URI.create(from);
             return Optional.ofNullable(files.get(from)).map(body -> new Answer(body, answered));
         }

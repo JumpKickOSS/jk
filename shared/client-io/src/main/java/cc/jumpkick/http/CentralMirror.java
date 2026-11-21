@@ -350,8 +350,9 @@ public final class CentralMirror {
      * <p>{@link #route} is the refusal reaction: only reroute once Central has refused. This is the
      * standing preference for immutable release files, and it is safe because Central still vouches
      * for them: an unpinned file's bytes are checked against the {@code .sha1} Central publishes
-     * (asked of Central through {@link #route}, so only a refusal moves the check to the mirror), and
-     * a pinned one against the lock's sha256. A lagging mirror cannot serve stale content for a
+     * (asked of Central, so only a refusal moves the check to the mirror, and one the mirror lacks
+     * goes back to Central as {@link #asksCentralFor} allows), and a pinned one against the lock's
+     * sha256. A lagging mirror cannot serve stale content for a
      * release coordinate, only a 404, which falls back to Central. While the window is open that
      * fallback reaches Central only as {@link #asksCentralFor} allows, and otherwise fails naming the
      * refusal. Version <em>enumeration</em> is the opposite case: {@code maven-metadata.xml} changes,
