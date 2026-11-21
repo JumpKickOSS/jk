@@ -146,6 +146,8 @@ final class TestVerb implements BuildVerb {
                         view.servedFromCache(),
                         view.modulesWithSuite(),
                         view.prerequisitesNotTested(),
+                        view.ranTests(),
+                        view.skippedTests(),
                         BuildTails.elapsedMsSince(startNanos)),
                 r -> WorkspaceRunView.failedSubject(r, "tests") + " — failed "
                         + DurationText.took(Duration.ofMillis(BuildTails.elapsedMsSince(startNanos))));
@@ -230,17 +232,31 @@ final class TestVerb implements BuildVerb {
      * tested nothing ({@code -s <suite>} over modules where it holds no tests), which must not read as a
      * passing suite. {@code notTested} is how many prerequisites {@code --exclusive} compiled
      * without running their suites; they are named in their own clause.
+     *
+     * <p>{@code ran} and {@code skipped} count the tests of the suites that ran this time, so a
+     * skipped test is never hidden behind a pass: {@code Tests passed; 1 test skipped}. When every
+     * test that ran was skipped and nothing was replayed, the line does not say anything passed:
+     * {@code No test ran; 1 test skipped}.
      */
     static String workspaceTestSuccessTail(
-            WorkspaceResult result, int planned, int served, int withSuite, int notTested, long elapsedMs) {
+            WorkspaceResult result,
+            int planned,
+            int served,
+            int withSuite,
+            int notTested,
+            long ran,
+            long skipped,
+            long elapsedMs) {
         int n = (result.modules() == null ? 0 : result.modules().size()) - notTested;
-        String skipped = notTested <= 0
+        String untested = notTested <= 0
                 ? ""
                 : "; " + notTested + " prerequisite" + (notTested == 1 ? "" : "s") + " not tested (--exclusive)";
+        String skips = skipped <= 0 ? "" : "; " + skipped + " test" + (skipped == 1 ? "" : "s") + " skipped";
         if (n <= 0 || planned == 0 || withSuite == 0) {
-            return "No tests to run" + skipped;
+            return "No tests to run" + untested;
         }
         String took = DurationText.took(Duration.ofMillis(elapsedMs), RunSuspensions.wallMs());
+        if (served <= 0 && skipped > 0 && skipped >= ran) return "No test ran" + skips + untested + " " + took;
         String lead = n == 1 ? "Tests passed" : "Tests passed for " + BuildTails.modules(n);
         String line;
         if (served <= 0) line = lead;
@@ -249,6 +265,6 @@ final class TestVerb implements BuildVerb {
         else
             line = lead + ", "
                     + Theme.colorize(String.valueOf(served), Theme.active().focused()) + " served from cache";
-        return line + skipped + " " + took;
+        return line + skips + untested + " " + took;
     }
 }

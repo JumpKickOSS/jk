@@ -14,9 +14,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -148,8 +150,9 @@ public final class JkResultsAgent {
         StringBuilder sb = new StringBuilder();
         sb.append(headline(record, loci, tests));
         boolean reported = record.success() && !record.cancelled() && failedTests(record, tests) > 0;
-        String reason =
-                decided != null ? decided.message() : reported ? REPORTED : decidingWarning(record, loci, tests);
+        String reason = decided != null
+                ? decided.message()
+                : reported ? REPORTED : firstNonNull(decidingWarning(record, loci, tests), allSkipped(record, tests));
         if (reason != null && !reason.isBlank()) sb.append(" — ").append(one(reason, record.dir()));
         sb.append('\n');
         appendInputsChanged(sb, record);
@@ -169,6 +172,10 @@ public final class JkResultsAgent {
         }
         if (opt.next == Next.ALL) JkResultsPrinted.append(sb, tests, record.dir());
         return sb.toString();
+    }
+
+    private static @Nullable String firstNonNull(@Nullable String a, @Nullable String b) {
+        return a != null ? a : b;
     }
 
     /** What the line past the cap points at. */
@@ -353,16 +360,19 @@ public final class JkResultsAgent {
     private static String counts(BuildRecord r, List<Locus> loci, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
         int failed = 0;
         int total = 0;
+        int skipped = 0;
         BuildRecord.Tests summary = r.tests();
         if (summary != null && summary.total() > 0) {
             failed = (int) summary.failed();
             total = (int) summary.total();
+            skipped = (int) summary.skipped();
         } else if (tests != null) {
             for (MarkdownTestReport.ModuleRun run : tests) {
                 if (run == null || run.entries() == null) continue;
                 for (MarkdownTestReport.Entry e : run.entries()) {
                     total++;
                     if (e.isFail()) failed++;
+                    else if (e.isSkip()) skipped++;
                 }
             }
         }
@@ -376,10 +386,36 @@ public final class JkResultsAgent {
         }
         int errors = 0;
         for (Locus d : loci) if (!d.test()) errors++;
-        if (total > 0 && failed > 0) return failed + " of " + total + " failed";
+        String skips = skipped > 0 ? ", " + skipped + " skipped" : "";
+        if (total > 0 && failed > 0) return failed + " of " + total + " failed" + skips;
         if (errors > 0) return errors + (errors == 1 ? " error" : " errors");
-        if (total > 0 && "test".equals(kind(r))) return total + (total == 1 ? " test" : " tests");
+        if (total > 0 && "test".equals(kind(r))) return total + (total == 1 ? " test" : " tests") + skips;
         return "";
+    }
+
+    /**
+     * Why a green run ran no test: every test it counted was skipped. The skip reason the suites
+     * recorded, the first one when they differ; {@code null} when some test ran, or when the
+     * suites kept no reason (a run read back from its record alone).
+     */
+    static @Nullable String allSkipped(BuildRecord r, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+        if (!r.success() || r.cancelled() || tests == null) return null;
+        BuildRecord.Tests summary = r.tests();
+        if (summary != null && summary.total() > 0 && summary.skipped() < summary.total()) return null;
+        Set<String> reasons = new LinkedHashSet<>();
+        for (MarkdownTestReport.ModuleRun run : tests) {
+            if (run == null || run.entries() == null) continue;
+            for (MarkdownTestReport.Entry e : run.entries()) {
+                if (e == null) continue;
+                if (!e.isSkip()) return null;
+                String why = e.skipReason() == null ? "" : e.skipReason().strip();
+                if (!why.isEmpty()) reasons.add(why);
+            }
+        }
+        if (reasons.isEmpty()) return null;
+        int others = reasons.size() - 1;
+        return "skipped: " + reasons.iterator().next()
+                + (others == 0 ? "" : " (+" + others + " other reason" + (others == 1 ? ")" : "s)"));
     }
 
     private static String body(

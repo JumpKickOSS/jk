@@ -308,6 +308,13 @@ A suite replayed from its green stamp counts as run, and the terminal line says 
 nothing reads `Tests passed for 49 modules`. Piped or under an agent, the run report says the
 same of a replayed suite: `OK test app · 12 tests · up to date · 77ms`.
 
+Skipped tests (`@Disabled`, a failed assumption) are counted on the terminal line, never hidden
+behind a pass: `Tests passed; 2 tests skipped`. A run whose every test was skipped, such as
+`--class` on a class whose one test is disabled, reads `No test ran; 1 test skipped`. The run
+report counts them too, `OK test app · 12 tests, 2 skipped · 1.4s`, and when every test was
+skipped it gives the reason: `OK test app · 1 test, 1 skipped · 0.6s — skipped: not on CI`. The
+terminal line counts the suites that ran this time; a replayed suite's skips are in the run report.
+
 ## The slowest tests (`[test] fast-method-budget`)
 
 `jk test` ends with the run's slowest test classes and methods, above the result line: the top
