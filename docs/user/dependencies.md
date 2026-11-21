@@ -240,9 +240,11 @@ line of reasoning, not one per solver step. A dependency whose version a BOM or 
 ```
 
 The same conflict is data for a reader that is not a person: the run's journal record (`GET
-/api/history?id=<run>`) keeps it as `conflict` on the failed resolve's diagnostic, and a command
+/api/history?id=<run>`) keeps it as `conflict` on the failed resolve's diagnostic (a module's
+step, or the `lock` step a workspace build freshens its lock in before any module runs), a command
 that reads the lock (`jk why`, `jk tree`, …) prints it under `-O json` as an `error` row's
-`conflict`: `conclusion`, the `packages` in it, every `facts` row (`kind`, `package`, `versions`,
+`conflict`, and so does a build step's live `error` row under `-O jsonl` when the step's own lock
+update has no solution: `conclusion`, the `packages` in it, every `facts` row (`kind`, `package`, `versions`,
 `from`, `fromVersions`, `pinnedBy`, `available`, `notes`, each present when it says something)
 and the project's own `declared` dependencies behind it
 ([Machine output](machine-output.md)).

@@ -101,6 +101,12 @@ public final class CompositeBuildPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void conflict(String step, String code, String message, String conflict) {
+        a.conflict(step, code, message, conflict);
+        b.conflict(step, code, message, conflict);
+    }
+
+    @Override
     public void error(String step, String code, String message, String test, String exceptionClass) {
         a.error(step, code, message, test, exceptionClass);
         b.error(step, code, message, test, exceptionClass);

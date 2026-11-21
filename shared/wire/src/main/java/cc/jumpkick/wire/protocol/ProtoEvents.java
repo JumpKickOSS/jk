@@ -316,6 +316,11 @@ public final class ProtoEvents {
         return replayed ? WarnEvent.markReplayed(line) : line;
     }
 
+    /** A step's error that is a resolve with no solution, with its conflict as one JSON object. */
+    public static String conflictLine(String dir, String step, String code, String message, String conflict) {
+        return ErrorLineEvent.conflict(dir, step, code, message, conflict).encode();
+    }
+
     public static String errorLine(
             String dir, String step, String code, String message, String test, String exceptionClass) {
         return diagnostic(

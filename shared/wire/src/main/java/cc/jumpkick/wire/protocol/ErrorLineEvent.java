@@ -5,7 +5,11 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TestFailureInfo;
 import java.util.List;
 
-/** An error line, plain or enriched with the test-failure fields (see {@link EngineProtocol#ERROR_LINE}). */
+/**
+ * An error line, plain or enriched with the test-failure fields (see {@link EngineProtocol#ERROR_LINE}).
+ * {@code conflict} is an unsatisfiable resolve's conflict, the text of one JSON object, {@code ""}
+ * otherwise.
+ */
 public record ErrorLineEvent(
         String dir,
         String task,
@@ -25,7 +29,59 @@ public record ErrorLineEvent(
         List<String> snippet,
         String stack,
         int textId,
-        int sameText) {
+        int sameText,
+        String conflict) {
+
+    /** An error line with no conflict behind it. */
+    public ErrorLineEvent(
+            String dir,
+            String task,
+            String code,
+            String message,
+            String test,
+            String module,
+            String suite,
+            String engine,
+            String testClass,
+            String method,
+            String exceptionClass,
+            String file,
+            int line,
+            int snippetStart,
+            int worker,
+            List<String> snippet,
+            String stack,
+            int textId,
+            int sameText) {
+        this(
+                dir,
+                task,
+                code,
+                message,
+                test,
+                module,
+                suite,
+                engine,
+                testClass,
+                method,
+                exceptionClass,
+                file,
+                line,
+                snippetStart,
+                worker,
+                snippet,
+                stack,
+                textId,
+                sameText,
+                "");
+    }
+
+    /** A step's error that is a resolve with no solution: its message and its {@code conflict}. */
+    public static ErrorLineEvent conflict(String dir, String task, String code, String message, String conflict) {
+        return new ErrorLineEvent(
+                dir, task, code, message, "", "", "", "", "", "", "", "", 0, 0, 0, List.of(), "", 0, 0, conflict);
+    }
+
     public String encode() {
         return DiagnosticFields.encode(
                 EngineProtocol.ERROR_LINE,
@@ -47,7 +103,7 @@ public record ErrorLineEvent(
                 snippet,
                 stack,
                 "",
-                "",
+                conflict,
                 textId,
                 sameText);
     }
@@ -103,6 +159,7 @@ public record ErrorLineEvent(
                 Jsonl.strArray(json, "snippet"),
                 DiagnosticFields.str(json, "stack"),
                 Jsonl.intValue(json, "textId", 0),
-                Jsonl.intValue(json, "sameText", 0));
+                Jsonl.intValue(json, "sameText", 0),
+                DiagnosticFields.str(json, "conflict"));
     }
 }

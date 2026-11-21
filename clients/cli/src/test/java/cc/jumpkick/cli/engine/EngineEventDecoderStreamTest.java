@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import cc.jumpkick.cli.run.CompositeBuildPlanListener;
 import cc.jumpkick.cli.run.JsonlListener;
 import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.run.BuildPlanListener;
 import cc.jumpkick.run.BuildPlanResult;
@@ -532,6 +533,31 @@ class EngineEventDecoderStreamTest {
                 .contains("\"type\":\"task-finish\"")
                 .contains("\"predictedMs\":3000")
                 .contains("\"rung\":\"CALIBRATION\"");
+    }
+
+    /**
+     * A step's resolve with no solution arrives as an error line carrying its conflict, and {@code -O
+     * jsonl} prints it as the {@code error} row with the conflict as an object.
+     */
+    @Test
+    void a_live_conflict_is_an_error_row_with_the_conflict_object() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\","
+                + "\"packages\":[\"com.foo:leaf\"],\"facts\":[],\"declared\":[]}";
+        String line = ProtoEvents.conflictLine("/p", "parse", "verbatim", "Cannot resolve dependencies", conflict);
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        BuildPlanListener stdout = CompositeBuildPlanListener.of(
+                new BuildPlanListener() {}, new JsonlListener(new PrintStream(buf, true, StandardCharsets.UTF_8)));
+
+        EngineEventDecoder.dispatch(
+                Jsonl.requiredStr(line, "type"), line, stdout, d -> {}, w -> {}, new FailureTextRefs());
+
+        assertThat(buf.toString(StandardCharsets.UTF_8).lines()).singleElement().satisfies(row -> {
+            Map<?, ?> parsed = (Map<?, ?>) Objects.requireNonNull(MiniJson.parse(row));
+            assertThat(parsed.get("type")).isEqualTo("error");
+            assertThat(parsed.get("task")).isEqualTo("parse");
+            assertThat(parsed.get("message")).isEqualTo("Cannot resolve dependencies");
+            assertThat(parsed.get("conflict")).isEqualTo(MiniJson.parse(conflict));
+        });
     }
 
     /** Records what a workspace build actually told its front-end, per module. */

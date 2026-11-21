@@ -265,6 +265,11 @@ public final class CoalescingBuildPlanListener implements BuildPlanListener, Aut
     }
 
     @Override
+    public void conflict(String step, String code, String message, String conflict) {
+        structural(() -> delegate.conflict(step, code, message, conflict));
+    }
+
+    @Override
     public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         structural(() -> delegate.error(step, code, message, failure));
     }

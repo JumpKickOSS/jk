@@ -92,6 +92,11 @@ abstract class JsonlEmittingListener implements BuildPlanListener {
     }
 
     @Override
+    public void conflict(String step, String code, String msg, String conflict) {
+        line(JsonlShape.conflict(step, code, msg, conflict));
+    }
+
+    @Override
     public void error(String step, String code, String msg, @Nullable String test, String exClass) {
         line(JsonlShape.error(step, code, msg, test, exClass));
     }

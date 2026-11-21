@@ -101,14 +101,28 @@ public sealed interface EngineEvent {
     record Warn(String dir, String step, String code, String message, boolean replayed, String module)
             implements EngineEvent {}
 
+    /** A step's error; {@code conflict} is a resolve with no solution's, one JSON object, {@code ""} otherwise. */
     record ErrorLine(
             String dir,
             String step,
             String code,
             String message,
             @Nullable String test,
-            @Nullable String exceptionClass)
-            implements EngineEvent {}
+            @Nullable String exceptionClass,
+            String conflict)
+            implements EngineEvent {
+
+        /** An error with no conflict behind it. */
+        public ErrorLine(
+                String dir,
+                String step,
+                String code,
+                String message,
+                @Nullable String test,
+                @Nullable String exceptionClass) {
+            this(dir, step, code, message, test, exceptionClass, "");
+        }
+    }
 
     /**
      * A step's terminal, with what the run's estimate priced it at and the rung that priced it

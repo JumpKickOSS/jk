@@ -216,6 +216,11 @@ public final class BridgingPlanListener implements BuildPlanListener {
     }
 
     @Override
+    public void conflict(String step, String code, String message, String conflict) {
+        sink.emit(new EngineEvent.ErrorLine(dir, step, code, redact(message), null, null, redact(conflict)));
+    }
+
+    @Override
     public void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         if (failure == null) {
             error(step, code, message);

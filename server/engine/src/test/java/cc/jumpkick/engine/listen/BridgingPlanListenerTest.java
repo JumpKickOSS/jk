@@ -6,10 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.BuildPlanView;
+import cc.jumpkick.wire.protocol.ErrorLineEvent;
+import cc.jumpkick.wire.protocol.FailureTextRefs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -75,5 +78,25 @@ class BridgingPlanListenerTest {
         listener.planStart(new BuildPlanView("build", 1, 2, 3, 0, false));
         assertThat(sink.events()).singleElement().isInstanceOf(EngineEvent.PlanStart.class);
         assertThat(progress.get()).isEqualTo(1);
+    }
+
+    /** A step's resolve with no solution reaches the wire as an error line that carries its conflict. */
+    @Test
+    void a_conflict_is_an_error_line_carrying_it(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve(".env"), "TOKEN=" + SECRET + "\n");
+        RecordingEventSink sink = new RecordingEventSink();
+        BridgingPlanListener listener =
+                new BridgingPlanListener(tmp.toString(), sink, new BridgingPlanListener.Hooks() {});
+        String conflict = "{\"packages\":[\"com.foo:leaf\"],\"declared\":[\"" + SECRET + "\"]}";
+
+        listener.conflict("resolve-deps", "verbatim", "Cannot resolve dependencies", conflict);
+
+        assertThat(sink.events()).singleElement().isInstanceOfSatisfying(EngineEvent.ErrorLine.class, e -> {
+            assertThat(e.message()).isEqualTo("Cannot resolve dependencies");
+            assertThat(e.conflict()).contains("com.foo:leaf").doesNotContain(SECRET);
+        });
+        String line = Objects.requireNonNull(WireEventSink.encode(sink.events().getFirst(), new FailureTextRefs()));
+        assertThat(ErrorLineEvent.decode(line).conflict())
+                .isEqualTo(((EngineEvent.ErrorLine) sink.events().getFirst()).conflict());
     }
 }

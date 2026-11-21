@@ -75,6 +75,32 @@ class BuildPlanTest {
      * A resolve with no solution is one diagnostic carrying its place, its message and its conflict
      * object, and listeners hear the message as for any error.
      */
+    /** A listener that reads conflicts hears the step's error with its conflict object beside the message. */
+    @Test
+    void a_conflict_reaches_a_listener_with_its_conflict() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\"}";
+        List<String> seen = new ArrayList<>();
+        var plan = BuildPlan.builder("build")
+                .addListener(new BuildPlanListener() {
+                    @Override
+                    public void conflict(String step, String code, String message, String json) {
+                        seen.add(step + ":" + code + ":" + message + ":" + json);
+                    }
+                })
+                .addTask(Task.builder("parse")
+                        .ticks(1)
+                        .execute(ctx -> {
+                            ctx.conflictAt("verbatim", "Cannot resolve dependencies", null, conflict);
+                            throw new IllegalStateException("unsatisfiable");
+                        })
+                        .build())
+                .build();
+
+        plan.run();
+
+        assertThat(seen).containsExactly("parse:verbatim:Cannot resolve dependencies:" + conflict);
+    }
+
     @Test
     void a_conflict_is_one_error_with_its_location_and_conflict() {
         String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\"}";

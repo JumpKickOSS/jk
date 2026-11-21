@@ -72,6 +72,9 @@ public final class WireEventSink implements EventSink {
                 e.module().isEmpty()
                         ? ProtoEvents.warn(e.dir(), e.step(), e.code(), e.message(), e.replayed())
                         : ProtoEvents.moduleWarn(e.dir(), e.module(), e.step(), e.code(), e.message());
+            case EngineEvent.ErrorLine e
+            when !e.conflict().isEmpty() ->
+                ProtoEvents.conflictLine(e.dir(), e.step(), e.code(), e.message(), e.conflict());
             case EngineEvent.ErrorLine e ->
                 ProtoEvents.errorLine(
                         e.dir(),

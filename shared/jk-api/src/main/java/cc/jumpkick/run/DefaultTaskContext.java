@@ -237,7 +237,7 @@ final class DefaultTaskContext implements TaskContext {
     public void conflictAt(String code, String message, @Nullable SourceLocation at, String conflict) {
         BuildPlanResult.Diagnostic d = new BuildPlanResult.Diagnostic(step, code, message);
         plan.errorsRef().add((at == null ? d : d.at(at)).withConflict(conflict));
-        plan.emit(l -> l.error(step, code, message));
+        plan.emit(l -> l.conflict(step, code, message, conflict));
     }
 
     @Override

@@ -361,6 +361,15 @@ public final class JsonlShape {
                 0));
     }
 
+    /**
+     * A step's error that is a resolve with no solution, as {@code -O jsonl} writes it: the {@code
+     * error} row with its {@code conflict} as an object, not the string the wire carries it in.
+     */
+    static String conflict(String step, String code, String msg, String conflict) {
+        String row = error(step, code, msg);
+        return conflict.isEmpty() ? row : Jsonl.append(row, "\"conflict\":" + conflict);
+    }
+
     /** A diagnostic record goes out as {@code error}, the name the console has always given it. */
     private static String error(ErrorLineEvent event) {
         return console(event.encode(), EventCatalog.JSONL_ERROR, STEP_DROPS);

@@ -175,6 +175,22 @@ class ProtoEventsFrozenBytesTest {
                 .isEmpty();
     }
 
+    /** A step's live error for a resolve with no solution carries the conflict as its plan diagnostic does. */
+    @Test
+    void a_resolve_conflict_rides_the_live_error_line() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\"}";
+        String line = ProtoEvents.conflictLine("a/b", "parse", "verbatim", "Cannot resolve dependencies", conflict);
+
+        assertThat(line)
+                .isEqualTo("{\"type\":\"error-line\",\"dir\":\"a/b\",\"task\":\"parse\","
+                        + "\"code\":\"verbatim\",\"message\":\"Cannot resolve dependencies\",\"conflict\":"
+                        + Jsonl.quote(conflict) + "}");
+        assertThat(ErrorLineEvent.decode(line).conflict()).isEqualTo(conflict);
+        assertThat(ErrorLineEvent.decode(ProtoEvents.errorLine("a/b", "javac", "E1", "boom", "", ""))
+                        .conflict())
+                .isEmpty();
+    }
+
     @Test
     void plan_finish_shapes_carry_their_kind_and_only_their_own_fields() {
         assertThat(ProtoEvents.planFinish("a/b", true))

@@ -438,6 +438,8 @@ final class EngineEventDecoder {
                 e.suite());
         if (failure != null) {
             listener.error(e.task(), e.code(), text.message(), failure);
+        } else if (!e.conflict().isEmpty()) {
+            listener.conflict(e.task(), e.code(), text.message(), e.conflict());
         } else {
             listener.error(e.task(), e.code(), text.message(), e.test(), e.exceptionClass());
         }

@@ -60,6 +60,14 @@ public interface BuildPlanListener {
         error(step, code, message);
     }
 
+    /**
+     * A step's error that is a resolve with no solution, with its {@code conflict} as one JSON object
+     * ({@link BuildPlanResult.Diagnostic#conflict}) for readers that are not a person.
+     */
+    default void conflict(String step, String code, String message, String conflict) {
+        error(step, code, message);
+    }
+
     /** Structured test failure (module / engine / class / method / stack). */
     default void error(String step, String code, String message, @Nullable TestFailureInfo failure) {
         if (failure == null) {
