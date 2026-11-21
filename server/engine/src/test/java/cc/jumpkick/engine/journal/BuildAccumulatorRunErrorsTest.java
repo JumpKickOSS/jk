@@ -4,15 +4,21 @@ package cc.jumpkick.engine.journal;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.SecretRedactor;
 import cc.jumpkick.engine.jobs.JobOutcome;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.SourceLocation;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -145,5 +151,28 @@ class BuildAccumulatorRunErrorsTest {
             assertThat(p.destination()).doesNotContain(secret);
             assertThat(p.deploymentErrors()).singleElement().asString().doesNotContain(secret);
         });
+    }
+
+    /** A text the redactor cannot mask is kept, and the engine log says the run's redaction failed open. */
+    @Test
+    void a_redaction_that_fails_open_says_so() {
+        var err = new ByteArrayOutputStream();
+        RunNotices.clear();
+        Log.install(
+                new PrintStream(err, true, StandardCharsets.UTF_8), System.Logger.Level.INFO, UnaryOperator.identity());
+        BuildRecord r;
+        try {
+            // A NUL byte is no path, so the redactor for this run cannot be built.
+            BuildAccumulator a = new BuildAccumulator("build", "/ws\0bad", "g:ws", "cli");
+            a.addPreflightFailure("lock", 40, "no version of a:b satisfies 2.0", null);
+            r = a.toRecord(2_000, false, 100, "9.9", null);
+        } finally {
+            Log.install(System.err, System.Logger.Level.INFO, UnaryOperator.identity());
+            RunNotices.clear();
+        }
+
+        assertThat(r.diagnostics()).singleElement().satisfies(d -> assertThat(d.message())
+                .isEqualTo("no version of a:b satisfies 2.0"));
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("secret redaction failed open");
     }
 }

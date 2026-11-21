@@ -2,10 +2,10 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.builds.ProjectIdCache;
-import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.run.SlowestTests;
@@ -674,8 +674,8 @@ public final class BuildAccumulator {
         String step = stage == null || stage.isBlank() ? "preflight" : stage;
         addTask("", step, "resolve", "FAIL", millis, 0L);
         anyFailure = true;
-        String message = redactEnv(dir, reason);
-        String safeConflict = redactEnv(dir, conflict);
+        String message = EventRedaction.redactEnv(dir, reason);
+        String safeConflict = EventRedaction.redactEnv(dir, conflict);
         addDiag(locatedError(step, step, message == null ? "" : message, at, safeConflict == null ? "" : safeConflict));
     }
 
@@ -964,11 +964,6 @@ public final class BuildAccumulator {
     }
 
     /**
-     * Fold in one plan's test summary. Single-plan {@code jk test}/{@code 1build} call this once;
-     * a workspace build calls it per module (each module's {@code TEST_RESULT}), so the counts
-     * accumulate into the run's total rather than the last module overwriting the rest.
-     */
-    /**
      * What a publish run sent where; the one Publish row a record carries. Its destination and the
      * repository's validation errors are redacted.
      */
@@ -985,9 +980,11 @@ public final class BuildAccumulator {
     }
 
     /**
-     * Fold one suite's counts into the record. Only tests count: the shortfall row a stopped run
-     * carries ({@link RunShortfall#rows}) fails the step but is no test, so it leaves
-     * {@code total} and {@code failed} here.
+     * Fold in one plan's test summary. Single-plan {@code jk test}/{@code 1build} call this once;
+     * a workspace build calls it per module (each module's {@code TEST_RESULT}), so the counts
+     * accumulate into the run's total rather than the last module overwriting the rest. Only tests
+     * count: the shortfall row a stopped run carries ({@link RunShortfall#rows}) fails the step but
+     * is no test, so it leaves {@code total} and {@code failed} here.
      */
     public synchronized void addTests(TestSummary t) {
         if (t == null) return;
@@ -1150,17 +1147,7 @@ public final class BuildAccumulator {
 
     /** {@code text} with this run's secrets masked. */
     private String redactOrSelf(String text) {
-        return Objects.requireNonNullElse(redactEnv(dir, text), text);
-    }
-
-    static @Nullable String redactEnv(String dir, @Nullable String text) {
-        if (text == null || text.isEmpty()) return text;
-        try {
-            return BuildEnv.secretsFor(dir != null && !dir.isBlank() ? Path.of(dir) : null)
-                    .redact(text);
-        } catch (RuntimeException e) {
-            return text;
-        }
+        return EventRedaction.redactText(dir, text);
     }
 
     /**

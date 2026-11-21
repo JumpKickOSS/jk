@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.journal;
 
 import cc.jumpkick.diagnostic.CompilerLocus;
+import cc.jumpkick.engine.listen.EventRedaction;
 import cc.jumpkick.run.BuildPlanResult;
 
 /** A plan's diagnostics as the journal keeps them. */
@@ -14,9 +15,9 @@ final class PlanDiags {
      * a javac/kotlinc/groovyc header (and caret) when the plan row left them empty.
      */
     static BuildRecord.Diag of(String severity, String dir, String redactDir, BuildPlanResult.Diagnostic d) {
-        String redacted = BuildAccumulator.redactEnv(redactDir, d.message());
+        String redacted = EventRedaction.redactEnv(redactDir, d.message());
         String message = redacted == null ? "" : redacted;
-        String conflict = BuildAccumulator.redactEnv(redactDir, d.conflict());
+        String conflict = EventRedaction.redactEnv(redactDir, d.conflict());
         String file = d.file() == null ? "" : d.file();
         int line = d.line();
         int col = 0;
@@ -42,7 +43,7 @@ final class PlanDiags {
                 d.engine(),
                 d.className(),
                 d.method(),
-                BuildAccumulator.redactEnv(redactDir, d.stack()),
+                EventRedaction.redactEnv(redactDir, d.stack()),
                 file,
                 line,
                 col,
