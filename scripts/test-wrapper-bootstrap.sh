@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Network-free bootstrap of the POSIX wrapper `jk wrapper` writes. The committed template, trusting
-# a throwaway release key, runs against a fixture release served over file:// — the signed
-# latest/LATEST pointer, the signed SHA256SUMS and the host's artifact — and must install and exec
+# a throwaway release key, runs against a fixture release served over HTTPS from this machine — the
+# signed latest/LATEST pointer, the signed SHA256SUMS and the host's artifact — and must install and exec
 # the version the pointer names, run the installed jk without fetching from then on, and refuse
 # every release whose evidence does not verify while leaving a prior installation untouched.
 set -euo pipefail
@@ -9,14 +9,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TEMPLATE="$ROOT/clients/cli/src/main/resources/cc/jumpkick/command/toolchain/wrapper/jk.sh"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-wrapper-test.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT
+SERVER_PID=""
+cleanup() {
+  [[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null
+  rm -rf "$WORK"
+}
+trap cleanup EXIT
 
 fail() {
   echo "test-wrapper-bootstrap: $1" >&2
   exit 1
 }
 
-for tool in openssl curl xz; do
+for tool in openssl curl xz python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"
 done
 # The wrapper execs any jk it finds on PATH, so it runs with a PATH that holds none: the system
@@ -29,16 +34,24 @@ fi
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/test-key.pem" 2>/dev/null
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$WORK/other-key.pem" 2>/dev/null
 TEST_SPKI="$(openssl pkey -in "$WORK/test-key.pem" -pubout -outform DER 2>/dev/null | openssl base64 -A)"
+# The wrapper downloads over HTTPS only, so the fixture host is this machine under a throwaway
+# certificate of its own.
+openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=127.0.0.1"   -addext "subjectAltName=IP:127.0.0.1"   -keyout "$WORK/host-key.pem" -out "$WORK/host-cert.pem" 2>/dev/null ||
+  fail "openssl could not issue the fixture host's certificate"
 
-# The checkout: the wrapper as `jk wrapper` writes it, trusting the throwaway key as the release key.
+# The checkout: the wrapper as `jk wrapper` writes it, trusting the throwaway key as the release key
+# and, in both its curl calls, the fixture host's certificate. Nothing else changes.
 REPO="$WORK/repo"
 mkdir -p "$REPO"
-awk -v key="$TEST_SPKI" '
+awk -v key="$TEST_SPKI" -v cert="$WORK/host-cert.pem" '
   /^RELEASE_RSA_SPKI=/ { sub(/"[^"]*"/, "\"" key "\"") }
+  { gsub(/curl -fsSL /, "curl --cacert \"" cert "\" -fsSL ") }
   { print }
 ' "$TEMPLATE" >"$REPO/jk"
 chmod +x "$REPO/jk"
 grep -qF "$TEST_SPKI" "$REPO/jk" || fail "the wrapper template has no RELEASE_RSA_SPKI line to replace"
+[[ "$(grep -cF -- "--cacert" "$REPO/jk")" == "2" ]] ||
+  fail "the wrapper template no longer makes exactly two 'curl -fsSL' calls to trust the fixture host in"
 
 # The release host: releases/latest (the signed pointer) and releases/<version> (the signed
 # manifest and the host's artifact, an .xz of a script that echoes its arguments).
@@ -86,7 +99,36 @@ write_lock() {
 # Runs the checkout's wrapper with JK_HOME=$1 and the remaining arguments, in an environment
 # holding only what the wrapper documents, with $RELEASES_URL (the fixture) as the release host and
 # $CLIENT, when set, as JK_CLIENT.
-RELEASES_URL="file://$RELEASES"
+cat >"$WORK/serve.py" <<'PY'
+import functools, http.server, os, ssl, sys
+
+root, cert, key, port_file = sys.argv[1:5]
+
+
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=root))
+tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+tls.load_cert_chain(cert, key)
+server.socket = tls.wrap_socket(server.socket, server_side=True)
+with open(port_file + ".part", "w") as out:
+    out.write(str(server.server_port))
+os.replace(port_file + ".part", port_file)
+server.serve_forever()
+PY
+python3 "$WORK/serve.py" "$RELEASES" "$WORK/host-cert.pem" "$WORK/host-key.pem" "$WORK/port" &
+SERVER_PID=$!
+for _ in $(seq 1 100); do
+  [[ -s "$WORK/port" ]] && break
+  kill -0 "$SERVER_PID" 2>/dev/null || fail "the fixture release host did not start"
+  sleep 0.1
+done
+[[ -s "$WORK/port" ]] || fail "the fixture release host did not report its port"
+FIXTURE_URL="https://127.0.0.1:$(cat "$WORK/port")"
+RELEASES_URL="$FIXTURE_URL"
 CLIENT=""
 run_wrapper() {
   local home="$1"
@@ -168,10 +210,10 @@ assert_stdout "fixture jk $VERSION: floored" "the floor it satisfies did not exe
 grep -q "fetching jk" "$WORK/last-stderr" && fail "a satisfied floor fetched again"
 
 # The release host is unreachable, but the installed jk satisfies the floor: it runs regardless.
-RELEASES_URL="file://$WORK/no-such-releases"
+RELEASES_URL="https://127.0.0.1:1"
 run_wrapper "$HOME_FRESH" offline || fail "the installed jk did not run while the release host was unreachable"
 assert_stdout "fixture jk $VERSION: offline" "the unreachable host did not exec the installed jk"
-RELEASES_URL="file://$RELEASES"
+RELEASES_URL="$FIXTURE_URL"
 
 # A prior installation below the floor is replaced by the release, and nothing is parked.
 HOME_PRIOR="$WORK/home-prior"
