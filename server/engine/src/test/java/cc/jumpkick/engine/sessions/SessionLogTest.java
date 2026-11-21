@@ -188,11 +188,11 @@ class SessionLogTest {
     void a_leader_is_alive_while_its_pid_runs_under_the_same_start() {
         ProcessHandle self = ProcessHandle.current();
         long started = self.info().startInstant().orElseThrow().toEpochMilli();
-        assertThat(SessionLog.processAlive(self.pid() + "@" + started)).isTrue();
-        assertThat(SessionLog.processAlive(self.pid() + "@" + (started - 3_600_000)))
+        assertThat(LeaderProcess.alive(self.pid() + "@" + started)).isTrue();
+        assertThat(LeaderProcess.alive(self.pid() + "@" + (started - 3_600_000)))
                 .as("a reused pid is another process")
                 .isFalse();
-        assertThat(SessionLog.processAlive(Long.MAX_VALUE / 2 + "@1")).isFalse();
+        assertThat(LeaderProcess.alive(Long.MAX_VALUE / 2 + "@1")).isFalse();
     }
 
     @Test
@@ -305,7 +305,7 @@ class SessionLogTest {
         assertThat(Episode.num(stored.getLast(), "number")).isEqualTo(total);
         assertThat(journal.actions(shell))
                 .as("only the actions of kept episodes survive a compaction")
-                .allSatisfy(a -> assertThat(SessionLog.numberOf(MiniJson.str(a, "episode")))
+                .allSatisfy(a -> assertThat(EpisodeLines.numberOf(MiniJson.str(a, "episode")))
                         .isGreaterThan(total - keep - SessionLog.COMPACT_EPISODE_LINES));
 
         SessionLog.Page page = log.session(shell, 0, 10).orElseThrow();
@@ -571,6 +571,44 @@ class SessionLogTest {
 
         answer.countDown();
         assertThat(adopting.join(Duration.ofSeconds(10))).isTrue();
+    }
+
+    @Test
+    void a_project_id_is_asked_for_without_holding_the_log() throws Exception {
+        CountDownLatch asking = new CountDownLatch(1);
+        CountDownLatch answer = new CountDownLatch(1);
+        SessionLog slow = new SessionLog(
+                journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, EXPIRY, new ProjectIdMemo(dir -> {
+                    if (dir.equals("/ws/slow")) {
+                        asking.countDown();
+                        await(answer);
+                    }
+                    return "id" + dir.replace('/', '-');
+                }));
+        String id = slow.open("mcp", "claude-code", LABEL, "/ws/app");
+        Thread placing = Thread.ofPlatform().start(() -> slow.placeRun("mcp", LABEL, "test", "/ws/slow", T + 2_000));
+        assertThat(asking.await(10, TimeUnit.SECONDS)).isTrue();
+
+        Thread other =
+                Thread.ofPlatform().start(() -> slow.placeRun("mcp", "cursor 9c01", "build", "/ws/app", T + 3_000));
+        assertThat(other.join(Duration.ofSeconds(5)))
+                .as("another session's run is placed while git is still asked for one project's id")
+                .isTrue();
+        assertThat(slow.where("mcp", LABEL)).isPresent();
+        assertThat(placing.isAlive())
+                .as("the run waits for its own project's id")
+                .isTrue();
+
+        answer.countDown();
+        assertThat(placing.join(Duration.ofSeconds(10))).isTrue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> session =
+                (Map<String, Object>) journal.read(id).orElseThrow().get("session");
+        assertThat(session).containsEntry("project", "/ws/slow").containsEntry("projectId", "id-ws-slow");
+        assertThat(storedEpisodes(id)).last().satisfies(e -> assertThat(e)
+                .asInstanceOf(InstanceOfAssertFactories.MAP)
+                .containsEntry("project", "/ws/slow")
+                .containsEntry("projectId", "id-ws-slow"));
     }
 
     private static void await(CountDownLatch latch) {

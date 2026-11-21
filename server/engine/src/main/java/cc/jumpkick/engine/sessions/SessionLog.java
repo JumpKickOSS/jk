@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.UnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -95,12 +96,17 @@ public final class SessionLog {
     private volatile BooleanSupplier predecessorStopped = () -> false;
     private volatile Consumer<String> connectionEnded = id -> {};
     private volatile Running running = (origin, label) -> false;
-    private volatile Leaders leaders = SessionLog::processAlive;
+    private volatile Leaders leaders = LeaderProcess::alive;
 
     private final Map<String, Live> byKey = new LinkedHashMap<>();
     private final Map<String, Live> byId = new LinkedHashMap<>();
     private final Map<String, Live> byConnection = new HashMap<>();
-    private final ProjectIdMemo projectIds = new ProjectIdMemo();
+    /**
+     * Asked off this log's monitor, by each entry point for the projects its fact names; under the
+     * monitor only {@linkplain ProjectIdMemo#known remembered} ids are read, so no fact waits behind
+     * a git fork.
+     */
+    private final ProjectIdMemo projectIds;
 
     /** Whether {@link #adopt} has run. */
     private boolean adopted;
@@ -152,11 +158,22 @@ public final class SessionLog {
      *     session-expiry})
      */
     public SessionLog(@Nullable SessionJournal journal, LongSupplier clock, long idleGapMillis, long expiryMillis) {
+        this(journal, clock, idleGapMillis, expiryMillis, new ProjectIdMemo());
+    }
+
+    /** As the public constructor, asking {@code projectIds} for each project's id. */
+    SessionLog(
+            @Nullable SessionJournal journal,
+            LongSupplier clock,
+            long idleGapMillis,
+            long expiryMillis,
+            ProjectIdMemo projectIds) {
         if (expiryMillis <= 0) throw new IllegalArgumentException("session expiry must be positive: " + expiryMillis);
         this.journal = journal;
         this.clock = clock;
         this.idleGapMillis = idleGapMillis;
         this.expiryMillis = expiryMillis;
+        this.projectIds = projectIds;
     }
 
     /** Publish every change to {@code events}. */
@@ -175,7 +192,7 @@ public final class SessionLog {
 
     /** Ask {@code leaders} whether a session's leader process still runs; the machine's process table by default. */
     public void leaders(Leaders leaders) {
-        this.leaders = leaders != null ? leaders : SessionLog::processAlive;
+        this.leaders = leaders != null ? leaders : LeaderProcess::alive;
     }
 
     /**
@@ -287,13 +304,14 @@ public final class SessionLog {
             if (r.id().isBlank() || SessionRecord.ENDED.equals(r.state()) || byId.containsKey(r.id())) continue;
             Map<?, ?> state = doc.get("inference") instanceof Map<?, ?> m ? m : null;
             List<Map<String, Object>> lines = journal.episodeLines(r.id());
-            List<EpisodeInference.Stored> stored = latest(lines);
-            Live live =
-                    new Live(r, EpisodeInference.resume(r.id(), idleGapMillis, stored, state, numberOf(r.episode())));
+            List<EpisodeInference.Stored> stored = EpisodeLines.latest(lines);
+            Live live = new Live(
+                    r,
+                    EpisodeInference.resume(r.id(), idleGapMillis, stored, state, EpisodeLines.numberOf(r.episode())));
             live.episodeLines = lines.size();
             live.leader = MiniJson.str(doc, "leader");
             for (EpisodeInference.Stored e : live.episodes.stored())
-                live.written.put(e.episode().id(), lineText(e));
+                live.written.put(e.episode().id(), EpisodeLines.text(e));
             // The record names the newest episode it keeps, or none: an episode compacted away is
             // not a current one, and a page asked for it would find nothing.
             Episode newest = live.episodes.current();
@@ -362,15 +380,17 @@ public final class SessionLog {
      * Open a session for a connection that just introduced itself ({@code initialize}). Answers the
      * session's id; one already open under the same origin and label is answered as it is.
      */
-    public synchronized String open(
-            String origin, @Nullable String client, @Nullable String label, @Nullable String project) {
-        adopt();
-        Live live = sessionFor(origin, label, client, clock.getAsLong());
-        if (project != null && !project.isBlank() && live.record.project() == null) {
-            live.record = withProject(live.record, project, live.record.lastActiveAt());
-            persist(live);
+    public String open(String origin, @Nullable String client, @Nullable String label, @Nullable String project) {
+        resolveIds(origin, label, project);
+        synchronized (this) {
+            adopt();
+            Live live = sessionFor(origin, label, client, clock.getAsLong());
+            if (project != null && !project.isBlank() && live.record.project() == null) {
+                live.record = withProject(live.record, project, live.record.lastActiveAt());
+                persist(live);
+            }
+            return live.record.id();
         }
-        return live.record.id();
     }
 
     /** The connection behind {@code origin} and {@code label} closed: end its session. */
@@ -472,30 +492,6 @@ public final class SessionLog {
         return !running.has(r.origin(), r.label()) && !leaders.alive(leader);
     }
 
-    /**
-     * Whether {@code leader} ({@code <pid>@<start millis>}) names a running process. A start of 0, or
-     * one the process table will not tell, matches any process on the pid; one unreadable is alive.
-     */
-    static boolean processAlive(String leader) {
-        int at = leader.indexOf('@');
-        long pid;
-        long started;
-        try {
-            pid = Long.parseLong(at < 0 ? leader : leader.substring(0, at));
-            started = at < 0 ? 0L : Long.parseLong(leader.substring(at + 1));
-        } catch (NumberFormatException e) {
-            return true;
-        }
-        Optional<ProcessHandle> p = ProcessHandle.of(pid);
-        if (p.isEmpty() || !p.get().isAlive()) return false;
-        if (started <= 0) return true;
-        return p.get()
-                .info()
-                .startInstant()
-                .map(i -> Math.abs(i.toEpochMilli() - started) < 1_000)
-                .orElse(true);
-    }
-
     /** {@code live}'s state at {@code now}: live while one of its runs is in flight, however long ago it acted. */
     private String stateOf(Live live, long now) {
         SessionRecord r = live.record;
@@ -520,16 +516,18 @@ public final class SessionLog {
      * the origin's first fact. Answers the episode id the run record carries, or {@code null} for a
      * trigger no session owns.
      */
-    public synchronized @Nullable String placeRun(
-            String trigger, @Nullable String label, String kind, String dir, long at) {
+    public @Nullable String placeRun(String trigger, @Nullable String label, String kind, String dir, long at) {
         if (!ownsTrigger(trigger) || dir == null || dir.isBlank()) return null;
-        adopt();
-        Live live = sessionFor(trigger, label, clientOf(label), at);
-        EpisodeInference.Placement p = live.episodes.place(at, projectOr(live, dir));
-        touch(live, dir, at, p.episode());
-        persist(live);
-        publish(live, p.changes());
-        return p.episode();
+        resolveIds(trigger, label, dir);
+        synchronized (this) {
+            adopt();
+            Live live = sessionFor(trigger, label, clientOf(label), at);
+            EpisodeInference.Placement p = live.episodes.place(at, projectOr(live, dir));
+            touch(live, dir, at, p.episode());
+            persist(live);
+            publish(live, p.changes());
+            return p.episode();
+        }
     }
 
     /** Fold a finished run into the episode its admission placed it in, and log it as the session's action. */
@@ -543,23 +541,35 @@ public final class SessionLog {
      * here, or one a displaced engine reported. A log that no longer writes hands it to its
      * successor.
      */
-    public synchronized void runFinished(FinishedRun r) {
-        if (!writing()) {
-            successor.accept(r);
-            return;
-        }
-        adopt();
+    public void runFinished(FinishedRun r) {
         String episode = r.episode();
         int dot = episode.lastIndexOf('.');
-        Live live = dot > 0 ? byId.get(episode.substring(0, dot)) : null;
-        if (live == null) return;
-        List<EpisodeInference.Change> changes =
-                r.cancelled() ? List.of() : live.episodes.fold(episode, RunFacts.fact(r));
-        touch(live, r.dir(), r.finishedAt(), live.record.episode());
-        ActionRecord action = RunFacts.action(r);
-        append(live, action);
-        persist(live);
-        publish(live, changes);
+        String session = dot > 0 ? episode.substring(0, dot) : null;
+        String own = null;
+        synchronized (this) {
+            if (writing()) {
+                adopt();
+                Live live = session == null ? null : byId.get(session);
+                own = live == null ? null : live.record.project();
+            }
+        }
+        projectIds.ask(r.dir(), own);
+        synchronized (this) {
+            if (!writing()) {
+                successor.accept(r);
+                return;
+            }
+            adopt();
+            Live live = session == null ? null : byId.get(session);
+            if (live == null) return;
+            List<EpisodeInference.Change> changes =
+                    r.cancelled() ? List.of() : live.episodes.fold(episode, RunFacts.fact(r));
+            touch(live, r.dir(), r.finishedAt(), live.record.episode());
+            ActionRecord action = RunFacts.action(r);
+            append(live, action);
+            persist(live);
+            publish(live, changes);
+        }
     }
 
     /**
@@ -567,7 +577,7 @@ public final class SessionLog {
      * episode. {@code fact} carries what inference reads; {@code kind}, {@code summary} and {@code
      * headline} are what the timeline shows.
      */
-    public synchronized void action(
+    public void action(
             String origin,
             @Nullable String label,
             @Nullable String client,
@@ -576,43 +586,46 @@ public final class SessionLog {
             String summary,
             @Nullable String headline) {
         if (!ownsTrigger(origin)) return;
-        adopt();
-        Live live = sessionFor(origin, label, client, fact.at());
-        String project = projectOr(live, fact.project());
-        EpisodeInference.Placement p = live.episodes.place(fact.at(), project);
-        Fact placed = project.equals(fact.project())
-                ? fact
-                : new Fact(
-                        fact.at(),
-                        fact.millis(),
-                        project,
-                        fact.module(),
-                        fact.kind(),
-                        fact.ok(),
-                        fact.failingTests(),
-                        fact.target(),
-                        fact.count());
-        List<EpisodeInference.Change> changes = new ArrayList<>(p.changes());
-        changes.addAll(live.episodes.fold(p.episode(), placed));
-        touch(live, project, fact.end(), p.episode());
-        ActionRecord action = new ActionRecord(
-                0,
-                fact.at(),
-                kind,
-                summary,
-                headline,
-                fact.ok() ? ActionRecord.OK : ActionRecord.ERROR,
-                fact.millis(),
-                p.episode(),
-                project.isBlank() ? null : project,
-                0);
-        ActionRecord logged = append(live, action);
-        persist(live);
-        publish(live, changes);
-        Map<String, Object> payload = envelope(EventCatalog.SSE_ACTION);
-        payload.put("session", live.record.id());
-        payload.put("action", logged.toMap());
-        events.publish(EventCatalog.SSE_ACTION, payload);
+        resolveIds(origin, label, fact.project());
+        synchronized (this) {
+            adopt();
+            Live live = sessionFor(origin, label, client, fact.at());
+            String project = projectOr(live, fact.project());
+            EpisodeInference.Placement p = live.episodes.place(fact.at(), project);
+            Fact placed = project.equals(fact.project())
+                    ? fact
+                    : new Fact(
+                            fact.at(),
+                            fact.millis(),
+                            project,
+                            fact.module(),
+                            fact.kind(),
+                            fact.ok(),
+                            fact.failingTests(),
+                            fact.target(),
+                            fact.count());
+            List<EpisodeInference.Change> changes = new ArrayList<>(p.changes());
+            changes.addAll(live.episodes.fold(p.episode(), placed));
+            touch(live, project, fact.end(), p.episode());
+            ActionRecord action = new ActionRecord(
+                    0,
+                    fact.at(),
+                    kind,
+                    summary,
+                    headline,
+                    fact.ok() ? ActionRecord.OK : ActionRecord.ERROR,
+                    fact.millis(),
+                    p.episode(),
+                    project.isBlank() ? null : project,
+                    0);
+            ActionRecord logged = append(live, action);
+            persist(live);
+            publish(live, changes);
+            Map<String, Object> payload = envelope(EventCatalog.SSE_ACTION);
+            payload.put("session", live.record.id());
+            payload.put("action", logged.toMap());
+            events.publish(EventCatalog.SSE_ACTION, payload);
+        }
     }
 
     /**
@@ -620,17 +633,35 @@ public final class SessionLog {
      * else a new episode titled by it. The goal is clipped to {@link #GOAL_CHARS} and masked as an
      * action's summary is before anything stores, serves or streams it. Answers the episode id.
      */
-    public synchronized @Nullable String goal(String origin, @Nullable String label, String project, String text) {
+    public @Nullable String goal(String origin, @Nullable String label, String project, String text) {
         if (!ownsTrigger(origin)) return null;
-        adopt();
-        long now = clock.getAsLong();
-        Live live = sessionFor(origin, label, clientOf(label), now);
-        String where = projectOr(live, project);
-        EpisodeInference.Placement p = live.episodes.goal(now, where, maskedGoal(where, text));
-        touch(live, project, now, p.episode());
-        persist(live);
-        publish(live, p.changes());
-        return p.episode();
+        resolveIds(origin, label, project);
+        synchronized (this) {
+            adopt();
+            long now = clock.getAsLong();
+            Live live = sessionFor(origin, label, clientOf(label), now);
+            String where = projectOr(live, project);
+            EpisodeInference.Placement p = live.episodes.goal(now, where, maskedGoal(where, text));
+            touch(live, project, now, p.episode());
+            persist(live);
+            publish(live, p.changes());
+            return p.episode();
+        }
+    }
+
+    /**
+     * Off the monitor: ask for the ids of {@code dir} and of the project the open session of {@code
+     * origin} and {@code label} already names, so the fact placed under the monitor finds both
+     * remembered.
+     */
+    private void resolveIds(String origin, @Nullable String label, @Nullable String dir) {
+        String own;
+        synchronized (this) {
+            adopt();
+            Live live = byKey.get(key(origin, label));
+            own = live == null ? null : live.record.project();
+        }
+        projectIds.ask(dir, own);
     }
 
     /** Characters of a goal an episode title keeps: a goal is meant to be under eight words. */
@@ -673,13 +704,24 @@ public final class SessionLog {
      */
     public List<Map<String, Object>> sessions(int limit, @Nullable String projectId) {
         sweep();
+        if (projectId != null) {
+            Set<String> dirs = new HashSet<>();
+            synchronized (this) {
+                for (Live l : byId.values()) {
+                    dirs.add(Objects.toString(l.record.project(), ""));
+                    for (Episode e : l.episodes.episodes()) dirs.add(e.project());
+                }
+            }
+            dirs.forEach(projectIds::ask);
+        }
         Map<String, Map<String, Object>> rows = new LinkedHashMap<>();
         Set<String> live = new HashSet<>();
         synchronized (this) {
             for (Live l : byId.values()) {
                 live.add(l.record.id());
                 List<Episode> episodes = l.episodes.episodes();
-                Map<String, Object> row = onProject(row(l, episodes), l.record, episodes, projectId);
+                Map<String, Object> row =
+                        onProject(row(l, episodes), l.record, episodes, projectId, projectIds::namedIfKnown);
                 if (row != null) rows.put(l.record.id(), row);
             }
         }
@@ -695,7 +737,7 @@ public final class SessionLog {
                 if (kept >= limit) break;
                 if (live.contains(r.id()) || rows.containsKey(r.id())) continue;
                 List<Episode> episodes = storedEpisodes(r.id());
-                Map<String, Object> row = onProject(row(r, null, episodes), r, episodes, projectId);
+                Map<String, Object> row = onProject(row(r, null, episodes), r, episodes, projectId, projectIds::named);
                 if (row == null) continue;
                 rows.put(r.id(), row);
                 kept++;
@@ -759,7 +801,7 @@ public final class SessionLog {
         List<Map<String, Object>> eps = new ArrayList<>();
         for (Episode e : episodes.reversed()) {
             if (eps.size() == EpisodeInference.KEEP) break;
-            eps.add(withProjectId(e).toMap());
+            eps.add(projectIds.named(e).toMap());
         }
         return Optional.of(new Page(sessionMap(record, state), eps, page, next));
     }
@@ -831,7 +873,7 @@ public final class SessionLog {
                 r.client(),
                 r.label(),
                 project,
-                project == null ? null : projectIds.idOf(project),
+                projectIds.knownFor(r, project),
                 r.startedAt(),
                 last,
                 r.endedAt(),
@@ -846,7 +888,7 @@ public final class SessionLog {
                 r.client(),
                 r.label(),
                 project,
-                projectIds.idOf(project),
+                projectIds.knownFor(r, project),
                 r.startedAt(),
                 at,
                 r.endedAt(),
@@ -885,17 +927,14 @@ public final class SessionLog {
     private void persist(Live live) {
         if (journal == null || !writing()) return;
         String id = live.record.id();
-        String current = live.record.episode();
         Set<String> kept = new HashSet<>();
         try {
             for (EpisodeInference.Stored e : live.episodes.stored()) {
                 String eid = e.episode().id();
                 kept.add(eid);
-                String text = lineText(e);
+                String text = EpisodeLines.text(e);
                 if (text.equals(live.written.get(eid))) continue;
-                // Only the current episode's project is asked for its id: this runs while a build is
-                // admitted, and resolving an older episode's checkout could fork git on a fresh engine.
-                journal.appendEpisode(id, line(e, eid.equals(current)));
+                journal.appendEpisode(id, line(e));
                 live.written.put(eid, text);
                 live.episodeLines++;
             }
@@ -915,12 +954,11 @@ public final class SessionLog {
     private void compact(Live live, @Nullable List<Map<String, Object>> actions) {
         if (journal == null || !writing()) return;
         String id = live.record.id();
-        String current = live.record.episode();
         try {
             List<Map<String, Object>> lines = new ArrayList<>();
             Set<String> kept = new HashSet<>();
             for (EpisodeInference.Stored e : live.episodes.stored()) {
-                lines.add(line(e, e.episode().id().equals(current)));
+                lines.add(line(e));
                 kept.add(e.episode().id());
             }
             journal.rewriteEpisodes(id, lines);
@@ -947,38 +985,16 @@ public final class SessionLog {
         return doc;
     }
 
-    /** One episode line: the episode, with its project's id when {@code resolve} or already known, and its tallies. */
-    private Map<String, Object> line(EpisodeInference.Stored e, boolean resolve) {
-        Episode episode = e.episode();
-        String dir = episode.project();
-        if (!dir.isBlank() && (resolve || projectIds.knows(dir))) episode = withProjectId(episode);
+    /**
+     * Under the monitor: one episode line, the episode with its project's id when remembered, and its
+     * tallies. The entry point placing a fact asked for its project's id before taking the monitor;
+     * a line without one has it added as it is read.
+     */
+    private Map<String, Object> line(EpisodeInference.Stored e) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("episode", episode.toMap());
+        m.put("episode", projectIds.namedIfKnown(e.episode()).toMap());
         m.put("state", e.state());
         return m;
-    }
-
-    /** An episode line as compared for change: without the project id, which only some lines carry. */
-    private static String lineText(EpisodeInference.Stored e) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("episode", e.episode().toMap());
-        m.put("state", e.state());
-        return MiniJson.write(m);
-    }
-
-    /** The episodes {@code lines} hold: the last line for each episode id. */
-    private static List<EpisodeInference.Stored> latest(List<Map<String, Object>> lines) {
-        Map<String, EpisodeInference.Stored> byId = new LinkedHashMap<>();
-        for (Map<String, Object> line : lines) {
-            if (!(line.get("episode") instanceof Map<?, ?> em)) continue;
-            Episode e = Episode.of(em);
-            if (e.id().isBlank()) continue;
-            Map<String, Object> state = new LinkedHashMap<>();
-            if (line.get("state") instanceof Map<?, ?> sm) sm.forEach((k, v) -> state.put(String.valueOf(k), v));
-            byId.remove(e.id());
-            byId.put(e.id(), new EpisodeInference.Stored(e, state));
-        }
-        return new ArrayList<>(byId.values());
     }
 
     /** A stored session's kept episodes, oldest first. */
@@ -986,22 +1002,11 @@ public final class SessionLog {
         SessionJournal stored = journal;
         if (stored == null) return List.of();
         List<Episode> out = new ArrayList<>();
-        for (EpisodeInference.Stored e : latest(stored.episodeLines(id))) out.add(e.episode());
+        for (EpisodeInference.Stored e : EpisodeLines.latest(stored.episodeLines(id))) out.add(e.episode());
         out.sort(Comparator.comparingInt(Episode::number));
         return out.size() > EpisodeInference.KEEP
                 ? List.copyOf(out.subList(out.size() - EpisodeInference.KEEP, out.size()))
                 : out;
-    }
-
-    /** The number an episode id ends in, or 0. */
-    static int numberOf(@Nullable String episode) {
-        if (episode == null) return 0;
-        int dot = episode.lastIndexOf('.');
-        try {
-            return dot > 0 ? Integer.parseInt(episode.substring(dot + 1)) : 0;
-        } catch (NumberFormatException e) {
-            return 0;
-        }
     }
 
     /** True while this engine writes the records; false for good once {@link #writes} fails or it is stopped. */
@@ -1045,7 +1050,7 @@ public final class SessionLog {
     private void publishEpisode(Episode e, String change) {
         Map<String, Object> payload = envelope(EventCatalog.SSE_EPISODE);
         payload.put("change", change);
-        payload.put("episode", withProjectId(e).toMap());
+        payload.put("episode", projectIds.named(e).toMap());
         events.publish(EventCatalog.SSE_EPISODE, payload);
     }
 
@@ -1079,7 +1084,7 @@ public final class SessionLog {
     private Map<String, Object> row(SessionRecord r, @Nullable String state, List<Episode> episodes) {
         Map<String, Object> m = sessionMap(r, state);
         for (Episode e : episodes) {
-            if (e.id().equals(r.episode())) m.put("current", withProjectId(e).toMap());
+            if (e.id().equals(r.episode())) m.put("current", projectIds.named(e).toMap());
         }
         return m;
     }
@@ -1089,20 +1094,20 @@ public final class SessionLog {
      * first, or null when it never worked on that project. A null {@code projectId} keeps every row as is.
      */
     private @Nullable Map<String, Object> onProject(
-            Map<String, Object> row, SessionRecord r, List<Episode> episodes, @Nullable String projectId) {
+            Map<String, Object> row,
+            SessionRecord r,
+            List<Episode> episodes,
+            @Nullable String projectId,
+            UnaryOperator<Episode> ids) {
         if (projectId == null) return row;
         List<Map<String, Object>> on = new ArrayList<>();
         for (Episode e : episodes.reversed()) {
-            Episode named = withProjectId(e);
+            Episode named = ids.apply(e);
             if (projectId.equals(named.projectId())) on.add(named.toMap());
         }
         if (on.isEmpty() && !projectId.equals(r.projectId())) return null;
         row.put("episodes", on);
         return row;
-    }
-
-    private Episode withProjectId(Episode e) {
-        return e.projectId() != null || e.project().isBlank() ? e : e.withProjectId(projectIds.idOf(e.project()));
     }
 
     private static String key(String origin, @Nullable String label) {
