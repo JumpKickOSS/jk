@@ -45,8 +45,10 @@ import org.jspecify.annotations.Nullable;
  * early can fail the root before the POM naming a version in it is reached. A solve that would end
  * unsatisfiable after taking a range to be empty restarts once more, and from then on a package with
  * no candidate waits while any other can be decided. Only then, because waiting puts off conflicts
- * PubGrub learns early, which multiplies the decisions of a solve that succeeds. A retry that fails
- * too reports the first solve's failure.
+ * PubGrub learns early, which multiplies the decisions of a solve that succeeds. When none can, the
+ * retry reads ahead, once, the POM of every version the root reaches before it learns that a package
+ * has no version: the POM naming one can hang under a version picked only after a backjump, or under
+ * a package only another branch requires. A retry that fails too reports the first solve's failure.
  *
  * <p><strong>Anti-loop:</strong> large AndroidX/BOM graphs can still thrash (broken POM floors,
  * prefer-pin churn). Every budget check counts a <em>step</em>, propagation storms included, so
@@ -125,6 +127,12 @@ public class PubGrubSolver {
 
     /** Whether a package with no candidate waits while another can be decided; see the class comment. */
     private boolean deferEmpty;
+
+    /** Whether this solve has read ahead every POM its root reaches; see {@link #readAhead}. */
+    private boolean readAhead;
+
+    /** The root's dependencies, where {@link #readAhead} starts. */
+    private List<Term> rootDeps = List.of();
 
     protected @Nullable String rootPkg;
 
@@ -260,6 +268,8 @@ public class PubGrubSolver {
         declaredOnlyUniverses.clear();
         assumedEmpty.clear();
         deferEmpty = false;
+        readAhead = false;
+        this.rootDeps = List.copyOf(rootDeps);
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()),
@@ -667,16 +677,63 @@ public class PubGrubSolver {
         String pkg = solution.nextUndecidedPositive();
         if (pkg == null) return null;
         if (deferEmpty) {
-            for (String next = pkg; next != null; next = solution.nextUndecidedPositiveAfter(next)) {
-                String pick = pick(next);
-                if (pick != null) return decide(next, pick);
+            String decided = decideFirstPickable(pkg);
+            if (decided == null && !readAhead) {
+                readAhead();
+                decided = decideFirstPickable(pkg);
             }
+            if (decided != null) return decided;
         } else {
             if (!pinFloors.isEmpty()) pkg = deferExhaustedPins(pkg);
             String pick = pick(pkg);
             if (pick != null) return decide(pkg, pick);
         }
         return noVersions(pkg);
+    }
+
+    /** Decide the first undecided package from {@code first} on that has a candidate; null when none has. */
+    private @Nullable String decideFirstPickable(String first) throws IOException, InterruptedException {
+        for (String next = first; next != null; next = solution.nextUndecidedPositiveAfter(next)) {
+            String pick = pick(next);
+            if (pick != null) return decide(next, pick);
+        }
+        return null;
+    }
+
+    /**
+     * Read the POM of every version the root's dependencies reach, through every edge each allows,
+     * whether or not the solve has got to it. Waiting decides only what the current branch requires,
+     * so a POM under a version picked after a backjump, or under a package only another branch
+     * requires, would still be unread when a package is found to have no version; every version such
+     * a POM names is a candidate from here on. It walks each package's compact window, or a floored
+     * pin alone, and the versions POMs name, not its full history, so it costs a few reads per
+     * package it reaches.
+     * Once per solve.
+     */
+    private void readAhead() throws IOException, InterruptedException {
+        readAhead = true;
+        Set<String> read = new HashSet<>();
+        List<Term> edges = new ArrayList<>(rootDeps);
+        while (!edges.isEmpty()) {
+            Term edge = edges.removeLast();
+            if (!edge.positive()) continue;
+            String pkg = edge.pkg();
+            phase = "reading ahead the dependencies of " + pkg;
+            // A floored pin's candidates are the pin and the versions edges name; see pinCandidates.
+            Optional<String> pin = pinFloor(pkg);
+            Set<String> versions = new LinkedHashSet<>(pin.isPresent() ? Set.of(pin.get()) : source.versions(pkg));
+            versions.addAll(source.declaredVersions(pkg).keySet());
+            edge.versions().asExactSingleton().ifPresent(versions::add);
+            for (String version : versions) {
+                if (!edge.versions().contains(version) || !read.add(pkg + "@" + version)) continue;
+                checkBudget();
+                try {
+                    edges.addAll(source.dependencies(pkg, version));
+                } catch (PackageSource.VersionUnavailableException e) {
+                    // Deciding it reports it; reading ahead only looks for the versions POMs name.
+                }
+            }
+        }
     }
 
     /** The version to decide for {@code pkg}, or {@code null} when none of its candidates is left. */

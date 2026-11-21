@@ -66,6 +66,57 @@ class PubGrubUniverseGrowthTest {
     }
 
     @Test
+    void a_range_waits_for_a_pom_reached_only_after_a_backjump() throws Exception {
+        // x@2 is decided first and only fails once q is found to have no version; the POM naming p
+        // 1.5 hangs under x@1, so it is not read before p is found to have no candidate.
+        PomSource src = new PomSource()
+                .advertise("a", "2.0")
+                .advertise("x", "2.0", "1.0")
+                .advertise("c", "1.0")
+                .advertise("q", "1.0")
+                .advertise("p", "2.0", "1.0")
+                .pom("a", "2.0", Term.positive("p", VersionSet.between("1.5", true, "2.0", false)))
+                .pom("x", "2.0", Term.positive("q", VersionSet.between("5.0", true, "6.0", false)))
+                .pom("x", "1.0", Term.positive("c", VersionSet.ALL))
+                .pomPlain("c", "1.0", "p", "1.5")
+                .pom("q", "1.0")
+                .pom("p", "1.5")
+                .pom("p", "1.0")
+                .pom("p", "2.0");
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("a", VersionSet.ALL), Term.positive("x", VersionSet.ALL)));
+
+        assertThat(solution)
+                .containsEntry("a", "2.0")
+                .containsEntry("x", "1.0")
+                .containsEntry("c", "1.0")
+                .containsEntry("p", "1.5");
+    }
+
+    @Test
+    void a_range_takes_a_version_a_pom_on_another_branch_names() throws Exception {
+        // Nothing rules out x@2, so x@1's subtree, whose c names p 1.5, is never part of the graph.
+        PomSource src = new PomSource()
+                .advertise("a", "2.0")
+                .advertise("x", "2.0", "1.0")
+                .advertise("c", "1.0")
+                .advertise("p", "2.0", "1.0")
+                .pom("a", "2.0", Term.positive("p", VersionSet.between("1.5", true, "2.0", false)))
+                .pom("x", "2.0")
+                .pom("x", "1.0", Term.positive("c", VersionSet.ALL))
+                .pomPlain("c", "1.0", "p", "1.5")
+                .pom("p", "1.5")
+                .pom("p", "1.0")
+                .pom("p", "2.0");
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("a", VersionSet.ALL), Term.positive("x", VersionSet.ALL)));
+
+        assertThat(solution).containsEntry("a", "2.0").containsEntry("x", "2.0").containsEntry("p", "1.5");
+    }
+
+    @Test
     void a_range_no_pom_ever_fills_still_fails() throws Exception {
         PomSource src = new PomSource()
                 .advertise("a", "2.0")
