@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A plugin task cannot declare a path outside its own output root.** An output or `contributes*`
+  path that is absolute, empty, `.` or climbs out with `..` is refused where the plugin declares it
+  and again when the engine reads the plugin's declarations, so no plugin can put a directory from
+  elsewhere on disk into a module's classes, resources, sources or test classpath, or point test JVM
+  arguments at a file outside it.
 - **A README cannot reach outside the dashboard's Markdown preview.** A Markdown file could write
   the fixed text that marked where a Mermaid diagram goes into an attribute and turn the rest of
   that attribute into markup the sanitizer never saw. Diagrams now go in by an unguessable marker,

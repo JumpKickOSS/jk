@@ -497,6 +497,10 @@ declarations for its own step.
 Plugins contribute **tasks** into the build plan (codegen before compile, class transforms
 after compile, custom packagers) via `TaskSpec`/`TaskContribution`. Important SPI notes:
 
+- **Declared paths** — `outputs`, every `contributes*` path and `transformsClasses` resolve under
+  the task's scratch root (`target/plugin/<task>/`). One that is absolute, names the root itself or
+  climbs out with `..` is refused where `TaskSpec` declares it, and again when the engine reads
+  the describe reply.
 - **`transformsClasses`** — at most one classes transform per build (e.g. Hilt weaving); runs
   between compile and package and replaces the classes dir for downstream tasks.
 - **`stage`** — every task carries a `BuildStage`, inferred from the window the engine schedules it

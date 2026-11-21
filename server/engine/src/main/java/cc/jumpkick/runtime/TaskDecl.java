@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.plugin.build.KeyProbe;
+import cc.jumpkick.plugin.build.TaskSpec;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -30,6 +31,27 @@ public record TaskDecl(
         boolean oneTestJvm,
         /** The input measured when the key is computed ({@code TaskSpec.keyProbe}), or null. */
         @Nullable KeyProbe keyProbe) {
+
+    /**
+     * Every declared path resolves against the step's scratch, so a reply that declares one outside
+     * it is refused as {@link TaskSpec#requireBelowScratch} refuses it in the plugin.
+     */
+    public TaskDecl {
+        requireBelow(name, "outputs", outputs);
+        requireBelow(name, "contributesClasses", contributesClasses);
+        requireBelow(name, "contributesResources", contributesResources);
+        requireBelow(name, "contributesSources", contributesSources);
+        requireBelow(name, "contributesTestSources", contributesTestSources);
+        requireBelow(name, "contributesTestClasspath", contributesTestClasspath);
+        requireBelow(name, "contributesTestJvmArgs", contributesTestJvmArgs);
+        if (transformsClasses != null && !transformsClasses.isBlank()) {
+            TaskSpec.requireBelowScratch(name, "transformsClasses", transformsClasses);
+        }
+    }
+
+    private static void requireBelow(String step, String field, List<String> paths) {
+        for (String rel : paths) TaskSpec.requireBelowScratch(step, field, rel);
+    }
 
     /** True when this task replaces the module's classes dir downstream. */
     public boolean transforms() {

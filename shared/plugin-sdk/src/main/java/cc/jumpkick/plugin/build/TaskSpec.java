@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.build;
 
+import cc.jumpkick.host.PathUtil;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -66,40 +67,40 @@ public final class TaskSpec {
     }
 
     public TaskSpec outputs(String... dirs) {
-        for (String d : dirs) outputs.add(d);
+        for (String d : dirs) outputs.add(requireBelowScratch(name, "outputs", d));
         return this;
     }
 
     public TaskSpec contributesClasses(String relDir) {
-        contributesClasses.add(relDir);
+        contributesClasses.add(requireBelowScratch(name, "contributesClasses", relDir));
         return this;
     }
 
     public TaskSpec contributesResources(String relDir) {
-        contributesResources.add(relDir);
+        contributesResources.add(requireBelowScratch(name, "contributesResources", relDir));
         return this;
     }
 
     public TaskSpec contributesSources(String relDir) {
-        contributesSources.add(relDir);
+        contributesSources.add(requireBelowScratch(name, "contributesSources", relDir));
         return this;
     }
 
     /** See {@link TaskContribution#contributesTestSources}. */
     public TaskSpec contributesTestSources(String relDir) {
-        contributesTestSources.add(relDir);
+        contributesTestSources.add(requireBelowScratch(name, "contributesTestSources", relDir));
         return this;
     }
 
     /** See {@link TaskContribution#contributesTestClasspath}. */
     public TaskSpec contributesTestClasspath(String relPath) {
-        contributesTestClasspath.add(relPath);
+        contributesTestClasspath.add(requireBelowScratch(name, "contributesTestClasspath", relPath));
         return this;
     }
 
     /** See {@link TaskContribution#contributesTestJvmArgs}. */
     public TaskSpec contributesTestJvmArgs(String relFile) {
-        contributesTestJvmArgs.add(relFile);
+        contributesTestJvmArgs.add(requireBelowScratch(name, "contributesTestJvmArgs", relFile));
         return this;
     }
 
@@ -116,7 +117,7 @@ public final class TaskSpec {
     }
 
     public TaskSpec transformsClasses(String relDir) {
-        this.transformsClasses = relDir;
+        this.transformsClasses = requireBelowScratch(name, "transformsClasses", relDir);
         return this;
     }
 
@@ -132,6 +133,19 @@ public final class TaskSpec {
     public TaskSpec run(Body body) {
         this.body = body;
         return this;
+    }
+
+    /**
+     * {@code rel}, when it names something strictly below the task's scratch root, where every
+     * declared output and contribution resolves; one that is absolute, names the root itself or
+     * climbs out with {@code ..} is refused. The engine applies the same rule to a describe reply.
+     */
+    public static String requireBelowScratch(String task, String field, String rel) {
+        if (!PathUtil.isStrictlyBelow(rel)) {
+            throw new IllegalArgumentException(
+                    "plugin task " + task + ": " + field + "(\"" + rel + "\") is not under the task's output root");
+        }
+        return rel;
     }
 
     public String name() {

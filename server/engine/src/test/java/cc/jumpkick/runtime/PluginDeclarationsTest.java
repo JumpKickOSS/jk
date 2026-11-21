@@ -3,9 +3,14 @@ package cc.jumpkick.runtime;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.jsonl.Jsonl;
+import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /** The describe-reply decode — exactly what the content-keyed cache file replays. */
 class PluginDeclarationsTest {
@@ -44,5 +49,49 @@ class PluginDeclarationsTest {
                         new PluginDeclarations(List.of(requireNonNull(decls.step("gen"))), null, List.of())))
                 .isFalse();
         assertThat(TestLaunch.oneTestJvm(null)).isFalse();
+    }
+
+    /**
+     * Every declared path of a step resolves against its scratch: a reply that declares one that is
+     * absolute, names the scratch itself or climbs out of it is refused before anything resolves it.
+     */
+    @ParameterizedTest
+    @ValueSource(
+            strings = {
+                "outputs",
+                "contributesClasses",
+                "contributesResources",
+                "contributesSources",
+                "contributesTestSources",
+                "contributesTestClasspath",
+                "contributesTestJvmArgs",
+                "transformsClasses"
+            })
+    void a_declared_path_outside_the_step_scratch_is_refused(String field) {
+        String outside = Path.of("/").toAbsolutePath().resolve("etc").toString();
+        for (String rel : List.of("..", "../../src/main/java", "out/../../x", outside, ".", "")) {
+            boolean single = field.equals("transformsClasses");
+            if (single && rel.isEmpty()) continue; // an empty transform is no transform
+            String value = single ? Jsonl.quote(rel) : "[" + Jsonl.quote(rel) + "]";
+            String line = "{\"t\":\"step\",\"name\":\"gen\",\"inputs\":[\"classes\"],\"" + field + "\":" + value + "}";
+
+            assertThatThrownBy(() -> PluginDeclarations.decode(List.of(line)))
+                    .as(field + " " + rel)
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessage("plugin task gen: " + field + "(\"" + rel + "\") is not under the task's output root");
+        }
+    }
+
+    /** A path below the scratch, nested or not, is read as declared; an empty transform is no transform. */
+    @Test
+    void a_declared_path_below_the_step_scratch_is_kept() {
+        var decls = PluginDeclarations.decode(List.of("{\"t\":\"step\",\"name\":\"gen\",\"inputs\":[\"classes\"],"
+                + "\"outputs\":[\"out\",\"a/./b\"],\"contributesClasses\":[\"out/classes\"],"
+                + "\"contributesTestJvmArgs\":[\"out/x/../jvm.args\"],\"transformsClasses\":\"\"}"));
+        TaskDecl step = requireNonNull(decls.step("gen"));
+        assertThat(step.outputs()).containsExactly("out", "a/./b");
+        assertThat(step.contributesClasses()).containsExactly("out/classes");
+        assertThat(step.contributesTestJvmArgs()).containsExactly("out/x/../jvm.args");
+        assertThat(step.transforms()).isFalse();
     }
 }
