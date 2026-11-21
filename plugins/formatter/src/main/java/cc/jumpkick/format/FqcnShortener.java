@@ -53,9 +53,10 @@ final class FqcnShortener {
 
         record Hit(int start, int end, String fqcn, String simple) {}
         List<Hit> hits = new ArrayList<>();
+        int[] declarations = declarationSpans(blanked);
         Matcher m = JavaText.FQCN.matcher(blanked);
         while (m.find()) {
-            if (onImportOrPackageLine(blanked, m.start())) continue;
+            if (onImportOrPackageLine(blanked, m.start()) || within(declarations, m.start())) continue;
             String fqcn = m.group();
             hits.add(new Hit(m.start(), m.end(), fqcn, JavaText.simpleName(fqcn)));
         }
@@ -182,6 +183,32 @@ final class FqcnShortener {
         return have == null;
     }
 
+    /**
+     * The flat {@code [start, end, …]} spans of the package and import declarations, so a name on a
+     * later line of a split declaration is not taken for a reference.
+     */
+    private static int[] declarationSpans(String blanked) {
+        List<Integer> spans = new ArrayList<>();
+        for (Matcher d : List.of(
+                JavaText.PACKAGE.matcher(blanked),
+                JavaText.IMPORT.matcher(blanked),
+                JavaText.OPAQUE_IMPORT.matcher(blanked))) {
+            while (d.find()) {
+                spans.add(d.start());
+                spans.add(d.end());
+            }
+        }
+        return spans.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    private static boolean within(int[] spans, int pos) {
+        for (int i = 0; i + 1 < spans.length; i += 2) {
+            if (pos >= spans[i] && pos < spans[i + 1]) return true;
+        }
+        return false;
+    }
+
+    /** An import or package keyword starts this line, whatever form the declaration takes. */
     private static boolean onImportOrPackageLine(String blanked, int pos) {
         int lineStart = blanked.lastIndexOf('\n', pos - 1) + 1;
         int i = lineStart;
@@ -202,8 +229,7 @@ final class FqcnShortener {
         Matcher m = JavaText.IMPORT.matcher(source);
         while (m.find()) {
             if (m.group(1) != null) continue; // static
-            String fqcn = m.group(2);
-            if (fqcn.endsWith(".*")) continue;
+            String fqcn = JavaText.name(m.group(2));
             out.putIfAbsent(JavaText.simpleName(fqcn), fqcn);
         }
         return out;
