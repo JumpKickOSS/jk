@@ -14,7 +14,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Method+path router for {@code /api/*}: an exact path, or a prefix whose route takes one more path
  * segment ({@code /api/sessions/<id>}). A {@code HEAD} runs the {@code GET} route, whose response
- * helpers send headers only, except on an event stream. Wrong method → 405, unknown → 404.
+ * helpers send headers only, except on an event stream; a read that is costly to compute answers it
+ * before computing ({@link HttpResponses#answeredHead}). Wrong method → 405, unknown → 404.
  */
 final class ApiRouter {
 

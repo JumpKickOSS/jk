@@ -392,6 +392,12 @@ another machine's address are all refused. A token a page was handed does not le
 file, answer a decision or call MCP from its own origin. A request with no `Origin` (the CLI, an
 IDE, an agent's MCP host) passes, since a browser sends one on every such request.
 
+A `HEAD` of an `/api` read runs its `GET` route and sends the headers alone; `HEAD /api/events` is a
+405. A read that resolves, plans, walks a tree or checks the host (`/api/project/graph`, `model`,
+`outdated`, `why`, `update`, `find`, `/api/explain`, `/api/doctor`, the `/api/history` list) checks
+its parameters, then answers a `HEAD` with 200 before it computes: a malformed request is still its
+400, but a `HEAD` cannot see the 422 a `GET` would find.
+
 ### `GET /api/project`
 
 `GET /api/project?project=<id>[&dir=<abs-path>]` (preferred) or `?dir=<abs-path>`.

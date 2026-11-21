@@ -233,14 +233,12 @@ final class HttpProjectApi {
                     JsonOut.object().put("error", "missing \"dir\"").toString());
             return;
         }
-        Map<String, Object> body = ProjectModelJson.forDir(HttpRequests.path(dir));
+        Path projectDir = HttpRequests.path(dir);
+        if (HttpResponses.answeredHead(exchange)) return;
+        Map<String, Object> body = ProjectModelJson.forDir(projectDir);
         HttpResponses.sendJson(exchange, body.containsKey("error") ? 422 : 200, MiniJson.write(body));
     }
 
-    /**
-     * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
-     * for the Project page ECharts panel.
-     */
     /**
      * {@code GET /api/explain?dir=…&modules=a,b&skip_tests=true} — the forecast of the build {@code
      * POST /api/build} with the same fields would start: the selection fields of a job request
@@ -256,6 +254,7 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
+        if (HttpResponses.answeredHead(exchange)) return;
         Forecasts.Forecast forecast;
         try {
             forecast = Forecasts.forecast(req);
@@ -350,6 +349,7 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
+        if (HttpResponses.answeredHead(exchange)) return;
         Map<String, Object> data = McpReads.outdated(Objects.requireNonNull(params.get("dir")), flag(params, "all"));
         HttpResponses.sendJson(exchange, data.containsKey("error") ? 422 : 200, MiniJson.write(data));
     }
@@ -369,6 +369,7 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
+        if (HttpResponses.answeredHead(exchange)) return;
         Map<String, Object> data = McpReads.why(Objects.requireNonNull(params.get("dir")), params.get("coord"));
         HttpResponses.sendJson(exchange, data.get("error") != null ? 422 : 200, MiniJson.write(data));
     }
@@ -393,6 +394,7 @@ final class HttpProjectApi {
                     exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
             return;
         }
+        if (HttpResponses.answeredHead(exchange)) return;
         try {
             Map<String, Object> data = Updates.structured(
                     Updates.preview(Objects.requireNonNull(params.get("dir")), deps, flag(params, "major")));
@@ -403,6 +405,10 @@ final class HttpProjectApi {
         }
     }
 
+    /**
+     * {@code GET /api/project/graph?dir=…[&scopes=main,test][&transitive=0|1]} — dependency graph
+     * for the Project page ECharts panel.
+     */
     void handleProjectGraph(HttpExchange exchange) throws IOException {
         String query = exchange.getRequestURI().getRawQuery();
         Path projectDir;
@@ -425,6 +431,7 @@ final class HttpProjectApi {
         }
         boolean transitive = EnvValues.parseBool(HttpQuery.queryParamLenient(query, "transitive"))
                 .orElse(false);
+        if (HttpResponses.answeredHead(exchange)) return;
         DependencyGraphModel.Graph data;
         try {
             data = DependencyGraphModel.forProjectDir(projectDir, scopes, transitive);
@@ -543,6 +550,7 @@ final class HttpProjectApi {
         }
         Path root = checkoutRoot(exchange, projectId, dir);
         if (root == null) return;
+        if (HttpResponses.answeredHead(exchange)) return;
         WorkspaceTree.Matches found = WorkspaceTree.find(root, query == null ? "" : query, limit);
         List<Map<String, Object>> files = new ArrayList<>(found.files().size());
         for (WorkspaceTree.Found f : found.files()) {

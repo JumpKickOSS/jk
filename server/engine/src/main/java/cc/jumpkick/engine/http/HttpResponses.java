@@ -28,6 +28,19 @@ final class HttpResponses {
         write(exchange, status, body.getBytes(StandardCharsets.UTF_8), WriteDeadline.PER_WRITE);
     }
 
+    /**
+     * For a {@code HEAD}, send a JSON read's headers with 200 and return true, so a read that is costly
+     * to compute answers before it computes; false for any other method. Call it once the request is
+     * known to be well-formed, so a malformed one still answers its 400.
+     */
+    static boolean answeredHead(HttpExchange exchange) throws IOException {
+        if (!exchange.getRequestMethod().equals("HEAD")) return false;
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.sendResponseHeaders(200, -1);
+        return true;
+    }
+
     static void sendText(HttpExchange exchange, int status, String body) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");

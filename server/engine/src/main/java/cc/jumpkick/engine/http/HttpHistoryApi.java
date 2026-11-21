@@ -62,14 +62,9 @@ final class HttpHistoryApi {
             HttpResponses.sendJson(exchange, 200, redactRecordJson(enrichHistoryJson(record.get()), new HashMap<>()));
             return;
         }
+        if (HttpResponses.answeredHead(exchange)) return;
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
-        // HEAD before the journal read: headers are the whole answer, so it must not pay for a
-        // 200-row scan it will never send.
-        if (exchange.getRequestMethod().equals("HEAD")) {
-            exchange.sendResponseHeaders(200, -1);
-            return;
-        }
         // Single pass, no parse, streamed out: the kind gate rides into the journal as a lexical
         // filter so exactly one page of survivors is read, and the raw loader never builds a
         // record graph. The "does this row even need enrichment" check is lexical too, so a

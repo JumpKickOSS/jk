@@ -13,6 +13,7 @@ import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.notices.Notices;
 import java.net.Socket;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
@@ -121,6 +122,30 @@ class HttpRequestBoundaryTest extends HttpEngineServerHarness {
             assertThat(resp.body()).as(path).isEmpty();
         }
         assertThat(head("/api/log").headers().firstValue("Content-Type")).contains("text/plain; charset=utf-8");
+    }
+
+    /** Each read answers a GET of a manifest that does not parse with 422, once it has read it. */
+    @Test
+    void a_head_of_an_expensive_read_answers_before_the_read_runs() throws Exception {
+        Files.writeString(project.resolve("jk.toml"), "[[[ not toml\n");
+        String dir = URLEncoder.encode(project.toString(), UTF_8);
+        for (String path : List.of(
+                "/api/project/graph?dir=" + dir,
+                "/api/project/model?dir=" + dir,
+                "/api/explain?dir=" + dir,
+                "/api/project/outdated?dir=" + dir,
+                "/api/project/why?dir=" + dir + "&coord=g:a",
+                "/api/project/update?dir=" + dir)) {
+            assertThat(get(path).statusCode()).as("GET " + path).isEqualTo(422);
+            HttpResponse<String> resp = head(path);
+            assertThat(resp.statusCode()).as("HEAD " + path).isEqualTo(200);
+            assertThat(resp.body()).as("HEAD " + path).isEmpty();
+            assertThat(resp.headers().firstValue("Content-Type"))
+                    .as("HEAD " + path)
+                    .contains("application/json; charset=utf-8");
+        }
+        assertThat(head("/api/project/graph").statusCode()).isEqualTo(400);
+        assertThat(head("/api/project/why?dir=" + dir).statusCode()).isEqualTo(400);
     }
 
     @Test
