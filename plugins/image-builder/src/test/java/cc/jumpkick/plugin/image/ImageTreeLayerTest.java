@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.image.ImageConfig;
@@ -27,6 +28,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -60,6 +62,10 @@ class ImageTreeLayerTest {
 
     @Test
     void a_second_node_image_of_unchanged_node_modules_ships_the_kept_layer(@TempDir Path tmp) throws Exception {
+        // The image worker cannot read a file's change time or id on Windows, and a tree layer is kept
+        // by that identity alone, so no tree layer is kept there.
+        Assumptions.assumeFalse(
+                Os.isWindows(), "a tree layer is kept by file identity, which the image worker cannot read on Windows");
         Node n = node(tmp);
         LayeredImage.writeToTarball(n.plan(), tmp.resolve("a.tar"), n.cache(), anonymous());
         Map<String, byte[]> first = untar(Files.readAllBytes(tmp.resolve("a.tar")));
@@ -110,6 +116,10 @@ class ImageTreeLayerTest {
 
     @Test
     void the_app_layer_of_a_node_image_is_not_kept(@TempDir Path tmp) throws Exception {
+        // The image worker cannot read a file's change time or id on Windows, and a tree layer is kept
+        // by that identity alone, so no tree layer is kept there.
+        Assumptions.assumeFalse(
+                Os.isWindows(), "a tree layer is kept by file identity, which the image worker cannot read on Windows");
         Node n = node(tmp);
         LayeredImage.writeToTarball(n.plan(), tmp.resolve("a.tar"), n.cache(), anonymous());
 
