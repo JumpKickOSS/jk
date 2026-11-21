@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -254,6 +255,43 @@ public final class JavaCompile {
             WorkerEnv env,
             List<String> classpathTokens)
             throws IOException {
+        return run(
+                taskId,
+                label,
+                request,
+                jkVersion,
+                useCache,
+                persist,
+                cas,
+                actionCache,
+                stateDir,
+                workerJar,
+                generatedSourceDir,
+                env,
+                classpathTokens,
+                holds -> {});
+    }
+
+    /**
+     * As above, telling {@code onLookup} whether the action cache holds the compile's key once it
+     * has looked, before it restores or compiles; not told when {@code useCache} is false.
+     */
+    public static Result run(
+            String taskId,
+            String label,
+            CompileRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache,
+            Path stateDir,
+            @Nullable Path workerJar,
+            @Nullable Path generatedSourceDir,
+            WorkerEnv env,
+            List<String> classpathTokens,
+            Consumer<Boolean> onLookup)
+            throws IOException {
         Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
@@ -263,7 +301,7 @@ public final class JavaCompile {
         String key = key(taskId, request, jkVersion, classpathTokens);
         audit(taskId, request, jkVersion, key);
         if (useCache) {
-            Result restored = restored(key, request, actionCache, stateDir);
+            Result restored = restored(key, request, actionCache, stateDir, onLookup);
             if (restored != null) return restored;
         }
 
@@ -315,8 +353,9 @@ public final class JavaCompile {
             prewriter.close();
             throw compileFailure;
         }
-        Map<String, String> outputs = MirroredOutputs.without(out, prewriter.finish());
         if (!wr.success()) {
+            // Nothing records a failed compile's tree, so it is neither walked nor copied into the CAS.
+            prewriter.close();
             return new Result(
                     false,
                     "errors",
@@ -327,6 +366,7 @@ public final class JavaCompile {
                     List.of(),
                     wr.waitMillis());
         }
+        Map<String, String> outputs = MirroredOutputs.without(out, prewriter.finish());
         if (outputs.isEmpty() && !compiledEverySource(request, wr.compiledSources())) {
             // A compiler convinced nothing changed (stale incremental state) can report success
             // over an empty tree: nothing is recorded, and the ledger no longer matches the
@@ -425,12 +465,15 @@ public final class JavaCompile {
 
     /**
      * The compile keyed {@code key} laid back from its record, saying again the warnings its run
-     * said; null when there is no record or a blob of it is gone, and the compile runs.
+     * said; null when there is no record or a blob of it is gone, and the compile runs. Tells
+     * {@code onLookup} whether the record is there.
      */
-    private static @Nullable Result restored(String key, CompileRequest request, ActionCache actionCache, Path stateDir)
+    private static @Nullable Result restored(
+            String key, CompileRequest request, ActionCache actionCache, Path stateDir, Consumer<Boolean> onLookup)
             throws IOException {
         Path out = Objects.requireNonNull(request.outputDir(), "outputDir");
         Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
+        onLookup.accept(hit.isPresent());
         if (hit.isEmpty()) return null;
         ActionCache.ActionRecord cached = MirroredOutputs.omitting(out, hit.get());
         if (!actionCache.restore(cached, out)) return null;

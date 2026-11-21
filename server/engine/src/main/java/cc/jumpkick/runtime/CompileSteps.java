@@ -200,7 +200,6 @@ final class CompileSteps {
         // The stamp's instant: before the first source is hashed, so an edit landing while the
         // compile runs is stale on the next build instead of vouched for by a later stamp.
         long clock = FreshnessStamp.clockNow(javaOut);
-        if (!rerun) reweightForActionCache(ctx, actionCache, taskId, request, stampTokens, sources.size());
         Path genDir = ctx.require(MODULE).layout().generatedSourcesDir("annotations");
         Files.createDirectories(genDir);
         Path workerJar = PluginJar.JAVA_COMPILER.locate(cas);
@@ -223,7 +222,9 @@ final class CompileSteps {
                         ctx.require(MODULE).project().build().env(),
                         in.dir(),
                         ctx.require(MODULE).layout().moduleTargetDir()),
-                stampTokens);
+                stampTokens,
+                restores ->
+                        ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size())));
         HeapNotes.flush(ctx);
         if (r.success() && r.movedSources().isEmpty()) auditCompileJava(ctx, javaOut, r.actionKey());
         ctx.waited(Duration.ofMillis(r.waitMillis()));
@@ -277,30 +278,6 @@ final class CompileSteps {
                 request.resourcesDigest() != null,
                 actionCache,
                 r.cacheHit() ? r.actionKey() : null);
-    }
-
-    /**
-     * Reweight the bar slice now that the real request is known: a CAS action-cache hit means a
-     * cheap hard-link restore (3), not a full javac (ceil(sources × 0.1)). Uses the exact key
-     * JavaCompile will look up, so the estimate matches what actually happens — no plan-start
-     * reconstruction divergence.
-     */
-    private static void reweightForActionCache(
-            TaskContext ctx,
-            ActionCache actionCache,
-            String taskId,
-            CompileRequest request,
-            List<String> classpathTokens,
-            int sources) {
-        try {
-            boolean restores = actionCache
-                    .lookup(JavaCompile.key(taskId, request, BuildIdentity.compileKeyVersion(), classpathTokens))
-                    .isPresent();
-            ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources));
-        } catch (Exception e) {
-            /* keep the up-front estimate */
-            Log.debug("reweightForActionCache: keep the up-front estimate", e);
-        }
     }
 
     /**

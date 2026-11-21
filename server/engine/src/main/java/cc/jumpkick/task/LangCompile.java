@@ -326,10 +326,12 @@ public final class LangCompile {
             prewriter.close();
             throw compileFailure;
         }
-        Map<String, String> outputs = MirroredOutputs.without(outputDir, prewriter.finish());
         if (!cr.success()) {
+            // Nothing records a failed compile's tree, so it is neither walked nor copied into the CAS.
+            prewriter.close();
             return new Result(false, "errors", key, cr.diagnostics(), List.of(), List.of());
         }
+        Map<String, String> outputs = MirroredOutputs.without(outputDir, prewriter.finish());
         @Nullable Path state = stateDir != null && Files.isDirectory(stateDir) ? stateDir : null;
         // Never cache a zero-output "success" for a non-empty source set: a compiler convinced
         // nothing changed (stale incremental state) can report success over an empty output
