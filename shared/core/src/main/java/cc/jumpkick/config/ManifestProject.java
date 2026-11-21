@@ -277,8 +277,9 @@ public final class ManifestProject {
 
     /**
      * {@code [install] destination}: {@code "m2"} or {@code "jk"}. Null when unset, which defers to the
-     * machine's {@code config.toml} and then to {@code "m2"}. A member that names none inherits its
-     * workspace root's.
+     * machine's choice in {@link JkInstallConfig}: {@code JK_INSTALL_DESTINATION}, then {@code
+     * config.toml}, then {@code "m2"} under {@code [m2] integration = "share"}, else {@code "jk"}. A
+     * member that names none inherits its workspace root's.
      */
     private static @Nullable InstallDestination parseInstallDestination(
             TomlTable root, boolean workspaceRoot, java.util.EnumSet<ProjectInherit> inherits) {
