@@ -57,12 +57,12 @@ class ExecPlansWorkspaceRunTest {
         Files.createDirectories(root.resolve("app/target/classes/main/com/example"));
         Files.createDirectories(root.resolve("app/resources"));
         Files.createDirectories(root.resolve("app/test/resources"));
-        Files.createDirectories(root.resolve("lib/resources"));
 
         ExecPlan plan = ExecPlans.execPlan(root, root.resolve("cache"), "dev", null, null);
         assertThat(plan.error()).isNull();
         // An edit to lib, which app depends on, restarts the app like an edit to app's own code; a
-        // resource edit copies resources, and the app's tests are not what it runs.
+        // resource edit copies resources, and the app's tests are not what it runs. lib has no resources/
+        // yet; it is a root all the same, so one made while the loop runs is watched.
         assertThat(plan.watchRoots())
                 .containsExactly(
                         root.resolve("app/src").toString(),

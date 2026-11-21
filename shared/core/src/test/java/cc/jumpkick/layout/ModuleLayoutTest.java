@@ -66,6 +66,25 @@ class ModuleLayoutTest {
     }
 
     @Test
+    void watch_dirs_name_trees_not_made_yet(@TempDir Path tmp) throws Exception {
+        writeToml(tmp);
+        Files.createDirectories(tmp.resolve("src"));
+        Files.createDirectories(tmp.resolve("integration/src"));
+        Files.writeString(tmp.resolve("integration/src/I.java"), "class I {}");
+
+        assertThat(ModuleLayout.watchDirs(tmp, false))
+                .as("a tree made after the loop starts is watched once it appears")
+                .containsExactly(
+                        tmp.resolve("src"),
+                        tmp.resolve("resources"),
+                        tmp.resolve("test/src"),
+                        tmp.resolve("test/resources"),
+                        tmp.resolve("integration/src"),
+                        tmp.resolve("integration/resources"));
+        assertThat(ModuleLayout.watchDirs(tmp, true)).containsExactly(tmp.resolve("src"), tmp.resolve("resources"));
+    }
+
+    @Test
     void watch_dirs_of_the_traditional_layout_are_src(@TempDir Path tmp) throws Exception {
         writeToml(tmp);
         Files.createDirectories(tmp.resolve("src/main/java"));

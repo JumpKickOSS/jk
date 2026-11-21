@@ -133,4 +133,59 @@ class SourceWatchTest {
             }
         }
     }
+
+    /** {@code resources/} and {@code test/resources/} made after the loop starts are watched, and their files start a pass. */
+    @Test
+    void a_default_root_made_after_open_is_watched(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(project.resolve("jk.toml"), "name = \"app\"\nlayout = \"simple\"\n");
+        Files.createDirectories(project.resolve("src"));
+        Path resources = project.resolve("resources");
+        Path testResources = project.resolve("test/resources");
+
+        List<Path> roots = SourceWatch.defaultRoots(project);
+        assertThat(roots).contains(resources, testResources);
+        try (SourceWatch watch = SourceWatch.open(project, roots, 0)) {
+            Files.createDirectories(resources);
+            Files.writeString(resources.resolve("app.properties"), "greeting=hi\n");
+            SourceWatch.Changes made =
+                    Objects.requireNonNull(watch.event(project, StandardWatchEventKinds.ENTRY_CREATE, resources));
+            assertThat(made).as("the new root's file").isEqualTo(new SourceWatch.Changes(false, true, false));
+            assertThat(watch.watches(resources)).isTrue();
+
+            Files.createDirectories(testResources);
+            Files.writeString(testResources.resolve("fixture.txt"), "x\n");
+            SourceWatch.Changes test = Objects.requireNonNull(
+                    watch.event(project, StandardWatchEventKinds.ENTRY_CREATE, project.resolve("test")));
+            assertThat(test).as("a root made with its parent").isEqualTo(new SourceWatch.Changes(false, true, false));
+            assertThat(watch.watches(testResources)).isTrue();
+        }
+    }
+
+    /** {@code jk dev} watches a sibling member's trees, outside the project; one missing at open is watched for. */
+    @Test
+    void a_root_outside_the_project_missing_at_open_is_watched_for(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Path lib = Files.createDirectories(tmp.resolve("lib"));
+        Path libResources = lib.resolve("resources");
+
+        try (SourceWatch watch = SourceWatch.open(project, List.of(lib.resolve("src"), libResources), 0)) {
+            assertThat(watch.watches(lib))
+                    .as("the module the root will appear in")
+                    .isTrue();
+            assertThat(watch.event(
+                            lib,
+                            StandardWatchEventKinds.ENTRY_MODIFY,
+                            Files.writeString(lib.resolve("notes.txt"), "x\n")))
+                    .as("a file beside the roots")
+                    .isNull();
+
+            Files.createDirectories(libResources);
+            Files.writeString(libResources.resolve("lib.properties"), "k=v\n");
+            SourceWatch.Changes made =
+                    Objects.requireNonNull(watch.event(lib, StandardWatchEventKinds.ENTRY_CREATE, libResources));
+            assertThat(made).isEqualTo(new SourceWatch.Changes(false, true, false));
+            assertThat(watch.watches(libResources)).isTrue();
+        }
+    }
 }

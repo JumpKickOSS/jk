@@ -284,10 +284,20 @@ public final class SourceWatch implements AutoCloseable {
         }
     }
 
-    /** {@code root} does not exist yet: watch its nearest existing ancestor inside the project to see it made. */
+    /**
+     * {@code root} does not exist yet: watch its nearest existing ancestor inside the project to see
+     * it made. A root outside the project, a sibling module's, has its parent watched, when it exists.
+     */
     private void watchForRoot(Path root) throws IOException {
         Path project = projectDir.toAbsolutePath().normalize();
         Path at = root.getParent();
+        if (at != null && !at.startsWith(project)) {
+            if (Files.isDirectory(at) && !skip(at)) {
+                registerDir(at);
+                rootParents.add(at);
+            }
+            return;
+        }
         while (at != null && at.startsWith(project) && !Files.isDirectory(at)) at = at.getParent();
         if (at == null || !at.startsWith(project) || at.equals(project)) return; // the project dir is watched anyway
         registerDir(at);
@@ -364,7 +374,7 @@ public final class SourceWatch implements AutoCloseable {
 
     /**
      * The roots {@code jk watch} watches by default: the module's sources and resources, its tests'
-     * among them ({@link ModuleLayout#watchDirs}); a node project's whole directory.
+     * among them, made yet or not ({@link ModuleLayout#watchDirs}); a node project's whole directory.
      */
     public static List<Path> defaultRoots(Path projectDir) {
         if (Files.isRegularFile(projectDir.resolve(NodeProject.PACKAGE_JSON))
