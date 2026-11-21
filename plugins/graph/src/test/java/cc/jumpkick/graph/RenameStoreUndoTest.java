@@ -8,6 +8,8 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /** A rename's write and its undo: what a failed write leaves, and paths the manifest must carry whole. */
@@ -41,20 +43,36 @@ class RenameStoreUndoTest {
         assertThat(root.resolve("res/new/a.txt")).hasContent("appeared");
     }
 
+    /** Windows refuses a tab in a file name; there the backslash case below proves the escaping. */
     @Test
+    @DisabledOnOs(OS.WINDOWS)
     void a_path_holding_a_tab_is_restored(@TempDir Path tmp) throws Exception {
+        assertRestored(tmp, "we\tird/A.java");
+    }
+
+    /**
+     * A backslash before a {@code t} is a file name character on POSIX and a separator on Windows;
+     * either way the manifest must give it back as written, not as a tab.
+     */
+    @Test
+    void a_path_holding_a_backslash_is_restored(@TempDir Path tmp) throws Exception {
+        assertRestored(tmp, "we\\tird/A.java");
+    }
+
+    private static void assertRestored(Path tmp, String rel) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
         Path out = tmp.resolve("out");
-        Path odd = Files.createDirectories(root.resolve("we\tird")).resolve("A.java");
+        Path odd = root.resolve(rel);
+        Files.createDirectories(odd.getParent());
         Files.writeString(odd, "before\n");
 
         RenamePlan plan = new RenamePlan("A", "B");
-        plan.before.put("we\tird/A.java", "before\n");
-        plan.after.put("we\tird/A.java", "after\n");
+        plan.before.put(rel, "before\n");
+        plan.after.put(rel, "after\n");
         RenameStore.write(root, out, plan);
         assertThat(odd).hasContent("after");
 
-        assertThat(RenameStore.undo(root, out)).containsExactly("we\tird/A.java");
+        assertThat(RenameStore.undo(root, out)).containsExactly(rel);
         assertThat(odd).hasContent("before");
     }
 }
