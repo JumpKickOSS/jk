@@ -46,7 +46,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -73,8 +75,11 @@ public final class VerifyBuildCommand implements CliCommand {
 
     private @Nullable Path cacheDir;
 
-    /** What parse-build decided to verify: the module dirs whose artifacts get compared. */
-    private record VerifyPlan(List<Path> moduleDirs) {}
+    /**
+     * What parse-build decided to verify: each module dir whose artifacts get compared, with the
+     * artifact paths of the user's build ({@link #artifactPaths}).
+     */
+    private record VerifyPlan(Map<Path, Path[]> existing) {}
 
     /** One artifact's hash comparison; a {@code null} hash means the file does not exist. */
     private record Comparison(
@@ -126,19 +131,22 @@ public final class VerifyBuildCommand implements CliCommand {
                 .execute(ctx -> {
                     ctx.label("parse jk.toml + jk-lock.toml");
                     ProjectInfo root = projectInfo(dir);
-                    List<Path> moduleDirs = moduleDirs(dir, root);
+                    Map<Path, Path[]> existing = new LinkedHashMap<>();
+                    for (Path moduleDir : moduleDirs(dir, root)) {
+                        existing.put(moduleDir, artifactPaths(moduleDir.equals(dir) ? root : projectInfo(moduleDir)));
+                    }
                     // A build that never ran fails here, before the rebuild. Which modules package
                     // no jar at all (a sourceless root, a node module nothing depends on) only the
                     // rebuild tells, so a module missing its jar alone is judged after it.
                     List<Path> jars = new ArrayList<>();
-                    for (Path moduleDir : moduleDirs) {
-                        if (root.workspaceRoot() && moduleDir.equals(dir)) continue;
-                        jars.add(Path.of(projectInfo(moduleDir).mainJarPath()));
+                    for (Map.Entry<Path, Path[]> module : existing.entrySet()) {
+                        if (root.workspaceRoot() && module.getKey().equals(dir)) continue;
+                        jars.add(module.getValue()[0]);
                     }
                     if (!jars.isEmpty() && jars.stream().noneMatch(Files::exists)) {
                         missingJar(ctx::error, jars.getFirst());
                     }
-                    ctx.put(PLAN, new VerifyPlan(moduleDirs));
+                    ctx.put(PLAN, new VerifyPlan(existing));
                     ctx.progress(1);
                 })
                 .build();
@@ -297,8 +305,7 @@ public final class VerifyBuildCommand implements CliCommand {
     }
 
     /** One module's jar-family artifact paths (main/assembly/sources/javadoc), engine-computed. */
-    private static Path[] artifactPaths(Path moduleDir) throws IOException {
-        ProjectInfo info = projectInfo(moduleDir);
+    private static Path[] artifactPaths(ProjectInfo info) {
         return new Path[] {
             Path.of(info.mainJarPath()),
             Path.of(info.assemblyJarPath()),
@@ -328,10 +335,9 @@ public final class VerifyBuildCommand implements CliCommand {
     private static List<Comparison> compareArtifacts(Path dir, Path scratch, VerifyPlan plan, ErrorSink errors)
             throws IOException {
         List<Comparison> comparisons = new ArrayList<>();
-        for (Path moduleDir : plan.moduleDirs()) {
-            Path[] existing = artifactPaths(moduleDir);
-            Path scratchModule = scratch.resolve(dir.relativize(moduleDir));
-            Path[] rebuilt = artifactPaths(scratchModule);
+        for (Map.Entry<Path, Path[]> module : plan.existing().entrySet()) {
+            Path[] existing = module.getValue();
+            Path[] rebuilt = artifactPaths(projectInfo(scratch.resolve(dir.relativize(module.getKey()))));
             if (unbuilt(existing[0], rebuilt[0])) missingJar(errors, existing[0]);
             comparisons.addAll(compareModule(dir, existing, rebuilt));
         }

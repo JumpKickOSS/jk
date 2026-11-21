@@ -666,7 +666,7 @@ public final class InstallCommand {
                     installHold = InstallLock.exclusive("jk " + verb + " (installing jk)");
                 }
                 if (productLib || productBin || (!isPluginWorker(info, mod) && info.application())) {
-                    launcher = applyInstallPlan(mod, pass.cacheDir(), info.productLib(), info.productBin(), jk);
+                    launcher = applyInstallPlan(mod, info, pass.cacheDir(), jk);
                 }
                 if (productBin && launcher != null) installedClient = launcher;
                 String coord = Coords.gav(Coordinate.of(info.group(), info.name(), info.version()));
@@ -915,11 +915,12 @@ public final class InstallCommand {
      * copy each pair, write the launcher, mark executables. Returns the launcher path. A module
      * that declares {@code [install] product-lib} is materialized into jk's own product library
      * instead of linked into {@code ~/.jk/bin}; jk's own client and engine go through {@code jk}, which
-     * records them as one install.
+     * records them as one install. {@code info} is the module's summary the pass already holds.
      */
-    private @Nullable Path applyInstallPlan(
-            Path projectDir, Path cacheDir, String productLib, String productBin, EngineInstall.Pass jk)
+    private @Nullable Path applyInstallPlan(Path projectDir, ProjectInfo info, Path cacheDir, EngineInstall.Pass jk)
             throws IOException {
+        String productLib = info.productLib();
+        String productBin = info.productBin();
         ExecPlan plan = EngineClient.execPlan(
                 EnginePaths.current(),
                 projectDir,
@@ -944,7 +945,7 @@ public final class InstallCommand {
         if (!productLib.isBlank()) {
             Path src = productLibSource(plan);
             if (src == null) return null;
-            String version = engineInstallVersion(projectDir, src);
+            String version = engineInstallVersion(info, src);
             InstallOrder.refuseOlderPathClient(binDir(), version, InstallOrder.PathClientVersion.ASK);
             jk.engine(version, JkStores.storeCas(), src);
             return null; // a jar the client launches — no launcher/bin to link
@@ -974,7 +975,7 @@ public final class InstallCommand {
         for (int i = 0; i < plan.linkSrcs().size(); i++) {
             copyInto(Path.of(plan.linkSrcs().get(i)), Path.of(plan.linkDests().get(i)));
         }
-        writeAppInstallConfig(projectDir, plan);
+        writeAppInstallConfig(projectDir, info, plan);
         if (!plan.launcherScript().isEmpty()) {
             return writeLauncher(Path.of(plan.launcherPath()), plan.launcherScript());
         }
@@ -1010,7 +1011,7 @@ public final class InstallCommand {
      * jk-config.*} system properties. The engine is not this path — it writes {@code jk-engine.toml}
      * beside the jar via {@link EngineInstall}.
      */
-    private void writeAppInstallConfig(Path projectDir, ExecPlan plan) throws IOException {
+    private static void writeAppInstallConfig(Path projectDir, ProjectInfo info, ExecPlan plan) throws IOException {
         if (plan.linkDests().isEmpty()) return;
         Path dest = Path.of(plan.linkDests().get(0));
         Path parent = dest.getParent();
@@ -1026,18 +1027,8 @@ public final class InstallCommand {
         Map<String, String> keys = new LinkedHashMap<>(AppInstallConfig.jkConfigProperties());
         putInstalledJarKeys(keys, dest);
         keys.putIfAbsent("name", bin);
-        String templateRel = "";
-        try {
-            var info = projectInfo(projectDir);
-            if (info.version() != null && !info.version().isBlank()) {
-                keys.putIfAbsent("version", info.version());
-            }
-            if (info.applicationConfig() != null && !info.applicationConfig().isBlank()) {
-                templateRel = info.applicationConfig();
-            }
-        } catch (IOException ignored) {
-            // version / template path are best-effort
-        }
+        if (info.version() != null && !info.version().isBlank()) keys.putIfAbsent("version", info.version());
+        String templateRel = info.applicationConfig() != null ? info.applicationConfig() : "";
         if (!templateRel.isBlank()) {
             Path templateFile = projectDir.resolve(templateRel);
             if (Files.isRegularFile(templateFile)) {
@@ -1110,13 +1101,8 @@ public final class InstallCommand {
     }
 
     /** Engine version for a self-host install: the project version, else parsed from the jar name. */
-    private String engineInstallVersion(Path projectDir, Path engineJar) {
-        try {
-            var info = projectInfo(projectDir);
-            if (info.version() != null && !info.version().isBlank()) return info.version();
-        } catch (IOException ignored) {
-            // fall through to the jar-name form
-        }
+    private static String engineInstallVersion(ProjectInfo info, Path engineJar) {
+        if (info.version() != null && !info.version().isBlank()) return info.version();
         return EngineInstall.versionFromJarName(engineJar.getFileName().toString())
                 .orElseThrow(() ->
                         new IllegalStateException("cannot determine engine version for " + engineJar.getFileName()));
