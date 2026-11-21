@@ -268,7 +268,10 @@ public final class JvmClientInstall {
 
     /**
      * {@code path} as a batch file names it in ASCII: under {@code home} as {@code %JK_ROOT%\...},
-     * else under one of {@link #WINDOWS_ROOTS} as {@code %VAR%\...}, else as it is.
+     * else under one of {@link #WINDOWS_ROOTS} as {@code %VAR%\...}, else as it is. {@code cmd}
+     * expands {@code %} on every line it reads, so each {@code %} in the part written as it is is
+     * doubled: {@code C:\50%off} would otherwise lose its {@code %}, and a directory named
+     * {@code %PATH%} would become the PATH.
      *
      * @throws IllegalArgumentException when the path is outside all of them and not ASCII
      */
@@ -278,7 +281,7 @@ public final class JvmClientInstall {
             String root = env.get(WINDOWS_ROOTS.get(i));
             if (root != null) named = underRoot(path, root, "%" + WINDOWS_ROOTS.get(i) + "%");
         }
-        String out = named == null ? path : named;
+        String out = named == null ? path.replace("%", "%%") : named;
         if (!out.chars().allMatch(c -> c >= 0x20 && c < 0x7f)) {
             throw new IllegalArgumentException(path + " has characters cmd.exe cannot read from a batch file and is"
                     + " not under the JumpKick home or the user's profile; set JK_JAVA_HOME to it, or install from a JDK"
@@ -287,13 +290,16 @@ public final class JvmClientInstall {
         return out;
     }
 
-    /** {@code path} with {@code root} replaced by {@code name} and backslash separators, or null when not under it. */
+    /**
+     * {@code path} with {@code root} replaced by {@code name}, backslash separators and each {@code %}
+     * after the root doubled, or null when not under it.
+     */
     private static @Nullable String underRoot(String path, String root, String name) {
         String r = root.endsWith("\\") || root.endsWith("/") ? root.substring(0, root.length() - 1) : root;
         if (r.isEmpty() || path.length() <= r.length() || !path.regionMatches(true, 0, r, 0, r.length())) return null;
         char sep = path.charAt(r.length());
         if (sep != '\\' && sep != '/') return null;
-        return name + path.substring(r.length()).replace('/', '\\');
+        return name + path.substring(r.length()).replace('/', '\\').replace("%", "%%");
     }
 
     /**

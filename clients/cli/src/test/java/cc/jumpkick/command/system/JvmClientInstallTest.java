@@ -287,6 +287,18 @@ class JvmClientInstallTest {
                 .isEqualTo("C:\\Users\\Josiah\\x");
     }
 
+    /** A {@code %} written as it is is doubled, so cmd reads it back as one; a root's variable is not. */
+    @Test
+    void a_percent_in_the_written_part_of_a_path_is_doubled() {
+        Map<String, String> env = Map.of("USERPROFILE", "C:\\Users\\x");
+        assertThat(JvmClientInstall.batchPath("C:\\tools\\50%off\\jdk\\bin\\java.exe", "C:\\jk", env))
+                .isEqualTo("C:\\tools\\50%%off\\jdk\\bin\\java.exe");
+        assertThat(JvmClientInstall.batchPath("C:\\Users\\x\\50%off\\java.exe", "C:\\jk", env))
+                .isEqualTo("%USERPROFILE%\\50%%off\\java.exe");
+        assertThat(JvmClientInstall.batchPath("C:\\jk\\lib\\%JAVA_HOME%.jar", "C:\\jk", env))
+                .isEqualTo("%JK_ROOT%\\lib\\%%JAVA_HOME%%.jar");
+    }
+
     /** A non-ASCII path no variable names cannot be written into a batch file: refused, not mangled. */
     @Test
     void a_non_ascii_jdk_outside_every_known_root_is_refused() {
@@ -297,6 +309,41 @@ class JvmClientInstallTest {
                         Map.of()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("JK_JAVA_HOME");
+    }
+
+    /**
+     * {@code cmd} expands {@code %} in every line of a batch file, so a {@code %} in the part of a
+     * path the launcher writes as it is, after a root's variable or with no root at all, must reach
+     * {@code JAVA} and {@code JK_JAR} as written.
+     */
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void a_percent_in_a_path_reaches_the_launcher_s_variables_as_written(@TempDir Path tmp) throws Exception {
+        Path bin = Files.createDirectories(tmp.resolve("home/bin"));
+        Path java = tmp.resolve("50%off/jdk/bin/java.exe");
+        Files.createDirectories(java.getParent());
+        Files.write(java, new byte[] {1});
+        Path jar = tmp.resolve("a%PATH%b/jk-1.0.0.jar");
+        String root = tmp.toAbsolutePath().toString();
+        for (Map<String, String> env : List.of(Map.<String, String>of(), Map.of("USERPROFILE", root))) {
+            Path launcher = bin.resolve("jk.bat");
+            Files.writeString(
+                    launcher,
+                    JvmClientInstall.renderWindows(bin, jar, java, env)
+                            .replaceFirst(
+                                    "(?m)^\"%JAVA%\".*? & goto :jk_exit",
+                                    "echo JAVA=[%JAVA%]& echo JAR=[%JK_JAR%]& goto :jk_exit"));
+            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", launcher.toString()).redirectErrorStream(true);
+            pb.environment().remove("JK_JAVA_HOME");
+            pb.environment().put("USERPROFILE", root);
+            Processes.Captured run = Processes.capture(pb, Duration.ofMinutes(1));
+            String out = run.output();
+            assertThat(run.exit()).as(out).isZero();
+            assertThat(out)
+                    .as("with %s", env)
+                    .contains("JAVA=[" + java.toAbsolutePath() + "]")
+                    .contains("JAR=[" + jar.toAbsolutePath() + "]");
+        }
     }
 
     /**
