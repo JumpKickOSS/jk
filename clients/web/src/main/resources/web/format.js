@@ -4,6 +4,16 @@
 // one duration renderer, one relative-time renderer and one byte-size renderer here and nowhere
 // else. Pure functions of their arguments — `now` is passed in so the 1s clock stays reactive.
 
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
+/**
+ * `s` as HTML text, safe inside an element or a quoted attribute of either quote. Names, versions
+ * and paths come from a project's own files, so they never reach innerHTML unescaped.
+ */
+export function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
 /**
  * mm:ss clock, mirroring the CLI's {@code JkManagerColor.fmtClockSeconds}: {@code 42s},
  * {@code 1m 02s}, {@code 1h 05m 09s}. Whole seconds only, so a dual clock's two faces share one

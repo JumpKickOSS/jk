@@ -4,16 +4,7 @@
 // every release the update moved across (GET /api/whats-new), newest first, and links to the full
 // notes on GitHub. Closing it puts the page's own route back.
 import { get } from './api.js';
-
-/** HTML-escape `text`. */
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from './format.js';
 
 /**
  * One highlight's Markdown as HTML: `code`, **bold** and [links](https://…), nothing else. The text

@@ -3,14 +3,6 @@
 // rest parsed into a route object and rendered back. The hash is the whole client-side router, so a deep link into a failing line is
 // just a string both directions.
 
-export function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
 function decodeComp(raw) {
   try {
     return decodeURIComponent(raw);

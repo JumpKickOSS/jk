@@ -4,16 +4,7 @@
 // colour is read out of :root here at render time — style.css stays the one palette.
 
 import { echartsTooltipChrome, get } from './api.js';
-import { fmtDuration } from './format.js';
-
-const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
-
-/** Escape a value for interpolation into an HTML tooltip string — dependency names/versions/paths
- * come from a project's jk.toml/jk-lock.toml, which is attacker-adjacent (a shared or malicious
- * repo someone opens in the dashboard), so they must never reach innerHTML unescaped. */
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
-}
+import { escapeHtml, fmtDuration } from './format.js';
 
 // The Projects tab's per-project history spark: one vertical bar per recent build (height = wall
 // clock, colour = outcome), drawn with Apache ECharts (loaded globally from the CDN — see
