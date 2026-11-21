@@ -16,12 +16,8 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ExecPlan;
 import cc.jumpkick.wire.protocol.PluginCommandReport;
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -529,21 +525,15 @@ public final class AppWatchLoop {
      * or the line itself on a terminal, and either way fed to the probe after it has been shown.
      */
     private void pumpApp(String stream, InputStream in, ReadyProbe probe) {
-        Thread.ofPlatform().daemon().name("app-" + stream).start(() -> {
-            try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                OutputLines.read(reader, line -> {
-                    if (json()) {
-                        events.accept(SidecarOutput.appOutput(Clock.SYSTEM, "", stream, line));
-                    } else if ("stderr".equals(stream)) {
-                        CliOutput.err(line);
-                    } else {
-                        CliOutput.out(line);
-                    }
-                    probe.sawLine(line);
-                });
-            } catch (IOException ignored) {
-                // the pipe closes with the app; its exit is reported by the loop
+        OutputLines.pump("app-" + stream, in, line -> {
+            if (json()) {
+                events.accept(SidecarOutput.appOutput(Clock.SYSTEM, "", stream, line));
+            } else if ("stderr".equals(stream)) {
+                CliOutput.err(line);
+            } else {
+                CliOutput.out(line);
             }
+            probe.sawLine(line);
         });
     }
 

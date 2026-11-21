@@ -10,12 +10,8 @@ import cc.jumpkick.host.ChildEnv;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.wire.protocol.ExecPlan;
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -270,16 +266,10 @@ final class StackWatchLoop {
 
     /** One of a member's streams: an {@code app-output} event, and on a terminal the line under its prefix. */
     private void pump(String name, ReadyProbe probe, String stream, InputStream in) {
-        Thread.ofPlatform().daemon().name(name + "-" + stream).start(() -> {
-            try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                OutputLines.read(reader, line -> {
-                    loop.emit(SidecarOutput.appOutput(Clock.SYSTEM, name, stream, line));
-                    if (!loop.json()) CliOutput.err(SidecarOutput.prefix(name, colour) + line);
-                    probe.sawLine(line);
-                });
-            } catch (IOException ignored) {
-                // the pipe closes with the process; its exit is reported by the loop
-            }
+        OutputLines.pump(name + "-" + stream, in, line -> {
+            loop.emit(SidecarOutput.appOutput(Clock.SYSTEM, name, stream, line));
+            if (!loop.json()) CliOutput.err(SidecarOutput.prefix(name, colour) + line);
+            probe.sawLine(line);
         });
     }
 

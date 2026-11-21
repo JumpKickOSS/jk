@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.watch;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 
 /**
@@ -15,6 +19,20 @@ import java.util.function.Consumer;
 final class OutputLines {
 
     private OutputLines() {}
+
+    /**
+     * Read a child's UTF-8 stream {@code in} on a daemon thread named {@code thread}, handing each
+     * line to {@code lines}. The pipe closes with the child, whose exit its loop reports.
+     */
+    static void pump(String thread, InputStream in, Consumer<String> lines) {
+        Thread.ofPlatform().daemon().name(thread).start(() -> {
+            try (Reader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+                read(reader, lines);
+            } catch (IOException ignored) {
+                // the child is gone; its exit is reported by the loop
+            }
+        });
+    }
 
     static void read(Reader in, Consumer<String> lines) throws IOException {
         StringBuilder row = new StringBuilder();
