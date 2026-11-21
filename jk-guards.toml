@@ -2686,6 +2686,10 @@ reason = "lock registry: one lock per tool executable a suite declares, so concu
 in     = "cc.jumpkick.task.ToolIdentity#WARNED"
 reason = "log-once: the tools already warned about as hung in this engine's life, at most 256"
 
+[[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.host.DomXml#IDLE"
+reason = "engine-process fact: at most 8 XML parsers between parses, each reset to the one hardened configuration; they hold no document"
+
 # G130. A request's values reach other threads only as ScopedValues the propagator carries. An
 # InheritableThreadLocal copies whichever request happened to create a pool's thread into every task
 # that thread runs later, for the engine's life; there is no reason left to hold one.

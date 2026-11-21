@@ -6,10 +6,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -95,6 +99,41 @@ class DomXmlTest {
                 DomXml.parse(file))) {
             assertThat(DomXml.childText(doc.getDocumentElement(), "artifactId")).isEqualTo("widget");
         }
+    }
+
+    /**
+     * Parses share reused builders: one that failed, or that parsed another document, still refuses a
+     * DOCTYPE and still reads plain documents, and documents parsed at once stay their own.
+     */
+    @Test
+    void a_reused_parser_keeps_the_posture_and_documents_stay_apart(@TempDir Path tmp) throws Exception {
+        String poisoned = poisoned(secretFile(tmp));
+        for (int i = 0; i < 20; i++) {
+            assertThatThrownBy(() -> DomXml.parse("<broken>")).isInstanceOf(IOException.class);
+            assertThat(DomXml.parse("<p><n>" + i + "</n></p>")
+                            .getDocumentElement()
+                            .getTextContent())
+                    .isEqualTo(String.valueOf(i));
+            assertThatThrownBy(() -> DomXml.parse(poisoned))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("DOCTYPE")
+                    .hasMessageNotContaining(SECRET);
+        }
+        List<CompletableFuture<String>> parsed = new ArrayList<>();
+        for (int i = 0; i < 64; i++) {
+            String n = "n" + i;
+            parsed.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    return DomXml.parse("<p><n>" + n + "</n></p>")
+                            .getDocumentElement()
+                            .getTextContent();
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            }));
+        }
+        for (int i = 0; i < 64; i++)
+            assertThat(parsed.get(i).get(10, TimeUnit.SECONDS)).isEqualTo("n" + i);
     }
 
     /** Text is decoded already, so a lying {@code encoding=} must not be applied a second time. */

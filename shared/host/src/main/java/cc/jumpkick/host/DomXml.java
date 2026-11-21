@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -51,6 +52,13 @@ public final class DomXml {
      */
     private static final DocumentBuilderFactory FACTORY = hardened();
 
+    /**
+     * Builders between parses, each {@linkplain DocumentBuilder#reset reset} to the factory's
+     * configuration. A pool, not a thread-local: most parses run on virtual threads, which would each
+     * build their own and drop it. A parse that finds none builds one; past the bound it is dropped.
+     */
+    private static final ArrayBlockingQueue<DocumentBuilder> IDLE = new ArrayBlockingQueue<>(8);
+
     private DomXml() {}
 
     /** Parse untrusted XML bytes, honouring the document's own encoding declaration. */
@@ -80,7 +88,12 @@ public final class DomXml {
 
     /** An empty document to build a DOM in — the write side of the same owner. */
     public static Document newDocument() {
-        return builder().newDocument();
+        DocumentBuilder builder = take();
+        try {
+            return builder.newDocument();
+        } finally {
+            give(builder);
+        }
     }
 
     /** The trimmed text of the first direct child element named {@code tagName}, or {@code null}. */
@@ -131,11 +144,29 @@ public final class DomXml {
     }
 
     private static Document parse(InputSource source) throws IOException {
+        DocumentBuilder builder = take();
         try {
-            return builder().parse(source);
+            return builder.parse(source);
         } catch (SAXException e) {
             throw new IOException(e.getMessage(), e);
+        } finally {
+            give(builder);
         }
+    }
+
+    private static DocumentBuilder take() {
+        DocumentBuilder idle = IDLE.poll();
+        return idle != null ? idle : builder();
+    }
+
+    /** Back to the pool as the factory made it; a builder that cannot reset is dropped. */
+    private static void give(DocumentBuilder builder) {
+        try {
+            builder.reset();
+        } catch (RuntimeException cannotReset) {
+            return;
+        }
+        IDLE.offer(builder);
     }
 
     private static DocumentBuilder builder() {
