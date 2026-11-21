@@ -331,6 +331,9 @@ final class MavenVersion implements Comparable<MavenVersion> {
 
         private final String value;
 
+        /** {@link #comparableQualifier} of {@link #value}, once: a resolve compares the same items millions of times. */
+        private final String comparable;
+
         StringItem(String value, boolean followedByDigit) {
             if (followedByDigit && value.length() == 1) {
                 // a1 = alpha-1, b1 = beta-1, m1 = milestone-1
@@ -348,6 +351,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
                 }
             }
             this.value = ALIASES.getProperty(value, value);
+            this.comparable = comparableQualifier(this.value);
         }
 
         @Override
@@ -357,7 +361,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
 
         @Override
         public boolean isNull() {
-            return (comparableQualifier(value).compareTo(RELEASE_VERSION_INDEX) == 0);
+            return comparable.equals(RELEASE_VERSION_INDEX);
         }
 
         /**
@@ -383,7 +387,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
         public int compareTo(@Nullable Item item) {
             if (item == null) {
                 // 1-rc < 1, 1-ga > 1
-                return comparableQualifier(value).compareTo(RELEASE_VERSION_INDEX);
+                return comparable.compareTo(RELEASE_VERSION_INDEX);
             }
             switch (item.getType()) {
                 case INT_ITEM:
@@ -392,7 +396,7 @@ final class MavenVersion implements Comparable<MavenVersion> {
                     return -1; // 1.any < 1.1 ?
 
                 case STRING_ITEM:
-                    return comparableQualifier(value).compareTo(comparableQualifier(((StringItem) item).value));
+                    return comparable.compareTo(((StringItem) item).comparable);
 
                 case LIST_ITEM:
                     return -1; // 1.any < 1-1

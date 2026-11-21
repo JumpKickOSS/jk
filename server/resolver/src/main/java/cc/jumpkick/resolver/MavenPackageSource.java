@@ -384,9 +384,10 @@ public final class MavenPackageSource implements PackageSource {
      */
     public void setSnapshotPackages(Set<String> gaKeys) {
         this.snapshotPackages = Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
-        // The compact window differs for snapshot packages, so a list cached under the previous
-        // policy would be stale.
+        // Both lists differ for snapshot packages, so one cached under the previous policy would be
+        // stale.
         versionCache.clear();
+        expandedVersionCache.clear();
     }
 
     /**
@@ -599,8 +600,8 @@ public final class MavenPackageSource implements PackageSource {
             // AllowedSet#choosePreferred's stable preference from quietly handing back an older
             // release than the pre-release that was asked for.
             try {
-                List<String> ordered = orderedVersions(pkg);
-                String newest = CandidateWindow.highestOf(ordered);
+                // The solver asks on every decision: the full history is read and sorted once per wanted set.
+                String newest = CandidateWindow.highestOf(expandedVersions(pkg));
                 if (newest != null) return Optional.of(newest);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -687,10 +688,6 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public String waitingOn() {
         return InFlightRequests.waitingOn();
-    }
-
-    private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {
-        return orderedVersions(pkg, wantedVersions(pkg));
     }
 
     /**

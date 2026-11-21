@@ -156,8 +156,9 @@ public final class MavenMetadataCache {
         // -F / withForceRevalidate (jk update) skip the TTL window. Unchanged indexes still
         // cost only a conditional GET (304); warm TTL hits never leave the disk.
         if (!force && fresh(body)) {
+            // The memo's own array: fetch hands each caller a copy.
             byte[] held = BODIES.get(body, Files::readAllBytes).orElse(null);
-            if (held != null) return held.clone();
+            if (held != null) return held;
         }
         // A repository that lacks the artifact answered so within the hour: a version list fans out
         // to every repository, so on a multi-repository project the misses are most of its requests.

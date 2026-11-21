@@ -14,6 +14,7 @@ import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -86,6 +87,30 @@ class MavenPackageSourceCandidateReadsTest {
                 .as("the catalog is asked for once")
                 .filteredOn(LIB_META::equals)
                 .hasSize(1);
+    }
+
+    @Test
+    void a_snapshot_package_reads_its_history_once_however_often_its_newest_is_asked(@TempDir Path tmp)
+            throws Exception {
+        MavenPackageSource src = source(tmp);
+        src.setSnapshotPackages(Set.of("com.foo:lib"));
+
+        for (int i = 0; i < 3; i++) assertThat(src.preferredVersion(LIB)).contains("2.0");
+        assertThat(http.requested())
+                .as("the catalog is asked for once")
+                .filteredOn(LIB_META::equals)
+                .hasSize(1);
+    }
+
+    @Test
+    void naming_a_snapshot_package_drops_the_history_read_under_the_stable_window(@TempDir Path tmp) throws Exception {
+        new MavenStub(http).metadata("com.foo", "lib", "1.0", "2.0", "2.1-SNAPSHOT");
+        MavenPackageSource src = source(tmp);
+        assertThat(src.expandedVersions(LIB)).containsExactly("2.0", "1.0");
+
+        src.setSnapshotPackages(Set.of("com.foo:lib"));
+        assertThat(src.expandedVersions(LIB)).containsExactly("2.1-SNAPSHOT", "2.0", "1.0");
+        assertThat(src.preferredVersion(LIB)).contains("2.1-SNAPSHOT");
     }
 
     private MavenPackageSource source(Path tmp) {
