@@ -3,7 +3,6 @@ package cc.jumpkick.android;
 
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.DomXml;
-
 import cc.jumpkick.host.ToolJars;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.TaskExec;
