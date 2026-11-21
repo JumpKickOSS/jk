@@ -263,6 +263,7 @@ final class AotCacheTrainer {
         String runtime = localJre == null ? containerRuntime(plan.config().dockerExecutable()) : null;
         Map<String, String> env = trainingEnvironment(plan.config());
         AotTraining.Launcher launcher;
+        Path envFile = null;
         if (localJre != null) {
             String java = localJre.toString();
             launcher = new AotTraining.Launcher() {
@@ -286,7 +287,8 @@ final class AotCacheTrainer {
                 throw new IOException(
                         "no docker, podman or nerdctl to train in, and " + base + "'s JVM does not run here");
             }
-            launcher = containerLauncher(runtime, staging, base, platform(plan.config()), env);
+            envFile = ContainerEnv.write(workDir.resolve("aot-env"), env);
+            launcher = containerLauncher(runtime, staging, base, platform(plan.config()), env, envFile);
         }
         String emulated = localJre == null ? emulatedOn(platform(plan.config())) : null;
         log.accept(
@@ -299,16 +301,20 @@ final class AotCacheTrainer {
                                                 + (check.noCode().isEmpty() ? "" : ", without AOT code")));
 
         Path cache = staging.resolve(CACHE_FILE);
-        AotTraining.trainAotCache(
-                launcher,
-                // The same flags the entrypoint runs with.
-                ImageBuilder.javaOpts(plan.config()),
-                runArgs,
-                new AotTraining.Target(CACHE_FILE, cache),
-                new AotTraining.Target(CONFIG_FILE, staging.resolve(CONFIG_FILE)),
-                localJre == null ? check.noCode() : List.of(),
-                TRAIN_TIMEOUT,
-                log);
+        try {
+            AotTraining.trainAotCache(
+                    launcher,
+                    // The same flags the entrypoint runs with.
+                    ImageBuilder.javaOpts(plan.config()),
+                    runArgs,
+                    new AotTraining.Target(CACHE_FILE, cache),
+                    new AotTraining.Target(CONFIG_FILE, staging.resolve(CONFIG_FILE)),
+                    localJre == null ? check.noCode() : List.of(),
+                    TRAIN_TIMEOUT,
+                    log);
+        } finally {
+            if (envFile != null) Files.deleteIfExists(envFile);
+        }
         Files.setLastModifiedTime(cache, LAYER_TIME);
         log.accept("AOT cache verified (" + Files.size(cache) / (1024 * 1024) + " MiB)");
         return new Result(staging, runArgs, cache, stagedFiles);
@@ -416,12 +422,20 @@ final class AotCacheTrainer {
     }
 
     /**
-     * {@code <runtime> run --rm --platform <p> -e … -v <staging>:/app -w /app <base>} — everything
-     * before the java command. The platform is the image's: without it the runtime runs the host's
-     * variant of a multi-platform base, whose JVM trains a cache the image's JVM refuses.
+     * {@code <runtime> run --rm --platform <p> -v <staging>:/app -w /app --env-file <file> <base>} —
+     * everything before the java command. The platform is the image's: without it the runtime runs
+     * the host's variant of a multi-platform base, whose JVM trains a cache the image's JVM refuses.
+     * The variables' values never appear here ({@link ContainerEnv}); {@code envFile} holds those a
+     * file can carry.
      */
     static List<String> containerPrefix(
-            String runtime, Path staging, String base, String platform, String name, Map<String, String> env) {
+            String runtime,
+            Path staging,
+            String base,
+            String platform,
+            String name,
+            Map<String, String> env,
+            @Nullable Path envFile) {
         List<String> cmd = new ArrayList<>(List.of(runtime, "run", "--rm", "--platform", platform, "--name", name));
         // Rootful docker writes app.aot/app.aotconf into the bind mount as root:root — the
         // follow-up setLastModifiedTime/delete then fails AFTER a successful training run, and
@@ -436,7 +450,7 @@ final class AotCacheTrainer {
         String mount = staging.toAbsolutePath() + ":/app";
         cmd.addAll(List.of("-v", isSelinux() ? mount + ":z" : mount));
         cmd.addAll(List.of("-w", "/app"));
-        env.forEach((k, v) -> cmd.addAll(List.of("-e", k + "=" + v)));
+        cmd.addAll(ContainerEnv.args(env, envFile));
         cmd.add(base);
         return cmd;
     }
@@ -523,15 +537,31 @@ final class AotCacheTrainer {
         return false;
     }
 
-    /** Runs in a fresh container of {@code base}; stopped and killed through the runtime, by name. */
-    private static AotTraining.Launcher containerLauncher(
-            String runtime, Path staging, String base, String platform, Map<String, String> env) {
+    /**
+     * Runs in a fresh container of {@code base}; stopped and killed through the runtime, by name.
+     * {@code env} reaches the container through {@code envFile}, but for the variables a file cannot
+     * carry, which the runtime reads from its own environment ({@link ContainerEnv}).
+     */
+    static AotTraining.Launcher containerLauncher(
+            String runtime,
+            Path staging,
+            String base,
+            String platform,
+            Map<String, String> env,
+            @Nullable Path envFile) {
+        Map<String, String> unfit = ContainerEnv.unfit(env);
         return new AotTraining.Launcher() {
             @Override
             public List<String> java(String runName) {
-                List<String> cmd = new ArrayList<>(containerPrefix(runtime, staging, base, platform, runName, env));
+                List<String> cmd =
+                        new ArrayList<>(containerPrefix(runtime, staging, base, platform, runName, env, envFile));
                 cmd.add("java");
                 return cmd;
+            }
+
+            @Override
+            public Map<String, String> env() {
+                return unfit;
             }
 
             @Override
@@ -547,17 +577,23 @@ final class AotCacheTrainer {
     }
 
     /**
+     * How much longer than the grace a stop may take: the runtime kills the container once the grace
+     * is up and returns after that, and its client must not be killed before it does.
+     */
+    static final Duration STOP_SLACK = Duration.ofSeconds(10);
+
+    /**
      * SIGTERM through the runtime: signalling the client that streams the container's output does
      * not reliably reach PID 1 inside.
      */
-    private static void requestStop(Process process, String runtime, String containerName, Duration grace) {
+    static void requestStop(Process process, String runtime, String containerName, Duration grace) {
         Process stopper = null;
         try {
             stopper = new ProcessBuilder(runtime, "stop", "--time", String.valueOf(grace.toSeconds()), containerName)
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
-            stopper.waitFor(grace.toSeconds(), TimeUnit.SECONDS);
+            stopper.waitFor(grace.plus(STOP_SLACK).toMillis(), TimeUnit.MILLISECONDS);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             process.destroy(); // best effort: the forcible kill after it still bounds the wait

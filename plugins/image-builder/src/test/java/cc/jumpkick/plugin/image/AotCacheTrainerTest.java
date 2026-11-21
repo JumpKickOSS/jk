@@ -4,16 +4,21 @@ package cc.jumpkick.plugin.image;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.host.AotTraining;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.image.ImageConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /** The decisions the trainer makes without needing a container runtime. */
@@ -116,11 +121,116 @@ class AotCacheTrainerTest {
                 .containsEntry("LANG", "C.UTF-8")
                 .containsEntry("SPRING_FLYWAY_ENABLED", "false")
                 .containsEntry("SPRING_CONTEXT_EXIT", "onRefresh");
-        List<String> prefix =
-                AotCacheTrainer.containerPrefix("podman", Path.of("/w/aot-train"), "img", "linux/amd64", "n", env);
+        List<String> prefix = AotCacheTrainer.containerPrefix(
+                "podman", Path.of("/w/aot-train"), "img", "linux/amd64", "n", env, Path.of("/w/aot-env/t.env"));
         assertThat(String.join(" ", prefix))
-                .contains("-e SPRING_CONTEXT_EXIT=onRefresh")
+                .contains(" --env-file " + Path.of("/w/aot-env/t.env").toAbsolutePath() + " ")
+                .doesNotContain("SPRING_CONTEXT_EXIT")
                 .endsWith(" img");
+    }
+
+    /**
+     * A container run's argument list is readable by every user of the host, and training settings
+     * may be secrets: the values go in a file the runtime reads, and only a value no file line can
+     * carry is named on the command line and valued in the runtime's own environment.
+     */
+    @Test
+    void a_container_run_carries_no_value_on_its_command_line() {
+        Map<String, String> env = Map.of("DB_PASSWORD", "s3cret", "CERT", "-----BEGIN-----\nabc\n-----END-----");
+        Path envFile = Path.of("/w/aot-env/t.env");
+        AotTraining.Launcher launcher = AotCacheTrainer.containerLauncher(
+                "podman", Path.of("/w/aot-train"), "img", "linux/amd64", env, envFile);
+
+        List<String> argv = launcher.java("n");
+
+        assertThat(String.join(" ", argv))
+                .doesNotContain("s3cret")
+                .doesNotContain("BEGIN")
+                .doesNotContain("DB_PASSWORD");
+        assertThat(argv)
+                .containsSubsequence("--env-file", envFile.toAbsolutePath().toString())
+                .containsSubsequence("-e", "CERT");
+        assertThat(launcher.wholeEnv()).isFalse();
+        assertThat(launcher.env())
+                .as("only the value a file cannot carry reaches the runtime's environment")
+                .containsOnlyKeys("CERT");
+    }
+
+    /**
+     * The training's env file is the runtime's to read and gone once the runs are over, whether the
+     * application failed or the runtime never started.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void the_env_file_is_read_by_the_runtime_and_removed_after_the_runs(@TempDir Path tmp) throws Exception {
+        Path seen = Files.createDirectories(tmp.resolve("seen"));
+        Path runtime = Files.writeString(
+                tmp.resolve("runtime"),
+                "#!/bin/sh\n"
+                        + "echo \"$@\" >> '" + seen.resolve("argv") + "'\n"
+                        + "while [ $# -gt 0 ]; do\n"
+                        + "  if [ \"$1\" = --env-file ]; then cp \"$2\" '" + seen.resolve("file") + "';"
+                        + " ls -l \"$2\" | cut -c1-10 > '" + seen.resolve("mode") + "'; fi\n"
+                        + "  shift\n"
+                        + "done\n"
+                        + "exit 3\n");
+        Files.setPosixFilePermissions(runtime, PosixFilePermissions.fromString("rwx------"));
+        Path work = Files.createDirectories(tmp.resolve("target"));
+
+        assertThatThrownBy(() -> AotCacheTrainer.train(
+                        trainable(work, runtime.toString()),
+                        AotCacheTrainer.PlatformCheck.NATIVE,
+                        work,
+                        tmp.resolve("cache"),
+                        RegistryAuth.NONE,
+                        msg -> {}))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("exited 3");
+
+        assertThat(Files.readString(seen.resolve("file"))).isEqualTo("TOKEN= #not a comment=x\n");
+        assertThat(Files.readString(seen.resolve("mode")).strip()).isEqualTo("-rw-------");
+        assertThat(Files.readString(seen.resolve("argv"))).doesNotContain("not a comment");
+        assertThat(envFiles(work)).as("removed once the run is over").isEmpty();
+
+        assertThatThrownBy(() -> AotCacheTrainer.train(
+                        trainable(work, tmp.resolve("no-such-runtime").toString()),
+                        AotCacheTrainer.PlatformCheck.NATIVE,
+                        work,
+                        tmp.resolve("cache"),
+                        RegistryAuth.NONE,
+                        msg -> {}))
+                .isInstanceOf(IOException.class);
+        assertThat(envFiles(work)).as("removed when the runtime does not start").isEmpty();
+    }
+
+    /** A plain-jar plan on a platform no host runs natively, so it trains through {@code runtime}. */
+    private static ImageBuilder.Plan trainable(Path work, String runtime) throws IOException {
+        Path jar = Files.writeString(work.resolve("svc-1.0.0.jar"), "not a boot jar");
+        Path dep = Files.writeString(work.resolve("dep.jar"), "dep");
+        ImageConfig config = new ImageConfig(
+                "img",
+                null,
+                null,
+                List.of(),
+                Map.of("TOKEN", " #not a comment=x"),
+                Map.of(),
+                Map.of(),
+                null,
+                null,
+                List.of("linux/riscv64"),
+                null,
+                runtime,
+                null,
+                true);
+        return new ImageBuilder.Plan(config, "svc", "1.0.0", "x.Main", jar, List.of(dep));
+    }
+
+    private static List<Path> envFiles(Path work) throws IOException {
+        Path dir = work.resolve("aot-env");
+        if (!Files.isDirectory(dir)) return List.of();
+        try (var list = Files.list(dir)) {
+            return list.toList();
+        }
     }
 
     /**
@@ -134,7 +244,8 @@ class AotCacheTrainerTest {
         assertThat(AotCacheTrainer.platform(withPlatforms(List.of("linux/arm64"))))
                 .isEqualTo("linux/arm64");
         Path staging = Path.of("/w/aot-train");
-        List<String> prefix = AotCacheTrainer.containerPrefix("podman", staging, "img", "linux/arm64", "n", Map.of());
+        List<String> prefix =
+                AotCacheTrainer.containerPrefix("podman", staging, "img", "linux/arm64", "n", Map.of(), null);
         assertThat(String.join(" ", prefix)).startsWith("podman run --rm --platform linux/arm64 ");
         // The mount names the host's absolute path: C:\w\aot-train on Windows, which podman and docker take there.
         assertThat(String.join(" ", prefix)).contains(" -v " + staging.toAbsolutePath() + ":/app");
@@ -251,5 +362,22 @@ class AotCacheTrainerTest {
         assertThat(Files.getLastModifiedTime(marker).toMillis() > 0)
                 .as("the tree under the cache root is the one the trainer used")
                 .isEqualTo(BaseJre.hostCanExecute(plan(null).config().platforms()));
+    }
+
+    /**
+     * The runtime kills the container once the grace is up and only then returns; its client is
+     * waited for past the grace, so the stop it is carrying out is not cut short.
+     */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void a_stop_is_waited_for_past_its_grace(@TempDir Path tmp) throws Exception {
+        Path stopped = tmp.resolve("stopped");
+        Path runtime = Files.writeString(tmp.resolve("runtime"), "#!/bin/sh\nsleep 2\ntouch '" + stopped + "'\n");
+        Files.setPosixFilePermissions(runtime, PosixFilePermissions.fromString("rwx------"));
+        Process run = new ProcessBuilder("sh", "-c", "exit 0").start();
+
+        AotCacheTrainer.requestStop(run, runtime.toString(), "n", Duration.ofSeconds(1));
+
+        assertThat(stopped).exists();
     }
 }

@@ -276,13 +276,17 @@ public final class ImageBuilder {
      * application; the cache follows as a layer of its own. Each file keeps the path and the time it
      * was trained at, which is all the JVM checks of a classpath entry, so which layer carries it
      * does not touch the cache's validity, and an application change re-pushes the application's
-     * layer and the cache's only. Training-run droppings are not staged files and ship nowhere.
+     * layer and the cache's only. Training-run droppings are not staged files and ship nowhere. The
+     * jars are staged under {@code libs/}, or under {@code lib/} where Spring Boot's extractor
+     * wrote them.
      */
     static List<FileEntriesLayer> stagedLayers(AotCacheTrainer.Result aot, Plan plan) throws IOException {
         Set<String> release = new HashSet<>();
-        for (Path jar : plan.dependencyJars()) release.add("libs/" + plan.nameOf(jar));
         Set<String> snapshot = new HashSet<>();
-        for (Path jar : plan.snapshotJars()) snapshot.add("libs/" + plan.nameOf(jar));
+        for (String dir : List.of("libs/", "lib/")) {
+            for (Path jar : plan.dependencyJars()) release.add(dir + plan.nameOf(jar));
+            for (Path jar : plan.snapshotJars()) snapshot.add(dir + plan.nameOf(jar));
+        }
         Path root = aot.stagingRoot();
         List<FileEntriesLayer.Builder> layers = List.of(
                 FileEntriesLayer.builder().setName("dependencies"),

@@ -45,7 +45,7 @@ public final class AotTraining {
             return null;
         }
 
-        /** Variables laid over the environment a run on this host inherits. */
+        /** Variables laid over the environment the launched command inherits. */
         default Map<String, String> env() {
             return Map.of();
         }

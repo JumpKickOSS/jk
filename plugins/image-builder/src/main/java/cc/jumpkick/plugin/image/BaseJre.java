@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
@@ -17,11 +18,14 @@ import com.google.cloud.tools.jib.api.TarImage;
 import com.google.cloud.tools.jib.api.buildplan.Platform;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLockInterruptionException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
@@ -53,6 +57,9 @@ import org.jspecify.annotations.Nullable;
 final class BaseJre {
 
     private BaseJre() {}
+
+    /** One extraction of a tree at a time in this JVM; the tree's lock file orders processes. */
+    private static final KeyedLocks<Path> EXTRACTIONS = new KeyedLocks<>();
 
     /** True when this host can execute a Linux binary of the image's architecture. */
     static boolean hostCanExecute(List<String> platforms) {
@@ -90,27 +97,52 @@ final class BaseJre {
      * digest: a republished tag must not keep training (and verifying!) with the previous JVM —
      * the shipped image would carry an AOT cache the runtime silently rejects.
      * Digest-pinned references never re-validate; mutable tags re-resolve after
-     * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap).
+     * {@link #REVALIDATE_MILLIS} (Jib's layer cache makes an unchanged re-pull cheap). The tree is
+     * shared by every build on the host, so it is read and replaced under its lock.
      */
     static @Nullable Path javaBinary(String base, String platform, Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         Path root = treeOf(base, platform, cacheRoot);
-        Path marker = root.resolve(".extracted");
-        boolean pinned = base.contains("@sha256:");
-        if (Files.isRegularFile(marker)) {
-            long age = Clock.SYSTEM.millis() - Files.getLastModifiedTime(marker).toMillis();
-            if (pinned) {
-                // The marker is also what cache retention reads to decide the tree is still in
-                // use, and a pinned reference never re-resolves, so this is the only place the
-                // use is ever recorded. A mutable tag records it by re-validating instead, which
-                // rewrites the marker at least as often as the retention window can care about.
-                Files.setLastModifiedTime(marker, FileTime.fromMillis(Clock.SYSTEM.millis()));
-                return findJava(root);
+        Files.createDirectories(root.getParent());
+        try (KeyedLocks.Held inProcess = EXTRACTIONS.holdInterruptibly(root);
+                FileChannel acrossProcesses = lockAcrossProcesses(root.resolveSibling(root.getFileName() + ".lock"))) {
+            Path marker = root.resolve(".extracted");
+            boolean pinned = base.contains("@sha256:");
+            if (Files.isRegularFile(marker)) {
+                long age = Clock.SYSTEM.millis()
+                        - Files.getLastModifiedTime(marker).toMillis();
+                if (pinned) {
+                    // The marker is also what cache retention reads to decide the tree is still in
+                    // use, and a pinned reference never re-resolves, so this is the only place the
+                    // use is ever recorded. A mutable tag records it by re-validating instead, which
+                    // rewrites the marker at least as often as the retention window can care about.
+                    Files.setLastModifiedTime(marker, FileTime.fromMillis(Clock.SYSTEM.millis()));
+                    return findJava(root);
+                }
+                if (age < REVALIDATE_MILLIS) return findJava(root);
             }
-            if (age < REVALIDATE_MILLIS) return findJava(root);
+            extractIfChanged(base, platform, root, marker, auth);
+            return findJava(root);
         }
-        extractIfChanged(base, platform, root, marker, auth);
-        return findJava(root);
+    }
+
+    /**
+     * Hold {@code lockFile} against other processes, or return null when its filesystem refuses
+     * locks, leaving this JVM's lock alone in force. The file is touched on every take, since cache
+     * retention removes a stray file by age.
+     */
+    private static @Nullable FileChannel lockAcrossProcesses(Path lockFile) throws IOException {
+        FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        try {
+            channel.lock();
+        } catch (FileLockInterruptionException interrupted) {
+            throw interrupted;
+        } catch (IOException | UnsupportedOperationException refused) {
+            channel.close();
+            return null;
+        }
+        Files.setLastModifiedTime(lockFile, FileTime.fromMillis(Clock.SYSTEM.millis()));
+        return channel;
     }
 
     /** Where {@code base}'s JRE for {@code platform} ({@code os/arch}) is unpacked: one tree per both. */
@@ -138,71 +170,81 @@ final class BaseJre {
      */
     private static void extractIfChanged(String base, String platform, Path root, Path marker, RegistryAuth auth)
             throws IOException {
-        Files.createDirectories(root.getParent());
-        Path tar = root.resolveSibling(root.getFileName() + ".tar");
-        com.google.cloud.tools.jib.api.JibContainer pulled;
+        Path tar = Files.createTempFile(root.getParent(), root.getFileName() + ".", ".tar");
         try {
-            pulled = auth.containerize(
-                    pull(auth, base, platform),
-                    Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
-        } catch (InvalidImageReferenceException | RegistryException e) {
-            throw new IOException("cannot read base image " + base + ": " + e.getMessage(), e);
-        } catch (com.google.cloud.tools.jib.api.CacheDirectoryCreationException | ExecutionException e) {
-            throw new IOException("cannot extract base image " + base + ": " + e.getMessage(), e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("base image pull interrupted", e);
-        }
-        String resolved = pulled.getDigest().toString();
-        String previous = null;
-        if (Files.isRegularFile(marker)) {
-            String[] lines = Files.readString(marker).split("\n");
-            if (lines.length > 1) previous = lines[1].trim();
-        }
-        if (resolved.equals(previous)) {
-            // Same bytes — refresh the trust window and keep the tree.
-            Files.setLastModifiedTime(marker, FileTime.fromMillis(Clock.SYSTEM.millis()));
+            com.google.cloud.tools.jib.api.JibContainer pulled;
+            try {
+                pulled = auth.containerize(
+                        pull(auth, base, platform),
+                        Containerizer.to(TarImage.at(tar).named("jk-base-jre")));
+            } catch (InvalidImageReferenceException | RegistryException e) {
+                throw new IOException("cannot read base image " + base + ": " + e.getMessage(), e);
+            } catch (com.google.cloud.tools.jib.api.CacheDirectoryCreationException | ExecutionException e) {
+                throw new IOException("cannot extract base image " + base + ": " + e.getMessage(), e);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException("base image pull interrupted", e);
+            }
+            String resolved = pulled.getDigest().toString();
+            String previous = null;
+            if (Files.isRegularFile(marker)) {
+                String[] lines = Files.readString(marker).split("\n");
+                if (lines.length > 1) previous = lines[1].trim();
+            }
+            if (resolved.equals(previous)) {
+                // Same bytes — refresh the trust window and keep the tree.
+                Files.setLastModifiedTime(marker, FileTime.fromMillis(Clock.SYSTEM.millis()));
+                return;
+            }
+            install(tar, root, base + "\n" + resolved + "\n");
+        } finally {
             Files.deleteIfExists(tar);
-            return;
         }
-        Path fresh = root.resolveSibling(root.getFileName() + ".fresh");
-        PathUtil.deleteRecursivelyOrThrow(fresh);
-        Files.createDirectories(fresh);
-        unpackImage(tar, fresh);
-        Files.deleteIfExists(tar);
-        PathUtil.deleteRecursivelyOrThrow(root);
-        Files.move(fresh, root);
-        Files.writeString(root.resolve(".extracted"), base + "\n" + resolved + "\n");
     }
 
     /**
-     * Unpack a docker-archive tarball: layers applied in <em>manifest order</em> (not file-name
-     * order — digest-lexicographic ordering has no relation to layer order) with OCI whiteouts
-     * honored, so "later layer wins" matches the runtime filesystem.
+     * Unpack the docker archive {@code tar} beside {@code root}, then put it in {@code root}'s place
+     * with its {@code .extracted} marker. The work directories are the caller's own and never
+     * inside the tree being unpacked, where a layer's whiteout would reach them.
      */
-    private static void unpackImage(Path tar, Path root) throws IOException {
-        Path layers = Files.createTempDirectory(root, "layers-");
+    static void install(Path tar, Path root, String marker) throws IOException {
+        Path parent = Objects.requireNonNull(root.getParent());
+        String name = root.getFileName().toString();
+        Path fresh = Files.createTempDirectory(parent, name + ".fresh-");
+        Path layers = Files.createTempDirectory(parent, name + ".layers-");
+        try {
+            unpackImage(tar, layers, fresh);
+            PathUtil.deleteRecursivelyOrThrow(layers);
+            PathUtil.deleteRecursivelyOrThrow(root);
+            Files.move(fresh, root);
+            Files.writeString(root.resolve(".extracted"), marker);
+        } finally {
+            PathUtil.deleteRecursively(layers);
+            PathUtil.deleteRecursively(fresh);
+        }
+    }
+
+    /**
+     * Unpack a docker-archive tarball into {@code root} through the scratch directory {@code
+     * layers}: layers applied in <em>manifest order</em> (not file-name order — digest-lexicographic
+     * ordering has no relation to layer order) with OCI whiteouts honored, so "later layer wins"
+     * matches the runtime filesystem.
+     */
+    private static void unpackImage(Path tar, Path layers, Path root) throws IOException {
         unpack(tar, layers, false);
         List<Path> ordered = manifestLayerOrder(layers);
         if (ordered.isEmpty()) {
-            // No manifest.json (not a docker archive?) — fall back to name order, old behavior.
-            try (var walk = Files.walk(layers)) {
-                ordered = walk.filter(Files::isRegularFile)
-                        .filter(c -> {
-                            try {
-                                return isGzip(c) || c.getFileName().toString().endsWith(".tar");
-                            } catch (IOException e) {
-                                return false;
-                            }
-                        })
-                        .sorted()
-                        .toList();
-            }
+            // No manifest.json (not a docker archive?) — fall back to name order.
+            List<Path> found = new ArrayList<>();
+            PathUtil.forEachRegularFile(layers, (file, attrs) -> {
+                if (file.getFileName().toString().endsWith(".tar") || isGzip(file)) found.add(file);
+            });
+            found.sort(null);
+            ordered = found;
         }
         for (Path layer : ordered) {
             unpack(layer, root, true);
         }
-        PathUtil.deleteRecursivelyOrThrow(layers);
     }
 
     /**

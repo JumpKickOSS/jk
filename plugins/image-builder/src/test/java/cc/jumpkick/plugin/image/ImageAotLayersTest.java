@@ -74,6 +74,47 @@ class ImageAotLayersTest {
         }
     }
 
+    /** Spring Boot's extractor puts the jars under {@code lib/}, beside its thin launcher jar. */
+    @Test
+    void a_spring_boot_trees_jars_ship_in_the_dependency_layers(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        Path release = Files.writeString(store.resolve("aa"), "release");
+        Path snapshot = Files.writeString(store.resolve("bb"), "snapshot");
+        Path staging = Files.createDirectories(tmp.resolve("staging"));
+        for (String rel : List.of("app.jar", "lib/spring-core-6.2.1.jar", "lib/sibling-0.1.0-SNAPSHOT.jar")) {
+            Path file = staging.resolve(rel);
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, rel);
+        }
+        AotCacheTrainer.Result trained = new AotCacheTrainer.Result(
+                staging,
+                List.of(),
+                tmp.resolve("app.aot"),
+                Set.of("app.jar", "lib/spring-core-6.2.1.jar", "lib/sibling-0.1.0-SNAPSHOT.jar"));
+        ImageBuilder.Plan plan = new ImageBuilder.Plan(
+                config(),
+                "app",
+                "1.0.0",
+                "x.Main",
+                tmp.resolve("app.jar"),
+                List.of(release),
+                List.of(snapshot),
+                null,
+                Map.of(release, "spring-core-6.2.1.jar", snapshot, "sibling-0.1.0-SNAPSHOT.jar"),
+                null,
+                null,
+                null);
+
+        List<FileEntriesLayer> layers = ImageBuilder.stagedLayers(trained, plan);
+
+        assertThat(layers)
+                .extracting(FileEntriesLayer::getName)
+                .containsExactly("dependencies", "snapshot-dependencies", "application");
+        assertThat(paths(layers.get(0))).containsExactly("/app/lib/spring-core-6.2.1.jar");
+        assertThat(paths(layers.get(1))).containsExactly("/app/lib/sibling-0.1.0-SNAPSHOT.jar");
+        assertThat(paths(layers.get(2))).containsExactly("/app/app.jar");
+    }
+
     private static List<String> paths(FileEntriesLayer layer) {
         return layer.getEntries().stream()
                 .map(FileEntry::getExtractionPath)

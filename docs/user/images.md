@@ -172,8 +172,12 @@ with `-XX:AOTMode=on`, so a JVM that would not map it refuses to start, and only
 layer.
 
 The training runs see the image's `[image.env]`, with `[image.training-env]` laid over it, and
-the image's `JAVA_OPTS`. `training-env` reaches the training runs alone, never the image: it is
-how an application that needs a database or a broker at startup trains without one. The cache
+the image's `JAVA_OPTS`. A container runtime reads them from an owner-only `--env-file` under the
+module's `target/`, deleted once the runs are over, so no value shows in the host's process list.
+A value such a file cannot carry intact (a line break, trailing whitespace) is named with `-e` and
+handed to the runtime in its own environment instead.
+`training-env` reaches the training runs alone, never the image: it is how an application that
+needs a database or a broker at startup trains without one. The cache
 depends on the JVM's flags, which stay the entrypoint's, so the image still uses it. For Spring
 Boot, skipping the migrations and exiting once the context has refreshed trains the whole startup:
 
@@ -189,8 +193,8 @@ time; switch the migration with a value the app reads while it runs (a `FlywayMi
 that checks it), as jk-examples' hotel application does.
 
 Spring Boot images are unpacked into Boot’s CDS/AOT-friendly layout first (thin launcher
-jar + `lib/`). A non-Boot exploded-classes layout remains unsupported: a CDS dump refuses
-directory classpath entries.
+jar + `lib/`), whose jars ship in the same dependency layers as above. A non-Boot
+exploded-classes layout remains unsupported: a CDS dump refuses directory classpath entries.
 
 App-local AOT without an image: [Build](build.md#jvm-startup-cache-app-aot--cds).
 

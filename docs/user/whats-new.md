@@ -6,6 +6,14 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk image` keeps training secrets off the container runtime's command line.** With `aot-cache =
+  true`, `[image.env]` and `[image.training-env]` values were passed as `-e KEY=VALUE`, where any
+  user of the host could read them; the runtime now reads them from an owner-only env file that is
+  deleted after training. A Spring Boot image's dependency jars ship in the `dependencies` and
+  `snapshot-dependencies` layers instead of the application layer, so an app change no longer
+  re-pushes them (the image digest changes once). A base image whose layer carries an opaque
+  whiteout at its root no longer fails the JRE extraction, and builds sharing one base JRE take
+  turns extracting it.
 - **MCP session ids are not reused, and ending a session stops what waits on it.** An
   `Mcp-Session-Id` is now 128 random bits and is never handed to another client, so an agent
   returning with an ended id gets a `404` instead of joining someone else's session; the label in
