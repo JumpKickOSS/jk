@@ -3,6 +3,7 @@ package cc.jumpkick.plugin.image;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -18,11 +19,15 @@ import org.junit.jupiter.api.io.TempDir;
  * A base image's links survive extraction when they stay inside it: a JDK package reaches its
  * configuration and certificates through them. A link that would lead out of the tree is skipped,
  * and nothing a layer writes later goes through one to land outside.
+ *
+ * <p>A test whose layer must leave a symlink in the tree is POSIX-only: Windows refuses the link
+ * without the symlink privilege, and the extracted tree is a Linux JRE only a Linux host runs.
  */
 class BaseJreLinksTest {
 
     @Test
     void an_absolute_symlink_is_read_against_the_image_root(@TempDir Path tmp) throws Exception {
+        Symlinks.assumeSupported();
         Path dest = Files.createDirectories(tmp.resolve("dest"));
         Path layer = tar(
                 tmp.resolve("layer.tar"),
@@ -41,6 +46,7 @@ class BaseJreLinksTest {
 
     @Test
     void a_relative_symlink_inside_the_tree_is_kept_as_written(@TempDir Path tmp) throws Exception {
+        Symlinks.assumeSupported();
         Path dest = Files.createDirectories(tmp.resolve("dest"));
         Path layer = tar(
                 tmp.resolve("layer.tar"),
@@ -56,6 +62,7 @@ class BaseJreLinksTest {
 
     @Test
     void links_still_resolve_after_the_tree_moves(@TempDir Path tmp) throws Exception {
+        Symlinks.assumeSupported();
         Path dest = Files.createDirectories(tmp.resolve("fresh"));
         Path layer = tar(
                 tmp.resolve("layer.tar"),
@@ -71,6 +78,7 @@ class BaseJreLinksTest {
 
     @Test
     void a_symlink_that_leads_out_of_the_tree_is_skipped(@TempDir Path tmp) throws Exception {
+        Symlinks.assumeSupported();
         Path dest = Files.createDirectories(tmp.resolve("dest"));
         Path layer = tar(
                 tmp.resolve("layer.tar"),
@@ -95,6 +103,7 @@ class BaseJreLinksTest {
 
     @Test
     void a_later_layer_writes_through_a_lower_link_into_the_tree(@TempDir Path tmp) throws Exception {
+        Symlinks.assumeSupported();
         Path dest = Files.createDirectories(tmp.resolve("dest"));
         Path lower = tar(tmp.resolve("lower.tar"), dir("usr/lib/"), symlink("lib", "usr/lib"));
         Path upper = tar(tmp.resolve("upper.tar"), file("lib/libz.so", "z"));

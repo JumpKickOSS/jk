@@ -31,9 +31,17 @@ public final class Symlinks {
      * Files#createSymbolicLink} does. Aborts the calling test on Windows.
      */
     public static Path create(Path link, Path target) throws IOException {
+        assumeSupported();
+        return Files.createSymbolicLink(link, target);
+    }
+
+    /**
+     * Abort the calling test on Windows, for a test whose code under test creates the symbolic
+     * links rather than the test itself.
+     */
+    public static void assumeSupported() {
         if (Os.isWindows()) {
             abort("a symbolic link is POSIX-only in jk; Windows points with a junction");
         }
-        return Files.createSymbolicLink(link, target);
     }
 }
