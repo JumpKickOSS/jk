@@ -422,8 +422,13 @@ public final class ImageBuilder {
         // A packager-produced tree is the entire application. Shipping it verbatim is the only
         // layout that runs — Quarkus enters through its own bootstrap and loads lib/main with its
         // own class loader, so a lock-derived classpath describes a different program.
+        // Layers kept across builds under the cache root: release jars by their bytes, the app tree
+        // by its files' identities.
+        List<KeptLayer> kept = new ArrayList<>();
+
         if (plan.hasAppTree()) {
-            builder = builder.addFileEntriesLayer(treeLayer(plan.appTree(), null));
+            FileEntriesLayer tree = treeLayer(plan.appTree(), null);
+            builder = builder.addFileEntriesLayer(kept(KeptLayer.byIdentity(cacheRoot, tree), tree, kept));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
             boolean aot = cfg.aotCache() && trainable;
             if (aot) {
@@ -432,11 +437,8 @@ public final class ImageBuilder {
                 builder = builder.addFileEntriesLayer(treeLayer(trained.cache(), AotCacheTrainer.CACHE_FILE));
             }
             builder = builder.setEntrypoint(appTreeEntrypoint(plan, aot));
-            return finish(builder, plan.config(), containerizer, auth);
+            return finish(builder, plan.config(), containerizer, auth, kept);
         }
-
-        // Release jars ship from a layer kept across builds under the cache root, by content.
-        List<ReleaseLayer> released = new ArrayList<>();
 
         // The lib-dir layout, as its own directory: release jars, then snapshot and sibling jars,
         // then the runnable jar, each its own layer so an app rebuild ships only the last one.
@@ -445,7 +447,7 @@ public final class ImageBuilder {
             String dir = Objects.requireNonNull(plan.libDir());
             if (!plan.dependencyJars().isEmpty()) {
                 builder = builder.addFileEntriesLayer(
-                        released(namedJarLayer(plan, plan.dependencyJars(), dir), cacheRoot, released));
+                        released(namedJarLayer(plan, plan.dependencyJars(), dir), cacheRoot, kept));
             }
             if (!plan.snapshotJars().isEmpty()) {
                 builder = builder.addFileEntriesLayer(namedJarLayer(plan, plan.snapshotJars(), dir));
@@ -453,7 +455,7 @@ public final class ImageBuilder {
             builder = builder.addFileEntriesLayer(treeLayer(plan.mainJar(), null));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
             builder = builder.setEntrypoint(libDirEntrypoint(plan));
-            return finish(builder, plan.config(), containerizer, auth, released);
+            return finish(builder, plan.config(), containerizer, auth, kept);
         }
 
         // AOT cache: the trainer stages the runnable layout at /app, trains, and hands back the
@@ -472,7 +474,7 @@ public final class ImageBuilder {
             List<FileEntriesLayer> staged = stagedLayers(aot, plan);
             for (FileEntriesLayer layer : staged) {
                 boolean release = layer.getName().equals("dependencies");
-                builder = builder.addFileEntriesLayer(release ? released(layer, cacheRoot, released) : layer);
+                builder = builder.addFileEntriesLayer(release ? released(layer, cacheRoot, kept) : layer);
             }
             builder = builder.addFileEntriesLayer(treeLayer(aot.cache(), AotCacheTrainer.CACHE_FILE));
             builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR));
@@ -480,7 +482,7 @@ public final class ImageBuilder {
             // Layer 1 — release dependency jars (change least often).
             if (!plan.dependencyJars().isEmpty()) {
                 builder = builder.addFileEntriesLayer(
-                        released(namedJarLayer(plan, plan.dependencyJars()), cacheRoot, released));
+                        released(namedJarLayer(plan, plan.dependencyJars()), cacheRoot, kept));
             }
             // Layer 2 — SNAPSHOT dependency jars (their own layer: they churn while releases
             // don't, so a snapshot bump never invalidates the big release-deps layer).
@@ -511,19 +513,23 @@ public final class ImageBuilder {
             entrypoint.add(plan.mainClass());
         }
         builder = builder.setEntrypoint(entrypoint);
-        return finish(builder, plan.config(), containerizer, auth, released);
+        return finish(builder, plan.config(), containerizer, auth, kept);
     }
 
     /**
      * {@code layer}, a layer of release jars, read from its copies under {@code cacheRoot} and added
      * to {@code kept}, so the build can start from its compressed blob; as given when it cannot be.
      */
-    private static FileEntriesLayer released(FileEntriesLayer layer, Path cacheRoot, List<ReleaseLayer> kept)
+    private static FileEntriesLayer released(FileEntriesLayer layer, Path cacheRoot, List<KeptLayer> kept)
             throws IOException {
-        ReleaseLayer release = ReleaseLayer.of(cacheRoot, layer);
-        if (release == null) return layer;
-        kept.add(release);
-        return release.layer();
+        return kept(KeptLayer.byContent(cacheRoot, layer), layer, kept);
+    }
+
+    /** {@code layer} as {@code keeping} builds it, added to {@code kept}; {@code given} when it is not kept. */
+    static FileEntriesLayer kept(@Nullable KeptLayer keeping, FileEntriesLayer given, List<KeptLayer> kept) {
+        if (keeping == null) return given;
+        kept.add(keeping);
+        return keeping.layer();
     }
 
     /**
@@ -548,12 +554,12 @@ public final class ImageBuilder {
      * {@link #finish(JibContainerBuilder, ImageConfig, Containerizer, RegistryAuth)}, with the
      * {@code released} layers' kept blobs in the build's layer cache before it and kept after it.
      */
-    private static JibContainer finish(
+    static JibContainer finish(
             JibContainerBuilder builder,
             ImageConfig cfg,
             Containerizer containerizer,
             RegistryAuth auth,
-            List<ReleaseLayer> released)
+            List<KeptLayer> released)
             throws IOException, InterruptedException, InvalidImageReferenceException {
 
         if (cfg.user() != null && !cfg.user().isBlank()) {
@@ -594,13 +600,13 @@ public final class ImageBuilder {
         // rebuilt jar under an unchanged name looks to Jib like the layer it already has, and the
         // image ships the previous build's bytes while the cache beside it was trained on the new
         // ones. A cache that lives only as long as this build cannot remember a previous one; the
-        // release layers alone are seeded into it, from a store keyed by their bytes. The
+        // kept layers alone are seeded into it, from a store keyed by more than Jib reads. The
         // base-image layer cache is untouched: those layers are content-addressed by the registry.
         Path applicationLayers = Files.createTempDirectory("jk-image-layers-");
         try {
-            for (ReleaseLayer layer : released) layer.seed(applicationLayers);
+            for (KeptLayer layer : released) layer.seed(applicationLayers);
             JibContainer built = auth.containerize(builder, containerizer.setApplicationLayersCache(applicationLayers));
-            for (ReleaseLayer layer : released) layer.keep(applicationLayers);
+            for (KeptLayer layer : released) layer.keep(applicationLayers);
             return built;
         } catch (RegistryException | ExecutionException | CacheDirectoryCreationException e) {
             throw new IOException("image build failed: " + causes(e), e);

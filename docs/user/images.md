@@ -33,6 +33,11 @@ holds and the path it ships at, so the next `jk image` of the same releases uses
 instead of compressing the jars again. The snapshot and application layers are built every time:
 a rebuilt jar under its old name always ships its new bytes.
 
+A Quarkus application ships its own `quarkus-app/` tree as one layer instead. That layer is kept
+too, keyed by each file's path, size, modification and change times and file id rather than its
+bytes, so an image of a tree the build did not rewrite skips compressing it again. A tree with a
+file written in the last two seconds is built afresh and not kept.
+
 With no `base`, the image is built on `bellsoft/liberica-runtime-container:jre-<N>-slim-glibc`,
 where `<N>` is the module's Java level: its `java`, else its `jdk` major, else the major of the JDK
 that compiles it. The templates write no base, so a project made at `java = 27` gets a JRE 27 and
@@ -113,6 +118,10 @@ Node.js image:
 |---|---|---|
 | `dependencies` | the production dependencies, installed with the locked package manager (`npm ci --omit=dev`, `pnpm install --prod`, `yarn workspaces focus --production`, `bun install --production`); left out when the output carries its own (Next standalone, Nitro's `.output`) or `package.json` has none | `/app/node_modules` |
 | `app` | the server output and `package.json` (a plain server: the module's files, without `node_modules` and `target/`) | `/app` |
+
+The `dependencies` layer is kept in the cache root's `image-layers/` by each file's path, size,
+times and file id, as a Quarkus tree is, so an image whose production install has not run again
+reuses it as built. The `app` layer is built every time.
 
 The base is `gcr.io/distroless/nodejs<major>-debian13` for the locked Node.js major, the
 entrypoint `node` with the start command's arguments (`/nodejs/bin/node` on distroless), run from

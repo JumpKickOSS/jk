@@ -63,33 +63,42 @@ public final class LayeredImage {
         }
     }
 
-    /** Build to a local OCI tarball. */
-    public static ImageBuilder.Result writeToTarball(Plan plan, Path tarball, RegistryAuth auth)
+    /** The layer of a node server's installed {@code node_modules}, kept across builds. */
+    static final String DEPENDENCIES = "dependencies";
+
+    /**
+     * Build to a local OCI tarball. {@code cacheRoot} is jk's cache root, where the dependencies
+     * layer is kept across builds; null keeps nothing.
+     */
+    public static ImageBuilder.Result writeToTarball(
+            Plan plan, Path tarball, @Nullable Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
-            return result(plan, run(plan, Containerizer.to(TarImage.at(tarball).named(plan.reference())), auth));
+            return result(
+                    plan, run(plan, Containerizer.to(TarImage.at(tarball).named(plan.reference())), cacheRoot, auth));
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid target image reference: " + e.getMessage(), e);
         }
     }
 
     /** Load into the local Docker/Podman daemon; {@code dockerExecutable} null lets Jib find it. */
-    public static ImageBuilder.Result loadToLocalDaemon(Plan plan, @Nullable Path dockerExecutable, RegistryAuth auth)
+    public static ImageBuilder.Result loadToLocalDaemon(
+            Plan plan, @Nullable Path dockerExecutable, @Nullable Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
             DockerDaemonImage target = DockerDaemonImage.named(plan.reference());
             if (dockerExecutable != null) target = target.setDockerExecutable(dockerExecutable);
-            return result(plan, run(plan, Containerizer.to(target), auth));
+            return result(plan, run(plan, Containerizer.to(target), cacheRoot, auth));
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid target image reference: " + e.getMessage(), e);
         }
     }
 
     /** Push to the registry the config names. */
-    public static ImageBuilder.Result pushToRegistry(Plan plan, RegistryAuth auth)
+    public static ImageBuilder.Result pushToRegistry(Plan plan, @Nullable Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException {
         try {
-            return result(plan, run(plan, Containerizer.to(auth.target(plan.reference())), auth));
+            return result(plan, run(plan, Containerizer.to(auth.target(plan.reference())), cacheRoot, auth));
         } catch (InvalidImageReferenceException e) {
             throw new IOException("invalid target image reference: " + e.getMessage(), e);
         }
@@ -99,13 +108,25 @@ public final class LayeredImage {
         return new ImageBuilder.Result(plan.reference(), container.getDigest().toString());
     }
 
-    private static JibContainer run(Plan plan, Containerizer containerizer, RegistryAuth auth)
+    /**
+     * The image, its {@link #DEPENDENCIES} layer kept under {@code cacheRoot} by its files'
+     * identities. The other layers are copied fresh on every build, so keeping them would only
+     * crowd out kept layers that can be used again.
+     */
+    private static JibContainer run(Plan plan, Containerizer containerizer, @Nullable Path cacheRoot, RegistryAuth auth)
             throws IOException, InterruptedException, InvalidImageReferenceException {
         JibContainerBuilder builder = Jib.from(auth.base(ImageBuilder.baseOf(plan.config())));
-        for (Layer layer : plan.layers()) builder = builder.addFileEntriesLayer(layer(layer));
+        List<KeptLayer> kept = new ArrayList<>();
+        for (Layer layer : plan.layers()) {
+            FileEntriesLayer entries = layer(layer);
+            if (cacheRoot != null && layer.name().equals(DEPENDENCIES)) {
+                entries = ImageBuilder.kept(KeptLayer.byIdentity(cacheRoot, entries), entries, kept);
+            }
+            builder = builder.addFileEntriesLayer(entries);
+        }
         if (!plan.entrypoint().isEmpty()) builder = builder.setEntrypoint(plan.entrypoint());
         if (plan.workingDir() != null) builder = builder.setWorkingDirectory(AbsoluteUnixPath.get(plan.workingDir()));
-        return ImageBuilder.finish(builder, plan.config(), containerizer, auth);
+        return ImageBuilder.finish(builder, plan.config(), containerizer, auth, kept);
     }
 
     /**

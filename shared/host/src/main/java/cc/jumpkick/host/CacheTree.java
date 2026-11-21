@@ -69,8 +69,8 @@ public enum CacheTree {
     JIB_LAYERS("jib-layers"),
 
     /**
-     * Release-dependency image layers, one tree per layer content key: the jars and the compressed
-     * layer Jib built from them, written by the image-builder worker.
+     * Image layers kept across builds, one tree per layer key: the compressed layer Jib built, and
+     * for release jars a copy of the jars it was built from, written by the image-builder worker.
      */
     IMAGE_LAYERS("image-layers"),
 

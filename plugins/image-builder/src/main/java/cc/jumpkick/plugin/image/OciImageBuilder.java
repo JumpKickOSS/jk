@@ -255,26 +255,28 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         Optional<String> tarball = c.stringOpt("tarball");
         boolean pushing =
                 tarball.isEmpty() && !"daemon".equals(c.stringOpt("mode").orElse(null));
+        Path cacheRoot = c.stringOpt("jkCache").map(Path::of).orElse(null);
         RegistryAuth auth = RegistryAuth.of(
                         credential(ctx, "base"),
                         credential(ctx, "push"),
                         ImageBuilder.baseOf(config),
                         pushing ? ref : null)
-                .withCacheRoot(c.stringOpt("jkCache").map(Path::of).orElse(null));
+                .withCacheRoot(cacheRoot);
         if (tarball.isPresent()) {
             Path tarballPath = Path.of(tarball.get());
             ctx.label("building OCI tarball");
             if (tarballPath.getParent() != null) Files.createDirectories(tarballPath.getParent());
-            LayeredImage.writeToTarball(plan, tarballPath, auth);
+            LayeredImage.writeToTarball(plan, tarballPath, cacheRoot, auth);
             return ImageResult.tarball(tarballPath);
         }
         if (!pushing) {
             ctx.label("loading " + ref + " into " + (dockerExecutable != null ? dockerExecutable : "docker"));
-            LayeredImage.loadToLocalDaemon(plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, auth);
+            LayeredImage.loadToLocalDaemon(
+                    plan, dockerExecutable != null ? Path.of(dockerExecutable) : null, cacheRoot, auth);
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        LayeredImage.pushToRegistry(plan, auth);
+        LayeredImage.pushToRegistry(plan, cacheRoot, auth);
         return ImageResult.pushed(ref);
     }
 

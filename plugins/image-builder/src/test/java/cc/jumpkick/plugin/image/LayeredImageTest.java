@@ -59,7 +59,7 @@ class LayeredImageTest {
         Files.writeString(app.resolve("package.json"), "{}");
         Path tarball = tmp.resolve("out/image.tar");
 
-        LayeredImage.writeToTarball(plan(app, deps, "server.js"), tarball, anonymous());
+        LayeredImage.writeToTarball(plan(app, deps, "server.js"), tarball, null, anonymous());
 
         Map<String, byte[]> image = untar(Files.readAllBytes(tarball));
         String config = new String(image.get("config.json"), StandardCharsets.UTF_8);
@@ -122,9 +122,9 @@ class LayeredImageTest {
         Files.createDirectories(app);
         Files.writeString(app.resolve("server.js"), "one");
 
-        LayeredImage.writeToTarball(plan(app, deps, "server.js"), tmp.resolve("a.tar"), anonymous());
+        LayeredImage.writeToTarball(plan(app, deps, "server.js"), tmp.resolve("a.tar"), null, anonymous());
         Files.writeString(app.resolve("server.js"), "two");
-        LayeredImage.writeToTarball(plan(app, deps, "server.js"), tmp.resolve("b.tar"), anonymous());
+        LayeredImage.writeToTarball(plan(app, deps, "server.js"), tmp.resolve("b.tar"), null, anonymous());
 
         List<String> first = layerDigests(untar(Files.readAllBytes(tmp.resolve("a.tar"))));
         List<String> second = layerDigests(untar(Files.readAllBytes(tmp.resolve("b.tar"))));

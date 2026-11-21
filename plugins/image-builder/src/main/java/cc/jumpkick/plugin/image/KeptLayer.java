@@ -4,6 +4,8 @@ package cc.jumpkick.plugin.image;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.Settled;
+import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.host.time.Clock;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Jib;
@@ -24,36 +26,51 @@ import java.nio.file.attribute.FileTime;
 import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 
 /**
- * A release-dependency layer kept across builds, so an image whose release jars have not changed
- * reuses their compressed layer instead of tarring and compressing it again.
+ * An image layer kept across builds under {@code image-layers/<key>}, so an image whose layer has
+ * not changed reuses its compressed blob instead of tarring and compressing it again.
  *
  * <p>Jib keys its own layer cache on each source file's path and modification time, never on its
- * bytes, so a cache shared between builds could serve a rebuilt jar's old bytes. This one is keyed
- * on what the layer holds: every entry's image path, mode, time and owner, and the sha256 of its
- * bytes. The jars are copied under {@code image-layers/<key>/files/} and the layer is built from
- * those copies, whose paths and times never change, so Jib's selector for them is stable too. After
- * a build the layer's blob and selector are taken from the build's own Jib cache into {@code
- * image-layers/<key>/jib/}, and the next build of the same key starts with them in its cache.
+ * bytes, so a cache shared between builds could serve a rebuilt file's old bytes. A kept layer is
+ * keyed on more than that, one of two ways:
  *
- * <p>Only release jars go through here; snapshot, sibling and application layers stay in the
- * build's own throwaway cache.
+ * <ul>
+ *   <li>{@link #byContent} keys release jars on every entry's image path, mode, time and owner and
+ *       the sha256 of its bytes. The jars are copied under {@code files/} and the layer is built
+ *       from those copies, whose paths and times never change, so Jib's selector for them is
+ *       stable too.
+ *   <li>{@link #byIdentity} keys a tree too large to hash on every build (a packager's app tree,
+ *       {@code node_modules}) on the same entry fields and each source's path and {@link
+ *       StatIdentity}, which a rewrite in place moves. Nothing is copied: the layer is built from
+ *       the tree itself. A tree with a file written inside {@link Settled#WINDOW_MS}, or on a file
+ *       system that cannot report a change time and file id, is not kept.
+ * </ul>
+ *
+ * <p>After a build the layer's blob and selector are taken from the build's own Jib cache into
+ * {@code jib/}, and the next build of the same key starts with them in its cache. Snapshot, sibling
+ * and application layers stay in the build's own throwaway cache.
  */
-final class ReleaseLayer {
+final class KeptLayer {
 
-    /** The layer as the image builds it: the same entries, read from the kept copies. */
+    /** The layer as the image builds it. */
     private final FileEntriesLayer layer;
 
     /** {@code image-layers/<key>}. */
     private final Path home;
 
-    private ReleaseLayer(FileEntriesLayer layer, Path home) {
+    /** Each source's identity when the key was taken, by source; empty for a layer keyed by bytes. */
+    private final Map<Path, StatIdentity> identities;
+
+    private KeptLayer(FileEntriesLayer layer, Path home, Map<Path, StatIdentity> identities) {
         this.layer = layer;
         this.home = home;
+        this.identities = identities;
     }
 
     /** The layer to add to the image. */
@@ -67,39 +84,23 @@ final class ReleaseLayer {
     }
 
     /**
-     * {@code layer} kept under {@code cacheRoot}, its jars copied there on first use. Returns null
-     * when a jar changed while it was copied: the build then uses {@code layer} as given.
+     * {@code layer}, a layer of release jars, kept under {@code cacheRoot} by their bytes, the jars
+     * copied there on first use. Returns null when a jar changed while it was copied: the build then
+     * uses {@code layer} as given.
      */
-    static @Nullable ReleaseLayer of(Path cacheRoot, FileEntriesLayer layer) throws IOException {
-        List<FileEntry> entries = new ArrayList<>(layer.getEntries());
-        entries.sort(Comparator.comparing(e -> e.getExtractionPath().toString()));
+    static @Nullable KeptLayer byContent(Path cacheRoot, FileEntriesLayer layer) throws IOException {
+        List<FileEntry> entries = sorted(layer);
         StringBuilder key = new StringBuilder(jibIdentity()).append('\n');
         List<String> shas = new ArrayList<>();
         for (FileEntry e : entries) {
             String sha = Hashing.sha256Hex(e.getSourceFile());
             shas.add(sha);
-            key.append(e.getExtractionPath())
-                    .append('\t')
-                    .append(e.getPermissions().toOctalString())
-                    .append('\t')
-                    .append(e.getModificationTime())
-                    .append('\t')
-                    .append(e.getOwnership())
-                    .append('\t')
-                    .append(sha)
-                    .append('\n');
+            key.append(entryKey(e)).append('\t').append(sha).append('\n');
         }
         Path root = CacheTree.IMAGE_LAYERS.under(cacheRoot);
         Path home = root.resolve(Hashing.sha256Hex(key.toString()));
         if (!Files.isDirectory(home.resolve("files")) && !stage(root, home, entries, shas)) return null;
-        // Retention ranks these trees by their newest file; the copies carry a pinned time.
-        Path used = home.resolve(".used");
-        try {
-            Files.createFile(used);
-        } catch (FileAlreadyExistsException present) {
-            // Stamped below either way.
-        }
-        Files.setLastModifiedTime(used, FileTime.fromMillis(Clock.SYSTEM.millis()));
+        stampUse(home);
 
         FileEntriesLayer.Builder kept = FileEntriesLayer.builder().setName(layer.getName());
         for (FileEntry e : entries) {
@@ -110,7 +111,57 @@ final class ReleaseLayer {
                     e.getModificationTime(),
                     e.getOwnership()));
         }
-        return new ReleaseLayer(kept.build(), home);
+        return new KeptLayer(kept.build(), home, Map.of());
+    }
+
+    /**
+     * {@code layer} kept under {@code cacheRoot} by its sources' paths and identities, built from
+     * the sources themselves. Returns null when a source's identity cannot vouch for its bytes: the
+     * build then uses {@code layer} in its throwaway cache.
+     */
+    static @Nullable KeptLayer byIdentity(Path cacheRoot, FileEntriesLayer layer) throws IOException {
+        StringBuilder key = new StringBuilder(jibIdentity()).append("\nidentity\n");
+        Map<Path, StatIdentity> identities = new HashMap<>();
+        for (FileEntry e : sorted(layer)) {
+            Path source = e.getSourceFile().toAbsolutePath();
+            StatIdentity id = StatIdentity.of(source);
+            if (id.ctimeNanos() == 0 || id.fileKey().isEmpty() || !Settled.is(id)) return null;
+            identities.put(source, id);
+            key.append(entryKey(e))
+                    .append('\t')
+                    .append(source)
+                    .append('\t')
+                    .append(id.encode())
+                    .append('\n');
+        }
+        Path home = CacheTree.IMAGE_LAYERS.under(cacheRoot).resolve(Hashing.sha256Hex(key.toString()));
+        Files.createDirectories(home);
+        stampUse(home);
+        return new KeptLayer(layer, home, Map.copyOf(identities));
+    }
+
+    /** {@code layer}'s entries in image-path order. */
+    private static List<FileEntry> sorted(FileEntriesLayer layer) {
+        List<FileEntry> entries = new ArrayList<>(layer.getEntries());
+        entries.sort(Comparator.comparing(e -> e.getExtractionPath().toString()));
+        return entries;
+    }
+
+    /** What the layer's tar records of {@code e}: its image path, mode, time and owner. */
+    private static String entryKey(FileEntry e) {
+        return e.getExtractionPath() + "\t" + e.getPermissions().toOctalString() + "\t" + e.getModificationTime() + "\t"
+                + e.getOwnership();
+    }
+
+    /** Stamp {@code home} used now: retention ranks these trees by their newest file. */
+    private static void stampUse(Path home) throws IOException {
+        Path used = home.resolve(".used");
+        try {
+            Files.createFile(used);
+        } catch (FileAlreadyExistsException present) {
+            // Stamped below either way.
+        }
+        Files.setLastModifiedTime(used, FileTime.fromMillis(Clock.SYSTEM.millis()));
     }
 
     /**
@@ -157,11 +208,11 @@ final class ReleaseLayer {
 
     /**
      * After a build, keep the blob {@code jibCache} holds for this layer and every selector naming
-     * it, unless this key already keeps one.
+     * it, unless this key already keeps one or a source keyed by identity changed meanwhile.
      */
     void keep(Path jibCache) throws IOException {
         Path kept = home.resolve("jib");
-        if (Files.isDirectory(kept)) return;
+        if (Files.isDirectory(kept) || moved()) return;
         Optional<CachedLayer> built;
         try {
             built = Cache.withDirectory(jibCache).retrieve(ImmutableList.copyOf(layer.getEntries()));
@@ -195,6 +246,14 @@ final class ReleaseLayer {
         } finally {
             PathUtil.deleteRecursively(fresh);
         }
+    }
+
+    /** True when a source keyed by identity changed during the build: its blob may hold either bytes. */
+    private boolean moved() throws IOException {
+        for (Map.Entry<Path, StatIdentity> e : identities.entrySet()) {
+            if (!Files.isRegularFile(e.getKey()) || !StatIdentity.of(e.getKey()).equals(e.getValue())) return true;
+        }
+        return false;
     }
 
     /**
