@@ -309,7 +309,8 @@ public final class Publisher implements Plugin, PublishExtension {
                             projectDir.resolve("src/main/groovy"),
                             projectDir.resolve("src/main/scala"));
             String name = project.project().name() + "-" + project.project().version() + "-sources.jar";
-            Path built = Files.write(publishDir.resolve(name), SourcesJar.build(sourceRoots));
+            Path built = publishDir.resolve(name);
+            SourcesJar.write(sourceRoots, built);
             artifacts.add(new MavenPublisher.Artifact("-sources.jar", built));
             ctx.label("artifact " + name);
         }

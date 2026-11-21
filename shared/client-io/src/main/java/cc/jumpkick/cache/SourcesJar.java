@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cache;
 
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.TreeContent;
-import java.io.ByteArrayOutputStream;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,27 +30,34 @@ public final class SourcesJar {
     private SourcesJar() {}
 
     /**
-     * Build a sources jar in memory from the given source roots. Empty or absent roots are skipped;
-     * a path two roots both hold (a {@code package-info.java} in the Java and the Scala root) is
-     * taken from the first.
+     * Zip the given source roots into {@code jar}, streamed to disk through a staging sibling, so
+     * no jar is held whole in memory and a failed write leaves {@code jar} as it was. Empty or
+     * absent roots are skipped; a path two roots both hold (a {@code package-info.java} in the Java
+     * and the Scala root) is taken from the first.
      */
-    public static byte[] build(List<Path> sourceRoots) throws IOException {
+    public static void write(List<Path> sourceRoots, Path jar) throws IOException {
         Manifest mf = new Manifest();
         mf.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         mf.getMainAttributes().putValue("Created-By", "jk");
 
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        // NOT `new JarOutputStream(baos, mf)`: the convenience constructor stamps the manifest
-        // entry with System.currentTimeMillis(), so every rebuild would churn the first entry.
-        try (JarOutputStream jos = new JarOutputStream(baos)) {
-            ZIP.writeManifest(jos, mf);
-            Set<String> written = new HashSet<>();
-            for (Path root : sourceRoots) {
-                if (!Files.isDirectory(root)) continue;
-                appendTree(jos, root, written);
+        Path tmp = AtomicWrites.staging(jar);
+        boolean moved = false;
+        try {
+            // NOT `new JarOutputStream(out, mf)`: the convenience constructor stamps the manifest
+            // entry with System.currentTimeMillis(), so every rebuild would churn the first entry.
+            try (JarOutputStream jos = new JarOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)))) {
+                ZIP.writeManifest(jos, mf);
+                Set<String> written = new HashSet<>();
+                for (Path root : sourceRoots) {
+                    if (!Files.isDirectory(root)) continue;
+                    appendTree(jos, root, written);
+                }
             }
+            AtomicWrites.moveInto(tmp, jar);
+            moved = true;
+        } finally {
+            if (!moved) Files.deleteIfExists(tmp);
         }
-        return baos.toByteArray();
     }
 
     private static void appendTree(JarOutputStream jos, Path root, Set<String> written) throws IOException {

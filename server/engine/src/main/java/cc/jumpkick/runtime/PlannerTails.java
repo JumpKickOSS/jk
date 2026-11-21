@@ -34,7 +34,6 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -401,9 +400,7 @@ public final class PlannerTails {
                         return;
                     }
                     ctx.label("package " + sourcesJar.getFileName());
-                    byte[] bytes = SourcesJar.build(sourceRoots);
-                    Files.createDirectories(sourcesJar.getParent());
-                    Files.write(sourcesJar, bytes);
+                    SourcesJar.write(sourceRoots, sourcesJar);
                     storePackaged(
                             ctx,
                             guard,

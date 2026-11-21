@@ -66,8 +66,8 @@ class SourcesJarTimestampTest {
         Files.writeString(root.resolve("Util.java"), "package com.example; class Util {}\n");
         List<Path> roots = List.of(tmp.resolve("src/main/java"));
 
-        byte[] tokyo = buildUnder(TOKYO, roots);
-        byte[] honolulu = buildUnder(HONOLULU, roots);
+        byte[] tokyo = buildUnder(TOKYO, roots, tmp.resolve("tokyo.jar"));
+        byte[] honolulu = buildUnder(HONOLULU, roots, tmp.resolve("honolulu.jar"));
 
         assertThat(tokyo)
                 .as("a sources jar must not depend on the build host's $TZ")
@@ -78,9 +78,10 @@ class SourcesJarTimestampTest {
                 .allSatisfy((name, time) -> assertThat(time).as(name).isEqualTo(PINNED));
     }
 
-    private static byte[] buildUnder(TimeZone zone, List<Path> roots) throws IOException {
+    private static byte[] buildUnder(TimeZone zone, List<Path> roots, Path jar) throws IOException {
         TimeZone.setDefault(zone);
-        return SourcesJar.build(roots);
+        SourcesJar.write(roots, jar);
+        return Files.readAllBytes(jar);
     }
 
     /** Entry name to stored local timestamp, in encounter order. */
