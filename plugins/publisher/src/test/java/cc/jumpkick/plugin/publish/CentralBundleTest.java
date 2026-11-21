@@ -28,14 +28,16 @@ class CentralBundleTest {
         Project project = new Project("com.example", "widget", "1.0.0", 25);
         byte[] jar = "jar-bytes".getBytes(StandardCharsets.UTF_8);
         byte[] pom = "<project/>".getBytes(StandardCharsets.UTF_8);
+        Path jarFile = Files.write(dir.resolve("widget.jar"), jar);
+        Path pomFile = Files.write(dir.resolve("widget.pom"), pom);
 
         CentralBundle.Bundle bundle = CentralBundle.build(
                 project,
                 List.of(
-                        new MavenPublisher.Artifact(".jar", jar),
-                        new MavenPublisher.Artifact(".pom", pom),
-                        new MavenPublisher.Artifact("-sources.jar", jar),
-                        new MavenPublisher.Artifact("-javadoc.jar", jar)),
+                        new MavenPublisher.Artifact(".jar", jarFile),
+                        new MavenPublisher.Artifact(".pom", pomFile),
+                        new MavenPublisher.Artifact("-sources.jar", jarFile),
+                        new MavenPublisher.Artifact("-javadoc.jar", jarFile)),
                 signer,
                 dir.resolve("central-bundle.zip"));
 

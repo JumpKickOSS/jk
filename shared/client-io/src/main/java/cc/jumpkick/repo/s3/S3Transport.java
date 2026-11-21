@@ -2,6 +2,7 @@
 package cc.jumpkick.repo.s3;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.repo.RepoTransport;
@@ -10,6 +11,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -176,6 +178,16 @@ public final class S3Transport implements RepoTransport {
         Map<String, String> headers = signedHeaders("PUT", object, payloadHash);
         if (contentType != null && !contentType.isBlank()) headers.put("Content-Type", contentType);
         return http.put(object, body, headers).statusCode();
+    }
+
+    /** As {@link #put}; SigV4 signs the payload's SHA-256, so the file is read twice, streamed both times. */
+    @Override
+    public int putFile(URI uri, Path file, String contentType, RepoCredential ignored)
+            throws IOException, InterruptedException {
+        URI object = objectUri(uri);
+        Map<String, String> headers = signedHeaders("PUT", object, Hashing.sha256Hex(file));
+        if (contentType != null && !contentType.isBlank()) headers.put("Content-Type", contentType);
+        return http.putFile(object, file, headers).statusCode();
     }
 
     /** {@code s3://bucket/prefix...} → {@code <endpoint>/bucket/prefix...} (path-style). */

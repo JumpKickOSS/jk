@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpResponse;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -79,10 +80,20 @@ public final class HttpTransport implements RepoTransport {
     @Override
     public int put(URI uri, byte[] body, String contentType, RepoCredential credential)
             throws IOException, InterruptedException {
+        return http.put(uri, body, putHeaders(contentType, credential)).statusCode();
+    }
+
+    @Override
+    public int putFile(URI uri, Path file, String contentType, RepoCredential credential)
+            throws IOException, InterruptedException {
+        return http.putFile(uri, file, putHeaders(contentType, credential)).statusCode();
+    }
+
+    private static Map<String, String> putHeaders(String contentType, RepoCredential credential) {
         Map<String, String> headers = new LinkedHashMap<>(AuthHeaders.of(credential));
         if (contentType != null && !contentType.isBlank()) {
             headers.put("Content-Type", contentType);
         }
-        return http.put(uri, body, headers).statusCode();
+        return headers;
     }
 }

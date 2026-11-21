@@ -7,6 +7,7 @@ import dev.sigstore.bundle.Bundle;
 import dev.sigstore.trustroot.SigstoreConfigurationException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 
 /**
@@ -39,9 +40,10 @@ public final class KeylessSigstoreSigner implements SigstoreSigner, AutoCloseabl
     }
 
     @Override
-    public byte[] signBundle(byte[] artifact) throws IOException {
+    public byte[] signBundle(Path artifact) throws IOException {
         try {
-            Bundle bundle = signer.sign(artifact);
+            // signFile hashes the file streamed; sign(byte[]) takes a digest, not the artifact.
+            Bundle bundle = signer.signFile(artifact);
             return bundle.toJson().getBytes(StandardCharsets.UTF_8);
         } catch (KeylessSignerException e) {
             throw new IOException("Sigstore signing failed: " + e.getMessage(), e);

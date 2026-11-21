@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
@@ -21,6 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class S3TransportTest {
 
@@ -142,6 +144,30 @@ class S3TransportTest {
         int status = signed().put(
                         URI.create("s3://my-bucket/up.jar"),
                         payload,
+                        "application/java-archive",
+                        RepoCredential.ANONYMOUS);
+
+        assertThat(status).isEqualTo(200);
+        assertThat(seenBody.get()).isEqualTo(payload);
+        assertThat(contentSha.get()).isEqualTo(SigV4Signer.sha256Hex(payload));
+    }
+
+    @Test
+    void put_file_signs_with_the_file_hash_and_streams_the_file(@TempDir Path dir) throws Exception {
+        AtomicReference<String> contentSha = new AtomicReference<>();
+        AtomicReference<byte[]> seenBody = new AtomicReference<>();
+        server.createContext("/my-bucket/up.jar", ex -> {
+            contentSha.set(ex.getRequestHeaders().getFirst("x-amz-content-sha256"));
+            seenBody.set(ex.getRequestBody().readAllBytes());
+            ex.sendResponseHeaders(200, -1);
+            ex.close();
+        });
+
+        byte[] payload = {4, 5, 6};
+        Path file = Files.write(dir.resolve("up.jar"), payload);
+        int status = signed().putFile(
+                        URI.create("s3://my-bucket/up.jar"),
+                        file,
                         "application/java-archive",
                         RepoCredential.ANONYMOUS);
 

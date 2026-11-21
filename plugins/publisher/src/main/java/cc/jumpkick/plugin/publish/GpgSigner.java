@@ -156,15 +156,18 @@ public final class GpgSigner {
     }
 
     /**
-     * Produce a detached, ASCII-armored signature over {@code data}. The returned bytes are what gets
-     * uploaded as the {@code .asc} file.
+     * Produce a detached, ASCII-armored signature over {@code file}, read through a fixed buffer. The
+     * returned bytes are what gets uploaded as the {@code .asc} file.
      */
-    public byte[] signArmored(byte[] data) throws IOException {
+    public byte[] signArmored(Path file) throws IOException {
         try {
             PGPSignatureGenerator gen = new PGPSignatureGenerator(
                     new BcPGPContentSignerBuilder(publicKey.getAlgorithm(), HashAlgorithmTags.SHA256), publicKey);
             gen.init(PGPSignature.BINARY_DOCUMENT, privateKey);
-            gen.update(data);
+            try (InputStream in = Files.newInputStream(file)) {
+                byte[] buf = new byte[64 * 1024];
+                for (int n; (n = in.read(buf)) > 0; ) gen.update(buf, 0, n);
+            }
             PGPSignature sig = gen.generate();
 
             ByteArrayOutputStream baos = new ByteArrayOutputStream();

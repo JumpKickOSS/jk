@@ -61,6 +61,16 @@ class FileTransportTest {
     }
 
     @Test
+    void put_file_copies_the_file_creating_parent_dirs(@TempDir Path dir) throws Exception {
+        Path source = Files.writeString(dir.resolve("a-1.jar"), "bytes");
+        Path target = dir.resolve("repo/g/a/1/a-1.jar");
+        int status = transport.putFile(target.toUri(), source, "application/java-archive", RepoCredential.ANONYMOUS);
+        assertThat(status).isEqualTo(201);
+        assertThat(target).hasContent("bytes");
+        assertThat(source).hasContent("bytes");
+    }
+
+    @Test
     void dispatches_for_file_scheme(@TempDir Path dir) {
         assertThat(RepoTransports.forUrl(dir.toUri(), new Http())).isInstanceOf(FileTransport.class);
     }

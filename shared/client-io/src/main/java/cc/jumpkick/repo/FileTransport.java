@@ -31,4 +31,10 @@ public final class FileTransport implements RepoTransport {
         AtomicWrites.replace(Path.of(uri), body);
         return 201; // created — mirrors a successful HTTP PUT
     }
+
+    @Override
+    public int putFile(URI uri, Path file, String contentType, RepoCredential ignored) throws IOException {
+        AtomicWrites.copy(file, Path.of(uri));
+        return 201;
+    }
 }

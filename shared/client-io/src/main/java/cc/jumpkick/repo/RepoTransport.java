@@ -6,6 +6,8 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Optional;
 
 /**
@@ -57,4 +59,14 @@ public interface RepoTransport {
      */
     int put(URI uri, byte[] body, String contentType, RepoCredential credential)
             throws IOException, InterruptedException;
+
+    /**
+     * As {@link #put}, the body read from {@code file}. The default reads the file whole for
+     * transports without a streaming upload; {@link HttpTransport}, {@link FileTransport} and the
+     * object stores override it so an upload never holds the file in memory.
+     */
+    default int putFile(URI uri, Path file, String contentType, RepoCredential credential)
+            throws IOException, InterruptedException {
+        return put(uri, Files.readAllBytes(file), contentType, credential);
+    }
 }

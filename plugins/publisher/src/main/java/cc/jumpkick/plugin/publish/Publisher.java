@@ -9,6 +9,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Classpaths;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.OfflineException;
@@ -160,21 +161,22 @@ public final class Publisher implements Plugin, PublishExtension {
         JkBuild project =
                 WorkspaceResolve.applyWorkspace(projectDir, JkBuildParser.parse(ManifestPaths.manifestIn(projectDir)));
 
-        // Assemble artifacts.
+        // Assemble artifacts. Each is a file: what jk package wrote, or what is generated here into
+        // the module's target/publish/, so publishing streams every artifact and holds none whole.
+        BuildLayout layout = BuildLayout.of(projectDir, project);
+        Path publishDir = Files.createDirectories(layout.moduleTargetDir().resolve("publish"));
+        String stem = project.project().name() + "-" + project.project().version();
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();
-        byte[] jarBytes = Files.readAllBytes(jar);
-        artifacts.add(new MavenPublisher.Artifact(".jar", jarBytes));
-        ctx.label("artifact " + jar.getFileName() + " (" + jarBytes.length + " bytes)");
+        artifacts.add(new MavenPublisher.Artifact(".jar", jar));
+        ctx.label("artifact " + jar.getFileName() + " (" + Files.size(jar) + " bytes)");
 
         PublishablePom.Pom pom = PublishablePom.render(project, null, WorkspaceResolve.siblingCoordinates(projectDir));
-        byte[] pomBytes = pom.xml().getBytes(StandardCharsets.UTF_8);
-        artifacts.add(new MavenPublisher.Artifact(".pom", pomBytes));
-        ctx.label(
-                "artifact " + project.project().name() + "-" + project.project().version() + ".pom");
+        Path pomFile = Files.writeString(publishDir.resolve(stem + ".pom"), pom.xml(), StandardCharsets.UTF_8);
+        artifacts.add(new MavenPublisher.Artifact(".pom", pomFile));
+        ctx.label("artifact " + stem + ".pom");
 
-        BuildLayout layout = BuildLayout.of(projectDir, project);
         boolean central = c.bool("centralPortal", false);
-        libraryArtifacts(ctx, project, projectDir, layout, central, artifacts);
+        libraryArtifacts(ctx, project, projectDir, layout, publishDir, central, artifacts);
 
         boolean slsa = c.bool("slsa", false);
         boolean sbom = c.bool("sbom", false);
@@ -184,7 +186,7 @@ public final class Publisher implements Plugin, PublishExtension {
             String jarFilename = jar.getFileName().toString();
             // A function of the jar, no clock and no random id: a re-run after a partial publish
             // renders the same bytes, so the provenance already uploaded is recognised as the same.
-            String jarSha = Checksums.sha256Hex(jarBytes);
+            String jarSha = Hashing.sha256Hex(jar);
             SlsaProvenance.BuildContext buildCtx = new SlsaProvenance.BuildContext(
                     "https://github.com/JumpKickOSS/jk",
                     "https://jumpkick.build/jk-build/v1",
@@ -204,15 +206,15 @@ public final class Publisher implements Plugin, PublishExtension {
                     resolvedDependencies(closure));
             byte[] provenance =
                     SlsaProvenance.generate(List.of(new SlsaProvenance.Subject(jarFilename, jarSha)), buildCtx);
-            artifacts.add(new MavenPublisher.Artifact(".intoto.json", provenance));
-            ctx.label("artifact " + project.project().name() + "-"
-                    + project.project().version() + ".intoto.json");
+            Path provenanceFile = Files.write(publishDir.resolve(stem + ".intoto.json"), provenance);
+            artifacts.add(new MavenPublisher.Artifact(".intoto.json", provenanceFile));
+            ctx.label("artifact " + stem + ".intoto.json");
         }
 
         List<Path> written = new ArrayList<>();
         if (sbom) sbom(ctx, projectDir, project, closure, artifacts, written);
 
-        if (central) return publishCentral(ctx, c, project, layout, artifacts, written);
+        if (central) return publishCentral(ctx, c, project, publishDir, artifacts, written);
 
         if (c.bool("dryRun", false)) {
             return PublishResult.dryRun(artifacts.size()).withWritten(written);
@@ -289,12 +291,13 @@ public final class Publisher implements Plugin, PublishExtension {
             JkBuild project,
             Path projectDir,
             BuildLayout layout,
+            Path publishDir,
             boolean central,
             List<MavenPublisher.Artifact> artifacts)
             throws IOException {
         Path sourcesOnDisk = layout.sourcesJar();
         if (Files.isRegularFile(sourcesOnDisk)) {
-            artifacts.add(new MavenPublisher.Artifact("-sources.jar", Files.readAllBytes(sourcesOnDisk)));
+            artifacts.add(new MavenPublisher.Artifact("-sources.jar", sourcesOnDisk));
             ctx.label("artifact " + sourcesOnDisk.getFileName());
         } else if (project.project().sourcesMode().publishSources() && !central) {
             boolean compact = SourceLayout.isSimpleLayout(project.project(), projectDir);
@@ -305,13 +308,14 @@ public final class Publisher implements Plugin, PublishExtension {
                             projectDir.resolve("src/main/kotlin"),
                             projectDir.resolve("src/main/groovy"),
                             projectDir.resolve("src/main/scala"));
-            artifacts.add(new MavenPublisher.Artifact("-sources.jar", SourcesJar.build(sourceRoots)));
-            ctx.label("artifact " + project.project().name() + "-"
-                    + project.project().version() + "-sources.jar");
+            String name = project.project().name() + "-" + project.project().version() + "-sources.jar";
+            Path built = Files.write(publishDir.resolve(name), SourcesJar.build(sourceRoots));
+            artifacts.add(new MavenPublisher.Artifact("-sources.jar", built));
+            ctx.label("artifact " + name);
         }
         Path javadocOnDisk = layout.javadocJar();
         if (Files.isRegularFile(javadocOnDisk)) {
-            artifacts.add(new MavenPublisher.Artifact("-javadoc.jar", Files.readAllBytes(javadocOnDisk)));
+            artifacts.add(new MavenPublisher.Artifact("-javadoc.jar", javadocOnDisk));
             ctx.label("artifact " + javadocOnDisk.getFileName());
         }
         if (!central) return;
@@ -353,7 +357,7 @@ public final class Publisher implements Plugin, PublishExtension {
             PublishContext ctx,
             PluginConfig c,
             JkBuild project,
-            BuildLayout layout,
+            Path publishDir,
             List<MavenPublisher.Artifact> artifacts,
             List<Path> written)
             throws IOException, InterruptedException {
@@ -361,7 +365,6 @@ public final class Publisher implements Plugin, PublishExtension {
         GpgSigner gpg = GpgSigner.fromKeyFile(
                 Path.of(c.string("gpgKeyFile")),
                 ctx.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]));
-        Path publishDir = Files.createDirectories(layout.moduleTargetDir().resolve("publish"));
         if (c.bool("dryRun", false)) {
             Path zip = publishDir.resolve("central-bundle.zip");
             CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, zip);
@@ -457,14 +460,16 @@ public final class Publisher implements Plugin, PublishExtension {
             throws IOException {
         byte[] cdx = Sbom.cyclonedx(project, closure);
         byte[] spdxBytes = Sbom.spdx(project, closure);
-        artifacts.add(new MavenPublisher.Artifact("-cyclonedx.json", cdx));
-        artifacts.add(new MavenPublisher.Artifact("-spdx.json", spdxBytes));
-        ctx.label("artifact cyclonedx+spdx (" + (cdx.length + spdxBytes.length) + " bytes)");
         Path sbomDir =
                 Files.createDirectories(BuildLayout.of(projectDir, project).sbomDir());
         String stem = project.project().name() + "-" + project.project().version();
-        written.add(Files.write(sbomDir.resolve(stem + ".cdx.json"), cdx));
-        written.add(Files.write(sbomDir.resolve(stem + ".spdx.json"), spdxBytes));
+        Path cdxFile = Files.write(sbomDir.resolve(stem + ".cdx.json"), cdx);
+        Path spdxFile = Files.write(sbomDir.resolve(stem + ".spdx.json"), spdxBytes);
+        written.add(cdxFile);
+        written.add(spdxFile);
+        artifacts.add(new MavenPublisher.Artifact("-cyclonedx.json", cdxFile));
+        artifacts.add(new MavenPublisher.Artifact("-spdx.json", spdxFile));
+        ctx.label("artifact cyclonedx+spdx (" + (cdx.length + spdxBytes.length) + " bytes)");
         for (Path p : written) ctx.label("wrote " + projectDir.relativize(p));
     }
 

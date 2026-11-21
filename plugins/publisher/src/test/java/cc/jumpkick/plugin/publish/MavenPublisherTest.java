@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.publish;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.http.Http;
@@ -11,12 +12,17 @@ import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import cc.jumpkick.repo.MavenMetadata;
+import cc.jumpkick.repo.RepoTransport;
+import com.sun.management.ThreadMXBean;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.lang.management.ManagementFactory;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
@@ -26,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.jspecify.annotations.Nullable;
@@ -119,7 +126,16 @@ class MavenPublisherTest {
     private void publishVersion(String version, MavenPublisher publisher) throws Exception {
         publisher.publish(
                 new Project("com.example", "widget", version, 21),
-                List.of(new MavenPublisher.Artifact(".jar", ("jar-" + version).getBytes(StandardCharsets.UTF_8))));
+                List.of(artifact(".jar", ("jar-" + version).getBytes(StandardCharsets.UTF_8))));
+    }
+
+    /** Each artifact's bytes, written to its own file as the publisher reads them. */
+    @TempDir
+    Path artifactFiles;
+
+    private MavenPublisher.Artifact artifact(String suffix, byte[] body) throws IOException {
+        Path file = Files.write(Files.createTempFile(artifactFiles, "artifact", suffix), body);
+        return new MavenPublisher.Artifact(suffix, file);
     }
 
     @AfterEach
@@ -133,9 +149,7 @@ class MavenPublisherTest {
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jarBytes = "fake-jar".getBytes(StandardCharsets.UTF_8);
         byte[] pomBytes = "<project/>".getBytes(StandardCharsets.UTF_8);
-        publisher.publish(
-                project,
-                List.of(new MavenPublisher.Artifact(".jar", jarBytes), new MavenPublisher.Artifact(".pom", pomBytes)));
+        publisher.publish(project, List.of(artifact(".jar", jarBytes), artifact(".pom", pomBytes)));
 
         String prefix = "/repo/com/example/widget/1.0.0/widget-1.0.0";
         assertThat(received)
@@ -158,13 +172,74 @@ class MavenPublisherTest {
                 .isEqualTo(Checksums.sha256Hex(jarBytes));
     }
 
+    /**
+     * The jar is larger than everything else the publish touches put together, so a copy of it
+     * anywhere (a checksum, a signature, an upload body) shows in what this thread allocates.
+     */
+    @Test
+    void publishing_a_large_artifact_streams_it_and_holds_no_copy(@TempDir Path dir) throws Exception {
+        long size = 64L << 20;
+        Path jar = dir.resolve("widget.jar");
+        try (RandomAccessFile f = new RandomAccessFile(jar.toFile(), "rw")) {
+            f.setLength(size);
+        }
+        var key = GpgTestFixture.generate(dir, "pass");
+        GpgSigner gpg = GpgSigner.fromKeyFile(key.secretKeyFile(), "pass".toCharArray());
+        List<Path> signed = new CopyOnWriteArrayList<>();
+        SigstoreSigner sigstore = file -> {
+            signed.add(file);
+            return "{}".getBytes(StandardCharsets.UTF_8);
+        };
+        RecordingTransport transport = new RecordingTransport();
+        MavenPublisher publisher = MavenPublisher.over(base, RepoCredential.ANONYMOUS, transport);
+        var threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+        assumeTrue(threads.isThreadAllocatedMemorySupported() && threads.isThreadAllocatedMemoryEnabled());
+
+        long before = threads.getCurrentThreadAllocatedBytes();
+        MavenPublisher.Result result = publisher.publish(
+                new Project("com.example", "widget", "1.0.0", 25),
+                List.of(new MavenPublisher.Artifact(".jar", jar)),
+                SigningOptions.of(gpg, sigstore));
+        long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+
+        assertThat(allocated).isLessThan(size / 4);
+        assertThat(transport.files).containsExactly(jar);
+        assertThat(transport.largestBody).isLessThan(4096);
+        assertThat(signed).containsExactly(jar);
+        assertThat(result.bytes()).isGreaterThan(size);
+        assertThat(result.statusByPath()).containsKey("com/example/widget/1.0.0/widget-1.0.0.jar.sha512");
+    }
+
+    /** Takes every upload without reading a file it is handed, and remembers the largest byte body. */
+    private static final class RecordingTransport implements RepoTransport {
+        final List<Path> files = new CopyOnWriteArrayList<>();
+        volatile int largestBody;
+
+        @Override
+        public Optional<byte[]> fetch(URI uri, RepoCredential credential) {
+            return Optional.empty();
+        }
+
+        @Override
+        public int put(URI uri, byte[] body, String contentType, RepoCredential credential) {
+            largestBody = Math.max(largestBody, body.length);
+            return 201;
+        }
+
+        @Override
+        public int putFile(URI uri, Path file, String contentType, RepoCredential credential) {
+            files.add(file);
+            return 201;
+        }
+    }
+
     @Test
     void publishing_the_same_bytes_again_uploads_nothing() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         List<MavenPublisher.Artifact> artifacts = List.of(
-                new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
-                new MavenPublisher.Artifact(".pom", "<project/>".getBytes(StandardCharsets.UTF_8)));
+                artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
+                artifact(".pom", "<project/>".getBytes(StandardCharsets.UTF_8)));
         publisher.publish(project, artifacts);
         putLog.clear();
 
@@ -187,13 +262,11 @@ class MavenPublisherTest {
     void a_version_published_with_other_bytes_is_refused_and_left_alone() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         Project project = new Project("com.example", "widget", "1.0.0", 21);
-        publisher.publish(
-                project, List.of(new MavenPublisher.Artifact(".jar", "first".getBytes(StandardCharsets.UTF_8))));
+        publisher.publish(project, List.of(artifact(".jar", "first".getBytes(StandardCharsets.UTF_8))));
         putLog.clear();
 
         assertThatThrownBy(() -> publisher.publish(
-                        project,
-                        List.of(new MavenPublisher.Artifact(".jar", "second".getBytes(StandardCharsets.UTF_8)))))
+                        project, List.of(artifact(".jar", "second".getBytes(StandardCharsets.UTF_8)))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("widget-1.0.0.jar is already published with other bytes")
                 .hasMessageContaining("raise the version in jk.toml");
@@ -208,11 +281,11 @@ class MavenPublisherTest {
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jar = "jar".getBytes(StandardCharsets.UTF_8);
         byte[] pom = "<project/>".getBytes(StandardCharsets.UTF_8);
-        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jar)));
+        publisher.publish(project, List.of(artifact(".jar", jar)));
         putLog.clear();
 
-        MavenPublisher.Result finished = publisher.publish(
-                project, List.of(new MavenPublisher.Artifact(".jar", jar), new MavenPublisher.Artifact(".pom", pom)));
+        MavenPublisher.Result finished =
+                publisher.publish(project, List.of(artifact(".jar", jar), artifact(".pom", pom)));
 
         assertThat(finished.alreadyThere()).containsExactly("com/example/widget/1.0.0/widget-1.0.0.jar");
         assertThat(putLog)
@@ -226,15 +299,15 @@ class MavenPublisherTest {
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jar = "jar".getBytes(StandardCharsets.UTF_8);
         String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.jar";
-        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jar)));
+        publisher.publish(project, List.of(artifact(".jar", jar)));
         // Run 1 died after the .sha1: the later checksums never went up.
         received.remove(at + ".sha256");
         received.remove(at + ".sha512");
         putLog.clear();
 
-        SigstoreSigner fake = bytes -> "{}".getBytes(StandardCharsets.UTF_8);
-        MavenPublisher.Result rerun = publisher.publish(
-                project, List.of(new MavenPublisher.Artifact(".jar", jar)), SigningOptions.of(null, fake));
+        SigstoreSigner fake = file -> "{}".getBytes(StandardCharsets.UTF_8);
+        MavenPublisher.Result rerun =
+                publisher.publish(project, List.of(artifact(".jar", jar)), SigningOptions.of(null, fake));
 
         assertThat(rerun.alreadyThere()).containsExactly("com/example/widget/1.0.0/widget-1.0.0.jar");
         assertThat(putLog)
@@ -242,8 +315,8 @@ class MavenPublisherTest {
                 .doesNotContain(at, at + ".md5", at + ".sha1");
 
         putLog.clear();
-        SigstoreSigner other = bytes -> "{\"again\":1}".getBytes(StandardCharsets.UTF_8);
-        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jar)), SigningOptions.of(null, other));
+        SigstoreSigner other = file -> "{\"again\":1}".getBytes(StandardCharsets.UTF_8);
+        publisher.publish(project, List.of(artifact(".jar", jar)), SigningOptions.of(null, other));
         assertThat(putLog)
                 .as("a signature already beside the body is kept, not re-signed")
                 .doesNotContain(at + ".sigstore");
@@ -258,7 +331,7 @@ class MavenPublisherTest {
         // jar being PUT at all shows the existence check gave the upload the last word.
         assertThatThrownBy(() -> publisher.publish(
                         new Project("com.example", "widget", "1.0.0", 21),
-                        List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
+                        List.of(artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("left it unchanged");
         assertThat(putLog).contains("/repo/com/example/widget/1.0.0/widget-1.0.0.jar");
@@ -271,7 +344,7 @@ class MavenPublisherTest {
 
         assertThatThrownBy(() -> publisher.publish(
                         new Project("com.example", "widget", "1.0.0", 21),
-                        List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
+                        List.of(artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("returned 409")
                 .hasMessageContaining("does not allow it to be replaced");
@@ -281,9 +354,9 @@ class MavenPublisherTest {
     void each_snapshot_publish_adds_a_build_and_the_metadata_names_the_newest() throws Exception {
         Project project = new Project("com.example", "widget", "1.0.1-SNAPSHOT", 21);
         List<MavenPublisher.Artifact> artifacts = List.of(
-                new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
-                new MavenPublisher.Artifact(".pom", "<project/>".getBytes(StandardCharsets.UTF_8)),
-                new MavenPublisher.Artifact("-sources.jar", "src".getBytes(StandardCharsets.UTF_8)));
+                artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
+                artifact(".pom", "<project/>".getBytes(StandardCharsets.UTF_8)),
+                artifact("-sources.jar", "src".getBytes(StandardCharsets.UTF_8)));
         Instant first = Instant.parse("2026-10-25T20:15:00Z");
 
         new MavenPublisher(base, null, null)
@@ -316,9 +389,9 @@ class MavenPublisherTest {
     void a_snapshot_names_an_extension_by_everything_after_its_first_dot() throws Exception {
         Project project = new Project("com.example", "widget", "1.0.1-SNAPSHOT", 21);
         List<MavenPublisher.Artifact> artifacts = List.of(
-                new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
-                new MavenPublisher.Artifact(".intoto.json", "{}".getBytes(StandardCharsets.UTF_8)),
-                new MavenPublisher.Artifact("-cyclonedx.json", "{}".getBytes(StandardCharsets.UTF_8)));
+                artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8)),
+                artifact(".intoto.json", "{}".getBytes(StandardCharsets.UTF_8)),
+                artifact("-cyclonedx.json", "{}".getBytes(StandardCharsets.UTF_8)));
 
         new MavenPublisher(base, null, null)
                 .withClock(Clock.fixed(Instant.parse("2026-10-25T20:15:00Z"), ZoneOffset.UTC))
@@ -337,7 +410,7 @@ class MavenPublisherTest {
         Project project = new Project("com.example", "a&b", "1.0-SNAPSHOT", 21);
 
         new MavenPublisher(base, null, null)
-                .publish(project, List.of(new MavenPublisher.Artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8))));
+                .publish(project, List.of(artifact(".jar", "jar".getBytes(StandardCharsets.UTF_8))));
 
         byte[] metadata = requireNonNull(received.get("/repo/com/example/a&b/1.0-SNAPSHOT/maven-metadata.xml"));
         Document document =
@@ -348,10 +421,10 @@ class MavenPublisherTest {
 
     @Test
     void an_artifact_suffix_without_an_extension_is_refused() {
-        assertThatThrownBy(() -> new MavenPublisher.Artifact("-sources", new byte[0]))
+        assertThatThrownBy(() -> new MavenPublisher.Artifact("-sources", Path.of("widget-sources")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("-<classifier>.<extension>");
-        assertThatThrownBy(() -> new MavenPublisher.Artifact("jar", new byte[0]))
+        assertThatThrownBy(() -> new MavenPublisher.Artifact("jar", Path.of("widget.jar")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -359,8 +432,7 @@ class MavenPublisherTest {
     void basic_auth_header_is_attached_when_credentials_provided() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, "alice", "swordfish");
         publisher.publish(
-                new Project("com.example", "widget", "1.0.0", 21),
-                List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})));
+                new Project("com.example", "widget", "1.0.0", 21), List.of(artifact(".jar", new byte[] {1, 2, 3})));
 
         String expected =
                 "Basic " + Base64.getEncoder().encodeToString("alice:swordfish".getBytes(StandardCharsets.UTF_8));
@@ -371,8 +443,7 @@ class MavenPublisherTest {
     void bearer_credential_attaches_bearer_header() throws Exception {
         MavenPublisher publisher = new MavenPublisher(base, new RepoCredential.Bearer("tok-123"));
         publisher.publish(
-                new Project("com.example", "widget", "1.0.0", 21),
-                List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})));
+                new Project("com.example", "widget", "1.0.0", 21), List.of(artifact(".jar", new byte[] {1, 2, 3})));
 
         assertThat(authHeaders.values()).isNotEmpty().allMatch(h -> h.equals("Bearer tok-123"));
     }
@@ -385,7 +456,7 @@ class MavenPublisherTest {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jarBytes = "fake-jar".getBytes(StandardCharsets.UTF_8);
-        publisher.publish(project, List.of(new MavenPublisher.Artifact(".jar", jarBytes)), SigningOptions.of(signer));
+        publisher.publish(project, List.of(artifact(".jar", jarBytes)), SigningOptions.of(signer));
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
         assertThat(received)
@@ -402,14 +473,13 @@ class MavenPublisherTest {
     @Test
     void sigstore_signer_emits_sigstore_bundle_files() throws Exception {
         // Fake sigstore signer returns a deterministic bundle for unit testing.
-        SigstoreSigner fake = bytes -> ("{\"fake-bundle-over-" + new String(bytes, StandardCharsets.UTF_8) + "\"}")
-                .getBytes(StandardCharsets.UTF_8);
+        SigstoreSigner fake =
+                file -> ("{\"fake-bundle-over-" + Files.readString(file) + "\"}").getBytes(StandardCharsets.UTF_8);
 
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         Project project = new Project("com.example", "widget", "1.0.0", 21);
         byte[] jarBytes = "fake-jar".getBytes(StandardCharsets.UTF_8);
-        publisher.publish(
-                project, List.of(new MavenPublisher.Artifact(".jar", jarBytes)), new SigningOptions(null, fake));
+        publisher.publish(project, List.of(artifact(".jar", jarBytes)), new SigningOptions(null, fake));
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
         assertThat(received)
@@ -427,12 +497,12 @@ class MavenPublisherTest {
     void both_gpg_and_sigstore_emit_both_sidecars(@TempDir Path tempDir) throws Exception {
         var key = GpgTestFixture.generate(tempDir, "p");
         GpgSigner gpg = GpgSigner.fromKeyFile(key.secretKeyFile(), "p".toCharArray());
-        SigstoreSigner fake = bytes -> "{}".getBytes(StandardCharsets.UTF_8);
+        SigstoreSigner fake = file -> "{}".getBytes(StandardCharsets.UTF_8);
 
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         publisher.publish(
                 new Project("com.example", "widget", "1.0.0", 21),
-                List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3})),
+                List.of(artifact(".jar", new byte[] {1, 2, 3})),
                 new SigningOptions(gpg, fake));
 
         String stem = "/repo/com/example/widget/1.0.0/widget-1.0.0";
@@ -573,7 +643,7 @@ class MavenPublisherTest {
         failNext = true;
         assertThatThrownBy(() -> publisher.publish(
                         new Project("com.example", "widget", "1.0.0", 21),
-                        List.of(new MavenPublisher.Artifact(".jar", new byte[] {1, 2, 3}))))
+                        List.of(artifact(".jar", new byte[] {1, 2, 3}))))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("401");
     }

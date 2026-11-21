@@ -35,7 +35,8 @@ public final class CentralBundle {
     /**
      * Write the bundle for {@code project}'s {@code artifacts} to {@code target}: each artifact, its
      * {@code .asc} from {@code signer}, and the two checksums the Portal reads. Signatures carry no
-     * checksums. The zip goes straight to disk, so the heap never holds a copy of the release.
+     * checksums. Each artifact streams from its file into the zip, which goes straight to disk, so the
+     * heap never holds a copy of the release.
      */
     public static Bundle build(
             Project project, Iterable<MavenPublisher.Artifact> artifacts, GpgSigner signer, Path target)
@@ -48,9 +49,10 @@ public final class CentralBundle {
         try (ZipOutputStream zip = DeterministicZip.newArchive(target)) {
             for (MavenPublisher.Artifact a : artifacts) {
                 String path = prefix + stem + a.filenameSuffix();
-                write(zip, entries, path, a.body());
-                write(zip, entries, path + ".asc", signer.signArmored(a.body()));
-                Checksums.Set sums = Checksums.of(a.body());
+                DeterministicZip.PINNED.writeEntry(zip, path, a.file());
+                entries.add(path);
+                write(zip, entries, path + ".asc", signer.signArmored(a.file()));
+                Checksums.Set sums = Checksums.of(a.file());
                 write(zip, entries, path + ".md5", sums.md5().getBytes(StandardCharsets.US_ASCII));
                 write(zip, entries, path + ".sha1", sums.sha1().getBytes(StandardCharsets.US_ASCII));
             }

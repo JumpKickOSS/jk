@@ -10,8 +10,11 @@ import cc.jumpkick.repo.MavenMetadata;
 import cc.jumpkick.repo.RepoTransport;
 import cc.jumpkick.repo.transport.RepoTransports;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -69,20 +72,30 @@ public final class MavenPublisher {
     }
 
     private MavenPublisher(URI repoBase, RepoCredential credential, ObjectStoreConfig objectStore, Http http) {
+        this(repoBase, credential, RepoTransports.forUrl(repoBase, http, objectStore));
+    }
+
+    /** Over {@code transport} itself: a test hands in one that records what each upload carried. */
+    static MavenPublisher over(URI repoBase, RepoCredential credential, RepoTransport transport) {
+        return new MavenPublisher(repoBase, credential, transport);
+    }
+
+    private MavenPublisher(URI repoBase, RepoCredential credential, RepoTransport transport) {
         this.repoBase = normalize(Objects.requireNonNull(repoBase, "repoBase"));
         this.credential = Objects.requireNonNull(credential, "credential");
-        this.transport = RepoTransports.forUrl(this.repoBase, http, objectStore);
+        this.transport = Objects.requireNonNull(transport, "transport");
     }
 
     /**
      * One file of the publication, named by what follows {@code name-version}: {@code .<extension>}
      * or {@code -<classifier>.<extension>}. The extension runs from the first dot, so {@code
-     * .intoto.json} is the extension {@code intoto.json}, not {@code json}.
+     * .intoto.json} is the extension {@code intoto.json}, not {@code json}. Its bytes stay in {@code
+     * file}: checksums, signatures and the upload each stream it, so a large jar never sits in memory.
      */
-    public record Artifact(String filenameSuffix, byte[] body) {
+    public record Artifact(String filenameSuffix, Path file) {
         public Artifact {
             Objects.requireNonNull(filenameSuffix, "filenameSuffix");
-            Objects.requireNonNull(body, "body");
+            Objects.requireNonNull(file, "file");
             int dot = filenameSuffix.indexOf('.', 1);
             boolean named = filenameSuffix.startsWith(".")
                     ? filenameSuffix.length() > 1
@@ -153,20 +166,21 @@ public final class MavenPublisher {
             // alone and so is each sidecar already beside it, which makes a re-run after a partial
             // publish (or one that adds signing) upload exactly what is missing; one it holds at
             // other bytes is a version somebody already used.
-            boolean there = presence(relPath, a.body()) == Presence.SAME;
+            Checksums.Set sums = Checksums.of(a.file());
+            boolean there = presence(relPath, sums.sha1()) == Presence.SAME;
             if (there) {
                 alreadyThere.add(relPath);
-                putMissingChecksums(relPath, a.body(), results, bytes);
+                putMissingChecksums(relPath, sums, results, bytes);
             } else {
-                putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
+                putFileWithChecksums(relPath, a.file(), sums, contentType(a.filenameSuffix()), results, bytes);
             }
             if (signing.gpg() != null) {
                 GpgSigner gpg = signing.gpg();
-                putSignature(relPath + ".asc", there, () -> gpg.signArmored(a.body()), results, bytes);
+                putSignature(relPath + ".asc", there, () -> gpg.signArmored(a.file()), results, bytes);
             }
             if (signing.sigstore() != null) {
                 SigstoreSigner sigstore = signing.sigstore();
-                putSignature(relPath + ".sigstore", there, () -> sigstore.signBundle(a.body()), results, bytes);
+                putSignature(relPath + ".sigstore", there, () -> sigstore.signBundle(a.file()), results, bytes);
             }
         }
         publishMetadata(project, groupPath, results, bytes);
@@ -220,15 +234,16 @@ public final class MavenPublisher {
         StringBuilder entries = new StringBuilder();
         for (Artifact a : artifacts) {
             String relPath = prefix + stem + a.filenameSuffix();
-            putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
+            putFileWithChecksums(
+                    relPath, a.file(), Checksums.of(a.file()), contentType(a.filenameSuffix()), results, bytes);
             if (signing.gpg() != null) {
                 putWithChecksums(
-                        relPath + ".asc", signing.gpg().signArmored(a.body()), contentType(".asc"), results, bytes);
+                        relPath + ".asc", signing.gpg().signArmored(a.file()), contentType(".asc"), results, bytes);
             }
             if (signing.sigstore() != null) {
                 putWithChecksums(
                         relPath + ".sigstore",
-                        signing.sigstore().signBundle(a.body()),
+                        signing.sigstore().signBundle(a.file()),
                         contentType(".sigstore"),
                         results,
                         bytes);
@@ -260,15 +275,14 @@ public final class MavenPublisher {
     }
 
     /**
-     * Whether {@code relPath} is in the repository, and at {@code body}'s bytes: the {@code .sha1}
-     * beside it when there is one, else the file itself. A repository that will not answer a read
-     * (no read permission, a write-only drop) reads as {@link Presence#ABSENT}: the upload that
-     * follows is the authority, and says so if the file is there.
+     * Whether {@code relPath} is in the repository, and at the bytes whose SHA-1 is {@code local}: the
+     * {@code .sha1} beside it when there is one, else the file itself, streamed. A repository that
+     * will not answer a read (no read permission, a write-only drop) reads as {@link
+     * Presence#ABSENT}: the upload that follows is the authority, and says so if the file is there.
      *
      * @throws IOException when the repository holds the file at other bytes
      */
-    private Presence presence(String relPath, byte[] body) throws IOException, InterruptedException {
-        String local = Checksums.of(body).sha1();
+    private Presence presence(String relPath, String local) throws IOException, InterruptedException {
         String remote;
         try {
             Optional<byte[]> sidecar = transport.fetch(repoBase.resolve(relPath + ".sha1"), credential);
@@ -278,9 +292,9 @@ public final class MavenPublisher {
                         .split("\\s+")[0]
                         .toLowerCase(Locale.ROOT);
             } else {
-                Optional<byte[]> raw = transport.fetch(repoBase.resolve(relPath), credential);
+                Optional<InputStream> raw = transport.fetchStream(repoBase.resolve(relPath), credential);
                 if (raw.isEmpty()) return Presence.ABSENT;
-                remote = Checksums.of(raw.get()).sha1();
+                remote = Checksums.sha1Hex(raw.get());
             }
         } catch (IOException unreadable) {
             return Presence.ABSENT;
@@ -348,7 +362,7 @@ public final class MavenPublisher {
             throws IOException, InterruptedException {
         Optional<byte[]> held = bodyThere ? readable(relPath) : Optional.empty();
         if (held.isPresent()) {
-            putMissingChecksums(relPath, held.get(), results, bytes);
+            putMissingChecksums(relPath, Checksums.of(held.get()), results, bytes);
         } else {
             putWithChecksums(
                     relPath, signer.sign(), contentType(relPath.substring(relPath.lastIndexOf('.'))), results, bytes);
@@ -356,16 +370,19 @@ public final class MavenPublisher {
     }
 
     /** Each of {@code relPath}'s four checksum files the repository does not hold yet. */
-    private void putMissingChecksums(String relPath, byte[] body, Map<String, Integer> results, long[] bytes)
+    private void putMissingChecksums(String relPath, Checksums.Set sums, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
-        Checksums.Set sums = Checksums.of(body);
-        String[][] files = {
-            {".md5", sums.md5()}, {".sha1", sums.sha1()}, {".sha256", sums.sha256()}, {".sha512", sums.sha512()}
-        };
-        for (String[] f : files) {
+        for (String[] f : sidecars(sums)) {
             if (readable(relPath + f[0]).isPresent()) continue;
             put(relPath + f[0], f[1].getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
         }
+    }
+
+    /** The four checksum sidecars of one file: suffix, then hex digest. */
+    private static String[][] sidecars(Checksums.Set sums) {
+        return new String[][] {
+            {".md5", sums.md5()}, {".sha1", sums.sha1()}, {".sha256", sums.sha256()}, {".sha512", sums.sha512()}
+        };
     }
 
     /** The file at {@code relPath}, or empty when it is absent or the repository will not say. */
@@ -381,23 +398,47 @@ public final class MavenPublisher {
             String relPath, byte[] body, String contentType, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
         put(relPath, body, contentType, results, bytes);
-        Checksums.Set sums = Checksums.of(body);
-        put(relPath + ".md5", sums.md5().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
-        put(relPath + ".sha1", sums.sha1().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
-        put(relPath + ".sha256", sums.sha256().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
-        put(relPath + ".sha512", sums.sha512().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
+        putChecksums(relPath, Checksums.of(body), results, bytes);
+    }
+
+    /** As {@link #putWithChecksums}, the body streamed from {@code file} whose digests are {@code sums}. */
+    private void putFileWithChecksums(
+            String relPath,
+            Path file,
+            Checksums.Set sums,
+            String contentType,
+            Map<String, Integer> results,
+            long[] bytes)
+            throws IOException, InterruptedException {
+        URI uri = repoBase.resolve(relPath);
+        record(relPath, uri, transport.putFile(uri, file, contentType, credential), Files.size(file), results, bytes);
+        putChecksums(relPath, sums, results, bytes);
+    }
+
+    private void putChecksums(String relPath, Checksums.Set sums, Map<String, Integer> results, long[] bytes)
+            throws IOException, InterruptedException {
+        for (String[] f : sidecars(sums)) {
+            put(relPath + f[0], f[1].getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
+        }
     }
 
     private void put(String relPath, byte[] body, String contentType, Map<String, Integer> out, long[] bytes)
             throws IOException, InterruptedException {
         URI uri = repoBase.resolve(relPath);
-        // The transport carries the offline guard, auth header, and retry policy. The guard is real
-        // inside this worker because Publisher.run installs the spec's offline decision onto the
-        // worker JVM's session before anything reaches here; Publisher.publish also refuses up
-        // front, so this is the backstop, not the only check.
-        int status = transport.put(uri, body, contentType, credential);
+        record(relPath, uri, transport.put(uri, body, contentType, credential), body.length, out, bytes);
+    }
+
+    /**
+     * Note one upload's status and size, and throw when it failed. The transport carries the offline
+     * guard, auth header, and retry policy. The guard is real inside this worker because
+     * Publisher.run installs the spec's offline decision onto the worker JVM's session before
+     * anything reaches here; Publisher.publish also refuses up front, so this is the backstop, not
+     * the only check.
+     */
+    private static void record(String relPath, URI uri, int status, long size, Map<String, Integer> out, long[] bytes)
+            throws IOException {
         out.put(relPath, status);
-        bytes[0] += body.length;
+        bytes[0] += size;
         if (status == 409) {
             throw new IOException("PUT " + uri + " returned 409: the repository does not allow it to be replaced;"
                     + " raise the version in jk.toml");

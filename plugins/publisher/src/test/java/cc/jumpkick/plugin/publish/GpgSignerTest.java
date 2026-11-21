@@ -32,7 +32,7 @@ class GpgSignerTest {
         GpgSigner signer = GpgSigner.fromKeyFile(key.secretKeyFile(), "swordfish".toCharArray());
 
         byte[] data = "the artifact bytes".getBytes(StandardCharsets.UTF_8);
-        byte[] signature = signer.signArmored(data);
+        byte[] signature = signer.signArmored(Files.write(tempDir.resolve("artifact"), data));
 
         String text = new String(signature, StandardCharsets.US_ASCII);
         assertThat(text).startsWith("-----BEGIN PGP SIGNATURE-----");
@@ -71,7 +71,7 @@ class GpgSignerTest {
 
         byte[] data = "the artifact bytes".getBytes(StandardCharsets.UTF_8);
         byte[] signature = GpgSigner.fromKeyFile(key.secretKeyFile(), "swordfish".toCharArray())
-                .signArmored(data);
+                .signArmored(Files.write(tempDir.resolve("artifact"), data));
 
         GpgTestFixture.verifyDetached(data, signature, key.publicRing());
         assertThat(GpgTestFixture.signerKeyId(signature)).isEqualTo(subkeyId(key, 0));
@@ -84,7 +84,7 @@ class GpgSignerTest {
                 tempDir, "swordfish", KeyFlags.CERTIFY_OTHER, false, List.of(GpgTestFixture.Subkey.signing()));
 
         byte[] signature = GpgSigner.fromKeyFile(key.secretKeyFile(), "swordfish".toCharArray())
-                .signArmored(new byte[] {1});
+                .signArmored(Files.write(tempDir.resolve("artifact"), new byte[] {1}));
 
         assertThat(GpgTestFixture.signerKeyId(signature)).isEqualTo(subkeyId(key, 0));
     }
@@ -109,7 +109,7 @@ class GpgSignerTest {
                                 KeyFlags.SIGN_DATA, lastWeek, Duration.ofDays(1).toSeconds(), false)));
 
         byte[] signature = GpgSigner.fromKeyFile(key.secretKeyFile(), "swordfish".toCharArray())
-                .signArmored(new byte[] {1});
+                .signArmored(Files.write(tempDir.resolve("artifact"), new byte[] {1}));
 
         // The newest key that may still sign: the second is revoked and the fourth expired days ago.
         assertThat(GpgTestFixture.signerKeyId(signature)).isEqualTo(subkeyId(key, 2));

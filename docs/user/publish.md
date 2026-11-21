@@ -25,6 +25,9 @@ jar. The publish build writes the javadoc jar of every library that does not say
 false`, even though a plain `jk build` leaves it out. A Kotlin library's javadoc jar is Dokka's output, so the bundle
 carries real API docs rather than an empty jar.
 See [Packaging: library artefacts](packaging.md#library-artefacts-sources-and-javadoc-jars).
+What the publish renders itself (the POM, SLSA provenance, a sources jar the build did not write)
+goes to `target/publish/` first: every file streams from disk, so a large jar never has to fit in
+memory.
 
 `jk publish` uploads only a release ([Releasing](release.md)). In a git checkout that is a clean
 checkout whose HEAD carries the version's tag (`[release] tag`, `v1.4.7` by default); on any other

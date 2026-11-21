@@ -14,11 +14,14 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class HttpTransportTest {
 
@@ -218,6 +221,32 @@ class HttpTransportTest {
         assertThat(status).isEqualTo(201);
         assertThat(seenType.get()).isEqualTo("application/java-archive");
         assertThat(seenBody.get()).isEqualTo(payload);
+    }
+
+    @Test
+    void put_file_streams_the_file_with_content_type_and_auth(@TempDir Path dir) throws Exception {
+        AtomicReference<String> seenType = new AtomicReference<>();
+        AtomicReference<String> seenAuth = new AtomicReference<>();
+        AtomicReference<byte[]> seenBody = new AtomicReference<>();
+        server.createContext("/up-file.jar", ex -> {
+            seenType.set(ex.getRequestHeaders().getFirst("Content-Type"));
+            seenAuth.set(ex.getRequestHeaders().getFirst("Authorization"));
+            seenBody.set(ex.getRequestBody().readAllBytes());
+            ex.sendResponseHeaders(201, -1);
+            ex.close();
+        });
+
+        Path file = Files.write(dir.resolve("up.jar"), new byte[] {7, 8, 9});
+        int status = transport()
+                .putFile(
+                        base.resolve("/up-file.jar"),
+                        file,
+                        "application/java-archive",
+                        new RepoCredential.Basic("u", "p"));
+        assertThat(status).isEqualTo(201);
+        assertThat(seenType.get()).isEqualTo("application/java-archive");
+        assertThat(seenAuth.get()).startsWith("Basic ");
+        assertThat(seenBody.get()).containsExactly(7, 8, 9);
     }
 
     @Test
