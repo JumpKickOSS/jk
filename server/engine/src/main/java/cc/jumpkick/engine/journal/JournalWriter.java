@@ -48,6 +48,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
@@ -87,6 +88,23 @@ public final class JournalWriter {
     /** Hand every finished run's record to {@code finished}; it must not throw. */
     public void onFinished(Consumer<BuildRecord> finished) {
         this.finished = finished != null ? finished : r -> {};
+    }
+
+    /** What a finished run's episode saved, as the last section of its {@code jk-results.md}. */
+    private volatile Function<BuildRecord, @Nullable String> receipt = r -> null;
+
+    /** End every finished run's {@code jk-results.md} with {@code receipt}'s answer; it must not throw. */
+    public void onReceipt(Function<BuildRecord, @Nullable String> receipt) {
+        this.receipt = receipt != null ? receipt : r -> null;
+    }
+
+    private @Nullable String receiptOf(BuildRecord record) {
+        try {
+            return receipt.apply(record);
+        } catch (RuntimeException e) {
+            log.accept("jk engine: episode receipt skipped: " + e);
+            return null;
+        }
     }
 
     private void tellFinished(BuildRecord record) {
@@ -353,7 +371,7 @@ public final class JournalWriter {
             }
             try {
                 JkResultsMarkdown.write(
-                        record, runDir, latest, tests, previous, a.slowest().ranking());
+                        record, runDir, latest, tests, previous, a.slowest().ranking(), receiptOf(record));
             } catch (IOException | RuntimeException e) {
                 log.accept("jk engine: jk-results.md write failed: " + e);
             }

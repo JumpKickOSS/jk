@@ -2,11 +2,15 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.SessionJournal;
+import cc.jumpkick.engine.savings.EpisodeReceipt;
 import cc.jumpkick.engine.sessions.SessionLog;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -21,9 +25,11 @@ final class HttpSessionsApi {
     static final int ACTIONS_MAX = 1000;
 
     private final SessionLog sessions;
+    private final BuildJournal journal;
 
-    HttpSessionsApi(SessionLog sessions) {
+    HttpSessionsApi(SessionLog sessions, BuildJournal journal) {
         this.sessions = sessions;
+        this.journal = journal;
     }
 
     /**
@@ -39,8 +45,9 @@ final class HttpSessionsApi {
     }
 
     /**
-     * {@code GET /api/sessions/<id>?before=<seq>&limit=N}: one session, every episode, and a page of
-     * its actions oldest first; {@code next} is the {@code before} of the page older than this one.
+     * {@code GET /api/sessions/<id>?before=<seq>&limit=N}: one session, every episode with what it
+     * saved ({@code saved}, an {@link EpisodeReceipt}), and a page of its actions oldest first;
+     * {@code next} is the {@code before} of the page older than this one.
      */
     void handleSession(HttpExchange exchange) throws IOException {
         String id = exchange.getRequestURI().getPath().substring(PREFIX.length());
@@ -63,7 +70,19 @@ final class HttpSessionsApi {
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("session", page.get().session());
-        body.put("episodes", page.get().episodes());
+        Map<String, EpisodeReceipt> receipts = EpisodeReceipt.forSession(journal, sessions, id);
+        List<Map<String, Object>> episodes = new ArrayList<>();
+        for (Map<String, Object> e : page.get().episodes()) {
+            EpisodeReceipt receipt = receipts.get(String.valueOf(e.get("id")));
+            if (receipt == null) {
+                episodes.add(e);
+                continue;
+            }
+            Map<String, Object> withSaved = new LinkedHashMap<>(e);
+            withSaved.put("saved", receipt.saved().toMap());
+            episodes.add(withSaved);
+        }
+        body.put("episodes", episodes);
         body.put("actions", page.get().actions());
         body.put("next", page.get().next() > 0 ? page.get().next() : null);
         HttpResponses.sendJson(exchange, 200, JsonOut.rawObject(body).toString());

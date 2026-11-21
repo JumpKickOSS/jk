@@ -172,7 +172,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * /api/sessions/<id>}, and log MCP connections and their actions in it. Before {@link #start}.
      */
     public void setSessions(SessionLog sessions) {
-        HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions);
+        HttpSessionsApi sessionsApi = new HttpSessionsApi(sessions, journal);
         api.register("GET", "/api/sessions", sessionsApi::handleSessions);
         api.registerPrefix("GET", HttpSessionsApi.PREFIX, sessionsApi::handleSession);
         statsApi.sessions(sessions);

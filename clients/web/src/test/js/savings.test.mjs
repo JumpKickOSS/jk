@@ -7,7 +7,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const spa = (name) => import(pathToFileURL(path.join(process.env.JK_APP_DIR, name)));
-const { SAVINGS_DAYS, savingsQuery, savingsRow, savedTime, savingsTiles, savingsComputed } = await spa('savings.js');
+const { SAVINGS_DAYS, savingsQuery, savingsRow, savedTime, savingsTiles, receiptTiles, savingsComputed } = await spa('savings.js');
 const { fmtDuration } = await spa('format.js');
 
 const all = {
@@ -56,4 +56,17 @@ test('the computed rows read the overall row and the open project', () => {
   assert.equal(savingsComputed.savingsAll.call(vm), all);
   assert.equal(savingsComputed.savingsProject.call(vm), app);
   assert.equal(savingsComputed.savingsAll.call({ savings: null }), null);
+});
+
+test("an episode's receipt shows the panel's tiles for what it counted, and none when it saved nothing", () => {
+  const episode = {
+    ...all, scope: 'episode', runs: 3, savedMillis: 0, coveredSkips: 0, estimatedSkips: 0, stepsSkipped: 5,
+    suitesSkipped: 1, testClassesNotRerun: 0, graphCalls: 4, renames: 0, edits: 0, guardViolations: 0, guardStops: 0,
+  };
+  assert.deepEqual(receiptTiles(episode).map((t) => t.key), ['steps', 'graph']);
+  assert.equal(receiptTiles(episode)[0].note, '1 test suites');
+  assert.deepEqual(receiptTiles({ ...episode, edits: 2 }).map((t) => t.key), ['steps', 'graph', 'renames']);
+  assert.deepEqual(receiptTiles({ ...all }).map((t) => t.key), savingsTiles(all).map((t) => t.key));
+  assert.deepEqual(receiptTiles({ scope: 'episode', runs: 1 }), []);
+  assert.deepEqual(receiptTiles(null), []);
 });

@@ -62,7 +62,10 @@ home, and removes them when it stops. An engine that has not paired is listed bu
   before the run that saw the edits (JumpKick sees edits at the next run, through its file delta). A run
   line shows its kind, its number and outcome chip (`#1066 · 2 failed`), the one-chip summary of
   what changed since the run before, and the first failing test or error. Clicking the chip opens
-  the run page. **Earlier episodes** of the session fold below it; open one for its timeline.
+  the run page. The timeline ends with what the episode **saved** so far: the figures of the
+  [saved panel](#what-jumpkick-saved) it counted, over its own runs and actions (`nothing yet`
+  before it counted any), refreshed when one of its runs finishes. **Earlier episodes** of the
+  session fold below it, each with what it saved; open one for its timeline.
 - **This session changed**: the files its runs changed, migrations (`V7 new`), dependency
   changes, the newest guard run's outcome, and the tests its runs fixed and broke.
 - **How JumpKick served the agent**: tool calls (every action and run), runs, JumpKick's wall time across
@@ -199,6 +202,9 @@ jk stats            # the last 7 days
 jk stats -d 30      # the last 30 days; -d 0 reads all the history kept
 jk stats -O jsonl   # one `stats` object per row: `scope` `all` first, then one per project
 ```
+
+The same figures, over one episode's runs and actions, end that episode on the console and the
+`jk-results.md` of each run in it ([results](machine-output.md)).
 
 Nothing new is recorded for it: the engine adds up the run records and session actions it keeps,
 so a period reaches back only as far as `[history]` keeps runs and a session keeps its last 1000

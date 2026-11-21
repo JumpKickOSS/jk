@@ -555,6 +555,14 @@ public final class BuildJournal {
      * read whole, newest first.
      */
     public List<BuildRecord> finishedSince(long since) {
+        return finishedSince(since, r -> true);
+    }
+
+    /**
+     * {@link #finishedSince(long)} for the runs whose head {@code keep} accepts; a run it refuses is
+     * not read whole.
+     */
+    public List<BuildRecord> finishedSince(long since, Predicate<BuildRecord> keep) {
         List<BuildRecord> out = new ArrayList<>();
         for (JournalIndex.Entry e : runs.newest()) {
             if (e.synthetic() || e.running()) continue;
@@ -563,7 +571,7 @@ public final class BuildJournal {
             BuildRecord r = head.get().record();
             long at = r.finishedAt() > 0 ? r.finishedAt() : r.startedAt();
             if (at < since) break;
-            if (r.synthetic() || r.running()) continue;
+            if (r.synthetic() || r.running() || !keep.test(r)) continue;
             readRecord(e.dir()).ifPresent(out::add);
         }
         return out;

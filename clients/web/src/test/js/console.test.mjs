@@ -213,6 +213,22 @@ test('session, episode and action frames fold into the rail and the selected pag
   assert.equal(other, detail, "another session's frame leaves the page as it was");
 });
 
+test("an episode keeps the receipt the page read until a read brings a new one, and its header and fold carry it", () => {
+  const saved = { scope: 'episode', runs: 2, stepsSkipped: 7, graphCalls: 3 };
+  let detail = { session: claude(), episodes: [ep({ saved })], actions: [] };
+  detail = foldIntoDetail(detail, 'episode', { change: 'updated', episode: ep({ title: 'Fix rounding' }) });
+  assert.equal(detail.episodes[0].title, 'Fix rounding');
+  assert.equal(detail.episodes[0].saved, saved, 'a frame carries no receipt and leaves the read one');
+  const newer = { ...saved, graphCalls: 4 };
+  detail = foldIntoDetail(detail, 'episode', { change: 'updated', episode: ep({ saved: newer }) });
+  assert.equal(detail.episodes[0].saved, newer);
+
+  assert.equal(episodeHeader(ep({ saved }), { now: NOW }).saved, saved);
+  assert.equal(episodeHeader(ep(), { now: NOW }).saved, null, 'an engine that serves no receipt shows none');
+  const page = { session: claude({ episode: 'mcp-3f9a.2' }), episodes: [ep({ id: 'mcp-3f9a.2', number: 2 }), ep({ saved })] };
+  assert.equal(earlierEpisodes(page)[0].saved, saved);
+});
+
 test("an episode's timeline joins runs to records, places edits before the run that saw them, and ends with the live build", () => {
   const delta = {
     previousBuildNumber: 1066,

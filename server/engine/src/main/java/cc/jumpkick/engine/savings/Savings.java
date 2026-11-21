@@ -9,9 +9,10 @@ import org.jspecify.annotations.Nullable;
  * What jk saved over a period, overall or for one project: one row of {@code jk stats}, of its
  * {@code -O jsonl} stream and of {@code GET /api/stats}, all from {@link #toMap}.
  *
- * @param scope {@link #ALL} for every project, {@link #PROJECT} for one
+ * @param scope {@link #ALL} for every project, {@link #PROJECT} for one, {@link #EPISODE} for one
+ *     episode ({@link EpisodeReceipt})
  * @param projectId the project's durable id; null for {@link #ALL}, or for a directory with none
- * @param dir the project's newest checkout; null for {@link #ALL}
+ * @param dir the project's newest checkout, or the episode's; null for {@link #ALL}
  * @param coord the project's {@code group:name} as its newest run recorded it, or null
  * @param since the period's start, epoch millis; 0 for every run the journal keeps
  * @param until the period's end, epoch millis
@@ -57,6 +58,7 @@ public record Savings(
 
     public static final String ALL = "all";
     public static final String PROJECT = "project";
+    public static final String EPISODE = "episode";
 
     /** Nothing saved yet, in {@code scope} over {@code since}..{@code until}. */
     static Savings empty(

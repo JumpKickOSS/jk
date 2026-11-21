@@ -62,6 +62,23 @@ export function savingsTiles(row) {
   ];
 }
 
+/**
+ * An episode's receipt (its `saved` row from /api/sessions/<id>): the panel's tiles for the
+ * figures it counted, in the same order; empty when it saved nothing yet.
+ */
+export function receiptTiles(row) {
+  if (!row) return [];
+  const counted = {
+    saved: row.savedMillis,
+    steps: row.stepsSkipped,
+    classes: row.testClassesNotRerun,
+    graph: row.graphCalls,
+    renames: (row.renames || 0) + (row.edits || 0),
+    guards: row.guardViolations,
+  };
+  return savingsTiles(row).filter((t) => (counted[t.key] || 0) > 0);
+}
+
 export const savingsData = () => ({
   savings: null, // the /api/stats rows for the last SAVINGS_DAYS days, overall first
   savingsDays: SAVINGS_DAYS,
@@ -78,6 +95,7 @@ export const savingsMethods = {
     }
   },
   savingsTiles,
+  receiptTiles,
 };
 
 export const savingsComputed = {

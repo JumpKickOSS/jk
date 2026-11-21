@@ -2700,6 +2700,8 @@ button.run-chip:hover { filter: brightness(1.2); }
 .ep-title { font-size: 15px; color: var(--bright); }
 .ep-stats { display: flex; gap: 16px; flex-wrap: wrap; margin: 9px 0 10px; color: var(--mu); font-size: 12px; }
 .ep-stats b { color: var(--bright); font-weight: 600; }
+.ep-saved { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: baseline; margin: 10px 0 4px; padding-top: 8px; border-top: 1px solid var(--bd2); color: var(--mu); font-size: 12px; }
+.ep-saved b { color: var(--bright); font-weight: 600; }
 .arc { display: flex; gap: 4px; margin: 0 0 12px; }
 .arc span { height: 6px; flex: 1; border-radius: 3px; background: var(--dim); }
 .arc span.ok { background: var(--okc); }

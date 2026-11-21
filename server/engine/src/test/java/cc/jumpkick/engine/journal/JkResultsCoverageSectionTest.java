@@ -61,7 +61,7 @@ class JkResultsCoverageSectionTest {
     }
 
     private static String render(BuildRecord r, @Nullable BuildRecord previous) {
-        return JkResultsMarkdown.render(r, null, null, List.of(), previous, SlowestTests.Ranking.EMPTY);
+        return JkResultsMarkdown.render(r, null, null, List.of(), previous, SlowestTests.Ranking.EMPTY, null);
     }
 
     @Test

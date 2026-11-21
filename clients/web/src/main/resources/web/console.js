@@ -155,7 +155,9 @@ export function foldIntoDetail(detail, type, frame) {
     return { ...detail, session: frame.session };
   }
   if (type === 'episode' && frame.episode && frame.episode.session === id) {
-    const ep = frame.episode;
+    // A frame carries no receipt: the one the page read stays until the next read replaces it.
+    const was = (detail.episodes || []).find((e) => e.id === frame.episode.id);
+    const ep = was && was.saved && !frame.episode.saved ? { ...frame.episode, saved: was.saved } : frame.episode;
     const episodes = [...(detail.episodes || []).filter((e) => e.id !== ep.id), ep]
       .sort((a, b) => b.number - a.number)
       .slice(0, EPISODES_KEPT);
@@ -382,10 +384,11 @@ export function changedFiles(records) {
 
 /**
  * The selected episode's header: title and its source, outcome, number of how many, the attempts
- * arc, wall (to now while working), time in jk (the actions' and runs' walls), files changed.
- * An open episode is working only while its session is live or one of its runs is in flight, the
- * rule the rail's {@link railState} keeps; otherwise it reads idle and its wall stops at its last
- * fact, so a page that missed the engine settling it never counts up forever.
+ * arc, wall (to now while working), time in jk (the actions' and runs' walls), files changed, and
+ * what it saved (its receipt, null from an engine that serves none). An open episode is working
+ * only while its session is live or one of its runs is in flight, the rule the rail's
+ * {@link railState} keeps; otherwise it reads idle and its wall stops at its last fact, so a page
+ * that missed the engine settling it never counts up forever.
  */
 export function episodeHeader(episode, { timeline = [], records = [], episodes = [], session = null, now = Date.now() } = {}) {
   if (!episode) return null;
@@ -413,10 +416,11 @@ export function episodeHeader(episode, { timeline = [], records = [], episodes =
     wallMillis: Math.max(0, end - (episode.startedAt || end)),
     jkMillis: inJk,
     files: changedFiles(runs).count,
+    saved: episode.saved || null,
   };
 }
 
-/** Earlier episodes, newest first, folded: `{ id, title, source, outcome, runs, actions, wallMillis, number }`. */
+/** Earlier episodes, newest first, folded: `{ id, title, source, outcome, runs, actions, wallMillis, number, saved }`. */
 export function earlierEpisodes(detail) {
   if (!detail || !detail.session) return [];
   const currentId = detail.session.episode;
@@ -432,6 +436,7 @@ export function earlierEpisodes(detail) {
       actions: e.actions || 0,
       wallMillis: Math.max(0, (e.lastAt || 0) - (e.startedAt || 0)),
       number: e.number,
+      saved: e.saved || null,
     }));
 }
 

@@ -738,7 +738,10 @@ edited (a file under a module's `src/`, in the order first edited), `titleSource
 session's newest episodes, at most 50 (`EpisodeInference.KEEP`, all a session keeps), newest
 first, and up to `limit` (default 100, at most 1000) actions older than `before`
 (default: the newest), oldest first. `next` is the `before` that reads the page older than this
-one, `null` on the first page. An action is `{ seq, at, kind, summary, headline?, outcome, millis,
+one, `null` on the first page. Each episode carries `saved`, what it saved: a
+[`GET /api/stats`](#get-apistats) row with `scope` `episode`, `dir` its checkout, and `since`/`until`
+its start and last fact, added up over the runs the journal placed in it and every action it kept
+(not only the page's). An action is `{ seq, at, kind, summary, headline?, outcome, millis,
 episode, project?, buildNumber? }`: `kind` is `run` or the MCP tool (`query`, `callers`, `read`,
 `find`, `rename`, `deps`, `update`, `workspace`), `summary` one line of what it asked (`callers
 PricingRules.weekendUplift`), `headline` the first line of its answer (`3 callers`), `outcome`

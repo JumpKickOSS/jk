@@ -294,6 +294,11 @@
                 <span class="tl-r">{{ i.millis != null ? duration(i.millis) : i.state === 'run' && i.card ? elapsed(i.card) : '' }}</span>
               </li>
             </ol>
+            <div v-if="consoleEpisode.header.saved" class="ep-saved" aria-label="What this episode saved">
+              <span class="lbl">saved</span>
+              <span v-for="t in receiptTiles(consoleEpisode.header.saved)" :key="t.key" :data-tip="t.tip"><b>{{ t.value }}</b> {{ t.label }}<template v-if="t.note"> ({{ t.note }})</template></span>
+              <span v-if="!receiptTiles(consoleEpisode.header.saved).length" class="dim">nothing yet</span>
+            </div>
             <template v-if="consoleEpisode.earlier.length">
               <div class="rail-head earlier-head"><span class="lbl">earlier episodes in this session</span></div>
               <details v-for="e in consoleEpisode.earlier" :key="e.id" class="earlier">
@@ -311,6 +316,10 @@
                     <span class="tl-r">{{ i.millis != null ? duration(i.millis) : '' }}</span>
                   </li>
                 </ol>
+                <div v-if="e.saved && receiptTiles(e.saved).length" class="ep-saved" aria-label="What this episode saved">
+                  <span class="lbl">saved</span>
+                  <span v-for="t in receiptTiles(e.saved)" :key="t.key" :data-tip="t.tip"><b>{{ t.value }}</b> {{ t.label }}<template v-if="t.note"> ({{ t.note }})</template></span>
+                </div>
               </details>
             </template>
           </template>

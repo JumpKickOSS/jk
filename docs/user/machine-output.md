@@ -52,6 +52,14 @@ also names the session `episode` the run belongs to ([sessions and episodes](web
 `tokens ≈ N`: the whole file's size at a fixed 3.6 characters per token, so an agent can decide
 between this file and `details.jsonl` before reading either.
 
+A run placed in an episode ends with `## Saved in this episode`: the episode's title and its run
+count, then one line for each figure it counted so far, this run included, in the words and order
+of `jk stats` (build and test time the cache avoided, marked as an estimate with the share
+measured; steps served from the cache; test classes not re-run; code-graph questions answered;
+renames; dependency edits; guard violations stopped), or `Nothing saved yet` when it counted none.
+The dashboard's console ends the episode with the same figures
+([web](web.md#what-jumpkick-saved)).
+
 A coverage run (`jk test -T`, or a module with `[test] coverage = true`) adds a
 `Coverage:` line to the headline and a `## Coverage` table after `## Tests`: one row per module —
 `| Module | Lines | Branches |` as `85.2% (1204/1413)` — an `**all**` row for a workspace, and,

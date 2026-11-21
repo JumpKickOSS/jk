@@ -41,6 +41,7 @@ import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.engine.plugin.ShelfPins;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerScopes;
+import cc.jumpkick.engine.savings.EpisodeReceipt;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.FinishedRun;
 import cc.jumpkick.engine.sessions.SessionLog;
@@ -448,6 +449,7 @@ public final class EngineServer implements AutoCloseable {
         notices.follow(decisions);
         this.changeNotices = new ChangeNotices(ChangeJournal::current, notices);
         journalWriter.onFinished(sessionLog::runFinished);
+        journalWriter.onReceipt(r -> EpisodeReceipt.markdown(journal, sessionLog, r));
         drain.predecessorRuns(this::foldPredecessorRun);
         this.sse = new SsePublisher(
                 sessions,

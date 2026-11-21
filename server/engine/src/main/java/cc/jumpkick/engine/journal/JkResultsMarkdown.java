@@ -70,12 +70,13 @@ public final class JkResultsMarkdown {
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests)
             throws IOException {
-        write(record, runDir, latestPath, tests, null, SlowestTests.Ranking.EMPTY);
+        write(record, runDir, latestPath, tests, null, SlowestTests.Ranking.EMPTY, null);
     }
 
     /**
-     * As above with {@code previous}, the earlier run the Coverage block shows deltas against, and
-     * {@code slowest}, the classes and methods the run ranked.
+     * As above with {@code previous}, the earlier run the Coverage block shows deltas against,
+     * {@code slowest}, the classes and methods the run ranked, and {@code receipt}, the last section:
+     * what the run's episode saved, or null when it was placed in none.
      */
     public static void write(
             BuildRecord record,
@@ -83,11 +84,12 @@ public final class JkResultsMarkdown {
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests,
             @Nullable BuildRecord previous,
-            SlowestTests.Ranking slowest)
+            SlowestTests.Ranking slowest,
+            @Nullable String receipt)
             throws IOException {
         if (record == null) return;
         Path details = runDir == null ? null : runDir.resolve(ProjectBuilds.DETAILS);
-        String md = render(record, details, latestPath, tests, previous, slowest);
+        String md = render(record, details, latestPath, tests, previous, slowest, receipt);
         if (runDir != null) {
             MarkdownReports.write(runDir.resolve(FILE_NAME), md);
         }
@@ -109,17 +111,18 @@ public final class JkResultsMarkdown {
             @Nullable Path detailsPath,
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests) {
-        return render(record, detailsPath, latestPath, tests, null, SlowestTests.Ranking.EMPTY);
+        return render(record, detailsPath, latestPath, tests, null, SlowestTests.Ranking.EMPTY, null);
     }
 
-    /** As above with {@code previous} and {@code slowest}; see {@link #write}. */
+    /** As above with {@code previous}, {@code slowest} and {@code receipt}; see {@link #write}. */
     public static String render(
             BuildRecord record,
             @Nullable Path detailsPath,
             @Nullable Path latestPath,
             List<MarkdownTestReport.ModuleRun> tests,
             @Nullable BuildRecord previous,
-            SlowestTests.Ranking slowest) {
+            SlowestTests.Ranking slowest,
+            @Nullable String receipt) {
         if (tests == null) tests = List.of();
         StringBuilder sb = new StringBuilder(2_048);
         String outcome = outcome(record);
@@ -140,6 +143,7 @@ public final class JkResultsMarkdown {
         JkResultsLockNotesSection.append(sb, record);
         JkResultsWarnings.append(sb, record);
         appendModules(sb, record);
+        appendReceipt(sb, receipt);
         // Sized over the whole file, this line included: the header is written before the body
         // exists, so the line goes in last, where the headline left room for it.
         sb.insert(tokensAt, JkResultsTokens.line(sb.length()));
@@ -719,6 +723,14 @@ public final class JkResultsMarkdown {
         sb.append('\n');
     }
 
+    /** The receipt as the file's last section, a blank line before it. */
+    private static void appendReceipt(StringBuilder sb, @Nullable String receipt) {
+        if (receipt == null || receipt.isBlank()) return;
+        int n = sb.length();
+        if (n > 1 && !(sb.charAt(n - 1) == '\n' && sb.charAt(n - 2) == '\n')) sb.append('\n');
+        sb.append(receipt.strip()).append('\n');
+    }
+
     static boolean isFailedStatus(String status) {
         if (status == null || status.isBlank()) return false;
         String u = status.trim().toUpperCase(Locale.ROOT);
@@ -882,7 +894,8 @@ public final class JkResultsMarkdown {
         return slash < 0 ? dir : dir.substring(slash + 1);
     }
 
-    static String fmtDuration(long ms) {
+    /** {@code 640ms}, {@code 4.2s}, {@code 3m 05s}: a duration as the report spells it. */
+    public static String fmtDuration(long ms) {
         if (ms < 0) return "";
         if (ms < 1000) return ms + "ms";
         if (ms < 60_000) return String.format(Locale.ROOT, "%.1fs", ms / 1000.0);
