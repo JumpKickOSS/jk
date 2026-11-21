@@ -13,6 +13,7 @@ import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.testing.RepoRoot;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -39,8 +40,9 @@ import org.junit.jupiter.api.io.TempDir;
  * FSEvents, whose callback the image must register) and would fall back to the JDK's watch, which
  * polls there every 2 s, when it cannot.
  *
- * <p>The client is the {@code jk} on {@code PATH} when it reports this tree's version, as after
- * {@code jk install}. A forked JVM client starts the engine in a private {@code JK_HOME} seeded with
+ * <p>The client is the checkout's {@code target/dist/jk}, as any build of the tree leaves it, or else
+ * the {@code jk} on {@code PATH}, as after {@code jk install}: whichever reports this tree's version
+ * first. A forked JVM client starts the engine in a private {@code JK_HOME} seeded with
  * the sandbox's, as {@link VerbMatrixNoopE2eTest} does, since only a JVM client hands the engine the
  * test run's worker jars; the installed client then runs against that engine.
  */
@@ -56,7 +58,7 @@ class NativeWatchLatencyE2eTest {
     @Test
     void each_save_starts_a_pass_of_the_installed_watch_promptly(@TempDir Path tmp) throws Exception {
         Path client = installedClient();
-        assumeTrue(client != null, "no jk of version " + JkVersion.VERSION + " on PATH");
+        assumeTrue(client != null, "no jk of version " + JkVersion.VERSION + " in target/dist or on PATH");
         Optional<EngineInstall.Materialized> sandboxEngine =
                 EngineInstall.current().currentInstall();
         assumeTrue(sandboxEngine.isPresent(), "the sandbox JK_HOME has no engine jar to seed the private home with");
@@ -128,22 +130,31 @@ class NativeWatchLatencyE2eTest {
     }
 
     /**
-     * The {@code jk} on {@code PATH} when it reports this tree's version; null when there is none or
-     * it is another. Only run, never read: it lies in the real jk home, which a suite may not read.
+     * The checkout's {@code target/dist/jk}, else the {@code jk} on {@code PATH}, when it reports this
+     * tree's version; null when neither does. Only run, never read: the one on {@code PATH} lies in the
+     * real jk home, which a suite may not read.
      */
     private static @Nullable Path installedClient() throws IOException, InterruptedException {
         String name = Os.isWindows() ? "jk.exe" : "jk";
+        Path dist = RepoRoot.find(NativeWatchLatencyE2eTest.class)
+                .resolve("target")
+                .resolve("dist")
+                .resolve(name);
+        if (Files.isRegularFile(dist) && ofThisTree(dist)) return dist;
         for (String entry : SearchPath.entries(ProcessEnv.get("PATH"))) {
             Path dir = SearchPath.path(entry);
             if (dir == null || !dir.isAbsolute()) continue;
             Path candidate = dir.resolve(name);
             if (!Files.isRegularFile(candidate)) continue;
-            Processes.Captured version = Processes.capture(
-                    new ProcessBuilder(candidate.toString(), "--version").redirectErrorStream(true),
-                    Duration.ofSeconds(30));
-            return version.output().trim().equals("jk " + JkVersion.VERSION) ? candidate : null;
+            return ofThisTree(candidate) ? candidate : null;
         }
         return null;
+    }
+
+    private static boolean ofThisTree(Path client) throws IOException, InterruptedException {
+        Processes.Captured version = Processes.capture(
+                new ProcessBuilder(client.toString(), "--version").redirectErrorStream(true), Duration.ofSeconds(30));
+        return version.output().trim().equals("jk " + JkVersion.VERSION);
     }
 
     private static Process start(Path client, Path home, Path dir, String... args) throws IOException {

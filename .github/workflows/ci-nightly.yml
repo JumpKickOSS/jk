@@ -420,6 +420,13 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The native client's watch, which binds FSEvents only on macOS: a save starts a pass of the
+      # target/dist/jk the takeover built. The Linux integration job runs the same class.
+      - name: Native watch latency
+        run: >-
+          jk test -s integration --no-ansi -m e2e/cli
+          --class cc.jumpkick.command.pipeline.NativeWatchLatencyE2eTest
+
   # The JVM client on a runner that brings a plain JDK and no GraalVM — the shape of every platform
   # with no hosted native client, and the one place nothing else exercises bin/jk-jvm. The
   # checkout's build still links jk's native client, so it provisions the GraalVM that step needs
