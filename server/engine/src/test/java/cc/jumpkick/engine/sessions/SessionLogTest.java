@@ -8,6 +8,9 @@ import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.journal.SessionJournal;
 import cc.jumpkick.jsonl.MiniJson;
+import java.lang.management.LockInfo;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -49,7 +52,11 @@ class SessionLogTest {
     }
 
     private SessionLog newLog() {
-        SessionLog l = new SessionLog(journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, EXPIRY);
+        return newLog(new ProjectIdMemo());
+    }
+
+    private SessionLog newLog(ProjectIdMemo ids) {
+        SessionLog l = new SessionLog(journal, now::get, EpisodeInference.DEFAULT_IDLE_GAP_MILLIS, EXPIRY, ids);
         l.events((type, payload) -> events.add(type + ":" + change(payload)));
         return l;
     }
@@ -494,30 +501,39 @@ class SessionLogTest {
     /**
      * A write the predecessor had past its check when the successor came to adopt lands first: the
      * successor's adoption waits for the predecessor to stop writing, so it reads that write, and its
-     * own next write carries it on rather than overwriting it.
+     * own next write carries it on rather than overwriting it. The writer is held at the check its
+     * write is made under, the one after it has asked for the run's project id with the log let go.
      */
     @Test
     void a_successor_adopts_only_after_the_predecessors_write_in_flight_has_landed() throws Exception {
-        String id = log.open("mcp", "claude-code", LABEL, "/ws/app");
-        String episode = Objects.requireNonNull(log.placeRun("mcp", LABEL, "test", "/ws/app", T + 1_000));
+        ProjectIdMemo ids = new ProjectIdMemo(dir -> "id" + dir.replace('/', '-'));
+        SessionLog predecessor = newLog(ids);
+        String id = predecessor.open("mcp", "claude-code", LABEL, "/ws/app");
+        String episode = Objects.requireNonNull(predecessor.placeRun("mcp", LABEL, "test", "/ws/app", T + 1_000));
         CountDownLatch checking = new CountDownLatch(1);
         CountDownLatch held = new CountDownLatch(1);
+        AtomicBoolean asked = new AtomicBoolean();
         AtomicBoolean first = new AtomicBoolean(true);
-        log.writeWhile(
+        predecessor.writeWhile(
                 () -> {
-                    if (first.getAndSet(false)) {
+                    if (asked.get() && first.getAndSet(false)) {
                         checking.countDown();
                         await(held);
                     }
                     return true;
                 },
                 r -> {});
-        Thread writer = Thread.ofPlatform().start(() -> log.runFinished(run(episode, 27, T + 1_000, false)));
+        Thread writer;
+        synchronized (ids) {
+            writer = Thread.ofPlatform().start(() -> predecessor.runFinished(run(episode, 27, T + 1_000, false)));
+            awaitBlockedOn(writer, ids);
+            asked.set(true);
+        }
         assertThat(checking.await(10, TimeUnit.SECONDS)).isTrue();
 
         SessionLog successor = newLog();
         successor.adoptAfter(() -> {
-            log.stopWriting();
+            predecessor.stopWriting();
             return true;
         });
         Thread adopting = Thread.ofPlatform().start(successor::adopt);
@@ -531,7 +547,7 @@ class SessionLogTest {
 
         now.set(T + 5_000);
         successor.runFinished(run(episode, 28, T + 5_000, true));
-        log.runFinished(run(episode, 29, T + 6_000, true));
+        predecessor.runFinished(run(episode, 29, T + 6_000, true));
 
         SessionLog.Page page = successor.session(id, 0, 10).orElseThrow();
         assertThat(page.actions())
@@ -545,6 +561,49 @@ class SessionLogTest {
                 .as("the record on disk counts both runs")
                 .singleElement()
                 .satisfies(e -> assertThat(Episode.num((Map<?, ?>) e, "runs")).isEqualTo(2L));
+        assertThat(Files.readAllLines(root.resolve("sessions").resolve(id).resolve("actions.jsonl")))
+                .extracting(line -> ActionRecord.of((Map<?, ?>) Objects.requireNonNull(MiniJson.parse(line)))
+                        .seq())
+                .containsExactly(1L, 2L);
+    }
+
+    /**
+     * A run that finishes while its project id is asked for, the log let go, can find the
+     * predecessor already stopped: it writes nothing and hands the run to the successor, which
+     * records it.
+     */
+    @Test
+    void a_run_the_predecessor_finishes_after_it_stopped_writing_is_recorded_by_the_successor() throws Exception {
+        ProjectIdMemo ids = new ProjectIdMemo(dir -> "id" + dir.replace('/', '-'));
+        SessionLog predecessor = newLog(ids);
+        String id = predecessor.open("mcp", "claude-code", LABEL, "/ws/app");
+        String episode = Objects.requireNonNull(predecessor.placeRun("mcp", LABEL, "test", "/ws/app", T + 1_000));
+        SessionLog successor = newLog();
+        successor.adoptAfter(() -> {
+            predecessor.stopWriting();
+            return true;
+        });
+        predecessor.writeWhile(() -> true, successor::runFinished);
+
+        Thread writer;
+        synchronized (ids) {
+            writer = Thread.ofPlatform().start(() -> predecessor.runFinished(run(episode, 27, T + 1_000, false)));
+            awaitBlockedOn(writer, ids);
+            Thread adopting = Thread.ofPlatform().start(successor::adopt);
+            assertThat(adopting.join(Duration.ofSeconds(10)))
+                    .as("the successor adopts while the run asks for its project id")
+                    .isTrue();
+        }
+        assertThat(writer.join(Duration.ofSeconds(10))).isTrue();
+
+        now.set(T + 5_000);
+        successor.runFinished(run(episode, 28, T + 5_000, true));
+
+        SessionLog.Page page = successor.session(id, 0, 10).orElseThrow();
+        assertThat(page.actions())
+                .as("the run handed over, then the successor's own")
+                .extracting(a -> a.get("summary"))
+                .containsExactly("test #27", "test #28");
         assertThat(Files.readAllLines(root.resolve("sessions").resolve(id).resolve("actions.jsonl")))
                 .extracting(line -> ActionRecord.of((Map<?, ?>) Objects.requireNonNull(MiniJson.parse(line)))
                         .seq())
@@ -609,6 +668,23 @@ class SessionLogTest {
                 .asInstanceOf(InstanceOfAssertFactories.MAP)
                 .containsEntry("project", "/ws/slow")
                 .containsEntry("projectId", "id-ws-slow"));
+    }
+
+    /** Returns once {@code thread} is blocked entering {@code monitor}, which the caller holds. */
+    private static void awaitBlockedOn(Thread thread, Object monitor) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (true) {
+            ThreadInfo info = ManagementFactory.getThreadMXBean().getThreadInfo(thread.threadId());
+            LockInfo lock = info == null ? null : info.getLockInfo();
+            if (info != null
+                    && info.getThreadState() == Thread.State.BLOCKED
+                    && lock != null
+                    && lock.getIdentityHashCode() == System.identityHashCode(monitor)) return;
+            assertThat(System.nanoTime())
+                    .as("%s blocks on the held monitor", thread)
+                    .isLessThan(deadline);
+            Thread.onSpinWait();
+        }
     }
 
     private static void await(CountDownLatch latch) {
