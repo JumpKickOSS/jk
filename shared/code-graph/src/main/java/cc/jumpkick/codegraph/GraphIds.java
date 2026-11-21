@@ -14,6 +14,8 @@ import java.util.StringJoiner;
  * Foo} is {@code src_main_java_a_foo_foo}; so does JSON.
  * Every other file keeps its extension,
  * so an Angular component's {@code app.ts}, {@code app.html} and {@code app.css} stay three nodes.
+ * A type nested directly in its file's primary type takes a file-level id; any other nested type is
+ * {@link #nested} under its owner.
  */
 public final class GraphIds {
 
@@ -98,6 +100,23 @@ public final class GraphIds {
     /** The id of a top-level declaration {@code name} in the file at {@code relPath}. */
     public static String declared(String relPath, String name) {
         return make(base(relPath), name);
+    }
+
+    /**
+     * Whether {@code name} is the primary type of the file at {@code relPath}: the top-level type named
+     * after the file. The types nested directly in it take {@link #declared} ids.
+     */
+    public static boolean primary(String relPath, String name) {
+        String stem = stem(relPath);
+        return stem.substring(stem.lastIndexOf('/') + 1).equals(name);
+    }
+
+    /**
+     * The id of type {@code name} nested in the type {@code ownerId}. The {@code 0} between them
+     * cannot begin a member name, so {@code Outer.Builder} never meets {@code Outer.builder()}.
+     */
+    public static String nested(String ownerId, String name) {
+        return make(ownerId, "0", name);
     }
 
     /** The id of member {@code name} of the node {@code ownerId}. */

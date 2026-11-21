@@ -20,6 +20,15 @@ class GraphIdsTest {
     }
 
     @Test
+    void aNestedTypeNeverMeetsAMemberOfItsOwner() {
+        String type = GraphIds.declared("src/a/Models.kt", "A");
+        assertThat(GraphIds.nested(type, "Builder")).isEqualTo("src_a_models_a_0_builder");
+        assertThat(GraphIds.nested(type, "Builder")).isNotEqualTo(GraphIds.member(type, "builder"));
+        assertThat(GraphIds.primary("src/a/Models.kt", "Models")).isTrue();
+        assertThat(GraphIds.primary("src/a/Models.kt", "A")).isFalse();
+    }
+
+    @Test
     void filesOtherThanSourceAndMarkdownKeepTheirExtension() {
         assertThat(GraphIds.file("src/app/app.ts")).isEqualTo("src_app_app");
         assertThat(GraphIds.file("src/app/app.css")).isEqualTo("src_app_app_css");

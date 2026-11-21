@@ -225,7 +225,7 @@ class ExtractorsTest {
                         "src_a_outer_inner",
                         "src_a_outer_inner_go",
                         "src_a_outer_outer_run");
-        Fragment kt = JvmSourceScanner.extract("src/a/Fns.kt", """
+        Fragment kt = JvmSourceScanner.extract("src/a/Box.kt", """
                 package a
 
                 class Box(val v: Int) {
@@ -235,6 +235,52 @@ class ExtractorsTest {
                 """);
         assertThat(kt.nodes())
                 .extracting(GraphNode::id)
-                .contains("src_a_fns_box", "src_a_fns_lid", "src_a_fns_box_open");
+                .contains("src_a_box_box", "src_a_box_lid", "src_a_box_box_open");
+    }
+
+    /**
+     * A type nested anywhere but directly in the file's primary type is qualified by its owner, so two
+     * same-named nested types stay two nodes and neither meets a same-named method of its owner.
+     */
+    @Test
+    void nestedTypesOutsideThePrimaryTypeAreQualifiedByTheirOwner() {
+        Fragment f = JvmSourceScanner.extract("src/a/Models.kt", """
+                package a
+
+                class A {
+                    class Builder {
+                        class Part
+                    }
+                    fun builder() = Builder()
+                }
+
+                class B {
+                    companion object {
+                        class Builder
+                    }
+                }
+                """);
+        assertThat(f.nodes())
+                .extracting(GraphNode::id)
+                .contains(
+                        "src_a_models_a",
+                        "src_a_models_a_0_builder",
+                        "src_a_models_a_0_builder_0_part",
+                        "src_a_models_a_builder",
+                        "src_a_models_b",
+                        "src_a_models_b_0_builder")
+                .doesNotContain("src_a_models_builder");
+        Fragment primary = JvmSourceScanner.extract("src/a/Outer.java", """
+                package a;
+
+                public class Outer {
+                    static class Inner {
+                        static class Leaf {}
+                    }
+                }
+                """);
+        assertThat(primary.nodes())
+                .extracting(GraphNode::id)
+                .contains("src_a_outer_outer", "src_a_outer_inner", "src_a_outer_inner_0_leaf");
     }
 }

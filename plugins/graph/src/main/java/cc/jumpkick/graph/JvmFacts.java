@@ -188,6 +188,7 @@ final class JvmFacts {
         }
         String[] segments = simple.split("\\$");
         String id = GraphIds.declared(rel, segments[0]);
+        boolean primary = GraphIds.primary(rel, segments[0]);
         String parent = GraphIds.file(rel);
         String qualified = Descriptors.binaryName(c.name().substring(0, c.name().lastIndexOf('/') + 1) + segments[0]);
         boolean named = true;
@@ -200,7 +201,8 @@ final class JvmFacts {
             }
             if (i > 0) {
                 parent = id;
-                id = GraphIds.declared(rel, seg);
+                id = primary ? GraphIds.declared(rel, seg) : GraphIds.nested(id, seg);
+                primary = false;
                 qualified = qualified + "$" + seg;
             }
         }

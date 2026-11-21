@@ -77,7 +77,9 @@ final class JvmSourceScanner {
             String name = type.group(2);
             int brace = code.indexOf('{', type.end());
             Open parent = enclosing(open, at);
-            String id = GraphIds.declared(relPath, name);
+            String id = parent == null || parent.primary
+                    ? GraphIds.declared(relPath, name)
+                    : GraphIds.nested(parent.id, name);
             String qualified = parent == null
                     ? (packageName.isEmpty() ? name : packageName + "." + name)
                     : parent.qualified + "$" + name;
@@ -114,7 +116,8 @@ final class JvmSourceScanner {
             if (java && kind.equals("record")) components(b, code, lines, type.end(), id);
             if (body) {
                 boolean implicitPublic = java && (kind.equals("interface") || kind.equals("annotation"));
-                open.add(new Open(id, qualified, depth[brace] + 1, brace, close[brace], implicitPublic));
+                boolean primary = parent == null && GraphIds.primary(relPath, name);
+                open.add(new Open(id, qualified, depth[brace] + 1, brace, close[brace], implicitPublic, primary));
             }
         }
         functions(b, text, code, lines, depth, close, open);
@@ -187,14 +190,18 @@ final class JvmSourceScanner {
             out.putIfAbsent(name, qualified);
             int brace = code.indexOf('{', type.end());
             if (brace >= 0 && code.substring(type.end(), brace).indexOf(';') < 0) {
-                open.add(new Open("", qualified, depth[brace] + 1, brace, close[brace], false));
+                open.add(new Open("", qualified, depth[brace] + 1, brace, close[brace], false, false));
             }
         }
         return out;
     }
 
-    /** A type whose body runs from {@code brace} to {@code close} at brace depth {@code depth}. */
-    private record Open(String id, String qualified, int depth, int brace, int close, boolean implicitPublic) {}
+    /**
+     * A type whose body runs from {@code brace} to {@code close} at brace depth {@code depth};
+     * {@code primary} when it is the file's {@linkplain GraphIds#primary primary type}.
+     */
+    private record Open(
+            String id, String qualified, int depth, int brace, int close, boolean implicitPublic, boolean primary) {}
 
     /** The declaration kind a type keyword and its modifiers spell: {@code enum class} is an enum. */
     static String typeKind(String keyword, List<String> modifiers) {
