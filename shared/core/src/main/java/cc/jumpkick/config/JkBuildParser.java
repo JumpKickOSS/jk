@@ -515,7 +515,8 @@ public final class JkBuildParser {
         // minified = true enables the minified packager without requiring an empty [minified] table.
         pluginConfigs = ManifestTables.ensureMinifiedPluginConfigured(application, pluginConfigs, installedManifests);
         ManifestBuild.checkUnownedTables(result, moduleDir, plugins, installedManifests, builtInFetchFailures);
-        boolean nativeDeclared = nativeConfig != null || (application != null && application.nativeImage());
+        boolean nativeDeclared = nativeConfig != null && nativeConfig.enabled() != JkBuild.NativeMode.DISABLED
+                || application != null && application.nativeImage();
         deps = ManifestBuild.withPlatformContributions(
                 deps, project, nativeDeclared, pluginConfigs, installedManifests);
         BuildBlock build = PluginTestDefaults.fold(ManifestBuild.parseBuild(result), pluginConfigs, installedManifests);
@@ -617,21 +618,6 @@ public final class JkBuildParser {
             out.add(s);
         }
         return out;
-    }
-
-    /** Present boolean key → its value; absent → null (caller applies the default). */
-    static @Nullable Boolean optionalBool(TomlTable table, String key) {
-        return table.contains(key) ? table.getBoolean(key) : null;
-    }
-
-    /** Read an optional string key; present-but-non-string is a parse error; absent → null. */
-    static @Nullable String stringOrThrow(TomlTable table, String key, String path) {
-        if (!table.contains(key)) return null;
-        String value = table.getString(key);
-        if (value == null) {
-            throw new JkBuildParseException(path + " must be a string");
-        }
-        return value;
     }
 
     /** True when {@code [workspace] modules = [...]} is a non-empty array — a workspace root. */

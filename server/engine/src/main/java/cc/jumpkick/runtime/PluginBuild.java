@@ -828,7 +828,7 @@ public final class PluginBuild {
                 project.project().version(),
                 project.project().javaRelease(),
                 resolvedMain,
-                project.nativeConfigOpt().isPresent(),
+                project.nativeImage(),
                 project.project().isKotlin(),
                 project.manifest());
     }

@@ -391,7 +391,8 @@ extension descriptor this way.
 `avro-idl` only from 1.12, where Avro split it out), `config`/`set` (`true` when the key has a value,
 written or a schema default, `false` when it has none: `[asyncapi]` adds the Avro compiler only
 with `avro`),
-`native-declared`, `kotlin-project`. Richer
+`native-declared` (`true` when the module builds a native image: a `[native]` table not set to
+`enabled = false`, or `[application] native = true`), `kotlin-project`. Richer
 logic belongs in code.
 
 ### Packaging

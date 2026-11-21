@@ -157,13 +157,7 @@ public final class PluginContributions {
             PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
             for (PluginDescriptor.SourceRoot root : manifest.contributions().sourceRoots()) {
-                if (!holds(
-                        root.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        null,
-                        manifest.id())) {
+                if (!holds(root.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
                     continue;
                 }
                 out.add(new SourceRoot(root.dir(), root.resource(), root.generated()));
@@ -192,12 +186,7 @@ public final class PluginContributions {
             if (config == null) continue;
             for (PluginDescriptor.KotlinPlugin plugin : manifest.contributions().kotlinPlugins()) {
                 if (!holds(
-                        plugin.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        classpathModules,
-                        manifest.id())) {
+                        plugin.when(), config, build.project(), build.nativeImage(), classpathModules, manifest.id())) {
                     continue;
                 }
                 String coordinate = Interpolation.resolve(plugin.coordinate(), config, build.project(), kotlinVersion);
@@ -229,12 +218,7 @@ public final class PluginContributions {
             if (config == null) continue;
             for (PluginDescriptor.CompilerArgs args : manifest.contributions().compilerArgs()) {
                 if (!holds(
-                        args.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        classpathModules,
-                        manifest.id())) {
+                        args.when(), config, build.project(), build.nativeImage(), classpathModules, manifest.id())) {
                     continue;
                 }
                 for (String arg : lane.apply(args)) {
@@ -262,13 +246,7 @@ public final class PluginContributions {
             if (config == null) continue;
             for (PluginDescriptor.NativeArgs contributed :
                     manifest.contributions().nativeArgs()) {
-                if (!holds(
-                        contributed.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        null,
-                        manifest.id())) {
+                if (!holds(contributed.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
                     continue;
                 }
                 for (String arg : contributed.args()) {
@@ -306,13 +284,7 @@ public final class PluginContributions {
             PluginConfig config = toolConfig(manifest, declared, build, platformPins);
             for (PluginDescriptor.ProcessorDependency pd :
                     manifest.contributions().processorDependencies()) {
-                if (!holds(
-                        pd.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        classpathModules,
-                        manifest.id())) {
+                if (!holds(pd.when(), config, build.project(), build.nativeImage(), classpathModules, manifest.id())) {
                     continue;
                 }
                 String coordinate = Interpolation.resolve(pd.coordinate(), config, build.project(), null);
@@ -608,13 +580,7 @@ public final class PluginContributions {
             if (declared == null) continue;
             PluginConfig config = toolConfig(manifest, declared, build, platformPins);
             for (PluginDescriptor.StepDependency sd : lane.apply(manifest.contributions())) {
-                if (!holds(
-                        sd.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        null,
-                        manifest.id())) {
+                if (!holds(sd.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
                     continue;
                 }
                 if (!sd.perEntry()) {
@@ -802,13 +768,7 @@ public final class PluginContributions {
             if (config == null) continue;
             for (PluginDescriptor.ProvidedClasspath pc :
                     manifest.contributions().providedClasspath()) {
-                if (!holds(
-                        pc.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        null,
-                        manifest.id())) {
+                if (!holds(pc.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
                     continue;
                 }
                 List<String> jars = new ArrayList<>();
@@ -912,13 +872,7 @@ public final class PluginContributions {
             PluginConfig config = toolConfig(manifest, declared, build, platformPins);
             for (PluginDescriptor.PackagerDependency pd :
                     manifest.contributions().packagerDependencies()) {
-                if (!holds(
-                        pd.when(),
-                        config,
-                        build.project(),
-                        build.nativeConfigOpt().isPresent(),
-                        null,
-                        manifest.id())) {
+                if (!holds(pd.when(), config, build.project(), build.nativeImage(), null, manifest.id())) {
                     continue;
                 }
                 String coordinate = Interpolation.resolve(pd.coordinate(), config, build.project(), null);
@@ -948,8 +902,7 @@ public final class PluginContributions {
             String key = configKey(parts[2]);
             if (key == null || !(config.values().get(key) instanceof String selector)) continue;
             // A platform the table turns off pins nothing; its selector's anchor still names the tool.
-            boolean imported = holds(
-                    dep.when(), config, build.project(), build.nativeConfigOpt().isPresent(), null, manifest.id());
+            boolean imported = holds(dep.when(), config, build.project(), build.nativeImage(), null, manifest.id());
             String pinned = imported ? platformPins.get(parts[0] + ":" + parts[1]) : null;
             String version = pinned != null ? pinned : anchor(selector);
             if (version.equals(selector)) continue;

@@ -171,11 +171,7 @@ public final class ManifestBuild {
         try {
             List<PluginDescriptor> manifests = PluginTableRegistry.manifestsFor(moduleDir, module.plugins());
             return module.withDependencies(withPlatformContributions(
-                    module.dependencies(),
-                    module.project(),
-                    module.nativeConfigOpt().isPresent(),
-                    module.pluginConfigs(),
-                    manifests));
+                    module.dependencies(), module.project(), module.nativeImage(), module.pluginConfigs(), manifests));
         } catch (RuntimeException e) {
             // Contribution refolding is best-effort here — parseLocal already surfaced real
             // manifest errors.
