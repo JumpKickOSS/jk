@@ -36,7 +36,9 @@ JumpKick shows you this page's new entries after it updates itself.
   so does a plugin's entry or named definition (`[generate.<name>]`, `[lint.<name>]`,
   `[android.signing.<name>]`), suggesting the key it is closest to;
   a value of the wrong type (`[build] lint = "no"`, a dependency's `version = 1`) is a parse error
-  naming the key, where it failed with an internal error.
+  naming the key, where it failed with an internal error. `[workspace]` refuses an unknown key
+  too, and every command now checks `[guards]`, `[graph]`, `[release]`, `[deny]` and `[train]`,
+  where only the command that reads one did.
 - **A plugin's `[contribute.lib-dir]` reads `[native] enabled = false` as no native image**, as
   every other contribution's `native-declared` condition does.
 

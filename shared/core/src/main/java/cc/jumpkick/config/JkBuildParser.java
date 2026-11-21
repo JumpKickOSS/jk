@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.config.StampedMemo.FileStamp;
+import cc.jumpkick.host.ManifestNames;
 import cc.jumpkick.host.Settled;
 import cc.jumpkick.host.StatIdentity;
 import cc.jumpkick.layout.NodeShape;
@@ -570,6 +571,12 @@ public final class JkBuildParser {
         JkBuild.Install install = ManifestTables.parseInstall(result).orElse(null);
         PomMetadata publish = ManifestTables.parsePublish(result).orElse(null);
         Variants variants = ManifestTables.parseVariants(result, workspace, effective, installedManifests);
+        // Tables only other commands read still fail every parse when they are mistyped.
+        ManifestGuards.parse(result);
+        ManifestGraph.parse(result);
+        ManifestTables.parseRelease(result);
+        ManifestDeny.parse(result);
+        ManifestTrain.parse(result, ManifestNames.MANIFEST);
         // *.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
             throw new JkBuildParseException("workspace root cannot use `workspace = true`; set the values");

@@ -615,9 +615,12 @@ public final class ManifestTables {
         }
     }
 
+    static final List<String> WORKSPACE_KEYS = List.of("modules", "dependencies");
+
     static @Nullable Workspace parseWorkspace(TomlTable root, LibraryCatalog catalog) {
         TomlTable workspace = optionalTable(root, "workspace", "`workspace`");
         if (workspace == null) return null;
+        rejectUnknownKeys(workspace, WORKSPACE_KEYS, "[workspace]");
         List<String> modules = optionalStringList(workspace, "modules", "workspace.modules");
         Map<String, WorkspaceDependency> wsDeps = parseWorkspaceDependencies(workspace, catalog);
         return new Workspace(modules, wsDeps);

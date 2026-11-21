@@ -101,7 +101,7 @@ class WorkspaceLoaderMemoTest {
         inRequest(() -> {
             manifests.forEach(WorkspaceLoaderMemoTest::parse);
             try {
-                Files.writeString(root.resolve("jk.toml"), rootManifest(2) + "description = \"edited\"\n");
+                Files.writeString(root.resolve("jk.toml"), "description = \"edited\"\n" + rootManifest(2));
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }

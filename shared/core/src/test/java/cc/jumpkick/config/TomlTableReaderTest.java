@@ -116,6 +116,40 @@ class TomlTableReaderTest {
                 .hasMessageContaining(message);
     }
 
+    @ParameterizedTest
+    @CsvSource(
+            delimiter = ';',
+            value = {
+                "[workspace]|modules = ['a']|bogus = 1; [workspace] unknown key `bogus`",
+                "guards = 1; `guards` must be a table",
+                "[guards]|bogus = 1; [guards] unknown key `bogus`",
+                "graph = 1; `graph` must be a table",
+                "[graph]|bogus = 1; [graph] unknown key `bogus`",
+                "release = 1; `release` must be a table",
+                "[release]|bogus = 1; [release] unknown key `bogus`",
+                "deny = 1; `deny` must be a table",
+                "[deny]|bogus = 1; [deny] unknown key `bogus`",
+                "train = 1; `train` must be a table",
+                "[train]|bogus = 1; [train] unknown key `bogus`",
+                "node = true; node must be a string",
+                "[node]|bogus = 1; [node] unknown key `bogus`",
+            })
+    void a_table_another_command_reads_is_checked_by_every_parse(String body, String message) throws Exception {
+        Path f = manifest(body.replace('\'', '"'));
+        assertThatThrownBy(() -> JkBuildParser.parse(f))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining(message);
+    }
+
+    @Test
+    void a_bare_node_number_is_the_node_version() throws Exception {
+        assertThat(JkBuildParser.parse(manifest("node = 1"))
+                        .project()
+                        .nodeSpec()
+                        .version())
+                .isEqualTo("1");
+    }
+
     @Test
     void a_refusal_is_located_at_the_key() throws Exception {
         Path f = manifest("[image]\nname = \"app\"\nbase = 1\n");

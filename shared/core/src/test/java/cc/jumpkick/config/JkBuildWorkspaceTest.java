@@ -42,17 +42,16 @@ class JkBuildWorkspaceTest {
 
     @Test
     void members_is_not_a_workspace_key() {
-        // The pre-1.0 `members = [...]` synonym is gone: `modules` is the one spelling.
-        JkBuild parsed = JkBuildParser.parse("""
-                group = "com.example"
-                name = "root"
-                version = "0.1.0"
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                        group = "com.example"
+                        name = "root"
+                        version = "0.1.0"
 
-                [workspace]
-                members = ["libs/core", "services/api"]
-                """);
-
-        assertThat(workspaceOf(parsed).modules()).isEmpty();
+                        [workspace]
+                        members = ["libs/core", "services/api"]
+                        """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("[workspace] unknown key `members` — expected one of: modules, dependencies");
     }
 
     @Test
