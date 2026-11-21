@@ -65,6 +65,9 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
     /** Request bodies that reached the guest, by size. */
     private final List<Integer> bodies = new CopyOnWriteArrayList<>();
 
+    /** Each {@code Origin} a request that reached the guest carried. */
+    private final List<String> origins = new CopyOnWriteArrayList<>();
+
     /** The {@code Authorization} of each identity request that reached the guest. */
     private final List<String> identityAsked = new CopyOnWriteArrayList<>();
 
@@ -98,6 +101,8 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
         guest.createContext("/", ex -> {
             byte[] in = ex.getRequestBody().readAllBytes();
             if (in.length > 0) bodies.add(in.length);
+            String origin = ex.getRequestHeaders().getFirst("Origin");
+            if (origin != null) origins.add(origin);
             if (!extraHeader.isBlank()) {
                 String[] h = extraHeader.split(": ", 2);
                 ex.getResponseHeaders().set(h[0], h[1]);
@@ -239,6 +244,22 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
         assertThat(reached)
                 .containsExactly("GET /api/status q=null auth=Bearer " + GUEST_TOKEN + " referer=null cookie=null");
         assertThat(String.join("\n", reached)).doesNotContain(token());
+    }
+
+    @Test
+    void a_post_from_the_front_doors_own_page_reaches_the_engine_without_an_origin() throws Exception {
+        HttpResponse<String> ok = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + prefix().substring(1) + "/api/build"))
+                        .header("Authorization", "Bearer " + token())
+                        .header("Origin", "http://127.0.0.1:" + port)
+                        .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(ok.statusCode()).isEqualTo(200);
+        assertThat(reached).hasSize(1);
+        assertThat(origins)
+                .as("the front door checked it; it names the front door, not the engine")
+                .isEmpty();
     }
 
     @Test

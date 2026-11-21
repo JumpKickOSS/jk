@@ -2,12 +2,16 @@
 package cc.jumpkick.engine.http;
 
 import java.net.InetAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.UnknownHostException;
+import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Host-header DNS-rebinding defense: allow IP literals, {@code localhost}, and this machine's
- * hostname; anything else → reject. Port, when present, must match the bind port.
+ * hostname; anything else → reject. Port, when present, must match the bind port. And the
+ * cross-site request defense: an {@code Origin} that is not the request's own {@code Host}.
  */
 final class HostCheck {
 
@@ -36,6 +40,40 @@ final class HostCheck {
         return isIpv4Literal(name)
                 || name.equalsIgnoreCase("localhost")
                 || (LOCAL_HOSTNAME != null && name.equalsIgnoreCase(LOCAL_HOSTNAME));
+    }
+
+    /**
+     * True when {@code origin} is absent (a client that is not a page: the CLI, an agent's MCP
+     * host, the front door's proxy) or names this request's own origin: {@code http}, the name in
+     * {@code hostHeader}, which {@link #allowed} has passed, and {@code boundPort}. {@code null},
+     * the origin of a sandboxed frame or a {@code file:} page, is never this one.
+     */
+    static boolean sameOrigin(@Nullable String origin, String hostHeader, int boundPort) {
+        if (origin == null) return true;
+        URI u;
+        try {
+            u = new URI(origin.strip());
+        } catch (URISyntaxException malformed) {
+            return false;
+        }
+        String host = u.getHost();
+        if (!"http".equalsIgnoreCase(u.getScheme())
+                || host == null
+                || u.getRawUserInfo() != null
+                || !u.getRawPath().isEmpty()
+                || u.getRawQuery() != null
+                || u.getRawFragment() != null) {
+            return false;
+        }
+        int port = u.getPort() < 0 ? 80 : u.getPort();
+        return port == boundPort && host.toLowerCase(Locale.ROOT).equals(hostName(hostHeader));
+    }
+
+    /** The name part of a {@code Host} header, lower case, an IPv6 literal with its brackets. */
+    private static String hostName(String hostHeader) {
+        String host = hostHeader.trim();
+        int end = host.startsWith("[") ? host.indexOf(']') + 1 : host.indexOf(':');
+        return (end <= 0 ? host : host.substring(0, end)).toLowerCase(Locale.ROOT);
     }
 
     /** {@code portPart} is either empty or {@code :<digits>}, no sign; when present it must match. */

@@ -5,29 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** The machine API's own checks: which pages may post to it, and what a request may name. */
+/** What a request to the machine API may name. */
 class HttpMachineApiTest {
-
-    @Test
-    void only_this_listeners_own_origin_or_none_may_post() {
-        assertThat(HttpMachineApi.sameOrigin(null, 8910)).isTrue();
-        assertThat(HttpMachineApi.sameOrigin("http://127.0.0.1:8910", 8910)).isTrue();
-        assertThat(HttpMachineApi.sameOrigin("http://localhost:8910", 8910)).isTrue();
-        for (String other : new String[] {
-            "http://evil.example",
-            "http://evil.example:8910",
-            "https://127.0.0.1:8910",
-            "http://127.0.0.1:8911",
-            "http://127.0.0.1",
-            "null",
-            "http://127.0.0.1:8910/path",
-            "http://user@127.0.0.1:8910",
-            "file://",
-            "not a uri at all"
-        }) {
-            assertThat(HttpMachineApi.sameOrigin(other, 8910)).as(other).isFalse();
-        }
-    }
 
     @Test
     void a_request_names_one_to_a_few_distros_as_strings() {

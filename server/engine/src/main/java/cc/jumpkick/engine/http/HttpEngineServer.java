@@ -43,7 +43,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Embedded JDK {@code jdk.httpserver}: bind/stop lifecycle, the gate chain every exchange passes
- * (Host header, {@link HttpAdmission}, {@link HttpTokenGate}, {@link EngineEpochGate}), the route
+ * (Host header, a changing request's {@code Origin}, {@link HttpAdmission}, {@link HttpTokenGate},
+ * {@link EngineEpochGate}), the route
  * table over {@link ApiRouter} / {@link McpFront} / {@link StaticContent}, and the composition of
  * those owners. Nothing else. Bind failure is non-fatal.
  */
@@ -210,7 +211,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * and the install and remove operations beside it. Before {@link #start}.
      */
     public void setMachine(MachineEnvironments machine) {
-        HttpMachineApi machineApi = new HttpMachineApi(machine, this::port);
+        HttpMachineApi machineApi = new HttpMachineApi(machine);
         api.register("GET", HttpMachineApi.PATH, machineApi::handleList);
         api.register("POST", HttpMachineApi.INSTALL, machineApi::handleInstall);
         api.register("POST", HttpMachineApi.REMOVE, machineApi::handleRemove);
@@ -597,10 +598,20 @@ public final class HttpEngineServer implements AutoCloseable {
                     HttpResponses.sendText(exchange, 503, "engine is shutting down\n");
                     return;
                 }
-                if (!HostCheck.allowed(
-                        exchange.getRequestHeaders().getFirst("Host"),
-                        current.getAddress().getPort())) {
+                String host = exchange.getRequestHeaders().getFirst("Host");
+                int boundPort = current.getAddress().getPort();
+                if (!HostCheck.allowed(host, boundPort)) {
                     HttpResponses.sendText(exchange, 421, "unrecognized Host header\n");
+                    return;
+                }
+                // A page on another origin may not build, write files, answer decisions or call
+                // MCP through a token it was handed: whatever a request would change, only this
+                // listener's own pages, or a client that is not a page, may ask for.
+                String method = exchange.getRequestMethod();
+                if (!method.equals("GET")
+                        && !method.equals("HEAD")
+                        && !HostCheck.sameOrigin(exchange.getRequestHeaders().getFirst("Origin"), host, boundPort)) {
+                    HttpResponses.sendText(exchange, 403, "refused: this request came from another page\n");
                     return;
                 }
                 HttpAdmission.Lane lane = admission.laneFor(exchange);

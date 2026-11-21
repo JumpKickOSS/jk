@@ -106,7 +106,8 @@ takes it here: `Authorization` for `/api` and `/mcp`, `?access_token=` for the e
 MCP event-stream GET, the path segment for `/report/<token>/`. A request that presented it reaches
 `127.0.0.1:<port>`, never through a proxy, with the paired engine's token in that same shape, and the
 browser's token in none: `Authorization`, `Cookie` and `Referer` are dropped, as is any
-`access_token` in the query. A page, an asset and `GET /api/identity` reach the engine with no token;
+`access_token` in the query. `Origin` is dropped too: the front door's own gate has checked it, and it
+names the front door, not the engine. A page, an asset and `GET /api/identity` reach the engine with no token;
 a page or a report takes `GET` and `HEAD` only, anything else is a 405 before the body is read. A
 body is read under the cap the engine puts on that path (64 KiB, the file save's larger one for `PUT
 /api/project/file`), and past it is a 413, before the engine is asked anything. A `Location` in the
@@ -380,6 +381,14 @@ terminal (`DashboardToken`); a link the engine answers with never carries the to
 
 Missing or invalid credentials → **401** (plus SPA hard-gate). Engine generation mismatch →
 **409** with `engine-epoch-mismatch` (see below).
+
+A request with any method but `GET` and `HEAD`, on any path (`/api`, `/mcp`, the front door's
+prefix), that carries an `Origin` other than its own is a **403** before its token is read
+(`HostCheck.sameOrigin`): the origin must be `http`, the request's `Host` name and the listener's
+port, so `null` (a sandboxed frame, a `file:` page), another port, another loopback spelling and
+another machine's address are all refused. A token a page was handed does not let it build, write a
+file, answer a decision or call MCP from its own origin. A request with no `Origin` (the CLI, an
+IDE, an agent's MCP host) passes, since a browser sends one on every such request.
 
 ### `GET /api/project`
 

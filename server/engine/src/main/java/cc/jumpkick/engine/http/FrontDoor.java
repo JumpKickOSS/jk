@@ -104,13 +104,15 @@ public final class FrontDoor {
     /**
      * Request headers never forwarded: those the proxy sets itself or that describe the hop, and those
      * that carry the browser's credential or the front door's address ({@code Referer} names a
-     * coverage report's path, which holds the token).
+     * coverage report's path, which holds its token; {@code Origin}, which the front door's own gate
+     * has checked, names the front door and not the engine).
      */
     private static final Set<String> REQUEST_DROPPED = Set.of(
             "host",
             "authorization",
             "cookie",
             "referer",
+            "origin",
             "connection",
             "content-length",
             "transfer-encoding",

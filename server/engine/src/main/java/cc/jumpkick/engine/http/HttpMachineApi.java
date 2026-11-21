@@ -6,22 +6,17 @@ import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.jsonl.MiniJson;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
  * The machine's environments on the Windows engine: {@code GET /api/machine/environments} lists the
  * host and each WSL distro with its JumpKick, its engine and its operation's progress; {@code POST
  * …/install} and {@code POST …/remove} with {@code {"distros": [<name>…]}} queue the one operation
- * ({@link MachineEnvironments}) and answer what each name was taken as or refused for.
- *
- * <p>Installing or removing is control of the machine, so beyond the bearer token every {@code /api}
- * call needs (on the Windows engine, the front door's token), a POST that carries an {@code Origin}
- * other than this listener's own is refused: no other page reaches it, even one that came by a token.
+ * ({@link MachineEnvironments}) and answer what each name was taken as or refused for. Like every request that changes something, a POST from another page's origin is refused before
+ * it reaches here ({@link HostCheck#sameOrigin}).
  */
 final class HttpMachineApi {
 
@@ -35,11 +30,9 @@ final class HttpMachineApi {
     private static final int MAX_NAMES = 32;
 
     private final MachineEnvironments machine;
-    private final IntSupplier port;
 
-    HttpMachineApi(MachineEnvironments machine, IntSupplier port) {
+    HttpMachineApi(MachineEnvironments machine) {
         this.machine = machine;
-        this.port = port;
     }
 
     void handleList(HttpExchange exchange) throws IOException {
@@ -55,10 +48,6 @@ final class HttpMachineApi {
     }
 
     private void handle(HttpExchange exchange, MachineEnvironments.Action action) throws IOException {
-        if (!sameOrigin(exchange.getRequestHeaders().getFirst("Origin"), port.getAsInt())) {
-            error(exchange, 403, "refused: this request came from another page");
-            return;
-        }
         List<String> names = names(HttpRequests.body(exchange, MAX_BODY));
         if (names == null) {
             error(exchange, 400, "expected {\"distros\": [<name>, …]} naming 1 to " + MAX_NAMES + " distros");
@@ -87,23 +76,6 @@ final class HttpMachineApi {
             out.add(s.strip());
         }
         return out;
-    }
-
-    /**
-     * True when {@code origin} is absent (a client that is not a page: the CLI, an agent's MCP
-     * host) or names this listener: {@code http}, a loopback or this machine's host, this port.
-     */
-    static boolean sameOrigin(@Nullable String origin, int port) {
-        if (origin == null) return true;
-        try {
-            URI u = URI.create(origin.strip());
-            String authority = u.getRawAuthority();
-            String path = u.getRawPath();
-            if (!"http".equals(u.getScheme()) || authority == null || (path != null && !path.isEmpty())) return false;
-            return u.getPort() == port && HostCheck.allowed(authority, port);
-        } catch (IllegalArgumentException malformed) {
-            return false;
-        }
     }
 
     private static void error(HttpExchange exchange, int status, String message) throws IOException {

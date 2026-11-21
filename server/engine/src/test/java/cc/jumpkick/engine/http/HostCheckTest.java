@@ -68,4 +68,38 @@ class HostCheckTest {
         assertThat(HostCheck.allowed("[not-an-ip]", PORT)).isFalse();
         assertThat(HostCheck.allowed("[::1", PORT)).isFalse(); // unclosed bracket
     }
+
+    @Test
+    void only_the_requests_own_origin_or_none_is_same_origin() {
+        assertThat(HostCheck.sameOrigin(null, "127.0.0.1:8910", PORT)).isTrue();
+        assertThat(HostCheck.sameOrigin("http://127.0.0.1:8910", "127.0.0.1:8910", PORT))
+                .isTrue();
+        assertThat(HostCheck.sameOrigin("http://localhost:8910", "LocalHost:8910", PORT))
+                .isTrue();
+        assertThat(HostCheck.sameOrigin("http://[::1]:8910", "[::1]:8910", PORT))
+                .isTrue();
+        assertThat(HostCheck.sameOrigin("http://192.168.1.5:8910", "192.168.1.5:8910", PORT))
+                .isTrue();
+        assertThat(HostCheck.sameOrigin("http://127.0.0.1", "127.0.0.1", 80)).isTrue();
+        for (String other : new String[] {
+            "http://evil.example",
+            "http://evil.example:8910",
+            "https://127.0.0.1:8910",
+            "http://127.0.0.1:8911",
+            "http://127.0.0.1",
+            "http://localhost:8910",
+            "http://192.168.1.6:8910",
+            "null",
+            "",
+            "http://127.0.0.1:8910/path",
+            "http://127.0.0.1:8910/",
+            "http://user@127.0.0.1:8910",
+            "file://",
+            "not a uri at all"
+        }) {
+            assertThat(HostCheck.sameOrigin(other, "127.0.0.1:8910", PORT))
+                    .as(other)
+                    .isFalse();
+        }
+    }
 }
