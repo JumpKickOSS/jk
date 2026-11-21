@@ -164,24 +164,17 @@ public final class LangCompile {
 
         // Under --redo the compile runs whole: a state that agrees with its tree would compile
         // nothing and record whatever the output dir holds. The dir is the Kotlin compile's alone.
-        if (!useCache) {
-            if (workingDir != null) PathUtil.deleteRecursively(workingDir);
-            PathUtil.deleteRecursively(request.outputDir());
-        }
+        if (!useCache) IncrementalStateHygiene.redo(workingDir, () -> PathUtil.deleteRecursively(request.outputDir()));
         Files.createDirectories(request.outputDir());
-        // Incremental state is only valid alongside the outputs it produced: if the output
-        // dir is empty of classes, or short of one the state's compile wrote (a cleaned target/,
-        // a write cut short, a restore of another tree), BTA would compile "only what changed"
-        // and record the short tree. Start the IC state over instead; a rebuild from no state
-        // clears the output dir before it writes.
-        if (request.incremental()
-                && workingDir != null
-                && Files.isDirectory(workingDir)
-                && (!hasClasses(request.outputDir())
-                        || !CompileWarnings.hasLedger(workingDir)
-                        || treeShortOfState(workingDir, request.outputDir())
-                        || javaDeclarationsMoved(actionCache, workingDir, request))) {
-            PathUtil.deleteRecursively(workingDir);
+        // Beyond the shared rules, kotlinc's state cannot vouch for an output dir short of a file
+        // its compile wrote (a write cut short, a restore of another tree), nor for Java sources
+        // whose declarations moved under it. A rebuild from no state clears the output dir first.
+        if (request.incremental() && workingDir != null) {
+            IncrementalStateHygiene.dropUnvouched(
+                    workingDir,
+                    request.outputDir(),
+                    () -> treeShortOfState(workingDir, request.outputDir())
+                            || javaDeclarationsMoved(actionCache, workingDir, request));
         }
         return forkAndStore(
                 taskId,
@@ -337,7 +330,7 @@ public final class LangCompile {
         // nothing changed (stale incremental state) can report success over an empty output
         // dir, and caching that poisons every later run under the same key.
         if (outputs.isEmpty() && !sources.isEmpty()) {
-            if (state != null) Files.deleteIfExists(state.resolve(CompileWarnings.LEDGER));
+            IncrementalStateHygiene.distrust(state);
             return new Result(true, "compiled-no-outputs", key, cr.diagnostics(), List.of(), List.of());
         }
         CompileWarnings.Merged warnings = CompileWarnings.merge(
@@ -347,7 +340,7 @@ public final class LangCompile {
                 CompileWarnings.replayable(cr.diagnostics(), true));
         List<Path> movedSources = moved.since(snapshot);
         if (!movedSources.isEmpty()) {
-            if (state != null) PathUtil.deleteRecursively(state);
+            if (state != null) IncrementalStateHygiene.forget(state);
             return new Result(true, "compiled", key, cr.diagnostics(), warnings.kept(), movedSources);
         }
         if (state != null) {
@@ -496,10 +489,6 @@ public final class LangCompile {
     }
 
     /** Any {@code .class} anywhere under {@code dir}? */
-    private static boolean hasClasses(Path dir) throws IOException {
-        return PathUtil.anyRegularFile(dir, d -> false, f -> f.toString().endsWith(".class"));
-    }
-
     /**
      * Full-recompile lane: the output and stub dirs hold exactly one compile's results. Stale
      * stubs are the worse half — javac resolves deleted Groovy types from {@code --source-path}

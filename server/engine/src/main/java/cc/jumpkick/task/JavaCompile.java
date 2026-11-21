@@ -310,14 +310,11 @@ public final class JavaCompile {
         Path gen = generatedSourceDir != null ? generatedSourceDir : stateDir.resolve("gen");
         Files.createDirectories(gen);
         if (!useCache) {
-            deleteClasses(out);
-            forgetState(stateDir);
-            Files.createDirectories(stateDir);
-        } else if (Files.isDirectory(stateDir) && (!hasClasses(out) || !CompileWarnings.hasLedger(stateDir))) {
-            // Without its ledger the state cannot say what the sources it leaves alone warned.
-            forgetState(stateDir);
-            Files.createDirectories(stateDir);
+            IncrementalStateHygiene.redo(stateDir, () -> deleteClasses(out));
+        } else {
+            IncrementalStateHygiene.dropUnvouched(stateDir, out, () -> false);
         }
+        Files.createDirectories(stateDir);
         ActionCachePrune.markInUse(stateDir);
 
         // The record's inputs describe the bytes the key hashed, so they are taken here, before
@@ -375,7 +372,7 @@ public final class JavaCompile {
             // analysis the worker wrote. A compile of every source that wrote no class file (a
             // package-info.java of javadoc alone) is recorded below like any other: no output is
             // its whole result, and its key must hit for the build and the forecast alike.
-            Files.deleteIfExists(stateDir.resolve(CompileWarnings.LEDGER));
+            IncrementalStateHygiene.distrust(stateDir);
             return new Result(
                     true,
                     "compiled-no-outputs",
@@ -397,7 +394,7 @@ public final class JavaCompile {
             // pair its earlier hash with classes from its later bytes: a revert to those earlier
             // bytes would then compile nothing. Nothing is recorded and the analysis goes, so the
             // next build compiles the module whole from what is on disk.
-            forgetState(stateDir);
+            IncrementalStateHygiene.forget(stateDir);
             WorkCounters.compiled(wr.compiledSources().size());
             return new Result(
                     true,
@@ -780,21 +777,12 @@ public final class JavaCompile {
         return ActionKey.changedSources(request.sources(), priorInputs);
     }
 
-    /** Drop the compile state — the analysis and every marker — so the next compile is a full one. */
-    static void forgetState(Path stateDir) throws IOException {
-        if (Files.isDirectory(stateDir)) PathUtil.deleteRecursively(stateDir);
-    }
-
     /** True when the worker compiled every source of {@code request}: a full compile, not a stale incremental one. */
     private static boolean compiledEverySource(CompileRequest request, List<Path> compiled) {
         Set<Path> done = new HashSet<>();
         for (Path p : compiled) done.add(p.toAbsolutePath().normalize());
         for (Path p : request.sources()) if (!done.contains(p.toAbsolutePath().normalize())) return false;
         return true;
-    }
-
-    private static boolean hasClasses(Path dir) throws IOException {
-        return PathUtil.anyRegularFile(dir, d -> false, f -> f.toString().endsWith(".class"));
     }
 
     private static void deleteClasses(Path out) throws IOException {
