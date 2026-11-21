@@ -302,6 +302,26 @@ by a call or any other way. Keep every test passing.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "OwnerDeadCodeTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
 
+# A move: a static method and the constant it reads, planted in Owner, go to PhoneNumbers in the model
+# package. Their callers reach them every way javac binds a static: a qualified call, a method
+# reference, static imports and a doc link, in the owner package and in another. The hidden check
+# reads where each is declared and calls every caller. Compare the move card listed (jk-graph) with it
+# unlisted (jk) and with no graph (jk-nograph).
+[tasks.petclinic-move-phone-format]
+repo   = "spring-petclinic"
+kind   = "move"
+tools  = ["jk", "mvn"]
+inject = [
+  { file = "src/main/java/org/springframework/samples/petclinic/owner/Owner.java", from = "\tpublic String getAddress() {", to = "\tpublic static final int TELEPHONE_DIGITS = 10;\n\n\tpublic static String formatTelephone(String telephone) {\n\t\tif (telephone == null || telephone.length() != TELEPHONE_DIGITS) {\n\t\t\treturn telephone;\n\t\t}\n\t\treturn \"(\" + telephone.substring(0, 3) + \") \" + telephone.substring(3, 6) + \"-\" + telephone.substring(6);\n\t}\n\n\tpublic String getAddress() {" },
+]
+prompt = """
+Telephone formatting belongs with the other phone helpers. Move `Owner.formatTelephone(String)` and
+the constant `Owner.TELEPHONE_DIGITS` into `PhoneNumbers` in the model package, so each is declared
+there alone, still static and public, with the same behaviour, and keep every caller working and
+every test passing.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "PhoneNumbersMoveTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
+
 [tasks.petclinic-rename-owner-customer]
 repo   = "spring-petclinic"
 kind   = "rename"
