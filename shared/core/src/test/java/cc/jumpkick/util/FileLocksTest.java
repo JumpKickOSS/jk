@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
@@ -92,42 +93,66 @@ class FileLocksTest {
 
     /**
      * A thread describing the holder while another takes the lock must not drop that thread's POSIX
-     * lock by closing a descriptor of its own. A forked judge probes the lock after every take.
+     * lock by closing a descriptor of its own. The take is made while the describer is inside its read
+     * of the file, widened by a large file: a describer that opened the file with no JVM lock held
+     * closed it after the take and released the new hold. A forked judge probes after each take.
      */
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void describing_the_holder_while_another_thread_takes_the_lock_keeps_the_os_lock(@TempDir Path dir)
             throws Exception {
         Path lock = Files.createFile(dir.resolve("build.lock"));
-        AtomicBoolean stop = new AtomicBoolean();
-        List<Thread> describers = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
-            describers.add(Thread.ofPlatform().daemon().start(() -> {
-                while (!stop.get()) FileLocks.describeHolder(lock);
-            }));
-        }
+        byte[] large = new byte[LARGE_DESCRIPTION];
+        Arrays.fill(large, (byte) 'x');
         Process judge = start(javaCommand(ProbeLoopMain.class, lock.toString()));
         try (BufferedReader answers =
                         new BufferedReader(new InputStreamReader(judge.getInputStream(), StandardCharsets.UTF_8));
                 Writer probes = new OutputStreamWriter(judge.getOutputStream(), StandardCharsets.UTF_8)) {
-            for (int round = 0; round < 5000; round++) {
+            int caught = 0;
+            for (int attempt = 0; caught < 5; attempt++) {
+                assertThat(attempt)
+                        .as("takes made while the describer was reading")
+                        .isLessThan(100);
+                Files.write(lock, large); // no hold is open, so this descriptor's close drops nothing
+                Thread describer = Thread.ofPlatform().daemon().start(() -> FileLocks.describeHolder(lock));
+                if (!seenReadingTheFile(describer)) continue; // finished unseen; no take was made
                 FileLocks.Hold hold = takeWhileDescribed(lock);
                 try {
+                    describer.join(Duration.ofSeconds(10));
                     probes.write("probe\n");
                     probes.flush();
                     assertThat(answers.readLine())
-                            .as("judge's view after take " + round)
+                            .as("judge's view after take " + caught)
                             .isEqualTo("held");
                 } finally {
                     hold.close();
                 }
+                caught++;
             }
         } finally {
-            stop.set(true);
-            for (Thread describer : describers) describer.join(Duration.ofSeconds(10));
             judge.destroy();
             judge.waitFor();
         }
+    }
+
+    /** Bytes in the lock file, so that {@link #seenReadingTheFile} catches the describer reading. */
+    private static final int LARGE_DESCRIPTION = 32 << 20;
+
+    /**
+     * Whether {@code describer} was seen inside {@link Files#readString} before it finished: a take
+     * made after that comes before the read's close.
+     */
+    private static boolean seenReadingTheFile(Thread describer) {
+        while (describer.isAlive()) {
+            for (StackTraceElement frame : describer.getStackTrace()) {
+                if (frame.getClassName().equals(Files.class.getName())
+                        && frame.getMethodName().equals("readString")) {
+                    return true;
+                }
+            }
+            Thread.onSpinWait();
+        }
+        return false;
     }
 
     /**
