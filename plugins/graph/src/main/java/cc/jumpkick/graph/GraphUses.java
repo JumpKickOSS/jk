@@ -189,7 +189,7 @@ final class GraphUses {
         Set<String> files = new TreeSet<>();
         for (GraphNode n : g.nodes()) {
             String rel = n.sourceFile();
-            if (rel.isEmpty() || !Extractors.isJvmSource(rel) || rel.contains("/resources/")) continue;
+            if (rel.isEmpty() || !Extractors.isJvmSource(rel) || modules.resource(rel)) continue;
             // A source of no source set (a fixture, a sample) compiles into nothing a build links.
             if (ClassSources.set(modules, rel) == null) continue;
             if (reaching != null && !reaching.contains(prefix(modules, rel))) continue;

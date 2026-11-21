@@ -102,7 +102,7 @@ final class SymbolRename {
             Set<String> seen = new TreeSet<>();
             for (GraphNode n : graph.nodes()) {
                 String rel = n.sourceFile();
-                if (!RenameText.jvmSource(rel) || rel.contains("/resources/") || !seen.add(rel)) continue;
+                if (!RenameText.jvmSource(rel) || modules.resource(rel) || !seen.add(rel)) continue;
                 if (ClassSources.set(modules, rel) == null) continue;
                 if (reaching != null && !reaching.contains(prefix(rel))) continue;
                 out.add(rel);

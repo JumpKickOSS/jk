@@ -67,4 +67,27 @@ public record Modules(List<Module> list) {
         if (inside.startsWith("src/") && inside.indexOf('/', 4) > 4) return SourceSet.TEST;
         return SourceSet.OTHER;
     }
+
+    /**
+     * Whether {@code rel} sits in a resource tree: a compact module's {@code resources/} or {@code
+     * <suite>/resources/}, else {@code src/<set>/resources/}. A source in a package named {@code
+     * resources} is not in one. Without a module, the conventional layout is assumed.
+     */
+    public boolean resource(String rel) {
+        Module m = of(rel);
+        String inside = m == null ? rel : rel.substring(m.prefix().length());
+        if (m != null && m.compact()) {
+            if (inside.startsWith("resources/")) return true;
+            int slash = inside.indexOf('/');
+            return slash > 0 && inside.startsWith("resources/", slash + 1);
+        }
+        if (m == null) {
+            int src = inside.indexOf("src/");
+            if (src < 0) return false;
+            inside = inside.substring(src);
+        }
+        if (!inside.startsWith("src/")) return false;
+        int set = inside.indexOf('/', 4);
+        return set > 4 && inside.startsWith("resources/", set + 1);
+    }
 }

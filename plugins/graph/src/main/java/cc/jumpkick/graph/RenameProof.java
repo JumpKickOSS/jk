@@ -37,7 +37,7 @@ final class RenameProof {
         Modules modules = graph.modules();
         for (GraphNode n : graph.nodes()) {
             String rel = n.sourceFile();
-            if (!rel.endsWith(".java") || rel.contains("/resources/")) continue;
+            if (!rel.endsWith(".java") || modules.resource(rel)) continue;
             if (ClassSources.set(modules, rel) == null) continue;
             out.add(rel);
         }

@@ -38,6 +38,28 @@ class ModulesTest {
     }
 
     @Test
+    void aResourceTreeIsFoundByLayoutNotByAPackageNamedResources() {
+        assertThat(modules.resource("server/engine/src/main/resources/a/Tpl.java"))
+                .isTrue();
+        assertThat(modules.resource("server/engine/src/test/resources/a/Tpl.java"))
+                .isTrue();
+        assertThat(modules.resource("server/engine/src/main/java/a/resources/A.java"))
+                .isFalse();
+        assertThat(modules.resource("tools/resources/a/Tpl.java")).isTrue();
+        assertThat(modules.resource("tools/test/resources/a/Tpl.java")).isTrue();
+        assertThat(modules.resource("tools/src/a/resources/A.java")).isFalse();
+        assertThat(modules.resource("tools/test/src/a/resources/ATest.java")).isFalse();
+
+        Modules compactRoot = new Modules(List.of(new Modules.Module("", true), new Modules.Module("lib/", true)));
+        assertThat(compactRoot.resource("resources/a/Tpl.java")).isTrue();
+        assertThat(compactRoot.resource("lib/resources/a/Tpl.java")).isTrue();
+        assertThat(compactRoot.resource("src/a/resources/A.java")).isFalse();
+        assertThat(Modules.NONE.resource("lib/src/main/resources/Tpl.java")).isTrue();
+        assertThat(Modules.NONE.resource("lib/src/main/java/a/resources/A.java"))
+                .isFalse();
+    }
+
+    @Test
     void roundTripsThroughTheSnapshot() throws Exception {
         CodeGraph g = CodeGraph.merge(List.of(new Fragment(
                 List.of(Decl.with(

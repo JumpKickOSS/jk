@@ -31,7 +31,7 @@ final class RenameReach {
         Set<String> missing = new TreeSet<>();
         for (GraphNode n : graph.nodes()) {
             String rel = n.sourceFile();
-            if (rel.isEmpty() || !Extractors.isJvmSource(rel) || rel.contains("/resources/")) continue;
+            if (rel.isEmpty() || !Extractors.isJvmSource(rel) || modules.resource(rel)) continue;
             String set = ClassSources.set(modules, rel);
             if (set == null) continue;
             Modules.Module m = modules.of(rel);
