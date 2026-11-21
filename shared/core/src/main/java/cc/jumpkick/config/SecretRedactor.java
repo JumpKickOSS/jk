@@ -6,8 +6,10 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -101,13 +103,19 @@ public final class SecretRedactor {
     /**
      * Every secret value this process has been told about, across workspaces and builds. The
      * engine log is one file shared by every request, so the redactor that guards it must know
-     * every declaration the process has seen, not the current request's. Bounded: past the cap a
-     * new value is not learned, which is the failure a diagnostic sink should pick over unbounded
-     * growth in a resident process.
+     * every declaration the process has seen, not the current request's. Bounded for a resident
+     * process: past the cap a new value evicts the one learned or used least recently, so a rotated
+     * secret is always masked and only a value no build has named in a long while is forgotten.
+     * Guarded by {@link #learn}'s lock.
      */
-    private static final Set<String> KNOWN = ConcurrentHashMap.newKeySet();
+    private static final Map<String, Boolean> KNOWN = new LinkedHashMap<>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+            return size() > MAX_KNOWN;
+        }
+    };
 
-    private static final int MAX_KNOWN = 4096;
+    static final int MAX_KNOWN = 4096;
     private static volatile SecretRedactor known = NONE;
 
     /** A redactor over every secret value this process has ever built a redactor from. */
@@ -120,14 +128,16 @@ public final class SecretRedactor {
         return known.redact(text);
     }
 
-    /** Synchronized: two learners rebuilding at once would each assign a set missing the other's value. */
+    /**
+     * Learn {@code values}, or mark them used when already known. Synchronized: two learners
+     * rebuilding at once would each assign a set missing the other's value.
+     */
     private static synchronized void learn(List<String> values) {
-        boolean grew = false;
+        boolean changed = false;
         for (String v : values) {
-            if (KNOWN.size() >= MAX_KNOWN) break;
-            grew |= KNOWN.add(v);
+            changed |= KNOWN.put(v, Boolean.TRUE) == null;
         }
-        if (grew) known = new SecretRedactor(sorted(KNOWN));
+        if (changed) known = new SecretRedactor(sorted(KNOWN.keySet()));
     }
 
     private static List<String> sorted(Collection<String> values) {
@@ -149,8 +159,14 @@ public final class SecretRedactor {
             if (v != null && !v.isEmpty()) values.add(v);
         }
         if (values.isEmpty()) return NONE;
+        Set<String> key = Set.copyOf(values);
+        SecretRedactor memo = MEMO.get(key);
+        if (memo != null) {
+            learn(memo.secrets); // still in use, so not the least recently used
+            return memo;
+        }
         if (MEMO.size() > 64) MEMO.clear(); // a handful of.env sets per engine; crude bound is fine
-        return MEMO.computeIfAbsent(Set.copyOf(values), SecretRedactor::of);
+        return MEMO.computeIfAbsent(key, SecretRedactor::of);
     }
 
     /** Build a redactor from an explicit set of secret values (tests, side-channel secrets). */

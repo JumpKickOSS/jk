@@ -153,6 +153,24 @@ class SecretRedactorTest {
         }
     }
 
+    /** Past the cap the engine log still learns every new secret, giving up the least recently used. */
+    @Test
+    void a_full_known_set_still_learns_and_forgets_the_least_recently_used() {
+        String first = "known-cap-first-value";
+        String kept = "known-cap-kept-value";
+        SecretRedactor.of(List.of(first));
+        SecretRedactor.of(List.of(kept));
+        for (int i = 0; i < SecretRedactor.MAX_KNOWN; i++) {
+            if (i % 512 == 0) SecretRedactor.of(List.of(kept)); // used again, so never the eldest
+            SecretRedactor.of(List.of("known-cap-filler-" + i));
+        }
+        String rotated = "known-cap-rotated-value";
+        SecretRedactor.of(List.of(rotated));
+        assertThat(SecretRedactor.redactKnown("x " + rotated)).isEqualTo("x " + SecretRedactor.MASK);
+        assertThat(SecretRedactor.redactKnown("x " + kept)).isEqualTo("x " + SecretRedactor.MASK);
+        assertThat(SecretRedactor.redactKnown("x " + first)).isEqualTo("x " + first);
+    }
+
     @Test
     void none_is_a_no_op() {
         assertThat(SecretRedactor.none().redact("anything")).isEqualTo("anything");
