@@ -811,6 +811,22 @@
           </div>
         </div>
 
+        <!-- Backpressure since the engine started, live over SSE; shown once something held work back. -->
+        <div class="panels" v-if="backpressureLine() || idleDroppedLine()">
+          <div class="panel wide backpressure">
+            <div v-if="backpressureLine()" class="panel-head">
+              <span class="lbl" data-tip="What held work back since the engine started">backpressure</span>
+              <span class="spacer"></span>
+              <span class="mono">{{ backpressureLine() }}</span>
+            </div>
+            <div v-if="idleDroppedLine()" class="panel-head">
+              <span class="lbl" data-tip="Connections closed for sending nothing within the idle bound">dropped</span>
+              <span class="spacer"></span>
+              <span class="mono">{{ idleDroppedLine() }}</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Running build stats (docs/metrics.md): KPI tiles here; the tasks table is last. -->
         <template v-if="metrics && metrics.length">
           <div class="tiles">

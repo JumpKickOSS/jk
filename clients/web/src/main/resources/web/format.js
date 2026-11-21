@@ -137,6 +137,35 @@ export function workerBudgetLine(status) {
   return line;
 }
 
+/**
+ * The backpressure row, the same words as {@code jk engine status}: what held work back since the engine started,
+ * the counts that are not zero. Empty when every count is zero or the engine did not report them.
+ */
+export function backpressureLine(status) {
+  const b = status?.backpressure;
+  if (!b) return '';
+  const n = (v) => (typeof v === 'number' && v > 0 ? v : 0);
+  const parts = [];
+  if (n(b.wireSpilledLines)) parts.push(counted(b.wireSpilledLines, 'line', 'lines') + ' spilled to disk');
+  if (n(b.wireDroppedClients)) parts.push(counted(b.wireDroppedClients, 'client', 'clients') + ' dropped for not reading');
+  if (n(b.admissionWaits)) parts.push(counted(b.admissionWaits, 'job', 'jobs') + ' waited for memory');
+  if (n(b.admissionCollections)) parts.push(counted(b.admissionCollections, 'collection', 'collections') + ' to measure memory');
+  if (n(b.leaseLockWaits)) parts.push(counted(b.leaseLockWaits, 'wait', 'waits') + ' on the shared leases file');
+  if (n(b.leaseReclaims)) parts.push('leases of ' + counted(b.leaseReclaims, 'gone engine', 'gone engines') + ' reclaimed');
+  return parts.join(', ');
+}
+
+/** The idle-connections row, the same words as {@code jk engine status}'s Dropped row. Empty when none were dropped. */
+export function idleDroppedLine(status) {
+  const dropped = status?.idleDropped;
+  if (typeof dropped !== 'number' || dropped <= 0) return '';
+  return counted(dropped, 'idle connection', 'idle connections');
+}
+
+function counted(n, one, many) {
+  return n + ' ' + (n === 1 ? one : many);
+}
+
 function budgetBytes(n) {
   const gib = 1024 * 1024 * 1024;
   if (n >= gib) return (n / gib).toFixed(1) + ' GiB';

@@ -303,8 +303,9 @@ operation as `jk self setup-wsl` ([Engine](engine.md#http-and-mcp)); each outcom
 ## Admin
 
 **Admin** holds the engine's vitals: host CPU and RAM, version, pid, uptime, connections, the
-builds running, MCP sessions, heap and RSS, the workers' budget, build metrics, the action cache
-and artifact store, the effective configuration and the engine log. The status bar at the bottom of
+builds running, MCP sessions, heap and RSS, the workers' budget, the backpressure counts and idle
+connections dropped once there are any (the same rows as `jk engine status`), build metrics, the
+action cache and artifact store, the effective configuration and the engine log. The status bar at the bottom of
 every page shows the builds running and whether the page is live.
 
 ## New project

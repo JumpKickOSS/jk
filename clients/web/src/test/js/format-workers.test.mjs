@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { workerBudgetLine } from '../../main/resources/web/format.js';
+import { backpressureLine, idleDroppedLine, workerBudgetLine } from '../../main/resources/web/format.js';
 
 const GIB = 1024 * 1024 * 1024;
 
@@ -86,4 +86,44 @@ test('the workers row names the budget source, the lease, and overbooking', () =
     '13.0 GiB budget (host), 12.0 GiB leased, 0 MiB overbooked, 0 queued, 1/8 JVMs; '
       + 'over lease: test JVM pid 4242 (job #7) using 12.0 GiB, leased 700 MiB',
   );
+});
+
+test('the backpressure row names each count that is not zero, in the words of jk engine status', () => {
+  assert.equal(backpressureLine(null), '');
+  assert.equal(backpressureLine({}), '');
+  assert.equal(
+    backpressureLine({
+      backpressure: {
+        wireSpilledLines: 0,
+        wireDroppedClients: 0,
+        admissionWaits: 0,
+        admissionCollections: 0,
+        leaseLockWaits: 0,
+        leaseReclaims: 0,
+      },
+    }),
+    '',
+  );
+  assert.equal(
+    backpressureLine({
+      backpressure: {
+        wireSpilledLines: 12,
+        wireDroppedClients: 1,
+        admissionWaits: 3,
+        admissionCollections: 1,
+        leaseLockWaits: 2,
+        leaseReclaims: 1,
+      },
+    }),
+    '12 lines spilled to disk, 1 client dropped for not reading, 3 jobs waited for memory, '
+      + '1 collection to measure memory, 2 waits on the shared leases file, leases of 1 gone engine reclaimed',
+  );
+});
+
+test('the dropped row counts idle connections, and is empty when none were dropped', () => {
+  assert.equal(idleDroppedLine(null), '');
+  assert.equal(idleDroppedLine({ idleDropped: 0 }), '');
+  assert.equal(idleDroppedLine({ idleDropped: -1 }), '');
+  assert.equal(idleDroppedLine({ idleDropped: 1 }), '1 idle connection');
+  assert.equal(idleDroppedLine({ idleDropped: 4 }), '4 idle connections');
 });

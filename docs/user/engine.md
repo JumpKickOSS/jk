@@ -870,7 +870,8 @@ its memory for them, waits on the host's shared worker-leases file while another
 it (10 ms or more), and gone engines whose worker leases it reclaimed. `-O jsonl` and
 `GET /api/status` carry them as the `backpressure` object: `wireSpilledLines`,
 `wireDroppedClients`, `admissionWaits`, `admissionCollections`, `leaseLockWaits`,
-`leaseReclaims`.
+`leaseReclaims`. The dashboard's Admin page shows the same row, with the idle connections dropped,
+and updates it live as a count moves.
 
 A client that stops reading — a pipe nobody drains, a process stopped without Ctrl-Z — costs the
 other clients nothing. Each connection is served on its own thread and its lines are written by

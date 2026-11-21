@@ -78,6 +78,87 @@ class LiveVitalsTest {
                 .isEqualTo(LiveVitals.PresentStatus.of(withMcp(base, 256, 1, 1)));
     }
 
+    /**
+     * A backpressure count or an idle drop moving is a frame: the Admin page shows them, and on a quiet
+     * engine nothing else changes to carry them.
+     */
+    @Test
+    void presentStatus_notices_backpressure_and_idle_drop_counts() {
+        StatusSnapshot base = snap(5L * 1024 * 1024 * 1024, 0.10);
+        StatusSnapshot spilled = withBackpressure(base, 0L, new StatusSnapshot.Backpressure(12, 0, 0, 0, 0, 0));
+        StatusSnapshot dropped = withBackpressure(base, 1L, StatusSnapshot.Backpressure.NONE);
+        assertThat(LiveVitals.PresentStatus.of(base))
+                .isNotEqualTo(LiveVitals.PresentStatus.of(spilled))
+                .isNotEqualTo(LiveVitals.PresentStatus.of(dropped))
+                .isEqualTo(LiveVitals.PresentStatus.of(withBackpressure(base, 0L, StatusSnapshot.Backpressure.NONE)));
+    }
+
+    /** A sampler tick with only a backpressure count changed publishes a status frame carrying it. */
+    @Test
+    void publishStatus_sends_a_frame_when_only_a_backpressure_count_changes() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1L << 30, 0, 0, 0, 0, 0, 0, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
+                HttpEvents.Subscription sub = hub.subscribe()) {
+            live.publishStatus(true);
+            assertThat(sub.next(200)).contains("event: status");
+
+            status.set(withBackpressure(status.get(), 0L, new StatusSnapshot.Backpressure(0, 0, 3, 0, 0, 0)));
+            live.publishStatus(false);
+            assertThat(sub.next(200)).contains("event: status").contains("\"admissionWaits\":3");
+        }
+    }
+
+    private static StatusSnapshot withBackpressure(
+            StatusSnapshot b, long idleDropped, StatusSnapshot.Backpressure backpressure) {
+        return new StatusSnapshot(
+                b.version(),
+                b.pid(),
+                b.startedAtMillis(),
+                b.activeRequests(),
+                b.activeBuildPlans(),
+                b.heapUsedBytes(),
+                b.heapCommittedBytes(),
+                b.heapMaxBytes(),
+                b.rssBytes(),
+                b.cores(),
+                b.totalMemoryBytes(),
+                b.availableMemoryBytes(),
+                b.systemCpuLoad(),
+                b.systemLoadAverage(),
+                b.engineEpoch(),
+                b.peakActiveRequests(),
+                b.peakActiveBuildPlans(),
+                idleDropped,
+                b.logBytes(),
+                b.logRolledAt(),
+                b.ignoredSignals(),
+                b.queuedBuildPlans(),
+                b.installSource(),
+                b.containment(),
+                b.containmentReason(),
+                b.workerMemoryMax(),
+                b.workerCap(),
+                b.workerBudgetBytes(),
+                b.workerLeasedBytes(),
+                b.workerOverbookedBytes(),
+                b.workerQueued(),
+                b.workerBudgetSource(),
+                b.workerRunningJvms(),
+                b.workerCpuCap(),
+                b.overbookingOff(),
+                b.workerWaiting(),
+                b.workerOverLease(),
+                b.mcpMaxSessions(),
+                b.mcpLoadedConnections(),
+                b.mcpActiveConnections(),
+                b.jobs(),
+                b.identity(),
+                backpressure);
+    }
+
     private static StatusSnapshot withMcp(StatusSnapshot b, int max, int loaded, int active) {
         return new StatusSnapshot(
                 b.version(),

@@ -4,7 +4,7 @@
 // storage and system meters those payloads drive. Spread into the root component's `methods`.
 
 import { get, getText, hardRefreshForEpoch, noteEngineEpoch, noteEngineIdentity } from './api.js';
-import { ago, workerBudgetLine as workerBudgetText } from './format.js';
+import { ago, backpressureLine as backpressureText, idleDroppedLine as idleDroppedText, workerBudgetLine as workerBudgetText } from './format.js';
 import { outcomeOf } from './outcome.js';
 
 export const statusMethods = {
@@ -361,6 +361,14 @@ export const statusMethods = {
   /** The workers budget row, same words as {@code jk engine status}. Empty when unreported. */
   workerBudgetLine() {
     return workerBudgetText(this.status);
+  },
+  /** What held work back since the engine started, same words as {@code jk engine status}. Empty when nothing did. */
+  backpressureLine() {
+    return backpressureText(this.status);
+  },
+  /** Idle connections the engine closed, same words as {@code jk engine status}. Empty when none. */
+  idleDroppedLine() {
+    return idleDroppedText(this.status);
   },
   heapUsedPercent() {
     return this.percentOfMax(this.status?.heapUsedBytes);
