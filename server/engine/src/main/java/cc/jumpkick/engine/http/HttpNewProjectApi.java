@@ -59,16 +59,9 @@ final class HttpNewProjectApi {
 
     /** {@code GET /api/forms/new-project?template=<ref>&lang=<lang>}; no template is the default one. */
     void handleForm(HttpExchange exchange) throws IOException {
-        String template;
-        String lang;
-        try {
-            String q = exchange.getRequestURI().getRawQuery();
-            template = HttpQuery.queryParam(q, "template");
-            lang = HttpQuery.queryParam(q, "lang");
-        } catch (IllegalArgumentException e) {
-            error(exchange, 400, e.getMessage());
-            return;
-        }
+        String q = exchange.getRequestURI().getRawQuery();
+        String template = HttpQuery.queryParam(q, "template");
+        String lang = HttpQuery.queryParam(q, "lang");
         Map<String, String> derived = derived();
         NewProjectOps.TemplateForm t;
         try {

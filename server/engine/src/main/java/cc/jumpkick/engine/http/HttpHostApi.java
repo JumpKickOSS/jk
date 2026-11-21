@@ -40,13 +40,7 @@ final class HttpHostApi {
      * {@code dir} names the project whose lock is checked.
      */
     static void handleDoctor(HttpExchange exchange) throws IOException {
-        String dir;
-        try {
-            dir = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(exchange, 400, MiniJson.write(Map.of("error", String.valueOf(e.getMessage()))));
-            return;
-        }
+        String dir = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
         HttpResponses.sendJson(
                 exchange, 200, MiniJson.write(DoctorReport.structured(DoctorReport.rows(dir, JkVersion.VERSION))));
     }

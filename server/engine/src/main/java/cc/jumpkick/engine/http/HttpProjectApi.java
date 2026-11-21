@@ -65,14 +65,7 @@ final class HttpProjectApi {
      * {@code lang} names one.
      */
     void handleTemplates(HttpExchange exchange) throws IOException {
-        String lang;
-        try {
-            lang = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "lang");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String lang = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "lang");
         TemplatesCache cached = templatesCache;
         if (cached == null || System.nanoTime() - cached.atNanos() >= TEMPLATES_TTL_NANOS) {
             cached = new TemplatesCache(
@@ -108,17 +101,8 @@ final class HttpProjectApi {
      */
     void handleProject(HttpExchange exchange) throws IOException {
         String q = exchange.getRequestURI().getRawQuery();
-        String projectId;
-        String dir;
-        try {
-            projectId = HttpQuery.queryParam(q, "project");
-            dir = HttpQuery.queryParam(q, "dir");
-        } catch (IllegalArgumentException e) {
-            // Malformed percent-encoding is the client's error, not a 500.
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String projectId = HttpQuery.queryParam(q, "project");
+        String dir = HttpQuery.queryParam(q, "dir");
         if ((projectId == null || projectId.isBlank()) && (dir == null || dir.isBlank())) {
             HttpResponses.sendJson(
                     exchange,
@@ -241,14 +225,7 @@ final class HttpProjectApi {
      * relocking is the caller's {@code POST /api/build} {@code kind=lock}. 422 when no model.
      */
     void handleProjectModel(HttpExchange exchange) throws IOException {
-        String dir;
-        try {
-            dir = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String dir = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "dir");
         if (dir == null || dir.isBlank()) {
             HttpResponses.sendJson(
                     exchange,
@@ -495,22 +472,11 @@ final class HttpProjectApi {
      */
     void handleProjectDir(HttpExchange exchange) throws IOException {
         String q = exchange.getRequestURI().getRawQuery();
-        String projectId;
-        String dir;
-        String path;
-        String cursor;
-        int limit;
-        try {
-            projectId = HttpQuery.queryParam(q, "project");
-            dir = HttpQuery.queryParam(q, "dir");
-            path = HttpQuery.queryParam(q, "path");
-            cursor = HttpQuery.queryParam(q, "cursor");
-            limit = intParam(q, "limit");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String projectId = HttpQuery.queryParam(q, "project");
+        String dir = HttpQuery.queryParam(q, "dir");
+        String path = HttpQuery.queryParam(q, "path");
+        String cursor = HttpQuery.queryParam(q, "cursor");
+        int limit = intParam(q, "limit");
         if (projectId == null || projectId.isBlank()) {
             HttpResponses.sendJson(
                     exchange,
@@ -564,20 +530,10 @@ final class HttpProjectApi {
      */
     void handleProjectFind(HttpExchange exchange) throws IOException {
         String q = exchange.getRequestURI().getRawQuery();
-        String projectId;
-        String dir;
-        String query;
-        int limit;
-        try {
-            projectId = HttpQuery.queryParam(q, "project");
-            dir = HttpQuery.queryParam(q, "dir");
-            query = HttpQuery.queryParam(q, "q");
-            limit = intParam(q, "limit");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String projectId = HttpQuery.queryParam(q, "project");
+        String dir = HttpQuery.queryParam(q, "dir");
+        String query = HttpQuery.queryParam(q, "q");
+        int limit = intParam(q, "limit");
         if (projectId == null || projectId.isBlank()) {
             HttpResponses.sendJson(
                     exchange,
@@ -604,17 +560,21 @@ final class HttpProjectApi {
         HttpResponses.sendJson(exchange, 200, MiniJson.write(body));
     }
 
-    /** A non-negative integer query parameter; 0 when absent, which the callee reads as its default. */
+    /**
+     * A non-negative integer query parameter; 0 when absent, which the callee reads as its default.
+     * {@link HttpRequests.BadRequest} when it is not one.
+     */
     private static int intParam(@Nullable String rawQuery, String name) {
         String v = HttpQuery.queryParam(rawQuery, name);
         if (v == null || v.isBlank()) return 0;
+        int n;
         try {
-            int n = Integer.parseInt(v.trim());
-            if (n < 0) throw new IllegalArgumentException("\"" + name + "\" must not be negative");
-            return n;
+            n = Integer.parseInt(v.trim());
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("\"" + name + "\" is not a number");
+            throw new HttpRequests.BadRequest("\"" + name + "\" is not a number");
         }
+        if (n < 0) throw new HttpRequests.BadRequest("\"" + name + "\" must not be negative");
+        return n;
     }
 
     /**
@@ -622,19 +582,10 @@ final class HttpProjectApi {
      * source body for one servable path, in the checkout {@link #checkoutRoot} selects.
      */
     void handleProjectFile(HttpExchange exchange) throws IOException {
-        String projectId;
-        String path;
-        String dir;
-        try {
-            String q = exchange.getRequestURI().getRawQuery();
-            projectId = HttpQuery.queryParam(q, "project");
-            path = HttpQuery.queryParam(q, "path");
-            dir = HttpQuery.queryParam(q, "dir");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String q = exchange.getRequestURI().getRawQuery();
+        String projectId = HttpQuery.queryParam(q, "project");
+        String path = HttpQuery.queryParam(q, "path");
+        String dir = HttpQuery.queryParam(q, "dir");
         if (projectId == null || projectId.isBlank()) {
             HttpResponses.sendJson(
                     exchange,
@@ -700,19 +651,10 @@ final class HttpProjectApi {
      * {@code <img src>} cannot send Authorization.
      */
     void handleProjectFileRaw(HttpExchange exchange) throws IOException {
-        String projectId;
-        String path;
-        String dir;
-        try {
-            String q = exchange.getRequestURI().getRawQuery();
-            projectId = HttpQuery.queryParam(q, "project");
-            path = HttpQuery.queryParam(q, "path");
-            dir = HttpQuery.queryParam(q, "dir");
-        } catch (IllegalArgumentException e) {
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String q = exchange.getRequestURI().getRawQuery();
+        String projectId = HttpQuery.queryParam(q, "project");
+        String path = HttpQuery.queryParam(q, "path");
+        String dir = HttpQuery.queryParam(q, "dir");
         if (projectId == null || projectId.isBlank()) {
             HttpResponses.sendJson(
                     exchange,

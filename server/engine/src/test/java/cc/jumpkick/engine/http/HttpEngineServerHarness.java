@@ -33,8 +33,9 @@ import org.junit.jupiter.api.io.TempDir;
  * {@link HttpClient} — plus a raw socket where the client won't cooperate (forged {@code Host}
  * headers, literal {@code ..} request targets).
  *
- * <p>Runs under {@code :engine:integrationTest} — the unit-tier {@code test} task excludes
- * {@code @Tag("integration")}, so a {@code test --tests} filter naming a subclass matches nothing.
+ * <p>The harness carries no tag, so each subclass picks its tier: an untagged one runs in the fast
+ * {@code jk test} tier, one tagged {@code @Tag("integration")} only under {@code jk test -s
+ * integration}.
  */
 abstract class HttpEngineServerHarness {
 

@@ -7,7 +7,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
-/** Percent-decode one raw query parameter, strictly or leniently. */
+/**
+ * Percent-decode one raw query parameter, strictly or leniently. The JDK server already answers 400
+ * to a request target with a malformed escape, so the strict form's {@link HttpRequests.BadRequest}
+ * is a backstop the dispatcher maps to 400, not something a handler catches.
+ */
 final class HttpQuery {
 
     private HttpQuery() {}
@@ -15,7 +19,8 @@ final class HttpQuery {
     /**
      * The decoded value of {@code name} in a RAW query string ({@code getRawQuery()}), or null.
      * Split first, then decode each value once. Decoding never maps {@code +} to space (matches
-     * the SPA's {@code encodeURIComponent}).
+     * the SPA's {@code encodeURIComponent}). {@link HttpRequests.BadRequest} on malformed
+     * percent-encoding.
      */
     static @Nullable String queryParam(@Nullable String rawQuery, String name) {
         if (rawQuery == null) return null;
@@ -27,8 +32,8 @@ final class HttpQuery {
     }
 
     /**
-     * Every parameter of a RAW query string, decoded; a repeated name keeps its last value. Throws
-     * {@link IllegalArgumentException} on malformed percent-encoding.
+     * Every parameter of a RAW query string, decoded; a repeated name keeps its last value. {@link
+     * HttpRequests.BadRequest} on malformed percent-encoding.
      */
     static Map<String, String> params(@Nullable String rawQuery) {
         Map<String, String> out = new LinkedHashMap<>();
@@ -45,14 +50,17 @@ final class HttpQuery {
 
     /** Percent-decode without the {@code application/x-www-form-urlencoded} {@code +}→space rule. */
     private static @Nullable String decodeOnce(String raw) {
-        return URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
+        try {
+            return URLDecoder.decode(raw.replace("+", "%2B"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new HttpRequests.BadRequest("malformed percent-encoding in the query");
+        }
     }
 
     /**
      * {@link #queryParam} that treats malformed percent-encoding as an absent parameter instead of
      * throwing. For token / filter lookups where the caller's answer to garbage is "no" (401 /
-     * unfiltered), not a 500 from the generic handler. Handlers that owe the client a
-     * message keep the throwing form and map it to 400 themselves.
+     * unfiltered), not a 400.
      */
     static @Nullable String queryParamLenient(@Nullable String rawQuery, String name) {
         try {

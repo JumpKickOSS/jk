@@ -32,15 +32,7 @@ final class HttpSessionsApi {
      */
     void handleSessions(HttpExchange exchange) throws IOException {
         int limit = bounded(exchange, "limit", SESSIONS_DEFAULT, SESSIONS_MAX);
-        String project;
-        try {
-            project = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "project");
-        } catch (IllegalArgumentException e) {
-            // A filter that cannot be read must not answer every session.
-            HttpResponses.sendJson(
-                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
-            return;
-        }
+        String project = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "project");
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("sessions", sessions.sessions(limit, project == null || project.isBlank() ? null : project.strip()));
         HttpResponses.sendJson(exchange, 200, JsonOut.rawObject(body).toString());

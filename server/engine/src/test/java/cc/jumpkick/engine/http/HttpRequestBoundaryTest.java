@@ -96,6 +96,18 @@ class HttpRequestBoundaryTest extends HttpEngineServerHarness {
     }
 
     @Test
+    void a_limit_that_is_no_count_is_400() throws Exception {
+        for (String path : List.of("/api/project/find", "/api/project/dir")) {
+            HttpResponse<String> notNumber = get(path + "?project=p&limit=x");
+            assertThat(notNumber.statusCode()).as(path).isEqualTo(400);
+            assertThat(notNumber.body()).as(path).contains("\\\"limit\\\" is not a number");
+            HttpResponse<String> negative = get(path + "?project=p&limit=-1");
+            assertThat(negative.statusCode()).as(path).isEqualTo(400);
+            assertThat(negative.body()).as(path).contains("must not be negative");
+        }
+    }
+
+    @Test
     void a_dir_that_is_no_path_is_400() throws Exception {
         assertThat(get("/api/project?dir=a%00b").statusCode()).isEqualTo(400);
         assertThat(get("/api/project/model?dir=a%00b").statusCode()).isEqualTo(400);
