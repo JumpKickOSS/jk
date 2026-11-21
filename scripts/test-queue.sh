@@ -148,13 +148,13 @@ grep -q 'RED-SPLIT in halves' "$WORK/queue.git/queue-batches.log" || fail "the b
 # --- one bad branch of three: the rest lands, the bad one alone is ejected and its ticket told ---
 git -C "$dev" fetch -q
 branch g origin/main mod/a/A.java g
-branch w/JK-BAD01 origin/main mod/b/red.txt jk-b
+branch w/QA-BAD01 origin/main mod/b/red.txt jk-b
 branch i origin/main docs/i.txt i
-for x in g w/JK-BAD01 i; do submit "$x" || fail "submitting $x failed"; done
+for x in g w/QA-BAD01 i; do submit "$x" || fail "submitting $x failed"; done
 batches="$(wc -l <"$WORK/queue.git/queue-batches.log")"
 queue || fail "the red batch of three did not run"
-status w/JK-BAD01 | grep -q 'waiting .* group [0-9.]*: .* split by the modules' ||
-  fail "the branch that changed the failing module was not split out: $(status w/JK-BAD01)"
+status w/QA-BAD01 | grep -q 'waiting .* group [0-9.]*: .* split by the modules' ||
+  fail "the branch that changed the failing module was not split out: $(status w/QA-BAD01)"
 # j, submitted after the split, waits for the groups; its submission is lost while it waits, and
 # the queue records that rather than forget it.
 branch j origin/main docs/j.txt j
@@ -169,9 +169,9 @@ queue || fail "the suspect alone did not run"
 if holds mod/b/red.txt; then fail "the bad branch landed"; fi
 [[ "$(grep -c '^batch [0-9]* [0-9T:-]*Z ' <(tail -n +$((batches + 1)) "$WORK/queue.git/queue-batches.log"))" -eq 3 ]] ||
   fail "one bad branch of three took other than three batches: $(tail -4 "$WORK/queue.git/queue-batches.log")"
-status w/JK-BAD01 | grep -q '^w/JK-BAD01: ejected ' || fail "the bad branch was not ejected: $(status w/JK-BAD01)"
-status w/JK-BAD01 | grep -qx 'tickets told: JK-BAD01' || fail "the ticket was not told: $(status w/JK-BAD01)"
-grep -q '^comment JK-BAD01 -m The merge queue ejected .w/JK-BAD01.' "$KA_LOG" || fail "no comment on the ticket: $(cat "$KA_LOG")"
+status w/QA-BAD01 | grep -q '^w/QA-BAD01: ejected ' || fail "the bad branch was not ejected: $(status w/QA-BAD01)"
+status w/QA-BAD01 | grep -qx 'tickets told: QA-BAD01' || fail "the ticket was not told: $(status w/QA-BAD01)"
+grep -q '^comment QA-BAD01 -m The merge queue ejected .w/QA-BAD01.' "$KA_LOG" || fail "no comment on the ticket: $(cat "$KA_LOG")"
 grep -qx '    FAILED cc.example:jk-b cc.example.RedTest' "$KA_LOG" || fail "the ticket was not told the failing class: $(cat "$KA_LOG")"
 grep -q 'at cc.example.RedTest.fails(RedTest.java:7)' "$KA_LOG" || fail "the ticket was not told the failure: $(cat "$KA_LOG")"
 

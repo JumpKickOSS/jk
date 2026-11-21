@@ -98,7 +98,7 @@ the batch, the rest, and the bad branch alone. The next batch starts as soon as 
 
 An ejected branch's ticket is told why, with `ka comment` (`QUEUE_KA`): the conflicting files, or
 the failing classes with the gate's failing lines and the failures' stacks. Its ticket is the one
-the branch is named for (`w/JK-XXXXX`), else each ticket its commit subjects start with; the
+the branch is named for (`w/<ticket>`), else each ticket its commit subjects start with; the
 branch's record says which tickets were told and which could not be. A branch never leaves the
 queue unsaid: after every batch, each branch the batch saw is still waiting, landed or ejected, or
 it is recorded as `dropped` and the batch log gets a `DROPPED` line.

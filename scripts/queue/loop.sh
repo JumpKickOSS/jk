@@ -13,7 +13,7 @@
 # the batch is split in halves in submission order.
 #
 # An ejected branch's ticket is told why with `ka comment`: the conflicting files, or the failing
-# classes and their failures. The ticket is the one the branch is named for (w/JK-XXXXX), else
+# classes and their failures. The ticket is the one the branch is named for (w/<ticket>), else
 # every ticket its commit subjects start with. A branch never leaves the queue unrecorded: after
 # each batch, every branch it saw is still waiting, landed or ejected, or is recorded as dropped.
 #
