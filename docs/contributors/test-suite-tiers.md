@@ -249,8 +249,8 @@ jk test -s integration
 `NiaWarmLockTimingTest` (`server/resolver`) locks a local `nowinandroid` overlay twice — cold process
 caches, then hot — and prints the phase walls (`COLD_TOTAL_MS`, `HOT_TOTAL_MS`, the graph and
 materialise splits). Its budget asserts apply only when the JVM sees every processor of the host and
-the host is idle; a JVM pinned below the host (a cgroup quota, an `-XX:ActiveProcessorCount` in the
-jvm-args) prints `TIMING_ASSERTS_SKIPPED` with the reason, since its numbers describe a machine no
+the host is idle; a JVM pinned below the host (a quota on its own cgroup, an `-XX:ActiveProcessorCount`
+in the jvm-args) prints `TIMING_ASSERTS_SKIPPED` with the reason, since its numbers describe a machine no
 user has. Run the one class alone on a quiet host:
 
 ```bash
@@ -260,8 +260,10 @@ JK_NIA_OVERLAY=~/src/oss/jk-examples/04-clients/nowinandroid/overlay \
 # JVM_CPUS=… HOST_CPUS=… LOADAVG=… names the machine the numbers were taken on
 ```
 
-A number taken while anything else was building is load, not lock cost. The lock's gate is the
-scoreboard ([docs/perf](../perf/README.md)), not this assert.
+The host's processors are the online ones, narrowed to a CPU quota on the root cgroup, so a WSL or
+container host whose root cgroup allows 7 of 20 online CPUs is a 7-CPU host. A number taken while
+anything else was building is load, not lock cost. The lock's gate is the scoreboard's `lock.nia.cold`
+and `lock.nia.hot` rows ([docs/perf](../perf/README.md)), not this assert.
 
 ## One heavy run per machine
 

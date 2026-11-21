@@ -45,7 +45,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
  * {@code jk.toml}) to run it. Unset, it skips and says what to set.
  *
  * <p>The wall-clock budgets are judged only on a JVM that sees the whole host and a host that is
- * idle. A JVM pinned below the host (a cgroup quota, {@code -XX:ActiveProcessorCount} in the
+ * idle. A JVM pinned below the host (a quota on its own cgroup, {@code -XX:ActiveProcessorCount} in the
  * jvm-args) serialises the resolver's parallel prefetch and {@code .module} parse into a machine no
  * user has; such a run prints its phase timings and says why the budget was not applied. Run this
  * one class alone:
@@ -56,7 +56,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
  *     --class cc.jumpkick.resolver.NiaWarmLockTimingTest
  * }</pre>
  *
- * <p>The lock cost's gate is the scoreboard (bench/scoreboard), not this assert.
+ * <p>The lock cost's gate is the scoreboard's {@code lock.nia.cold} and {@code lock.nia.hot} rows
+ * (bench/scoreboard), not this assert.
  */
 @Tag("network")
 @ExtendWith(SysProps.class)
