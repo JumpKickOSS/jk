@@ -187,7 +187,7 @@ in     = "cc.jumpkick.resolver.ArtifactMaterializer"
 reason = "fetches the artifacts a lock names: a wait on the network per artifact"
 
 [[guards.engine-off-virtual-threads.allow]]
-in     = "cc.jumpkick.resolver.MavenPackageSource"
+in     = "cc.jumpkick.resolver.PrefetchPool"
 reason = "prefetches version metadata ahead of the solve: a wait on the network per module"
 
 # G45. A blind walk discards the attributes it already read and re-resolves each path to ask again;

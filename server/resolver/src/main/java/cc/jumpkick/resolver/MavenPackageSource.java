@@ -14,7 +14,6 @@ import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.UnmappedPolicy;
-import cc.jumpkick.repo.DownloadSlots;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.GradleModuleMetadata;
@@ -36,18 +35,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 
@@ -61,31 +57,6 @@ import org.jspecify.annotations.Nullable;
 public final class MavenPackageSource implements PackageSource {
 
     private static final Set<String> FOLLOWED_SCOPES = Set.of("compile", "runtime");
-
-    /**
-     * Workers draining the speculative warm queue at once (pre-solve BOM blast, roots, frontier,
-     * widening): half the {@linkplain DownloadSlots#width() download slots}, at most {@value
-     * #PREFETCH_WORKERS_CAP}. Each worker's POM chain fans out across repositories and BOM imports
-     * into network legs that take leg slots, so the workers are sized to keep the legs busy without
-     * outnumbering them.
-     */
-    static final int PREFETCH_WORKERS_CAP = 32;
-
-    private static final int PREFETCH_WORKERS = prefetchWorkers(DownloadSlots.width());
-
-    /** The prefetch worker count for {@code slotWidth} download slots. */
-    static int prefetchWorkers(int slotWidth) {
-        return Math.max(1, Math.min(PREFETCH_WORKERS_CAP, slotWidth / 2));
-    }
-
-    /**
-     * How long a widening pass waits for its catalogs before reading the rest itself, and how long
-     * {@link #quiesce} waits before it says which reads are still winding down.
-     */
-    private static final long PREFETCH_WAIT_MS = 30_000;
-
-    /** How often {@link #quiesce} re-interrupts a worker that has not finished its read. */
-    private static final long QUIESCE_NUDGE_MS = 1_000;
 
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
@@ -200,27 +171,11 @@ public final class MavenPackageSource implements PackageSource {
     /** Per workspace coordinate a POM edge asked for, the sentence naming the first such edge. */
     private final Map<String, String> workspaceSubstitutionNotes = new ConcurrentHashMap<>();
 
-    /**
-     * Speculative work not yet run, drained by at most {@link #PREFETCH_WORKERS} threads. A queue
-     * rather than a thread per submission: a reactor's roots or a widening pass hand over hundreds
-     * of items at once, and a parked thread per item would hold its stack and closure until a
-     * worker slot freed.
-     */
-    private final Queue<PrefetchWork> prefetchQueue = new ConcurrentLinkedQueue<>();
-
-    /** Workers draining {@link #prefetchQueue} right now; never above {@link #PREFETCH_WORKERS}. */
-    private final AtomicInteger prefetchWorkers = new AtomicInteger();
-
-    /** Speculative prefetches submitted and not yet finished. Guards {@link #quiesce}. */
-    private final AtomicInteger outstandingPrefetches = new AtomicInteger();
-
-    /** The threads draining the queue right now, so {@link #quiesce} can interrupt the read each is in. */
-    private final Set<Thread> prefetchThreads = ConcurrentHashMap.newKeySet();
-
-    private final Object prefetchIdle = new Object();
-
     /** Catalog and POM reads completed, speculative ones included; see {@link #readsCompleted}. */
     private final AtomicLong readsCompleted = new AtomicLong();
+
+    /** The speculative reads run ahead of the solver; each one that ran counts as a read. */
+    private final PrefetchPool prefetches = new PrefetchPool(readsCompleted::incrementAndGet);
 
     /** Ensures {@link #warmUp} runs once per source instance (main/test/processor share one source). */
     private final AtomicBoolean warmedUp = new AtomicBoolean();
@@ -1163,7 +1118,7 @@ public final class MavenPackageSource implements PackageSource {
             if (n++ >= cap) break;
             String pkg = e.getKey();
             String pin = e.getValue();
-            submitPrefetch(() -> rawEdges(pkg, pin));
+            prefetches.submit(() -> rawEdges(pkg, pin));
         }
     }
 
@@ -1194,7 +1149,7 @@ public final class MavenPackageSource implements PackageSource {
     public void warmExpandedVersions(List<String> pkgs) {
         CountDownLatch done = new CountDownLatch(pkgs.size());
         for (String pkg : pkgs) {
-            submitPrefetch(() -> {
+            prefetches.submit(() -> {
                 try {
                     expandedVersions(pkg);
                 } finally {
@@ -1203,7 +1158,7 @@ public final class MavenPackageSource implements PackageSource {
             });
         }
         try {
-            if (!done.await(PREFETCH_WAIT_MS, TimeUnit.MILLISECONDS)) {
+            if (!done.await(PrefetchPool.WAIT_MS, TimeUnit.MILLISECONDS)) {
                 Log.debug(
                         "warmExpandedVersions: still reading catalogs after the bound; the pass reads the rest itself");
             }
@@ -1222,7 +1177,7 @@ public final class MavenPackageSource implements PackageSource {
             if (workspaceModules.containsKey(PackageId.parse(pkg).ga())) continue;
             Optional<String> exact = dep.versions().asExactSingleton();
             budget--;
-            submitPrefetch(() -> {
+            prefetches.submit(() -> {
                 String pick = exact.or(() -> preferredVersion(pkg)).orElse(null);
                 if (pick == null) {
                     List<String> candidates = versions(pkg);
@@ -1238,111 +1193,20 @@ public final class MavenPackageSource implements PackageSource {
         }
     }
 
-    /** Queue {@code work} for the io-pool workers, counted so {@link #quiesce} can wait for it. */
-    private void submitPrefetch(PrefetchWork work) {
-        outstandingPrefetches.incrementAndGet();
-        prefetchQueue.add(work);
-        startWorkerIfRoom();
-    }
-
-    /** Start one more draining worker when work is queued and fewer than the cap are running. */
-    private void startWorkerIfRoom() {
-        while (!prefetchQueue.isEmpty()) {
-            int running = prefetchWorkers.get();
-            if (running >= PREFETCH_WORKERS) return;
-            if (prefetchWorkers.compareAndSet(running, running + 1)) {
-                try {
-                    JkThreads.io().execute(this::drainPrefetches);
-                } catch (RuntimeException rejected) {
-                    prefetchWorkers.decrementAndGet();
-                    PrefetchWork left;
-                    while ((left = prefetchQueue.poll()) != null) finishPrefetch();
-                    throw rejected;
-                }
-                return;
-            }
-        }
-    }
-
-    /**
-     * One worker: run queued items until none is left. A worker interrupted mid-item — which is how
-     * {@link #quiesce} cancels a read — leaves the rest of the queue to a fresh one.
-     */
-    private void drainPrefetches() {
-        Thread self = Thread.currentThread();
-        prefetchThreads.add(self);
-        try {
-            PrefetchWork work;
-            while ((work = prefetchQueue.poll()) != null) {
-                try {
-                    work.run();
-                } catch (InterruptedException e) {
-                    self.interrupt();
-                    return;
-                } catch (Exception e) {
-                    // best-effort warming; the sync path surfaces real failures
-                    Log.debug("drainPrefetches: best-effort warming", e);
-                    if (self.isInterrupted()) return;
-                } finally {
-                    readsCompleted.incrementAndGet();
-                    finishPrefetch();
-                }
-            }
-        } finally {
-            prefetchThreads.remove(self);
-            prefetchWorkers.decrementAndGet();
-            // A submit that saw a full complement while this worker was leaving left its item behind.
-            startWorkerIfRoom();
-        }
-    }
-
     /** Workers draining the warm queue right now; package-visible for tests. */
     int prefetchWorkersRunning() {
-        return prefetchWorkers.get();
-    }
-
-    private void finishPrefetch() {
-        if (outstandingPrefetches.decrementAndGet() == 0) {
-            synchronized (prefetchIdle) {
-                prefetchIdle.notifyAll();
-            }
-        }
-    }
-
-    @FunctionalInterface
-    private interface PrefetchWork {
-        void run() throws Exception;
+        return prefetches.workersRunning();
     }
 
     /**
      * Drop the speculative work not yet started, cancel what is running and block until nothing is
      * in flight. What has not started by the time a solve ends is fetched on demand if the next solve
      * needs it, and no read may run beside the downloads that follow or past the moment a caller
-     * deletes the store it was writing into. A running read is cancelled by interrupting its worker,
-     * again every {@link #QUIESCE_NUDGE_MS} until it has let go; a caller's own interrupt is kept
-     * for it and re-asserted once the workers are gone.
+     * deletes the store it was writing into; see {@link PrefetchPool#quiesce}.
      */
     @Override
     public void quiesce() {
-        PrefetchWork left;
-        while ((left = prefetchQueue.poll()) != null) finishPrefetch();
-        boolean interrupted = false;
-        int nudges = 0;
-        synchronized (prefetchIdle) {
-            while (outstandingPrefetches.get() > 0) {
-                for (Thread worker : prefetchThreads) worker.interrupt();
-                try {
-                    prefetchIdle.wait(QUIESCE_NUDGE_MS);
-                } catch (InterruptedException e) {
-                    interrupted = true;
-                }
-                if (++nudges * QUIESCE_NUDGE_MS == PREFETCH_WAIT_MS) {
-                    Log.warn("jk: still waiting for " + outstandingPrefetches.get()
-                            + " speculative dependency read(s) to stop after " + (PREFETCH_WAIT_MS / 1_000) + " s");
-                }
-            }
-        }
-        if (interrupted) Thread.currentThread().interrupt();
+        prefetches.quiesce();
     }
 
     /**

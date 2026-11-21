@@ -229,14 +229,12 @@ class MavenPackageSourcePrefetchTest {
 
     @Test
     void the_warm_queue_is_drained_by_half_as_many_workers_as_there_are_download_slots() {
-        assertThat(MavenPackageSource.prefetchWorkers(64)).isEqualTo(32);
-        assertThat(MavenPackageSource.prefetchWorkers(16)).isEqualTo(8);
-        assertThat(MavenPackageSource.prefetchWorkers(1))
-                .as("never fewer than one")
-                .isEqualTo(1);
-        assertThat(MavenPackageSource.prefetchWorkers(4096))
+        assertThat(PrefetchPool.workers(64)).isEqualTo(32);
+        assertThat(PrefetchPool.workers(16)).isEqualTo(8);
+        assertThat(PrefetchPool.workers(1)).as("never fewer than one").isEqualTo(1);
+        assertThat(PrefetchPool.workers(4096))
                 .as("the cap holds on a host whose slots outnumber what a repository wants asked")
-                .isEqualTo(MavenPackageSource.PREFETCH_WORKERS_CAP);
+                .isEqualTo(PrefetchPool.WORKERS_CAP);
     }
 
     private MavenPackageSource source(Path tmp) {
