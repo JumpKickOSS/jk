@@ -36,7 +36,9 @@ public record ImageConfig(
          * Train a JVM AOT cache for the image. Off by default: it costs a container run at build
          * time and tens of MiB of image, and it only pays off for start-up-sensitive workloads.
          */
-        boolean aotCache) {
+        boolean aotCache,
+        /** Attach the SBOM and provenance to a registry push as OCI referrers; {@code [image] referrers}. */
+        boolean referrers) {
 
     public ImageConfig {
         ports = ports == null ? List.of() : List.copyOf(ports);

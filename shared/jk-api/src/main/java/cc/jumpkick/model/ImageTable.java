@@ -32,7 +32,9 @@ public record ImageTable(
         /** {@code image.aot-cache} — train a JVM AOT cache into the image. */
         @Nullable Boolean aotCache,
         /** {@code image.kind} — {@value #KIND_STATIC} serves a node build's output from nginx; unset is the module's own image. */
-        @Nullable String kind) {
+        @Nullable String kind,
+        /** {@code image.referrers} — attach the SBOM and provenance to a push; unset is on. */
+        @Nullable Boolean referrers) {
 
     /** {@code image.kind} for an nginx image of a node build's static output. */
     public static final String KIND_STATIC = "static";
@@ -40,7 +42,7 @@ public record ImageTable(
     /** No {@code [image]} table — every field unset. */
     public static final ImageTable EMPTY = new ImageTable(
             null, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null, null,
-            null);
+            null, null);
 
     public ImageTable {
         ports = ports == null ? List.of() : List.copyOf(ports);

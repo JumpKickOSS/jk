@@ -186,7 +186,8 @@ class ImageCredentialsTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
     }
 
     /** The worker spec for {@code module}: tarball mode unless {@code registry} is set. */

@@ -479,6 +479,7 @@ final class PackagingPlugins {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 

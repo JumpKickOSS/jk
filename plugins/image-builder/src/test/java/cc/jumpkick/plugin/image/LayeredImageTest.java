@@ -147,7 +147,8 @@ class LayeredImageTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
         return new LayeredImage.Plan(
                 config,
                 "web",

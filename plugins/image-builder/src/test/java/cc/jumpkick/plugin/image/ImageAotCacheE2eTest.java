@@ -70,6 +70,7 @@ class ImageAotCacheE2eTest {
                 "example.Main",
                 null,
                 null,
+                true,
                 true);
         // A release jar the application calls and a snapshot jar beside it: each ships in a layer
         // of its own below the application, and the cache trained over all three still maps.

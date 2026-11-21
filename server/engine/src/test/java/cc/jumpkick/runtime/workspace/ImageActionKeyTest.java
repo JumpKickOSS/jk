@@ -36,7 +36,8 @@ class ImageActionKeyTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
     }
 
     private static String token(List<String> tokens, String prefix) {

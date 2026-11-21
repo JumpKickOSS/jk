@@ -704,6 +704,8 @@ public final class JkBuildRenderer {
             sb.append("aot-cache = ").append(image.aotCache()).append('\n');
         if (image.kind() != null)
             sb.append("kind = ").append(quote(image.kind())).append('\n');
+        if (image.referrers() != null)
+            sb.append("referrers = ").append(image.referrers()).append('\n');
     }
 
     private static void string(StringBuilder sb, String key, @Nullable String value) {

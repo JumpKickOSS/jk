@@ -42,6 +42,7 @@ class ManifestImageTest {
                 ports = [8080, 9990]
                 platforms = ["linux/amd64"]
                 aot-cache = true
+                referrers = false
                 env = { LANG = "C.UTF-8" }
                 """);
         assertThat(data.base()).isEqualTo("eclipse-temurin:{java-major-version}-jre");
@@ -50,6 +51,7 @@ class ManifestImageTest {
         assertThat(data.ports()).containsExactly(8080, 9990);
         assertThat(data.platforms()).containsExactly("linux/amd64");
         assertThat(data.aotCache()).isTrue();
+        assertThat(data.referrers()).isFalse();
         assertThat(data.env()).containsEntry("LANG", "C.UTF-8");
     }
 
@@ -84,7 +86,8 @@ class ManifestImageTest {
                 "podman",
                 "Dockerfile",
                 true,
-                null);
+                null,
+                false);
         ImageTable member = new ImageTable(
                 null,
                 null,
@@ -96,6 +99,7 @@ class ManifestImageTest {
                 null,
                 null,
                 List.of(),
+                null,
                 null,
                 null,
                 null,
@@ -114,6 +118,7 @@ class ManifestImageTest {
         assertThat(inherited.labels()).containsEntry("team", "core");
         assertThat(inherited.dockerExecutable()).isEqualTo("podman");
         assertThat(inherited.aotCache()).isTrue();
+        assertThat(inherited.referrers()).isFalse();
         // the image's identity is the member's alone: two members must not push the same name
         assertThat(inherited.name()).isNull();
         assertThat(inherited.main()).isNull();
@@ -141,7 +146,8 @@ class ManifestImageTest {
                 null,
                 null,
                 true,
-                null);
+                null,
+                false);
 
         ImageTable inherited = ManifestImage.inheritFromRoot(ImageTable.EMPTY, root, true);
 
@@ -150,6 +156,9 @@ class ManifestImageTest {
         assertThat(inherited.registry()).isEqualTo("ghcr.io/acme");
         assertThat(inherited.tag()).isEqualTo("edge");
         assertThat(inherited.labels()).containsEntry("team", "core");
+        assertThat(inherited.referrers())
+                .as("whether a registry takes referrers is the registry's fact, not the JVM's")
+                .isFalse();
     }
 
     @Test
@@ -208,6 +217,7 @@ class ManifestImageTest {
                 null,
                 null,
                 null,
+                null,
                 null);
         var global = new ImageTable(
                 "global-base",
@@ -224,7 +234,8 @@ class ManifestImageTest {
                 null,
                 null,
                 true,
-                null);
+                null,
+                false);
         var merged = ManifestImage.merge(project, global);
         assertThat(merged.base()).isEqualTo("project-base");
         assertThat(merged.name())
@@ -235,5 +246,6 @@ class ManifestImageTest {
         assertThat(merged.ports()).containsExactly(8080);
         assertThat(merged.env()).containsEntry("A", "project").containsEntry("B", "global");
         assertThat(merged.aotCache()).isTrue();
+        assertThat(merged.referrers()).isFalse();
     }
 }

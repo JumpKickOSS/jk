@@ -26,6 +26,7 @@ class ImageBuilderJavaOptsTest {
                 null,
                 null,
                 null,
+                true,
                 true);
     }
 

@@ -31,7 +31,8 @@ class ImageBuilderLibDirTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
     }
 
     private static ImageBuilder.Plan plan(ImageConfig config, @Nullable String libDir) {

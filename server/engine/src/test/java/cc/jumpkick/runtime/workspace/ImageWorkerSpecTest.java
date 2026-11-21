@@ -48,6 +48,12 @@ class ImageWorkerSpecTest {
     /** The spec for a push to {@code registry}, a daemon load when it is null, or a tarball. */
     private static List<String> spec(
             Path module, Path cache, String base, @Nullable String registry, @Nullable Path tarball) throws Exception {
+        return spec(module, cache, base, registry, tarball, true);
+    }
+
+    private static List<String> spec(
+            Path module, Path cache, String base, @Nullable String registry, @Nullable Path tarball, boolean referrers)
+            throws Exception {
         var project = JkBuildParser.parse(module.resolve("jk.toml"));
         return ImagePlans.imageWorkerSpec(
                         cache,
@@ -55,7 +61,7 @@ class ImageWorkerSpecTest {
                         BuildLayout.of(module, project),
                         new ImageConfig(
                                 TAG, null, null, List.of(), Map.of(), Map.of(), Map.of(), registry, null, List.of(),
-                                null, null, null, true),
+                                null, null, null, true, referrers),
                         base,
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
@@ -133,6 +139,104 @@ class ImageWorkerSpecTest {
         assertThat(config(spec(module, tmp.resolve("cache"), PINNED, null, null), "sbom"))
                 .isNull();
         assertThat(module.resolve("target/sbom")).doesNotExist();
+    }
+
+    /** {@code [image] referrers = false}: the push writes no SBOM and tells the worker to attach nothing. */
+    @Test
+    void a_push_with_referrers_off_hands_the_worker_no_sbom(@TempDir Path tmp) throws Exception {
+        Path module = lockedModule(tmp);
+
+        List<String> spec = spec(module, tmp.resolve("cache"), PINNED, "registry.example:5000", null, false);
+
+        assertThat(config(spec, "sbom")).isNull();
+        assertThat(config(spec, "referrers")).isEqualTo("false");
+        assertThat(module.resolve("target/sbom")).doesNotExist();
+    }
+
+    /** The provenance names the module's coordinates, so the spec the worker reads carries them. */
+    @Test
+    void the_spec_names_the_module(@TempDir Path tmp) throws Exception {
+        Path module = lockedModule(tmp);
+        var project = JkBuildParser.parse(module.resolve("jk.toml"));
+        List<String> spec = ImagePlans.specLines(
+                project,
+                ImagePlans.imageWorkerSpec(
+                        tmp.resolve("cache"),
+                        project,
+                        BuildLayout.of(module, project),
+                        new ImageConfig(
+                                TAG,
+                                null,
+                                null,
+                                List.of(),
+                                Map.of(),
+                                Map.of(),
+                                Map.of(),
+                                "registry.example:5000",
+                                null,
+                                List.of(),
+                                null,
+                                null,
+                                null,
+                                false,
+                                true),
+                        PINNED,
+                        "com.example.Main",
+                        new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
+                        null,
+                        null));
+
+        assertThat(spec)
+                .filteredOn(line -> MiniJson.parse(line) instanceof Map<?, ?> m && "project".equals(m.get("t")))
+                .singleElement()
+                .satisfies(line ->
+                        assertThat(MiniJson.str(MiniJson.parse(line), "group")).isEqualTo("t"))
+                .satisfies(line ->
+                        assertThat(MiniJson.str(MiniJson.parse(line), "name")).isEqualTo("app"))
+                .satisfies(line -> assertThat(MiniJson.str(MiniJson.parse(line), "version"))
+                        .isEqualTo(config(spec, "version")));
+    }
+
+    /** A Dockerfile's image is not what jk's SBOM describes: its push says so, unless referrers are off. */
+    @Test
+    void a_dockerfile_push_says_it_attaches_nothing() {
+        String ref = "registry.example:5000/app:1";
+        ImageConfig on = new ImageConfig(
+                TAG,
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                "registry.example:5000",
+                null,
+                List.of(),
+                null,
+                null,
+                "Dockerfile",
+                false,
+                true);
+        ImageConfig off = new ImageConfig(
+                TAG,
+                null,
+                null,
+                List.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                "registry.example:5000",
+                null,
+                List.of(),
+                null,
+                null,
+                "Dockerfile",
+                false,
+                false);
+
+        assertThat(ImagePlans.dockerfilePushNotice(on, ref))
+                .isEqualTo("[image] no SBOM or provenance attached to " + ref + ": Dockerfile mode");
+        assertThat(ImagePlans.dockerfilePushNotice(off, ref)).isNull();
     }
 
     private static Path lockedModule(Path tmp) throws Exception {

@@ -137,6 +137,7 @@ class ImageAotLayersTest {
                 null,
                 null,
                 null,
+                true,
                 true);
     }
 }

@@ -8,7 +8,8 @@ JumpKick shows you this page's new entries after it updates itself.
 
 - **A pushed image carries its SBOM and provenance.** `jk image` to a registry attaches the
   module's CycloneDX SBOM and an SLSA provenance statement as OCI referrers of the image digest,
-  so `oras discover` and registry UIs list them beside it
+  so `oras discover` and registry UIs list them beside it; a node module's push attaches the
+  provenance, and `[image] referrers = false` attaches nothing
   ([Images: SBOM and provenance](images.md#sbom-and-provenance-on-a-push)).
 - **A signed `--slsa` publish uploads its provenance in a DSSE envelope.** With `--sign`, the
   in-toto statement goes up as `.intoto.jsonl`, signed by the release key, where it was a bare

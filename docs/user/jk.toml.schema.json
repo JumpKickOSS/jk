@@ -354,6 +354,10 @@
           "type": "string",
           "enum": ["static"],
           "description": "\"static\" serves a node build's output from nginx. Omit for the module's own image."
+        },
+        "referrers": {
+          "type": "boolean",
+          "description": "Attach the SBOM and SLSA provenance to a registry push as OCI referrers. Default true."
         }
       },
       "additionalProperties": false

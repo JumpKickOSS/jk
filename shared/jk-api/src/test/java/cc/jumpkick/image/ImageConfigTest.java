@@ -25,7 +25,8 @@ class ImageConfigTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
     }
 
     /** A workspace module is `app`; the image it ships as is whatever `[image] name` says. */

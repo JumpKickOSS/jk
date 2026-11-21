@@ -111,6 +111,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         String tag = c.stringOpt("tag").orElse(null);
         String dockerExecutable = c.stringOpt("dockerExecutable").orElse(null);
         boolean aotCache = c.bool("aotCache").orElse(false);
+        boolean referrers = c.bool("referrers").orElse(true);
 
         // Every mode — tarball, daemon load, push — starts by pulling a base image through Jib,
         // which has no notion of jk's --offline and revalidates a mutable tag whatever the local
@@ -156,7 +157,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 mainClass,
                 dockerExecutable,
                 null,
-                aotCache);
+                aotCache,
+                referrers);
         ImageBuilder.Plan plan = new ImageBuilder.Plan(
                 config,
                 artifact,
@@ -204,7 +206,7 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
         ctx.label("pushing " + ref);
         ImageBuilder.Result pushed = ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
         noticeOf(ctx, pushed);
-        attach(ctx, pushed, base, auth);
+        if (config.referrers()) attach(ctx, pushed, base, auth);
         return ImageResult.pushed(ref);
     }
 
@@ -327,7 +329,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
                 null,
                 dockerExecutable,
                 null,
-                false);
+                false,
+                c.bool("referrers").orElse(true));
         LayeredImage.Plan plan = new LayeredImage.Plan(
                 config,
                 artifact,
@@ -360,7 +363,8 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        LayeredImage.pushToRegistry(plan, cacheRoot, auth);
+        ImageBuilder.Result pushed = LayeredImage.pushToRegistry(plan, cacheRoot, auth);
+        if (config.referrers()) attach(ctx, pushed, base, auth);
         return ImageResult.pushed(ref);
     }
 

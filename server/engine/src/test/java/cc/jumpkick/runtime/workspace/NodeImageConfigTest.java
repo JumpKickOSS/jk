@@ -31,6 +31,7 @@ class NodeImageConfigTest {
                 .containsEntry("PORT", "3000")
                 .containsEntry("HOSTNAME", "0.0.0.0")
                 .containsEntry("NODE_ENV", "production");
+        assertThat(config.referrers()).isTrue();
     }
 
     @Test
@@ -42,6 +43,7 @@ class NodeImageConfigTest {
                 ports = [8080]
                 user = "node"
                 env = { PORT = "8080" }
+                referrers = false
                 """);
 
         ImageConfig config = NodeImagePlans.config(project.image(), project, dir, false, null, null, "docker");
@@ -50,6 +52,7 @@ class NodeImageConfigTest {
         assertThat(config.ports()).containsExactly(8080);
         assertThat(config.user()).isEqualTo("node");
         assertThat(config.env()).containsEntry("PORT", "8080").containsEntry("NODE_ENV", "production");
+        assertThat(config.referrers()).isFalse();
     }
 
     @Test

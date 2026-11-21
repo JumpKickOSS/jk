@@ -14,6 +14,7 @@ container runtime is only needed for some [AOT training](#aot-cache-in-the-image
 # registry  = "ghcr.io/acme"      # push target; default a local daemon load
 # tag       = "edge"              # default the module version
 # aot-cache = true
+# referrers = false               # attach no SBOM or provenance to a push
 
 [image.env]
 # JAVA_OPTS = "-Xmx256m -XX:+UseSerialGC"   # the JVM flags: entrypoint AND AOT training run
@@ -103,16 +104,28 @@ oras discover ghcr.io/acme/app:1.0.0     # lists the SBOM and the provenance
 A registry that serves the referrers API indexes them itself. For one that does not (a
 `registry:2`), JumpKick keeps the index at the tag `sha256-<image digest hex>`, the fallback the
 distribution spec names. They are written with the push credential. If the registry refuses them,
-the image stays pushed and the build prints a notice. A tarball or a daemon load attaches nothing,
-and neither does a node module's image or Dockerfile mode.
+the image stays pushed and the build prints a notice. A tarball or a daemon load attaches nothing.
+
+A node module's push attaches the provenance alone, naming the base image: JumpKick writes no SBOM
+of npm packages. A push in Dockerfile mode attaches neither and says so, since the image is what
+the Dockerfile built, not what JumpKick put in it; `docker buildx build --sbom=true
+--provenance=true` attaches Docker's own.
+
+A registry or a policy that wants nothing beside the image (no extra `sha256-…` tag) turns them
+off:
+
+```toml
+[image]
+referrers = false
+```
 
 ## In a workspace
 
 `jk image` from a member's directory builds that member's image. The member's `[image]` table
 sits over the workspace root's, which sits over the user-global table in `~/.jk/config.toml`; the
 nearest value wins per key. The root answers for what is a workspace fact — `base`, `user`,
-`registry`, `tag`, `env`, `labels`, `platforms`, `docker-executable`, `aot-cache` — so one
-`[image]` on the root names the registry and the base image for every member, and a member sets
+`registry`, `tag`, `env`, `labels`, `platforms`, `docker-executable`, `aot-cache`,
+`referrers` — so one `[image]` on the root names the registry and the base image for every member, and a member sets
 only what differs. What names one image never flows down: `name`, `main`, `ports` and
 `docker-file` are read from the member alone, so two members cannot inherit one image name and
 push over each other. `env` and `labels` merge key by key, the member's entry winning.

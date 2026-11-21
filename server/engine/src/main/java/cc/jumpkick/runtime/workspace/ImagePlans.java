@@ -7,6 +7,7 @@ import cc.jumpkick.compile.LibDirLayout;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.ManifestImage;
+import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.plugin.JobWorkers;
 import cc.jumpkick.engine.plugin.PluginClient;
@@ -322,7 +323,8 @@ public final class ImagePlans {
                 data.main(),
                 dockerExe,
                 data.dockerFile(),
-                Boolean.TRUE.equals(data.aotCache()));
+                Boolean.TRUE.equals(data.aotCache()),
+                !Boolean.FALSE.equals(data.referrers()));
     }
 
     /**
@@ -373,7 +375,8 @@ public final class ImagePlans {
             sw.configString("tarball", tarballPath.toAbsolutePath().toString());
         if (config.dockerExecutable() != null) sw.configString("dockerExecutable", config.dockerExecutable());
         if (config.aotCache()) sw.configBool("aotCache", true);
-        if (tarballPath == null && !daemonMode) {
+        if (!config.referrers()) sw.configBool("referrers", false);
+        if (tarballPath == null && !daemonMode && config.referrers()) {
             // The push attaches the SBOM the application jar embeds, read from the lock the same way.
             byte[] sbom =
                     PackagingKeys.assemblySbom(project, layout.moduleRoot(), LockPaths.lockFile(layout.moduleRoot()));
@@ -476,6 +479,7 @@ public final class ImagePlans {
         try {
             return forkWorker(
                     workerJar,
+                    project,
                     imageWorkerSpec(cache, project, layout, config, base, chosen, jars, classesDir, tarballPath),
                     said);
         } catch (IOException e) {
@@ -484,14 +488,14 @@ public final class ImagePlans {
     }
 
     /**
-     * Run the image worker on {@code sw}; the reference it built, or {@code ""} for a tarball.
-     * {@code said} takes each {@code diagnostic} reply.
+     * Run the image worker on {@code sw}, for {@code project}; the reference it built, or {@code ""}
+     * for a tarball. {@code said} takes each {@code diagnostic} reply.
      */
-    static String forkWorker(Path workerJar, SpecWriter sw, Consumer<String> said) {
+    static String forkWorker(Path workerJar, JkBuild project, SpecWriter sw, Consumer<String> said) {
         try {
             Path spec = ImageCredentials.newSpecFile();
             try {
-                Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
+                Files.write(spec, specLines(project, sw), StandardCharsets.UTF_8);
                 @Nullable String[] ref = {null};
                 @Nullable String[] workerError = {null};
                 StringBuilder diag = new StringBuilder();
@@ -525,6 +529,11 @@ public final class ImagePlans {
             Thread.currentThread().interrupt();
             throw new RuntimeException("image worker interrupted", e);
         }
+    }
+
+    /** The lines of {@code sw} with {@code project}'s facts, which the provenance of a push names. */
+    static List<String> specLines(JkBuild project, SpecWriter sw) {
+        return sw.project(PluginBuild.facts(project, null)).lines();
     }
 
     /**
@@ -564,8 +573,23 @@ public final class ImagePlans {
             runSubprocess(ctx, List.of(exe, "save", "-o", tarballPath.toString(), ref), projectDir);
         } else if (config.registry() != null && !config.registry().isBlank()) {
             runSubprocess(ctx, List.of(exe, "push", ref), projectDir);
+            String unattached = dockerfilePushNotice(config, ref);
+            if (unattached != null) {
+                RunNotices.warnOnce(
+                        "dockerfile-referrers:" + projectDir + "\0" + ref,
+                        () -> name + " " + TaskNames.WRITE_IMAGE + ": " + unattached);
+            }
         }
         return ref;
+    }
+
+    /**
+     * What a Dockerfile-mode push of {@code ref} says in place of the referrers a Jib push attaches,
+     * or null when {@code [image] referrers = false} asked for none. The SBOM and provenance describe
+     * what jk put in the image, and a Dockerfile's image is not that.
+     */
+    static @Nullable String dockerfilePushNotice(ImageConfig config, String ref) {
+        return config.referrers() ? "[image] no SBOM or provenance attached to " + ref + ": Dockerfile mode" : null;
     }
 
     /** Run a subprocess, streaming each output line via {@code ctx.output()}. */

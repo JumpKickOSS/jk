@@ -230,7 +230,8 @@ class ImageTreeLayerTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
     }
 
     private RegistryAuth anonymous() {

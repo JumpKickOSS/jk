@@ -4,6 +4,7 @@ package cc.jumpkick.plugin.image;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.credential.RepoCredential;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.PluginConfig;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -168,6 +170,50 @@ class ImageReferrersTest {
         }
     }
 
+    /** A node module's push attaches its provenance; jk renders no SBOM of its npm packages. */
+    @Test
+    void a_node_push_attaches_its_provenance(@TempDir Path tmp) throws Exception {
+        Context ctx = new Context(nodePush(tmp, true));
+
+        new OciImageBuilder().image(ctx);
+
+        assertThat(ctx.notices).isEmpty();
+        assertThat(MiniJson.list(json(registry.manifest("app", Referrers.tagSchema(pushedDigest()))), "manifests"))
+                .extracting(m -> MiniJson.str(m, "artifactType"))
+                .containsExactly(Referrers.PROVENANCE_TYPE);
+    }
+
+    /** {@code [image] referrers = false}: the image is pushed and nothing is attached to it. */
+    @Test
+    void a_push_with_referrers_off_attaches_nothing(@TempDir Path tmp) throws Exception {
+        new OciImageBuilder().image(new Context(nodePush(tmp, false)));
+
+        Path jar = Files.writeString(tmp.resolve("app.jar"), "bytes in a layer");
+        Map<String, Object> jvm = new HashMap<>(Map.of(
+                "artifact",
+                "app",
+                "version",
+                "0.1.0",
+                "mainClass",
+                "com.example.Main",
+                "base",
+                baseRef,
+                "registry",
+                registry.hostPort(),
+                "tag",
+                "10",
+                "jkCache",
+                tmp.resolve("cache").toString(),
+                "referrers",
+                false));
+        jvm.put("sbom", Files.write(tmp.resolve("image.cdx.json"), SBOM).toString());
+        new OciImageBuilder().image(new Context(jvm, jar));
+
+        assertThat(registry.tags("app"))
+                .as("the images are pushed, and no referrers tag beside them")
+                .containsExactlyInAnyOrder("9", "10");
+    }
+
     /** The provenance resolves the pinned base and every SBOM component, hashed where the lock pins one. */
     @Test
     void the_provenance_names_the_base_and_the_sbom_components() {
@@ -213,11 +259,46 @@ class ImageReferrersTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                true);
         return ImageBuilder.pushToRegistry(
                 new ImageBuilder.Plan(config, "app", "0.1.0", "com.example.Main", jar, List.of()),
                 tmp.resolve("cache"),
                 auth);
+    }
+
+    /** The spec of a node module's push to the stub as {@code app:9}. */
+    private Map<String, Object> nodePush(Path tmp, boolean referrers) throws Exception {
+        Path app = Files.createDirectories(tmp.resolve("web"));
+        Files.writeString(app.resolve("server.js"), "console.log('up');");
+        Map<String, Object> config = new HashMap<>(Map.of(
+                "kind",
+                "node",
+                "artifact",
+                "app",
+                "version",
+                "0.1.0",
+                "base",
+                baseRef,
+                "registry",
+                registry.hostPort(),
+                "tag",
+                "9",
+                "jkCache",
+                tmp.resolve("cache").toString(),
+                "layers",
+                List.of("app\t" + app.toAbsolutePath() + "\t/app"),
+                "entrypoint",
+                List.of("node", "server.js")));
+        if (!referrers) config.put("referrers", false);
+        return config;
+    }
+
+    /** The digest of the manifest the stub holds at {@code app:9}. */
+    private String pushedDigest() {
+        return "sha256:"
+                + Hashing.sha256Hex(
+                        Objects.requireNonNull(registry.manifest("app", "9")).getBytes(StandardCharsets.UTF_8));
     }
 
     private RegistryAuth anonymous() {
@@ -247,9 +328,15 @@ class ImageReferrersTest {
     private static final class Context implements ImageContext {
         final List<String> notices = new ArrayList<>();
         private final Map<String, Object> values;
+        private final @Nullable Path mainJar;
 
         Context(Map<String, Object> values) {
+            this(values, null);
+        }
+
+        Context(Map<String, Object> values, @Nullable Path mainJar) {
             this.values = values;
+            this.mainJar = mainJar;
         }
 
         @Override
@@ -279,7 +366,7 @@ class ImageReferrersTest {
 
         @Override
         public Optional<Path> mainArtifact() {
-            return Optional.empty();
+            return Optional.ofNullable(mainJar);
         }
 
         @Override

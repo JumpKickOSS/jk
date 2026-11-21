@@ -166,6 +166,7 @@ class JkBuildRendererTest {
                 null,
                 null,
                 null,
+                null,
                 null);
         JkBuild model = JkBuild.builder(new Project("com.example", "widget", "1.0.0", 25))
                 .image(image)

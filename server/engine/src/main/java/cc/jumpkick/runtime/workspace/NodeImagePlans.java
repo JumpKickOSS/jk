@@ -175,7 +175,8 @@ final class NodeImagePlans {
                 null,
                 dockerExe,
                 null,
-                false);
+                false,
+                !Boolean.FALSE.equals(data.referrers()));
     }
 
     private static Task writeStep(BuildPlanner.Inputs inputs, Path projectDir, Path cache) {
@@ -231,7 +232,10 @@ final class NodeImagePlans {
                                     "cfg:" + ImagePlans.imageConfigToken(config),
                                     "worker:" + ClasspathFingerprint.entry(workerJar)),
                             (base, said) -> ImagePlans.forkWorker(
-                                    workerJar, spec(cache, project, layout, config, base, content, tarballPath), said));
+                                    workerJar,
+                                    project,
+                                    spec(cache, project, layout, config, base, content, tarballPath),
+                                    said));
                 })
                 .build();
     }
@@ -256,6 +260,7 @@ final class NodeImagePlans {
                 .configString("base", base)
                 .configString("jkCache", cache.toAbsolutePath().toString());
         ImageCredentials.write(sw, base, config, project, tarballPath == null && !daemonMode, layout.moduleRoot());
+        if (!config.referrers()) sw.configBool("referrers", false);
         if (config.name() != null) sw.configString("name", config.name());
         if (config.user() != null) sw.configString("user", config.user());
         if (config.registry() != null) sw.configString("registry", config.registry());

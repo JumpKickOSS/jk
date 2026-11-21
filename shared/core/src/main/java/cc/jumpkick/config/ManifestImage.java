@@ -52,6 +52,7 @@ public final class ManifestImage {
         String dockerFile = nonBlank(project.dockerFile()) != null ? project.dockerFile() : global.dockerFile();
         Boolean aotCache = project.aotCache() != null ? project.aotCache() : global.aotCache();
         String kind = nonBlank(project.kind()) != null ? project.kind() : global.kind();
+        Boolean referrers = project.referrers() != null ? project.referrers() : global.referrers();
         return new ImageTable(
                 base,
                 name,
@@ -67,17 +68,19 @@ public final class ManifestImage {
                 dockerExecutable,
                 dockerFile,
                 aotCache,
-                kind);
+                kind,
+                referrers);
     }
 
     /**
      * A workspace member's table over the root's shared keys. The root answers for what is a
      * workspace fact — {@code base}, {@code user}, {@code registry}, {@code tag}, {@code env}, {@code training-env},
-     * {@code labels}, {@code platforms}, {@code docker-executable}, {@code aot-cache} — and the
-     * member's own value wins per key, as it does over the user-global table. What names one image
-     * never flows down: {@code name}, {@code main}, {@code ports} and {@code docker-file} stay the
-     * member's, so two members cannot inherit one image name and push over each other. A {@code
-     * nodeModule} takes neither the root's {@code base} nor its {@code aot-cache}.
+     * {@code labels}, {@code platforms}, {@code docker-executable}, {@code aot-cache}, {@code
+     * referrers} — and the member's own value wins per key, as it does over the user-global table.
+     * What names one image never flows down: {@code name}, {@code main}, {@code ports} and {@code
+     * docker-file} stay the member's, so two members cannot inherit one image name and push over
+     * each other. A {@code nodeModule} takes neither the root's {@code base} nor its {@code
+     * aot-cache}.
      */
     public static ImageTable inheritFromRoot(ImageTable member, ImageTable root, boolean nodeModule) {
         if (root.isEmpty()) return member;
@@ -97,7 +100,8 @@ public final class ManifestImage {
                 root.dockerExecutable(),
                 null,
                 nodeModule ? null : root.aotCache(),
-                null);
+                null,
+                root.referrers());
         return merge(member, shared);
     }
 
@@ -120,7 +124,8 @@ public final class ManifestImage {
             "docker-executable",
             "docker-file",
             "aot-cache",
-            "kind");
+            "kind",
+            "referrers");
 
     /** {@link ImageTable#EMPTY} when the document has no {@code [image]} table. */
     static ImageTable parse(TomlTable root) {
@@ -142,7 +147,8 @@ public final class ManifestImage {
                 string(image, "docker-executable"),
                 string(image, "docker-file"),
                 optionalBool(image, "aot-cache", "image.aot-cache"),
-                kind(image));
+                kind(image),
+                optionalBool(image, "referrers", "image.referrers"));
     }
 
     private static @Nullable String string(TomlTable image, String key) {

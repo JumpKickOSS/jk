@@ -98,6 +98,7 @@ class ImageWriteNoticeTest {
                 null,
                 null,
                 null,
+                true,
                 true);
         return new Fixture(project, layout, config, tmp.resolve("cache"), workerJar);
     }

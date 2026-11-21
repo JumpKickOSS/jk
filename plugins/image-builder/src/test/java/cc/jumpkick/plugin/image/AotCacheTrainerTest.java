@@ -27,7 +27,7 @@ class AotCacheTrainerTest {
     private static ImageConfig config(String base) {
         return new ImageConfig(
                 base, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null, null, null,
-                true);
+                true, true);
     }
 
     private static ImageBuilder.Plan plan(@Nullable Path classesDir) {
@@ -115,6 +115,7 @@ class AotCacheTrainerTest {
                 null,
                 null,
                 null,
+                true,
                 true);
         Map<String, String> env = AotCacheTrainer.trainingEnvironment(c);
         assertThat(env)
@@ -221,6 +222,7 @@ class AotCacheTrainerTest {
                 null,
                 runtime,
                 null,
+                true,
                 true);
         return new ImageBuilder.Plan(config, "svc", "1.0.0", "x.Main", jar, List.of(dep));
     }
@@ -307,7 +309,7 @@ class AotCacheTrainerTest {
 
     private static ImageConfig withPlatforms(List<String> platforms) {
         return new ImageConfig(
-                "b", null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, platforms, null, null, null,
+                "b", null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, platforms, null, null, null, true,
                 true);
     }
 
