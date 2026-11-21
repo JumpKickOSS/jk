@@ -33,4 +33,16 @@ public final class FailureLocation {
         }
         return null;
     }
+
+    /**
+     * The text a run record keeps beside {@link #of}: a manifest refusal without the place its
+     * message leads with, since the record carries that place itself; otherwise {@link Errors#text}.
+     */
+    public static String text(Throwable failure) {
+        if (failure instanceof JkBuildParseException parse && parse.location() != null) {
+            String refusal = parse.refusal();
+            if (refusal != null && !refusal.isBlank()) return refusal;
+        }
+        return Errors.text(failure);
+    }
 }

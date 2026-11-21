@@ -204,8 +204,8 @@ class HelidonTableTest {
                 """);
         assertThatThrownBy(() -> JkBuildParser.parse(project.resolve("jk.toml")))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessage("[helidon] needs java 27 or later, and module `quickstart` builds for java 25 — set java"
-                        + " = 27 in its jk.toml");
+                .hasMessage(project.resolve("jk.toml") + ": [helidon] needs java 27 or later, and module `quickstart`"
+                        + " builds for java 25 — set java = 27 in its jk.toml");
 
         Files.writeString(project.resolve("jk.toml"), APP.replace("java    = 27\n", "") + """
 

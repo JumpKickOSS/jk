@@ -36,7 +36,6 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.tool.InstalledToolEnvs;
 import cc.jumpkick.tool.ToolEnv;
 import cc.jumpkick.tool.ToolLauncher;
@@ -295,11 +294,7 @@ public final class ToolRunCommand implements CliCommand {
                     .map(Path::toString)
                     .toList();
         } catch (JkBuildParseException e) {
-            Path manifest = ManifestPaths.manifestIn(wsRoot);
-            SourceLocation at = e.locatedIn(manifest).location();
-            // A refusal at a line already leads with the manifest; one of the whole file does not.
-            if (at != null && at.line() > 0) throw e;
-            throw new JkBuildParseException(manifest + ": " + e.getMessage(), e);
+            throw e.locatedIn(ManifestPaths.manifestIn(wsRoot));
         }
     }
 

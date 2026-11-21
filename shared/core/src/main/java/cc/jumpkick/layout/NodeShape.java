@@ -146,19 +146,18 @@ public final class NodeShape {
     public static void check(JkBuild build, Path moduleDir) {
         if (exempt(build, moduleDir)) return;
         NodeTable table = build.node();
-        String where = label(moduleDir);
         boolean jvm = jvmSources(moduleDir);
         if (jvm
                 && build.declaresNodeTable()
                 && table.dir() == null
                 && hasPackageJson(moduleDir)
                 && !hasPackageJson(moduleDir.resolve(NodeTable.SIDE_BY_SIDE_DIR))) {
-            throw new JkBuildParseException(where + ": package.json is beside the JVM sources; move it to "
+            throw new JkBuildParseException("package.json is beside the JVM sources; move it to "
                     + NodeTable.SIDE_BY_SIDE_DIR + " or set [node] dir");
         }
         if (!jvm && hasPackageJson(moduleDir) && build.project().nodeSpec().isEmpty() && !build.declaresNodeTable()) {
             Proposal p = propose(moduleDir);
-            throw new JkBuildParseException(where + ": package.json found but no node version; add node = " + p.spec()
+            throw new JkBuildParseException("package.json found but no node version; add node = " + p.spec()
                     + (p.source() == null ? "" : " (from " + p.source() + ")"));
         }
         Kind kind = kind(build, moduleDir);
@@ -166,7 +165,7 @@ public final class NodeShape {
             if (build.declaresNodeTable()) {
                 String dir = jvm ? sideBySideDir(table) : table.dir() == null ? "." : table.dir();
                 throw new JkBuildParseException(
-                        where + ": [node] is set but " + dir + "/package.json is missing; add it or remove [node]");
+                        "[node] is set but " + dir + "/package.json is missing; add it or remove [node]");
             }
             return;
         }
@@ -175,18 +174,18 @@ public final class NodeShape {
         Path module = moduleDir.toAbsolutePath().normalize();
         if (!nodeDir.startsWith(module) && !(module.startsWith(nodeDir) && ManifestPaths.describesProject(nodeDir))) {
             throw new JkBuildParseException(
-                    where + ": [node] dir " + table.dir() + " must be inside the module or the workspace root");
+                    "[node] dir " + table.dir() + " must be inside the module or the workspace root");
         }
         if (table.out() != null) {
             Path out = nodeDir.resolve(table.out()).normalize();
             if (!out.startsWith(nodeDir) && !out.startsWith(module)) {
                 throw new JkBuildParseException(
-                        where + ": [node] out " + table.out() + " lands outside both the node build and the module");
+                        "[node] out " + table.out() + " lands outside both the node build and the module");
             }
         }
         if (build.project().nodeSpec().isEmpty()) {
             Proposal p = propose(nodeDir);
-            throw new JkBuildParseException(where + ": package.json found but no node version; add node = " + p.spec()
+            throw new JkBuildParseException("package.json found but no node version; add node = " + p.spec()
                     + (p.source() == null ? "" : " (from " + p.source() + ")"));
         }
         NodeProject.infer(nodeDir, table);
@@ -258,11 +257,6 @@ public final class NodeShape {
             if (Languages.anySourceUnder(src, ext)) return true;
         }
         return false;
-    }
-
-    private static String label(Path moduleDir) {
-        Path name = moduleDir.toAbsolutePath().normalize().getFileName();
-        return (name == null ? "" : name + "/") + ManifestPaths.MANIFEST;
     }
 
     private static @Nullable String read(Path file) {

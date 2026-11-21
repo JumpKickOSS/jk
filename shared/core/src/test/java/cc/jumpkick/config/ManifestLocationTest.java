@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.SourceLocation;
 import java.nio.file.Files;
@@ -131,9 +132,94 @@ class ManifestLocationTest {
     }
 
     @Test
-    void a_refusal_of_the_whole_file_reads_as_its_message(@TempDir Path dir) throws Exception {
+    void a_refusal_of_the_whole_file_leads_with_the_file(@TempDir Path dir) throws Exception {
         Path file = write(dir, "group = \"x.y\"\nversion = \"0.1.0\"\n");
-        assertThat(refusal(file).getMessage()).doesNotContain(file.toString());
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessage(file + ": jk.toml is missing required key `name`");
+        assertThat(e.refusal()).isEqualTo("jk.toml is missing required key `name`");
+    }
+
+    @Test
+    void a_refusal_that_already_names_its_file_does_not_name_it_twice(@TempDir Path dir) {
+        Path file = dir.resolve("jk.toml").toAbsolutePath().normalize();
+        assertThat(refusal(file)).hasMessage("jk.toml not found: " + file);
+    }
+
+    @Test
+    void a_file_under_the_working_directory_is_named_relative_to_it(@TempDir Path dir) throws Exception {
+        Path member = Files.createDirectories(dir.resolve("app"));
+        Path file = write(member, HEAD + "java = 25\n\n[build]\nbogus = 1\n");
+        JkBuildParseException e = SessionContext.where(Session.defaults().withWorkingDir(dir), () -> refusal(file));
+        assertThat(e.getMessage()).startsWith("app/jk.toml:7:1: [build] unknown key `bogus`");
+        assertThat(e.refusal()).startsWith("[build] unknown key `bogus`");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
+    }
+
+    @Test
+    void a_whole_file_refusal_under_the_working_directory_leads_with_the_file_however_it_reads(@TempDir Path dir)
+            throws Exception {
+        Path file = write(dir, "group = \"x.y\"\nversion = \"0.1.0\"\n");
+        JkBuildParseException e = SessionContext.where(Session.defaults().withWorkingDir(dir), () -> refusal(file));
+        assertThat(e).hasMessage("jk.toml: jk.toml is missing required key `name`");
+    }
+
+    @Test
+    void a_member_refused_as_a_whole_is_named_by_its_own_file(@TempDir Path dir) throws Exception {
+        Path root = write(dir, """
+                group = "x.y"
+                name = "ws"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = ["lib"]
+                """);
+        Path memberFile = write(Files.createDirectories(dir.resolve("lib")), "version = \"0.1.0\"\n");
+
+        JkBuildParseException e = memberRefusal(root);
+
+        assertThat(e).hasMessage(memberFile + ": jk.toml is missing required key `name`");
+        assertThat(e.location()).isEqualTo(SourceLocation.of(memberFile));
+    }
+
+    @Test
+    void a_member_refused_after_its_parse_is_located_in_its_own_file(@TempDir Path dir) throws Exception {
+        Path root = write(dir, """
+                group = "x.y"
+                name = "ws"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = ["web"]
+                """);
+        Path memberFile = write(
+                Files.createDirectories(dir.resolve("web")), HEAD + "\n[node]\nversion = 24\nframework = \"vite\"\n");
+
+        JkBuildParseException e = memberRefusal(root);
+
+        assertThat(e).hasMessageStartingWith(memberFile + ": [node] is set but ./package.json is missing");
+        assertThat(e.location()).isEqualTo(SourceLocation.of(memberFile));
+    }
+
+    @Test
+    void a_member_list_the_root_cannot_load_is_refused_in_the_root(@TempDir Path dir) throws Exception {
+        Path root = write(dir, """
+                group = "x.y"
+                name = "ws"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = ["app", "lib"]
+                """);
+        write(Files.createDirectories(dir.resolve("app")), HEAD + "java = 25\n");
+        Files.createDirectories(dir.resolve("lib"));
+
+        JkBuildParseException e = memberRefusal(root);
+
+        assertThat(e.getMessage()).startsWith(root + ": ").contains("lib");
+        assertThat(e.location()).isEqualTo(SourceLocation.of(root));
     }
 
     @Test
@@ -166,6 +252,15 @@ class ManifestLocationTest {
     private static JkBuildParseException refusal(Path file) {
         JkBuildParseException e = catchThrowableOfType(JkBuildParseException.class, () -> JkBuildParser.parse(file));
         assertThat(e).as("the manifest is refused").isNotNull();
+        return e;
+    }
+
+    private static JkBuildParseException memberRefusal(Path root) throws Exception {
+        JkBuild parsed = JkBuildParser.parseLocal(root);
+        Path dir = Objects.requireNonNull(root.getParent());
+        JkBuildParseException e =
+                catchThrowableOfType(JkBuildParseException.class, () -> WorkspaceLoader.loadModules(dir, parsed));
+        assertThat(e).as("a member is refused").isNotNull();
         return e;
     }
 

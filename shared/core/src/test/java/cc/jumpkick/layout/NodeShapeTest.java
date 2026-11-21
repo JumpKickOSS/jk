@@ -108,15 +108,16 @@ class NodeShapeTest {
         write(app.resolve("package.json"), "{}");
         assertThatThrownBy(() -> parse(app))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessage("app/jk.toml: package.json is beside the JVM sources; move it to src/main/node or set"
-                        + " [node] dir");
+                .hasMessage(app.resolve("jk.toml") + ": package.json is beside the JVM sources; move it to"
+                        + " src/main/node or set [node] dir");
     }
 
     @Test
     void a_node_table_with_no_package_json_is_refused() throws IOException {
         Path web = module("web", "[node]\nversion = 24\nframework = \"vite\"");
         assertThatThrownBy(() -> parse(web))
-                .hasMessage("web/jk.toml: [node] is set but ./package.json is missing; add it or remove [node]");
+                .hasMessage(web.resolve("jk.toml") + ": [node] is set but ./package.json is missing; add it or remove"
+                        + " [node]");
     }
 
     @Test
@@ -124,7 +125,7 @@ class NodeShapeTest {
         Path web = module("web", "[node]\nframework = \"vite\"");
         write(web.resolve("package.json"), "{}");
         assertThatThrownBy(() -> parse(web))
-                .hasMessage("web/jk.toml: package.json found but no node version; add node = 24");
+                .hasMessage(web.resolve("jk.toml") + ": package.json found but no node version; add node = 24");
         write(web.resolve(".nvmrc"), "v22.11.0\n");
         assertThatThrownBy(() -> parse(web)).hasMessageEndingWith("add node = 22 (from .nvmrc)");
     }
@@ -136,7 +137,8 @@ class NodeShapeTest {
         write(web.resolve(".nvmrc"), "22\n");
         assertThatThrownBy(() -> parse(web))
                 .isInstanceOf(JkBuildParseException.class)
-                .hasMessage("web/jk.toml: package.json found but no node version; add node = 22 (from .nvmrc)");
+                .hasMessage(web.resolve("jk.toml") + ": package.json found but no node version; add node = 22 (from"
+                        + " .nvmrc)");
     }
 
     @Test

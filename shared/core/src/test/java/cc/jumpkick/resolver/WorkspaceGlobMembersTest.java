@@ -126,7 +126,7 @@ class WorkspaceGlobMembersTest {
         for (Supplier<Object> reader : readers) {
             assertThatThrownBy(reader::get)
                     .isInstanceOf(JkBuildParseException.class)
-                    .hasMessage(UNMATCHED);
+                    .hasMessage(root.resolve("jk.toml").toAbsolutePath().normalize() + ": " + UNMATCHED);
         }
     }
 }

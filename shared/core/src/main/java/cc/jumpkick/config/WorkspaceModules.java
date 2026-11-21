@@ -64,13 +64,15 @@ public final class WorkspaceModules {
                 continue;
             }
             if (normalized.contains("**")) {
-                throw new JkBuildParseException(
-                        list + " entry `" + entry + "`: `**` is not supported; use `*` once per directory level");
+                throw new JkBuildParseException(list + " entry `" + entry
+                                + "`: `**` is not supported; use `*` once per directory level")
+                        .locatedIn(ManifestPaths.manifestIn(root));
             }
             Set<String> matches = new TreeSet<>();
             collect(root, root, normalized.split("/"), 0, matches);
             if (matches.isEmpty()) {
-                throw new JkBuildParseException(list + " entry `" + entry + "` matches no directory with a jk.toml");
+                throw new JkBuildParseException(list + " entry `" + entry + "` matches no directory with a jk.toml")
+                        .locatedIn(ManifestPaths.manifestIn(root));
             }
             out.addAll(matches);
         }

@@ -10,6 +10,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.ReleaseSession;
 import cc.jumpkick.runtime.base.LockMode;
@@ -103,7 +104,8 @@ public final class LockVerb implements HostedVerb {
             long rid = host.eventRequestId();
             String dir = Jsonl.str(requestLine, "dir");
             if (rid > 0) {
-                host.accRunError(rid, Errors.text(e), dir == null ? null : FailureLocation.of(e, Path.of(dir)));
+                SourceLocation at = dir == null ? null : FailureLocation.of(e, Path.of(dir));
+                host.accRunError(rid, at == null ? Errors.text(e) : FailureLocation.text(e), at);
             }
             host.sendQuiet(writer, host.requestFailedLine(null, e));
             return JobOutcome.failed(Exit.FAILURE);

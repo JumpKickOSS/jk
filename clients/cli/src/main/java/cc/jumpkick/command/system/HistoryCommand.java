@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cli.api.CliOutput;
+import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.cli.engine.EngineJournalReads;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
@@ -349,30 +350,56 @@ public final class HistoryCommand extends GroupCommand {
                     p -> "  "
                             + Jsonl.str(p, "status") + "  " + Jsonl.str(p, "name")
                             + "  " + duration(Jsonl.longValue(p, "millis", -1)) + cacheNote(p));
-            printRows(lines, EngineProtocol.HISTORY_DIAG, "Diagnostics", d -> {
-                StringBuilder b = new StringBuilder("  [")
-                        .append(Jsonl.str(d, "severity"))
-                        .append("] ");
-                appendIf(b, Jsonl.str(d, "task"), ": ");
-                // Enriched identity: Class.method [wN] beats the legacy glued test label.
-                String cls = Jsonl.str(d, EngineProtocol.TEST_CLASS_FIELD);
-                String method = Jsonl.str(d, "method");
-                if (cls != null && !cls.isBlank()) {
-                    String simple = cls.substring(cls.lastIndexOf('.') + 1);
-                    b.append(simple);
-                    if (method != null && !method.isBlank()) b.append('.').append(method);
-                    int worker = Jsonl.intValue(d, "worker", 0);
-                    if (worker > 0) b.append(" [w").append(worker).append(']');
-                    b.append(" — ");
-                } else {
-                    appendIf(b, Jsonl.str(d, "test"), " — ");
-                }
-                String exc = Jsonl.str(d, "exceptionClass");
-                if (exc != null && !exc.isBlank()) b.append('(').append(exc).append(") ");
-                String msg = Jsonl.str(d, "message");
-                return b.append(msg == null ? "" : msg).toString();
-            });
+            printRows(lines, EngineProtocol.HISTORY_DIAG, "Diagnostics", HistoryShowCommand::diagLine);
             return success ? 0 : 1;
+        }
+
+        /** One {@code history-diag} row as {@code jk history show} prints it. */
+        static String diagLine(String d) {
+            StringBuilder b =
+                    new StringBuilder("  [").append(Jsonl.str(d, "severity")).append("] ");
+            appendIf(b, Jsonl.str(d, "task"), ": ");
+            // Enriched identity: Class.method [wN] beats the legacy glued test label.
+            String cls = Jsonl.str(d, EngineProtocol.TEST_CLASS_FIELD);
+            String method = Jsonl.str(d, "method");
+            if (cls != null && !cls.isBlank()) {
+                String simple = cls.substring(cls.lastIndexOf('.') + 1);
+                b.append(simple);
+                if (method != null && !method.isBlank()) b.append('.').append(method);
+                int worker = Jsonl.intValue(d, "worker", 0);
+                if (worker > 0) b.append(" [w").append(worker).append(']');
+                b.append(" — ");
+            } else {
+                appendIf(b, Jsonl.str(d, "test"), " — ");
+            }
+            String exc = Jsonl.str(d, "exceptionClass");
+            if (exc != null && !exc.isBlank()) b.append('(').append(exc).append(") ");
+            String msg = Jsonl.str(d, "message");
+            return b.append(locus(d, msg)).append(msg == null ? "" : msg).toString();
+        }
+
+        /**
+         * {@code file:line:column: } for a row whose message does not already name its file; empty for
+         * a row with no file, and for a test row, which names its test instead.
+         */
+        static String locus(String d, @Nullable String message) {
+            String file = Jsonl.str(d, "file");
+            if (file == null || file.isBlank()) return "";
+            if (!isBlank(Jsonl.str(d, EngineProtocol.TEST_CLASS_FIELD)) || !isBlank(Jsonl.str(d, "test"))) return "";
+            String shown;
+            try {
+                shown = PathDisplay.of(Path.of(file));
+            } catch (RuntimeException unreadable) {
+                shown = file;
+            }
+            if (message != null && (message.contains(file) || message.contains(shown))) return "";
+            int line = Jsonl.intValue(d, "line", 0);
+            int col = Jsonl.intValue(d, "col", 0);
+            return shown + (line > 0 ? ":" + line + (col > 0 ? ":" + col : "") : "") + ": ";
+        }
+
+        private static boolean isBlank(@Nullable String s) {
+            return s == null || s.isBlank();
         }
 
         /**

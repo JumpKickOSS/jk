@@ -16,6 +16,8 @@ import java.util.Objects;
  */
 public final class UserConfigParseException extends JkBuildParseException {
 
+    private static final String FIX = "; fix it to fetch or build";
+
     private final Path file;
     private final int line;
     private final int column;
@@ -39,6 +41,12 @@ public final class UserConfigParseException extends JkBuildParseException {
     @Override
     public String getMessage() {
         return message(file, line, column, reason);
+    }
+
+    /** The reason and what to do about it, without the place. */
+    @Override
+    public String refusal() {
+        return reason + FIX;
     }
 
     public Path file() {
@@ -68,6 +76,6 @@ public final class UserConfigParseException extends JkBuildParseException {
     }
 
     private static String message(Path file, int line, int column, String reason) {
-        return file + ":" + line + ":" + column + ": " + reason + "; fix it to fetch or build";
+        return file + ":" + line + ":" + column + ": " + reason + FIX;
     }
 }

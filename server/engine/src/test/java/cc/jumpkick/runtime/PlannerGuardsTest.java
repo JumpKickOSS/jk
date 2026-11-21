@@ -131,7 +131,8 @@ class PlannerGuardsTest {
                 modules = ["services/*"]
                 """);
         Files.createDirectories(root.resolve("services/notes"));
-        String message = "[workspace] modules entry `services/*` matches no directory with a jk.toml";
+        String message = root.resolve("jk.toml").toAbsolutePath().normalize()
+                + ": [workspace] modules entry `services/*` matches no directory with a jk.toml";
 
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(root, JkBuildParser.parseLocal(root.resolve("jk.toml"))))
                 .hasMessage(message);

@@ -17,6 +17,7 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
+import cc.jumpkick.run.SourceLocation;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -74,6 +75,12 @@ final class GroupRun {
         String report = agentReport;
         agentReport = null;
         return report;
+    }
+
+    /** The line a member's manifest refusal prints: one located in a file already leads with it. */
+    static @Nullable String refusal(String member, JkBuildParseException e) {
+        SourceLocation at = e.location();
+        return at != null && !at.file().isEmpty() ? e.getMessage() : member + ": " + e.getMessage();
     }
 
     /** What one member's run came to. */
@@ -159,7 +166,7 @@ final class GroupRun {
             try {
                 code = cmd.run(base.withValue("dir", m.dir().toString()));
             } catch (JkBuildParseException e) {
-                CommandWedge.printFail(verb, m.path() + ": " + e.getMessage());
+                CommandWedge.printFail(verb, refusal(m.path(), e));
                 code = Exit.CONFIG;
             }
             boolean upToDate = WireStream.lastRunUpToDate();

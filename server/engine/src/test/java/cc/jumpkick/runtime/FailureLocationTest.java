@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.resolver.pubgrub.InMemoryPackageSource;
 import cc.jumpkick.resolver.pubgrub.PubGrubSolver;
@@ -63,5 +64,19 @@ class FailureLocationTest {
 
         assertTimeoutPreemptively(Duration.ofSeconds(10), () -> assertThat(FailureLocation.of(outer, dir))
                 .isNull());
+    }
+
+    @Test
+    void the_recorded_text_leaves_the_place_to_the_location_beside_it(@TempDir Path dir) throws Exception {
+        Path manifest = Files.writeString(
+                dir.resolve("jk.toml"), "group = \"x.y\"\nname = \"app\"\nversion = \"0.1.0\"\njava = \"x\"\n");
+        Throwable refused = catchThrowable(() -> JkBuildParser.parse(manifest));
+
+        assertThat(refused.getMessage()).startsWith(manifest.toAbsolutePath().normalize() + ":4:1: ");
+        assertThat(FailureLocation.text(refused))
+                .isEqualTo(((JkBuildParseException) refused).refusal())
+                .doesNotContain(manifest.getFileName() + ":4");
+        assertThat(FailureLocation.text(new IllegalStateException("graal missing")))
+                .isEqualTo("graal missing");
     }
 }

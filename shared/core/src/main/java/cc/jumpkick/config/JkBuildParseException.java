@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.run.SourceLocation;
+import cc.jumpkick.util.DirKeys;
 import java.nio.file.Path;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
@@ -15,12 +16,18 @@ import org.tomlj.TomlTable;
  * <p>{@link #location()} says where in the manifest: the line and column of a syntax error or of
  * the key a check refused, and the file once {@link JkBuildParser} knows which one it was reading,
  * so an editor can mark the spot. {@code null} for a failure no file owns. Once the location names
- * a file and a line, the message leads with them as {@code file:line:column: }, so every place that
- * prints the message says where.
+ * a file, the message leads with it as {@code file:line:column: }, or {@code file: } for a refusal
+ * of the whole file, so every place that prints the message says where; {@link #refusal()} is the
+ * message without it, for a record that carries the location beside the text. The file is written
+ * relative to the session's working directory when it lies under it, as the session that located
+ * the failure saw it.
  */
 public sealed class JkBuildParseException extends RuntimeException permits UserConfigParseException {
 
     private @Nullable SourceLocation location;
+
+    /** The location's file as the message writes it, fixed when {@link #locatedIn} names the file. */
+    private @Nullable String shown;
 
     public JkBuildParseException(@Nullable String message) {
         super(message);
@@ -57,11 +64,19 @@ public sealed class JkBuildParseException extends RuntimeException permits UserC
 
     @Override
     public @Nullable String getMessage() {
-        String message = super.getMessage();
+        String message = refusal();
         SourceLocation at = location;
-        if (at == null || at.file().isEmpty() || at.line() == 0) return message;
-        String spot = at.file() + ":" + at.line() + (at.column() == 0 ? "" : ":" + at.column());
+        if (at == null || at.file().isEmpty()) return message;
+        String file = shown != null ? shown : at.file();
+        // A refusal of the whole file that already names it, such as "jk.toml not found: <file>".
+        if (at.line() == 0 && message != null && message.contains(at.file())) return message;
+        String spot = at.line() == 0 ? file : file + ":" + at.line() + (at.column() == 0 ? "" : ":" + at.column());
         return message == null ? spot : spot + ": " + message;
+    }
+
+    /** What was refused, without the place {@link #getMessage()} leads with. */
+    public @Nullable String refusal() {
+        return super.getMessage();
     }
 
     /**
@@ -70,7 +85,16 @@ public sealed class JkBuildParseException extends RuntimeException permits UserC
      */
     public JkBuildParseException locatedIn(Path file) {
         SourceLocation at = location;
+        if (at != null && !at.file().isEmpty()) return this;
         location = at == null ? SourceLocation.of(file) : at.in(file);
+        shown = shown(Path.of(location.file()));
         return this;
+    }
+
+    /** {@code file} relative to the session's working directory when it lies under it, else as given. */
+    private static String shown(Path file) {
+        Path cwd = SessionContext.current().workingDir().toAbsolutePath().normalize();
+        if (!file.startsWith(cwd) || file.equals(cwd)) return file.toString();
+        return DirKeys.slashes(cwd.relativize(file).toString());
     }
 }

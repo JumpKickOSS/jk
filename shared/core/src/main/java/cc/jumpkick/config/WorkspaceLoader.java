@@ -145,23 +145,28 @@ public final class WorkspaceLoader {
      */
     private static Map<Path, JkBuild> load(Path workspaceRoot, JkBuild root) throws IOException {
         LOADS.increment();
-        Map<Path, JkBuild> modules = new LinkedHashMap<>();
-        List<String> bad = new ArrayList<>();
-        List<String> names = WorkspaceModules.expand(workspaceRoot, root.workspaceModules());
-        // In module order, so the first failure raised and the missing list read as a serial load's.
-        for (Member member : members(workspaceRoot, root, names)) {
-            if (member.build() == null) bad.add(member.module());
-            else modules.put(member.dir(), member.build());
+        // What the member list itself refuses is the root's; a member's own refusal already names its file.
+        try {
+            Map<Path, JkBuild> modules = new LinkedHashMap<>();
+            List<String> bad = new ArrayList<>();
+            List<String> names = WorkspaceModules.expand(workspaceRoot, root.workspaceModules());
+            // In module order, so the first failure raised and the missing list read as a serial load's.
+            for (Member member : members(workspaceRoot, root, names)) {
+                if (member.build() == null) bad.add(member.module());
+                else modules.put(member.dir(), member.build());
+            }
+            if (!bad.isEmpty()) {
+                throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
+            }
+            checkIdentityCollisions(workspaceRoot, root, modules);
+            // A member's shared-library edges are coordinates for every reader, as its own parse sees
+            // them: a consumer's classpath inherits them through the sibling closure.
+            Collection<JkBuild> members = List.copyOf(modules.values());
+            modules.replaceAll((dir, member) -> WorkspaceMerge.resolveSharedDependencies(root, member, members));
+            return modules;
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(ManifestPaths.manifestIn(workspaceRoot));
         }
-        if (!bad.isEmpty()) {
-            throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
-        }
-        checkIdentityCollisions(workspaceRoot, root, modules);
-        // A member's shared-library edges are coordinates for every reader, as its own parse sees
-        // them: a consumer's classpath inherits them through the sibling closure.
-        Collection<JkBuild> members = List.copyOf(modules.values());
-        modules.replaceAll((dir, member) -> WorkspaceMerge.resolveSharedDependencies(root, member, members));
-        return modules;
     }
 
     /** One member as loaded: its manifest with the root applied, or null when it has no jk.toml. */
@@ -214,27 +219,33 @@ public final class WorkspaceLoader {
         Path moduleDir = workspaceRoot.resolve(module).normalize();
         Path moduleJkToml = ManifestPaths.manifestIn(moduleDir);
         if (!Files.exists(moduleJkToml)) return new Member(module, moduleDir, null);
-        // parseLocal: avoid WorkspaceResolve recursion (loadModules is called from applyWorkspace).
-        JkBuild moduleBuild = JkBuildParser.parseLocal(moduleJkToml);
-        // Nested workspaces are forbidden (ambiguous shared target/).
-        if (moduleBuild.isWorkspaceRoot()) {
-            throw new JkBuildParseException(
-                    "nested workspace: module `" + module + "` has its own [workspace]; remove it");
+        // A refusal of the member's own manifest names that file, not the one whose parse loaded it.
+        try {
+            // parseLocal: avoid WorkspaceResolve recursion (loadModules is called from applyWorkspace).
+            JkBuild moduleBuild = JkBuildParser.parseLocal(moduleJkToml);
+            // Nested workspaces are forbidden (ambiguous shared target/).
+            if (moduleBuild.isWorkspaceRoot()) {
+                throw new JkBuildParseException(
+                        "nested workspace: module `" + module + "` has its own [workspace]; remove it");
+            }
+            // The same inheritance the resolved parse applies (WorkspaceResolve), so a graph built from
+            // these members and one rebuilt from its memo carry one shape: a profile declared only at
+            // the root resolves for every member either way.
+            JkBuild member = inheritImage(
+                    inheritTestEnvPolicy(
+                            inheritPublish(
+                                    inheritSuites(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root),
+                                    root),
+                            root),
+                    root,
+                    moduleDir);
+            member = JkBuildParser.reapplyPlatformContributions(moduleDir, member);
+            NodeShape.check(member, moduleDir);
+            PluginJavaFloor.check(member, moduleDir);
+            return new Member(module, moduleDir, member);
+        } catch (JkBuildParseException e) {
+            throw e.locatedIn(moduleJkToml);
         }
-        // The same inheritance the resolved parse applies (WorkspaceResolve), so a graph built from
-        // these members and one rebuilt from its memo carry one shape: a profile declared only at
-        // the root resolves for every member either way.
-        JkBuild member = inheritImage(
-                inheritTestEnvPolicy(
-                        inheritPublish(
-                                inheritSuites(inheritProfiles(inheritFromRoot(moduleBuild, root), root), root), root),
-                        root),
-                root,
-                moduleDir);
-        member = JkBuildParser.reapplyPlatformContributions(moduleDir, member);
-        NodeShape.check(member, moduleDir);
-        PluginJavaFloor.check(member, moduleDir);
-        return new Member(module, moduleDir, member);
     }
 
     /**

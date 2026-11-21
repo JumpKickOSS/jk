@@ -129,7 +129,8 @@ class WorkspaceModulesTest {
                 instead = "i"
                 why = "root"
                 """);
-        String message = "[workspace] modules entry `apps/*` matches no directory with a jk.toml";
+        String message = root.resolve("jk.toml").toAbsolutePath().normalize()
+                + ": [workspace] modules entry `apps/*` matches no directory with a jk.toml";
 
         assertThatThrownBy(() -> WorkspaceLoader.loadModules(root, JkBuildParser.parseLocal(root.resolve("jk.toml"))))
                 .as("the build")

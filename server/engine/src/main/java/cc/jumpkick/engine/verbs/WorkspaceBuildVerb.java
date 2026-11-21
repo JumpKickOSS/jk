@@ -27,6 +27,7 @@ import cc.jumpkick.layout.NativePreflight;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.FailureLocation;
 import cc.jumpkick.runtime.ReleaseSession;
@@ -463,7 +464,10 @@ public final class WorkspaceBuildVerb implements HostedVerb {
             host.publishRequestError(rid, dir, msg);
             // The run's record names why, and where, so `jk history`, the agent report and an
             // editor's problem list do too.
-            if (rid > 0) host.accRunError(rid, msg, dir == null ? null : FailureLocation.of(e, Path.of(dir)));
+            if (rid > 0) {
+                SourceLocation at = dir == null ? null : FailureLocation.of(e, Path.of(dir));
+                host.accRunError(rid, at == null ? msg : EventRedaction.redactText(dir, FailureLocation.text(e)), at);
+            }
             return JobOutcome.failed(Exit.FAILURE);
         }
     }
