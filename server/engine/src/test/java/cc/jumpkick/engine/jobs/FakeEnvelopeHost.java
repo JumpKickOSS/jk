@@ -29,7 +29,7 @@ import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
 /** {@link JobEnvelope.Host} with every seam observable: what the wire and the dashboard would see, in order. */
-final class FakeEnvelopeHost implements JobEnvelope.Host {
+public final class FakeEnvelopeHost implements JobEnvelope.Host {
     boolean tryStart = true;
 
     /*
@@ -130,6 +130,13 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
      * runner starts. A runtime exception or an error.
      */
     volatile @Nullable Throwable registerThrows;
+
+    /** A host whose every admitted job fails to register with {@code fault}, for tests outside this package. */
+    public static FakeEnvelopeHost failingAfterAdmission(Throwable fault) {
+        FakeEnvelopeHost host = new FakeEnvelopeHost();
+        host.registerThrows = fault;
+        return host;
+    }
 
     /** When set, {@link #coordOf} throws it: a fault inside admission. */
     volatile @Nullable RuntimeException coordThrows;
