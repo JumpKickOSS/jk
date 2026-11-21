@@ -83,6 +83,10 @@ final class EffectiveModel {
     private final List<Ancestor> ancestors;
     /** Each management key an ancestor's own non-import entry pins, to the nearest such ancestor. */
     private final Map<String, Ancestor> pinnedBy;
+    /** Each dependency key an ancestor declares itself, to the nearest such ancestor. */
+    private final Map<String, Ancestor> declaringAncestor;
+    /** The nearest ancestor whose own dependencyManagement imports a BOM, or null. */
+    private final @Nullable Ancestor bomImporter;
 
     private final List<Profile> activeProfiles;
     private final Properties userProperties;
@@ -109,6 +113,14 @@ final class EffectiveModel {
                 if (!isImport(d)) pinnedBy.putIfAbsent(key(d), a);
             }
         }
+        this.declaringAncestor = new HashMap<>();
+        for (Ancestor a : this.ancestors) {
+            for (Dependency d : a.raw().getDependencies()) declaringAncestor.putIfAbsent(key(d), a);
+        }
+        this.bomImporter = this.ancestors.stream()
+                .filter(a -> a.managed().stream().anyMatch(EffectiveModel::isImport))
+                .findFirst()
+                .orElse(null);
     }
 
     /**
@@ -310,16 +322,12 @@ final class EffectiveModel {
 
     /** The nearest ancestor whose own dependencyManagement imports a BOM. */
     Optional<Ancestor> importsBom() {
-        return ancestors.stream()
-                .filter(a -> a.managed().stream().anyMatch(EffectiveModel::isImport))
-                .findFirst();
+        return Optional.ofNullable(bomImporter);
     }
 
     /** The nearest ancestor that declares the dependency {@code key} itself. */
     Optional<Ancestor> declaredBy(String key) {
-        return ancestors.stream()
-                .filter(a -> a.raw().getDependencies().stream().anyMatch(d -> key.equals(key(d))))
-                .findFirst();
+        return Optional.ofNullable(declaringAncestor.get(key));
     }
 
     static boolean isImport(Dependency d) {
