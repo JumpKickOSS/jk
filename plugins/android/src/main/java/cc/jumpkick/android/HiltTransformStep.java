@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.android;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
@@ -32,20 +32,18 @@ final class HiltTransformStep {
         Path in = exec.classesDir();
         Path out = exec.outputDir("classes");
         int[] rewritten = {0};
-        try (Stream<Path> walk = Files.walk(in)) {
-            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
-                Path target = out.resolve(in.relativize(file).toString());
-                Files.createDirectories(target.getParent());
-                if (file.getFileName().toString().endsWith(".class")) {
-                    byte[] bytes = Files.readAllBytes(file);
-                    byte[] transformed = maybeRewrite(bytes, in);
-                    if (transformed != null) rewritten[0]++;
-                    Files.write(target, transformed != null ? transformed : bytes);
-                } else {
-                    Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
-                }
+        PathUtil.forEachRegularFile(in, (file, attrs) -> {
+            Path target = out.resolve(in.relativize(file).toString());
+            Files.createDirectories(target.getParent());
+            if (file.getFileName().toString().endsWith(".class")) {
+                byte[] bytes = Files.readAllBytes(file);
+                byte[] transformed = maybeRewrite(bytes, in);
+                if (transformed != null) rewritten[0]++;
+                Files.write(target, transformed != null ? transformed : bytes);
+            } else {
+                Files.copy(file, target, StandardCopyOption.REPLACE_EXISTING);
             }
-        }
+        });
         exec.label("hilt transform (" + rewritten[0] + (rewritten[0] == 1 ? " class)" : " classes)"));
     }
 

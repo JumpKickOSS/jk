@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.build.PluginCommandExec;
 import java.io.ByteArrayOutputStream;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
@@ -45,18 +47,19 @@ final class AvdCommand {
             exec.out("no managed AVDs; create one with jk avd create <name> --system-image <pkg>");
             return 0;
         }
-        try (var entries = Files.list(avdHome)) {
-            var inis = entries.filter(p -> p.getFileName().toString().endsWith(".ini"))
-                    .sorted()
-                    .toList();
-            if (inis.isEmpty()) {
-                exec.out("no managed AVDs; create one with jk avd create <name> --system-image <pkg>");
-                return 0;
-            }
-            for (Path ini : inis) {
-                String name = ini.getFileName().toString();
-                exec.out("  " + name.substring(0, name.length() - ".ini".length()));
-            }
+        List<Path> inis = new ArrayList<>();
+        PathUtil.forEachChild(avdHome, (p, attrs) -> {
+            if (p.getFileName().toString().endsWith(".ini")) inis.add(p);
+            return true;
+        });
+        if (inis.isEmpty()) {
+            exec.out("no managed AVDs; create one with jk avd create <name> --system-image <pkg>");
+            return 0;
+        }
+        inis.sort(null);
+        for (Path ini : inis) {
+            String name = ini.getFileName().toString();
+            exec.out("  " + name.substring(0, name.length() - ".ini".length()));
         }
         return 0;
     }

@@ -2,6 +2,7 @@
 package cc.jumpkick.android;
 
 import cc.jumpkick.host.DomXml;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -48,16 +49,13 @@ final class ResourceMerger {
         for (AndroidDeps.Aar aar : aars) {
             if (!aar.hasRes()) continue;
             any = true;
-            try (var configs = Files.list(aar.res())) {
-                for (Path configDir : (Iterable<Path>) configs.sorted()::iterator) {
-                    if (!Files.isDirectory(configDir)) continue;
-                    String config = configDir.getFileName().toString();
-                    if (config.equals("values") || config.startsWith("values-")) {
-                        mergeValuesDir(
-                                configDir, valuesByConfig.computeIfAbsent(config, k -> new LinkedHashMap<>()), xmlns);
-                    } else {
-                        copyFirstWins(configDir, out.resolve(config));
-                    }
+            for (Path configDir : sorted(PathUtil.childDirectories(aar.res()))) {
+                String config = configDir.getFileName().toString();
+                if (config.equals("values") || config.startsWith("values-")) {
+                    mergeValuesDir(
+                            configDir, valuesByConfig.computeIfAbsent(config, k -> new LinkedHashMap<>()), xmlns);
+                } else {
+                    copyFirstWins(configDir, out.resolve(config));
                 }
             }
         }
@@ -75,40 +73,40 @@ final class ResourceMerger {
         // outDir is the method's parameter and cannot change, so creating it inside the loop paid a
         // CreateDirectoryW-returning-ERROR_ALREADY_EXISTS per file on Windows.
         Files.createDirectories(outDir);
-        try (var files = Files.list(configDir)) {
-            for (Path file : (Iterable<Path>) files.sorted()::iterator) {
-                if (!Files.isRegularFile(file)) continue;
-                Path target = outDir.resolve(file.getFileName().toString());
-                if (Files.exists(target)) continue; // earlier dependency won
-                Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES);
-            }
+        for (Path file : sorted(PathUtil.childFiles(configDir))) {
+            Path target = outDir.resolve(file.getFileName().toString());
+            if (Files.exists(target)) continue; // earlier dependency won
+            Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES);
         }
+    }
+
+    private static List<Path> sorted(List<Path> paths) {
+        paths.sort(null);
+        return paths;
     }
 
     /** An AAR is a downloaded third-party library, so {@link DomXml} rejects a DOCTYPE in its resources. */
     private static void mergeValuesDir(Path valuesDir, Map<String, Element> merged, Map<String, String> xmlns)
             throws Exception {
-        try (var files = Files.list(valuesDir)) {
-            for (Path file : (Iterable<Path>) files.sorted()::iterator) {
-                if (!Files.isRegularFile(file) || !file.toString().endsWith(".xml")) continue;
-                Document doc = DomXml.parse(file);
-                Element root = doc.getDocumentElement();
-                if (!"resources".equals(root.getTagName())) continue;
-                Map<String, String> renames = new HashMap<>();
-                var attrs = root.getAttributes();
-                for (int a = 0; a < attrs.getLength(); a++) {
-                    Node attr = attrs.item(a);
-                    if (!attr.getNodeName().startsWith(XMLNS)) continue;
-                    String prefix = attr.getNodeName().substring(XMLNS.length());
-                    String mergedPrefix = mergedPrefix(prefix, attr.getNodeValue(), xmlns);
-                    if (!mergedPrefix.equals(prefix)) renames.put(prefix, mergedPrefix);
-                }
-                NodeList children = root.getChildNodes();
-                for (int c = 0; c < children.getLength(); c++) {
-                    if (!(children.item(c) instanceof Element el)) continue;
-                    if (!renames.isEmpty()) el = renamePrefixes(el, renames);
-                    merged.putIfAbsent(keyOf(el), el);
-                }
+        for (Path file : sorted(PathUtil.childFiles(valuesDir))) {
+            if (!file.toString().endsWith(".xml")) continue;
+            Document doc = DomXml.parse(file);
+            Element root = doc.getDocumentElement();
+            if (!"resources".equals(root.getTagName())) continue;
+            Map<String, String> renames = new HashMap<>();
+            var attrs = root.getAttributes();
+            for (int a = 0; a < attrs.getLength(); a++) {
+                Node attr = attrs.item(a);
+                if (!attr.getNodeName().startsWith(XMLNS)) continue;
+                String prefix = attr.getNodeName().substring(XMLNS.length());
+                String mergedPrefix = mergedPrefix(prefix, attr.getNodeValue(), xmlns);
+                if (!mergedPrefix.equals(prefix)) renames.put(prefix, mergedPrefix);
+            }
+            NodeList children = root.getChildNodes();
+            for (int c = 0; c < children.getLength(); c++) {
+                if (!(children.item(c) instanceof Element el)) continue;
+                if (!renames.isEmpty()) el = renamePrefixes(el, renames);
+                merged.putIfAbsent(keyOf(el), el);
             }
         }
     }

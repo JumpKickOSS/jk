@@ -86,13 +86,11 @@ final class BootLayout {
 
     /** The thin jar sits at the root; every other jar is under {@code lib/}. */
     private static @Nullable String launcherJarIn(Path dest) throws IOException {
-        try (var list = Files.list(dest)) {
-            return list.filter(Files::isRegularFile)
-                    .map(p -> p.getFileName().toString())
-                    .filter(n -> n.endsWith(".jar"))
-                    .sorted()
-                    .findFirst()
-                    .orElse(null);
-        }
+        return PathUtil.childFiles(dest).stream()
+                .map(p -> p.getFileName().toString())
+                .filter(n -> n.endsWith(".jar"))
+                .sorted()
+                .findFirst()
+                .orElse(null);
     }
 }

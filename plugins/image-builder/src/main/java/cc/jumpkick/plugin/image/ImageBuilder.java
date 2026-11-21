@@ -258,15 +258,16 @@ public final class ImageBuilder {
                     AotCacheTrainer.LAYER_TIME.toInstant());
             return layer.build();
         }
-        try (var walk = Files.walk(src)) {
-            for (Path file : walk.filter(Files::isRegularFile).sorted().toList()) {
-                layer.addEntry(
-                        file,
-                        AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
-                                + src.relativize(file).toString().replace('\\', '/')),
-                        FilePermissions.DEFAULT_FILE_PERMISSIONS,
-                        AotCacheTrainer.LAYER_TIME.toInstant());
-            }
+        List<Path> files = new ArrayList<>();
+        PathUtil.forEachRegularFile(src, (file, attrs) -> files.add(file));
+        files.sort(null);
+        for (Path file : files) {
+            layer.addEntry(
+                    file,
+                    AbsoluteUnixPath.get(AotCacheTrainer.APP_DIR + "/"
+                            + src.relativize(file).toString().replace('\\', '/')),
+                    FilePermissions.DEFAULT_FILE_PERMISSIONS,
+                    AotCacheTrainer.LAYER_TIME.toInstant());
         }
         return layer.build();
     }

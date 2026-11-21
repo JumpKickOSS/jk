@@ -190,8 +190,7 @@ reason = "fetches the artifacts a lock names: a wait on the network per artifact
 in     = "cc.jumpkick.resolver.PrefetchPool"
 reason = "prefetches version metadata ahead of the solve: a wait on the network per module"
 
-# G45. A blind walk discards the attributes it already read and re-resolves each path to ask again;
-# a ratchet, because two hundred sites each need their own read (directories, depth, ordering).
+# G45. A blind walk discards the attributes it already read and re-resolves each path to ask again.
 [guards.blind-tree-walks]
 kind       = "forbid"
 signatures = [
@@ -201,7 +200,6 @@ signatures = [
   "java.nio.file.Files#list(**)",
 ]
 owner      = "cc.jumpkick.host.PathUtil"
-baseline   = true
 instead    = "cc.jumpkick.host.PathUtil.forEachRegularFile(root, (file, attrs) -> …)"
 why        = "re-resolving each path to ask again is the dominant cost of walking a large tree"
 
@@ -1285,10 +1283,6 @@ hit      = "walk.sorted(Comparator.reverseOrder()).forEach(p -> Files.delete(p))
 miss     = "PathUtil.deleteRecursivelyOrThrow(dir);"
 instead  = "cc.jumpkick.host.PathUtil.deleteRecursively / deleteRecursivelyOrThrow; a selective delete is an allow entry with its reason"
 why      = "a hand-rolled tree delete decides the follow-links question again, and one FOLLOW_LINKS is data loss"
-
-[[guards.one-recursive-delete.allow]]
-in     = "server/engine/src/main/java/cc/jumpkick/task/CacheRetention.java"
-reason = "pruneEmptyDirs deletes a directory only when it is already empty"
 
 # G38. The engine is resident, so System.getenv answers from whichever shell started the daemon,
 # possibly days earlier, not from the jk command being served: a guard froze under CI because the

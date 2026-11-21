@@ -192,6 +192,22 @@ class PathUtilWalkTest {
     }
 
     @Test
+    void deeperThan_keeps_a_walk_to_the_files_that_many_levels_down(@TempDir Path tmp) throws IOException {
+        Files.createDirectories(tmp.resolve("a/b"));
+        Files.writeString(tmp.resolve("one.txt"), "1");
+        Files.writeString(tmp.resolve("a/two.txt"), "2");
+        Files.writeString(tmp.resolve("a/b/three.txt"), "3");
+
+        List<String> seen = new ArrayList<>();
+        PathUtil.forEachRegularFile(
+                tmp,
+                PathUtil.deeperThan(tmp, 2),
+                (f, attrs) -> seen.add(tmp.relativize(f).toString().replace('\\', '/')));
+
+        assertThat(seen).as("as Files.walk(tmp, 2) lists them").containsExactlyInAnyOrder("one.txt", "a/two.txt");
+    }
+
+    @Test
     void childDirectories_and_childFiles_follow_a_link_to_their_kind(@TempDir Path tmp) throws IOException {
         Path dir = Files.createDirectories(tmp.resolve("root/dir"));
         Files.writeString(tmp.resolve("root/file.txt"), "f");

@@ -11,6 +11,7 @@ import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
@@ -63,9 +64,9 @@ public final class McpMachine {
         Path envsRoot = JkDirs.toolEnvs();
         Path binDir = JkDirs.binDir();
         if (Files.isDirectory(envsRoot)) {
-            List<Path> envs = new ArrayList<>();
-            try (var stream = Files.list(envsRoot)) {
-                stream.filter(Files::isDirectory).forEach(envs::add);
+            List<Path> envs;
+            try {
+                envs = PathUtil.childDirectories(envsRoot);
             } catch (IOException e) {
                 m.put("error", Errors.text(e));
                 return m;

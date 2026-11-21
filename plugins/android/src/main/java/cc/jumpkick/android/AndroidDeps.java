@@ -45,10 +45,7 @@ final class AndroidDeps {
         }
 
         boolean hasRes() throws IOException {
-            if (!Files.isDirectory(res())) return false;
-            try (var listing = Files.list(res())) {
-                return listing.findFirst().isPresent();
-            }
+            return PathUtil.hasChild(res());
         }
 
         /**
@@ -211,10 +208,8 @@ final class AndroidDeps {
                 io.stepOutput("android-r8").map(dir -> dir.resolve("mapping")).orElse(null);
         if (mapping == null || !Files.isDirectory(mapping)) return;
         Files.createDirectories(targetR8);
-        try (var listing = Files.list(mapping)) {
-            for (Path file : (Iterable<Path>) listing.sorted()::iterator) {
-                Files.copy(file, targetR8.resolve(file.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
-            }
+        for (Path file : PathUtil.childFiles(mapping).stream().sorted().toList()) {
+            Files.copy(file, targetR8.resolve(file.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
         }
         io.produced(targetR8);
     }

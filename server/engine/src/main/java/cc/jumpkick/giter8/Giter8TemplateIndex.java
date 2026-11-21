@@ -4,10 +4,10 @@ package cc.jumpkick.giter8;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.scaffold.NewProjectStep;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -204,9 +204,8 @@ public final class Giter8TemplateIndex {
     static void scanRoot(Path root, Map<String, TemplateSpec> byId, String source) {
         if (!Files.isDirectory(root)) return;
         if (scanCatalogLayout(root, byId, source)) return;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
-            for (Path child : stream) {
-                if (!Files.isDirectory(child)) continue;
+        try {
+            for (Path child : PathUtil.childDirectories(root)) {
                 String fileName = child.getFileName().toString();
                 if (fileName.startsWith(".")) continue;
                 // Every child gets scanned (depth-capped): the templates cache holds one clone
@@ -222,9 +221,8 @@ public final class Giter8TemplateIndex {
     private static void scanNested(Path dir, Map<String, TemplateSpec> byId, String source, int depth) {
         if (depth > 4 || !Files.isDirectory(dir)) return;
         if (scanCatalogLayout(dir, byId, source)) return;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path child : stream) {
-                if (!Files.isDirectory(child)) continue;
+        try {
+            for (Path child : PathUtil.childDirectories(dir)) {
                 String name = child.getFileName().toString();
                 if (name.startsWith(".")) continue;
                 scanNested(child, byId, source, depth + 1);

@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.Predicate;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -511,16 +510,19 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if (Files.isRegularFile(direct) && Files.isDirectory(root.resolve("lib"))) {
             return direct;
         }
-        try (Stream<Path> walk = Files.walk(root, 5)) {
-            // Cheapest rejection first: the name test is free, isRegularFile re-resolves the path for
-            // a stat, and the sibling-directory probe is a second stat — so the name goes first and
-            // the two stats only run for the handful of entries actually called quarkus-run.jar.
-            return walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
-                    .filter(Files::isRegularFile)
-                    .filter(p -> Files.isDirectory(p.resolveSibling("lib")))
-                    .findFirst()
-                    .orElse(Files.isRegularFile(direct) ? direct : null);
-        }
+        Path[] runner = {null};
+        // The sibling lib/ probe is the one stat, and only a regular quarkus-run.jar pays it.
+        PathUtil.forEachEntry(root, PathUtil.deeperThan(root, 5), (p, attrs) -> {
+            if (!attrs.isRegularFile()
+                    || !p.getFileName().toString().equals("quarkus-run.jar")
+                    || !Files.isDirectory(p.resolveSibling("lib"))) {
+                return true;
+            }
+            runner[0] = p;
+            return false;
+        });
+        if (runner[0] != null) return runner[0];
+        return Files.isRegularFile(direct) ? direct : null;
     }
 
     /**

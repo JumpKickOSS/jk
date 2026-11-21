@@ -10,11 +10,8 @@ import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -322,13 +319,8 @@ final class AotCacheTrainer {
 
     private static Set<String> snapshotRelative(Path root) throws IOException {
         Set<String> out = new TreeSet<>();
-        try (var walk = Files.walk(root)) {
-            for (Path f : walk.toList()) {
-                if (Files.isRegularFile(f)) {
-                    out.add(root.relativize(f).toString().replace('\\', '/'));
-                }
-            }
-        }
+        PathUtil.forEachRegularFile(
+                root, (f, attrs) -> out.add(root.relativize(f).toString().replace('\\', '/')));
         return out;
     }
 
@@ -493,13 +485,7 @@ final class AotCacheTrainer {
 
     /** Stamp every staged file so the training run records the times the image will carry. */
     private static void stamp(Path root) throws IOException {
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Files.setLastModifiedTime(file, LAYER_TIME);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        PathUtil.forEachRegularFile(root, (file, attrs) -> Files.setLastModifiedTime(file, LAYER_TIME));
     }
 
     private static boolean isSelinux() {

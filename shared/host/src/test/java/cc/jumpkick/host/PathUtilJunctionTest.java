@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -16,7 +17,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A Windows junction inside a tree is a leaf of the delete, never a door: Java reports it as a
- * directory, and a walk that entered it would empty whatever it points at.
+ * directory, and a walk that entered it would empty whatever it points at. A junction a listing is
+ * asked about lists the directory it names, as a symbolic link does.
  */
 @EnabledOnOs(OS.WINDOWS)
 class PathUtilJunctionTest {
@@ -62,5 +64,20 @@ class PathUtilJunctionTest {
 
         assertThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS)).isFalse();
         assertThat(target.resolve("keep.txt")).exists();
+    }
+
+    @Test
+    void a_junction_as_the_root_of_a_listing_lists_its_target_under_the_junction(@TempDir Path tmp) throws Exception {
+        Path target = Files.createDirectories(tmp.resolve("target"));
+        Files.writeString(target.resolve("top.txt"), "t");
+        Files.createDirectories(target.resolve("sub"));
+        Path link = tmp.resolve("link");
+        junction(link, target);
+
+        List<Path> seen = new ArrayList<>();
+        PathUtil.forEachChild(link, (p, attrs) -> seen.add(p));
+
+        assertThat(seen).containsExactlyInAnyOrder(link.resolve("top.txt"), link.resolve("sub"));
+        assertThat(PathUtil.childDirectories(link)).containsExactly(link.resolve("sub"));
     }
 }

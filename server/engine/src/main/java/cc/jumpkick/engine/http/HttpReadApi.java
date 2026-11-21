@@ -25,7 +25,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryIteratorException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -170,12 +169,19 @@ final class HttpReadApi {
             return;
         }
         List<String> subdirs = new ArrayList<>();
-        try (var entries = Files.newDirectoryStream(dir)) {
-            for (Path entry : entries) {
-                String name = entry.getFileName().toString();
-                if (!name.startsWith(".") && Files.isDirectory(entry)) subdirs.add(name);
+        // A listing that cannot open its directory lists nothing, so that is asked first.
+        boolean listed = Files.isDirectory(dir) && Files.isReadable(dir);
+        if (listed) {
+            try {
+                for (Path entry : PathUtil.childDirectories(dir)) {
+                    String name = entry.getFileName().toString();
+                    if (!name.startsWith(".")) subdirs.add(name);
+                }
+            } catch (IOException e) {
+                listed = false;
             }
-        } catch (IOException | DirectoryIteratorException e) {
+        }
+        if (!listed) {
             HttpResponses.sendJson(
                     exchange,
                     400,

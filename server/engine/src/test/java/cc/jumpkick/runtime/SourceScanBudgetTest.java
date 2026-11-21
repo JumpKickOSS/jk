@@ -13,6 +13,7 @@ import cc.jumpkick.layout.InputTrees;
 import cc.jumpkick.layout.Languages;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.runtime.base.CompileSupport;
+import cc.jumpkick.task.FileHashMemo;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,8 +44,15 @@ class SourceScanBudgetTest {
             Files.writeString(src.resolve("A" + i + ".java"), "class A" + i + " {}");
         }
         Project project = Project.builder("com.example", "m", "1.0.0").build();
+        Path outside = Files.writeString(dir.resolve("outside.txt"), "x");
 
         inRequest(() -> {
+            // The hash memo sweeps its own cache directory when it opens; that listing is not of src/.
+            try {
+                FileHashMemo.contentHash(outside);
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
             PathUtil.resetWalks();
             InputTrees.coverModule(module);
             Languages.resolve(project, module);

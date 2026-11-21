@@ -9,11 +9,8 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
@@ -71,51 +69,38 @@ public final class Giter8Apply {
         Files.createDirectories(dest);
         Path destReal = dest.toRealPath();
         int[] count = {0};
-        Files.walkFileTree(contentRoot, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                // Root-as-content templates (no src/main/g8): the clone's .git object tree and
-                // template metadata are not project content — .git text files would even be
-                // ST-rendered, aborting the apply on any stray '$' in a packed ref.
-                String name = dir.getFileName() == null ? "" : dir.getFileName().toString();
-                if (".git".equals(name)) return FileVisitResult.SKIP_SUBTREE;
-                return FileVisitResult.CONTINUE;
+        // Root-as-content templates (no src/main/g8): the clone's .git object tree and template
+        // metadata are not project content — .git text files would even be ST-rendered, aborting
+        // the apply on any stray '$' in a packed ref.
+        Predicate<Path> gitDir = dir ->
+                dir.getFileName() != null && ".git".equals(dir.getFileName().toString());
+        // Not forEachRegularFile: a link in a template is never followed, to a file or otherwise.
+        PathUtil.forEachEntry(contentRoot, gitDir, (file, attrs) -> {
+            if (!attrs.isRegularFile()) return true;
+            String fileName = file.getFileName().toString();
+            if (fileName.equals("default.properties") || fileName.equals(JkTemplateToml.FILE_NAME)) return true;
+            String rel = contentRoot.relativize(file).toString().replace('\\', '/');
+            String renderedRel = Giter8Render.path(rel, props);
+            if (renderedRel == null) return true;
+            Path out = destReal.resolve(renderedRel).normalize();
+            requireInside(destReal, out, renderedRel);
+            Path outParent = Objects.requireNonNull(out.getParent(), renderedRel);
+            Files.createDirectories(outParent);
+            requireInside(destReal, outParent.toRealPath().resolve(out.getFileName()), renderedRel);
+            byte[] raw = Files.readAllBytes(file);
+            String text = matchesVerbatim(rel, file.getFileName().toString(), verbatim) ? null : decodeText(raw);
+            if (text != null && !props.containsKey(JkRelease.PROPERTY) && text.contains(JkRelease.PROPERTY)) {
+                props.put(JkRelease.PROPERTY, release.release());
             }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                String fileName = file.getFileName().toString();
-                if (fileName.equals("default.properties") || fileName.equals(JkTemplateToml.FILE_NAME)) {
-                    return FileVisitResult.CONTINUE;
-                }
-                if (!attrs.isRegularFile() || Files.isSymbolicLink(file)) {
-                    return FileVisitResult.CONTINUE;
-                }
-                String rel = contentRoot.relativize(file).toString().replace('\\', '/');
-                String renderedRel = Giter8Render.path(rel, props);
-                if (renderedRel == null) {
-                    return FileVisitResult.CONTINUE;
-                }
-                Path out = destReal.resolve(renderedRel).normalize();
-                requireInside(destReal, out, renderedRel);
-                Path outParent = Objects.requireNonNull(out.getParent(), renderedRel);
-                Files.createDirectories(outParent);
-                requireInside(destReal, outParent.toRealPath().resolve(out.getFileName()), renderedRel);
-                byte[] raw = Files.readAllBytes(file);
-                String text = matchesVerbatim(rel, file.getFileName().toString(), verbatim) ? null : decodeText(raw);
-                if (text != null && !props.containsKey(JkRelease.PROPERTY) && text.contains(JkRelease.PROPERTY)) {
-                    props.put(JkRelease.PROPERTY, release.release());
-                }
-                if (text == null) {
-                    Files.write(out, raw);
-                } else {
-                    Files.writeString(out, Giter8Render.content(text, props), StandardCharsets.UTF_8);
-                }
-                // A template's mvnw or bin/*.sh must stay runnable in the project it renders.
-                if (!Os.isWindows() && PathUtil.isRunnable(file)) out.toFile().setExecutable(true, false);
-                count[0]++;
-                return FileVisitResult.CONTINUE;
+            if (text == null) {
+                Files.write(out, raw);
+            } else {
+                Files.writeString(out, Giter8Render.content(text, props), StandardCharsets.UTF_8);
             }
+            // A template's mvnw or bin/*.sh must stay runnable in the project it renders.
+            if (!Os.isWindows() && PathUtil.isRunnable(file)) out.toFile().setExecutable(true, false);
+            count[0]++;
+            return true;
         });
         return count[0];
     }

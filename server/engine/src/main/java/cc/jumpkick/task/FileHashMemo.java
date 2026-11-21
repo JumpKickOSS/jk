@@ -20,7 +20,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -364,11 +363,13 @@ public final class FileHashMemo {
          * readdir per cache root per engine, over a directory that is normally empty.
          */
         private static void sweepResidue(Path dir, Path keep) {
-            try (Stream<Path> children = Files.list(dir)) {
-                for (Path p : (Iterable<Path>) children::iterator) {
-                    if (p.equals(keep)) continue;
-                    PathUtil.deleteRecursively(p);
-                }
+            try {
+                List<Path> residue = new ArrayList<>();
+                PathUtil.forEachChild(dir, (p, attrs) -> {
+                    if (!p.equals(keep)) residue.add(p);
+                    return true;
+                });
+                for (Path p : residue) PathUtil.deleteRecursively(p);
             } catch (IOException | RuntimeException e) {
                 // Housekeeping, never load-bearing.
                 Log.debug("sweepResidue: Housekeeping, never load-bearing", e);

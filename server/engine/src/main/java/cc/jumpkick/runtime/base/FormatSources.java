@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime.base;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.WalkSkip;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,39 +61,30 @@ final class FormatSources {
         List<Path> kotlin = new ArrayList<>();
         List<Path> groovy = new ArrayList<>();
         List<Path> scala = new ArrayList<>();
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                if (dir.equals(root)) return FileVisitResult.CONTINUE;
-                // A nested checkout's files are another branch's: formatting them rewrites work in
-                // progress somewhere else and reports it under this root's paths.
-                if (WalkSkip.formatSkip(dir) || WalkSkip.nestedCheckout(dir)) return FileVisitResult.SKIP_SUBTREE;
-                exclusions.moduleIn(dir);
-                return exclusions.excludes(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                Path rel;
-                try {
-                    rel = root.relativize(file);
-                } catch (IllegalArgumentException e) {
-                    rel = file;
-                }
-                if (!notExcluded(rel) || exclusions.excludes(file)) return FileVisitResult.CONTINUE;
-                String name = file.getFileName().toString();
-                if (name.endsWith(".java")) java.add(file);
-                else if (name.endsWith(".kt")) kotlin.add(file);
-                else if (name.endsWith(".groovy")) groovy.add(file);
-                else if (name.endsWith(".scala")) scala.add(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        // Readable, not strict: a directory this user cannot open is not theirs to format.
+        PathUtil.forEachReadableFile(
+                root,
+                dir -> {
+                    // A nested checkout's files are another branch's: formatting them rewrites work
+                    // in progress somewhere else and reports it under this root's paths.
+                    if (WalkSkip.formatSkip(dir) || WalkSkip.nestedCheckout(dir)) return true;
+                    exclusions.moduleIn(dir);
+                    return exclusions.excludes(dir);
+                },
+                (file, attrs) -> {
+                    Path rel;
+                    try {
+                        rel = root.relativize(file);
+                    } catch (IllegalArgumentException e) {
+                        rel = file;
+                    }
+                    if (!notExcluded(rel) || exclusions.excludes(file)) return;
+                    String name = file.getFileName().toString();
+                    if (name.endsWith(".java")) java.add(file);
+                    else if (name.endsWith(".kt")) kotlin.add(file);
+                    else if (name.endsWith(".groovy")) groovy.add(file);
+                    else if (name.endsWith(".scala")) scala.add(file);
+                });
         java.sort(null);
         kotlin.sort(null);
         groovy.sort(null);

@@ -139,6 +139,12 @@ public final class PathUtil {
         walkRegularFiles(root, dir -> false, visit, true);
     }
 
+    /** As {@link #forEachReadableFile(Path, FileVisit)}, skipping any directory {@code skipDirectory} accepts. */
+    public static void forEachReadableFile(Path root, Predicate<Path> skipDirectory, FileVisit visit)
+            throws IOException {
+        walkRegularFiles(root, skipDirectory, visit, true);
+    }
+
     private static void walkRegularFiles(Path root, Predicate<Path> skipDirectory, FileVisit visit, boolean tolerant)
             throws IOException {
         if (!Files.isDirectory(root)) return;
@@ -287,6 +293,15 @@ public final class PathUtil {
                 return unopenedDirectory(file, failure);
             }
         });
+    }
+
+    /**
+     * A {@code skipDirectory} predicate that keeps a walk of {@code root} to the files at most
+     * {@code maxDepth} levels below it, as {@code Files.walk(root, maxDepth)} does: a directory
+     * {@code maxDepth} below the root is not entered.
+     */
+    public static Predicate<Path> deeperThan(Path root, int maxDepth) {
+        return dir -> root.relativize(dir).getNameCount() >= maxDepth;
     }
 
     /**

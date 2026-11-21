@@ -310,9 +310,9 @@ final class BaseJre {
                 if (name.equals(".wh..wh..opq")) {
                     Path dir = target.getParent();
                     if (dir != null && Files.isDirectory(dir) && dir.startsWith(dest)) {
-                        try (var children = Files.list(dir)) {
-                            for (Path child : children.toList()) whiteout(child, own);
-                        }
+                        List<Path> children = new ArrayList<>();
+                        PathUtil.forEachChild(dir, (child, attrs) -> children.add(child));
+                        for (Path child : children) whiteout(child, own);
                     }
                     continue;
                 }
@@ -515,25 +515,17 @@ final class BaseJre {
      * {@code lib/jvm/<dist>/bin}) and each is proven with {@code -version} before it is returned.
      */
     private static @Nullable Path findJava(Path root) throws IOException, InterruptedException {
-        List<Path> candidates;
-        try (var walk = Files.walk(root)) {
-            // Free test first: the walk already paid for this entry, and isRegularFile re-resolves
-            // the path for a fresh stat even for entries the name test discards.
-            candidates = walk.filter(p -> p.getFileName().toString().equals("java"))
-                    .filter(Files::isRegularFile)
-                    .filter(p -> p.getParent() != null
-                            && p.getParent().getFileName().toString().equals("bin"))
-                    .filter(p -> {
-                        try {
-                            return Files.size(p) > 0;
-                        } catch (IOException e) {
-                            return false;
-                        }
-                    })
-                    .sorted(Comparator.comparingInt((Path p) -> p.getNameCount())
-                            .reversed())
-                    .toList();
-        }
+        List<Path> candidates = new ArrayList<>();
+        PathUtil.forEachRegularFile(root, (p, attrs) -> {
+            Path parent = p.getParent();
+            if (p.getFileName().toString().equals("java")
+                    && parent != null
+                    && parent.getFileName().toString().equals("bin")
+                    && attrs.size() > 0) {
+                candidates.add(p);
+            }
+        });
+        candidates.sort(Comparator.comparingInt((Path p) -> p.getNameCount()).reversed());
         for (Path candidate : candidates) {
             candidate.toFile().setExecutable(true, false);
             if (runsVersion(candidate)) return candidate;

@@ -362,12 +362,10 @@ final class ResourceStep {
     /** Every file under {@code dir} (sorted), for tools that want explicit file lists. */
     static List<Path> filesUnder(Path dir, String suffix) throws IOException {
         List<Path> out = new ArrayList<>();
-        if (!Files.isDirectory(dir)) return out;
-        try (var walk = Files.walk(dir)) {
-            walk.filter(f -> Files.isRegularFile(f) && f.toString().endsWith(suffix))
-                    .sorted()
-                    .forEach(out::add);
-        }
+        PathUtil.forEachRegularFile(dir, (f, attrs) -> {
+            if (f.toString().endsWith(suffix)) out.add(f);
+        });
+        out.sort(null);
         return out;
     }
 }

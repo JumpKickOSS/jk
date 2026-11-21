@@ -324,15 +324,14 @@ public final class QuarkusAugmentMain {
         if (producedJar != null && Files.isRegularFile(producedJar)) {
             return producedJar;
         }
-        try (var walk = Files.walk(augmentOut, 5)) {
-            return walk.filter(Files::isRegularFile)
-                    .filter(p -> {
-                        String n = p.getFileName().toString();
-                        return n.endsWith("-runner.jar") || n.endsWith("-runner");
-                    })
-                    .findFirst()
-                    .orElse(null);
-        }
+        Path[] runner = {null};
+        PathUtil.forEachEntry(augmentOut, PathUtil.deeperThan(augmentOut, 5), (p, attrs) -> {
+            String n = p.getFileName().toString();
+            if (!attrs.isRegularFile() || !(n.endsWith("-runner.jar") || n.endsWith("-runner"))) return true;
+            runner[0] = p;
+            return false;
+        });
+        return runner[0];
     }
 
     static void injectPlatform(ApplicationModel model, String quarkusVersion, Path platformProps, boolean offline)
@@ -384,14 +383,18 @@ public final class QuarkusAugmentMain {
      * native-image step reads it.
      */
     private static void publishNativeSources(Path augmentOut, Path dest) throws IOException {
-        Path found = null;
-        try (var walk = Files.walk(augmentOut, 6)) {
-            found = walk.filter(Files::isDirectory)
-                    .filter(p -> "native-sources".equals(String.valueOf(p.getFileName())))
-                    .filter(p -> Files.isRegularFile(p.resolve("native-image.args")))
-                    .findFirst()
-                    .orElse(null);
-        }
+        Path[] sources = {null};
+        // A directory six levels down is a candidate, so the walk enters it and ignores what it holds.
+        PathUtil.forEachEntry(augmentOut, PathUtil.deeperThan(augmentOut, 7), (p, attrs) -> {
+            if (!attrs.isDirectory()
+                    || !"native-sources".equals(String.valueOf(p.getFileName()))
+                    || !Files.isRegularFile(p.resolve("native-image.args"))) {
+                return true;
+            }
+            sources[0] = p;
+            return false;
+        });
+        Path found = sources[0];
         if (found == null) {
             throw new IOException("quarkus.native.sources-only produced no native-sources/ under " + augmentOut
                     + "; the augment ran no native build");

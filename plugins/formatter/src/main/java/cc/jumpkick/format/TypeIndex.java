@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.format;
 
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.FileSystem;
@@ -221,33 +222,26 @@ final class TypeIndex {
         try {
             FileSystem fs = FileSystems.getFileSystem(URI.create("jrt:/"));
             Path modules = fs.getPath("/modules");
-            try (var stream = Files.walk(modules)) {
-                stream.filter(p -> {
-                            String n = p.getFileName() == null
-                                    ? ""
-                                    : p.getFileName().toString();
-                            return n.endsWith(".class")
-                                    && !n.contains("$")
-                                    && !n.equals("module-info.class")
-                                    && !n.equals("package-info.class");
-                        })
-                        .forEach(p -> {
-                            // /modules/<module>/java/util/List.class
-                            int n = p.getNameCount();
-                            if (n < 4) return;
-                            StringBuilder fq = new StringBuilder();
-                            for (int i = 2; i < n; i++) {
-                                String seg = p.getName(i).toString();
-                                if (i == n - 1) {
-                                    if (!seg.endsWith(".class")) return;
-                                    seg = seg.substring(0, seg.length() - 6);
-                                }
-                                if (fq.length() > 0) fq.append('.');
-                                fq.append(seg);
-                            }
-                            add(fq.toString(), known, bySimple);
-                        });
-            }
+            PathUtil.forEachRegularFile(modules, (p, attrs) -> {
+                String name = p.getFileName().toString();
+                if (!name.endsWith(".class")
+                        || name.contains("$")
+                        || name.equals("module-info.class")
+                        || name.equals("package-info.class")) {
+                    return;
+                }
+                // /modules/<module>/java/util/List.class
+                int n = p.getNameCount();
+                if (n < 4) return;
+                StringBuilder fq = new StringBuilder();
+                for (int i = 2; i < n; i++) {
+                    String seg = p.getName(i).toString();
+                    if (i == n - 1) seg = seg.substring(0, seg.length() - 6);
+                    if (fq.length() > 0) fq.append('.');
+                    fq.append(seg);
+                }
+                add(fq.toString(), known, bySimple);
+            });
         } catch (Exception ignored) {
             // no jrt (unusual) — java.* still shortens via the explicit javaLang / java.* rules
         }

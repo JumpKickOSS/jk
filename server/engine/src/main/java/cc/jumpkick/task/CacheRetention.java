@@ -4,19 +4,18 @@ package cc.jumpkick.task;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkCacheConfig;
 import cc.jumpkick.host.CacheTree;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -71,27 +70,26 @@ public final class CacheRetention {
     }
 
     /**
-     * What the pass is allowed to ask about one entry. Enumeration — {@code readdir}, plus one
-     * {@code isDirectory} per shard — is the floor and does not come through here; everything
-     * that costs per entry does, so a test can assert the below-cap pass asked nothing at all.
+     * What the pass reads of one entry, from the attributes its walk already holds. A test counts
+     * the questions to show a pass that has no use for an answer never asks for it.
      */
     interface Probe {
 
         Probe REAL = new Probe() {
             @Override
-            public long mtime(Path entry) throws IOException {
-                return Files.getLastModifiedTime(entry).toMillis();
+            public long mtime(BasicFileAttributes entry) {
+                return entry.lastModifiedTime().toMillis();
             }
 
             @Override
-            public long size(Path entry) throws IOException {
-                return Files.size(entry);
+            public long size(BasicFileAttributes entry) {
+                return entry.size();
             }
         };
 
-        long mtime(Path entry) throws IOException;
+        long mtime(BasicFileAttributes entry);
 
-        long size(Path entry) throws IOException;
+        long size(BasicFileAttributes entry);
     }
 
     /**
@@ -156,9 +154,9 @@ public final class CacheRetention {
                 }
                 case NESTED_SUBTREES -> {
                     Tally t = strays(root, now, grace, dryRun);
-                    for (Path parent : children(root)) {
-                        if (!Files.isDirectory(parent)) continue;
-                        t = t.plus(sweepSubtrees(parent, bound, now, grace, dryRun, probe));
+                    for (Child parent : children(root)) {
+                        if (parent.directory())
+                            t = t.plus(sweepSubtrees(parent.path(), bound, now, grace, dryRun, probe));
                     }
                     files += t.files();
                     bytes += t.bytes();
@@ -169,8 +167,9 @@ public final class CacheRetention {
         Tally unknown = new Tally(0, 0L);
         List<String> names = new ArrayList<>();
         Set<String> known = CacheTree.entries();
-        for (Path entry : children(cacheRoot)) {
+        for (Child child : children(cacheRoot)) {
             yield.check();
+            Path entry = child.path();
             String name = entry.getFileName().toString();
             if (known.contains(name)) continue;
             if (age(entry, now) < grace) continue;
@@ -202,18 +201,11 @@ public final class CacheRetention {
         boolean ranks = bound.window() != null || bound.cap() instanceof Bound.Cap.Count;
 
         List<Entry> entries = new ArrayList<>();
+        PathUtil.forEachRegularFile(
+                root,
+                (file, attrs) -> entries.add(new Entry(file, ranks ? probe.mtime(attrs) : 0L, probe.size(attrs))));
         long total = 0L;
-        try (Stream<Path> walk = Files.walk(root)) {
-            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
-                try {
-                    long size = probe.size(file);
-                    entries.add(new Entry(file, ranks ? probe.mtime(file) : 0L, size));
-                    total += size;
-                } catch (NoSuchFileException vanished) {
-                    // another engine got there first
-                }
-            }
-        }
+        for (Entry e : entries) total += e.size();
 
         Tally out = new Tally(0, 0L);
         List<Entry> survivors = new ArrayList<>();
@@ -256,10 +248,10 @@ public final class CacheRetention {
      */
     private static Tally strays(Path root, long now, long grace, boolean dryRun) throws IOException {
         Tally out = new Tally(0, 0L);
-        for (Path child : children(root)) {
-            if (Files.isDirectory(child)) continue;
-            if (age(child, now) < grace) continue;
-            out = out.plus(delete(child, dryRun));
+        for (Child child : children(root)) {
+            if (child.directory()) continue;
+            if (age(child.path(), now) < grace) continue;
+            out = out.plus(delete(child.path(), dryRun));
         }
         return out;
     }
@@ -270,9 +262,8 @@ public final class CacheRetention {
         if (!Files.isDirectory(root)) return new Tally(0, 0L);
         record Tree(Path dir, long mtime) {}
         List<Tree> trees = new ArrayList<>();
-        for (Path dir : children(root)) {
-            if (!Files.isDirectory(dir)) continue;
-            trees.add(new Tree(dir, newestMtime(dir, probe)));
+        for (Child child : children(root)) {
+            if (child.directory()) trees.add(new Tree(child.path(), newestMtime(child.path(), probe)));
         }
 
         Tally out = strays(root, now, grace, dryRun);
@@ -309,39 +300,33 @@ public final class CacheRetention {
         return window != null && !window.isZero() && !window.isNegative() && now - mtime >= window.toMillis();
     }
 
-    private static List<Path> children(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return List.of();
-        List<Path> out = new ArrayList<>();
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path p : stream) out.add(p);
-        }
+    /** A child of a tier, and whether it is a directory or a link to one. */
+    private record Child(Path path, boolean directory) {}
+
+    /** The listing says which children are directories; only a link is resolved to ask. */
+    private static List<Child> children(Path dir) throws IOException {
+        List<Child> out = new ArrayList<>();
+        PathUtil.forEachChild(dir, (p, attrs) -> {
+            out.add(new Child(p, attrs.isDirectory() || !attrs.isRegularFile() && Files.isDirectory(p)));
+            return true;
+        });
         return out;
     }
 
-    /** Name-only enumeration — no {@code stat}, for the common below-the-cap pass. */
+    /** One listing per shard and nothing asked of an entry, for the common below-the-cap pass. */
     private static long countFiles(Path root) throws IOException {
         long n = 0;
-        for (Path shard : children(root)) {
-            if (Files.isDirectory(shard)) n += countFiles(shard);
+        for (Child shard : children(root)) {
+            if (shard.directory()) n += countFiles(shard.path());
             else n++;
         }
         return n;
     }
 
     private static long newestMtime(Path dir, Probe probe) throws IOException {
-        long newest = 0L;
-        try (Stream<Path> walk = Files.walk(dir)) {
-            for (Path f : (Iterable<Path>) walk.filter(Files::isRegularFile)::iterator) {
-                try {
-                    newest = Math.max(newest, probe.mtime(f));
-                } catch (NoSuchFileException vanished) {
-                    // ignore
-                }
-            }
-        } catch (NoSuchFileException vanished) {
-            return 0L;
-        }
-        return newest;
+        long[] newest = {0L};
+        PathUtil.forEachRegularFile(dir, (f, attrs) -> newest[0] = Math.max(newest[0], probe.mtime(attrs)));
+        return newest[0];
     }
 
     private static long age(Path p, long now) {
@@ -360,30 +345,14 @@ public final class CacheRetention {
             if (!dryRun) Files.deleteIfExists(target);
             return new Tally(1, size);
         }
-        int files = 0;
-        long bytes = 0L;
-        List<Path> paths;
-        try (Stream<Path> walk = Files.walk(target)) {
-            paths = walk.sorted(Comparator.reverseOrder()).toList();
-        } catch (NoSuchFileException vanished) {
-            return new Tally(0, 0L);
+        PathUtil.Removed removed;
+        if (dryRun) {
+            removed = PathUtil.measureTrees(List.of(target));
+        } else {
+            removed = new PathUtil.Removed();
+            PathUtil.deleteRecursivelyOrThrow(target, removed);
         }
-        for (Path p : paths) {
-            boolean regular = Files.isRegularFile(p);
-            long size = regular ? sizeOf(p) : 0L;
-            if (dryRun) {
-                if (regular) {
-                    files++;
-                    bytes += size;
-                }
-                continue;
-            }
-            if (Files.deleteIfExists(p) && regular) {
-                files++;
-                bytes += size;
-            }
-        }
-        return new Tally(files, bytes);
+        return new Tally((int) removed.files(), removed.bytes());
     }
 
     private static long sizeOf(Path p) {
@@ -396,15 +365,6 @@ public final class CacheRetention {
 
     /** Drop shard directories left empty by the pass, deepest first. */
     private static void pruneEmptyDirs(Path root) throws IOException {
-        try (Stream<Path> dirs = Files.walk(root).filter(Files::isDirectory).sorted(Comparator.reverseOrder())) {
-            for (Path dir : (Iterable<Path>) dirs::iterator) {
-                if (dir.equals(root)) continue;
-                try (Stream<Path> contents = Files.list(dir)) {
-                    if (contents.findFirst().isEmpty()) Files.deleteIfExists(dir);
-                }
-            }
-        } catch (NoSuchFileException vanished) {
-            // the whole tree went; nothing to tidy
-        }
+        PathUtil.pruneTree(root, file -> true);
     }
 }

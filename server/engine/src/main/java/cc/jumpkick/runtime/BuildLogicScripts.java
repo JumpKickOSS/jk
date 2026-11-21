@@ -7,7 +7,6 @@ import cc.jumpkick.config.RunNotices;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.runtime.base.BuildLogicAnchor;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -132,42 +131,45 @@ public final class BuildLogicScripts {
     public static List<ScriptTask> discover(Path logicDir) throws IOException {
         if (!Files.isDirectory(logicDir)) return List.of();
         Map<String, ScriptTask> byName = new LinkedHashMap<>();
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(logicDir)) {
-            for (Path p : stream) {
-                if (!Files.isRegularFile(p)) {
-                    if (Files.isDirectory(p)) warnNestedStems(logicDir, p);
-                    continue;
-                }
-                String file = p.getFileName().toString();
-                ScriptKind kind;
-                String stem;
-                if (file.endsWith(".groovy")) {
-                    kind = ScriptKind.GROOVY;
-                    stem = file.substring(0, file.length() - ".groovy".length());
-                } else if (file.endsWith(".kts")) {
-                    kind = ScriptKind.KTS;
-                    stem = file.substring(0, file.length() - ".kts".length());
-                } else {
-                    continue;
-                }
-                Optional<BuildLogicAnchor> anchor = matchAnchor(stem);
-                if (anchor.isEmpty()) {
-                    warnUnknownStem(logicDir, p, stem);
-                    continue;
-                }
-                String name = normalizeName(stem);
-                ScriptTask next = new ScriptTask(name, anchor.get(), p, kind, declaresAlways(p));
-                ScriptTask prev = byName.get(name);
-                if (prev == null) {
-                    byName.put(name, next);
-                } else if (kind == ScriptKind.KTS && prev.kind() == ScriptKind.GROOVY) {
-                    byName.put(name, next);
-                } else if (kind == ScriptKind.GROOVY && prev.kind() == ScriptKind.KTS) {
-                    // .kts already claimed this stem
-                } else {
-                    throw new IllegalStateException("duplicate build-logic task name: " + name + " ("
-                            + prev.file().getFileName() + ", " + p.getFileName() + ")");
-                }
+        List<Path> scripts = new ArrayList<>();
+        List<Path> subDirs = new ArrayList<>();
+        // The listing names a file or a directory; only a link is resolved to ask which it names.
+        PathUtil.forEachChild(logicDir, (p, attrs) -> {
+            if (attrs.isRegularFile() || !attrs.isDirectory() && Files.isRegularFile(p)) scripts.add(p);
+            else if (attrs.isDirectory() || Files.isDirectory(p)) subDirs.add(p);
+            return true;
+        });
+        for (Path subDir : subDirs) warnNestedStems(logicDir, subDir);
+        for (Path p : scripts) {
+            String file = p.getFileName().toString();
+            ScriptKind kind;
+            String stem;
+            if (file.endsWith(".groovy")) {
+                kind = ScriptKind.GROOVY;
+                stem = file.substring(0, file.length() - ".groovy".length());
+            } else if (file.endsWith(".kts")) {
+                kind = ScriptKind.KTS;
+                stem = file.substring(0, file.length() - ".kts".length());
+            } else {
+                continue;
+            }
+            Optional<BuildLogicAnchor> anchor = matchAnchor(stem);
+            if (anchor.isEmpty()) {
+                warnUnknownStem(logicDir, p, stem);
+                continue;
+            }
+            String name = normalizeName(stem);
+            ScriptTask next = new ScriptTask(name, anchor.get(), p, kind, declaresAlways(p));
+            ScriptTask prev = byName.get(name);
+            if (prev == null) {
+                byName.put(name, next);
+            } else if (kind == ScriptKind.KTS && prev.kind() == ScriptKind.GROOVY) {
+                byName.put(name, next);
+            } else if (kind == ScriptKind.GROOVY && prev.kind() == ScriptKind.KTS) {
+                // .kts already claimed this stem
+            } else {
+                throw new IllegalStateException("duplicate build-logic task name: " + name + " ("
+                        + prev.file().getFileName() + ", " + p.getFileName() + ")");
             }
         }
         List<ScriptTask> out = new ArrayList<>(byName.values());

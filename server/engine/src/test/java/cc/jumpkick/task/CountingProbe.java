@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
-import java.io.IOException;
-import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -28,13 +27,13 @@ final class CountingProbe implements CacheRetention.Probe {
     }
 
     @Override
-    public long mtime(Path entry) throws IOException {
+    public long mtime(BasicFileAttributes entry) {
         clocks.incrementAndGet();
         return CacheRetention.Probe.REAL.mtime(entry);
     }
 
     @Override
-    public long size(Path entry) throws IOException {
+    public long size(BasicFileAttributes entry) {
         sizes.incrementAndGet();
         return CacheRetention.Probe.REAL.size(entry);
     }

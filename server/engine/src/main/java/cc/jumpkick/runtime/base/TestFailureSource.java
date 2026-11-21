@@ -3,6 +3,7 @@ package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.UserConfigParseException;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.SourceLayout;
 import cc.jumpkick.layout.TestSuites;
@@ -27,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /**
  * Locate the source file and a 7-line context window for a test failure from its stack trace.
@@ -82,7 +82,7 @@ public final class TestFailureSource {
             return TestFailureSource.resolve(this, moduleDir, testClass, stack);
         }
 
-        /** Times {@code Files.walk} ran (tests). */
+        /** Times a suite root was walked (tests). */
         public int walkCount() {
             return walks.intValue();
         }
@@ -300,27 +300,34 @@ public final class TestFailureSource {
             Cache cache, Path moduleDir, String pkgPath, String fileName, Layout layout) {
         Path preferSuffix =
                 pkgPath.isEmpty() ? Path.of(fileName) : Path.of(pkgPath.replace('/', File.separatorChar), fileName);
-        Path best = null;
-        int seen = 0;
+        // [0] the first match inside the module, [1] the match at the package's path.
+        Path[] found = new Path[2];
+        int[] seen = {0};
         for (Path root : layout.roots()) {
             if (!Files.isDirectory(root)) continue;
             if (!containedIn(moduleDir, root)) continue;
             cache.walks.increment();
-            try (Stream<Path> walk = Files.walk(root)) {
-                for (Path p : (Iterable<Path>) walk::iterator) {
-                    if (!Files.isRegularFile(p)) continue;
-                    if (++seen > MAX_SCAN_FILES) return Optional.ofNullable(best);
-                    if (!fileName.equals(p.getFileName().toString())) continue;
+            try {
+                PathUtil.forEachEntry(root, dir -> false, (p, attrs) -> {
+                    if (!attrs.isRegularFile() && !(attrs.isSymbolicLink() && Files.isRegularFile(p))) return true;
+                    if (++seen[0] > MAX_SCAN_FILES) return false;
+                    if (!fileName.equals(p.getFileName().toString())) return true;
                     Optional<Path> ok = insideModuleFile(moduleDir, p);
-                    if (ok.isEmpty()) continue;
-                    if (p.endsWith(preferSuffix)) return ok;
-                    if (best == null) best = ok.get();
-                }
+                    if (ok.isEmpty()) return true;
+                    if (p.endsWith(preferSuffix)) {
+                        found[1] = ok.get();
+                        return false;
+                    }
+                    if (found[0] == null) found[0] = ok.get();
+                    return true;
+                });
             } catch (IOException ignored) {
                 // try next root
             }
+            if (found[1] != null) return Optional.of(found[1]);
+            if (seen[0] > MAX_SCAN_FILES) break;
         }
-        return Optional.ofNullable(best);
+        return Optional.ofNullable(found[0]);
     }
 
     private static void addSuiteRoots(Set<Path> roots, Path moduleDir, boolean compact) {

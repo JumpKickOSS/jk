@@ -3,14 +3,12 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -64,26 +62,10 @@ public final class JdkFingerprint {
     public static String compute(Path installDir) throws IOException {
         Path root = installDir.toRealPath();
         List<Path> files = new ArrayList<>();
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-                // Do not descend through a symlink / junction; the pointer is not the install.
-                if (!dir.equals(root) && Files.isSymbolicLink(dir)) {
-                    return FileVisitResult.SKIP_SUBTREE;
-                }
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                if (attrs.isRegularFile() && !Files.isSymbolicLink(file)) files.add(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
-                throw new IOException("jdk fingerprint: unreadable " + file, exc);
-            }
+        // The walk's own attributes: a link, to a file or a directory, is not the install.
+        PathUtil.forEachEntry(root, dir -> false, (file, attrs) -> {
+            if (attrs.isRegularFile()) files.add(file);
+            return true;
         });
         files.sort(Comparator.comparing(p -> rel(root, p)));
 
