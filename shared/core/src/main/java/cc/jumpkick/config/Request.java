@@ -2,6 +2,7 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.changes.ChangeActor;
+import java.nio.file.Path;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -25,6 +26,8 @@ import org.jspecify.annotations.Nullable;
  * @param io the request's byte ledger; every {@link Session#defaults()} built under it meters here
  * @param shell the environment of the shell that sent the request, or {@code null} for none
  * @param actor who the request's changes are recorded as, or {@code null} for the process default
+ * @param callerDir the directory {@code jk} ran in, or the one {@code -C} names, absolute; {@code null}
+ *     for a request no command line sent
  * @param slots values of types above this module, each under its {@link Slot}
  */
 public record Request(
@@ -33,6 +36,7 @@ public record Request(
         IoLedger io,
         @Nullable RequestShell shell,
         @Nullable ChangeActor actor,
+        @Nullable Path callerDir,
         Map<Slot<?>, Object> slots) {
 
     static {
@@ -76,7 +80,7 @@ public record Request(
 
     /** A request with {@code id} and {@code io} and nothing else: job {@code id} when it is positive. */
     public static Request of(long id, IoLedger io) {
-        return new Request(id, Math.max(0, id), io, null, null, Map.of());
+        return new Request(id, Math.max(0, id), io, null, null, null, Map.of());
     }
 
     /** A request that is no job, with a ledger of its own. */
@@ -123,20 +127,24 @@ public record Request(
         Map<Slot<?>, Object> next = new IdentityHashMap<>(slots);
         if (value == null) next.remove(slot);
         else next.put(slot, value);
-        return new Request(id, job, io, shell, actor, next);
+        return new Request(id, job, io, shell, actor, callerDir, next);
     }
 
     /** This request under another id, the scope forks register to, serving the same job. */
     public Request withId(long next) {
-        return new Request(next, job, io, shell, actor, slots);
+        return new Request(next, job, io, shell, actor, callerDir, slots);
     }
 
     public Request withShell(@Nullable RequestShell next) {
-        return new Request(id, job, io, next, actor, slots);
+        return new Request(id, job, io, next, actor, callerDir, slots);
     }
 
     public Request withActor(@Nullable ChangeActor next) {
-        return new Request(id, job, io, shell, next, slots);
+        return new Request(id, job, io, shell, next, callerDir, slots);
+    }
+
+    public Request withCallerDir(@Nullable Path next) {
+        return new Request(id, job, io, shell, actor, next, slots);
     }
 
     /** Run {@code body} with this request bound, keeping the session bound now. */

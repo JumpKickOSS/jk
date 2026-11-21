@@ -370,8 +370,8 @@ public final class EngineWire {
     }
 
     /**
-     * {@code requestLine} carrying what the engine is told of this shell ({@link #shellFor}), and
-     * what this command read from the keychain ({@link ClientKeychain}).
+     * {@code requestLine} carrying what the engine is told of this shell ({@link #shellFor}), the
+     * directory jk ran in, and what this command read from the keychain ({@link ClientKeychain}).
      */
     static String withShell(String requestLine) {
         ClientKeychain.Carried keychain = ClientKeychain.carried();
@@ -379,7 +379,21 @@ public final class EngineWire {
         String line = ProtoSession.withShellFacts(
                 ProtoSession.withShell(requestLine, shell.vars()),
                 new ProtoSession.ShellFacts(List.copyOf(shell.asked()), shell.whole(), shell.names(), true));
+        line = ProtoSession.withCallerDir(line, callerDir());
         return ProtoSession.withKeychain(line, keychain.secrets(), keychain.refused());
+    }
+
+    /**
+     * The directory jk ran in, or the one {@code -C} names, through its symlinks as the engine reads
+     * a project's files, so a file under it is named relative to it.
+     */
+    static Path callerDir() {
+        Path cwd = SessionContext.current().workingDir().toAbsolutePath().normalize();
+        try {
+            return cwd.toRealPath();
+        } catch (IOException gone) {
+            return cwd;
+        }
     }
 
     /**

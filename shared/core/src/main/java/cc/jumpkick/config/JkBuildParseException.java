@@ -19,8 +19,8 @@ import org.tomlj.TomlTable;
  * a file, the message leads with it as {@code file:line:column: }, or {@code file: } for a refusal
  * of the whole file, so every place that prints the message says where; {@link #refusal()} is the
  * message without it, for a record that carries the location beside the text. The file is written
- * relative to the session's working directory when it lies under it, as the session that located
- * the failure saw it.
+ * relative to the directory {@code jk} ran in when it lies under it: the bound {@link Request}'s
+ * {@link Request#callerDir}, else the session's working directory.
  */
 public sealed class JkBuildParseException extends RuntimeException permits UserConfigParseException {
 
@@ -91,9 +91,13 @@ public sealed class JkBuildParseException extends RuntimeException permits UserC
         return this;
     }
 
-    /** {@code file} relative to the session's working directory when it lies under it, else as given. */
+    /** {@code file} relative to the directory {@code jk} ran in when it lies under it, else as given. */
     private static String shown(Path file) {
-        Path cwd = SessionContext.current().workingDir().toAbsolutePath().normalize();
+        Request request = Request.current();
+        Path ranIn = request != null ? request.callerDir() : null;
+        Path cwd = (ranIn != null ? ranIn : SessionContext.current().workingDir())
+                .toAbsolutePath()
+                .normalize();
         if (!file.startsWith(cwd) || file.equals(cwd)) return file.toString();
         return DirKeys.slashes(cwd.relativize(file).toString());
     }

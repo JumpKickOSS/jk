@@ -3,10 +3,15 @@ package cc.jumpkick.cli.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.wire.protocol.ProtoSession;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A request carries the part of the shell the engine reads and what something declares; an
@@ -34,6 +39,16 @@ class EngineWireShellTest {
         String line = EngineWire.withShell("{\"type\":\"build\",\"dir\":\"/p\"}");
 
         assertThat(ProtoSession.shellOf(line)).containsEntry("CI", "true").doesNotContainKey(UNDECLARED);
+    }
+
+    @Test
+    void a_request_carries_the_directory_jk_ran_in(@TempDir Path dir) throws Exception {
+        Path ranIn = Files.createDirectories(dir.resolve("app"));
+        String line = SessionContext.where(
+                Session.defaults().withWorkingDir(ranIn),
+                () -> EngineWire.withShell("{\"type\":\"build\",\"dir\":\"/p\"}"));
+
+        assertThat(ProtoSession.callerDirOf(line)).isEqualTo(ranIn.toRealPath());
     }
 
     @Test

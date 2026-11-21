@@ -630,8 +630,9 @@ public final class JobEnvelope {
             @Nullable ClientAsk ask) {}
 
     /**
-     * The request {@code requestLine} sends: its shell and keychain answers, under {@code id} with
-     * {@code io}, recorded as {@code actor}. A synchronous read binds one too, under id {@code 0}.
+     * The request {@code requestLine} sends: its shell, the directory {@code jk} ran in and its
+     * keychain answers, under {@code id} with {@code io}, recorded as {@code actor}. A synchronous
+     * read binds one too, under id {@code 0}.
      */
     public static Request requestOf(long id, IoLedger io, @Nullable ChangeActor actor, String requestLine) {
         ProtoSession.ShellFacts facts = ProtoSession.shellFactsOf(requestLine);
@@ -639,6 +640,7 @@ public final class JobEnvelope {
                 .withShell(
                         RequestShell.of(ProtoSession.shellOf(requestLine), facts.asked(), facts.whole(), facts.names()))
                 .withActor(actor)
+                .withCallerDir(ProtoSession.callerDirOf(requestLine))
                 .with(
                         RequestKeychain.SLOT,
                         RequestKeychain.of(

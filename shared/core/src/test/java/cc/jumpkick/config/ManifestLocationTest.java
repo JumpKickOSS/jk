@@ -23,6 +23,16 @@ class ManifestLocationTest {
             version = "0.1.0"
             """;
 
+    private static final String WORKSPACE_OF_APP = """
+            group = "x.y"
+            name = "ws"
+            version = "0.1.0"
+            java = 25
+
+            [workspace]
+            modules = ["app"]
+            """;
+
     private static final String ANDROID = """
             [android]
             namespace = "com.example.app"
@@ -265,6 +275,47 @@ class ManifestLocationTest {
         Path file = write(dir, "group = \"x.y\"\nversion = \"0.1.0\"\n");
         JkBuildParseException e = SessionContext.where(Session.defaults().withWorkingDir(dir), () -> refusal(file));
         assertThat(e).hasMessage("jk.toml: jk.toml is missing required key `name`");
+    }
+
+    @Test
+    void a_refused_member_is_named_from_the_member_jk_ran_in_not_from_the_root_the_request_names(@TempDir Path dir)
+            throws Exception {
+        Path root = write(dir, WORKSPACE_OF_APP);
+        Path member = Files.createDirectories(dir.resolve("app"));
+        Path memberFile = write(member, HEAD + "java = 25\n\n[build]\nbogus = 1\n");
+
+        JkBuildParseException e = SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> Request.detached().withCallerDir(member).call(() -> memberRefusal(root)));
+
+        assertThat(e.getMessage()).startsWith("jk.toml:7:1: [build] unknown key `bogus`");
+        assertThat(e.location()).isEqualTo(new SourceLocation(memberFile.toString(), 7, 1));
+    }
+
+    @Test
+    void a_refused_member_is_named_from_the_root_jk_ran_in_not_from_the_member_the_request_names(@TempDir Path dir)
+            throws Exception {
+        Path member = Files.createDirectories(dir.resolve("app"));
+        Path memberFile = write(member, HEAD + "java = 25\n\n[build]\nbogus = 1\n");
+
+        JkBuildParseException e = SessionContext.where(
+                Session.defaults().withWorkingDir(member),
+                () -> Request.detached().withCallerDir(dir).call(() -> refusal(memberFile)));
+
+        assertThat(e.getMessage()).startsWith("app/jk.toml:7:1: [build] unknown key `bogus`");
+    }
+
+    @Test
+    void a_member_outside_the_directory_jk_ran_in_is_named_in_full(@TempDir Path dir) throws Exception {
+        Path member = Files.createDirectories(dir.resolve("app"));
+        Path elsewhere = Files.createDirectories(dir.resolve("lib"));
+        Path memberFile = write(member, HEAD + "java = 25\n\n[build]\nbogus = 1\n");
+
+        JkBuildParseException e = SessionContext.where(
+                Session.defaults().withWorkingDir(dir),
+                () -> Request.detached().withCallerDir(elsewhere).call(() -> refusal(memberFile)));
+
+        assertThat(e.getMessage()).startsWith(memberFile + ":7:1: ");
     }
 
     @Test

@@ -55,6 +55,18 @@ class RequestIsolationTest {
             IoLedger io) {}
 
     @Test
+    void a_job_knows_the_directory_jk_ran_in_apart_from_the_directory_it_builds(@TempDir Path dir) throws Exception {
+        Path member = Files.createDirectories(dir.resolve("app"));
+        String line = ProtoSession.withCallerDir(FakeEnvelopeHost.buildRequest(dir), member);
+
+        assertThat(JobEnvelope.requestOf(1, new IoLedger(), null, line).callerDir())
+                .isEqualTo(member);
+        assertThat(JobEnvelope.requestOf(1, new IoLedger(), null, FakeEnvelopeHost.buildRequest(dir))
+                        .callerDir())
+                .isNull();
+    }
+
+    @Test
     void two_concurrent_jobs_each_see_only_their_own_request(@TempDir Path dir) throws Exception {
         FakeEnvelopeHost host = new FakeEnvelopeHost();
         host.perRequest = true;

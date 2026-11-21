@@ -4,6 +4,7 @@ package cc.jumpkick.wire.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,16 @@ class ProtoSessionShellTest {
 
         assertThat(Jsonl.str(line, "modules")).isNull();
         assertThat(Jsonl.str(line, "dir")).isEqualTo("/p");
+    }
+
+    @Test
+    void the_directory_jk_ran_in_rides_beside_the_directory_the_request_names() {
+        Path ranIn = Path.of("/ws/app").toAbsolutePath();
+        String line = ProtoSession.withCallerDir("{\"type\":\"x\",\"dir\":\"/ws\"}", ranIn);
+
+        assertThat(ProtoSession.callerDirOf(line)).isEqualTo(ranIn);
+        assertThat(Jsonl.str(line, "dir")).isEqualTo("/ws");
+        assertThat(ProtoSession.callerDirOf("{\"type\":\"x\"}")).isNull();
     }
 
     @Test

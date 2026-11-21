@@ -406,6 +406,23 @@ public final class ProtoSession {
                 request, RequestJson.fields().optionalArray(SHELL, pairs).body());
     }
 
+    /** The request field naming the directory {@code jk} ran in; see {@link #withCallerDir}. */
+    public static final String CALLER_DIR = "callerDir";
+
+    /**
+     * {@code request} carrying the directory {@code jk} ran in, so the engine names a file the way the
+     * caller reads it rather than from the request's {@code dir}, which may be the workspace root.
+     */
+    public static String withCallerDir(String request, Path dir) {
+        return Jsonl.append(
+                request, RequestJson.fields().string(CALLER_DIR, dir.toString()).body());
+    }
+
+    /** Decode side of {@link #withCallerDir}: the directory {@code jk} ran in, or {@code null}. */
+    public static @Nullable Path callerDirOf(String request) {
+        return pathOf(Jsonl.str(request, CALLER_DIR));
+    }
+
     /** Decode side of {@link #withShell}: the caller's environment, or empty when it sent none. */
     public static Map<String, String> shellOf(String request) {
         return pairsOf(Jsonl.strArray(request, SHELL));
