@@ -15,12 +15,20 @@ import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.runtime.LockFlow;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.lang.classfile.ClassFile;
+import java.lang.classfile.attribute.SourceFileAttribute;
+import java.lang.constant.ClassDesc;
+import java.lang.constant.ConstantDescs;
+import java.lang.constant.MethodTypeDesc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -157,6 +165,74 @@ class McpUpdateTest {
             assertThat(String.valueOf(row.get("adds"))).contains("com.acme:extra");
         });
         assertThat(Files.readString(dir.resolve("jk.toml"))).contains("com.acme:growing:1.0.0");
+    }
+
+    @Test
+    void a_preview_counts_the_places_that_use_api_a_move_takes_away(@TempDir Path dir) throws Exception {
+        MavenStub upstream = new MavenStub(http);
+        upstream.leaf("org.junit.jupiter", "junit-jupiter", "6.1.0");
+        upstream.leaf("org.junit.platform", "junit-platform-launcher", "6.1.0");
+        for (String v : List.of("1.0.0", "1.1.0")) {
+            upstream.pomOnly("com.acme", "text", v, MavenStub.emptyPom("com.acme", "text", v));
+            upstream.bytes(MavenStub.path("com.acme", "text", v, ".jar"), textJar(v.equals("1.0.0")));
+        }
+        upstream.metadata("com.acme", "text", "1.0.0", "1.1.0");
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "app"
+                version = "1.0.0"
+                java    = 25
+
+                [repositories]
+                central = "%s"
+
+                [dependencies]
+                text = "com.acme:text:1.0.0"
+                """.formatted(http.baseUrl()));
+        LockFlow.Result first = LockFlow.run(dir, isolated.resolve("cache"), List.of(), false, null);
+        assertThat(first.status()).as("the first lock: %s", first.error()).isZero();
+        Files.createDirectories(dir.resolve("src/main/java/app"));
+        Files.writeString(dir.resolve("src/main/java/app/App.java"), "package app;\n");
+        Path classes = Files.createDirectories(dir.resolve("target/classes/app"));
+        Files.write(classes.resolve("App.class"), ClassFile.of().build(ClassDesc.of("app.App"), c -> {
+            c.withFlags(ClassFile.ACC_PUBLIC);
+            c.with(SourceFileAttribute.of("App.java"));
+            c.withMethodBody("run", ConstantDescs.MTD_void, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> {
+                b.lineNumber(7);
+                b.ldc("x");
+                b.invokestatic(ClassDesc.of("acme.Text"), "trim", TRIM);
+                b.pop();
+                b.return_();
+            });
+        }));
+
+        Map<String, Object> preview = Updates.structured(Updates.preview(dir.toString(), List.of(), false));
+
+        assertThat(rows(preview, "rewrites")).singleElement().satisfies(row -> {
+            assertThat(row.get("to")).isEqualTo("1.1.0");
+            assertThat(row.get("breaks"))
+                    .as("App.run calls the trim 1.1.0 drops")
+                    .isEqualTo(1);
+        });
+    }
+
+    private static final MethodTypeDesc TRIM = MethodTypeDesc.of(ConstantDescs.CD_String, ConstantDescs.CD_String);
+
+    /** A jar holding {@code acme.Text}, with its {@code trim} or without it. */
+    private static byte[] textJar(boolean trim) throws IOException {
+        byte[] text = ClassFile.of().build(ClassDesc.of("acme.Text"), c -> {
+            c.withFlags(ClassFile.ACC_PUBLIC);
+            if (trim)
+                c.withMethodBody("trim", TRIM, ClassFile.ACC_PUBLIC | ClassFile.ACC_STATIC, b -> b.aload(0)
+                        .areturn());
+        });
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) {
+            zip.putNextEntry(new ZipEntry("acme/Text.class"));
+            zip.write(text);
+            zip.closeEntry();
+        }
+        return bytes.toByteArray();
     }
 
     // ---- fixture ---------------------------------------------------------------
