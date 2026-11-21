@@ -67,19 +67,41 @@ public final class PlannerPlugin {
 
     private PlannerPlugin() {}
 
-    /**
-     * The production classpath a plugin step reads is the siblings' jars. A source generator runs
-     * ahead of the compile and reads it only for shape; every other step packages or tests with it
-     * and waits for the siblings to have written it — a test-stage step or one reading the test
-     * runtime for the test-only siblings too.
-     */
+    /** Wait for what {@link #siblingRead} says the step reads of its workspace siblings. */
     private static void awaitSiblings(TaskDecl step, TaskContext ctx, BuildPlanner.Inputs in) throws Exception {
-        if (beforeCompile(step)) return;
-        if (pluginStage(step) == BuildStage.TEST || step.inputs().contains("test-runtime-entries")) {
-            SiblingWaits.awaitSiblingTestRuntime(ctx, in);
-        } else {
-            SiblingWaits.awaitSiblingArtifacts(ctx, in);
+        switch (siblingRead(step)) {
+            case NONE -> {}
+            case ARTIFACTS -> SiblingWaits.awaitSiblingArtifacts(ctx, in);
+            case TEST_RUNTIME -> SiblingWaits.awaitSiblingTestRuntime(ctx, in);
         }
+    }
+
+    /** What of its workspace siblings a plugin step waits for before it runs. */
+    enum SiblingRead {
+        NONE,
+        ARTIFACTS,
+        TEST_RUNTIME
+    }
+
+    /**
+     * The production classpath a plugin step reads is the siblings' jars. A step ahead of the compile
+     * reads it only for shape and waits for nothing, unless it declares runtime entries: those carry
+     * a sibling's AAR, which the sibling packages after this module is admitted, so the step waits
+     * for its build-order siblings to package. It never waits there for a sibling only the test
+     * scopes name, which may itself be waiting on this module's package. Every later step packages
+     * or tests with the classpath and waits for the siblings to have written it, a test-stage step
+     * or one reading the test runtime for the test-only siblings too.
+     */
+    static SiblingRead siblingRead(TaskDecl step) {
+        if (beforeCompile(step)) {
+            boolean readsEntries =
+                    step.inputs().contains("runtime-entries") || step.inputs().contains("test-runtime-entries");
+            return readsEntries ? SiblingRead.ARTIFACTS : SiblingRead.NONE;
+        }
+        if (pluginStage(step) == BuildStage.TEST || step.inputs().contains("test-runtime-entries")) {
+            return SiblingRead.TEST_RUNTIME;
+        }
+        return SiblingRead.ARTIFACTS;
     }
 
     static boolean beforeCompile(TaskDecl step) {
