@@ -231,6 +231,49 @@ class ClasspathAbiTest {
         });
     }
 
+    @Test
+    void a_jars_meta_inf_resources_are_keyed_by_content_and_its_classes_are_not(@TempDir Path dir) throws Exception {
+        String ext = "META-INF/groovy/org.codehaus.groovy.runtime.ExtensionModule";
+        Path a = jarWithResource(dir.resolve("a/x.jar"), "C.class", classWithReturn(1), ext, "moduleName=a");
+        Path b = jarWithResource(dir.resolve("b/x.jar"), "C.class", classWithReturn(2), ext, "moduleName=a");
+        Path c = jarWithResource(dir.resolve("c/x.jar"), "C.class", classWithReturn(1), ext, "moduleName=c");
+        Path none = jar(dir.resolve("d/x.jar"), "C.class", classWithReturn(1));
+        Path notAZip = dir.resolve("e/x.jar");
+        Files.createDirectories(notAZip.getParent());
+        Files.writeString(notAZip, "not an archive");
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                assertThat(ClasspathAbi.resources(a)).startsWith("res:").isNotEqualTo("res:none");
+                assertThat(ClasspathAbi.resources(b)).as("the classes").isEqualTo(ClasspathAbi.resources(a));
+                assertThat(ClasspathAbi.resources(c)).as("the resource").isNotEqualTo(ClasspathAbi.resources(a));
+                assertThat(ClasspathAbi.resources(none)).isEqualTo("res:none");
+                assertThat(ClasspathAbi.resources(notAZip)).isEqualTo("res:none");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void a_global_groovy_transform_is_found_by_its_service_file(@TempDir Path dir) throws Exception {
+        String services = "META-INF/services/org.codehaus.groovy.transform.ASTTransformation";
+        Path with = jarWithResource(dir.resolve("a/x.jar"), "C.class", classWithReturn(1), services, "com.example.T\n");
+        Path other = jarWithResource(
+                dir.resolve("b/x.jar"), "C.class", classWithReturn(1), "META-INF/services/other", "com.example.T\n");
+        Path notAZip = dir.resolve("c/x.jar");
+        Files.createDirectories(notAZip.getParent());
+        Files.writeString(notAZip, "not an archive");
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                assertThat(ClasspathAbi.hasGlobalTransform(with)).isTrue();
+                assertThat(ClasspathAbi.hasGlobalTransform(other)).isFalse();
+                assertThat(ClasspathAbi.hasGlobalTransform(notAZip)).isFalse();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
     private static void withCache(Path cache, Runnable body) {
         SessionContext.runWhere(Session.defaults().withCacheDir(cache), () -> {
             AbiMemo.reset();

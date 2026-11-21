@@ -153,7 +153,6 @@ class JarClassReaderTest {
         return out;
     }
 
-    /** Writes {@code entries} in iteration order; every other entry stored rather than deflated when {@code mixStored}. */
     /** One named entry, stored or deflated, is read from the streamed directory; a name the jar lacks is null. */
     @Test
     void a_named_entry_is_read_and_a_missing_one_is_null(@TempDir Path dir) throws Exception {
@@ -175,6 +174,29 @@ class JarClassReaderTest {
         }
     }
 
+    /** Every entry under a prefix is read, stored or deflated, and nothing outside it. */
+    @Test
+    void the_entries_under_a_prefix_are_read_and_no_others(@TempDir Path dir) throws Exception {
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        entries.put("META-INF/", new byte[0]);
+        entries.put("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n".getBytes(StandardCharsets.UTF_8));
+        entries.put("a/A.class", "class".getBytes(StandardCharsets.UTF_8));
+        entries.put("META-INF/services/other", "x".repeat(4_000).getBytes(StandardCharsets.UTF_8));
+        entries.put("META-INF-not/x", "y".getBytes(StandardCharsets.UTF_8));
+        Path jar = dir.resolve("meta.jar");
+        writeJar(jar, entries, true);
+
+        Map<String, byte[]> read = new LinkedHashMap<>();
+        try (JarClassReader reader = JarClassReader.open(jar)) {
+            reader.forEachEntryUnder("META-INF/", read::put);
+        }
+
+        assertThat(read).containsOnlyKeys("META-INF/", "META-INF/MANIFEST.MF", "META-INF/services/other");
+        assertThat(read.get("META-INF/MANIFEST.MF")).isEqualTo(entries.get("META-INF/MANIFEST.MF"));
+        assertThat(read.get("META-INF/services/other")).isEqualTo(entries.get("META-INF/services/other"));
+    }
+
+    /** Writes {@code entries} in iteration order; every other entry stored rather than deflated when {@code mixStored}. */
     private static void writeJar(Path jar, Map<String, byte[]> entries, boolean mixStored) throws IOException {
         try (ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
             int i = 0;

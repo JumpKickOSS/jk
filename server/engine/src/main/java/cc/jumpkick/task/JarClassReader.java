@@ -190,6 +190,19 @@ public final class JarClassReader implements Closeable {
         return found[0] == null ? null : read(found[0]);
     }
 
+    /**
+     * Every entry whose name starts with {@code prefix}, with its bytes, in central-directory
+     * order: one streamed pass over the directory, then those entries alone.
+     */
+    void forEachEntryUnder(String prefix, ClassSink sink) throws IOException {
+        byte[] wanted = prefix.getBytes(StandardCharsets.UTF_8);
+        List<ClassEntry> found = new ArrayList<>();
+        scan(
+                n -> n.length >= wanted.length && Arrays.equals(n, 0, wanted.length, wanted, 0, wanted.length),
+                found::add);
+        for (ClassEntry e : found) sink.accept(e.name(), read(e));
+    }
+
     /** The names in {@code names} this jar has an entry for: one streamed pass over the central directory. */
     Set<String> present(Set<String> names) throws IOException {
         Set<String> found = new HashSet<>();

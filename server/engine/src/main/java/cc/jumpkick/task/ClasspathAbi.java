@@ -16,11 +16,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipException;
-import java.util.zip.ZipInputStream;
 
 /**
  * Whole-entry JVM ABI token for a jar or classes directory. {@code abi:<sha256>} of the sorted
@@ -125,18 +124,17 @@ public final class ClasspathAbi {
                 }
             });
         } else {
-            try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(abs))) {
-                for (ZipEntry e = zip.getNextEntry(); e != null; e = zip.getNextEntry()) {
-                    String name = e.getName();
-                    if (e.isDirectory() || !name.startsWith("META-INF/") || name.endsWith(".class")) continue;
-                    byte[] bytes = zip.readAllBytes();
+            // From the central directory: the META-INF entries alone are read, never the classes.
+            try (JarClassReader jar = JarClassReader.open(abs)) {
+                jar.forEachEntryUnder("META-INF/", (name, bytes) -> {
+                    if (name.endsWith("/") || name.endsWith(".class")) return;
                     // Its commit time moves with every commit; no compile reads it.
                     found.put(
                             name,
                             name.equals(BuildInfoKeys.BOOT_ENTRY)
                                     ? "stable:" + BuildInfoKeys.stableDigest(bytes)
                                     : Hashing.sha256Hex(bytes));
-                }
+                });
             } catch (ZipException notAZip) {
                 // Not an archive: nothing beside its classes.
             }
@@ -159,11 +157,9 @@ public final class ClasspathAbi {
         String identity = TRANSFORMS_NAMESPACE + ClasspathFingerprint.entry(abs);
         String hit = AbiMemo.get(identity);
         if (hit != null) return Boolean.parseBoolean(hit);
-        boolean found = false;
-        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(abs))) {
-            for (ZipEntry e = zip.getNextEntry(); e != null && !found; e = zip.getNextEntry()) {
-                found = e.getName().equals(GLOBAL_TRANSFORMS);
-            }
+        boolean found;
+        try (JarClassReader jar = JarClassReader.open(abs)) {
+            found = !jar.present(Set.of(GLOBAL_TRANSFORMS)).isEmpty();
         } catch (ZipException notAZip) {
             found = false;
         }
