@@ -131,15 +131,16 @@ public final class PlannerTest {
 
     /**
      * Where a test class's composed annotation, base class or interface from outside its tree is
-     * read: the classpath compile-test compiled the tests against, less the Groovy jar, which holds
-     * no tag. Every entry exists once compile-test has run.
+     * read: the classpath compile-test compiled the tests against, less what the test JVM does not
+     * run with ({@link ModuleClasspaths#testTags}) and the Groovy jar, which holds no tag. Every
+     * entry exists once compile-test has run, so routing settles without waiting for siblings' jars.
      */
     static List<Path> tagClasspath(TaskContext ctx) {
         return TestOutputs.baseClasspath(
                 mainClasses(ctx),
                 ctx.require(MODULE).project(),
                 ctx.require(MODULE).layout(),
-                ctx.require(CLASSPATHS).testCompile(),
+                ctx.require(CLASSPATHS).testTags(),
                 null);
     }
 

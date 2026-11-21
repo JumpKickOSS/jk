@@ -157,6 +157,11 @@ class ClasspathAfterSyncTest {
                 .extracting(p -> p.getFileName().toString())
                 .contains("kept-1.0.jar")
                 .doesNotContain("simple-2.0.jar");
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testTags())
+                .as("suite routing reads a test's tags from what JUnit loads, not from a jar it never sees")
+                .extracting(p -> p.getFileName().toString())
+                .contains("kept-1.0.jar")
+                .doesNotContain("simple-2.0.jar");
         assertThat(PluginBuild.testRuntimeEntries(module, new Cas(store), lockFile, project))
                 .extracting(PluginBuild.ProdEntry::artifact)
                 .contains("kept")
@@ -164,6 +169,42 @@ class ClasspathAfterSyncTest {
         assertThat(PluginBuild.productionClasspath(module, new Cas(store), lockFile, project))
                 .as("the production runtime classpath keeps it")
                 .anyMatch(p -> p.getFileName().toString().equals("simple-2.0.jar"));
+    }
+
+    /**
+     * A plugin's compile-only jar is compiled against and never run with, so a composed tag
+     * annotation it carries is one JUnit does not see: suite routing does not read it either.
+     */
+    @Test
+    void a_compile_only_provided_jar_carries_no_tag_the_test_jvm_lacks(@TempDir Path tmp) throws Exception {
+        Path store = Files.createDirectories(tmp.resolve("store"));
+        centralIsTheLocalRepository(store);
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(module.resolve("jk.toml"), """
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+                """);
+        JkBuild project = JkBuildParser.parse(module.resolve("jk.toml"));
+        Lockfile lock = new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of());
+        Path platform = Files.writeString(tmp.resolve("platform.jar"), "platform");
+        Path shared = Files.writeString(tmp.resolve("shared.jar"), "shared");
+        var provided = new ProvidedClasspath.Provided(List.of(
+                new ProvidedClasspath.Provided.Jar("platform", platform, false, true, false),
+                new ProvidedClasspath.Provided.Jar("shared", shared, false, false, false)));
+
+        ModuleClasspaths cps = ModuleClasspaths.derive(
+                module,
+                project,
+                ModuleShape.UNREAD,
+                lock,
+                new ClasspathResolver(store),
+                new ModuleClasspaths.Contributions(provided, ContributedProcessors.Paths.NONE),
+                ModuleClasspaths.Mode.BUILD);
+
+        assertThat(cps.testCompile()).contains(platform, shared);
+        assertThat(cps.testRuntime()).contains(shared).doesNotContain(platform);
+        assertThat(cps.testTags()).contains(shared).doesNotContain(platform);
     }
 
     /** One checksummed MAIN row whose jar is in {@code store} under the central repo layout. */
@@ -213,6 +254,9 @@ class ClasspathAfterSyncTest {
                 .as("the tests run against the jar, named whether or not it exists yet")
                 .contains(ws.libLayout.mainJar())
                 .doesNotContain(ws.libLayout.classesDir());
+        assertThat(ctx.require(BuildPlanner.CLASSPATHS).testTags())
+                .as("tags are read from the tree before the jar that carries it exists")
+                .contains(ws.libLayout.classesDir());
     }
 
     /**

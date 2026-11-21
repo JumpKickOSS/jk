@@ -16,6 +16,7 @@ import cc.jumpkick.task.KeyOwner;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -51,6 +52,10 @@ import org.jspecify.annotations.Nullable;
  * @param testRuntime the test runtime classpath: the lock's test rows and sibling jars, then the
  *     provided jars the test JVM runs with
  * @param providedRuntime the provided jars the test JVM also gets last
+ * @param testTags where suite routing reads a test's tags from outside its tree: {@code testCompile}
+ *     less each entry the test JVM does not run with, so a composed tag annotation JUnit cannot load
+ *     routes nothing. A sibling's classes tree stays: its jar, which the JVM runs, holds the same
+ *     types and may not be written yet.
  */
 record ModuleClasspaths(
         List<Path> main,
@@ -63,7 +68,8 @@ record ModuleClasspaths(
         List<Path> contributedTestProcessor,
         List<Path> testCompile,
         List<Path> testRuntime,
-        List<Path> providedRuntime) {
+        List<Path> providedRuntime,
+        List<Path> testTags) {
 
     ModuleClasspaths {
         main = List.copyOf(main);
@@ -76,6 +82,7 @@ record ModuleClasspaths(
         testCompile = List.copyOf(testCompile);
         testRuntime = List.copyOf(testRuntime);
         providedRuntime = List.copyOf(providedRuntime);
+        testTags = List.copyOf(testTags);
     }
 
     /**
@@ -166,6 +173,10 @@ record ModuleClasspaths(
         testCompile.addAll(provided.testOnly());
         List<Path> testRuntime = new ArrayList<>(resolver.testRuntimeClasspathFor(lock, present, project, dir));
         testRuntime.addAll(testSiblings.siblingClosureJars());
+        testRuntime = provided.onTestRuntime(testRuntime);
+        Set<Path> runWith = new HashSet<>(testRuntime);
+        runWith.addAll(testSiblings.siblingClosureClasses());
+        List<Path> testTags = testCompile.stream().filter(runWith::contains).toList();
 
         return new ModuleClasspaths(
                 main,
@@ -177,8 +188,9 @@ record ModuleClasspaths(
                 contributions.processors().main(),
                 contributions.processors().test(),
                 testCompile,
-                provided.onTestRuntime(testRuntime),
-                provided.runtime());
+                testRuntime,
+                provided.runtime(),
+                testTags);
     }
 
     /**

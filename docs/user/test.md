@@ -60,6 +60,10 @@ Canonical extra suite **names** are `integration` and `e2e`. Any other suite
 directory still works (`contract`, `mutation`, …) — [layout](layout.md). Cost that
 crosses a suite (`slow`, `network`, `bench`) is a **JUnit tag**, not a fourth
 directory: a suite that claims the tag (`tags = ["slow"]`) runs those tests wherever they live.
+A tag counts where JUnit finds it: on the class, a superclass or interface, or through a composed
+annotation (`@Tag("slow") @interface SlowTest`). A composed annotation from a jar the tests compile
+against but do not run with (a `[test] exclude-dependencies` row) tags nothing, because JUnit
+cannot load it either.
 
 What every suite shares comes from outside the suites: the module's own `[test] fixtures`
 (`src/fixtures/java`) ride every suite's classpath, and `[test] extra-src` roots and files compile
