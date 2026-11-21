@@ -351,8 +351,8 @@ final class EngineElection {
 
     /**
      * Undo {@link #win}: drop the socket, token and pid file this engine still owns, un-point the
-     * endpoint only if it still names US and the pid file says so, then release the generation and
-     * startup locks.
+     * endpoint and drop the dashboard URL file only if the endpoint still names US and the pid file
+     * says so, then release the generation and startup locks.
      *
      * <p>The lock files themselves stay. Deleting one after its release lets a successor's lock land
      * on the unlinked file while a third engine locks a fresh one at the same path, and both then
@@ -373,7 +373,7 @@ final class EngineElection {
             if (pidIsMine) deleteQuietly(active.pid());
             // The endpoint names a socket, and a successor may have bound the same name; only an
             // engine the pid file still names may un-point it.
-            if (pidIsMine && endpointNamesThisEngine()) deleteQuietly(EnginePaths.endpoint(paths));
+            if (pidIsMine) unpointIfStillNamed();
             try {
                 if (genLock != null) genLock.release();
                 if (genLockChannel != null) genLockChannel.close();
@@ -384,6 +384,39 @@ final class EngineElection {
             if (seam != null) seam.run();
         }
         releaseStartupLock();
+    }
+
+    /**
+     * Delete the endpoint pointer and the dashboard URL file ({@link EnginePaths.Paths#http}) while
+     * the endpoint still names this engine, under the startup mutex {@link #win} writes the endpoint
+     * under. Every generation shares both files and a successor writes its URL only after its
+     * endpoint, so a successor's files are never deleted. While another engine holds the mutex it is
+     * about to replace the endpoint, and both files are left to it.
+     */
+    private void unpointIfStillNamed() {
+        try (FileChannel ch =
+                OwnerOnlyFiles.channel(paths.lock(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            FileLock held;
+            try {
+                held = ch.tryLock();
+            } catch (OverlappingFileLockException e) {
+                held = null;
+            }
+            if (held == null) {
+                log.accept("jk engine: another engine is starting; leaving the endpoint to it");
+                return;
+            }
+            try {
+                if (endpointNamesThisEngine()) {
+                    deleteQuietly(EnginePaths.endpoint(paths));
+                    deleteQuietly(paths.http());
+                }
+            } finally {
+                held.release();
+            }
+        } catch (IOException e) {
+            // Unreadable lock file: a stale pointer only sends the next client to spawn an engine.
+        }
     }
 
     /** The file's identity (inode on Unix), or {@code null} when it is missing or unreadable. */

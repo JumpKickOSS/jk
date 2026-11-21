@@ -138,6 +138,47 @@ class EngineServerDrainTest {
     }
 
     /**
+     * The watchdog saw an orphaned engine with no plan in flight, then a plan claimed its slot
+     * before the exit. The exit reads the count again under the lock and leaves the engine serving.
+     */
+    @Test
+    void an_orphan_exit_leaves_a_plan_claimed_after_the_idle_observation_running() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+
+        assertThat(server.exitIfUnusedForTests()).isFalse();
+
+        assertThat(server.claimPlanSlotForTests())
+                .as("the engine still admits plans")
+                .isTrue();
+        server.releasePlanSlotForTests();
+        server.releasePlanSlotForTests();
+        assertThat(server.exitIfUnusedForTests()).as("unused now").isTrue();
+        assertThat(server.claimPlanSlotForTests()).isFalse();
+    }
+
+    /** A stop or a displacement that reaches an engine already shutting down does not start a drain. */
+    @Test
+    void a_stop_after_shutdown_began_does_not_enter_drain() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        assertThat(server.claimPlanSlotForTests()).isTrue();
+        server.close();
+        StringWriter out = new StringWriter();
+        BufferedWriter writer = new BufferedWriter(out);
+
+        server.handleShutdown(ProtoLifecycle.shutdown(false), writer);
+        writer.flush();
+        server.yieldListenersForTests(false);
+
+        assertThat(server.drainStartedForTests()).isFalse();
+        assertThat(server.drainDeadlineForTests()).isEqualTo(-1L);
+        assertThat(out.toString()).contains("\"draining\":false");
+        server.releasePlanSlotForTests();
+    }
+
+    /**
      * The displacement watchdog must enter drain on its own — a predecessor whose socket read
      * raced never receives the successor's SHUTDOWN line, so the repointed endpoint is the only
      * signal it gets.

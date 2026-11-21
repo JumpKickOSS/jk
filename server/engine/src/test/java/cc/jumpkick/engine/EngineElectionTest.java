@@ -455,6 +455,60 @@ class EngineElectionTest {
     }
 
     /**
+     * A drained predecessor exits after its successor bound HTTP and wrote the URL file every
+     * generation shares: the file is the successor's, and only the successor's exit removes it.
+     */
+    @Test
+    void a_predecessor_retiring_after_its_successor_served_leaves_the_successors_url_file() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        EngineElection predecessor = election(p, "zzzz", 1);
+        requireNonNull(predecessor.win()).listener().close();
+        Files.writeString(p.http(), "http://127.0.0.1:8910/");
+
+        EngineElection successor = election(p, "aaaa", 2);
+        EngineElection.Won next = requireNonNull(successor.win());
+        next.listener().close();
+        Files.writeString(p.http(), "http://127.0.0.1:8911/");
+
+        predecessor.retire();
+
+        assertThat(Files.readString(p.http())).isEqualTo("http://127.0.0.1:8911/");
+        assertThat(successor.endpointNamesThisEngine()).isTrue();
+
+        successor.retire();
+
+        assertThat(p.http())
+                .as("the engine the endpoint names takes its URL file with it")
+                .doesNotExist();
+        assertThat(EnginePaths.endpoint(p)).doesNotExist();
+    }
+
+    /**
+     * An engine retiring while another holds the startup mutex leaves the endpoint and the URL
+     * file alone: the other engine is between its probe and its endpoint write, and un-pointing
+     * now could delete the pointer it is about to write.
+     */
+    @Test
+    void retiring_while_another_engine_starts_leaves_the_endpoint_to_it() throws Exception {
+        EnginePaths.Paths p = EnginePaths.resolve(tempDirs.create());
+        List<String> log = new ArrayList<>();
+        EngineElection e = election(p, "aaaa", 4242, log::add);
+        EngineElection.Won won = requireNonNull(e.win());
+        won.listener().close();
+        Files.writeString(p.http(), "http://127.0.0.1:8910/");
+        FileChannel held = closeLater(FileChannel.open(p.lock(), StandardOpenOption.WRITE));
+        assertThat(held.tryLock()).isNotNull();
+
+        e.retire();
+
+        assertThat(won.active().socket()).doesNotExist();
+        assertThat(Files.readString(EnginePaths.endpoint(p)).trim())
+                .isEqualTo(won.active().socket().getFileName().toString());
+        assertThat(p.http()).exists();
+        assertThat(log).anyMatch(l -> l.contains("another engine is starting"));
+    }
+
+    /**
      * The Unix socket carries no token: whoever can reach the file can drive the engine. A
      * user-private-group host ({@code umask 002}) would otherwise leave the engine directory
      * group-writable, so the election sets the modes itself rather than trusting the umask.

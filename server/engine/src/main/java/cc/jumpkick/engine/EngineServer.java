@@ -72,7 +72,6 @@ import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -554,7 +553,7 @@ public final class EngineServer implements AutoCloseable {
                 this::liveEventStreams,
                 () -> shuttingDown,
                 this::yieldListeners,
-                this::close,
+                this::exitIfUnused,
                 this.log);
     }
 
@@ -892,6 +891,25 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
+     * The orphaned engine's exit: shut down when no plan holds a slot and no stream is attached,
+     * read under the lock a plan claims its slot under. Answers whether the engine is shutting down.
+     */
+    private boolean exitIfUnused() {
+        synchronized (lifecycleLock) {
+            if (activeBuildPlans.get() != 0 || liveEventStreams() != 0) return false;
+            shuttingDown = true;
+            closeServerChannelQuietly();
+            lifecycleLock.notifyAll();
+            return true;
+        }
+    }
+
+    /** Test seam: the orphaned-and-unused transition the displacement watchdog takes. */
+    boolean exitIfUnusedForTests() {
+        return exitIfUnused();
+    }
+
+    /**
      * A {@link EngineProtocol#SHUTDOWN} message: with plans in flight (and no {@code force}) the
      * engine drains; otherwise it stops now. The bye line reports the plan count the decision saw.
      * Package-private so a test can drive this path without a socket.
@@ -900,44 +918,48 @@ public final class EngineServer implements AutoCloseable {
         boolean force = Jsonl.bool(line, "force", false);
         int n;
         boolean willDrain;
+        boolean first = false;
         synchronized (lifecycleLock) {
             n = activeBuildPlans.get();
-            willDrain = !force && n > 0;
+            willDrain = !force && n > 0 && !shuttingDown;
             log.accept("jk engine: stop requested" + (force ? " (--now)" : "") + " with " + n + " job(s) in flight — "
                     + (willDrain ? "draining them first" : "stopping now"));
-            if (!willDrain) {
-                // Decision and flag settle in one critical section, so a plan about to claim its
-                // slot can never slip between "zero plans observed" and "shutting down".
+            // Decision and flag settle in one critical section, so a plan about to claim its slot
+            // can never slip between the decision and "draining" or "shutting down".
+            if (willDrain) {
+                first = beginDrain();
+            } else {
                 shuttingDown = true;
                 closeServerChannelQuietly();
-                lifecycleLock.notifyAll();
             }
+            lifecycleLock.notifyAll();
         }
-        if (willDrain) enterDrain();
+        if (willDrain) enterDrain(first);
         else http.stopNow();
         WireWriter.send(writer, ProtoLifecycle.bye(n, willDrain));
     }
 
     /**
-     * The one drain transition. Both entry paths — a SHUTDOWN message with plans in flight and the
-     * displacement watchdog — flip {@code draining} and fix the deadline here, release HTTP so a
-     * successor can bind the fixed port, and start the {@link DrainReporter} and the {@link
-     * #superviseDrain} thread — started nowhere else. The engine socket stays open. A plan that
-     * claims its slot before the flag lands is simply drained too — the supervisor watches the live
-     * count, not the count a caller saw. Idempotent: a second stop or a later displacement keeps
-     * the first deadline.
+     * Flip {@code draining} and fix the deadline, under {@link #lifecycleLock} in the critical
+     * section that decided to drain, so no plan claims a slot between the decision and the flag.
+     * Answers whether this is the first drain; a second stop or a later displacement keeps the
+     * first deadline.
      */
-    private void enterDrain() {
-        boolean first;
-        synchronized (lifecycleLock) {
-            first = !draining;
-            if (first) {
-                draining = true;
-                long bound = config.jobLimits().drainDeadlineMs();
-                drainDeadlineMillis = bound > 0 ? clockMillis.getAsLong() + bound : -1;
-            }
-            lifecycleLock.notifyAll();
-        }
+    private boolean beginDrain() {
+        if (draining) return false;
+        draining = true;
+        long bound = config.jobLimits().drainDeadlineMs();
+        drainDeadlineMillis = bound > 0 ? clockMillis.getAsLong() + bound : -1;
+        return true;
+    }
+
+    /**
+     * The rest of the one drain transition, after {@link #beginDrain}. Both entry paths — a SHUTDOWN
+     * message with plans in flight and the displacement watchdog — release HTTP here so a successor
+     * can bind the fixed port, and start the {@link DrainReporter} and the {@link #superviseDrain}
+     * thread — started nowhere else. The engine socket stays open.
+     */
+    private void enterDrain(boolean first) {
         http.stopNow();
         drain.start();
         if (first) {
@@ -952,17 +974,20 @@ public final class EngineServer implements AutoCloseable {
      */
     private void yieldListeners(boolean exitNow) {
         boolean drain;
+        boolean first = false;
         synchronized (lifecycleLock) {
             // Re-read under the lock. The watchdog's count is from before this call, and a plan
             // can claim its slot in that gap. A non-zero count drains; shutdown is only the idle case.
-            drain = !exitNow || activeBuildPlans.get() > 0;
-            if (!drain) {
+            drain = !shuttingDown && (!exitNow || activeBuildPlans.get() > 0);
+            if (drain) {
+                first = beginDrain();
+            } else {
                 shuttingDown = true;
                 closeServerChannelQuietly();
-                lifecycleLock.notifyAll();
             }
+            lifecycleLock.notifyAll();
         }
-        if (drain) enterDrain();
+        if (drain) enterDrain(first);
         else http.stopNow();
     }
 
@@ -1104,12 +1129,8 @@ public final class EngineServer implements AutoCloseable {
             storeFeedRefresh.close();
             storeFeedRefresh = null;
         }
+        // The bound-URL file is shared with a successor; retire() drops it only while it is ours.
         http.close();
-        try {
-            Files.deleteIfExists(paths.http()); // the live bound-URL file — stale once we stop
-        } catch (IOException ignored) {
-            // best-effort; the next start overwrites it
-        }
         // The http token is deliberately NOT deleted: it persists across restarts so an open
         // dashboard tab survives an upgrade/crash respawn. `jk engine rotate-token`
         // is the explicit way to invalidate it.

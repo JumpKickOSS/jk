@@ -27,12 +27,13 @@ final class DisplacementWatchdog {
     private final IntSupplier liveEventStreams;
     private final BooleanSupplier shuttingDown;
     private final Consumer<Boolean> yieldListeners;
-    private final Runnable exitUnused;
+    private final BooleanSupplier exitIfUnused;
     private final Consumer<String> log;
 
     /**
      * @param yieldListeners the displaced transition; {@code true} means exit now (no plans in flight)
-     * @param exitUnused the orphaned-and-unused transition
+     * @param exitIfUnused the orphaned-and-unused transition; re-checks under the lifecycle lock
+     *     and answers whether the engine is now shutting down
      */
     DisplacementWatchdog(
             EngineElection election,
@@ -40,14 +41,14 @@ final class DisplacementWatchdog {
             IntSupplier liveEventStreams,
             BooleanSupplier shuttingDown,
             Consumer<Boolean> yieldListeners,
-            Runnable exitUnused,
+            BooleanSupplier exitIfUnused,
             Consumer<String> log) {
         this.election = election;
         this.activeBuildPlans = activeBuildPlans;
         this.liveEventStreams = liveEventStreams;
         this.shuttingDown = shuttingDown;
         this.yieldListeners = yieldListeners;
-        this.exitUnused = exitUnused;
+        this.exitIfUnused = exitIfUnused;
         this.log = log;
     }
 
@@ -86,9 +87,9 @@ final class DisplacementWatchdog {
                 yield true;
             }
             case ORPHANED -> {
-                if (!orphanedAndUnused()) yield false;
+                // A plan can claim its slot after this read; the transition reads again under the lock.
+                if (!orphanedAndUnused() || !exitIfUnused.getAsBoolean()) yield false;
                 log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
-                exitUnused.run();
                 yield true;
             }
             case PRIMARY -> false;

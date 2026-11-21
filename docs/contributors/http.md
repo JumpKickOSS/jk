@@ -242,6 +242,12 @@ finishes, or at `[engine] drain-deadline-ms`, when it cancels its jobs, kills th
 exits. The HTTP token is deliberately preserved across the respawn so the tab does not have to
 re-authenticate. Client-side reconnect is the SPA's job.
 
+Every generation shares the endpoint pointer and the bound-URL file (`<key>.http`), and a successor
+writes its URL only after it has taken the endpoint. An exiting engine deletes the two only while
+the endpoint still names it, read under the startup lock the successor writes the endpoint under; while
+another engine holds that lock, it leaves both to that engine. A predecessor that drains past its
+successor's startup therefore leaves the successor's files alone.
+
 ### Sessions cross the hand-off
 
 Only the primary engine writes session records, and the hand-off between two engines is a
@@ -279,6 +285,9 @@ An orphaned engine is one no pointer names: no CLI will reach it again, and no s
 port either. It exits when unused, but an attached SSE stream vetoes that. Unlike displacement there
 is no successor to hand the tab to, so exiting under an open dashboard would strand it with nothing to
 reconnect to.
+
+The watchdog's look at the counts is only a hint: the exit reads the plan count again under the lock
+a plan claims its slot under, so a job admitted after the look keeps the engine running.
 
 The count comes from the SSE admission budgets rather than a separate counter, so it cannot drift from
 what actually holds a slot: a stream keeps its permit for the life of the connection.

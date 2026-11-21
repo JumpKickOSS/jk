@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Replacing the engine while a build runs leaves the new engine reachable.** When the old engine
+  finished draining it deleted the new engine's dashboard URL file, and could delete its endpoint
+  pointer. An unused engine that nothing points to no longer exits under a job admitted the moment
+  it decided to go, and a stop that reaches an engine already shutting down no longer starts a
+  drain.
 - **A version range far below a library's newest releases resolves.** A resolve that fails at first
   now retries with every published version of each library, so a range below the newest 48 releases
   resolves instead of reporting no solution. Widening the search after a conflict no longer asks the
