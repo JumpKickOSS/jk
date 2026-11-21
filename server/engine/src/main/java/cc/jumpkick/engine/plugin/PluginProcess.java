@@ -427,12 +427,9 @@ public final class PluginProcess {
             argfile.delete();
             throw e;
         }
-        Thread sideReader = onStarted.apply(process);
-        // Commands, if any, travel on their own channel: code the worker runs that reads System.in,
-        // and every child that inherits it, reads end-of-input instead of hanging on an open pipe.
-        closeStdin(process);
         final AtomicLong lastLineAt = new AtomicLong(Clock.SYSTEM.millis());
-        Thread watchdog = idleTimeoutMs > 0 ? startWatchdog(process, lastLineAt, idleTimeoutMs) : null;
+        @Nullable Thread sideReader = null;
+        @Nullable Thread watchdog = null;
         // Bounded like the client socket: a worker emitting an unbounded line must not OOM the
         // engine. No idle timeout — a compiling worker is legitimately silent for long stretches.
         //
@@ -454,7 +451,13 @@ public final class PluginProcess {
         AtomicReference<IOException> pumpError = new AtomicReference<>();
         AtomicReference<RuntimeException> handlerError = new AtomicReference<>();
         CountDownLatch pumpDone = new CountDownLatch(1);
+        // From here on the process is running: whatever throws, the finally stops and untracks it.
         try (commands) {
+            sideReader = onStarted.apply(process);
+            // Commands, if any, travel on their own channel: code the worker runs that reads System.in,
+            // and every child that inherits it, reads end-of-input instead of hanging on an open pipe.
+            closeStdin(process);
+            if (idleTimeoutMs > 0) watchdog = startWatchdog(process, lastLineAt, idleTimeoutMs);
             Thread pump = SessionContext.startPlatform("jk-worker-pump", () -> {
                 try {
                     while (true) {
