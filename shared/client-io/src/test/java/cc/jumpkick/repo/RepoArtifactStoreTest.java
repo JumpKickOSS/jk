@@ -482,13 +482,13 @@ class RepoArtifactStoreTest {
 
     @AfterEach
     void forgetTheMode() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     /** Central on a machine left at the default: the local repository is read, and downloads stay in the store. */
     private static RepoArtifactStore readingOver(Path cache, Path m2) {
         System.setProperty("jk.m2.local", m2.toString());
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
         return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
     }
 
@@ -569,7 +569,7 @@ class RepoArtifactStoreTest {
 
     private static RepoArtifactStore centralOver(Path cache, Path m2) {
         System.setProperty("jk.m2.local", m2.toString());
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
     }
 

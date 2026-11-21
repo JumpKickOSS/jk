@@ -46,7 +46,7 @@ class CachePlansShadowedArtifactsTest {
 
     @AfterEach
     void forgetTheMode() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     /** The local repository's own copy of {@link #REL}, holding {@code content}. */
@@ -67,7 +67,7 @@ class CachePlansShadowedArtifactsTest {
 
     @Test
     void sharing_a_store_copy_with_no_twin_or_another_twin_is_the_only_one_and_stays() throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         Path jar = leave("https://repo.maven.apache.org/maven2", "central");
 
         assertThat(CachePlans.reclaimShadowedArtifacts(false).files()).isZero();
@@ -78,7 +78,7 @@ class CachePlansShadowedArtifactsTest {
 
     @Test
     void sharing_the_jars_the_local_repository_also_holds_go_and_the_memos_stay() throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         Path jar = leave("https://repo.maven.apache.org/maven2", "central");
         twin("stale-copy");
 
@@ -97,7 +97,7 @@ class CachePlansShadowedArtifactsTest {
 
     @Test
     void the_use_ledger_beside_the_memos_is_not_a_stray_artifact() throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         leave("https://repo.maven.apache.org/maven2", "central");
         twin("stale-copy");
         Path journal = store.resolve("repos/central").resolve(RepoArtifactStore.ACCESS_DIR + "/journal");
@@ -111,7 +111,7 @@ class CachePlansShadowedArtifactsTest {
 
     @Test
     void a_tree_that_keeps_its_own_artifacts_is_left_alone() throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         Path jar = leave("https://private.example/maven/", "private");
         twin("stale-copy");
 

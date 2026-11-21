@@ -38,12 +38,12 @@ class WorkspacePreflightInstallRefusalTest {
     /** These installs name no destination; the machine shares with Maven, so they go to the local repository. */
     @BeforeEach
     void shareWithMaven() {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
     }
 
     @AfterEach
     void forgetTheMode() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     private BuildGraph.BuildUnit module(String version) throws Exception {

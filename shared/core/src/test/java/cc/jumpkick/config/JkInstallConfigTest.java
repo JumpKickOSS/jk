@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.model.InstallDestination;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -61,18 +62,26 @@ class JkInstallConfigTest {
                 .isEqualTo(InstallDestination.M2);
     }
 
-    /** The documented ladder is the whole ladder: a JVM property reaches only the {@code [m2]} default. */
+    /**
+     * The documented ladder is the whole ladder: no JVM property names the destination or the
+     * {@code [m2]} mode it follows, and the {@code jk.env.*} seam stands for the environment.
+     */
     @Test
     void no_jvm_property_names_the_destination(@TempDir Path tmp) {
-        Path absent = tmp.resolve("absent.toml");
-        Map<String, String> none = Map.of();
+        System.setProperty("jk.env.JK_HOME", tmp.resolve("home").toString());
+        try {
+            System.setProperty("jk.install.destination", "m2");
+            System.setProperty("jk.m2.integration", "share");
+            assertThat(JkInstallConfig.resolve().destination()).isEqualTo(InstallDestination.JK);
 
-        assertThat(JkInstallConfig.resolve(absent, none::get, Map.of("jk.install.destination", "m2")::get)
-                        .destination())
-                .isEqualTo(InstallDestination.JK);
-        assertThat(JkInstallConfig.resolve(absent, none::get, Map.of("jk.m2.integration", "share")::get)
-                        .destination())
-                .isEqualTo(InstallDestination.M2);
+            System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
+            assertThat(JkInstallConfig.resolve().destination()).isEqualTo(InstallDestination.M2);
+        } finally {
+            for (String name : List.of(
+                    "jk.env.JK_HOME", "jk.install.destination", "jk.m2.integration", "jk.env.JK_M2_INTEGRATION")) {
+                System.clearProperty(name);
+            }
+        }
     }
 
     @Test

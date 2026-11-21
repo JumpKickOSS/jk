@@ -41,18 +41,18 @@ class M2CleanTest {
         m2 = tmp.resolve("m2");
         System.setProperty("jk.m2.local", m2.toString());
         // The files this cleans are the ones jk downloaded into the local repository, which it does only when sharing.
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         central = RepoArtifactStore.forRepository(store, "central", CENTRAL);
     }
 
     @AfterEach
     void forgetTheMode() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     @Test
     void a_download_the_store_keeps_for_itself_is_not_the_local_repositorys_to_clean() throws Exception {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
         RepoArtifactStore reading = RepoArtifactStore.forRepository(store, "central", CENTRAL);
         String rel = "com/example/kept/1.0/kept-1.0.jar";
         Path source = Files.writeString(tmp.resolve("kept"), "kept-bytes");

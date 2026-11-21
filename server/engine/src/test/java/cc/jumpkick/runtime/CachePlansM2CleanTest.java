@@ -41,14 +41,14 @@ class CachePlansM2CleanTest {
         System.setProperty("jk.env.JK_STORE_DIR", store.toString());
         System.setProperty("jk.m2.local", m2.toString());
         // What a clean of the local repository removes is what jk downloaded into it, which it does when sharing.
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         downloadedLongAgo();
     }
 
     @AfterEach
     void tearDown() {
-        System.clearProperty("jk.m2.integration");
-        System.clearProperty("jk.m2.auto-clean");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
+        System.clearProperty("jk.env.JK_M2_AUTO_CLEAN");
     }
 
     private void downloadedLongAgo() throws IOException {
@@ -117,7 +117,7 @@ class CachePlansM2CleanTest {
                 .isTrue();
         assertThat(m2.resolve(REL)).as("off by default").exists();
 
-        System.setProperty("jk.m2.auto-clean", "true");
+        System.setProperty("jk.env.JK_M2_AUTO_CLEAN", "true");
         assertThat(CachePlans.pruneBuildPlan(cache, false, true).run().success())
                 .isTrue();
         assertThat(m2.resolve(REL)).as("an admin asked").doesNotExist();

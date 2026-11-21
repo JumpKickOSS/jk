@@ -61,7 +61,7 @@ class MavenRepoM2PomTest {
     void stop() {
         server.stop(0);
         SessionContext.reset();
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     private void serve(String path, byte[] body) {
@@ -96,7 +96,7 @@ class MavenRepoM2PomTest {
     void sharing_a_forked_pom_in_the_local_repository_is_not_the_repositorys(@TempDir Path tmp) throws Exception {
         Path m2 = tmp.resolve("m2");
         System.setProperty("jk.m2.local", m2.toString());
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         Files.createDirectories(m2.resolve(REL).getParent());
         Files.write(m2.resolve(REL), FORK);
         serve("/" + REL, REAL);

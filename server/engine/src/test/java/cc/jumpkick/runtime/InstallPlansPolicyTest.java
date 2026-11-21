@@ -45,7 +45,7 @@ class InstallPlansPolicyTest {
 
     @AfterEach
     void forgetTheMode() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     private JkBuild project(String version) {
@@ -324,7 +324,7 @@ class InstallPlansPolicyTest {
     @Test
     void a_snapshot_whose_release_is_installed_is_refused_as_invisible() throws Exception {
         // A machine that shares with Maven installs into the local repository when nothing names a destination.
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         JkBuild release = project("1.0.0");
         install(release, built(release, "v1"));
         JkBuild snapshot = project("1.0.0-SNAPSHOT");
@@ -361,7 +361,7 @@ class InstallPlansPolicyTest {
         assertThat(InstallPlans.destinationOf(unset, moduleDir, InstallDestination.M2))
                 .as("the flag targets the Maven local repository without a config change")
                 .isEqualTo(InstallDestination.M2);
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         assertThat(InstallPlans.destinationOf(unset, moduleDir, null)).isEqualTo(InstallDestination.M2);
         assertThat(InstallPlans.destinationOf(declared, moduleDir, null)).isEqualTo(InstallDestination.JK);
         assertThat(InstallPlans.destinationOf(declared, moduleDir, InstallDestination.M2))

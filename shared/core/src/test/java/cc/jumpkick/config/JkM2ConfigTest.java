@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -79,12 +80,43 @@ class JkM2ConfigTest {
     }
 
     @Test
-    void lookup_env_alias_still_overrides_integration(@TempDir Path tmp) throws Exception {
+    void the_pre_rename_lookup_name_is_not_read(@TempDir Path tmp) throws Exception {
         Path f = toml(tmp, "[m2]\nintegration = true\n");
 
         JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_LOOKUP", "false")::get);
 
-        assertThat(c.integration()).isFalse();
+        assertThat(c.mode()).isEqualTo(JkM2Config.Mode.SHARE);
+    }
+
+    /**
+     * The documented ladder is the whole ladder: no {@code jk.m2.*} JVM property names a setting,
+     * and a test varies one through the {@code jk.env.*} seam every machine setting reads.
+     */
+    @Test
+    void a_jvm_property_names_no_m2_setting_and_the_env_seam_does(@TempDir Path tmp) {
+        System.setProperty("jk.env.JK_HOME", tmp.resolve("home").toString());
+        try {
+            System.setProperty("jk.m2.integration", "off");
+            System.setProperty("jk.m2.lookup", "off");
+            System.setProperty("jk.m2.auto-clean", "true");
+            assertThat(JkM2Config.resolve()).isEqualTo(JkM2Config.DEFAULTS);
+
+            System.setProperty("jk.env.JK_M2_INTEGRATION", "off");
+            System.setProperty("jk.env.JK_M2_AUTO_CLEAN", "true");
+            System.setProperty("jk.env.JK_M2_CLEAN_AFTER_DAYS", "7");
+            assertThat(JkM2Config.resolve()).isEqualTo(new JkM2Config(JkM2Config.Mode.OFF, true, 7));
+        } finally {
+            for (String name : List.of(
+                    "jk.env.JK_HOME",
+                    "jk.m2.integration",
+                    "jk.m2.lookup",
+                    "jk.m2.auto-clean",
+                    "jk.env.JK_M2_INTEGRATION",
+                    "jk.env.JK_M2_AUTO_CLEAN",
+                    "jk.env.JK_M2_CLEAN_AFTER_DAYS")) {
+                System.clearProperty(name);
+            }
+        }
     }
 
     @Test

@@ -81,12 +81,12 @@ class RepoArtifactStoreRaceTest {
     @AfterEach
     void forgetTheMode() {
         System.clearProperty("jk.m2.local");
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     private static RepoArtifactStore sharing(Path cache, Path m2) {
         System.setProperty("jk.m2.local", m2.toString());
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         return RepoArtifactStore.forRepository(cache, "central", CENTRAL);
     }
 

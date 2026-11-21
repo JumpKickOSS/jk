@@ -91,7 +91,7 @@ class CacheSyncTest {
 
     @AfterEach
     void forgetTheMode() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     /**
@@ -99,7 +99,7 @@ class CacheSyncTest {
      * profile. The machine downloads into the local repository ({@code [m2] integration = "share"}).
      */
     private void declareStubShared(Path tempDir) throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         declareStub(tempDir);
     }
 

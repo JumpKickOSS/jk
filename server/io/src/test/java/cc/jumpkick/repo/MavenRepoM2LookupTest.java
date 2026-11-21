@@ -79,7 +79,7 @@ class MavenRepoM2LookupTest {
     void stop() {
         server.stop(0);
         SessionContext.reset();
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     private void serve(String path, int status, byte[] body) {
@@ -208,7 +208,7 @@ class MavenRepoM2LookupTest {
             throws Exception {
         // On a machine that downloads into the local repository the impostor holds the slot the
         // genuine artifact would take. It is not replaced, so the fetch fails and names it.
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         seedM2(tmp.resolve("m2"), "a hand-built impostor".getBytes(StandardCharsets.UTF_8));
         serve("/" + REL + ".sha1", 200, sha1Of(REAL).getBytes(StandardCharsets.UTF_8));
         serve("/" + REL, 200, REAL);
@@ -316,7 +316,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void an_unvouched_m2_copy_is_not_served_when_the_checksum_read_fails(@TempDir Path tmp) throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         seedM2(tmp.resolve("m2"), IMPOSTOR);
         serve("/", 500, new byte[0]);
         Path store = tmp.resolve("store");
@@ -330,7 +330,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void an_unvouched_m2_copy_is_not_served_while_its_repository_is_unreachable(@TempDir Path tmp) throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         seedM2(tmp.resolve("m2"), IMPOSTOR);
         server.stop(0);
         Path store = tmp.resolve("store");
@@ -347,7 +347,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void an_unvouched_m2_copy_is_not_served_once_the_lock_has_failed(@TempDir Path tmp) throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         seedM2(tmp.resolve("m2"), IMPOSTOR);
         Path store = tmp.resolve("store");
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(store));
@@ -360,7 +360,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void offline_an_unvouched_m2_copy_is_not_found_and_gets_no_memo(@TempDir Path tmp) throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         seedM2(tmp.resolve("m2"), IMPOSTOR);
         server.stop(0);
         goOffline();
@@ -381,7 +381,7 @@ class MavenRepoM2LookupTest {
     @ParameterizedTest
     @ValueSource(strings = {"read", "share"})
     void offline_a_coordinate_held_nowhere_is_an_ordinary_miss(String integration, @TempDir Path tmp) throws Exception {
-        System.setProperty("jk.m2.integration", integration);
+        System.setProperty("jk.env.JK_M2_INTEGRATION", integration);
         System.setProperty("jk.m2.local", tmp.resolve("m2").toString());
         server.stop(0);
         goOffline();
@@ -426,7 +426,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void offline_a_pinned_m2_copy_is_served_in_place(@TempDir Path tmp) throws Exception {
-        System.setProperty("jk.m2.integration", "share");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "share");
         Path m2 = tmp.resolve("m2");
         seedM2(m2, REAL);
         server.stop(0);

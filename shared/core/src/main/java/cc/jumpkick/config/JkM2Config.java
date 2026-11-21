@@ -2,7 +2,6 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.host.ProcessEnv;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.function.Function;
@@ -23,8 +22,8 @@ import org.jspecify.annotations.Nullable;
  * {@code clean-after-days} is how long after the download one becomes eligible. The same removal is
  * always available on request ({@code jk cache clean --m2}), without this setting.
  *
- * <p>Precedence: JVM system property &gt; {@code JK_*} env &gt; user file &gt; defaults, laid out
- * in rank order by {@link MachineConfig}. Malformed values fall back to defaults.
+ * <p>Precedence: {@code JK_M2_*} env &gt; user file &gt; defaults, laid out in rank order by {@link
+ * MachineConfig}. Malformed values fall back to defaults.
  */
 public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
 
@@ -86,33 +85,16 @@ public record JkM2Config(Mode mode, boolean autoClean, int cleanAfterDays) {
             MachineConfig.of(DEFAULTS.cleanAfterDays(), days -> days > 0);
 
     public static JkM2Config resolve() {
-        return resolve(JkDirs.userConfigFile(), ProcessEnv::get, System::getProperty);
+        return resolve(JkDirs.userConfigFile(), JkDirs::env);
     }
 
-    /** As {@link #resolve()} but against an explicit config file + env, with no JVM properties. */
+    /** As {@link #resolve()} but against an explicit config file and environment, highest layer first. */
     static JkM2Config resolve(Path userConfig, Function<String, @Nullable String> env) {
-        return resolve(userConfig, env, name -> null);
-    }
-
-    /**
-     * The whole ladder in one place, highest layer first. {@code lookup} is the pre-rename spelling
-     * of {@code integration} and ranks directly under it on each substrate, so a machine that still
-     * sets the old name is not overridden by the file.
-     */
-    static JkM2Config resolve(
-            Path userConfig, Function<String, @Nullable String> env, Function<String, @Nullable String> property) {
         TomlScan scan = scan(userConfig);
         return new JkM2Config(
                 INTEGRATION.layer(
-                        Mode.parse(property.apply("jk.m2.integration")),
-                        Mode.parse(property.apply("jk.m2.lookup")),
-                        Mode.parse(EnvValues.string(env, "JK_M2_INTEGRATION").orElse(null)),
-                        Mode.parse(EnvValues.string(env, "JK_M2_LOOKUP").orElse(null)),
-                        tomlMode(scan)),
-                AUTO_CLEAN.layer(
-                        EnvValues.parseBool(property.apply("jk.m2.auto-clean")).orElse(null),
-                        EnvValues.bool(env, "JK_M2_AUTO_CLEAN").orElse(null),
-                        tomlBool(scan, "m2.auto-clean")),
+                        Mode.parse(EnvValues.string(env, "JK_M2_INTEGRATION").orElse(null)), tomlMode(scan)),
+                AUTO_CLEAN.layer(EnvValues.bool(env, "JK_M2_AUTO_CLEAN").orElse(null), tomlBool(scan, "m2.auto-clean")),
                 CLEAN_AFTER_DAYS.layer(
                         EnvValues.intValue(env, "JK_M2_CLEAN_AFTER_DAYS").orElse(null),
                         scanInt(scan, "m2.clean-after-days")));

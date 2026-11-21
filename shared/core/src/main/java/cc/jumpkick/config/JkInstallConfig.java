@@ -2,7 +2,6 @@
 package cc.jumpkick.config;
 
 import cc.jumpkick.host.JkDirs;
-import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.model.InstallDestination;
 import java.nio.file.Path;
 import java.util.function.Function;
@@ -24,20 +23,14 @@ public record JkInstallConfig(InstallDestination destination) {
     private static final MachineConfig<InstallDestination> DESTINATION = MachineConfig.of(DEFAULTS.destination());
 
     public static JkInstallConfig resolve() {
-        return resolve(JkDirs.userConfigFile(), ProcessEnv::get, System::getProperty);
+        return resolve(JkDirs.userConfigFile(), JkDirs::env);
     }
 
-    /** As {@link #resolve()} but against an explicit config file + env, with no JVM properties. */
+    /** As {@link #resolve()} but against an explicit config file and environment. */
     static JkInstallConfig resolve(Path userConfig, Function<String, @Nullable String> env) {
-        return resolve(userConfig, env, name -> null);
-    }
-
-    /** {@code property} reaches only the {@code [m2]} ladder that the implied destination reads. */
-    static JkInstallConfig resolve(
-            Path userConfig, Function<String, @Nullable String> env, Function<String, @Nullable String> property) {
         TomlScan scan = TomlScan.scan(userConfig, "install.destination");
         InstallDestination implied =
-                JkM2Config.resolve(userConfig, env, property).share() ? InstallDestination.M2 : InstallDestination.JK;
+                JkM2Config.resolve(userConfig, env).share() ? InstallDestination.M2 : InstallDestination.JK;
         return new JkInstallConfig(DESTINATION.layerOver(
                 implied,
                 word(EnvValues.string(env, "JK_INSTALL_DESTINATION").orElse(null)),

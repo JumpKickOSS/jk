@@ -70,7 +70,7 @@ class LockClosuresTest {
     @BeforeEach
     void publish() throws IOException {
         System.setProperty("jk.env.JK_STORE_DIR", isolatedStore.resolve("store").toString());
-        System.setProperty("jk.m2.integration", "false");
+        System.setProperty("jk.env.JK_M2_INTEGRATION", "false");
         RepoGroup.clearProcessFetchCache();
         PluginDescriptor manifest = PluginDescriptors.parse(Files.readString(MANIFEST), MANIFEST.toString());
         PluginTableRegistry.putBuiltIn(manifest, null);
@@ -90,7 +90,7 @@ class LockClosuresTest {
 
     @AfterEach
     void releaseOverrides() {
-        System.clearProperty("jk.m2.integration");
+        System.clearProperty("jk.env.JK_M2_INTEGRATION");
     }
 
     @Test
