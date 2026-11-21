@@ -1082,10 +1082,12 @@ public final class ActionCache {
     /**
      * Delete every file under {@code dir} that {@code owned} does not name, then any directory left
      * empty — so a restore clears stale extras without disturbing the outputs it is about
-     * to restore. One walk, each directory listed once.
+     * to restore. The temp file of a write in flight to an owned file is kept: a stamp another step
+     * is writing this moment would otherwise lose its temp before the rename. One walk, each
+     * directory listed once.
      */
     private static void pruneUnowned(Path dir, Set<Path> owned) throws IOException {
-        PathUtil.pruneTree(dir, p -> owned.contains(p.normalize()));
+        PathUtil.pruneTree(dir, p -> owned.contains(p.normalize()) || owned.contains(AtomicWrites.inFlightTarget(p)));
     }
 
     /**

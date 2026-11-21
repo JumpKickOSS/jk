@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.host;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -20,6 +21,7 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.IntConsumer;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Write via temp sibling + move ({@code REPLACE_EXISTING} fallback).
@@ -229,6 +231,32 @@ public final class AtomicWrites {
         if (ownerOnly) OwnerOnlyFiles.directory(parent);
         else Files.createDirectories(parent);
         return staging(parent, target, ownerOnly);
+    }
+
+    /** A temp file older than this is a crashed write's residue, not a write in flight. */
+    private static final long IN_FLIGHT_MILLIS = 60_000;
+
+    /**
+     * The file a write in flight at {@code temp} is about to replace, when {@code temp} is named as
+     * this class names its temp files and was written within the last minute; null otherwise. A
+     * sweep that deletes what it does not own asks this first, so it does not take the temp out from
+     * under the rename.
+     */
+    public static @Nullable Path inFlightTarget(Path temp) {
+        String name = String.valueOf(temp.getFileName());
+        int dash = name.lastIndexOf('-');
+        int end = name.length() - ".tmp".length();
+        if (!name.startsWith(".") || !name.endsWith(".tmp") || dash <= 1 || dash + 1 >= end) return null;
+        for (int i = dash + 1; i < end; i++) {
+            if (!Character.isDigit(name.charAt(i))) return null;
+        }
+        try {
+            long age = Clock.SYSTEM.millis() - Files.getLastModifiedTime(temp).toMillis();
+            if (age > IN_FLIGHT_MILLIS) return null;
+        } catch (IOException gone) {
+            return null;
+        }
+        return temp.resolveSibling(name.substring(1, dash));
     }
 
     /**

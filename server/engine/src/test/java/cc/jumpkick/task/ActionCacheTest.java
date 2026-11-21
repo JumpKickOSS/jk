@@ -374,6 +374,30 @@ class ActionCacheTest {
     }
 
     @Test
+    void restore_keeps_the_temp_of_a_stamp_being_written(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Files.writeString(outputs.resolve("kept.class"), "k");
+        cache.store("compile-main", "key1", Map.of(), outputs);
+
+        // What a stamp write holds between creating its temp and renaming it over the stamp.
+        Path inFlight = Files.writeString(outputs.resolve("." + BuildStamps.KOTLIN + "-12078546805906892532.tmp"), "s");
+        Path residue = Files.writeString(outputs.resolve("." + BuildStamps.KOTLIN + "-77.tmp"), "old");
+        Files.setLastModifiedTime(residue, FileTime.fromMillis(System.currentTimeMillis() - 3_600_000));
+        Path strangers = Files.writeString(outputs.resolve(".other.class-5.tmp"), "x");
+        cache.restore(cache.lookup("key1").orElseThrow(), outputs);
+
+        assertThat(inFlight).as("the write in flight keeps its temp").exists();
+        assertThat(residue).as("a crashed write's residue goes").doesNotExist();
+        assertThat(strangers)
+                .as("a temp for a file the record does not own goes")
+                .doesNotExist();
+        assertThat(outputs.resolve("kept.class")).exists();
+    }
+
+    @Test
     void last_for_task_returns_most_recent(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
