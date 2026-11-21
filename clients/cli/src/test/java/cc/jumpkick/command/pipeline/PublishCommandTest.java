@@ -287,7 +287,7 @@ class PublishCommandTest {
                 .contains("pkg:maven/com.example/widget@1.0.0");
         assertThat(new String(received.get(stem + "-spdx.json"), StandardCharsets.UTF_8))
                 .contains("\"spdxVersion\":\"SPDX-2.3\"")
-                .contains("\"documentDescribes\":[\"SPDXRef-Package-Root\"]");
+                .contains("\"relationshipType\":\"DESCRIBES\",\"relatedSpdxElement\":\"SPDXRef-Package-Root\"");
     }
 
     @Test
