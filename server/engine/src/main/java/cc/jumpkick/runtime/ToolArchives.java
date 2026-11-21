@@ -6,7 +6,7 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
-import cc.jumpkick.jdk.JdkInstaller;
+import cc.jumpkick.jdk.ArchiveExtractor;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
@@ -61,8 +61,8 @@ final class ToolArchives {
         if (Files.isRegularFile(dir.resolve(COMPLETE))) return dir;
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".unpack-");
         try {
-            if (include.isEmpty()) JdkInstaller.extract(archive, staging, "zip");
-            else JdkInstaller.extractZip(archive, staging, matching(include));
+            if (include.isEmpty()) ArchiveExtractor.extract(archive, staging, "zip");
+            else ArchiveExtractor.extractZip(archive, staging, matching(include));
             Files.writeString(staging.resolve(COMPLETE), archive.getFileName() + "\n");
             if (Files.isDirectory(dir)) PathUtil.deleteRecursively(dir);
             AtomicWrites.publish(staging, dir);

@@ -110,7 +110,7 @@ class MinimalTarContainmentTest {
                 tmp.resolve("dir.zip"), TestArchives.zip(new String[][] {{"nonexistent/../../../escaped/", null}}));
 
         for (Path archive : new Path[] {file, dir}) {
-            assertThatThrownBy(() -> JdkInstaller.extract(archive, dest, "zip"))
+            assertThatThrownBy(() -> ArchiveExtractor.extract(archive, dest, "zip"))
                     .as(archive.getFileName().toString())
                     .isInstanceOf(IOException.class)
                     .hasMessageContaining("climbs outside the destination");
@@ -129,7 +129,7 @@ class MinimalTarContainmentTest {
         Path archive = Files.write(
                 tmp.resolve("ok.zip"), TestArchives.zip(new String[][] {{"nonexistent/../bin/java", "launcher"}}));
 
-        JdkInstaller.extract(archive, dest, "zip");
+        ArchiveExtractor.extract(archive, dest, "zip");
 
         assertThat(dest.resolve("bin/java")).hasContent("launcher");
         assertThat(dest.resolve("nonexistent")).doesNotExist();

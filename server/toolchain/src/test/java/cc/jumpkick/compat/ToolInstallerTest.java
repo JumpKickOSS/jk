@@ -11,6 +11,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.jdk.ArchiveExtractor;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.Symlinks;
 import java.io.ByteArrayOutputStream;
@@ -424,7 +425,7 @@ class ToolInstallerTest {
         Path zip = Files.write(
                 tempDir.resolve("maven.zip"), buildZip("apache-maven-3.9.9", Map.of("bin/mvn", "#!/bin/sh\n")));
 
-        assertThatThrownBy(() -> ToolInstaller.extract(zip, dest, "zip"))
+        assertThatThrownBy(() -> ArchiveExtractor.extract(zip, dest, "zip"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("outside the destination");
         assertThat(outside).isEmptyDirectory();
@@ -438,7 +439,7 @@ class ToolInstallerTest {
         Path zip = Files.write(
                 tempDir.resolve("maven.zip"), buildZip("nonexistent/../../..", Map.of("escaped/f", "pwned")));
 
-        assertThatThrownBy(() -> ToolInstaller.extract(zip, dest, "zip"))
+        assertThatThrownBy(() -> ArchiveExtractor.extract(zip, dest, "zip"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("climbs outside the destination");
         assertThat(tempDir.resolve("a/escaped")).doesNotExist();

@@ -482,7 +482,7 @@ class JdkInstallerTest {
             {"lib/pwn/owned", "outside"},
         }));
 
-        assertThatThrownBy(() -> JdkInstaller.extract(zip, dest, "zip"))
+        assertThatThrownBy(() -> ArchiveExtractor.extract(zip, dest, "zip"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("outside the destination")
                 .hasMessageContaining("lib/pwn");
@@ -500,7 +500,7 @@ class JdkInstallerTest {
             {"lib/owned", "outside"},
         }));
 
-        assertThatThrownBy(() -> JdkInstaller.extract(zip, dest, "zip"))
+        assertThatThrownBy(() -> ArchiveExtractor.extract(zip, dest, "zip"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("outside the destination")
                 .hasMessageContaining("lib");
@@ -517,7 +517,7 @@ class JdkInstallerTest {
             {"../owned", "outside"},
         }));
 
-        assertThatThrownBy(() -> JdkInstaller.extract(zip, dest, "zip"))
+        assertThatThrownBy(() -> ArchiveExtractor.extract(zip, dest, "zip"))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("outside the destination");
         assertThat(tempDir.resolve("owned")).doesNotExist();
@@ -533,7 +533,7 @@ class JdkInstallerTest {
             {"jdk/lib/modules", "mods"},
         }));
 
-        JdkInstaller.extract(zip, dest, "zip");
+        ArchiveExtractor.extract(zip, dest, "zip");
         assertThat(dest.resolve("jdk/bin/java")).hasContent("#!/fake");
         assertThat(dest.resolve("jdk/lib/modules")).hasContent("mods");
     }

@@ -45,7 +45,7 @@ class MinimalTarStreamTest {
                         hardLink("jdk/bin/libjli.so", "jdk/lib/libjli.so")));
         Path dest = Files.createDirectories(tmp.resolve("dest"));
 
-        JdkInstaller.extract(archive, dest, "tar");
+        ArchiveExtractor.extract(archive, dest, "tar");
 
         assertThat(dest.resolve("jdk/bin/libjli.so")).isRegularFile().hasContent("the launcher library");
     }

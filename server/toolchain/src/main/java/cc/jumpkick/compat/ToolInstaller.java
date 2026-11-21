@@ -9,11 +9,10 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StaleScratch;
 import cc.jumpkick.http.Http;
-import cc.jumpkick.jdk.MinimalTar;
+import cc.jumpkick.jdk.ArchiveExtractor;
 import cc.jumpkick.node.PackageManagerShims;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.util.JkOwnership;
-import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -34,9 +33,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -143,8 +139,8 @@ public final class ToolInstaller {
             Path stagingDir = Files.createTempDirectory(target.getParent(), ToolRegistry.STAGE_PREFIX);
             IN_FLIGHT.add(stagingDir);
             try {
-                extract(archive, stagingDir, dist.archiveType());
-                Path effectiveRoot = flattenedRoot(stagingDir);
+                ArchiveExtractor.extract(archive, stagingDir, dist.archiveType());
+                Path effectiveRoot = ArchiveExtractor.root(stagingDir);
                 PackageManagerShims.write(dist.tool(), effectiveRoot);
                 // The tree is finished before the rename: a concurrent install returns as soon as
                 // target exists, and must find a launcher it can exec. The ownership marker lets a
@@ -333,56 +329,6 @@ public final class ToolInstaller {
                 + "=1";
     }
 
-    static void extract(Path archive, Path destDir, String archiveType) throws IOException {
-        Files.createDirectories(destDir);
-        switch (archiveType) {
-            case "zip" -> unzip(archive, destDir);
-            case "tar.gz" -> extractTarGz(archive, destDir);
-            default -> throw new IOException("unsupported archive type: " + archiveType);
-        }
-    }
-
-    /**
-     * Every entry is judged by where it really lands, as the tar path judges its entries: its
-     * normalized path through {@link MinimalTar#entryPath}, directories through {@link
-     * MinimalTar#createDirectoryInside}, file parents through {@link
-     * MinimalTar#requireParentInside} — one judge for one destination.
-     */
-    private static void unzip(Path archive, Path destDir) throws IOException {
-        try (InputStream in = Files.newInputStream(archive);
-                ZipInputStream zis = new ZipInputStream(in)) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                Path out = MinimalTar.entryPath(destDir, entry.getName());
-                if (entry.isDirectory()) {
-                    MinimalTar.createDirectoryInside(destDir, out);
-                } else {
-                    MinimalTar.requireParentInside(destDir, out);
-                    Files.copy(zis, out);
-                }
-            }
-        }
-    }
-
-    private static void extractTarGz(Path archive, Path destDir) throws IOException {
-        try (InputStream fis = new BufferedInputStream(Files.newInputStream(archive));
-                GZIPInputStream gz = new GZIPInputStream(fis)) {
-            MinimalTar.stream(gz, (name, linkName, mode, kind, data, size) -> {
-                Path out = MinimalTar.entryPath(destDir, name);
-                switch (kind) {
-                    case DIRECTORY -> MinimalTar.createDirectoryInside(destDir, out);
-                    case SYMLINK -> MinimalTar.createSymlinkInside(destDir, out, linkName);
-                    case HARD_LINK -> MinimalTar.createHardLinkInside(destDir, out, linkName);
-                    case FILE -> {
-                        MinimalTar.requireParentInside(destDir, out);
-                        Files.copy(data, out);
-                        MinimalTar.applyMode(out, mode);
-                    }
-                }
-            });
-        }
-    }
-
     /**
      * Zip archives carry no Unix mode bits, so {@code bin/mvn} or {@code bin/gradle} arrives without
      * the +x bit. Set it explicitly so {@code ProcessBuilder} can exec the launcher.
@@ -399,23 +345,6 @@ public final class ToolInstaller {
         } catch (UnsupportedOperationException | IOException ignored) {
             // Windows / non-POSIX filesystem — .cmd/.bat needs no +x bit.
         }
-    }
-
-    /**
-     * Maven and Gradle archives unpack into a single top-level directory (e.g. {@code
-     * apache-maven-3.9.9/}, {@code gradle-9.8.0/}). Strip it so {@code home/bin/} is reachable.
-     */
-    private static Path flattenedRoot(Path stagingDir) throws IOException {
-        List<Path> children = new ArrayList<>();
-        try (var stream = Files.list(stagingDir)) {
-            stream.forEach(children::add);
-        }
-        Path root = children.size() == 1 && Files.isDirectory(children.getFirst()) ? children.getFirst() : stagingDir;
-        // Extraction judged each link when it was written, against the staging directory; a later
-        // entry can replace a link an earlier one routed through, and a lifted root is one level
-        // lower than what was judged. The final tree is judged again as a whole, whatever its shape.
-        MinimalTar.requireSymlinksInside(root);
-        return root;
     }
 
     private static void deleteRecursively(Path root) {
