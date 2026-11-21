@@ -49,8 +49,10 @@ class ManifestLocationTest {
         String entry = "lib = { group = \"com.example\", version = \"(1.0)\" }";
         Path file = write(dir, HEAD + "java = 25\n\n[dependencies]\n" + entry + "\n");
         JkBuildParseException e = refusal(file);
-        assertThat(e).hasMessage("dependencies.lib.version: malformed version range \"(1.0)\"");
-        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, entry.indexOf("version") + 1));
+        int column = entry.indexOf("version") + 1;
+        assertThat(e)
+                .hasMessage(file + ":7:" + column + ": dependencies.lib.version: malformed version range \"(1.0)\"");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, column));
     }
 
     @Test
@@ -65,7 +67,7 @@ class ManifestLocationTest {
     void a_range_whose_bounds_cross_is_refused_at_its_key(@TempDir Path dir) throws Exception {
         Path file = write(dir, HEAD + "kotlin = \"[2.0,1.0]\"\n");
         JkBuildParseException e = refusal(file);
-        assertThat(e).hasMessage("kotlin: malformed version range \"[2.0,1.0]\"");
+        assertThat(e).hasMessage(file + ":4:1: kotlin: malformed version range \"[2.0,1.0]\"");
         assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 4, 1));
     }
 
@@ -84,7 +86,9 @@ class ManifestLocationTest {
                 lib = { group = "com.example", version = "[1.0,2.0" }
                 """);
         JkBuildParseException e = refusal(file);
-        assertThat(e).hasMessage("workspace.dependencies.lib.version: malformed version range \"[1.0,2.0\"");
+        assertThat(e)
+                .hasMessageStartingWith(file + ":10:")
+                .hasMessageEndingWith(": workspace.dependencies.lib.version: malformed version range \"[1.0,2.0\"");
         assertThat(e.location()).isNotNull();
         assertThat(Objects.requireNonNull(e.location()).line()).isEqualTo(10);
     }
@@ -103,6 +107,24 @@ class ManifestLocationTest {
     void a_check_that_names_no_key_is_the_whole_file(@TempDir Path dir) throws Exception {
         Path file = write(dir, "group = \"x.y\"\nversion = \"0.1.0\"\n");
         assertThat(locationOf(file)).isEqualTo(SourceLocation.of(file));
+    }
+
+    @Test
+    void the_message_names_the_file_line_and_column_it_is_located_at(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n[build]\nbogus = 1\n");
+        assertThat(refusal(file).getMessage()).startsWith(file + ":7:1: [build] unknown key `bogus`");
+    }
+
+    @Test
+    void a_syntax_error_message_names_where_toml_stopped(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = = 25\n");
+        assertThat(refusal(file).getMessage()).startsWith(file + ":4:8: failed to parse jk.toml: ");
+    }
+
+    @Test
+    void a_refusal_of_the_whole_file_reads_as_its_message(@TempDir Path dir) throws Exception {
+        Path file = write(dir, "group = \"x.y\"\nversion = \"0.1.0\"\n");
+        assertThat(refusal(file).getMessage()).doesNotContain(file.toString());
     }
 
     @Test

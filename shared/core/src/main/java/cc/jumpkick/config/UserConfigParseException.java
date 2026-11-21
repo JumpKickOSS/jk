@@ -35,6 +35,12 @@ public final class UserConfigParseException extends JkBuildParseException {
         return this;
     }
 
+    /** The file, line, column and reason, written out even when TOML gave no position. */
+    @Override
+    public String getMessage() {
+        return message(file, line, column, reason);
+    }
+
     public Path file() {
         return file;
     }

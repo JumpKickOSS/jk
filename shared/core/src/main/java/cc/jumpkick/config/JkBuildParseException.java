@@ -14,7 +14,9 @@ import org.tomlj.TomlTable;
  *
  * <p>{@link #location()} says where in the manifest: the line and column of a syntax error or of
  * the key a check refused, and the file once {@link JkBuildParser} knows which one it was reading,
- * so an editor can mark the spot. {@code null} for a failure no file owns.
+ * so an editor can mark the spot. {@code null} for a failure no file owns. Once the location names
+ * a file and a line, the message leads with them as {@code file:line:column: }, so every place that
+ * prints the message says where.
  */
 public sealed class JkBuildParseException extends RuntimeException permits UserConfigParseException {
 
@@ -51,6 +53,15 @@ public sealed class JkBuildParseException extends RuntimeException permits UserC
 
     public @Nullable SourceLocation location() {
         return location;
+    }
+
+    @Override
+    public @Nullable String getMessage() {
+        String message = super.getMessage();
+        SourceLocation at = location;
+        if (at == null || at.file().isEmpty() || at.line() == 0) return message;
+        String spot = at.file() + ":" + at.line() + (at.column() == 0 ? "" : ":" + at.column());
+        return message == null ? spot : spot + ": " + message;
     }
 
     /**
