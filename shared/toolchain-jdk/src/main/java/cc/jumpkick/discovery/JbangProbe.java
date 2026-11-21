@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -8,7 +9,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * JBang caches downloaded JDKs under {@code ~/.jbang/cache/jdks/<major>/} (major-version key,
@@ -51,19 +51,17 @@ public final class JbangProbe implements LocalToolProbe {
             }
         }
         // Last-ditch: scan the jdks dir for anything matching.
-        try (Stream<Path> entries = Files.list(jdksDir)) {
-            return entries.filter(Files::isDirectory)
-                    .map(p -> {
-                        try {
-                            return p.toRealPath();
-                        } catch (IOException e) {
-                            return p;
-                        }
-                    })
-                    .filter(p -> ToolHealth.isHealthy(spec, p))
-                    .findFirst()
-                    .map(p -> new DiscoveredTool(p, spec.version(), name()));
-        }
+        return PathUtil.childDirectories(jdksDir).stream()
+                .map(p -> {
+                    try {
+                        return p.toRealPath();
+                    } catch (IOException e) {
+                        return p;
+                    }
+                })
+                .filter(p -> ToolHealth.isHealthy(spec, p))
+                .findFirst()
+                .map(p -> new DiscoveredTool(p, spec.version(), name()));
     }
 
     private static String majorOf(String version) {
@@ -76,10 +74,8 @@ public final class JbangProbe implements LocalToolProbe {
         Path jdksDir = jbangRoot.resolve("cache").resolve("jdks");
         if (!Files.isDirectory(jdksDir)) return List.of(); // fail fast
         List<JdkHit> hits = new ArrayList<>();
-        try (Stream<Path> entries = Files.list(jdksDir)) {
-            entries.filter(Files::isDirectory)
-                    .forEach(p -> ProbeSupport.discoverJdk(p, name()).ifPresent(hits::add));
-        }
+        PathUtil.childDirectories(jdksDir)
+                .forEach(p -> ProbeSupport.discoverJdk(p, name()).ifPresent(hits::add));
         return hits;
     }
 }

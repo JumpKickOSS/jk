@@ -291,17 +291,23 @@ public final class PathUtil {
 
     /**
      * Direct children of {@code dir} with listing attributes. Missing dir is a no-op. Does not
-     * recurse. Symlinks are not followed — a link to a directory arrives as a non-directory child.
+     * recurse. A child link is not followed — a link to a directory arrives as a non-directory
+     * child — but {@code dir} itself may be a link to a directory: its children are listed, under
+     * the link's path.
      */
     public static void forEachChild(Path dir, EntryVisit visit) throws IOException {
         if (!Files.isDirectory(dir)) return;
         WALKS.incrementAndGet();
-        Files.walkFileTree(dir, Set.of(), 1, new SimpleFileVisitor<>() {
+        // A walk does not enter a root that is a link, so list the directory it names.
+        Path listed = Files.isSymbolicLink(dir) ? dir.toRealPath() : dir;
+        Files.walkFileTree(listed, Set.of(), 1, new SimpleFileVisitor<>() {
             // Only the root reaches preVisitDirectory at maxDepth 1 — depth-1 directories
             // arrive via visitFile carrying their attributes — so the default CONTINUE is right.
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                return visit.accept(file, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
+                Path child =
+                        listed == dir ? file : dir.resolve(file.getFileName().toString());
+                return visit.accept(child, attrs) ? FileVisitResult.CONTINUE : FileVisitResult.TERMINATE;
             }
 
             @Override
@@ -309,6 +315,43 @@ public final class PathUtil {
                 return FileVisitResult.CONTINUE;
             }
         });
+    }
+
+    /**
+     * The direct children of {@code dir} that are directories, a link to one included, in listing
+     * order. The listing says which children are directories; only a link (or another entry that
+     * is neither file nor directory) is resolved to ask what it names. Missing dir has none.
+     */
+    public static List<Path> childDirectories(Path dir) throws IOException {
+        List<Path> out = new ArrayList<>();
+        forEachChild(dir, (child, attrs) -> {
+            if (attrs.isDirectory() || !attrs.isRegularFile() && Files.isDirectory(child)) out.add(child);
+            return true;
+        });
+        return out;
+    }
+
+    /**
+     * The direct children of {@code dir} that are regular files, a link to one included, in listing
+     * order: {@link #childDirectories}'s counterpart. Missing dir has none.
+     */
+    public static List<Path> childFiles(Path dir) throws IOException {
+        List<Path> out = new ArrayList<>();
+        forEachChild(dir, (child, attrs) -> {
+            if (attrs.isRegularFile() || !attrs.isDirectory() && Files.isRegularFile(child)) out.add(child);
+            return true;
+        });
+        return out;
+    }
+
+    /** Whether {@code dir} has any child at all; a missing dir has none. */
+    public static boolean hasChild(Path dir) throws IOException {
+        boolean[] any = {false};
+        forEachChild(dir, (child, attrs) -> {
+            any[0] = true;
+            return false;
+        });
+        return any[0];
     }
 
     /**

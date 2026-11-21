@@ -6,6 +6,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
@@ -15,8 +16,9 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -115,29 +117,25 @@ public final class EnginePaths {
     public static List<Paths> identitiesIn(Path stateDir) {
         Path dir = stateDir.resolve("engine");
         if (!Files.isDirectory(dir)) return List.of();
-        List<Paths> out = new ArrayList<>();
-        try (var listing = Files.list(dir)) {
-            List<Path> pointers = listing.filter(f -> f.getFileName().toString().endsWith(".endpoint"))
-                    .sorted(Comparator.comparingLong(EnginePaths::lastModifiedOrZero)
-                            .reversed())
-                    .toList();
-            for (Path pointer : pointers) {
-                String file = pointer.getFileName().toString();
-                String key = file.substring(0, file.length() - ".endpoint".length());
-                out.add(forKey(key, stateDir));
-            }
-        } catch (IOException e) {
-            return List.copyOf(out);
-        }
-        return List.copyOf(out);
-    }
-
-    private static long lastModifiedOrZero(Path p) {
+        Map<Path, Long> pointers = new LinkedHashMap<>();
         try {
-            return Files.getLastModifiedTime(p).toMillis();
+            PathUtil.forEachChild(dir, (f, attrs) -> {
+                if (f.getFileName().toString().endsWith(".endpoint")) {
+                    pointers.put(f, attrs.lastModifiedTime().toMillis());
+                }
+                return true;
+            });
         } catch (IOException e) {
-            return 0L;
+            return List.of();
         }
+        List<Paths> out = new ArrayList<>();
+        pointers.entrySet().stream()
+                .sorted(Map.Entry.<Path, Long>comparingByValue().reversed())
+                .forEach(e -> {
+                    String file = e.getKey().getFileName().toString();
+                    out.add(forKey(file.substring(0, file.length() - ".endpoint".length()), stateDir));
+                });
+        return List.copyOf(out);
     }
 
     /** The paths for an already-known key — the inverse of hashing, for enumeration. */

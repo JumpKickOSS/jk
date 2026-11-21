@@ -38,7 +38,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -747,8 +746,9 @@ public final class RepoArtifactStore {
         if (root == null) return List.of();
         Path dir = root.resolve(group.replace('.', '/')).resolve(artifact);
         if (!Files.isDirectory(dir)) return List.of();
-        try (Stream<Path> entries = Files.list(dir)) {
-            return entries.filter(this::hasTrackedFile)
+        try {
+            return PathUtil.childDirectories(dir).stream()
+                    .filter(this::hasTrackedFile)
                     .map(p -> p.getFileName().toString())
                     .toList();
         } catch (IOException e) {
@@ -1100,10 +1100,9 @@ public final class RepoArtifactStore {
     }
 
     private boolean hasTrackedFile(Path versionDir) {
-        if (!Files.isDirectory(versionDir)) return false;
-        try (Stream<Path> entries = Files.list(versionDir)) {
-            return entries.anyMatch(
-                    p -> Files.isRegularFile(p) && !isStaging(p.getFileName().toString()));
+        try {
+            return PathUtil.childFiles(versionDir).stream()
+                    .anyMatch(p -> !isStaging(p.getFileName().toString()));
         } catch (IOException e) {
             return false;
         }

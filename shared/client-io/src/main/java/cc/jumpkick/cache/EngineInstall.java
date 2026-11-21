@@ -12,7 +12,6 @@ import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.version.Versions;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -982,9 +981,10 @@ public final class EngineInstall {
         if (!Files.isDirectory(home)) return Optional.empty();
         Path best = null;
         long bestMtime = Long.MIN_VALUE;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(home, "jk-engine-*.jar")) {
-            for (Path p : entries) {
-                if (!Files.isRegularFile(p)) continue;
+        try {
+            for (Path p : PathUtil.childFiles(home)) {
+                String name = p.getFileName().toString();
+                if (!name.startsWith("jk-engine-") || !name.endsWith(".jar")) continue;
                 if (!version.equals(
                         versionFromJarName(p.getFileName().toString()).orElse(null))) continue;
                 long mtime = mtime(p);
@@ -1047,9 +1047,8 @@ public final class EngineInstall {
         if (liveName == null || liveName.isBlank()) return;
         String previous = pointer.getOrDefault(PREVIOUS_ENGINE_SHA, "").strip().toLowerCase(Locale.ROOT);
         List<Path> jars = new ArrayList<>();
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(home)) {
-            for (Path p : entries) {
-                if (!Files.isRegularFile(p)) continue;
+        try {
+            for (Path p : PathUtil.childFiles(home)) {
                 String name = p.getFileName().toString();
                 if (LOCK_NAME.equals(name) || POINTER_NAME.equals(name) || SHELF_NAME.equals(name)) continue;
                 if (liveName.equals(name)) continue;
@@ -1108,10 +1107,8 @@ public final class EngineInstall {
         if (configDir == null) return;
         Path dir = configDir.resolve(BIN_NAME);
         if (!Files.isDirectory(dir)) return;
-        try (DirectoryStream<Path> entries = Files.newDirectoryStream(dir)) {
-            for (Path p : entries) {
-                if (Files.isRegularFile(p)) tryDelete(p, removed);
-            }
+        try {
+            for (Path p : PathUtil.childFiles(dir)) tryDelete(p, removed);
         } catch (IOException ignored) {
             // best-effort
         }

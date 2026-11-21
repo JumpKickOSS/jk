@@ -3,6 +3,7 @@ package cc.jumpkick.discovery;
 
 import cc.jumpkick.compat.BuildTool;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.ByteArrayInputStream;
@@ -17,7 +18,6 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -144,12 +144,14 @@ public final class ToolHealth {
 
     private static Optional<String> findVersionInLibByPattern(Path libDir, Pattern p) {
         if (!Files.isDirectory(libDir)) return Optional.empty();
-        try (Stream<Path> stream = Files.list(libDir)) {
-            return stream.map(path -> path.getFileName().toString())
-                    .map(p::matcher)
-                    .filter(Matcher::matches)
-                    .map(m -> m.group("v"))
-                    .findFirst();
+        try {
+            String[] version = {null};
+            PathUtil.forEachChild(libDir, (path, attrs) -> {
+                Matcher m = p.matcher(path.getFileName().toString());
+                if (m.matches()) version[0] = m.group("v");
+                return version[0] == null;
+            });
+            return Optional.ofNullable(version[0]);
         } catch (IOException e) {
             return Optional.empty();
         }

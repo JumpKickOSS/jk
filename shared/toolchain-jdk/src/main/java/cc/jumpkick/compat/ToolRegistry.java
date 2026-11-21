@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compat;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.ToolUse;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,7 +12,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -125,13 +125,17 @@ public final class ToolRegistry {
         Path slugDir = toolsRoot.resolve(tool.slug());
         if (!Files.exists(slugDir)) return List.of();
         List<InstalledTool> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(slugDir)) {
-            stream.filter(p -> !p.getFileName().toString().startsWith(STAGE_PREFIX))
-                    .filter(p -> Files.isDirectory(p) || (includeBrokenLinks && Files.isSymbolicLink(p)))
-                    .sorted(Comparator.comparing(Path::getFileName))
-                    .forEach(p ->
-                            result.add(new InstalledTool(tool, p.getFileName().toString(), p)));
-        }
+        List<Path> installs = new ArrayList<>();
+        PathUtil.forEachChild(slugDir, (p, attrs) -> {
+            if (p.getFileName().toString().startsWith(STAGE_PREFIX)) return true;
+            if (attrs.isDirectory()
+                    || !attrs.isRegularFile() && Files.isDirectory(p)
+                    || includeBrokenLinks && attrs.isSymbolicLink()) installs.add(p);
+            return true;
+        });
+        installs.stream()
+                .sorted(Comparator.comparing(Path::getFileName))
+                .forEach(p -> result.add(new InstalledTool(tool, p.getFileName().toString(), p)));
         return result;
     }
 }

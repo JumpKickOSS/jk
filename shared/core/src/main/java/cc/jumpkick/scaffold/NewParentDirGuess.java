@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.scaffold;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -171,12 +171,12 @@ public final class NewParentDirGuess {
             return; // don't descend into a repo
         }
         if (depth == GIT_SCAN_MAX_DEPTH) return;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path child : stream) {
-                if (visits[0] >= GIT_SCAN_MAX_VISITS) return;
+        try {
+            // A link is not a directory here: the scan never leaves the tree it started in.
+            PathUtil.forEachChild(dir, (child, attrs) -> {
+                if (visits[0] >= GIT_SCAN_MAX_VISITS) return false;
                 String name = child.getFileName().toString();
-                if (name.startsWith(".")) continue;
-                if (!Files.isDirectory(child) || Files.isSymbolicLink(child)) continue;
+                if (name.startsWith(".") || !attrs.isDirectory()) return true;
                 // Skip huge / system trees under home.
                 String lower = name.toLowerCase(Locale.ROOT);
                 if (lower.equals("library")
@@ -186,10 +186,11 @@ public final class NewParentDirGuess {
                         || lower.equals(BuildLayout.TARGET)
                         || lower.equals("build")
                         || lower.equals(".cache")) {
-                    continue;
+                    return true;
                 }
                 scanGit(home, child, depth + 1, out, visits);
-            }
+                return true;
+            });
         } catch (IOException ignored) {
             // best-effort
         }

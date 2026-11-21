@@ -7,6 +7,7 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.GitCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.host.time.Clock;
@@ -28,7 +29,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -193,9 +193,8 @@ public record ProjectIdentity(
         // Prefer lock-sourced / higher-run homes when multiple ids claim the same path (re-key churn).
         String bestId = null;
         long bestScore = Long.MIN_VALUE;
-        try (Stream<Path> homes = Files.list(root)) {
-            for (Path home : homes.toList()) {
-                if (!Files.isDirectory(home)) continue;
+        try {
+            for (Path home : PathUtil.childDirectories(root)) {
                 Optional<IdentityFile> idf = IdentityFile.read(home);
                 if (idf.isEmpty()) continue;
                 IdentityFile f = idf.get();

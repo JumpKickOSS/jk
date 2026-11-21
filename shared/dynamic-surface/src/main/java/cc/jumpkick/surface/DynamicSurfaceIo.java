@@ -117,13 +117,11 @@ public final class DynamicSurfaceIo {
     public static DynamicSurface importAgentDir(Path agentDir, String origin) throws IOException {
         if (!Files.isDirectory(agentDir)) return DynamicSurface.empty();
         DynamicSurface surface = DynamicSurface.empty();
-        try (var stream = Files.list(agentDir)) {
-            for (Path file : stream.filter(Files::isRegularFile).sorted().toList()) {
-                String name = file.getFileName().toString();
-                if (!NativeImageMetadata.CONFIG_FILES.contains(name)) continue;
-                String body = Files.readString(file, StandardCharsets.UTF_8);
-                surface = surface.merge(NativeImageMetadata.parse(name, body, origin));
-            }
+        for (Path file : PathUtil.childFiles(agentDir).stream().sorted().toList()) {
+            String name = file.getFileName().toString();
+            if (!NativeImageMetadata.CONFIG_FILES.contains(name)) continue;
+            String body = Files.readString(file, StandardCharsets.UTF_8);
+            surface = surface.merge(NativeImageMetadata.parse(name, body, origin));
         }
         // Nested META-INF/native-image trees some agents write
         Path meta = agentDir.resolve("META-INF/native-image");

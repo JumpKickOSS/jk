@@ -7,6 +7,7 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.KeyedLocks;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -28,7 +29,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -438,8 +438,8 @@ public final class JdkInventory {
     private List<Path> ownedInstallDirs() {
         if (!Files.isDirectory(jdksRoot)) return List.of();
         List<Path> out = new ArrayList<>();
-        try (Stream<Path> entries = Files.list(jdksRoot)) {
-            entries.filter(Files::isDirectory)
+        try {
+            PathUtil.childDirectories(jdksRoot).stream()
                     .filter(p -> !p.getFileName().toString().startsWith("."))
                     .filter(p -> !JdkFingerprint.isAliasDir(p))
                     .filter(JdkOwnership::isJkOwned)

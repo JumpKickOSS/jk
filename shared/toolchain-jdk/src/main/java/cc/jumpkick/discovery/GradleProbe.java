@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -68,17 +68,12 @@ public final class GradleProbe implements LocalToolProbe {
     private List<Path> candidateHomes() throws IOException {
         if (!Files.isDirectory(jdksRoot)) return List.of();
         List<Path> homes = new ArrayList<>();
-        try (Stream<Path> hashDirs = Files.list(jdksRoot)) {
-            for (Path hashDir : (Iterable<Path>) hashDirs::iterator) {
-                if (!Files.isDirectory(hashDir)
-                        || hashDir.getFileName().toString().startsWith(".")) continue;
-                try (Stream<Path> inner = Files.list(hashDir)) {
-                    inner.filter(Files::isDirectory)
-                            .filter(p -> !p.getFileName().toString().startsWith("."))
-                            .map(IntellijJdkDir::javaHome)
-                            .forEach(homes::add);
-                }
-            }
+        for (Path hashDir : PathUtil.childDirectories(jdksRoot)) {
+            if (hashDir.getFileName().toString().startsWith(".")) continue;
+            PathUtil.childDirectories(hashDir).stream()
+                    .filter(p -> !p.getFileName().toString().startsWith("."))
+                    .map(IntellijJdkDir::javaHome)
+                    .forEach(homes::add);
         }
         return homes;
     }

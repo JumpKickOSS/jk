@@ -4,6 +4,7 @@ package cc.jumpkick.androidsdk;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.DirLinks;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -107,8 +108,8 @@ public final class AndroidSdk {
     /** A component is installed when its directory exists non-empty. */
     public boolean installed(String componentPath) {
         Path dir = componentDir(componentPath);
-        try (var listing = Files.isDirectory(dir) ? Files.list(dir) : null) {
-            return listing != null && listing.findFirst().isPresent();
+        try {
+            return PathUtil.hasChild(dir);
         } catch (IOException e) {
             return false;
         }

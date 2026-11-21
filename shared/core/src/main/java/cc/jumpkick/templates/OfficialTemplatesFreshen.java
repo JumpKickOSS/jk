@@ -197,10 +197,9 @@ public final class OfficialTemplatesFreshen {
             Path langDir = dest.resolve(lang);
             if (!Files.isDirectory(langDir)) continue;
             if (hasG8Child(langDir)) return true;
-            try (var frameworks = Files.list(langDir)) {
-                if (frameworks.anyMatch(fw ->
-                        Files.isDirectory(fw) && !fw.getFileName().toString().startsWith(".") && hasG8Child(fw))) {
-                    return true;
+            try {
+                for (Path fw : PathUtil.childDirectories(langDir)) {
+                    if (!fw.getFileName().toString().startsWith(".") && hasG8Child(fw)) return true;
                 }
             } catch (IOException ignored) {
                 // try next lang
@@ -211,9 +210,9 @@ public final class OfficialTemplatesFreshen {
     }
 
     private static boolean hasG8Child(Path dir) {
-        try (var tmpls = Files.list(dir)) {
-            return tmpls.anyMatch(
-                    p -> Files.isDirectory(p) && p.getFileName().toString().endsWith(".g8"));
+        try {
+            return PathUtil.childDirectories(dir).stream()
+                    .anyMatch(p -> p.getFileName().toString().endsWith(".g8"));
         } catch (IOException e) {
             return false;
         }
@@ -264,9 +263,7 @@ public final class OfficialTemplatesFreshen {
     }
 
     private static boolean isEmptyDir(Path dir) throws IOException {
-        try (var s = Files.list(dir)) {
-            return s.findAny().isEmpty();
-        }
+        return !PathUtil.hasChild(dir);
     }
 
     static void runGit(List<String> args, int timeoutSec) throws IOException {

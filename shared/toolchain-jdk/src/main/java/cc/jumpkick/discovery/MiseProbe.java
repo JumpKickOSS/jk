@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -38,21 +38,19 @@ public final class MiseProbe implements LocalToolProbe {
     public Optional<DiscoveredTool> find(ToolSpec spec) throws IOException {
         Path kindDir = dataDir.resolve("installs").resolve(spec.kind());
         if (!Files.isDirectory(kindDir)) return Optional.empty();
-        try (Stream<Path> entries = Files.list(kindDir)) {
-            return entries.filter(Files::isDirectory)
-                    // Skip mise's `latest` symlink so we don't double-report.
-                    .filter(p -> !"latest".equals(p.getFileName().toString()))
-                    .map(path -> {
-                        try {
-                            return path.toRealPath();
-                        } catch (IOException e) {
-                            return path;
-                        }
-                    })
-                    .filter(path -> ToolHealth.isHealthy(spec, path))
-                    .findFirst()
-                    .map(path -> new DiscoveredTool(path, spec.version(), name()));
-        }
+        return PathUtil.childDirectories(kindDir).stream()
+                // Skip mise's `latest` symlink so we don't double-report.
+                .filter(p -> !"latest".equals(p.getFileName().toString()))
+                .map(path -> {
+                    try {
+                        return path.toRealPath();
+                    } catch (IOException e) {
+                        return path;
+                    }
+                })
+                .filter(path -> ToolHealth.isHealthy(spec, path))
+                .findFirst()
+                .map(path -> new DiscoveredTool(path, spec.version(), name()));
     }
 
     @Override
@@ -60,11 +58,9 @@ public final class MiseProbe implements LocalToolProbe {
         Path javaDir = dataDir.resolve("installs").resolve("java");
         if (!Files.isDirectory(javaDir)) return List.of(); // fail fast
         List<JdkHit> hits = new ArrayList<>();
-        try (Stream<Path> entries = Files.list(javaDir)) {
-            entries.filter(Files::isDirectory)
-                    .filter(p -> !"latest".equals(p.getFileName().toString()))
-                    .forEach(p -> ProbeSupport.discoverJdk(p, name()).ifPresent(hits::add));
-        }
+        PathUtil.childDirectories(javaDir).stream()
+                .filter(p -> !"latest".equals(p.getFileName().toString()))
+                .forEach(p -> ProbeSupport.discoverJdk(p, name()).ifPresent(hits::add));
         return hits;
     }
 

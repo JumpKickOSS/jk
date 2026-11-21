@@ -15,12 +15,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.http.HttpResponse;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.zip.ZipEntry;
@@ -271,14 +272,14 @@ public final class AndroidSdkInstaller {
     }
 
     private static Path singleTopLevel(Path staging) throws IOException {
-        try (DirectoryStream<Path> children = Files.newDirectoryStream(staging)) {
-            Path only = null;
-            for (Path child : children) {
-                if (only != null) return staging; // multiple roots — the staging dir IS the component
-                only = child;
-            }
-            return only != null && Files.isDirectory(only) ? only : staging;
-        }
+        List<Path> dirs = new ArrayList<>(1);
+        int[] children = {0};
+        PathUtil.forEachChild(staging, (child, attrs) -> {
+            if (attrs.isDirectory() || !attrs.isRegularFile() && Files.isDirectory(child)) dirs.add(child);
+            return ++children[0] < 2;
+        });
+        // Multiple roots, or one that is not a directory: the staging dir IS the component.
+        return children[0] == 1 && dirs.size() == 1 ? dirs.getFirst() : staging;
     }
 
     private static void deleteRecursively(Path root) {

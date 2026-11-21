@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.discovery;
 
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -8,7 +9,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * {@code ~/.jenv/versions/<version>/} (JDKs only). jenv typically symlinks here from the original
@@ -36,19 +36,17 @@ public final class JenvProbe implements LocalToolProbe {
         if (!"java".equals(spec.kind())) return Optional.empty();
         Path versionsDir = jenvRoot.resolve("versions");
         if (!Files.isDirectory(versionsDir)) return Optional.empty();
-        try (Stream<Path> entries = Files.list(versionsDir)) {
-            return entries.filter(Files::isDirectory)
-                    .map(path -> {
-                        try {
-                            return path.toRealPath();
-                        } catch (IOException e) {
-                            return path;
-                        }
-                    })
-                    .filter(path -> ToolHealth.isHealthy(spec, path))
-                    .findFirst()
-                    .map(path -> new DiscoveredTool(path, spec.version(), name()));
-        }
+        return PathUtil.childDirectories(versionsDir).stream()
+                .map(path -> {
+                    try {
+                        return path.toRealPath();
+                    } catch (IOException e) {
+                        return path;
+                    }
+                })
+                .filter(path -> ToolHealth.isHealthy(spec, path))
+                .findFirst()
+                .map(path -> new DiscoveredTool(path, spec.version(), name()));
     }
 
     @Override
@@ -56,10 +54,8 @@ public final class JenvProbe implements LocalToolProbe {
         Path versionsDir = jenvRoot.resolve("versions");
         if (!Files.isDirectory(versionsDir)) return List.of(); // fail fast
         List<JdkHit> hits = new ArrayList<>();
-        try (Stream<Path> entries = Files.list(versionsDir)) {
-            entries.filter(Files::isDirectory)
-                    .forEach(p -> ProbeSupport.discoverJdk(p, name()).ifPresent(hits::add));
-        }
+        PathUtil.childDirectories(versionsDir)
+                .forEach(p -> ProbeSupport.discoverJdk(p, name()).ifPresent(hits::add));
         return hits;
     }
 }

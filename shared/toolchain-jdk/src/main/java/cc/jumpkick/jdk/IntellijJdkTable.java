@@ -4,6 +4,7 @@ package cc.jumpkick.jdk;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,7 +14,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -90,10 +90,12 @@ public final class IntellijJdkTable {
         Set<Path> homes = new HashSet<>();
         for (Path vendorRoot : vendorRoots) {
             if (!Files.isDirectory(vendorRoot)) continue;
-            try (Stream<Path> products = Files.list(vendorRoot)) {
-                products.map(p -> p.resolve("options").resolve("jdk.table.xml"))
-                        .filter(Files::isRegularFile)
-                        .forEach(table -> parseHomePaths(table, homes));
+            try {
+                PathUtil.forEachChild(vendorRoot, (product, attrs) -> {
+                    Path table = product.resolve("options").resolve("jdk.table.xml");
+                    if (!attrs.isRegularFile() && Files.isRegularFile(table)) parseHomePaths(table, homes);
+                    return true;
+                });
             } catch (IOException ignored) {
                 // Unreadable vendor dir — treat as "nothing registered here".
             }

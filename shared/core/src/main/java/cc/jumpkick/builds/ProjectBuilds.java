@@ -4,6 +4,7 @@ package cc.jumpkick.builds;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.util.FileLocks;
@@ -17,7 +18,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -224,8 +224,8 @@ public final class ProjectBuilds {
     public static List<Path> listProjectHomes(Path buildsRoot) {
         Path root = projectsRoot(buildsRoot);
         if (!Files.isDirectory(root)) return List.of();
-        try (Stream<Path> s = Files.list(root)) {
-            return s.filter(Files::isDirectory).sorted().toList();
+        try {
+            return PathUtil.childDirectories(root).stream().sorted().toList();
         } catch (IOException e) {
             return List.of();
         }
@@ -267,9 +267,9 @@ public final class ProjectBuilds {
     public static List<Path> listRuns(Path projectHome) {
         Path runs = projectHome.resolve(RUNS);
         if (!Files.isDirectory(runs)) return List.of();
-        try (Stream<Path> s = Files.list(runs)) {
+        try {
             Comparator<Path> byName = Comparator.comparing(p -> p.getFileName().toString());
-            return s.filter(Files::isDirectory)
+            return PathUtil.childDirectories(runs).stream()
                     .filter(p -> !p.getFileName().toString().startsWith("."))
                     .sorted(Comparator.comparingLong(ProjectBuilds::runNumberOf)
                             .thenComparing(byName)

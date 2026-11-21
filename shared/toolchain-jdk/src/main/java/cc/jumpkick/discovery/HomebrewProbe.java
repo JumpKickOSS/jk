@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.JdkHit;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -10,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * Homebrew on macOS keeps real installs under {@code /opt/homebrew/Cellar/<formula>/<version>/}
@@ -49,15 +49,12 @@ public final class HomebrewProbe implements LocalToolProbe {
             for (Path cellar : cellars) {
                 Path formulaDir = cellar.resolve(formula);
                 if (!Files.isDirectory(formulaDir)) continue;
-                try (Stream<Path> versionDirs = Files.list(formulaDir)) {
-                    Optional<DiscoveredTool> hit = versionDirs
-                            .filter(Files::isDirectory)
-                            .flatMap(v -> candidateHomes(spec, v).stream())
-                            .filter(home -> ToolHealth.isHealthy(spec, home))
-                            .findFirst()
-                            .map(home -> new DiscoveredTool(home, spec.version(), name() + ":" + formula));
-                    if (hit.isPresent()) return hit;
-                }
+                Optional<DiscoveredTool> hit = PathUtil.childDirectories(formulaDir).stream()
+                        .flatMap(v -> candidateHomes(spec, v).stream())
+                        .filter(home -> ToolHealth.isHealthy(spec, home))
+                        .findFirst()
+                        .map(home -> new DiscoveredTool(home, spec.version(), name() + ":" + formula));
+                if (hit.isPresent()) return hit;
             }
         }
         return Optional.empty();
@@ -99,21 +96,19 @@ public final class HomebrewProbe implements LocalToolProbe {
         List<JdkHit> hits = new ArrayList<>();
         for (Path cellar : cellars) {
             if (!Files.isDirectory(cellar)) continue;
-            try (Stream<Path> formulae = Files.list(cellar)) {
-                formulae.filter(Files::isDirectory)
-                        .filter(p -> {
-                            String n = p.getFileName().toString();
-                            return n.equals("openjdk") || n.startsWith("openjdk@");
-                        })
-                        .forEach(formulaDir -> collectFormulaInstalls(formulaDir, hits));
-            }
+            PathUtil.childDirectories(cellar).stream()
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.equals("openjdk") || n.startsWith("openjdk@");
+                    })
+                    .forEach(formulaDir -> collectFormulaInstalls(formulaDir, hits));
         }
         return hits;
     }
 
     private void collectFormulaInstalls(Path formulaDir, List<JdkHit> out) {
-        try (Stream<Path> versionDirs = Files.list(formulaDir)) {
-            versionDirs.filter(Files::isDirectory).forEach(versionDir -> {
+        try {
+            for (Path versionDir : PathUtil.childDirectories(formulaDir)) {
                 Path macHome = versionDir
                         .resolve("libexec")
                         .resolve("openjdk.jdk")
@@ -121,7 +116,7 @@ public final class HomebrewProbe implements LocalToolProbe {
                         .resolve("Home");
                 Path candidate = Files.isDirectory(macHome) ? macHome : versionDir.resolve("libexec");
                 ProbeSupport.discoverJdk(candidate, name()).ifPresent(out::add);
-            });
+            }
         } catch (IOException ignored) {
             // skip this formula
         }

@@ -2,6 +2,7 @@
 package cc.jumpkick.discovery;
 
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jdk.IntellijJdkDir;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkOwnership;
@@ -11,7 +12,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * Surfaces JDKs that {@code jk jdk install} placed under {@link JkDirs#jdks()} (IntelliJ shared
@@ -64,28 +64,24 @@ public final class JkProbe implements LocalToolProbe {
     public Optional<DiscoveredTool> find(ToolSpec spec) throws IOException {
         if (!"java".equals(spec.kind())) return Optional.empty();
         if (!Files.isDirectory(jdksRoot)) return Optional.empty();
-        try (Stream<Path> entries = Files.list(jdksRoot)) {
-            return entries.filter(Files::isDirectory)
-                    .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(p -> !requireOwnership || JdkOwnership.isJkOwned(p))
-                    .map(IntellijJdkDir::javaHome)
-                    .filter(home -> ToolHealth.isHealthy(spec, home))
-                    .findFirst()
-                    .map(home -> new DiscoveredTool(home, spec.version(), name()));
-        }
+        return PathUtil.childDirectories(jdksRoot).stream()
+                .filter(p -> !p.getFileName().toString().startsWith("."))
+                .filter(p -> !requireOwnership || JdkOwnership.isJkOwned(p))
+                .map(IntellijJdkDir::javaHome)
+                .filter(home -> ToolHealth.isHealthy(spec, home))
+                .findFirst()
+                .map(home -> new DiscoveredTool(home, spec.version(), name()));
     }
 
     @Override
     public List<JdkHit> discoverAllJdks() throws IOException {
         if (!Files.isDirectory(jdksRoot)) return List.of();
         List<JdkHit> hits = new ArrayList<>();
-        try (Stream<Path> entries = Files.list(jdksRoot)) {
-            entries.filter(Files::isDirectory)
-                    .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(p -> !requireOwnership || JdkOwnership.isJkOwned(p))
-                    .map(IntellijJdkDir::javaHome)
-                    .forEach(home -> ProbeSupport.discoverJdk(home, name()).ifPresent(hits::add));
-        }
+        PathUtil.childDirectories(jdksRoot).stream()
+                .filter(p -> !p.getFileName().toString().startsWith("."))
+                .filter(p -> !requireOwnership || JdkOwnership.isJkOwned(p))
+                .map(IntellijJdkDir::javaHome)
+                .forEach(home -> ProbeSupport.discoverJdk(home, name()).ifPresent(hits::add));
         return hits;
     }
 }

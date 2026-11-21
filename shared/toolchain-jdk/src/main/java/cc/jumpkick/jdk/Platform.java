@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.PathUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,8 +55,13 @@ public final class Platform {
     private static boolean hasMuslLoader(Path rootFs) {
         Path lib = rootFs.resolve("lib");
         if (!Files.isDirectory(lib)) return false;
-        try (var stream = Files.list(lib)) {
-            return stream.anyMatch(p -> p.getFileName().toString().startsWith("ld-musl-"));
+        try {
+            boolean[] musl = {false};
+            PathUtil.forEachChild(lib, (p, attrs) -> {
+                musl[0] = p.getFileName().toString().startsWith("ld-musl-");
+                return !musl[0];
+            });
+            return musl[0];
         } catch (IOException e) {
             return false;
         }

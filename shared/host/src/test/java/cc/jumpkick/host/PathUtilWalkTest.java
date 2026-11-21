@@ -180,6 +180,35 @@ class PathUtilWalkTest {
     }
 
     @Test
+    void forEachChild_lists_a_linked_directory_under_the_link(@TempDir Path tmp) throws IOException {
+        Path real = Files.createDirectories(tmp.resolve("real"));
+        Files.writeString(real.resolve("top.txt"), "t");
+        Path link = Symlinks.create(tmp.resolve("link"), real);
+
+        List<Path> seen = new ArrayList<>();
+        PathUtil.forEachChild(link, (p, attrs) -> seen.add(p));
+
+        assertThat(seen).containsExactly(link.resolve("top.txt"));
+    }
+
+    @Test
+    void childDirectories_and_childFiles_follow_a_link_to_their_kind(@TempDir Path tmp) throws IOException {
+        Path dir = Files.createDirectories(tmp.resolve("root/dir"));
+        Files.writeString(tmp.resolve("root/file.txt"), "f");
+        Path outside = Files.createDirectories(tmp.resolve("outside"));
+        Path linked = Symlinks.create(tmp.resolve("root/linked"), outside);
+        Symlinks.create(tmp.resolve("root/dangling"), tmp.resolve("gone"));
+        Symlinks.create(tmp.resolve("root/to-file"), tmp.resolve("root/file.txt"));
+
+        assertThat(PathUtil.childDirectories(tmp.resolve("root"))).containsExactlyInAnyOrder(dir, linked);
+        assertThat(PathUtil.childDirectories(tmp.resolve("absent"))).isEmpty();
+        assertThat(PathUtil.childFiles(tmp.resolve("root")))
+                .containsExactlyInAnyOrder(tmp.resolve("root/file.txt"), tmp.resolve("root/to-file"));
+        assertThat(PathUtil.hasChild(tmp.resolve("root"))).isTrue();
+        assertThat(PathUtil.hasChild(outside)).isFalse();
+    }
+
+    @Test
     void anyRegularFile_stops_after_a_hit(@TempDir Path tmp) throws IOException {
         Files.createDirectories(tmp.resolve("a"));
         Files.writeString(tmp.resolve("a/one.txt"), "1");
