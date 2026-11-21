@@ -12,19 +12,14 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.layout.WalkSkip;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -33,7 +28,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Debounced recursive directory watch for live loops ({@code jk watch}, {@code jk dev}). One
- * implementation for all verbs.
+ * implementation for all verbs; the host's {@link DirWatch} reports the changes, FSEvents on macOS.
  *
  * <p>By default only the module's source and resource trees are watched ({@link #defaultRoots}),
  * plus {@code jk.toml} at the project root, at the workspace root that lists it, and in every module
@@ -61,8 +56,7 @@ public final class SourceWatch implements AutoCloseable {
     /** How many debounce windows a burst may last when that is longer than {@link #MAX_WAIT_MILLIS}. */
     static final long MAX_WAIT_WINDOWS = 4;
 
-    private final WatchService watcher;
-    private final Map<WatchKey, Path> keys = new HashMap<>();
+    private final DirWatch watcher;
     private final Path projectDir;
     private final long debounceMillis;
     private final Set<Path> skipped;
@@ -96,7 +90,7 @@ public final class SourceWatch implements AutoCloseable {
      */
     private final Set<Path> maybeSuites = new HashSet<>();
 
-    private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis, Set<Path> skipped, Clock clock) {
+    private SourceWatch(DirWatch watcher, Path projectDir, long debounceMillis, Set<Path> skipped, Clock clock) {
         this.watcher = watcher;
         this.projectDir = projectDir;
         this.debounceMillis = Math.max(0, debounceMillis);
@@ -117,7 +111,7 @@ public final class SourceWatch implements AutoCloseable {
     /** As {@link #open(Path, List, long)}, never registering a tree under {@code skipped}. */
     public static SourceWatch open(Path projectDir, List<Path> roots, long debounceMillis, List<Path> skipped)
             throws IOException {
-        WatchService ws = FileSystems.getDefault().newWatchService();
+        DirWatch ws = DirWatch.open();
         Set<Path> skip = new HashSet<>();
         for (Path p : skipped) skip.add(WorkingDirectory.resolve(p));
         SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis, skip, Clock.SYSTEM);
@@ -183,8 +177,7 @@ public final class SourceWatch implements AutoCloseable {
     /** Block until a relevant change. */
     public Changes awaitChange() throws IOException, InterruptedException {
         while (true) {
-            WatchKey key = watcher.take();
-            Changes c = drainEvents(key);
+            Changes c = drainEvents(watcher.take());
             if (c.any()) return nextPass(c);
         }
     }
@@ -198,9 +191,9 @@ public final class SourceWatch implements AutoCloseable {
         while (true) {
             long remaining = deadline - Clock.SYSTEM.nanos();
             if (remaining <= 0) return Optional.empty();
-            WatchKey key = watcher.poll(remaining, TimeUnit.NANOSECONDS);
-            if (key == null) return Optional.empty();
-            Changes c = drainEvents(key);
+            List<DirWatch.Change> batch = watcher.poll(remaining);
+            if (batch == null) return Optional.empty();
+            Changes c = drainEvents(batch);
             if (c.any()) return Optional.of(nextPass(c));
         }
     }
@@ -229,13 +222,7 @@ public final class SourceWatch implements AutoCloseable {
     }
 
     private void registerDir(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return;
-        WatchKey key = dir.register(
-                watcher,
-                StandardWatchEventKinds.ENTRY_CREATE,
-                StandardWatchEventKinds.ENTRY_MODIFY,
-                StandardWatchEventKinds.ENTRY_DELETE);
-        keys.put(key, dir);
+        watcher.register(dir);
     }
 
     public record Changes(boolean sources, boolean resources, boolean manifest) {
@@ -244,13 +231,13 @@ public final class SourceWatch implements AutoCloseable {
         }
     }
 
-    private Changes drainEvents(WatchKey first) throws IOException, InterruptedException {
+    private Changes drainEvents(List<DirWatch.Change> first) throws IOException, InterruptedException {
         boolean sources = false, resources = false, manifest = false;
-        WatchKey key = first;
+        List<DirWatch.Change> batch = first;
         Settle settle = new Settle(clock, debounceMillis);
-        while (key != null) {
-            Path dir = keys.get(key);
-            for (WatchEvent<?> event : key.pollEvents()) {
+        while (batch != null) {
+            for (DirWatch.Change event : batch) {
+                Path dir = event.dir(), changed = event.entry();
                 if (event.kind() == StandardWatchEventKinds.OVERFLOW) {
                     // Events were dropped: which files changed is unknown, so all of them did, and
                     // a directory created in the gap is registered now.
@@ -258,17 +245,15 @@ public final class SourceWatch implements AutoCloseable {
                     sources = resources = manifest = true;
                     continue;
                 }
-                if (!(event.context() instanceof Path rel) || dir == null) continue;
-                Changes c = event(dir, event.kind(), dir.resolve(rel));
+                if (dir == null || changed == null) continue;
+                Changes c = event(dir, event.kind(), changed);
                 if (c == null || !c.any()) continue;
                 settle.event();
                 sources |= c.sources();
                 resources |= c.resources();
                 manifest |= c.manifest();
             }
-            if (!key.reset()) keys.remove(key);
-            long remaining = settle.remainingNanos();
-            key = remaining > 0 ? watcher.poll(remaining, TimeUnit.NANOSECONDS) : watcher.poll();
+            batch = watcher.poll(settle.remainingNanos());
         }
         return new Changes(sources, resources, manifest);
     }
@@ -298,7 +283,7 @@ public final class SourceWatch implements AutoCloseable {
 
     /** Whether {@code dir} is registered with the watch service now. */
     boolean watches(Path dir) {
-        return keys.containsValue(dir.toAbsolutePath().normalize());
+        return watcher.watches(dir);
     }
 
     /**

@@ -19,6 +19,9 @@ JumpKick shows you this page's new entries after it updates itself.
 - **`jk cache gc` keeps the outputs its records name.** The sweep did not read an output written
   with its size, the form every record has had since 0.52.0, so it could delete cached outputs that
   were still in use and the prune did not count them; a build then ran the step again.
+- **`jk watch` and `jk dev` see a save on macOS within milliseconds.** The loop reads FSEvents
+  where it polled every 2 s, so a pass started up to 2 s after the save; it now starts once the
+  150 ms debounce window is quiet ([Live loops](run.md#live-loops-jk-watch--jk-dev)).
 - **`jk dev` answers `r`, `c` and `q`.** On a terminal, `r` rebuilds and restarts the app (every
   member at a workspace root; an Android app is rebuilt and redeployed), `c` clears the screen and
   `q` stops the session. While the keys are
