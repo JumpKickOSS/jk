@@ -5,7 +5,6 @@ import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.plugin.build.PackageIo;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Enumeration;
@@ -76,25 +75,20 @@ final class ApkPackager {
             Enumeration<? extends ZipEntry> entries = in.entries();
             while (entries.hasMoreElements()) {
                 ZipEntry entry = entries.nextElement();
-                byte[] bytes;
-                try (InputStream stream = in.getInputStream(entry)) {
-                    bytes = stream.readAllBytes();
-                }
-                ZIP.writeEntry(zip, entry.getName(), bytes, entry.getMethod());
+                ZIP.copyEntry(zip, entry.getName(), in, entry);
             }
             List<Path> dexFiles = ResourceStep.filesUnder(dexDir, ".dex");
             if (dexFiles.isEmpty()) {
                 throw new IOException("no .dex files under " + dexDir);
             }
             for (Path dex : dexFiles) {
-                ZIP.writeEntry(zip, dex.getFileName().toString(), Files.readAllBytes(dex), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, dex.getFileName().toString(), dex);
             }
             for (var asset : AndroidDeps.mergedAssets(io).entrySet()) {
-                ZIP.writeEntry(
-                        zip, "assets/" + asset.getKey(), Files.readAllBytes(asset.getValue()), ZipEntry.DEFLATED);
+                ZIP.writeEntry(zip, "assets/" + asset.getKey(), asset.getValue());
             }
             for (var lib : AndroidDeps.nativeLibs(io).entrySet()) {
-                ZIP.writeEntry(zip, "lib/" + lib.getKey(), Files.readAllBytes(lib.getValue()), ZipEntry.STORED);
+                ZIP.writeStored(zip, "lib/" + lib.getKey(), lib.getValue());
             }
         }
     }

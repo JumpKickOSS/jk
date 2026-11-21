@@ -17,6 +17,7 @@ import java.util.jar.Manifest;
 import java.util.zip.CRC32;
 import java.util.zip.CheckedInputStream;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
 /**
@@ -136,6 +137,26 @@ public final class DeterministicZip {
         try (in) {
             zip.putNextEntry(entry(name));
             in.transferTo(zip);
+        }
+        zip.closeEntry();
+    }
+
+    /**
+     * Copy {@code source} out of {@code in} as entry {@code name}, keeping its compression method.
+     * A STORED entry takes its size and CRC-32 from {@code in}'s central directory, so the bytes
+     * stream through either way — constant memory.
+     */
+    public void copyEntry(ZipOutputStream zip, String name, ZipFile in, ZipEntry source) throws IOException {
+        JarEntry entry = entry(name);
+        entry.setMethod(source.getMethod());
+        if (source.getMethod() == ZipEntry.STORED) {
+            entry.setSize(source.getSize());
+            entry.setCompressedSize(source.getSize());
+            entry.setCrc(source.getCrc());
+        }
+        zip.putNextEntry(entry);
+        try (InputStream stream = in.getInputStream(source)) {
+            stream.transferTo(zip);
         }
         zip.closeEntry();
     }

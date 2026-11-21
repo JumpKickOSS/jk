@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.TimeZone;
@@ -21,7 +22,9 @@ import java.util.jar.Attributes;
 import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -97,6 +100,41 @@ class DeterministicZipTest {
             assertThat(entry.getMethod()).isEqualTo(ZipEntry.STORED);
             assertThat(entry.getSize()).isEqualTo(Files.size(file));
             assertThat(in.readAllBytes()).isEqualTo(Files.readAllBytes(file));
+        }
+    }
+
+    /** A copy out of another zip streams, and writes the bytes a read-then-write would have. */
+    @Test
+    void a_copied_entry_keeps_its_method_and_matches_writing_its_bytes(@TempDir Path tmp) throws IOException {
+        byte[] arsc = "resource table".repeat(50).getBytes(UTF_8);
+        byte[] xml = "<manifest/>".repeat(50).getBytes(UTF_8);
+        Path source = tmp.resolve("resources.ap_");
+        try (ZipOutputStream zip = DeterministicZip.newArchive(source)) {
+            DeterministicZip.PINNED.writeEntry(zip, "resources.arsc", arsc, ZipEntry.STORED);
+            DeterministicZip.PINNED.writeEntry(zip, "AndroidManifest.xml", xml, ZipEntry.DEFLATED);
+        }
+
+        ByteArrayOutputStream copied = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(copied);
+                ZipFile in = new ZipFile(source.toFile())) {
+            for (ZipEntry e : Collections.list(in.entries())) {
+                DeterministicZip.PINNED.copyEntry(zip, e.getName(), in, e);
+            }
+        }
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(written)) {
+            DeterministicZip.PINNED.writeEntry(zip, "resources.arsc", arsc, ZipEntry.STORED);
+            DeterministicZip.PINNED.writeEntry(zip, "AndroidManifest.xml", xml, ZipEntry.DEFLATED);
+        }
+
+        assertThat(copied.toByteArray()).isEqualTo(written.toByteArray());
+        try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(copied.toByteArray()))) {
+            ZipEntry stored = in.getNextEntry();
+            assertThat(stored.getMethod()).isEqualTo(ZipEntry.STORED);
+            assertThat(in.readAllBytes()).isEqualTo(arsc);
+            ZipEntry deflated = in.getNextEntry();
+            assertThat(deflated.getMethod()).isEqualTo(ZipEntry.DEFLATED);
+            assertThat(in.readAllBytes()).isEqualTo(xml);
         }
     }
 
