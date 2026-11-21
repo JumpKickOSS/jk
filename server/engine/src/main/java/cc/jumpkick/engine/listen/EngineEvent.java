@@ -138,7 +138,8 @@ public sealed interface EngineEvent {
             String message,
             @Nullable String test,
             @Nullable String exceptionClass,
-            String key)
+            String key,
+            String conflict)
             implements EngineEvent {}
 
     record ErrorFailure(String dir, String step, String code, String message, TestFailureInfo failure)

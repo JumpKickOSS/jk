@@ -466,7 +466,8 @@ final class EngineEventDecoder {
             return new BuildPlanResult.Diagnostic(e.task(), e.code(), text.message(), f).withKey(e.key());
         }
         return new BuildPlanResult.Diagnostic(e.task(), e.code(), text.message(), e.test(), e.exceptionClass())
-                .withKey(e.key());
+                .withKey(e.key())
+                .withConflict(e.conflict());
     }
 
     /**

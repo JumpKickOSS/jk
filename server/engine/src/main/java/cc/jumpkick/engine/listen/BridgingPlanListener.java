@@ -282,7 +282,14 @@ public final class BridgingPlanListener implements BuildPlanListener {
                 sink.emit(new EngineEvent.PlanDiagnosticFailure(dir, d.step(), d.code(), redact(message(d)), safe));
             } else {
                 sink.emit(new EngineEvent.PlanDiagnostic(
-                        dir, d.step(), d.code(), redact(message(d)), d.test(), d.exceptionClass(), d.key()));
+                        dir,
+                        d.step(),
+                        d.code(),
+                        redact(message(d)),
+                        d.test(),
+                        d.exceptionClass(),
+                        d.key(),
+                        redact(d.conflict())));
             }
         }
         // Timeline + exclusive-slot release must precede the terminal plan-finish line:

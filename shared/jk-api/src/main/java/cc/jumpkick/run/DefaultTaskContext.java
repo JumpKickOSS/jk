@@ -234,6 +234,13 @@ final class DefaultTaskContext implements TaskContext {
     }
 
     @Override
+    public void conflictAt(String code, String message, @Nullable SourceLocation at, String conflict) {
+        BuildPlanResult.Diagnostic d = new BuildPlanResult.Diagnostic(step, code, message);
+        plan.errorsRef().add((at == null ? d : d.at(at)).withConflict(conflict));
+        plan.emit(l -> l.error(step, code, message));
+    }
+
+    @Override
     public void keyedWarn(String code, String key, String message) {
         plan.warningsRef().add(new BuildPlanResult.Diagnostic(step, code, message).withKey(key));
         plan.emit(l -> l.warn(step, code, message));

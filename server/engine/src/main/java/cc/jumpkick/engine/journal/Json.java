@@ -175,6 +175,19 @@ final class Json {
         return new Written(MiniJson.writePretty(o), spilled.isEmpty() ? null : MiniJson.write(spilled));
     }
 
+    /**
+     * A diagnostic's {@code conflict} as the JSON object it holds, for a writer to nest; {@code
+     * null} when it has none or the text is not an object.
+     */
+    static @Nullable Object conflictValue(String conflict) {
+        if (conflict.isEmpty()) return null;
+        try {
+            return MiniJson.parse(conflict) instanceof Map<?, ?> object ? object : null;
+        } catch (RuntimeException notJson) {
+            return null;
+        }
+    }
+
     private static Map<String, Object> diagMap(BuildRecord.Diag d) {
         Map<String, Object> dm = new LinkedHashMap<>();
         dm.put("severity", d.severity());
@@ -197,6 +210,8 @@ final class Json {
         if (d.snippet() != null && !d.snippet().isEmpty()) dm.put("snippet", d.snippet());
         if (d.worker() > 0) dm.put("worker", d.worker());
         if (d.stack() != null && !d.stack().isEmpty()) dm.put("stack", d.stack());
+        Object conflict = conflictValue(d.conflict());
+        if (conflict != null) dm.put("conflict", conflict);
         return dm;
     }
 
@@ -437,7 +452,8 @@ final class Json {
                     strList(dm, "snippet"),
                     (int) lng(dm, "worker"),
                     text(dm, "key"),
-                    text(dm, "suite")));
+                    text(dm, "suite"),
+                    dm.get("conflict") instanceof Map<?, ?> conflict ? MiniJson.write(conflict) : ""));
         }
 
         return new BuildRecord(

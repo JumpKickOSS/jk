@@ -7,6 +7,7 @@ import cc.jumpkick.cli.engine.EnginePrewarm;
 import cc.jumpkick.cli.engine.EngineRequests;
 import cc.jumpkick.cli.engine.ProjectInfos;
 import cc.jumpkick.cli.run.BuildPlanConsole;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.cli.tui.Spinner;
@@ -28,6 +29,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import org.jspecify.annotations.Nullable;
 
@@ -165,7 +167,7 @@ public final class EnsureFreshLock {
 
             // A module whose lock failed carries the resolver's reason as a step error, not on the
             // terminal: kept here, it is what the freshen says (and decides soft or hard) with.
-            List<String> failures = new ArrayList<>();
+            List<BuildPlanResult.Diagnostic> failures = new ArrayList<>();
             EngineRequests.LockHandler quiet = new EngineRequests.LockHandler() {
                 @Override
                 public BuildPlanListener onModuleStart(String moduleDir, String moduleCoord, List<Task> steps) {
@@ -191,7 +193,11 @@ public final class EnsureFreshLock {
             if (outcome.exitCode() != 0) {
                 String err = outcome.errors() != null && !outcome.errors().isEmpty()
                         ? outcome.errors().getFirst()
-                        : failures.isEmpty() ? "could not refresh jk-lock.toml" : failures.getFirst();
+                        : failures.isEmpty()
+                                ? "could not refresh jk-lock.toml"
+                                : Objects.requireNonNull(failures.getFirst().message())
+                                        .strip();
+                if (global.outputIsJson()) printConflicts(failures);
                 if (asBuild != null) return failAsBuild(dir, chip, asBuild, err, outcome.exitCode(), spinner);
                 return failSoftOrHard(dir, chip, err, outcome.exitCode(), spinner);
             }
@@ -213,7 +219,8 @@ public final class EnsureFreshLock {
      * lock ends, as the spinner was: the command's own output follows on a clean screen.
      */
     private static EngineRequests.LockOutcome runInRegion(
-            String chip, String message, EngineRequests.LockRequest req, List<String> failures) throws IOException {
+            String chip, String message, EngineRequests.LockRequest req, List<BuildPlanResult.Diagnostic> failures)
+            throws IOException {
         JkManager view = JkManager.plan(CliOutput.stdout(), chip, true);
         Map<String, String> coordByDir = new ConcurrentHashMap<>();
         try {
@@ -246,12 +253,26 @@ public final class EnsureFreshLock {
         }
     }
 
-    /** A failed lock module's errors, as the resolver wrote them, onto {@code failures}. */
-    static void keepFailure(BuildPlanResult result, List<String> failures) {
+    /** A failed lock module's errors that say something, as the resolver wrote them, onto {@code failures}. */
+    static void keepFailure(BuildPlanResult result, List<BuildPlanResult.Diagnostic> failures) {
         if (result.success()) return;
         for (BuildPlanResult.Diagnostic d : result.errors()) {
             String message = d.message();
-            if (message != null && !message.isBlank()) failures.add(message.strip());
+            if (message != null && !message.isBlank()) failures.add(d);
+        }
+    }
+
+    /**
+     * Under {@code -O json}, each failure that is a resolve with no solution as an {@code error} row
+     * on stdout: its step, code and message, and the {@code conflict} object behind the message.
+     */
+    static void printConflicts(List<BuildPlanResult.Diagnostic> failures) {
+        for (BuildPlanResult.Diagnostic d : failures) {
+            if (d.conflict().isEmpty()) continue;
+            JsonlShape.row("error", row -> row.string("task", d.step())
+                    .string("code", d.code())
+                    .string("message", Objects.requireNonNull(d.message()).strip())
+                    .token("conflict", d.conflict()));
         }
     }
 

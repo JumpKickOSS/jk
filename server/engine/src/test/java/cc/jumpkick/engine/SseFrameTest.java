@@ -62,6 +62,7 @@ class SseFrameTest {
                 List.of("x"),
                 2,
                 "",
+                "",
                 "");
         Object parsed =
                 MiniJson.parse(SsePublisher.errorEventJson(7, "/ws/a", d).toString());

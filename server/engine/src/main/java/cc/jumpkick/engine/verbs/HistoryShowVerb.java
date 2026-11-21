@@ -178,7 +178,8 @@ public final class HistoryShowVerb implements HostedVerb {
         String message = redactSafe(r, d.message());
         String rawStack = d.stack();
         String stack = rawStack == null ? null : redactSafe(r, rawStack);
-        if (Objects.equals(message, d.message()) && Objects.equals(stack, d.stack())) {
+        String conflict = redactSafe(r, d.conflict());
+        if (Objects.equals(message, d.message()) && Objects.equals(stack, d.stack()) && conflict.equals(d.conflict())) {
             return d;
         }
         return new BuildRecord.Diag(
@@ -201,7 +202,8 @@ public final class HistoryShowVerb implements HostedVerb {
                 d.snippet(),
                 d.worker(),
                 d.key(),
-                d.suite());
+                d.suite(),
+                conflict);
     }
 
     private static String redactSafe(SecretRedactor r, String text) {

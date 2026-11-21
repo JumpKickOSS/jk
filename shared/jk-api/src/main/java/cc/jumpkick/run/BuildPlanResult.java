@@ -71,7 +71,9 @@ public record BuildPlanResult(
      * <p>{@code code} names the tool ({@code javac}, {@code kotlinc}, a guard rule); {@code key} is
      * that tool's own name for the diagnostic ({@code compiler.err.cant.resolve.location}), {@code
      * ""} when the tool reports text only. {@code suite} is a test failure's suite ({@link
-     * TestFailureInfo#suite}).
+     * TestFailureInfo#suite}). {@code conflict} is an unsatisfiable resolve's conflict as one JSON
+     * object (the resolver's {@code Conflict.toMap()}: {@code conclusion}, {@code packages}, {@code
+     * facts}, {@code declared}), {@code ""} for every other diagnostic.
      */
     public record Diagnostic(
             String step,
@@ -90,7 +92,8 @@ public record BuildPlanResult(
             List<String> snippet,
             int worker,
             String key,
-            String suite) {
+            String suite,
+            String conflict) {
 
         /** Diagnostic with no test identity — the common case (javac, resolver, …). */
         public Diagnostic(String step, String code, String message) {
@@ -131,6 +134,7 @@ public record BuildPlanResult(
                     snippet,
                     worker,
                     "",
+                    "",
                     "");
         }
 
@@ -153,7 +157,8 @@ public record BuildPlanResult(
                     snippet,
                     worker,
                     key,
-                    suite);
+                    suite,
+                    conflict);
         }
 
         /** This diagnostic with the tool's key for it. */
@@ -175,7 +180,31 @@ public record BuildPlanResult(
                     snippet,
                     worker,
                     key,
-                    suite);
+                    suite,
+                    conflict);
+        }
+
+        /** This diagnostic carrying an unsatisfiable resolve's conflict, a JSON object. */
+        public Diagnostic withConflict(String conflict) {
+            return new Diagnostic(
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    file,
+                    line,
+                    snippetStart,
+                    snippet,
+                    worker,
+                    key,
+                    suite,
+                    conflict);
         }
 
         /** Two-field test failure (display label + exception class). */
@@ -222,7 +251,8 @@ public record BuildPlanResult(
                     failure == null ? List.of() : failure.snippet(),
                     failure == null ? 0 : failure.worker(),
                     "",
-                    failure == null ? "" : failure.suite());
+                    failure == null ? "" : failure.suite(),
+                    "");
         }
 
         public Diagnostic {
@@ -230,6 +260,7 @@ public record BuildPlanResult(
             else snippet = List.copyOf(snippet);
             key = key == null ? "" : key;
             suite = suite == null ? "" : suite;
+            conflict = conflict == null ? "" : conflict;
         }
 
         public @Nullable TestFailureInfo testFailure() {

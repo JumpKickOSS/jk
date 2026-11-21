@@ -9,7 +9,8 @@ import java.util.List;
  * always-present fields — the tool's own {@code key} for the diagnostic between {@code code} and
  * {@code message} when the tool gave one — then the additive test fields only when they say
  * something, so a plain compiler diagnostic stays small. The stack is serialized once, top-level,
- * last. {@code textId} / {@code sameText} are the stream's {@link FailureTextRefs}.
+ * last. {@code textId} / {@code sameText} are the stream's {@link FailureTextRefs}. A {@code conflict}
+ * is an unsatisfiable resolve's, the text of one JSON object, sent as a string like every field.
  */
 final class DiagnosticFields {
     private DiagnosticFields() {}
@@ -34,6 +35,7 @@ final class DiagnosticFields {
             List<String> snippet,
             String stack,
             String key,
+            String conflict,
             int textId,
             int sameText) {
         return RequestJson.request(type)
@@ -56,6 +58,7 @@ final class DiagnosticFields {
                 .optionalArray("snippet", snippet)
                 .optionalNumber("textId", textId, 0)
                 .optionalNumber("sameText", sameText, 0)
+                .optionalNonEmptyString("conflict", conflict)
                 .optionalNonEmptyString("stack", stack)
                 .finish();
     }

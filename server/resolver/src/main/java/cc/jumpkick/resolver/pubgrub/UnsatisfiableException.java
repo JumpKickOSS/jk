@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import cc.jumpkick.jsonl.MiniJson;
+
 /**
  * Raised when PubGrub determines that no version assignment satisfies the supplied constraints.
  * Carries the root-level incompatibility that fired so the diagnostics renderer can walk back
@@ -27,5 +29,10 @@ public final class UnsatisfiableException extends RuntimeException {
     /** The failure as data: the facts it derives from and the declarations behind it. */
     public Conflict conflict() {
         return Conflict.of(rootCause);
+    }
+
+    /** {@link #conflict()} as one JSON object, the form a diagnostic carries it in. */
+    public String conflictJson() {
+        return MiniJson.write(conflict().toMap());
     }
 }

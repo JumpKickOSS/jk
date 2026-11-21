@@ -239,6 +239,14 @@ line of reasoning, not one per solver step. A dependency whose version a BOM or 
   │ Therefore, the project's requirements cannot be resolved
 ```
 
+The same conflict is data for a reader that is not a person: the run's journal record (`GET
+/api/history?id=<run>`) keeps it as `conflict` on the failed resolve's diagnostic, and a command
+that reads the lock (`jk why`, `jk tree`, …) prints it under `-O json` as an `error` row's
+`conflict`: `conclusion`, the `packages` in it, every `facts` row (`kind`, `package`, `versions`,
+`from`, `fromVersions`, `pinnedBy`, `available`, `notes`, each present when it says something)
+and the project's own `declared` dependencies behind it
+([Machine output](machine-output.md)).
+
 With a BOM: [Platforms](platforms.md).
 
 Your own exact pin is one constraint among the transitives': a pin below a floor some POM declares

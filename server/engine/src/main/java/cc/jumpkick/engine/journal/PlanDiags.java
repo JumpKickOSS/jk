@@ -16,6 +16,7 @@ final class PlanDiags {
     static BuildRecord.Diag of(String severity, String dir, String redactDir, BuildPlanResult.Diagnostic d) {
         String redacted = BuildAccumulator.redactEnv(redactDir, d.message());
         String message = redacted == null ? "" : redacted;
+        String conflict = BuildAccumulator.redactEnv(redactDir, d.conflict());
         String file = d.file() == null ? "" : d.file();
         int line = d.line();
         int col = 0;
@@ -49,6 +50,7 @@ final class PlanDiags {
                 d.snippet(),
                 d.worker(),
                 d.key(),
-                d.suite());
+                d.suite(),
+                conflict == null ? "" : conflict);
     }
 }

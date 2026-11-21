@@ -193,6 +193,29 @@ class EngineEventDecoderStreamTest {
                 .isEqualTo(result.warnings());
     }
 
+    /** A failed resolve's diagnostic keeps its conflict object across the wire, beside its message. */
+    @Test
+    void a_resolve_conflict_reaches_the_terminal_results_diagnostic() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\","
+                + "\"packages\":[\"com.foo:leaf\"],\"facts\":[],\"declared\":[]}";
+        String line = ProtoEvents.planDiagnostic(
+                "/ws", "resolve-deps", "verbatim", "Cannot resolve dependencies", "", "", "", conflict);
+        List<BuildPlanResult.Diagnostic> diagnostics = new ArrayList<>();
+
+        EngineEventDecoder.dispatch(
+                Objects.requireNonNull(Jsonl.str(line, "type")),
+                line,
+                null,
+                diagnostics::add,
+                d -> {},
+                new FailureTextRefs());
+
+        assertThat(diagnostics).singleElement().satisfies(d -> {
+            assertThat(d.message()).isEqualTo("Cannot resolve dependencies");
+            assertThat(d.conflict()).isEqualTo(conflict);
+        });
+    }
+
     @Test
     void the_job_note_is_forgotten_when_the_stream_finishes() throws Exception {
         BufferedReader reader = stream(

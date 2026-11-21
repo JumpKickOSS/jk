@@ -3,9 +3,15 @@ package cc.jumpkick.cli.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.run.BuildPlanResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -52,5 +58,35 @@ class EnsureFreshLockTest {
         int code = EnsureFreshLock.failSoftOrHard(tmp, "Tree", "boom", 0, null);
 
         assertThat(code).isEqualTo(Exit.CONFIG);
+    }
+
+    /**
+     * Under {@code -O json} a freshen that failed on a resolve with no solution prints it as an
+     * {@code error} row carrying the conflict as an object; a failure without one prints no row.
+     */
+    @Test
+    void a_conflict_is_an_error_row_on_stdout() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\","
+                + "\"packages\":[\"com.foo:leaf\"],\"facts\":[],\"declared\":[\"com.foo:leaf 9.9\"]}";
+        BuildPlanResult.Diagnostic resolve = new BuildPlanResult.Diagnostic(
+                        "resolve-deps", "verbatim", "‼ Cannot resolve dependencies:\n  │ …\n")
+                .withConflict(conflict);
+        BuildPlanResult.Diagnostic network = new BuildPlanResult.Diagnostic("resolve-deps", "resolve", "timed out");
+
+        CliOutput.beginCommand(false, true);
+        String out;
+        try {
+            out = Capture.stdout(() -> EnsureFreshLock.printConflicts(List.of(network, resolve)));
+        } finally {
+            CliOutput.beginCommand(false, false);
+        }
+
+        assertThat(out.lines()).singleElement().satisfies(line -> {
+            Map<?, ?> row = (Map<?, ?>) Objects.requireNonNull(MiniJson.parse(line));
+            assertThat(row.get("type")).isEqualTo("error");
+            assertThat(row.get("task")).isEqualTo("resolve-deps");
+            assertThat(row.get("message")).isEqualTo("‼ Cannot resolve dependencies:\n  │ …");
+            assertThat(row.get("conflict")).isEqualTo(MiniJson.parse(conflict));
+        });
     }
 }

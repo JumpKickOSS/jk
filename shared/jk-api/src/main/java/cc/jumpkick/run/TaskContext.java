@@ -100,6 +100,14 @@ public interface TaskContext {
         error(code, message);
     }
 
+    /**
+     * {@link #errorAt} for a resolve that has no solution, carrying its conflict as one JSON object
+     * ({@link BuildPlanResult.Diagnostic#conflict}) for readers that are not a person.
+     */
+    default void conflictAt(String code, String message, @Nullable SourceLocation at, String conflict) {
+        errorAt(code, message, at);
+    }
+
     /** {@link #error(String, String)} with the tool's own key for the diagnostic. */
     default void keyedError(String code, String key, String message) {
         error(code, message);

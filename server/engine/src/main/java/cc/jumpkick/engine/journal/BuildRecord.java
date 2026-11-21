@@ -711,7 +711,9 @@ public record BuildRecord(
      * the failure output under the failed module inside its "failure details" roll-up. {@code code}
      * names the tool ({@code javac}, {@code kotlinc}, a guard rule); {@code key} is that tool's own
      * name for the diagnostic ({@code compiler.err.cant.resolve.location}), {@code ""} when the tool
-     * reports text only. {@code suite} is a test failure's suite, {@code ""} otherwise.
+     * reports text only. {@code suite} is a test failure's suite, {@code ""} otherwise. {@code
+     * conflict} is an unsatisfiable resolve's conflict as one JSON object ({@link
+     * cc.jumpkick.run.BuildPlanResult.Diagnostic#conflict}), {@code ""} otherwise.
      */
     public record Diag(
             String severity,
@@ -733,7 +735,8 @@ public record BuildRecord(
             List<String> snippet,
             int worker,
             String key,
-            String suite) {
+            String suite,
+            String conflict) {
 
         public Diag {
             if (snippet == null) snippet = List.of();
@@ -741,9 +744,56 @@ public record BuildRecord(
             if (file == null) file = "";
             if (key == null) key = "";
             if (suite == null) suite = "";
+            if (conflict == null) conflict = "";
         }
 
-        /** Every field but the suite, which is {@code ""}. */
+        /** Every field but the conflict, which is {@code ""}. */
+        public Diag(
+                String severity,
+                String dir,
+                @Nullable String step,
+                String code,
+                String message,
+                @Nullable String test,
+                @Nullable String exceptionClass,
+                @Nullable String module,
+                @Nullable String engine,
+                @Nullable String className,
+                @Nullable String method,
+                @Nullable String stack,
+                String file,
+                int line,
+                int col,
+                int snippetStart,
+                List<String> snippet,
+                int worker,
+                String key,
+                String suite) {
+            this(
+                    severity,
+                    dir,
+                    step,
+                    code,
+                    message,
+                    test,
+                    exceptionClass,
+                    module,
+                    engine,
+                    className,
+                    method,
+                    stack,
+                    file,
+                    line,
+                    col,
+                    snippetStart,
+                    snippet,
+                    worker,
+                    key,
+                    suite,
+                    "");
+        }
+
+        /** Every field but the suite and the conflict, which are {@code ""}. */
         public Diag(
                 String severity,
                 String dir,
@@ -787,7 +837,7 @@ public record BuildRecord(
                     "");
         }
 
-        /** Every field but the tool's key and the suite, which are {@code ""}. */
+        /** Every field but the tool's key, the suite and the conflict, which are {@code ""}. */
         public Diag(
                 String severity,
                 String dir,

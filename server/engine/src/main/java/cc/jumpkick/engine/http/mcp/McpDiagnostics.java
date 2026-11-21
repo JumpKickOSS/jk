@@ -127,6 +127,8 @@ public final class McpDiagnostics {
         if (ex != null && !String.valueOf(ex).isBlank()) row.put("exceptionClass", ex);
         String suite = McpHistoryViews.str(d, "suite");
         if (!suite.isEmpty()) row.put("suite", suite);
+        // A resolve with no solution: the facts its message explains, as data.
+        if (d.get("conflict") instanceof Map<?, ?> conflict) row.put("conflict", conflict);
         // A guard row carries the two fields that move one-shot fix rate as typed columns too.
         String task = McpHistoryViews.str(d, "task");
         if (task.startsWith(TaskNames.GUARD)) {

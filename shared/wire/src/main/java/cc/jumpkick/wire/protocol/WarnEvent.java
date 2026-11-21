@@ -56,6 +56,7 @@ public record WarnEvent(
                 snippet,
                 stack,
                 "",
+                "",
                 textId,
                 sameText);
         return replayed ? markReplayed(encoded) : encoded;

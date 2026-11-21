@@ -179,7 +179,7 @@ final class SetupSteps {
                             // noDefaultFeatures=false — same feature selection as `jk lock`.
                             result = LockFlow.run(in.lockDir(), in.cache(), List.of(), false, null);
                         } catch (UnsatisfiableException e) {
-                            ctx.error("verbatim", Errors.text(e));
+                            ctx.conflictAt("verbatim", Errors.text(e), null, e.conflictJson());
                             throw new RuntimeException("dependency resolution failed");
                         }
                         if (result.status() != 0) {
@@ -206,6 +206,9 @@ final class SetupSteps {
                                     List.of(),
                                     true,
                                     ResolveObserver.NOOP);
+                        } catch (UnsatisfiableException e) {
+                            ctx.conflictAt("verbatim", Errors.text(e), null, e.conflictJson());
+                            throw new RuntimeException("dependency resolution failed");
                         } catch (LockRewriteGuard.LockRewriteRefused e) {
                             ctx.error("verbatim", Errors.text(e));
                             throw new RuntimeException("lock refused");

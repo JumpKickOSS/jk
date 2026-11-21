@@ -569,6 +569,8 @@ public final class JournalWriter {
         if (d.snippetStart() > 0) o.put("snippetStart", d.snippetStart());
         if (d.snippet() != null && !d.snippet().isEmpty()) o.putStrings("snippet", d.snippet());
         if (d.worker() > 0) o.put("worker", d.worker());
+        Object conflict = Json.conflictValue(d.conflict());
+        if (conflict != null) o.putObject("conflict", conflict);
         return o.toString();
     }
 

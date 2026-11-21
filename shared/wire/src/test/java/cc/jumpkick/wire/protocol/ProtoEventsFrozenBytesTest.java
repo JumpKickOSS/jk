@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.config.SecretRedactor;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.run.TestClassResult;
 import cc.jumpkick.run.TestFailureInfo;
@@ -133,7 +134,8 @@ class ProtoEventsFrozenBytesTest {
                         "cannot find symbol",
                         "",
                         "",
-                        "compiler.err.cant.resolve.location"))
+                        "compiler.err.cant.resolve.location",
+                        ""))
                 .isEqualTo(
                         "{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"compile-java\",\"code\":\"javac\",\"key\":\"compiler.err.cant.resolve.location\",\"message\":\"cannot find symbol\"}");
         assertThat(PlanDiagnosticEvent.decode(ProtoEvents.planDiagnostic(
@@ -143,9 +145,34 @@ class ProtoEventsFrozenBytesTest {
                                 "cannot find symbol",
                                 "",
                                 "",
-                                "compiler.err.doesnt.exist"))
+                                "compiler.err.doesnt.exist",
+                                ""))
                         .key())
                 .isEqualTo("compiler.err.doesnt.exist");
+    }
+
+    /**
+     * An unsatisfiable resolve's conflict rides its plan diagnostic as the text of its object and
+     * reads back unchanged; every other diagnostic leaves it out.
+     */
+    @Test
+    void a_resolve_conflict_rides_the_plan_diagnostic() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\","
+                + "\"packages\":[\"com.foo:leaf\"],\"facts\":[{\"kind\":\"no-versions\","
+                + "\"package\":\"com.foo:leaf\",\"versions\":\"9.9\"}],\"declared\":[\"com.foo:leaf 9.9\"]}";
+        String line = ProtoEvents.planDiagnostic(
+                "a/b", "resolve-deps", "verbatim", "Cannot resolve dependencies", "", "", "", conflict);
+
+        assertThat(line)
+                .isEqualTo("{\"type\":\"buildplan-diagnostic\",\"dir\":\"a/b\",\"task\":\"resolve-deps\","
+                        + "\"code\":\"verbatim\",\"message\":\"Cannot resolve dependencies\",\"conflict\":"
+                        + Jsonl.quote(conflict) + "}");
+        PlanDiagnosticEvent back = PlanDiagnosticEvent.decode(line);
+        assertThat(back.conflict()).isEqualTo(conflict);
+        assertThat(back.message()).isEqualTo("Cannot resolve dependencies");
+        assertThat(PlanDiagnosticEvent.decode(ProtoEvents.planDiagnostic("a/b", "run-tests", "E1", "boom", "t", "AE"))
+                        .conflict())
+                .isEmpty();
     }
 
     @Test

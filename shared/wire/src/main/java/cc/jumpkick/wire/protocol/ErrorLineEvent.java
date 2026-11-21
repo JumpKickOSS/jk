@@ -47,6 +47,7 @@ public record ErrorLineEvent(
                 snippet,
                 stack,
                 "",
+                "",
                 textId,
                 sameText);
     }

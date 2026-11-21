@@ -8,7 +8,8 @@ import java.util.List;
 /**
  * A plan-level diagnostic, plain or enriched with the test-failure fields (see {@link
  * EngineProtocol#BUILDPLAN_DIAGNOSTIC}). {@code key} is the tool's own name for the diagnostic
- * ({@code compiler.err.cant.resolve.location}), {@code ""} when the tool gave none.
+ * ({@code compiler.err.cant.resolve.location}), {@code ""} when the tool gave none. {@code conflict}
+ * is an unsatisfiable resolve's conflict, the text of one JSON object, {@code ""} otherwise.
  */
 public record PlanDiagnosticEvent(
         String dir,
@@ -29,6 +30,7 @@ public record PlanDiagnosticEvent(
         int worker,
         List<String> snippet,
         String stack,
+        String conflict,
         int textId,
         int sameText) {
     public String encode() {
@@ -52,6 +54,7 @@ public record PlanDiagnosticEvent(
                 snippet,
                 stack,
                 key,
+                conflict,
                 textId,
                 sameText);
     }
@@ -64,6 +67,7 @@ public record PlanDiagnosticEvent(
             String key,
             String message,
             String test,
+            String conflict,
             TestFailureInfo f,
             FailureTextRefs.Ref ref) {
         return new PlanDiagnosticEvent(
@@ -85,6 +89,7 @@ public record PlanDiagnosticEvent(
                 f.worker(),
                 f.snippet(),
                 f.stack(),
+                conflict,
                 ref.textId(),
                 ref.sameText());
     }
@@ -109,6 +114,7 @@ public record PlanDiagnosticEvent(
                 Jsonl.intValue(json, "worker", 0),
                 Jsonl.strArray(json, "snippet"),
                 DiagnosticFields.str(json, "stack"),
+                DiagnosticFields.str(json, "conflict"),
                 Jsonl.intValue(json, "textId", 0),
                 Jsonl.intValue(json, "sameText", 0));
     }

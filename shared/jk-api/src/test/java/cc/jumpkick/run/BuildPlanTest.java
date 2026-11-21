@@ -72,6 +72,46 @@ class BuildPlanTest {
     }
 
     /**
+     * A resolve with no solution is one diagnostic carrying its place, its message and its conflict
+     * object, and listeners hear the message as for any error.
+     */
+    @Test
+    void a_conflict_is_one_error_with_its_location_and_conflict() {
+        String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\"}";
+        List<String> seen = new ArrayList<>();
+        var plan = BuildPlan.builder("lock")
+                .addListener(new BuildPlanListener() {
+                    @Override
+                    public void error(String step, String code, String message) {
+                        seen.add(step + ":" + code + ":" + message);
+                    }
+                })
+                .addTask(Task.builder("resolve-deps")
+                        .ticks(1)
+                        .execute(ctx -> {
+                            ctx.conflictAt(
+                                    "verbatim",
+                                    "Cannot resolve dependencies",
+                                    new SourceLocation("/ws/jk.toml", 7, 3),
+                                    conflict);
+                            throw new IllegalStateException("unsatisfiable");
+                        })
+                        .build())
+                .build();
+
+        var result = plan.run();
+
+        assertThat(seen).containsExactly("resolve-deps:verbatim:Cannot resolve dependencies");
+        assertThat(result.errors())
+                .extracting(
+                        BuildPlanResult.Diagnostic::message,
+                        BuildPlanResult.Diagnostic::file,
+                        BuildPlanResult.Diagnostic::line,
+                        BuildPlanResult.Diagnostic::conflict)
+                .containsExactly(tuple("Cannot resolve dependencies", "/ws/jk.toml", 7, conflict));
+    }
+
+    /**
      * A step that records a failure and then throws it while the session is cancelled — a test fork
      * ended by the cancel's SIGTERM — leaves one row under Failures, the one carrying the module
      * label, not a second copy of the same words without it.

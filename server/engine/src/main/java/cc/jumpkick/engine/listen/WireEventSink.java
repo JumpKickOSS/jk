@@ -99,7 +99,8 @@ public final class WireEventSink implements EventSink {
                         e.message(),
                         e.test() == null ? "" : e.test(),
                         e.exceptionClass() == null ? "" : e.exceptionClass(),
-                        e.key());
+                        e.key(),
+                        e.conflict());
             case EngineEvent.ErrorFailure e ->
                 ProtoEvents.errorLine(e.dir(), e.step(), e.code(), e.message(), e.failure(), texts);
             case EngineEvent.ClassFinish e -> ProtoEvents.classFinish(e.dir(), e.step(), e.result());

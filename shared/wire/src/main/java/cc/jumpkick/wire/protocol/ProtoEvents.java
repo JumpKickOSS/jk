@@ -241,12 +241,13 @@ public final class ProtoEvents {
     /** The three diagnostic shapes share one field order; the record is chosen by the wire type. */
     private static String diagnostic(
             String type, String dir, String step, String code, String message, String test, TestFailureInfo f) {
-        return diagnostic(type, dir, step, code, "", message, test, f, null);
+        return diagnostic(type, dir, step, code, "", "", message, test, f, null);
     }
 
     /**
      * As {@link #diagnostic(String, String, String, String, String, String, TestFailureInfo)} with the
-     * tool's key; with {@code texts}, a failure text the stream already carried is sent as its id.
+     * tool's key and a plan diagnostic's resolve conflict; with {@code texts}, a failure text the
+     * stream already carried is sent as its id.
      */
     private static String diagnostic(
             String type,
@@ -254,6 +255,7 @@ public final class ProtoEvents {
             String step,
             String code,
             String key,
+            String conflict,
             String message,
             String test,
             TestFailureInfo f,
@@ -270,7 +272,8 @@ public final class ProtoEvents {
             case EngineProtocol.ERROR_LINE ->
                 ErrorLineEvent.of(dir, step, code, msg, test, f, ref).encode();
             default ->
-                PlanDiagnosticEvent.of(dir, step, code, key, msg, test, f, ref).encode();
+                PlanDiagnosticEvent.of(dir, step, code, key, msg, test, conflict, f, ref)
+                        .encode();
         };
     }
 
@@ -358,6 +361,7 @@ public final class ProtoEvents {
                 step,
                 code,
                 "",
+                "",
                 message,
                 "",
                 failure == null ? NO_FAILURE : failure,
@@ -366,18 +370,29 @@ public final class ProtoEvents {
 
     public static String planDiagnostic(
             String dir, String step, String code, String message, String test, String exceptionClass) {
-        return planDiagnostic(dir, step, code, message, test, exceptionClass, "");
+        return planDiagnostic(dir, step, code, message, test, exceptionClass, "", "");
     }
 
-    /** A plan diagnostic with the tool's own key for it ({@code ""} when the tool gave none). */
+    /**
+     * A plan diagnostic with the tool's own key for it ({@code ""} when the tool gave none) and an
+     * unsatisfiable resolve's conflict, one JSON object ({@code ""} for any other diagnostic).
+     */
     public static String planDiagnostic(
-            String dir, String step, String code, String message, String test, String exceptionClass, String key) {
+            String dir,
+            String step,
+            String code,
+            String message,
+            String test,
+            String exceptionClass,
+            String key,
+            String conflict) {
         return diagnostic(
                 EngineProtocol.BUILDPLAN_DIAGNOSTIC,
                 dir,
                 step,
                 code,
                 key,
+                conflict,
                 message,
                 test,
                 failure("", "", "", "", exceptionClass, ""),
@@ -422,6 +437,7 @@ public final class ProtoEvents {
                 dir,
                 step,
                 code,
+                "",
                 "",
                 message,
                 "",
