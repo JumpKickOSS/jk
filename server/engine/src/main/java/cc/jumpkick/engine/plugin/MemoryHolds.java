@@ -119,6 +119,11 @@ public final class MemoryHolds {
         if (listener == l) listener = NONE;
     }
 
+    /** Test seam: the listener set now. */
+    public static Listener listener() {
+        return listener;
+    }
+
     /** Test seam: the clock holds are timed on. */
     static synchronized void useClock(Clock c) {
         clock = Objects.requireNonNull(c, "clock");

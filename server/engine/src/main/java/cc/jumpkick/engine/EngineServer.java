@@ -156,7 +156,10 @@ public final class EngineServer implements AutoCloseable {
     private final SsePublisher sse;
     private final LiveRuns liveRuns;
 
-    /** The process-wide hooks this engine sets, detached again by {@link #cleanup}. */
+    /**
+     * The process-wide hooks this engine sets once it has won the election ({@link #start}), detached
+     * again by {@link #cleanup}: one that loses leaves the winner's in place.
+     */
     private final MemoryHolds.Listener memoryHolds;
 
     private final Suspensions.Listener suspensions;
@@ -470,11 +473,9 @@ public final class EngineServer implements AutoCloseable {
                 holds.holdEnded(requestId, heldMillis);
             }
         };
-        MemoryHolds.listen(memoryHolds);
         // A spell the engine did not run (a suspend, a stop) is recorded on every job that ran
         // across it, taints the steps in flight, and comes off every countdown.
         JournalWriter suspendedRuns = journalWriter;
-        Suspensions.system().beatOn(beat -> JkThreads.platform().execute(beat));
         var say = this.log;
         this.suspensions = (gap, jobs) -> {
             say.accept("jk engine: not running for " + gap.wallMs() + " ms (suspended or stopped; monotonic "
@@ -484,13 +485,11 @@ public final class EngineServer implements AutoCloseable {
                 holds.suspended(rid, gap);
             }
         };
-        Suspensions.system().listen(suspensions);
         this.jobs = newJobEnvelope();
         this.verbs = newVerbRegistry();
         // A graph question compiles stale modules as a job of this engine, like any other.
         this.graphCompiles = new GraphCompiles(
                 this::submitJob, liveRuns::snapshot, journal::rawFinishedRecordByRequestId, Clock.SYSTEM);
-        GraphRunner.compiler(graphCompiles);
         this.http = newHttpFront();
         http.selfUpdate(() -> {
             SelfUpdateScheduler scheduler = selfUpdate;
@@ -748,6 +747,10 @@ public final class EngineServer implements AutoCloseable {
 
     /** Everything between a won election and the accept loop. */
     private void start(EngineElection.Won won) throws IOException {
+        MemoryHolds.listen(memoryHolds);
+        Suspensions.system().beatOn(beat -> JkThreads.platform().execute(beat));
+        Suspensions.system().listen(suspensions);
+        GraphRunner.compiler(graphCompiles);
         displaced = won.displaced();
         serverChannel = won.listener();
         expectedToken = won.token();

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.JobLimits;
 import cc.jumpkick.engine.plugin.JvmOptions;
+import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.testing.Await;
 import cc.jumpkick.testing.ShortTempDirs;
 import cc.jumpkick.wire.EnginePaths;
@@ -38,6 +39,27 @@ class EngineServerDrainTest {
     void cleanup() {
         // The running-server test plans the shared worker heap; reset the static for the rest of the JVM.
         JvmOptions.resetSharedPlanForTests();
+    }
+
+    /** Only a won election sets the process-wide hooks: one that loses leaves the winner's in place. */
+    @Test
+    void an_engine_that_has_not_won_sets_no_process_wide_hook() throws Exception {
+        MemoryHolds.Listener winners = new MemoryHolds.Listener() {
+            @Override
+            public void held(long requestId, long needBytes, long freeBytes) {}
+
+            @Override
+            public void resumed(long requestId, long heldMillis) {}
+        };
+        MemoryHolds.listen(winners);
+        try {
+            EngineServer server =
+                    new EngineServer(EnginePaths.resolve(tempDirs.create()), JkEngineConfig.DEFAULTS, "1.0", null);
+            assertThat(MemoryHolds.listener()).isSameAs(winners);
+            server.close();
+        } finally {
+            MemoryHolds.detach(winners);
+        }
     }
 
     /** SHUTDOWN with a plan in flight must enter drain, not just answer bye. */
