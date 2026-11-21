@@ -3,12 +3,14 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Settled;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.IoLedger;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -24,14 +26,21 @@ class ResolvedOnceTest {
 
     private static final int MEMBERS = 12;
 
+    /** Long enough after its writes that every manifest this test wrote reads as {@link Settled}. */
+    private static final Duration SETTLED = Duration.ofSeconds(5);
+
     @AfterEach
     void clear() {
         RequestScope.clearAll();
+        Settled.aheadForTests(null);
     }
 
     @Test
     void a_request_resolves_each_member_once_however_often_it_is_parsed(@TempDir Path tmp) throws IOException {
         List<Path> manifests = members(workspace(tmp));
+        // A manifest that settles mid-request is parsed anew and so resolved again, by design: on a
+        // loaded machine the three passes can straddle the settle window, so they start past it.
+        Settled.aheadForTests(SETTLED);
 
         long before = JkBuildParser.resolves();
         inRequest(() -> {

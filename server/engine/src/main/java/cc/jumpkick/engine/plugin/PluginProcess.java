@@ -596,10 +596,6 @@ public final class PluginProcess {
     private static final long ORPHAN_DRAIN_GRACE_MS = 5_000L;
 
     /**
-     * Kill the worker and its descendants, then close the parent's read end so {@code readLine}
-     * cannot stay blocked on an orphan still holding the write end of the pipe.
-     */
-    /**
      * The inactivity watchdog: once {@code lastLineAt} stands still for {@code idleTimeoutMs}, the
      * child and its descendants are force-killed. A daemon platform thread, so the kill it owes
      * fires however busy the virtual-thread scheduler is — a plan spinning on every carrier would
@@ -633,6 +629,10 @@ public final class PluginProcess {
         return now - Math.max(lastLineAt, watch.resumedAt(cursor));
     }
 
+    /**
+     * Kill the worker and its descendants, then close the parent's read end so {@code readLine}
+     * cannot stay blocked on an orphan still holding the write end of the pipe.
+     */
     private static void forceStop(Process process) {
         JobWorkers.destroyTree(process);
         try {
