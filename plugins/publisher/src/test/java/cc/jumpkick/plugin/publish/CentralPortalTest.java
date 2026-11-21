@@ -12,13 +12,18 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** A stub Portal on loopback: the upload hands out an id, the status walks the states. */
 class CentralPortalTest {
@@ -28,6 +33,7 @@ class CentralPortalTest {
     private final List<String> requests = new ArrayList<>();
     private final List<String> authorizations = new ArrayList<>();
     private volatile byte[] uploaded = new byte[0];
+    private volatile String contentLength = "";
     private final AtomicInteger polls = new AtomicInteger();
     private volatile List<String> walk = List.of("PENDING", "VALIDATING", "VALIDATED");
     private volatile String errorsJson = "";
@@ -65,6 +71,7 @@ class CentralPortalTest {
         server.createContext("/api/v1/publisher/upload", exchange -> {
             requests.add(exchange.getRequestMethod() + " " + exchange.getRequestURI());
             authorizations.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            contentLength = exchange.getRequestHeaders().getFirst("Content-Length");
             uploaded = exchange.getRequestBody().readAllBytes();
             byte[] id = "dep-1234".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(uploadStatus, id.length);
@@ -87,6 +94,14 @@ class CentralPortalTest {
         base = URI.create("http://127.0.0.1:" + server.getAddress().getPort());
     }
 
+    @TempDir
+    Path dir;
+
+    /** A bundle file holding {@code text}: the upload streams from disk. */
+    private Path bundle(String text) throws IOException {
+        return Files.writeString(dir.resolve("bundle.zip"), text);
+    }
+
     @AfterEach
     void stop() {
         server.stop(0);
@@ -95,8 +110,7 @@ class CentralPortalTest {
     @Test
     void upload_is_a_bearer_multipart_post_that_returns_the_deployment_id() throws Exception {
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        String id = portal.upload(
-                "zip".getBytes(StandardCharsets.UTF_8), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC);
+        String id = portal.upload(bundle("zip"), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC);
         assertThat(id).isEqualTo("dep-1234");
         assertThat(requests)
                 .containsExactly("POST /api/v1/publisher/upload?name=widget-1.0.0&publishingType=AUTOMATIC");
@@ -107,13 +121,29 @@ class CentralPortalTest {
                 .contains("\r\n\r\nzip\r\n--");
     }
 
+    /** The bundle streams from its file into the part, byte for byte, with a declared length. */
+    @Test
+    void a_binary_bundle_reaches_the_portal_unchanged_between_the_part_headers() throws Exception {
+        byte[] zip = new byte[3 * 1024 * 1024 + 17];
+        new Random(7).nextBytes(zip);
+        Path file = Files.write(dir.resolve("big.zip"), zip);
+        CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
+        portal.upload(file, "widget-1.0.0", CentralPortal.PublishingType.USER_MANAGED);
+        byte[] body = uploaded;
+        assertThat(contentLength).isEqualTo(String.valueOf(body.length));
+        String text = new String(body, StandardCharsets.ISO_8859_1);
+        int start = text.indexOf("\r\n\r\n") + 4;
+        String tail = text.substring(start + zip.length);
+        assertThat(Arrays.copyOfRange(body, start, start + zip.length)).isEqualTo(zip);
+        assertThat(tail).matches("\r\n------jk-central-[-0-9a-f]+--\r\n");
+    }
+
     /** The Portal may have taken a bundle it then answers 5xx for: a second upload would be a second deployment. */
     @Test
     void an_upload_answered_with_a_server_error_is_not_sent_again() throws Exception {
         uploadStatus = 503;
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        assertThatThrownBy(() -> portal.upload(
-                        "zip".getBytes(StandardCharsets.UTF_8), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC))
+        assertThatThrownBy(() -> portal.upload(bundle("zip"), "widget-1.0.0", CentralPortal.PublishingType.AUTOMATIC))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("503");
         assertThat(requests)
@@ -215,10 +245,7 @@ class CentralPortalTest {
     @Test
     void a_quote_or_line_break_in_the_name_cannot_end_the_filename_parameter() throws Exception {
         CentralPortal portal = new CentralPortal(base, new RepoCredential.Bearer("tok"), new Http());
-        portal.upload(
-                "zip".getBytes(StandardCharsets.UTF_8),
-                "widget\"; name=\"x\r\nX-Injected: 1",
-                CentralPortal.PublishingType.AUTOMATIC);
+        portal.upload(bundle("zip"), "widget\"; name=\"x\r\nX-Injected: 1", CentralPortal.PublishingType.AUTOMATIC);
         String body = new String(uploaded, StandardCharsets.ISO_8859_1);
         assertThat(body)
                 .contains("name=\"bundle\"; filename=\"widget%22; name=%22x%0D%0AX-Injected: 1.zip\"\r\n")

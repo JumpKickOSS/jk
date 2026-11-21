@@ -7,6 +7,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,7 +36,8 @@ class CentralBundleTest {
                         new MavenPublisher.Artifact(".pom", pom),
                         new MavenPublisher.Artifact("-sources.jar", jar),
                         new MavenPublisher.Artifact("-javadoc.jar", jar)),
-                signer);
+                signer,
+                dir.resolve("central-bundle.zip"));
 
         String stem = "com/example/widget/1.0.0/widget-1.0.0";
         assertThat(bundle.entries())
@@ -57,7 +59,8 @@ class CentralBundleTest {
                         stem + "-javadoc.jar.md5",
                         stem + "-javadoc.jar.sha1");
 
-        Map<String, byte[]> zipped = unzip(bundle.zip());
+        assertThat(bundle.size()).isEqualTo(Files.size(bundle.zip()));
+        Map<String, byte[]> zipped = unzip(Files.readAllBytes(bundle.zip()));
         assertThat(zipped.keySet()).containsExactlyElementsOf(bundle.entries());
         assertThat(entry(zipped, stem + ".jar")).isEqualTo(jar);
         assertThat(new String(entry(zipped, stem + ".jar.md5"), StandardCharsets.US_ASCII))

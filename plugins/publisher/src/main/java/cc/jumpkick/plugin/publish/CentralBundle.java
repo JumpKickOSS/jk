@@ -3,9 +3,10 @@ package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.model.Project;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -23,8 +24,8 @@ public final class CentralBundle {
 
     private CentralBundle() {}
 
-    /** The bundle bytes and its entry paths, in the order they were written. */
-    public record Bundle(byte[] zip, List<String> entries) {
+    /** The bundle file, its size in bytes, and its entry paths in the order they were written. */
+    public record Bundle(Path zip, long size, List<String> entries) {
         public Bundle {
             Objects.requireNonNull(zip, "zip");
             entries = List.copyOf(entries);
@@ -32,18 +33,19 @@ public final class CentralBundle {
     }
 
     /**
-     * Build the bundle for {@code project}'s {@code artifacts}: each artifact, its {@code .asc}
-     * from {@code signer}, and the two checksums the Portal reads. Signatures carry no checksums.
+     * Write the bundle for {@code project}'s {@code artifacts} to {@code target}: each artifact, its
+     * {@code .asc} from {@code signer}, and the two checksums the Portal reads. Signatures carry no
+     * checksums. The zip goes straight to disk, so the heap never holds a copy of the release.
      */
-    public static Bundle build(Project project, Iterable<MavenPublisher.Artifact> artifacts, GpgSigner signer)
+    public static Bundle build(
+            Project project, Iterable<MavenPublisher.Artifact> artifacts, GpgSigner signer, Path target)
             throws IOException {
         Objects.requireNonNull(project, "project");
         Objects.requireNonNull(signer, "signer");
         String prefix = project.group().replace('.', '/') + "/" + project.name() + "/" + project.version() + "/";
         String stem = project.name() + "-" + project.version();
         List<String> entries = new ArrayList<>();
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (ZipOutputStream zip = new ZipOutputStream(out)) {
+        try (ZipOutputStream zip = DeterministicZip.newArchive(target)) {
             for (MavenPublisher.Artifact a : artifacts) {
                 String path = prefix + stem + a.filenameSuffix();
                 write(zip, entries, path, a.body());
@@ -53,7 +55,7 @@ public final class CentralBundle {
                 write(zip, entries, path + ".sha1", sums.sha1().getBytes(StandardCharsets.US_ASCII));
             }
         }
-        return new Bundle(out.toByteArray(), entries);
+        return new Bundle(target, Files.size(target), entries);
     }
 
     private static void write(ZipOutputStream zip, List<String> entries, String path, byte[] body) throws IOException {

@@ -6,12 +6,13 @@ import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.RepositorySpec;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -127,10 +128,13 @@ public final class CentralPortal {
         };
     }
 
-    /** Upload {@code bundle} as deployment {@code name}; returns the id the Portal assigned. */
-    public String upload(byte[] bundle, String name, PublishingType type) throws IOException, InterruptedException {
+    /**
+     * Upload the zip at {@code bundle} as deployment {@code name}; returns the id the Portal
+     * assigned. The multipart body streams from the file, so the bundle is never in the heap.
+     */
+    public String upload(Path bundle, String name, PublishingType type) throws IOException, InterruptedException {
         String boundary = "----jk-central-" + UUID.randomUUID();
-        byte[] body = multipart(boundary, name + ".zip", bundle);
+        HttpRequest.BodyPublisher body = multipart(boundary, name + ".zip", bundle);
         URI uri = base.resolve("api/v1/publisher/upload?name=" + encode(name) + "&publishingType=" + type.name());
         // One attempt: the Portal may have taken the bundle before a 5xx or a reset, and a second
         // upload would be a second deployment.
@@ -228,14 +232,16 @@ public final class CentralPortal {
         }
     }
 
-    private static byte[] multipart(String boundary, String filename, byte[] content) throws IOException {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(content.length + 256);
-        out.write(("--" + boundary + "\r\n" + "Content-Disposition: form-data; name=\"bundle\"; filename=\""
+    private static HttpRequest.BodyPublisher multipart(String boundary, String filename, Path content)
+            throws IOException {
+        byte[] head = ("--" + boundary + "\r\n" + "Content-Disposition: form-data; name=\"bundle\"; filename=\""
                         + quotedParameter(filename) + "\"\r\n" + "Content-Type: application/octet-stream\r\n\r\n")
-                .getBytes(StandardCharsets.UTF_8));
-        out.write(content);
-        out.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-        return out.toByteArray();
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] tail = ("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8);
+        return HttpRequest.BodyPublishers.concat(
+                HttpRequest.BodyPublishers.ofByteArray(head),
+                HttpRequest.BodyPublishers.ofFile(content),
+                HttpRequest.BodyPublishers.ofByteArray(tail));
     }
 
     /**

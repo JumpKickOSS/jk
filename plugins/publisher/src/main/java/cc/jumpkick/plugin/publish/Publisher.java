@@ -354,13 +354,11 @@ public final class Publisher implements Plugin, PublishExtension {
         GpgSigner gpg = GpgSigner.fromKeyFile(
                 Path.of(c.string("gpgKeyFile")),
                 ctx.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]));
-        CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg);
-        for (String entry : bundle.entries()) ctx.label("bundle " + entry);
-
+        Path publishDir = Files.createDirectories(layout.moduleTargetDir().resolve("publish"));
         if (c.bool("dryRun", false)) {
-            Path zip = Files.createDirectories(layout.moduleTargetDir().resolve("publish"))
-                    .resolve("central-bundle.zip");
-            Files.write(zip, bundle.zip());
+            Path zip = publishDir.resolve("central-bundle.zip");
+            CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, zip);
+            for (String entry : bundle.entries()) ctx.label("bundle " + entry);
             written.add(zip);
             ctx.label("wrote " + zip);
             return PublishResult.dryRun(artifacts.size()).withWritten(written).withBundle(bundle.entries());
@@ -382,16 +380,25 @@ public final class Publisher implements Plugin, PublishExtension {
                 };
         CentralPortal portal = new CentralPortal(portalUrl, cred, new Http());
         String name = project.project().name() + "-" + project.project().version();
-        String id = portal.upload(bundle.zip(), name, type);
-        ctx.label("upload " + name + ".zip (" + bundle.zip().length + " bytes) → deployment " + id);
-        CentralPortal.Status status =
-                portal.awaitTerminal(id, type, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
-        ctx.label("deployment " + id + " " + status.state());
-        for (String error : status.errors()) ctx.label("  " + error);
-        return PublishResult.uploaded(bundle.entries().size(), bundle.zip().length)
-                .withWritten(written)
-                .withBundle(bundle.entries())
-                .withDeployment(new PublishResult.Deployment(id, status.state(), status.errors()));
+        // The bundle is only what the upload streams from, so it does not outlive the upload. It
+        // sits beside the module's outputs, not in a temp directory that may be memory-backed.
+        Path scratch = Files.createTempFile(publishDir, "central-bundle-", ".zip");
+        try {
+            CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, scratch);
+            for (String entry : bundle.entries()) ctx.label("bundle " + entry);
+            String id = portal.upload(bundle.zip(), name, type);
+            ctx.label("upload " + name + ".zip (" + bundle.size() + " bytes) → deployment " + id);
+            CentralPortal.Status status =
+                    portal.awaitTerminal(id, type, CentralPortal.DEFAULT_TIMEOUT, Clock.SYSTEM, Thread::sleep);
+            ctx.label("deployment " + id + " " + status.state());
+            for (String error : status.errors()) ctx.label("  " + error);
+            return PublishResult.uploaded(bundle.entries().size(), bundle.size())
+                    .withWritten(written)
+                    .withBundle(bundle.entries())
+                    .withDeployment(new PublishResult.Deployment(id, status.state(), status.errors()));
+        } finally {
+            Files.deleteIfExists(scratch);
+        }
     }
 
     /** The one-line verdict for a deployment the Portal refused, every error on its own line. */

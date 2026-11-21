@@ -647,14 +647,20 @@ public final class Http {
      */
     public HttpResponse<byte[]> post(URI uri, byte[] body, Map<String, String> headers)
             throws IOException, InterruptedException {
-        return sendWithRetry("POST", uri, postRequest(uri, body, headers), cappedBytes(uri), null);
+        return sendWithRetry(
+                "POST",
+                uri,
+                postRequest(uri, HttpRequest.BodyPublishers.ofByteArray(body), headers),
+                cappedBytes(uri),
+                null);
     }
 
     /**
      * As {@link #post} for a request that is not safe to repeat, such as an upload that creates a
      * deployment: one attempt, so a 5xx or a reset after the server acted never makes it act twice.
+     * The body is a publisher so an upload can stream from a file rather than the heap.
      */
-    public HttpResponse<byte[]> postOnce(URI uri, byte[] body, Map<String, String> headers)
+    public HttpResponse<byte[]> postOnce(URI uri, HttpRequest.BodyPublisher body, Map<String, String> headers)
             throws IOException, InterruptedException {
         Http once = new Http(
                 client,
@@ -672,10 +678,11 @@ public final class Http {
         return once.sendWithRetry("POST", uri, postRequest(uri, body, headers), cappedBytes(uri), null);
     }
 
-    private HttpRequest postRequest(URI uri, byte[] body, Map<String, String> headers) throws IOException {
+    private HttpRequest postRequest(URI uri, HttpRequest.BodyPublisher body, Map<String, String> headers)
+            throws IOException {
         checkOffline(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .POST(body)
                 .timeout(requestTimeout.compareTo(REQUEST_TIMEOUT) < 0 ? requestTimeout : POST_TIMEOUT);
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
