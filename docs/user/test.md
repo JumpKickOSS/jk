@@ -424,7 +424,9 @@ build cone (`jk test -f -m api`). An edited test ranks first, unless the run's t
 tests in is ranked: a helper or fixture under the test root, edited or using a changed type, is
 not listed. A test counts as using a type
 however its bytecode names it: a call, a class literal, a method reference, a caught exception
-or an annotation's class value. Ranking refuse exits **2**. When the guess
+or an annotation's class value. A test's tags are read as `jk test` reads them, a tag composed
+in another module or a library included, from the class files and jars already on disk. Ranking
+refuse exits **2**. When the guess
 would be dishonest (`jk.toml` change, stale class files, too many types or modules, a
 dirty test outside the current suite), JumpKick prints `cannot rank affected tests` and tells
 you to run `jk test`.

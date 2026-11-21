@@ -97,11 +97,41 @@ class AffectedTestsComputeConeTest {
     }
 
     /**
+     * A tag composed in a sibling module places a test as {@code jk test} places it: {@code app}'s
+     * {@code BarTest} carries {@code lib}'s {@code @Slow}, itself tagged {@code slow}, so the slow
+     * suite ranks it and the default suite leaves it out.
+     */
+    @Test
+    void a_tag_composed_in_a_sibling_module_places_the_test(@TempDir Path ws) throws Exception {
+        workspace(ws, """
+
+                [test.suites.slow]
+                tags = ["slow"]
+                """, null, "com/acme/lib/Slow");
+        var libLayout = BuildLayout.of(
+                ws, ws.resolve("lib"), JkBuildParser.parse(ws.resolve("lib").resolve(ManifestPaths.MANIFEST)));
+        writeClass(libLayout.classesDir(), "com/acme/lib/Slow.class", composedTag("com/acme/lib/Slow", "slow"));
+
+        var slow = TestSelection.of(List.of("slow"), false, List.of(), List.of());
+        assertThat(AffectedTestsCompute.fromDisk(ws, slow, null, null).classNames())
+                .contains("com.acme.app.BarTest");
+        assertThat(AffectedTestsCompute.fromDisk(ws, TestSelection.DEFAULT, null, null)
+                        .classNames())
+                .doesNotContain("com.acme.app.BarTest");
+    }
+
+    /**
      * A git workspace of {@code lib} and {@code app} whose working tree grows {@code lib}'s {@code
      * Foo} by a method, with {@code app}'s {@code BarTest} importing it, tagged {@code barTag} when
      * given. {@code rootExtra} is appended to the root manifest. Returns {@code app}.
      */
     private static Path workspace(Path ws, String rootExtra, @Nullable String barTag) throws Exception {
+        return workspace(ws, rootExtra, barTag, null);
+    }
+
+    /** As above, {@code BarTest} also annotated with the internal name {@code barAnnotation} when given. */
+    private static Path workspace(Path ws, String rootExtra, @Nullable String barTag, @Nullable String barAnnotation)
+            throws Exception {
         git(ws, "init");
         git(ws, "config", "user.email", "t@t");
         git(ws, "config", "user.name", "t");
@@ -146,7 +176,7 @@ class AffectedTestsComputeConeTest {
         byte[] fooNow = fooClass(true);
         AbiIndex.write(AbiIndex.path(libLayout.buildDir()), Map.of("com.acme.lib.Foo", ClassAbi.of(fooPre)));
         writeClass(libLayout.classesDir(), "com/acme/lib/Foo.class", fooNow);
-        writeClass(appLayout.testClassesDir(), "com/acme/app/BarTest.class", barTestClass(barTag));
+        writeClass(appLayout.testClassesDir(), "com/acme/app/BarTest.class", barTestClass(barTag, barAnnotation));
         return app;
     }
 
@@ -176,9 +206,10 @@ class AffectedTestsComputeConeTest {
     }
 
     /** {@code com.acme.app.BarTest} holding a {@code Foo} field and one test — an importer of the changed type. */
-    private static byte[] barTestClass(@Nullable String tag) {
+    private static byte[] barTestClass(@Nullable String tag, @Nullable String annotation) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, "com/acme/app/BarTest", null, "java/lang/Object", null);
+        if (annotation != null) cw.visitAnnotation("L" + annotation + ";", true).visitEnd();
         if (tag != null) {
             AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
             av.visit("value", tag);
@@ -192,6 +223,23 @@ class AffectedTestsComputeConeTest {
         mv.visitInsn(Opcodes.RETURN);
         mv.visitMaxs(0, 1);
         mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    /** A runtime annotation {@code name} (internal name) carrying {@code @Tag(tag)}: a composed tag. */
+    private static byte[] composedTag(String name, String tag) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(
+                Opcodes.V25,
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_ANNOTATION | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT,
+                name,
+                null,
+                "java/lang/Object",
+                new String[] {"java/lang/annotation/Annotation"});
+        AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
+        av.visit("value", tag);
+        av.visitEnd();
         cw.visitEnd();
         return cw.toByteArray();
     }

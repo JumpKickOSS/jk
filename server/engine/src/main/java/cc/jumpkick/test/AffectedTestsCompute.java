@@ -14,6 +14,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.runtime.PlannerTest;
 import cc.jumpkick.runtime.TestStampInputs;
 import cc.jumpkick.task.ClassAbi;
 import java.io.IOException;
@@ -140,7 +141,13 @@ public final class AffectedTestsCompute {
             production.addAll(foreign.keySet());
             Map<String, ClassAbi.Fingerprint> pre =
                     u.dirtyHere() ? AbiIndex.load(AbiIndex.path(u.layout().buildDir())) : Map.of();
-            var tests = testsFor(u.dir(), u.build(), u.layout().testClassesDir(), production, sel);
+            var tests = testsFor(
+                    u.dir(),
+                    u.build(),
+                    u.layout().testClassesDir(),
+                    PlannerTest.tagClasspath(u.dir(), u.build(), u.layout()),
+                    production,
+                    sel);
             String coord =
                     u.build().project().group() + ":" + u.build().project().name();
             String rel = root.relativize(u.dir()).toString();
@@ -214,17 +221,21 @@ public final class AffectedTestsCompute {
      * Compiled test classes (imports + tags) plus every test source in the selection, so ranking
      * still works when {@code target/test-classes} has not been built yet; only the classes the
      * selected suites run, by class and tag, less the classes {@code [test] exclude-classes} keeps
-     * out of every run.
+     * out of every run. A tag composed outside the module is read from {@code tagClasspath}.
      */
     static List<TestClassIndex.Entry> testsFor(
-            Path moduleDir, JkBuild build, Path testClassesDir, Set<String> production, TestSelection sel)
+            Path moduleDir,
+            JkBuild build,
+            Path testClassesDir,
+            List<Path> tagClasspath,
+            Set<String> production,
+            TestSelection sel)
             throws IOException {
         boolean compact = ModuleLayout.isCompact(moduleDir);
         Map<String, DeclaredSuite> declared = build.build().runSuites();
         TestSelection.Resolved resolved = TestStampInputs.resolveSuites(sel, moduleDir, compact, declared);
         List<String> suites = resolved.ok() ? resolved.suites() : List.of(TestSuites.DEFAULT);
-        // No build resolved a classpath here: a tag composed outside the tree is not seen.
-        List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production, List.of());
+        List<TestClassIndex.Entry> compiled = TestClassIndex.scan(testClassesDir, production, tagClasspath);
         Map<String, ClassTags> tags = new HashMap<>();
         for (TestClassIndex.Entry e : compiled) tags.put(e.className(), new ClassTags(e.classTags(), e.tags()));
         Predicate<String> runs = SuiteFilter.of(moduleDir, compact, suites, declared)

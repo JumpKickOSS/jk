@@ -43,7 +43,7 @@ class AffectedTestsComputeTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package com.acme; class FooTest {}");
         var tests = AffectedTestsCompute.testsFor(
-                dir, PLAIN, dir.resolve("target/classes/test"), Set.of(), TestSelection.DEFAULT);
+                dir, PLAIN, dir.resolve("target/classes/test"), List.of(), Set.of(), TestSelection.DEFAULT);
         assertThat(tests).extracting(TestClassIndex.Entry::className).containsExactly("com.acme.FooTest");
     }
 
@@ -65,11 +65,11 @@ class AffectedTestsComputeTest {
                 """);
         Path classes = dir.resolve("target/classes/test");
 
-        assertThat(AffectedTestsCompute.testsFor(dir, build, classes, Set.of(), TestSelection.DEFAULT))
+        assertThat(AffectedTestsCompute.testsFor(dir, build, classes, List.of(), Set.of(), TestSelection.DEFAULT))
                 .extracting(TestClassIndex.Entry::className)
                 .containsExactly("com.acme.FooTest");
         TestSelection integration = TestSelection.of(List.of("integration"), false, List.of(), List.of());
-        assertThat(AffectedTestsCompute.testsFor(dir, build, classes, Set.of(), integration))
+        assertThat(AffectedTestsCompute.testsFor(dir, build, classes, List.of(), Set.of(), integration))
                 .extracting(TestClassIndex.Entry::className)
                 .containsExactly("com.acme.FooIT");
     }
@@ -88,7 +88,7 @@ class AffectedTestsComputeTest {
                 exclude-classes = ["*Flaky*"]
                 """);
         assertThat(AffectedTestsCompute.testsFor(
-                        dir, build, dir.resolve("target/classes/test"), Set.of(), TestSelection.DEFAULT))
+                        dir, build, dir.resolve("target/classes/test"), List.of(), Set.of(), TestSelection.DEFAULT))
                 .extracting(TestClassIndex.Entry::className)
                 .containsExactly("com.acme.FooTest");
     }
