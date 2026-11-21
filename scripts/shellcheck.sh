@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Lint every shell script this repository ships or runs: the installers (repo root and the copy
-# the CDN serves), scripts/ and scripts/gate/, and the POSIX wrapper template `jk wrapper` writes
-# into projects.
+# the CDN serves), scripts/, scripts/gate/ and scripts/queue/, and the POSIX wrapper template
+# `jk wrapper` writes into projects.
 #
 # Usage:
 #   scripts/shellcheck.sh               # the gate's command: the shellcheck guard, by hand
@@ -22,7 +22,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 TARGETS=(install.sh hosting/public/install.sh clients/cli/src/main/resources/cc/jumpkick/command/toolchain/wrapper/jk.sh)
-for script in scripts/*.sh scripts/gate/*.sh; do
+for script in scripts/*.sh scripts/gate/*.sh scripts/queue/*.sh; do
   TARGETS+=("$script")
 done
 

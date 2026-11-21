@@ -12,7 +12,7 @@ compares JumpKick against.
 
 Run in this order, in your checkout, with the installed `jk`. The first two are the merge gate,
 green before a change merges into local `main`; `jk install -g` is the push gate, green on
-the local `main` before it is pushed to `origin`:
+the commit the [merge queue](#the-merge-queue) moves `origin/main` to:
 
 ```bash
 jk guard                         # formats what changed, then every house-rule lane, the tree lane and the fixture proofs
@@ -29,6 +29,44 @@ tiers), a check that the engine which served it is the tip's, `jk test -s releas
 fixtures and the release notes, and writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
 `GATE_LOG_DIR`. It never pushes. The header of `scripts/gate/gate.sh`
 lists its settings; `scripts/test-gate.sh` holds the class list to classes that exist.
+
+## The merge queue
+
+`origin/main` has one writer: the merge queue, `scripts/queue/loop.sh`, on bocabox. A session
+does not push `main`; it submits its branch:
+
+```bash
+scripts/queue/branch-tier.sh     # the Branch tier: jk guard, then jk build -e <merge-base with origin/main>
+scripts/queue/submit.sh [branch] # refused unless the tip passed the Branch tier
+scripts/queue/status.sh [branch] # waiting, gating in batch <n>, landed as <sha>, or ejected and why
+```
+
+The Branch tier records a pass as a note on the tip under `refs/notes/branch-tier`, naming the
+tip's tree; a commit after it needs a new run. `submit.sh` pushes the tip to the queue's
+repository (`JK_QUEUE_REMOTE`, default `bocabox:src/jk-queue.git`) as `refs/queue/<branch>`,
+replacing an earlier submission of the branch.
+
+Each batch, under the host's gate lock, the loop fetches `origin/main` and cherry-picks every
+waiting branch onto it, oldest first, skipping commits the batch already carries (a branch cut from
+another waiting branch lands its own commits only). A branch that conflicts, or that carries a
+merge commit, is ejected. It gates the result with `scripts/gate/gate.sh` and, on `GREEN`, pushes
+it to `origin/main` as a fast-forward. It never forces: when `origin/main` moved while the batch
+gated, the push is refused and the next batch applies the same branches to the new `origin/main`.
+A red batch of one branch ejects it with the gate's failing lines; a red batch of several gates
+each branch alone, one batch each. The next batch starts as soon as one ends.
+
+Where each branch stands is `queue-state/<branch>` in the queue's repository, and every batch is a
+line of `queue-batches.log` beside it: number, base, tip, `LANDED`, `MOVED`, `RED-SPLIT`,
+`RED-EJECTED` or `NOT-GATED`, and its branches. A batch that could not gate at all (a dirty
+checkout, a failed fetch, no verdict) puts its branches back to waiting and stops the loop. On
+bocabox it runs as
+
+```bash
+QUEUE_CHECKOUT=~/src/jk-queue-checkout scripts/queue/loop.sh
+```
+
+from a checkout other than `QUEUE_CHECKOUT`; the header of `scripts/queue/loop.sh` lists its
+settings, and `scripts/test-queue.sh` holds it to the rules above in scratch repositories.
 
 `jk install` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build
 that moves the lock means a pin drifted or the lock writer put something non-deterministic in the
