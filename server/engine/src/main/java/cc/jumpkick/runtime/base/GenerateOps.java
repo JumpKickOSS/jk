@@ -70,7 +70,9 @@ public final class GenerateOps {
         for (Map.Entry<Path, JkBuild> e : loaded.modules().entrySet()) {
             Map<String, String> moduleLocked = lockedVersions(e.getKey());
             PomExporter.Result r = PomExporter.export(
+                    loaded.root(),
                     e.getValue(),
+                    loaded.modules().values(),
                     resolveLayout(e.getKey(), e.getValue()),
                     moduleLocked.isEmpty() ? loaded.locked() : moduleLocked);
             paths.add(e.getKey().resolve("pom.xml").toString());

@@ -2,6 +2,7 @@
 package cc.jumpkick.gradle;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
@@ -10,6 +11,7 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.WorkspaceMerge;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +27,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Versions come from {@code jk-lock.toml} when present ({@code locked} maps the lock's package
  * id, {@code group:artifact:jar:classifier}, → exact version), so the generated build reproduces
- * what jk builds; otherwise the declared selector collapses with a warning. {@code jdk} maps to a Gradle Java toolchain, with the {@code
+ * what jk builds; otherwise the declared selector collapses with a warning. A workspace sibling is a
+ * {@code project(":path")} reference. {@code jdk} maps to a Gradle Java toolchain, with the {@code
  * foojay-resolver-convention} settings plugin enabling auto-download.
  */
 public final class GradleExporter {
@@ -71,12 +74,33 @@ public final class GradleExporter {
         Map<String, String> buildFiles = new LinkedHashMap<>();
 
         String settings = renderSettings(root, modulesByRelPath.keySet());
-        buildFiles.put("", renderBuild(root, layoutOf(layoutByRelPath, ""), locked, report));
+        Map<String, String> projectPaths = new LinkedHashMap<>();
+        for (Map.Entry<String, JkBuild> e : modulesByRelPath.entrySet()) {
+            Project p = e.getValue().project();
+            projectPaths.put(p.group() + ":" + p.name(), ":" + e.getKey().replace('/', ':'));
+        }
+        Exporting exporting = new Exporting(projectPaths, locked, report);
+        buildFiles.put("", renderBuild(member(root, root, modulesByRelPath), layoutOf(layoutByRelPath, ""), exporting));
         for (Map.Entry<String, JkBuild> e : modulesByRelPath.entrySet()) {
             buildFiles.put(
-                    e.getKey(), renderBuild(e.getValue(), layoutOf(layoutByRelPath, e.getKey()), locked, report));
+                    e.getKey(),
+                    renderBuild(
+                            member(root, e.getValue(), modulesByRelPath),
+                            layoutOf(layoutByRelPath, e.getKey()),
+                            exporting));
         }
         return new Result(settings, buildFiles, report.build());
+    }
+
+    /** What every build file of one export reads: sibling {@code group:artifact} → Gradle project path, the lock, the report. */
+    private record Exporting(
+            Map<String, String> projectPaths, Map<String, String> locked, ImportReport.Builder report) {}
+
+    /** {@code build} with its {@code workspace = true} edges naming the sibling's or the shared entry's coordinate. */
+    private static JkBuild member(JkBuild root, JkBuild build, Map<String, JkBuild> modulesByRelPath) {
+        return modulesByRelPath.isEmpty()
+                ? build
+                : WorkspaceMerge.resolveSiblingCoordinates(root, build, modulesByRelPath.values());
     }
 
     private static Layout layoutOf(Map<String, Layout> map, String key) {
@@ -103,8 +127,8 @@ public final class GradleExporter {
         return sb.toString();
     }
 
-    private static String renderBuild(
-            JkBuild jk, Layout layout, Map<String, String> locked, ImportReport.Builder report) {
+    private static String renderBuild(JkBuild jk, Layout layout, Exporting exporting) {
+        ImportReport.Builder report = exporting.report();
         Project p = jk.project();
         VersionSelector kotlinVersion = p.kotlin();
         boolean kotlin = kotlinVersion != null;
@@ -121,6 +145,7 @@ public final class GradleExporter {
                     .append(kEsc(extractVersion(Objects.requireNonNull(kotlinVersion), "kotlin", report)))
                     .append("\"\n");
         }
+        if (jk.build().war() != null) sb.append("    war\n");
         if (app) sb.append("    application\n");
         // Map jk assemble packaging onto Gradle's Shadow plugin (export only).
         if (assembly)
@@ -137,7 +162,7 @@ public final class GradleExporter {
         sb.append("version = \"").append(kEsc(p.version())).append("\"\n\n");
 
         appendRepositories(sb, jk.repositories());
-        appendDependencies(sb, jk, locked, report);
+        appendDependencies(sb, jk, exporting);
         appendToolchain(sb, p);
         appendSourceSets(sb, layout, kotlin);
         if (app) {
@@ -160,8 +185,9 @@ public final class GradleExporter {
         sb.append("}\n\n");
     }
 
-    private static void appendDependencies(
-            StringBuilder sb, JkBuild jk, Map<String, String> locked, ImportReport.Builder report) {
+    private static void appendDependencies(StringBuilder sb, JkBuild jk, Exporting exporting) {
+        Map<String, String> locked = exporting.locked();
+        ImportReport.Builder report = exporting.report();
         // jk scope → Gradle configuration (inverse of GradleImporter.mapConfiguration).
         record Pair(Scope scope, String config) {}
         Pair[] order = {
@@ -183,11 +209,18 @@ public final class GradleExporter {
         for (Pair pr : order) {
             for (Dependency d : jk.dependencies().of(pr.scope())) {
                 if (warnIfUnmappable(d, report)) continue;
+                String projectPath = exporting.projectPaths().get(d.module());
+                if (projectPath != null && (d.isTestsKind() || d.fixtures())) {
+                    report.warning(d.module() + ": tests of a workspace member written as the member itself");
+                }
+                String notation = projectPath != null
+                        ? "project(\"" + kEsc(projectPath) + "\")"
+                        : "\"" + kEsc(gav(d, locked, report)) + "\"";
                 sb.append("    ")
                         .append(pr.config())
-                        .append("(\"")
-                        .append(kEsc(gav(d, locked, report)))
-                        .append("\")")
+                        .append('(')
+                        .append(notation)
+                        .append(')')
                         .append(excludeBlock(d.exclusions()))
                         .append('\n');
             }
@@ -280,6 +313,10 @@ public final class GradleExporter {
     }
 
     private static boolean warnIfUnmappable(Dependency d, ImportReport.Builder report) {
+        if (d.isWorkspace()) {
+            report.warning(d.workspaceName() + ": no workspace member or shared dependency; dropped");
+            return true;
+        }
         if (d.isGit()) {
             report.warning(d.module() + ": git source dropped; includeBuild a local checkout");
             return true;
@@ -315,6 +352,13 @@ public final class GradleExporter {
         }
         if (jk.profiles() != null && !jk.profiles().byName().isEmpty()) {
             report.warning("[profiles] dropped");
+        }
+        for (Scope s : new Scope[] {Scope.DEV, Scope.TEST_DEV}) {
+            if (!jk.dependencies().of(s).isEmpty()) report.warning("[" + s.tomlSection() + "] dropped");
+        }
+        BuildBlock.War war = jk.build().war();
+        if (war != null && (war.name() != null || !BuildBlock.War.DEFAULT_WEBAPP.equals(war.webapp()))) {
+            report.warning("[war] name and webapp dropped; the war plugin reads " + BuildBlock.War.DEFAULT_WEBAPP);
         }
     }
 

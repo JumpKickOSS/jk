@@ -728,6 +728,10 @@ it has none). `jk export gradle` writes `[export-dependencies]` as `api` under t
 plugin, a `classifier` or `kind = "tests"` as the coordinate's fourth part, an `exclude(group = …, module =
 …)` block per exclusion (`*:*` as `isTransitive = false`) and `testAnnotationProcessor` for the
 test processors; a Gradle constraint carries no exclusions, so a managed entry's are a report row.
+A workspace sibling is `project(":path")` in Gradle and its coordinate in Maven, at
+`${project.version}` when the two share a version. A `[war]` module is `war` packaging (the `war`
+plugin in Gradle), read from `src/main/webapp`. `[dev-dependencies]` and
+`[test-dev-dependencies]` have no Maven or Gradle equivalent and are dropped with a report row.
 
 Single-file scripts (`.java`, `.kt`, `.kts`, `.groovy`): `jk tool run script.java` / `jkx` — [Tools](tools.md).
 

@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **`jk export` writes a workspace sibling as a project reference.** `jk export gradle` writes a
+  `workspace = true` sibling as `project(":path")` and `jk export maven` as the sibling's coordinate
+  at `${project.version}`, where both wrote a `workspace:` coordinate no build could resolve; a
+  `[workspace.dependencies]` entry is written as its coordinate. A `[war]` module exports as `war`
+  packaging, and dropped `[dev-dependencies]` are a report row.
 - **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
   failing the next `jk lock` with no place to look.

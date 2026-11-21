@@ -2,6 +2,7 @@
 package cc.jumpkick.mvn;
 
 import cc.jumpkick.compat.ImportReport;
+import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
@@ -9,17 +10,23 @@ import cc.jumpkick.model.Project;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
+import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.pom.PomXml;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Renders a {@link JkBuild} as a Maven {@code pom.xml} (companion to {@code PomImporter}).
  * Platform → dependencyManagement import; processor → annotationProcessorPaths; workspace root →
- * packaging pom + modules. Features/profiles stripped; floating selectors collapse with a warning.
+ * packaging pom + modules; a workspace sibling → its coordinate, at {@code ${project.version}} when
+ * it shares the module's version. Features, profiles and the dev tables are dropped with a report
+ * row; floating selectors collapse with a warning.
  */
 public final class PomExporter {
 
@@ -42,6 +49,23 @@ public final class PomExporter {
      * otherwise selectors collapse with a warning. {@code SIMPLE} emits flat source dirs.
      */
     public static Result export(JkBuild jkBuild, Layout layout, Map<String, String> locked) {
+        return export(jkBuild, layout, locked, Set.of());
+    }
+
+    /**
+     * Export one member of a workspace: its {@code workspace = true} edges name the sibling's
+     * coordinate or the root's {@code [workspace.dependencies]} entry.
+     */
+    public static Result export(
+            JkBuild root, JkBuild member, Collection<JkBuild> members, Layout layout, Map<String, String> locked) {
+        Set<String> siblings = new HashSet<>();
+        for (JkBuild m : members)
+            siblings.add(m.project().group() + ":" + m.project().name());
+        return export(WorkspaceMerge.resolveSiblingCoordinates(root, member, members), layout, locked, siblings);
+    }
+
+    /** {@code siblings} holds the {@code group:artifact} of every workspace member. */
+    private static Result export(JkBuild jkBuild, Layout layout, Map<String, String> locked, Set<String> siblings) {
         if (locked == null) locked = Map.of();
         if (layout == null) layout = Layout.TRADITIONAL;
         ImportReport.Builder report = ImportReport.builder();
@@ -49,7 +73,7 @@ public final class PomExporter {
         PomXml.appendPreamble(sb);
 
         Project p = jkBuild.project();
-        appendCoords(sb, p, jkBuild.isWorkspaceRoot());
+        appendCoords(sb, p, packaging(jkBuild));
         appendProperties(sb, p);
         appendModules(sb, jkBuild);
         appendRepositories(sb, jkBuild.repositories());
@@ -59,7 +83,7 @@ public final class PomExporter {
                 jkBuild.dependencies().of(Scope.MANAGED),
                 locked,
                 report);
-        appendDependencies(sb, jkBuild.dependencies(), locked, report);
+        appendDependencies(sb, p, jkBuild.dependencies(), siblings, locked, report);
         appendBuild(sb, jkBuild, layout, locked, report);
         warnAboutDroppedConcerns(jkBuild, report);
 
@@ -67,11 +91,17 @@ public final class PomExporter {
         return new Result(sb.toString(), report.build());
     }
 
-    private static void appendCoords(StringBuilder sb, Project p, boolean workspaceRoot) {
+    /** {@code pom} for a workspace root, {@code war} for a module with a {@code [war]} table, else {@code jar}. */
+    private static String packaging(JkBuild jkBuild) {
+        if (jkBuild.isWorkspaceRoot()) return "pom";
+        return jkBuild.build().war() != null ? "war" : "jar";
+    }
+
+    private static void appendCoords(StringBuilder sb, Project p, String packaging) {
         sb.append("  <groupId>").append(PomXml.escape(p.group())).append("</groupId>\n");
         sb.append("  <artifactId>").append(PomXml.escape(p.name())).append("</artifactId>\n");
         sb.append("  <version>").append(PomXml.escape(p.version())).append("</version>\n");
-        sb.append("  <packaging>").append(workspaceRoot ? "pom" : "jar").append("</packaging>\n");
+        sb.append("  <packaging>").append(packaging).append("</packaging>\n");
         if (p.description() != null) {
             sb.append("  <description>").append(PomXml.escape(p.description())).append("</description>\n");
         }
@@ -128,7 +158,12 @@ public final class PomExporter {
     }
 
     private static void appendDependencies(
-            StringBuilder sb, JkBuild.Dependencies deps, Map<String, String> locked, ImportReport.Builder report) {
+            StringBuilder sb,
+            Project p,
+            JkBuild.Dependencies deps,
+            Set<String> siblings,
+            Map<String, String> locked,
+            ImportReport.Builder report) {
         // Maven emits compile / runtime / provided / test under <dependencies>; export and main are
         // both compile scope. Platform and processor are handled elsewhere.
         Scope[] order = {Scope.EXPORT, Scope.MAIN, Scope.RUNTIME, Scope.PROVIDED, Scope.TEST};
@@ -145,24 +180,24 @@ public final class PomExporter {
         sb.append("  <dependencies>\n");
         for (Scope s : order) {
             for (Dependency d : deps.of(s)) {
-                appendDependency(sb, d, PomXml.mavenScope(s), locked, report);
+                if (warnIfUnmappable(d, report)) continue;
+                String version = siblings.contains(d.module())
+                                && d.version() instanceof VersionSelector.Exact e
+                                && e.version().equals(p.version())
+                        ? "${project.version}"
+                        : resolveVersion(d, locked, report);
+                PomXml.appendDependency(sb, d, version, PomXml.mavenScope(s));
             }
         }
         sb.append("  </dependencies>\n");
     }
 
-    private static void appendDependency(
-            StringBuilder sb,
-            Dependency d,
-            @Nullable String mavenScope,
-            Map<String, String> locked,
-            ImportReport.Builder report) {
-        if (warnIfUnmappable(d, report)) return;
-        PomXml.appendDependency(sb, d, resolveVersion(d, locked, report), mavenScope);
-    }
-
-    /** Git / content-addressed deps have no Maven equivalent — warn and skip. */
+    /** Git / content-addressed deps and a workspace edge that names nothing have no Maven equivalent — warn and skip. */
     private static boolean warnIfUnmappable(Dependency d, ImportReport.Builder report) {
+        if (d.isWorkspace()) {
+            report.warning(d.workspaceName() + ": no workspace member or shared dependency; dropped");
+            return true;
+        }
         if (d.isGit()) {
             report.warning(d.module() + ": git source dropped; jk install it, then add a <dependency>");
             return true;
@@ -418,6 +453,13 @@ public final class PomExporter {
         }
         if (jkBuild.profiles() != null && !jkBuild.profiles().byName().isEmpty()) {
             report.warning("[profiles] dropped");
+        }
+        for (Scope s : new Scope[] {Scope.DEV, Scope.TEST_DEV}) {
+            if (!jkBuild.dependencies().of(s).isEmpty()) report.warning("[" + s.tomlSection() + "] dropped");
+        }
+        BuildBlock.War war = jkBuild.build().war();
+        if (war != null && (war.name() != null || !BuildBlock.War.DEFAULT_WEBAPP.equals(war.webapp()))) {
+            report.warning("[war] name and webapp dropped; the war plugin reads " + BuildBlock.War.DEFAULT_WEBAPP);
         }
     }
 

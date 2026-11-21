@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.host.DomXml;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.Layout;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
@@ -478,5 +480,78 @@ class PomExporterTest {
         PomExporter.Result r = PomExporter.export(b);
 
         assertThat(r.report().issues()).anyMatch(i -> i.message().toLowerCase().contains("git"));
+    }
+
+    @Test
+    void a_workspace_sibling_is_written_at_the_project_version() {
+        JkBuild root = parse("""
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["core", "util", "app"]
+
+                [workspace.dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.5.0-jre" }
+                """);
+        JkBuild core = parse("""
+                group = "com.example"
+                name  = "core"
+                version = "1.0.0"
+                java = 25
+                """);
+        JkBuild util = parse("""
+                group = "com.example"
+                name  = "util"
+                version = "2.0.0"
+                java = 25
+                """);
+        JkBuild app = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                core = { workspace = true }
+                util = { workspace = true }
+                guava = { workspace = true }
+                """);
+
+        String xml = PomExporter.export(root, app, List.of(core, util, app), Layout.TRADITIONAL, Map.of())
+                .xml();
+
+        assertThat(xml)
+                .contains("      <groupId>com.example</groupId>\n      <artifactId>core</artifactId>\n"
+                        + "      <version>${project.version}</version>\n");
+        assertThat(xml)
+                .contains("      <groupId>com.example</groupId>\n      <artifactId>util</artifactId>\n"
+                        + "      <version>2.0.0</version>\n");
+        assertThat(xml)
+                .contains("      <groupId>com.google.guava</groupId>\n      <artifactId>guava</artifactId>\n"
+                        + "      <version>33.5.0-jre</version>\n");
+        assertThat(xml).doesNotContain("workspace");
+    }
+
+    @Test
+    void a_war_module_is_war_packaging_and_dev_dependencies_are_dropped() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "web"
+                version = "1.0.0"
+                java = 25
+
+                [war]
+
+                [test-dev-dependencies]
+                devtools = { group = "org.springframework.boot", name = "spring-boot-devtools", version = "4.0.0" }
+                """);
+
+        PomExporter.Result r = PomExporter.export(b);
+
+        assertThat(r.xml()).contains("<packaging>war</packaging>").doesNotContain("devtools");
+        assertThat(r.report().issues()).anyMatch(i -> i.message().equals("[test-dev-dependencies] dropped"));
     }
 }

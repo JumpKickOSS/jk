@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.JkBuild;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -313,5 +314,88 @@ class GradleExporterTest {
         GradleExporter.Result r = GradleExporter.export(b, Map.of());
 
         assertThat(r.report().issues()).anyMatch(i -> i.message().contains("git source dropped"));
+    }
+
+    @Test
+    void a_workspace_sibling_is_a_project_reference() {
+        JkBuild root = parse("""
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["libs/core", "app"]
+
+                [workspace.dependencies]
+                guava = { group = "com.google.guava", name = "guava", version = "33.5.0-jre" }
+                """);
+        JkBuild core = parse("""
+                group = "com.example"
+                name  = "core"
+                version = "1.0.0"
+                java = 25
+                """);
+        JkBuild app = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dependencies]
+                core = { workspace = true }
+                guava = { workspace = true }
+
+                [test-dependencies]
+                core-tests = { workspace = true, name = "core", kind = "tests" }
+                """);
+        Map<String, JkBuild> modules = new LinkedHashMap<>();
+        modules.put("libs/core", core);
+        modules.put("app", app);
+
+        GradleExporter.Result r = GradleExporter.export(root, modules, Map.of());
+
+        String kts = r.buildFiles().get("app");
+        assertThat(kts).contains("    implementation(project(\":libs:core\"))\n");
+        assertThat(kts).contains("    implementation(\"com.google.guava:guava:33.5.0-jre\")\n");
+        assertThat(kts).contains("    testImplementation(project(\":libs:core\"))\n");
+        assertThat(kts).doesNotContain("workspace:");
+        assertThat(r.report().issues()).anyMatch(i -> i.message().startsWith("com.example:core: tests of"));
+    }
+
+    @Test
+    void dev_dependencies_are_dropped_with_a_report_row() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 25
+
+                [dev-dependencies]
+                devtools = { group = "org.springframework.boot", name = "spring-boot-devtools", version = "4.0.0" }
+                """);
+
+        GradleExporter.Result r = GradleExporter.export(b, Map.of());
+
+        assertThat(r.buildFiles().get("")).doesNotContain("devtools");
+        assertThat(r.report().issues()).anyMatch(i -> i.message().equals("[dev-dependencies] dropped"));
+    }
+
+    @Test
+    void a_war_module_applies_the_war_plugin_and_reports_its_own_webapp() {
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "web"
+                version = "1.0.0"
+                java = 25
+
+                [war]
+                webapp = "web"
+                """);
+
+        GradleExporter.Result r = GradleExporter.export(b, Map.of());
+
+        assertThat(r.buildFiles().get("")).contains("    java\n    war\n");
+        assertThat(r.report().issues()).anyMatch(i -> i.message().startsWith("[war] name and webapp dropped"));
     }
 }
