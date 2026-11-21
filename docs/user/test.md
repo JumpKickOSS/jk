@@ -549,7 +549,7 @@ Discover test classes, then fork N runners that **pull** classes until empty.
 | Value | Meaning |
 |-------|---------|
 | omit / `0` | **Auto:** `clamp(ceil(Σ class wall / max class wall), 1, min(share, classCount))`, then heap-clamped. `share` is this build's jobs budget divided by how many modules can run at once (`jobs / dirty width`). A class with no recorded wall counts as the median of the known ones. No history for the module: `min(2, share, classCount)` — the run records the walls, and the next run uses the formula. `jobs` is `-j` / `JK_JOBS` / `[engine] jobs`, default all cores |
-| `1` | One test JVM (serial within the module). It lists the classes the way the pull runners are fed — on a launcher that fires no session or discovery listener — and then executes them one class at a time, so a framework that readies the JVM per class as the classes load (Quarkus augments one application per test profile) does so for the class about to run, not for every class in the module |
+| `1` | One test JVM (serial within the module). It lists the classes the way the pull runners are fed — on a launcher that fires no session or discovery listener — and then, when the test classpath registers a launcher session or discovery listener or a launcher interceptor, executes them one class at a time, so a framework that readies the JVM per class as the classes load (Quarkus augments one application per test profile) does so for the class about to run, not for every class in the module. With none registered it executes the listed plan once |
 | `N` | Cap at N runners (still ≤ class count; heap-clamped) |
 
 Auto forks another JVM only when the recorded class walls say it can finish the suite sooner.

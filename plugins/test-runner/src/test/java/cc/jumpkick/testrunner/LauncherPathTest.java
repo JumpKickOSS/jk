@@ -7,9 +7,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.model.command.Exit;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -358,6 +361,44 @@ class LauncherPathTest {
                 .as("one executing discovery per class")
                 .isEqualTo(2);
         assertThat(LifecycleListenerFixture.sessionsOpened()).isEqualTo(2);
+    }
+
+    /**
+     * With no launcher hook on the classpath the listed plan is executed as it is: one session, no
+     * discovery past the listing, and every test the root holds runs.
+     */
+    @Test
+    void a_one_shot_run_without_a_launcher_hook_executes_the_listed_plan(@TempDir Path tmp) throws IOException {
+        Path root = classpathRootOf(tmp, TagEmptiedFixture.class, PlainPassingFixture.class);
+        LifecycleListenerFixture.reset();
+        var events = new Recorder();
+
+        int exit = LauncherPath.runOneShot(
+                root, null, List.of(), new TagFilters(List.of(), List.of(), List.of()), 0, events, false);
+
+        assertThat(exit).isZero();
+        assertThat(events.discovered())
+                .containsExactlyInAnyOrder(TagEmptiedFixture.class.getName(), PlainPassingFixture.class.getName());
+        assertThat(events.finishedTests()).hasSize(3);
+        assertThat(LifecycleListenerFixture.discoveriesStarted())
+                .as("no class is discovered again")
+                .isZero();
+        assertThat(LifecycleListenerFixture.sessionsOpened()).isEqualTo(1);
+    }
+
+    @Test
+    void a_launcher_hook_is_read_from_the_service_files() {
+        ClassLoader here = LauncherPathTest.class.getClassLoader();
+        assertThat(LauncherPath.launcherHooksRegistered(here)).isTrue();
+        ClassLoader hidden = new ClassLoader(here) {
+            @Override
+            public Enumeration<URL> getResources(String name) throws IOException {
+                return name.startsWith("META-INF/services/org.junit.platform.launcher.")
+                        ? Collections.emptyEnumeration()
+                        : super.getResources(name);
+            }
+        };
+        assertThat(LauncherPath.launcherHooksRegistered(hidden)).isFalse();
     }
 
     @Test

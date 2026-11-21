@@ -4,6 +4,7 @@ package cc.jumpkick.testrunner;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.testrunner.env.EnvLookups;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -71,6 +72,28 @@ final class LauncherPath {
             TagFilters tags,
             int workerId,
             EventWriter writer) {
+        return runOneShot(
+                scanClasspath,
+                filter,
+                methods,
+                tags,
+                workerId,
+                writer,
+                launcherHooksRegistered(Thread.currentThread().getContextClassLoader()));
+    }
+
+    /**
+     * {@code launcherHooked} is whether the classpath registers a launcher hook ({@link
+     * #launcherHooksRegistered}); without one, the listed plan is executed as it is.
+     */
+    static int runOneShot(
+            Path scanClasspath,
+            @Nullable String filter,
+            List<MethodSelection> methods,
+            TagFilters tags,
+            int workerId,
+            EventWriter writer,
+            boolean launcherHooked) {
         Adapter adapter = new Adapter(writer, workerId);
 
         LauncherDiscoveryRequestBuilder b = scan(scanClasspath);
@@ -102,14 +125,17 @@ final class LauncherPath {
         emitDiscovery(plan, adapter);
         warnIfEmptyPlan(scanClasspath, filter, plan, adapter);
         warnTagExcluded(() -> named(scanClasspath, filter, methods, tags), tags, plan, adapter);
-        // Executed class by class on a launcher that fires the session and discovery listeners, as
-        // the pull workers execute: a framework readies the JVM for the class about to run, not for
-        // every class the root holds — Quarkus augments one application per test profile as the
-        // classes load, which over a root of hundreds of @QuarkusTest classes is more heap than a
-        // JVM has before the first test is named. A plan with a test under no class — an engine
-        // that runs features or scripts — is executed whole, as the one request it was listed from.
+        // With a launcher hook on the classpath, executed class by class on a launcher that fires
+        // it, as the pull workers execute: a framework readies the JVM for the class about to run,
+        // not for every class the root holds — Quarkus augments one application per test profile
+        // as the classes load, which over a root of hundreds of @QuarkusTest classes is more heap
+        // than a JVM has before the first test is named. A plan with a test under no class — an
+        // engine that runs features or scripts — is executed whole, as the one request it was
+        // listed from. With no hook, discovering each class again buys nothing: the listed plan runs.
         Launcher launcher = LauncherFactory.create();
-        if (everyTestUnderAClass(plan)) {
+        if (!launcherHooked) {
+            launcher.execute(plan, adapter);
+        } else if (everyTestUnderAClass(plan)) {
             for (String className : discoveredClasses(plan)) {
                 LauncherDiscoveryRequestBuilder one =
                         LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(className));
@@ -126,6 +152,29 @@ final class LauncherPath {
         long planMs = Math.max(0, (clock.nanos() - planStart) / 1_000_000);
         adapter.emitPlanFinished(planMs);
         return adapter.hasFailures() ? 1 : 0;
+    }
+
+    /** The services a framework registers to ready the JVM for the tests a discovery selects. */
+    private static final List<String> LAUNCHER_HOOKS = List.of(
+            "org.junit.platform.launcher.LauncherSessionListener",
+            "org.junit.platform.launcher.LauncherDiscoveryListener",
+            "org.junit.platform.launcher.LauncherInterceptor");
+
+    /**
+     * True when {@code loader} registers a launcher session or discovery listener or a launcher
+     * interceptor, read from the service files without loading a provider; an unreadable file counts
+     * as one.
+     */
+    static boolean launcherHooksRegistered(@Nullable ClassLoader loader) {
+        ClassLoader l = loader != null ? loader : ClassLoader.getSystemClassLoader();
+        for (String service : LAUNCHER_HOOKS) {
+            try {
+                if (l.getResources("META-INF/services/" + service).hasMoreElements()) return true;
+            } catch (IOException e) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
