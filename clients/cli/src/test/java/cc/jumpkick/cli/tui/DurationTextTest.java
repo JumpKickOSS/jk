@@ -3,6 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.testing.NoAnsi;
+import cc.jumpkick.cli.theme.Theme;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +42,31 @@ class DurationTextTest {
         assertThat(DurationText.human(
                         Duration.ofDays(1).plusHours(12).plusMinutes(13).plusSeconds(5)))
                 .isEqualTo("1d 12h 13m 5s");
+        assertThat(DurationText.human(Duration.ofDays(10).plusSeconds(7))).isEqualTo("10d 0h 0m 7s");
+    }
+
+    @Test
+    void human_keeps_the_lower_unit_up_to_its_boundary() {
+        assertThat(DurationText.human(Duration.ofMillis(0))).isEqualTo("0ms");
+        assertThat(DurationText.human(Duration.ofMillis(59_999))).isEqualTo("60.0s");
+        assertThat(DurationText.human(Duration.ofSeconds(86_399))).isEqualTo("23h 59m 59s");
+    }
+
+    @Test
+    void took_plain_prefixes_dash_separator() throws Exception {
+        NoAnsi.forced(() -> {
+            assertThat(DurationText.took(Duration.ofMillis(547))).isEqualTo("- took 547ms");
+            assertThat(DurationText.took(Duration.ofMillis(1200))).isEqualTo("- took 1.2s");
+            return null;
+        });
+    }
+
+    @Test
+    void took_ansi_is_dim_italic_without_dash() {
+        String took = DurationText.took(Duration.ofMillis(100));
+        if (Theme.active().isAnsi()) {
+            assertThat(took).contains("took 100ms").doesNotStartWith("- ").contains("\u001B[");
+        }
     }
 
     @Test

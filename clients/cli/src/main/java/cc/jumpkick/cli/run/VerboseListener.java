@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.StackTraceHighlight;
 import cc.jumpkick.run.BuildPlanListener;
@@ -134,8 +135,7 @@ public final class VerboseListener implements BuildPlanListener {
                 + " "
                 + qualified(step, group)
                 + "  "
-                + Theme.colorize(
-                        ConsoleSpec.fmtDuration(duration), Theme.active().darkGray()));
+                + Theme.colorize(DurationText.human(duration), Theme.active().darkGray()));
     }
 
     @Override
@@ -160,6 +160,6 @@ public final class VerboseListener implements BuildPlanListener {
         String summary = result.success()
                 ? Theme.colorize(Glyphs.CHECK + " done", Theme.active().completedStep())
                 : Theme.colorize(Glyphs.CROSS + " failed", Theme.active().error());
-        out.println(summary + " (" + ConsoleSpec.fmtDuration(result.duration()) + ")");
+        out.println(summary + " (" + DurationText.human(result.duration()) + ")");
     }
 }

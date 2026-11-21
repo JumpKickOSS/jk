@@ -4,9 +4,9 @@ package cc.jumpkick.cli;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.api.CommonOpts;
 import cc.jumpkick.cli.engine.WireStream;
-import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.SessionContext;
@@ -243,7 +243,7 @@ final class GroupRun {
         } else if (upToDate > 0) {
             tail.append(", ").append(upToDate).append(" up to date");
         }
-        return tail.append(" · ").append(ConsoleSpec.fmtDuration(took)).toString();
+        return tail.append(" · ").append(DurationText.human(took)).toString();
     }
 
     private static void emitFinish(

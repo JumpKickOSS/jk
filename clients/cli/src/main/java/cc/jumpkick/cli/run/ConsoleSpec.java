@@ -2,9 +2,7 @@
 package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.DurationText;
 import cc.jumpkick.run.BuildPlanResult;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -182,13 +180,5 @@ public record ConsoleSpec(
      */
     public static String countBracket(int n, Theme t) {
         return Theme.colorize("[", t.darkGray()) + n + Theme.colorize("]", t.darkGray());
-    }
-
-    /**
-     * Human-friendly duration: {@code 712ms}, {@code 3.1s}, {@code 2m 4s}, {@code 1h 3m 2s}, {@code
-     * 1d 12h 13m 5s}. Spelled by {@link DurationText#human}.
-     */
-    public static String fmtDuration(Duration d) {
-        return DurationText.human(d);
     }
 }
