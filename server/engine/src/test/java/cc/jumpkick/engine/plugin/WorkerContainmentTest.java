@@ -108,6 +108,21 @@ class WorkerContainmentTest {
     }
 
     @Test
+    void a_cap_on_a_group_above_the_engine_wins() throws Exception {
+        Path slice = root.resolve("sys/fs/cgroup/user.slice");
+        Path own = slice.resolve("jk");
+        delegated(16 * GIB, "max");
+        Files.createDirectories(slice);
+        Files.move(root.resolve("sys/fs/cgroup/jk"), own);
+        Files.writeString(root.resolve("proc/self/cgroup"), "0::/user.slice/jk\n");
+        Files.writeString(slice.resolve("memory.max"), 4 * GIB + "\n");
+        WorkerContainment.Plan plan = WorkerContainment.plan(root, true, SELF);
+        assertThat(plan.mode()).isEqualTo(WorkerContainment.Mode.CGROUP);
+        assertThat(plan.workers()).isEqualTo(own.resolve("workers"));
+        assertThat(Objects.requireNonNull(plan.limits()).maxBytes()).isEqualTo(2 * GIB);
+    }
+
+    @Test
     void memory_already_enabled_skips_the_move() throws Exception {
         delegated(16 * GIB, "max");
         Files.writeString(root.resolve("sys/fs/cgroup/jk/cgroup.subtree_control"), "cpu memory\n");

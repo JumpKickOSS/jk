@@ -17,6 +17,7 @@ import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
@@ -25,8 +26,9 @@ import org.jspecify.annotations.Nullable;
  * Live memory signals a {@link WorkerLeases.Ledger} reads before granting a lease the reservation
  * budget cannot hold. The sample is host pressure, and free bytes that already count running forks
  * at their real usage. On Linux that is the host's {@code MemAvailable}, which sees the workers of
- * every engine, in cgroup mode no more than this engine's workers group has left under its {@code
- * memory.max}, and PSI pressure. On Windows and macOS it is the host's available physical memory
+ * every engine, no more than any limited group the engine runs in has left ({@link OwnCgroup}), in
+ * cgroup mode no more than this engine's workers group has left under its {@code memory.max}, and
+ * PSI pressure, the worst of the host's and those groups'. On Windows and macOS it is the host's available physical memory
  * ({@link MemoryProbe#current}); macOS adds the kernel's memory pressure level, and Windows has no
  * pressure signal, so the free memory alone decides.
  *
@@ -58,13 +60,6 @@ public final class OverbookSignals {
 
     private static final Path MEMINFO = Path.of("/proc/meminfo");
     private static final Path PRESSURE = Path.of("/proc/pressure/memory");
-
-    /** This process's own cgroup: in a container, the container's limit and pressure. */
-    private static final Path OWN_MAX = Path.of("/sys/fs/cgroup/memory.max");
-
-    private static final Path OWN_CURRENT = Path.of("/sys/fs/cgroup/memory.current");
-    private static final Path OWN_STAT = Path.of("/sys/fs/cgroup/memory.stat");
-    private static final Path OWN_PRESSURE = Path.of("/sys/fs/cgroup/memory.pressure");
 
     private static final Reading CLOSED = new Reading(false, -1L, Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY);
 
@@ -197,7 +192,8 @@ public final class OverbookSignals {
         long available = -1L;
         String meminfo = readText(MEMINFO);
         if (meminfo != null) available = MemoryProbe.meminfoValueBytes(meminfo, "MemAvailable");
-        long own = cgroupFree(readText(OWN_MAX), readText(OWN_CURRENT), readText(OWN_STAT));
+        List<Path> chain = OwnCgroup.chain(OwnCgroup.HOST);
+        long own = ownFree(chain);
         if (own >= 0) available = available >= 0 ? Math.min(available, own) : own;
         boolean availableReadable = available >= 0;
         long free = workers != null
@@ -209,7 +205,7 @@ public final class OverbookSignals {
                         available)
                 : available;
         Pressure host = parsePressure(readText(PRESSURE));
-        Pressure ownPressure = parsePressure(readText(OWN_PRESSURE));
+        Pressure ownPressure = ownPressure(chain);
         if (ownPressure != null) host = host == null ? ownPressure : worse(host, ownPressure);
         if (workers != null) {
             String groupText = readText(workers.resolve("memory.pressure"));
@@ -250,6 +246,33 @@ public final class OverbookSignals {
         if (max < 0 || current < 0) return -1L;
         long used = Math.max(0, current - MemoryProbe.inactiveFileBytes(statText));
         return used > max ? -1L : max - used;
+    }
+
+    /**
+     * The least {@link #cgroupFree} of the groups of {@code chain} ({@link OwnCgroup#chain}): the
+     * engine's own group and those above it, the container's or the systemd unit's and slices'
+     * limits among them. {@code -1} when no group has a finite limit with room to report.
+     */
+    static long ownFree(List<Path> chain) {
+        long least = -1L;
+        for (Path group : chain) {
+            long free = cgroupFree(
+                    readText(group.resolve("memory.max")),
+                    readText(group.resolve("memory.current")),
+                    readText(group.resolve("memory.stat")));
+            if (free >= 0 && (least < 0 || free < least)) least = free;
+        }
+        return least;
+    }
+
+    /** The worst pressure of the groups of {@code chain}; null when none has a pressure file that parses. */
+    static @Nullable Pressure ownPressure(List<Path> chain) {
+        Pressure worst = null;
+        for (Path group : chain) {
+            Pressure p = parsePressure(readText(group.resolve("memory.pressure")));
+            if (p != null) worst = worst == null ? p : worse(worst, p);
+        }
+        return worst;
     }
 
     /**

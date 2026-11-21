@@ -208,13 +208,8 @@ public final class WorkerContainment {
         if (!Files.exists(cgroupRoot.resolve("cgroup.controllers"))) {
             return scoreOnly("cgroup v2 is not mounted");
         }
-        String cgPath = cgroupPath(proc.resolve("self/cgroup"));
-        if (cgPath == null) return scoreOnly("this process has no cgroup");
-        String rel = cgPath.startsWith("/") ? cgPath.substring(1) : cgPath;
-        if (rel.contains("..") || rel.indexOf('\0') >= 0) return scoreOnly("this process has no cgroup");
-        Path own = cgroupRoot.resolve(rel).normalize();
-        if (!own.startsWith(cgroupRoot.normalize())) return scoreOnly("this process has no cgroup");
-        if (!Files.isDirectory(own)) return scoreOnly("this process has no cgroup");
+        Path own = OwnCgroup.own(root);
+        if (own == null) return scoreOnly("this process has no cgroup");
         String controllers = readQuiet(own.resolve("cgroup.controllers"));
         if (controllers == null) return scoreOnly("this process has no cgroup");
         if (!hasWord(controllers, "memory")) return scoreOnly("the memory controller is not delegated");
@@ -222,7 +217,7 @@ public final class WorkerContainment {
         long memTotal = -1L;
         String meminfo = readQuiet(proc.resolve("meminfo"));
         if (meminfo != null) memTotal = MemoryProbe.meminfoValueBytes(meminfo, "MemTotal");
-        long enclosing = parseLimit(readQuiet(own.resolve("memory.max")));
+        long enclosing = OwnCgroup.tightestMax(OwnCgroup.upFrom(own, cgroupRoot));
         if (memTotal <= 0 && enclosing <= 0) return scoreOnly("host memory is unknown");
         Limits limits = budget(memTotal, enclosing);
         if (limits == null) return scoreOnly("host memory is below the reserve");
@@ -566,7 +561,7 @@ public final class WorkerContainment {
             }
             long seen = readCounter(workers.resolve("memory.events"), "oom_kill");
             long memTotal = MemoryProbe.current().totalBytes();
-            long enclosing = parseLimit(readQuiet(own.resolve("memory.max")));
+            long enclosing = OwnCgroup.tightestMax(OwnCgroup.upFrom(own, OwnCgroup.mount(root)));
             State ready = State.cgroup(workers, limits, seen < 0 ? 0 : seen, naturalSource(memTotal, enclosing));
             ready.perWorker = enablePerWorker(workers);
             return ready;
@@ -658,9 +653,9 @@ public final class WorkerContainment {
     }
 
     private static boolean atMax(Path workers) {
-        long max = parseLimit(readQuiet(workers.resolve("memory.max")));
+        long max = OwnCgroup.limit(readQuiet(workers.resolve("memory.max")));
         if (max <= 0) return false;
-        long current = parseLimit(readQuiet(workers.resolve("memory.current")));
+        long current = OwnCgroup.limit(readQuiet(workers.resolve("memory.current")));
         return current >= max;
     }
 
@@ -694,38 +689,6 @@ public final class WorkerContainment {
             } catch (IOException e) {
                 Log.debug("worker containment probe: " + e.getMessage());
             }
-        }
-    }
-
-    /** The cgroup v2 line is hierarchy {@code 0}; v1 lines name a controller in the middle field. */
-    private static boolean isUnifiedHierarchy(String hierarchy) {
-        return hierarchy.length() == 1 && hierarchy.charAt(0) == '0';
-    }
-
-    private static @Nullable String cgroupPath(Path file) {
-        String text = readQuiet(file);
-        if (text == null) return null;
-        for (String line : text.split("\n")) {
-            String[] parts = line.split(":", 3);
-            if (parts.length == 3 && isUnifiedHierarchy(parts[0])) {
-                String path = parts[2].trim();
-                return path.isEmpty() ? "/" : path;
-            }
-        }
-        return null;
-    }
-
-    /** {@code -1} for absent, blank, {@code max}, or a value the kernel uses as unlimited. */
-    private static long parseLimit(@Nullable String text) {
-        if (text == null) return -1L;
-        String s = text.trim();
-        if (s.isEmpty() || "max".equals(s)) return -1L;
-        try {
-            long v = Long.parseLong(s);
-            if (v <= 0 || v >= MemoryProbe.CGROUP_UNLIMITED) return -1L;
-            return v;
-        } catch (NumberFormatException e) {
-            return -1L;
         }
     }
 

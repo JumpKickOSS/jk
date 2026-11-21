@@ -15,6 +15,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -24,7 +25,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li><b>Linux</b> — {@code /proc/meminfo} {@code MemAvailable} (same as {@code free -h}'s
- *       "available" column: free + reclaimable page cache), plus cgroup limits when present.
+ *       "available" column: free + reclaimable page cache), lowered to the tightest cgroup
+ *       limit on this process's own group or any group above it ({@link OwnCgroup}).
  *       Not {@code MemFree} / MXBean free, which under-report on aggressive file-cache hosts.
  *   <li><b>macOS</b> — {@code host_statistics64} reclaimable pages (free + inactive + purgeable;
  *       free already holds the speculative pages), not MXBean free alone.
@@ -47,9 +49,6 @@ public final class MemoryProbe {
     private static final Path HOST_ROOT = Path.of("/");
 
     private static final String PROC_MEMINFO = "proc/meminfo";
-    private static final String CGROUP2_MAX = "sys/fs/cgroup/memory.max";
-    private static final String CGROUP2_CURRENT = "sys/fs/cgroup/memory.current";
-    private static final String CGROUP2_STAT = "sys/fs/cgroup/memory.stat";
     private static final String CGROUP1_LIMIT = "sys/fs/cgroup/memory/memory.limit_in_bytes";
     private static final String CGROUP1_USAGE = "sys/fs/cgroup/memory/memory.usage_in_bytes";
 
@@ -129,21 +128,20 @@ public final class MemoryProbe {
             Log.debug("measure: fall through to the bean fallback below", e);
         }
 
-        long cgLimit = readLong(root.resolve(CGROUP2_MAX));
-        if (cgLimit < 0) cgLimit = readLong(root.resolve(CGROUP1_LIMIT));
-        long cgUsage = readLong(root.resolve(CGROUP2_CURRENT));
-        if (cgUsage < 0) cgUsage = readLong(root.resolve(CGROUP1_USAGE));
+        CgroupRoom room = cgroupRoom(OwnCgroup.chain(root));
+        if (room == null) {
+            room = cgroupV1Room(readLong(root.resolve(CGROUP1_LIMIT)), readLong(root.resolve(CGROUP1_USAGE)));
+        }
 
         long total = hostTotal;
         long available = hostAvail;
 
         // A real cgroup cap (smaller than the host) overrides both numbers: the
-        // build can only use what the container allows.
-        if (cgLimit > 0 && cgLimit < CGROUP_UNLIMITED && (total <= 0 || cgLimit < total)) {
-            total = cgLimit;
-            if (cgUsage >= 0) {
-                long cgAvail = cgLimit - Math.max(0, cgUsage - inactiveFileBytes(readText(root.resolve(CGROUP2_STAT))));
-                available = available > 0 ? Math.min(available, cgAvail) : cgAvail;
+        // build can only use what the container, unit or slice allows.
+        if (room != null && (total <= 0 || room.maxBytes() < total)) {
+            total = room.maxBytes();
+            if (room.measured()) {
+                available = available > 0 ? Math.min(available, room.availableBytes()) : room.availableBytes();
             }
         }
 
@@ -158,6 +156,44 @@ public final class MemoryProbe {
         if (available <= 0) available = total;
         if (available > total) available = total;
         return new Memory(total, available);
+    }
+
+    /**
+     * The tightest cgroup limit over this process and the room left under it. {@code maxBytes} is the
+     * smallest finite {@code memory.max}; {@code availableBytes} the least room under any finite one
+     * whose usage reads, {@link Long#MIN_VALUE} when none does.
+     */
+    record CgroupRoom(long maxBytes, long availableBytes) {
+
+        boolean measured() {
+            return availableBytes != Long.MIN_VALUE;
+        }
+    }
+
+    /**
+     * The room along {@code chain}, own group first ({@link OwnCgroup#chain}): a limit on any group
+     * above this process bounds it, and each group's room is its {@code memory.max} less its usage
+     * without the inactive file cache. Null when no group of the chain has a finite limit.
+     */
+    static @Nullable CgroupRoom cgroupRoom(List<Path> chain) {
+        long max = -1L;
+        long room = Long.MIN_VALUE;
+        for (Path group : chain) {
+            long limit = OwnCgroup.limit(OwnCgroup.read(group.resolve("memory.max")));
+            if (limit <= 0) continue;
+            if (max < 0 || limit < max) max = limit;
+            long usage = readLong(group.resolve("memory.current"));
+            if (usage < 0) continue;
+            long left = limit - Math.max(0, usage - inactiveFileBytes(OwnCgroup.read(group.resolve("memory.stat"))));
+            room = room == Long.MIN_VALUE ? left : Math.min(room, left);
+        }
+        return max > 0 ? new CgroupRoom(max, room) : null;
+    }
+
+    /** A cgroup v1 memory controller's limit and usage as a room; null when the limit is not finite. */
+    static @Nullable CgroupRoom cgroupV1Room(long limit, long usage) {
+        if (limit <= 0 || limit >= CGROUP_UNLIMITED) return null;
+        return new CgroupRoom(limit, usage >= 0 ? limit - usage : Long.MIN_VALUE);
     }
 
     /** {@code mach/host_info.h}: the {@code HOST_VM_INFO64} flavor selector for {@code host_statistics64}. */
@@ -317,14 +353,6 @@ public final class MemoryProbe {
             }
         }
         return 0;
-    }
-
-    private static @Nullable String readText(Path file) {
-        try {
-            return Files.isReadable(file) ? Files.readString(file) : null;
-        } catch (IOException | RuntimeException e) {
-            return null;
-        }
     }
 
     /** Read a single-number cgroup file; {@code -1} for absent/"max"/unparseable. */
