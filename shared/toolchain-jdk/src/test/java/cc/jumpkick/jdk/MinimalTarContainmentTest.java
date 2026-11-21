@@ -98,6 +98,44 @@ class MinimalTarContainmentTest {
     }
 
     @Test
+    void a_zip_entry_that_climbs_out_through_a_missing_directory_creates_nothing_outside(@TempDir Path tmp)
+            throws Exception {
+        // nonexistent/../../../escaped lands at <tmp>/a/escaped: the missing first segment must
+        // not let the path be created before it is judged.
+        Path dest = Files.createDirectories(tmp.resolve("a/b/dest"));
+        Path file = Files.write(
+                tmp.resolve("file.zip"),
+                TestArchives.zip(new String[][] {{"nonexistent/../../../escaped/f", "pwned"}}));
+        Path dir = Files.write(
+                tmp.resolve("dir.zip"), TestArchives.zip(new String[][] {{"nonexistent/../../../escaped/", null}}));
+
+        for (Path archive : new Path[] {file, dir}) {
+            assertThatThrownBy(() -> JdkInstaller.extract(archive, dest, "zip"))
+                    .as(archive.getFileName().toString())
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("climbs outside the destination");
+            assertThat(tmp.resolve("a/escaped")).doesNotExist();
+            assertThat(dest.resolve("nonexistent")).doesNotExist();
+        }
+        assertThatThrownBy(() -> MinimalTar.createDirectoryInside(dest, dest.resolve("nonexistent/../../../escaped")))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("climbs outside the destination");
+        assertThat(tmp.resolve("a/escaped")).doesNotExist();
+    }
+
+    @Test
+    void a_zip_entry_that_climbs_back_inside_extracts_where_it_lands(@TempDir Path tmp) throws Exception {
+        Path dest = Files.createDirectories(tmp.resolve("dest"));
+        Path archive = Files.write(
+                tmp.resolve("ok.zip"), TestArchives.zip(new String[][] {{"nonexistent/../bin/java", "launcher"}}));
+
+        JdkInstaller.extract(archive, dest, "zip");
+
+        assertThat(dest.resolve("bin/java")).hasContent("launcher");
+        assertThat(dest.resolve("nonexistent")).doesNotExist();
+    }
+
+    @Test
     void a_link_target_that_routes_through_a_planted_link_is_followed(@TempDir Path tmp) throws Exception {
         Path dest = Files.createDirectories(tmp.resolve("jdk"));
         Path outside = Files.createDirectories(tmp.resolve("outside"));

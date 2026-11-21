@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -65,6 +66,53 @@ class MinimalTarStreamTest {
         });
 
         assertThat(seen).containsExactly("FILE hello.txt hello");
+    }
+
+    @Test
+    void a_gnu_long_name_keeps_its_spaces() throws Exception {
+        byte[] tar = tar(
+                entry('L', "././@LongLink", "", " lead/trail \0".getBytes(StandardCharsets.UTF_8)),
+                file("short", "body"));
+        List<String> seen = new ArrayList<>();
+
+        MinimalTar.stream(new ByteArrayInputStream(tar), (name, linkName, mode, kind, data, size) -> seen.add(name));
+
+        assertThat(seen).containsExactly(" lead/trail ");
+    }
+
+    @Test
+    void a_negative_or_overflowing_size_is_refused() throws Exception {
+        byte[] negativeBinary = file("neg", "");
+        Arrays.fill(negativeBinary, 124, 136, (byte) 0xFF);
+        byte[] negativeOctal = file("neg", "");
+        put(negativeOctal, 124, 12, "-0000000001");
+        // Base-256: 0x80 then eleven big-endian bytes; a one in the third byte is 2^64.
+        byte[] overflowing = file("big", "");
+        Arrays.fill(overflowing, 124, 136, (byte) 0);
+        overflowing[124] = (byte) 0x80;
+        overflowing[127] = 1;
+
+        for (byte[] header : List.of(negativeBinary, negativeOctal, overflowing)) {
+            byte[] tar = tar(header);
+            assertThatThrownBy(() -> MinimalTar.stream(new ByteArrayInputStream(tar), (n, l, m, k, d, s) -> {}))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("size");
+        }
+    }
+
+    @Test
+    void a_base_256_size_is_read_whole() throws Exception {
+        byte[] body = "x".repeat(300).getBytes(StandardCharsets.UTF_8);
+        byte[] entry = entry('0', "f", "", body);
+        Arrays.fill(entry, 124, 136, (byte) 0);
+        entry[124] = (byte) 0x80;
+        entry[134] = 1; // 256
+        entry[135] = 44; // + 44 = 300
+        List<Long> sizes = new ArrayList<>();
+
+        MinimalTar.stream(new ByteArrayInputStream(tar(entry)), (n, l, m, k, d, s) -> sizes.add(s));
+
+        assertThat(sizes).containsExactly(300L);
     }
 
     // ---- a hand-rolled ustar writer ---------------------------------------

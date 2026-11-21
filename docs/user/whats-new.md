@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **An archive entry cannot create a directory outside the install.** Installing a JDK or a build
+  tool from a zip no longer creates directories outside the destination when an entry name climbs
+  out through a missing directory (`missing/../../x`): the entry is refused before anything is
+  written, and one that climbs back inside now extracts where it lands. A tar entry with a negative
+  or overflowing size is refused as corrupt, GNU long file names keep their spaces, cancelling a JDK
+  download reports a cancel rather than a failed download, and a newly installed Maven or Gradle has
+  its launcher marked executable before another install can see it.
 - **A plugin task cannot declare a path outside its own output root.** An output or `contributes*`
   path that is absolute, empty, `.` or climbs out with `..` is refused where the plugin declares it
   and again when the engine reads the plugin's declarations, so no plugin can put a directory from

@@ -500,7 +500,7 @@ public final class JdkInstaller {
             transfer.started(Http.declaredLength(response));
             byte[] buf = new byte[DOWNLOAD_BUFFER];
             int n;
-            while ((n = body.read(buf)) > 0) {
+            while ((n = readUnlessCancelled(body, buf, displayName)) > 0) {
                 sha.update(buf, 0, n);
                 sink.write(buf, 0, n);
                 total += n;
@@ -514,6 +514,23 @@ public final class JdkInstaller {
             throw new IOException("sha256 mismatch for " + displayName + " — expected " + expected + ", got " + actual);
         }
         return total;
+    }
+
+    /**
+     * One read of the download body. A cancelled job interrupts this thread, and the interrupt is
+     * answered as a cancel, whether it is seen between chunks or the read itself fails on it;
+     * {@link #download} then deletes the partial archive.
+     */
+    private static int readUnlessCancelled(InputStream body, byte[] buf, String displayName)
+            throws IOException, InterruptedException {
+        if (!Thread.currentThread().isInterrupted()) {
+            try {
+                return body.read(buf);
+            } catch (IOException e) {
+                if (!Thread.currentThread().isInterrupted()) throw e;
+            }
+        }
+        throw new InterruptedException(displayName + " download cancelled");
     }
 
     private static String extensionFor(String archiveType) {
@@ -554,10 +571,7 @@ public final class JdkInstaller {
             MinimalTar.stream(inflated, (name, linkName, mode, kind, data, size) -> {
                 // Drop macOS AppleDouble sidecars (`._foo`) anywhere in the tree.
                 if (isAppleDoubleSidecar(name)) return;
-                Path out = destDir.resolve(name).normalize();
-                if (!out.startsWith(destDir)) {
-                    throw new IOException("tar entry escapes destination: " + name);
-                }
+                Path out = MinimalTar.entryPath(destDir, name);
                 switch (kind) {
                     case DIRECTORY -> MinimalTar.createDirectoryInside(destDir, out);
                     case SYMLINK -> MinimalTar.createSymlinkInside(destDir, out, linkName);
@@ -585,8 +599,9 @@ public final class JdkInstaller {
      * with several thousand entries (Windows JDK builds typically ship as zip).
      *
      * <p>Every entry is judged by where it really lands, the same way the tar path judges its
-     * entries: directories through {@link MinimalTar#createDirectoryInside}, file parents through
-     * {@link MinimalTar#requireParentInside}. That happens in the calling thread, entry by entry,
+     * entries: its normalized path through {@link MinimalTar#entryPath}, directories through
+     * {@link MinimalTar#createDirectoryInside}, file parents through {@link
+     * MinimalTar#requireParentInside}. That happens in the calling thread, entry by entry,
      * before any worker writes a byte — so a refused archive has created nothing beneath the
      * offending path, and the workers never race on creating the same parent.
      *
@@ -598,14 +613,14 @@ public final class JdkInstaller {
             List<? extends ZipEntry> entries = Collections.list(zip.entries());
             entries.removeIf(e -> !keep.test(e.getName()));
             for (ZipEntry e : entries) {
-                Path out = destDir.resolve(e.getName());
+                Path out = MinimalTar.entryPath(destDir, e.getName());
                 if (e.isDirectory()) MinimalTar.createDirectoryInside(destDir, out);
                 else MinimalTar.requireParentInside(destDir, out);
             }
             List<CompletableFuture<Void>> futures = new ArrayList<>(entries.size());
             for (ZipEntry entry : entries) {
                 if (entry.isDirectory()) continue;
-                Path out = destDir.resolve(entry.getName());
+                Path out = MinimalTar.entryPath(destDir, entry.getName());
                 futures.add(CompletableFuture.runAsync(
                         () -> {
                             try (InputStream in = zip.getInputStream(entry)) {

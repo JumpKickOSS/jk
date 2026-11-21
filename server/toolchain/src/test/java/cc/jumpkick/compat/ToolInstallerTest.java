@@ -430,6 +430,21 @@ class ToolInstallerTest {
         assertThat(outside).isEmptyDirectory();
     }
 
+    @Test
+    void a_zip_entry_that_climbs_out_through_a_missing_directory_creates_nothing_outside(@TempDir Path tempDir)
+            throws Exception {
+        // nonexistent/../../../escaped/f lands at <tempDir>/a/escaped/f.
+        Path dest = Files.createDirectories(tempDir.resolve("a/b/stage"));
+        Path zip = Files.write(
+                tempDir.resolve("maven.zip"), buildZip("nonexistent/../../..", Map.of("escaped/f", "pwned")));
+
+        assertThatThrownBy(() -> ToolInstaller.extract(zip, dest, "zip"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("climbs outside the destination");
+        assertThat(tempDir.resolve("a/escaped")).doesNotExist();
+        assertThat(dest.resolve("nonexistent")).doesNotExist();
+    }
+
     /**
      * b -> d/l/../../.. is judged while d/l -> sub/deep and stays inside; d/l is then replaced by
      * d/l -> ., and b climbs two levels above the tree. Two top-level entries: nothing is lifted.

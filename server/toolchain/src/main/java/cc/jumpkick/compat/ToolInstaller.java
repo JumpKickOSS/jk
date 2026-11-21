@@ -146,17 +146,17 @@ public final class ToolInstaller {
                 extract(archive, stagingDir, dist.archiveType());
                 Path effectiveRoot = flattenedRoot(stagingDir);
                 PackageManagerShims.write(dist.tool(), effectiveRoot);
+                // The tree is finished before the rename: a concurrent install returns as soon as
+                // target exists, and must find a launcher it can exec. The ownership marker lets a
+                // later purge of a broken entry recurse into it (JkOwnership).
+                ensureBinaryExecutable(effectiveRoot, dist.tool());
+                JkOwnership.mark(effectiveRoot);
                 try {
                     AtomicWrites.publish(effectiveRoot, target);
                 } catch (IOException moveFailed) {
                     // A concurrent provision published first — its tree is complete; use it.
                     if (!Files.isDirectory(target)) throw moveFailed;
                 }
-                ensureBinaryExecutable(target, dist.tool());
-                // Claim the tree as ours, so a later purge of a broken entry is allowed to
-                // recurse into it (JkOwnership). Written after the atomic rename, so a partial
-                // tree is never marked.
-                JkOwnership.mark(target);
             } finally {
                 deleteRecursively(stagingDir); // leftover shell when the root was nested, or on failure
                 IN_FLIGHT.remove(stagingDir);
@@ -343,8 +343,9 @@ public final class ToolInstaller {
     }
 
     /**
-     * Every entry is judged by where it really lands, as the tar path judges its entries:
-     * directories through {@link MinimalTar#createDirectoryInside}, file parents through {@link
+     * Every entry is judged by where it really lands, as the tar path judges its entries: its
+     * normalized path through {@link MinimalTar#entryPath}, directories through {@link
+     * MinimalTar#createDirectoryInside}, file parents through {@link
      * MinimalTar#requireParentInside} — one judge for one destination.
      */
     private static void unzip(Path archive, Path destDir) throws IOException {
@@ -352,7 +353,7 @@ public final class ToolInstaller {
                 ZipInputStream zis = new ZipInputStream(in)) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                Path out = destDir.resolve(entry.getName());
+                Path out = MinimalTar.entryPath(destDir, entry.getName());
                 if (entry.isDirectory()) {
                     MinimalTar.createDirectoryInside(destDir, out);
                 } else {
@@ -367,10 +368,7 @@ public final class ToolInstaller {
         try (InputStream fis = new BufferedInputStream(Files.newInputStream(archive));
                 GZIPInputStream gz = new GZIPInputStream(fis)) {
             MinimalTar.stream(gz, (name, linkName, mode, kind, data, size) -> {
-                Path out = destDir.resolve(name).normalize();
-                if (!out.startsWith(destDir)) {
-                    throw new IOException("tar entry escapes destination: " + name);
-                }
+                Path out = MinimalTar.entryPath(destDir, name);
                 switch (kind) {
                     case DIRECTORY -> MinimalTar.createDirectoryInside(destDir, out);
                     case SYMLINK -> MinimalTar.createSymlinkInside(destDir, out, linkName);

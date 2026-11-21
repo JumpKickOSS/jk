@@ -2,6 +2,7 @@
 package cc.jumpkick.jdk;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
@@ -74,23 +75,7 @@ class JdkInstallerDownloadsTest {
 
     @Test
     void the_archive_streams_onto_the_run_board(@TempDir Path dir) throws Exception {
-        JdkCatalog.Entry entry = new JdkCatalog.Entry(
-                "eclipse",
-                "Temurin",
-                "temurin-21",
-                21,
-                "21.0.5",
-                true,
-                false,
-                List.of(),
-                "linux",
-                "x64",
-                "zip",
-                base.resolve("/jdk.zip"),
-                Hashing.sha256Hex(archive),
-                archive.length,
-                "21.0.5-tem-x64-linux",
-                "");
+        JdkCatalog.Entry entry = servedEntry();
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(dir.resolve("jdks")));
 
         SessionContext.where(Session.defaults().withIo(io), () -> installer.download(entry, read -> {}));
@@ -107,6 +92,22 @@ class JdkInstallerDownloadsTest {
     }
 
     @Test
+    void an_interrupted_download_stops_and_leaves_no_partial_archive(@TempDir Path dir) throws Exception {
+        JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(dir.resolve("jdks")));
+
+        try {
+            assertThatThrownBy(() -> SessionContext.where(
+                            Session.defaults().withIo(io),
+                            () -> installer.download(servedEntry(), read -> Thread.currentThread()
+                                    .interrupt())))
+                    .isInstanceOf(InterruptedException.class);
+        } finally {
+            Thread.interrupted();
+        }
+        assertThat(dir.resolve("jdks/.downloads")).isEmptyDirectory();
+    }
+
+    @Test
     void a_download_names_the_vendor_unless_the_product_already_does() {
         assertThat(JdkInstaller.downloadName(entry("GraalVM", "Community Edition", 21)))
                 .isEqualTo("GraalVM Community Edition 21");
@@ -115,6 +116,26 @@ class JdkInstallerDownloadsTest {
                 .isEqualTo("Azul Zulu Community™ 21");
         assertThat(JdkInstaller.downloadName(entry("GraalVM", "GraalVM CE", 21)))
                 .isEqualTo("GraalVM CE 21");
+    }
+
+    private JdkCatalog.Entry servedEntry() {
+        return new JdkCatalog.Entry(
+                "eclipse",
+                "Temurin",
+                "temurin-21",
+                21,
+                "21.0.5",
+                true,
+                false,
+                List.of(),
+                "linux",
+                "x64",
+                "zip",
+                base.resolve("/jdk.zip"),
+                Hashing.sha256Hex(archive),
+                archive.length,
+                "21.0.5-tem-x64-linux",
+                "");
     }
 
     private static JdkCatalog.Entry entry(String vendor, String product, int major) {

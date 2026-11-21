@@ -67,7 +67,7 @@ public final class MinimalTar {
 
             String name = nullTermStr(header, 0, 100);
             int mode = octalInt(header, 100, 8);
-            long size = octalLong(header, 124, 12);
+            long size = entrySize(header, 124, 12);
             char typeFlag = (char) (header[156] & 0xFF);
             String linkName = nullTermStr(header, 157, 100);
 
@@ -92,12 +92,12 @@ public final class MinimalTar {
             switch (typeFlag) {
                 case 'L' -> {
                     // GNU long-name: data block contains the real file name.
-                    pendingName = readString(tar, size);
+                    pendingName = withoutTrailingNuls(readString(tar, size));
                     skipPadding(tar, dataBlocks, size);
                 }
                 case 'K' -> {
                     // GNU long-link: data block contains the real link name.
-                    pendingLink = readString(tar, size);
+                    pendingLink = withoutTrailingNuls(readString(tar, size));
                     skipPadding(tar, dataBlocks, size);
                 }
                 case 'x', 'g' -> {
@@ -288,16 +288,22 @@ public final class MinimalTar {
      * tree a tar may have planted one in, and one judge for one destination is what keeps the
      * two extractors from disagreeing.
      *
-     * <p>The check runs on the nearest ancestor that already exists, <em>before</em> anything is
-     * created: creating first and comparing real paths afterwards leaves the escaped directory in
-     * place, and every entry beneath it is then written outside the tree.
+     * <p>{@code dir} is normalized and judged lexically first, then on the nearest ancestor that
+     * already exists, <em>before</em> anything is created: {@code missing/../../x} has no existing
+     * ancestor past the destination, yet creating it makes {@code missing} and then {@code x} beside
+     * the destination; and creating first and comparing real paths afterwards leaves the escaped
+     * directory in place, with every entry beneath it written outside the tree.
      */
     public static Path createDirectoryInside(Path destDir, Path dir) throws IOException {
+        Path normalized = dir.normalize();
+        if (!normalized.startsWith(destDir.normalize())) {
+            throw new IOException("archive entry climbs outside the destination: " + describe(destDir, dir));
+        }
         Path destReal = destDir.toRealPath();
-        Path existing = dir;
+        Path existing = normalized;
         while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
             Path up = existing.getParent();
-            if (up == null) throw new IOException("archive entry has no existing ancestor: " + dir);
+            if (up == null) throw new IOException("archive entry has no existing ancestor: " + normalized);
             existing = up;
         }
         Path existingReal;
@@ -305,20 +311,32 @@ public final class MinimalTar {
             existingReal = existing.toRealPath();
         } catch (IOException dangling) {
             throw new IOException(
-                    "archive entry resolves through a dangling link: " + describe(destDir, dir), dangling);
+                    "archive entry resolves through a dangling link: " + describe(destDir, normalized), dangling);
         }
         if (!existingReal.startsWith(destReal)) {
-            throw new IOException("archive entry resolves outside the destination: " + describe(destDir, dir));
+            throw new IOException("archive entry resolves outside the destination: " + describe(destDir, normalized));
         }
         if (!Files.isDirectory(existingReal)) {
-            throw new IOException("archive entry resolves through a file: " + describe(destDir, dir));
+            throw new IOException("archive entry resolves through a file: " + describe(destDir, normalized));
         }
-        Files.createDirectories(dir);
-        Path real = dir.toRealPath();
+        Files.createDirectories(normalized);
+        Path real = normalized.toRealPath();
         if (!real.startsWith(destReal)) {
-            throw new IOException("archive entry resolves outside the destination: " + describe(destDir, dir));
+            throw new IOException("archive entry resolves outside the destination: " + describe(destDir, normalized));
         }
         return real;
+    }
+
+    /**
+     * Where the archive entry {@code name} lands under {@code destDir}, normalized, refused when it
+     * climbs out lexically. Links on the way are judged when the entry is written.
+     */
+    public static Path entryPath(Path destDir, String name) throws IOException {
+        Path out = destDir.resolve(name).normalize();
+        if (!out.startsWith(destDir.normalize())) {
+            throw new IOException("archive entry climbs outside the destination: " + name);
+        }
+        return out;
     }
 
     private static String describe(Path destDir, Path path) {
@@ -360,7 +378,14 @@ public final class MinimalTar {
         byte[] buf = new byte[(int) Math.min(size, 1 << 20)];
         readFully(in, buf, 0, buf.length);
         if (size > buf.length) in.skipNBytes(size - buf.length);
-        return new String(buf, StandardCharsets.UTF_8).trim();
+        return new String(buf, StandardCharsets.UTF_8);
+    }
+
+    /** A GNU long name or link ends in NULs; spaces are part of the name. */
+    private static String withoutTrailingNuls(String s) {
+        int end = s.length();
+        while (end > 0 && s.charAt(end - 1) == '\0') end--;
+        return s.substring(0, end);
     }
 
     private static void skipPadding(InputStream in, long blocks, long size) throws IOException {
@@ -386,18 +411,30 @@ public final class MinimalTar {
         }
     }
 
-    private static long octalLong(byte[] buf, int off, int len) {
-        // GNU extension: if high bit of first byte is set, the field is binary.
+    /**
+     * The size field: octal text, or GNU base-256 when the first byte's high bit is set (the rest of
+     * that byte and the following bytes, big-endian, with bit 6 as the sign). A negative size, or one
+     * too large to count blocks of, is a corrupt archive.
+     */
+    private static long entrySize(byte[] buf, int off, int len) throws IOException {
+        long v;
         if ((buf[off] & 0x80) != 0) {
-            long v = 0;
-            for (int i = off + 3; i < off + len; i++) v = (v << 8) | (buf[i] & 0xFF);
-            return v;
+            if ((buf[off] & 0x40) != 0) throw new IOException("tar entry has a negative size");
+            v = buf[off] & 0x3F;
+            for (int i = off + 1; i < off + len; i++) {
+                if (v > (Long.MAX_VALUE >>> 8)) throw new IOException("tar entry size overflows");
+                v = (v << 8) | (buf[i] & 0xFF);
+            }
+        } else {
+            try {
+                v = Long.parseLong(nullTermStr(buf, off, len).strip(), 8);
+            } catch (NumberFormatException e) {
+                v = 0;
+            }
+            if (v < 0) throw new IOException("tar entry has a negative size");
         }
-        try {
-            return Long.parseLong(nullTermStr(buf, off, len).strip(), 8);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
+        if (v > Long.MAX_VALUE - 511) throw new IOException("tar entry size overflows");
+        return v;
     }
 
     private static boolean isZeroBlock(byte[] buf) {
