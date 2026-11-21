@@ -143,6 +143,12 @@ public final class FrontDoor {
     /** Whether this front door raises the paired engines' notifications ({@link FrontDoorRelay}). */
     private volatile boolean relays;
 
+    /** What the last {@code present} heard: whether a paired engine has a dashboard open. */
+    private volatile boolean guestsWatching;
+
+    /** Each engine {@link #enginesChanged} saw last, as it compares them; null before its first call. */
+    private @Nullable List<String> listed;
+
     /** How long one write to the browser may stay blocked before the proxied exchange is closed. */
     private volatile Duration writeLimit = WriteDeadline.PER_WRITE;
 
@@ -222,8 +228,9 @@ public final class FrontDoor {
     }
 
     /**
-     * How long one sweep of the band answers {@link #engines}: every dashboard tab lists the engines
-     * every 30 s and the machine view on each refresh, and each sweep asks every band port. An engine
+     * How long one sweep of the band answers {@link #engines}: the heartbeat looks for changes every
+     * two seconds while a dashboard is open, each tab lists the engines when told they changed, and
+     * each sweep asks every band port. An engine
      * that starts or stops shows within this, plus the one sweep at most {@link #PROBE} long.
      */
     private static final long SWEPT_FOR_NANOS = TimeUnit.SECONDS.toNanos(2);
@@ -548,20 +555,26 @@ public final class FrontDoor {
     }
 
     /**
-     * Tells every other paired engine this front door is there ({@code present}) or stopping ({@code
-     * leaving}), each with its own token, all at once; answers how many took it.
+     * Tells every other paired engine this front door is there ({@code present}), that the engines
+     * it lists changed ({@code engines}) or that it is stopping ({@code leaving}), each with its own
+     * token, all at once; answers how many took it. The answers to {@code present} say whether any
+     * of them has a dashboard open ({@link #guestsWatching}).
      */
     public int tell(String message) {
         EngineIdentity me = self.get();
-        List<CompletableFuture<Boolean>> sent = new ArrayList<>();
+        List<CompletableFuture<@Nullable Map<String, Object>>> sent = new ArrayList<>();
         for (GuestPairing.Pair pair : paired().values()) {
             if (me != null && me.id().equals(pair.id())) continue;
             sent.add(control(pair, message));
         }
         int took = 0;
-        for (CompletableFuture<Boolean> f : sent) {
+        boolean watching = false;
+        for (CompletableFuture<@Nullable Map<String, Object>> f : sent) {
             try {
-                if (f.get(CONTROL_WAIT.toMillis() + 500, TimeUnit.MILLISECONDS)) took++;
+                Map<String, Object> answer = f.get(CONTROL_WAIT.toMillis() + 500, TimeUnit.MILLISECONDS);
+                if (answer == null) continue;
+                took++;
+                watching |= Boolean.TRUE.equals(answer.get(WATCHING));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
@@ -569,7 +582,32 @@ public final class FrontDoor {
                 f.cancel(true);
             }
         }
+        if (message.equals("present")) guestsWatching = watching;
         return took;
+    }
+
+    /** The field of a guest's answer to {@code present} that says it has a dashboard open. */
+    public static final String WATCHING = "watching";
+
+    /** Whether a paired engine said, at the last {@code present}, that it has a dashboard open. */
+    public boolean guestsWatching() {
+        return guestsWatching;
+    }
+
+    /**
+     * Whether the engines {@link #engines} lists changed since the last call: one joining or leaving,
+     * or one's label, port, version or pairing. The first call only takes the baseline: a dashboard
+     * reads the list when it connects.
+     */
+    public synchronized boolean enginesChanged() {
+        List<String> now = new ArrayList<>();
+        for (Map<String, Object> e : engines()) {
+            now.add(e.get("id") + "|" + e.get("label") + "|" + e.get("port") + "|" + e.get("version") + "|"
+                    + e.get("role") + "|" + e.get("paired"));
+        }
+        List<String> before = listed;
+        listed = now;
+        return before != null && !before.equals(now);
     }
 
     /**
@@ -583,7 +621,7 @@ public final class FrontDoor {
         GuestPairing.Pair pair = paired().get(String.valueOf(holder.get("id")));
         if (pair == null) return false;
         try {
-            return control(pair, "step-aside").get(CONTROL_WAIT.toMillis() + 500, TimeUnit.MILLISECONDS);
+            return control(pair, "step-aside").get(CONTROL_WAIT.toMillis() + 500, TimeUnit.MILLISECONDS) != null;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -592,7 +630,11 @@ public final class FrontDoor {
         }
     }
 
-    private CompletableFuture<Boolean> control(GuestPairing.Pair pair, String message) {
+    /**
+     * {@code message} to {@code pair}: the JSON object it answered ({@code {}} for an answer that
+     * is not one), or null unless it answered 200.
+     */
+    private CompletableFuture<@Nullable Map<String, Object>> control(GuestPairing.Pair pair, String message) {
         HttpRequest.Builder b = HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + pair.port() + CONTROL + message))
                 .timeout(CONTROL_WAIT)
@@ -600,9 +642,20 @@ public final class FrontDoor {
                 .POST(HttpRequest.BodyPublishers.noBody());
         if (message.equals("present") && relays) b.header(RELAYS, RELAYS_ALERTS);
         HttpRequest req = b.build();
-        return client.sendAsync(req, HttpResponse.BodyHandlers.discarding())
-                .thenApply(r -> r.statusCode() == 200)
-                .exceptionally(failed -> false);
+        return client.sendAsync(req, HttpResponse.BodyHandlers.ofString())
+                .<@Nullable Map<String, Object>>thenApply(FrontDoor::controlAnswer)
+                .exceptionally(failed -> null);
+    }
+
+    private static @Nullable Map<String, Object> controlAnswer(HttpResponse<String> r) {
+        if (r.statusCode() != 200) return null;
+        Map<String, Object> out = new LinkedHashMap<>();
+        try {
+            if (MiniJson.parse(r.body()) instanceof Map<?, ?> m) m.forEach((k, v) -> out.put(String.valueOf(k), v));
+        } catch (RuntimeException notJson) {
+            // A 200 that says nothing more still took the message.
+        }
+        return out;
     }
 
     /** The identity paired engine {@code id} answers on its paired port; null when it does not answer there. */

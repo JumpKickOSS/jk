@@ -161,6 +161,27 @@ class MachineEnvironmentsTest {
     }
 
     @Test
+    void each_change_of_an_operation_is_handed_on_as_the_listing_reports_it() throws Exception {
+        MachineEnvironments m = machine(List.of(UBUNTU));
+        List<Map<String, Object>> changes = new CopyOnWriteArrayList<>();
+        m.onChange(changes::add);
+        m.start(MachineEnvironments.Action.INSTALL, List.of("ubuntu-26.10"));
+        awaitEnd(m, "Ubuntu-26.10");
+
+        assertThat(changes).extracting(c -> c.get("distro")).containsOnly("Ubuntu-26.10");
+        List<Object> states = changes.stream()
+                .<Object>map(c -> ((Map<?, ?>) Objects.requireNonNull(c.get("operation"))).get("state"))
+                .toList();
+        assertThat(states.getFirst()).isEqualTo("queued");
+        assertThat(states).contains("running");
+        assertThat(states.getLast()).isEqualTo("done");
+        Map<?, ?> last = (Map<?, ?>) Objects.requireNonNull(changes.getLast().get("operation"));
+        assertThat(last.get("action")).isEqualTo("install");
+        assertThat(last.get("step"))
+                .isEqualTo(Objects.requireNonNull(m.status("Ubuntu-26.10")).step());
+    }
+
+    @Test
     void the_listing_shows_state_engine_and_progress() throws Exception {
         MachineEnvironments m = machine(List.of(UBUNTU, STOPPED));
         m.start(MachineEnvironments.Action.INSTALL, List.of("Ubuntu-26.10"));

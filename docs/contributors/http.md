@@ -102,7 +102,9 @@ A host engine is the machine's front door. `GET /api/engines` lists it and every
 no listener takes about a second to refuse), each marked `paired` when this engine can proxy it.
 One sweep of the band answers every list asked for within 2 s of its start, and callers that
 arrive while it runs wait for it rather than sweep again, so an engine that starts or stops shows
-within about 3 s; `paired` and this engine's own row are read fresh on every list.
+within about 3 s; `paired` and this engine's own row are read fresh on every list. A dashboard
+does not poll the list: it reads it on load and on reconnect, and again on each `engines` event (see
+the heartbeat below).
 `GET /api/engines` takes the token and no epoch header, like `/api/status`, since a proxied page
 holds another engine's epoch.
 
@@ -166,6 +168,12 @@ door is heard from (`FrontDoorRole`, `FrontDoorDuty`).
 - **Heartbeat.** The front door POSTs `/api/front-door/present` to every other paired engine every
   2 s, and `/api/front-door/leaving` when it stops; each with that engine's own token, read from its
   pairing, bearer only and exempt from the epoch header. Nothing on 8910 is needed for control.
+  Each engine answers `present` with `{"watching": bool}`: whether a dashboard has its event stream
+  open. While one is open there or on the front door itself, each heartbeat also compares the
+  engines `GET /api/engines` lists (id, label, port, version, role, pairing) with the last
+  heartbeat's, and on a change publishes the `engines` event to its own dashboards and POSTs
+  `/api/front-door/engines` to every paired engine, which publishes it to theirs. With no dashboard
+  open anywhere the band is not swept for it.
 - **Takeover.** A guest that hears nothing for its delay binds 8910 in the VM through a second,
   front-door-only listener (its band port stays; `/` redirects to `/engines/<own id>/`). The delay is
   5 s, then 15 s, 60 s and at most 5 min after each takeover, back to 5 s after 10 min without one,
@@ -1151,6 +1159,7 @@ progress/structure, and the freshest sample always survives); the engine skips w
 | **Inflicted** | `request-queued` / `request-start` / `plan` / `module-*` / `task-start` / `task-finish` / `label` / `progress` / `workspace-progress` / `eta` / `output` / `error` / `*-finish` / `request-finish` | As the plan mutates state. Structural events are immediate; hot ticks (`progress`/`tick-update`/`label`/`output`) ride the 500 ms wire coalescer — see "Live smoothness" below |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
 | **Session log** | `session` / `episode` / `action` | As a session starts, goes idle, acts again, ends or changes its current episode; as an episode starts, is retitled or settles; once per non-run MCP action. Dashboard subscribers only |
+| **Machine** | `machine` / `engines` | `machine`: on the Windows engine, a WSL install or remove queued, at each step, and done or failed, as `{distro, operation}` with the operation as `GET /api/machine/environments` lists it. `engines`: the engines the front door lists changed, no payload; the tab reads `GET /api/engines` again. Dashboard subscribers only |
 | **Sampled** (change-gated, IO) | `cache` | Safety-net tick (60 s) while subscribed, plus after request finish; snapshot walks are single-flight and TTL-memoized (30 s) engine-side; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
 **A stream lasts as long as its page.** The JDK server never reads a socket while a handler

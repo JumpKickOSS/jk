@@ -382,6 +382,25 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
                         .build(),
                 HttpResponse.BodyHandlers.ofString());
         assertThat(present.statusCode()).isEqualTo(200);
+        assertThat(present.body()).as("no dashboard open here").isEqualTo("{\"watching\":false}");
+        var lines = openEvents("");
+        awaitSseComment(lines, ": connected");
+        assertThat(server.watched()).isTrue();
+        HttpResponse<String> watched = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/present"))
+                        .header("Authorization", "Bearer " + token())
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(watched.body()).isEqualTo("{\"watching\":true}");
+        HttpResponse<String> engines = client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/engines"))
+                        .header("Authorization", "Bearer " + token())
+                        .POST(HttpRequest.BodyPublishers.noBody())
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(engines.statusCode()).isEqualTo(200);
+        assertThat(awaitSseEvent(lines, "engines")).isEqualTo("data: {}");
         HttpResponse<String> stepAside = client.send(
                 HttpRequest.newBuilder(URI.create(baseUrl + "api/front-door/step-aside"))
                         .header("Authorization", "Bearer " + token())

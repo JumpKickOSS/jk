@@ -448,6 +448,79 @@ class FrontDoorTest {
     }
 
     @Test
+    void the_engines_list_is_said_to_change_only_when_an_engine_joins_leaves_or_pairs() throws Exception {
+        AtomicBoolean up = new AtomicBoolean();
+        HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        int port = s.getAddress().getPort();
+        s.createContext("/api/identity", ex -> {
+            if (up.get()) {
+                send(ex, "{\"id\":\"" + GUEST_ID + "\",\"role\":\"guest\",\"port\":" + port + "}");
+            } else {
+                ex.sendResponseHeaders(404, -1);
+                ex.close();
+            }
+        });
+        s.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        s.start();
+        started.add(s);
+        AtomicLong later = new AtomicLong();
+        Clock clock = new Clock() {
+            @Override
+            public long millis() {
+                return Clock.SYSTEM.millis() + later.get() / 1_000_000;
+            }
+
+            @Override
+            public long nanos() {
+                return Clock.SYSTEM.nanos() + later.get();
+            }
+        };
+        EngineIdentity self = new EngineIdentity("90cec5c68a24", "windows", Guest.NONE, "box", "C:/me/.jk", "1.0");
+        FrontDoor door = new FrontDoor(() -> self, () -> 8910, guests, List.of(port), clock);
+
+        assertThat(door.enginesChanged()).as("the first look is the baseline").isFalse();
+        assertThat(door.enginesChanged()).isFalse();
+        up.set(true);
+        later.addAndGet(2_000_000_000L);
+        assertThat(door.enginesChanged()).as("an engine joined").isTrue();
+        assertThat(door.enginesChanged()).isFalse();
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, port, "guest-token"));
+        assertThat(door.enginesChanged()).as("it paired").isTrue();
+        up.set(false);
+        later.addAndGet(2_000_000_000L);
+        assertThat(door.enginesChanged()).as("it stopped").isTrue();
+        assertThat(door.enginesChanged()).isFalse();
+    }
+
+    @Test
+    void a_paired_engines_answer_to_present_says_whether_it_has_a_dashboard_open() throws Exception {
+        AtomicBoolean watching = new AtomicBoolean(true);
+        List<String> heard = new CopyOnWriteArrayList<>();
+        HttpServer band = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        band.createContext(FrontDoor.CONTROL, ex -> {
+            heard.add(ex.getRequestURI().getPath());
+            send(ex, ex.getRequestURI().getPath().endsWith("present") ? "{\"watching\":" + watching + "}" : "{}");
+        });
+        band.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        band.start();
+        started.add(band);
+        GuestPairing.write(
+                guests, new GuestPairing.Pair(GUEST_ID, band.getAddress().getPort(), "guest-token"));
+        FrontDoor door = door(List.of(band.getAddress().getPort()));
+
+        assertThat(door.guestsWatching()).isFalse();
+        assertThat(door.tell("present")).isEqualTo(1);
+        assertThat(door.guestsWatching()).isTrue();
+        assertThat(door.tell("engines")).isEqualTo(1);
+        assertThat(door.guestsWatching()).as("only present says it").isTrue();
+        watching.set(false);
+        door.tell("present");
+        assertThat(door.guestsWatching()).isFalse();
+        assertThat(heard)
+                .containsExactly("/api/front-door/present", "/api/front-door/engines", "/api/front-door/present");
+    }
+
+    @Test
     void the_front_door_token_is_the_hosts_token_and_the_front_door_file_wins() throws Exception {
         Path own = guests.resolve("abc.http-token");
         Path front = FrontDoorToken.file(guests);

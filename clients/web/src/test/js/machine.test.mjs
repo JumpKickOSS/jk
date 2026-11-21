@@ -90,3 +90,22 @@ test('an engine without the API has no Machine page, and nothing but install or 
   await self.machineAction('Debian', 'format-c');
   assert.equal(requests.length, before);
 });
+
+test('a machine event moves its row along, and reads the page again once the operation ends', async () => {
+  const self = { view: 'machine', ...m.machineData(), ...m.machineMethods };
+  self.machine = { host: {}, environments: [{ ...bare }] };
+  reply = () => ({ status: 200, body: { host: {}, environments: [{ ...installed, name: 'Debian' }] } });
+  const before = requests.length;
+  const running = { action: 'install', state: 'running', step: 'unpacking' };
+  assert.equal(self.machineEvent({ type: 'machine', data: { distro: 'debian', operation: running } }), true);
+  assert.deepEqual(self.machine.environments[0].operation, running);
+  assert.equal(requests.length, before, 'a step shows as it came, with no read');
+
+  const done = { action: 'install', state: 'done', step: 'installed' };
+  self.machineEvent({ type: 'machine', data: { distro: 'Debian', operation: done } });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(requests.length, before + 1);
+  assert.match(requests.at(-1).url, /\/api\/machine\/environments$/);
+  assert.equal(self.machine.environments[0].state, 'installed');
+  assert.equal(self.machineEvent({ type: 'notice', data: {} }), false);
+});

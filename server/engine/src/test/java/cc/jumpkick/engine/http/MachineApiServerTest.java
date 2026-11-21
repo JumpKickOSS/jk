@@ -124,4 +124,21 @@ class MachineApiServerTest extends HttpEngineServerHarness {
         }
         assertThat(get("/api/machine/environments").body()).contains("\"state\":\"failed\"");
     }
+
+    @Test
+    void an_open_dashboard_is_told_each_step_of_an_operation() throws Exception {
+        var lines = openEvents("");
+        awaitSseComment(lines, ": connected");
+        assertThat(post("install", "{\"distros\":[\"Ubuntu-26.10\"]}", authorized())
+                        .statusCode())
+                .isEqualTo(202);
+        assertThat(awaitSseEvent(lines, "machine"))
+                .startsWith(
+                        "data: {\"distro\":\"Ubuntu-26.10\",\"operation\":{\"action\":\"install\",\"state\":\"queued\"");
+        String last;
+        do {
+            last = awaitSseEvent(lines, "machine");
+        } while (!last.contains("\"state\":\"failed\""));
+        assertThat(last).contains("\"distro\":\"Ubuntu-26.10\"");
+    }
 }

@@ -179,8 +179,7 @@ export const appOptions = {
       if (routeFromHash().whatsNew) this.openWhatsNew();
       this.watchSelfUpdate(window, document); // the header's Update pill (selfupdate.js)
       this.loadMachine(); // whether this engine has a Machine page (machine.js)
-      this.refreshEngines();
-      this._enginesTimer = setInterval(() => this.refreshEngines(), 30_000);
+      this.refreshEngines(); // again on each `engines` event and on reconnect
     }
     // The service worker: installability, and notifications whose clicks come back as messages.
     registerWorker(navigator.serviceWorker, (message) => this.workerMessage(message));
@@ -440,6 +439,13 @@ export const appOptions = {
           if (this.notifyEvent(event)) return;
           // The bell's notices and the machine's seen marker.
           if (this.noticeEvent(event)) return;
+          // A WSL operation's progress, on the Windows engine's Machine page (machine.js).
+          if (this.machineEvent(event)) return;
+          if (event.type === SSE.engines) {
+            this.refreshEngines();
+            if (this.view === 'machine') this.loadMachine(); // its pairing column
+            return;
+          }
           // The session log and the decision queue feed the console.
           if (this.applyConsoleEvent(event)) return;
           // Live vitals: change-gated on the server; apply without folding cards.
@@ -493,6 +499,9 @@ export const appOptions = {
             if (wasOffline && this.view === 'console') this.loadConsole();
             else if (wasOffline) this.loadDecisions();
             if (wasOffline) this.loadNotices();
+            // Pushed only while the stream is open: what changed meanwhile is read again.
+            if (wasOffline) this.refreshEngines();
+            if (wasOffline && this.view === 'machine') this.loadMachine();
           } else if (state === 'offline') {
             // EventSource's own retry cadence (~3s on refused connections) is shorter than the
             // poll delay — re-arming on every onerror would perpetually reset the pending timer

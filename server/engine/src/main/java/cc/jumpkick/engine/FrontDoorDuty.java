@@ -27,7 +27,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * What an engine does for the front door while it runs. The front door (the host engine, or a WSL
  * guest holding 8910) tells every other paired engine it is there every two seconds and that it is
- * leaving when it stops. A WSL guest also runs its {@link FrontDoorRole}: it takes 8910 when no front
+ * leaving when it stops; while a dashboard is open on any of them, it tells them all when the
+ * engines it lists change. A WSL guest also runs its {@link FrontDoorRole}: it takes 8910 when no front
  * door is heard from, through a second listener that serves only the front door, with the shared
  * front-door token, and sends the root page to its own dashboard under {@code /engines/<id>/}.
  */
@@ -39,6 +40,9 @@ final class FrontDoorDuty implements AutoCloseable {
     }
 
     private final Supplier<@Nullable FrontDoor> door;
+    /** The server this engine's own dashboards stream from. */
+    private final Supplier<@Nullable HttpEngineServer> local;
+
     private final @Nullable FrontDoorRole role;
     private final @Nullable FrontDoorRelay relay;
     private final Consumer<String> log;
@@ -46,10 +50,12 @@ final class FrontDoorDuty implements AutoCloseable {
 
     private FrontDoorDuty(
             Supplier<@Nullable FrontDoor> door,
+            Supplier<@Nullable HttpEngineServer> local,
             @Nullable FrontDoorRole role,
             @Nullable FrontDoorRelay relay,
             Consumer<String> log) {
         this.door = door;
+        this.local = local;
         this.role = role;
         this.relay = relay;
         this.log = log;
@@ -62,6 +68,7 @@ final class FrontDoorDuty implements AutoCloseable {
                     HttpEngineServer s = server.get();
                     return s == null ? null : s.frontDoor();
                 },
+                server,
                 null,
                 FrontDoorRelay.of(server, server, log),
                 log);
@@ -85,7 +92,7 @@ final class FrontDoorDuty implements AutoCloseable {
         band.setFrontDoorRole(role);
         // Holding 8910, this guest raises the paired engines' notifications, through Windows.
         FrontDoorRelay relay = FrontDoorRelay.of(() -> seat.front, () -> band, log);
-        FrontDoorDuty duty = new FrontDoorDuty(seat::door, role, relay, log);
+        FrontDoorDuty duty = new FrontDoorDuty(seat::door, () -> band, role, relay, log);
         duty.every(1_000, duty::guestTick);
         return duty;
     }
@@ -137,12 +144,23 @@ final class FrontDoorDuty implements AutoCloseable {
         }
     }
 
+    /**
+     * Tells the paired engines this front door is there, then, while a dashboard here or on one of
+     * them is open, looks whether the engines it lists changed, and tells every dashboard when they did.
+     */
     private void beat() {
         if (closed) return;
         FrontDoorRelay r = relay;
         if (r != null) r.sync();
         FrontDoor d = door.get();
-        if (d != null) d.tell("present");
+        if (d == null) return;
+        d.tell("present");
+        HttpEngineServer here = local.get();
+        boolean watched = here != null && here.watched();
+        if ((watched || d.guestsWatching()) && d.enginesChanged()) {
+            if (here != null) here.enginesChanged();
+            d.tell("engines");
+        }
     }
 
     @Override

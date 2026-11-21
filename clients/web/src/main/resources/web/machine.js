@@ -3,11 +3,11 @@
 // whether its engine is paired with this front door, and an Install or Remove button that runs the
 // one operation `jk self setup-wsl`, the setup decision and the MCP `machine` tool run
 // (`/api/machine/environments`). A distro declined in the setup decision installs from here like
-// any other. Progress is read every two seconds while an operation runs; each outcome is also in
-// the Activity page. The Machine tab shows only where that API answers.
+// any other. Each operation's progress arrives as the `machine` event, and a change in the engines
+// the front door lists as the `engines` event; each outcome is also in the Activity page. The
+// Machine tab shows only where that API answers.
 import { get, post } from './api.js';
-
-export const MACHINE_POLL_MS = 2000;
+import { SSE } from './wire.js';
 
 export function machineData() {
   return {
@@ -75,16 +75,21 @@ export const machineMethods = {
     } catch {
       this.machineAvailable = false;
     }
-    this.pollMachine();
   },
-  /** Reads again in two seconds while an operation runs and the Machine page is open. */
-  pollMachine() {
+  /**
+   * The `machine` frame, handled here (true): {@code {distro, operation}}. The distro's row takes
+   * the operation as it stands; one that has ended is read again with the rest, since installing or
+   * removing changed what the distro holds.
+   */
+  machineEvent(event) {
+    if (event.type !== SSE.machine) return false;
+    const change = event.data || {};
     const rows = (this.machine && this.machine.environments) || [];
-    if (this._machineTimer || this.view !== 'machine' || !rows.some(busy)) return;
-    this._machineTimer = setTimeout(() => {
-      this._machineTimer = null;
-      if (this.view === 'machine') this.loadMachine();
-    }, MACHINE_POLL_MS);
+    const name = String(change.distro || '').toLowerCase();
+    const row = rows.find((r) => String(r.name).toLowerCase() === name);
+    if (row) row.operation = change.operation || null;
+    if (this.view === 'machine' && (!row || !busy(row))) this.loadMachine();
+    return true;
   },
   /** Install into, or remove from, distro {@code name}: {@code action} is 'install' or 'remove'. */
   async machineAction(name, action) {

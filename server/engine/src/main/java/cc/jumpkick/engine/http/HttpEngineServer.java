@@ -216,13 +216,24 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", HttpMachineApi.PATH, machineApi::handleList);
         api.register("POST", HttpMachineApi.INSTALL, machineApi::handleInstall);
         api.register("POST", HttpMachineApi.REMOVE, machineApi::handleRemove);
+        machine.onChange(change -> events.publishDashboard(EventCatalog.SSE_MACHINE, JsonOut.rawObject(change)));
         if (mcp != null) mcp.machine(machine);
+    }
+
+    /** Whether a dashboard has this engine's event stream open. */
+    public boolean watched() {
+        return events.hasDashboardSubscribers();
+    }
+
+    /** Tells this engine's dashboards that the engines the front door lists changed: the SSE {@code engines} event. */
+    public void enginesChanged() {
+        events.publishDashboard(EventCatalog.SSE_ENGINES, JsonOut.object());
     }
 
     /**
      * Makes this guest answer the front door's control messages ({@link FrontDoor#CONTROL}): {@code
-     * present}, {@code leaving} and {@code step-aside}, each with this engine's own token. Before
-     * {@link #start}.
+     * present} (answering whether a dashboard is open here), {@code engines}, {@code leaving} and
+     * {@code step-aside}, each with this engine's own token. Before {@link #start}.
      */
     public void setFrontDoorRole(FrontDoorRole role) {
         // While the front door relays, this engine's notifications become alert events it raises.
@@ -234,6 +245,11 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         api.register("POST", FrontDoor.CONTROL + "present", ex -> {
             role.present(FrontDoor.RELAYS_ALERTS.equals(ex.getRequestHeaders().getFirst(FrontDoor.RELAYS)));
+            HttpResponses.sendJson(
+                    ex, 200, JsonOut.object().put(FrontDoor.WATCHING, watched()).toString());
+        });
+        api.register("POST", FrontDoor.CONTROL + "engines", ex -> {
+            enginesChanged();
             HttpResponses.sendJson(ex, 200, "{}");
         });
         api.register("POST", FrontDoor.CONTROL + "leaving", ex -> {

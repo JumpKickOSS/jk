@@ -106,6 +106,8 @@ public final class EventCatalog {
     public static final String SSE_NOTIFY = "notify";
     public static final String SSE_NOTICE = "notice";
     public static final String SSE_ALERT = "alert";
+    public static final String SSE_MACHINE = "machine";
+    public static final String SSE_ENGINES = "engines";
 
     /** SSE frames published to dashboard subscribers alone ({@code publishDashboard}): not sent to MCP. */
     public static final Set<String> DASHBOARD_ONLY = Set.of(
@@ -118,7 +120,9 @@ public final class EventCatalog {
             SSE_PRESENCE,
             SSE_NOTIFY,
             SSE_NOTICE,
-            SSE_ALERT);
+            SSE_ALERT,
+            SSE_MACHINE,
+            SSE_ENGINES);
 
     // Console JSONL record names that are not wire types.
     public static final String JSONL_WORKSPACE_START = "workspace-start";
@@ -403,6 +407,22 @@ public final class EventCatalog {
                             SSE_ALERT,
                             "dashboard only: a decision this engine would notify about while a front door relays its"
                                     + " notifications (Decisions)")),
+            new Row(
+                    SSE_MACHINE,
+                    new Omitted("the Windows engine's WSL operations; jk self setup-wsl prints its own"),
+                    new Omitted("the Windows engine's WSL operations"),
+                    Carried.as(
+                            SSE_MACHINE,
+                            "dashboard only: a WSL install or remove queued, stepped, done or failed"
+                                    + " (MachineEnvironments)")),
+            new Row(
+                    SSE_ENGINES,
+                    new Omitted("the machine's engines; the CLI asks jk engine status"),
+                    new Omitted("the machine's engines"),
+                    Carried.as(
+                            SSE_ENGINES,
+                            "dashboard only: the engines the front door lists changed; read /api/engines"
+                                    + " (FrontDoor)")),
             new Row(
                     EngineProtocol.GUARD_EVENT,
                     new Omitted("written by the CLI from the guard's result"),

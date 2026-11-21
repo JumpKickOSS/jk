@@ -108,6 +108,7 @@ public final class MachineEnvironments {
     private volatile ReleasePin.@Nullable Pin pin;
     private volatile @Nullable List<WslDistros.Distro> listed;
     private volatile long listedAt;
+    private volatile Consumer<Map<String, Object>> onChange = change -> {};
 
     /**
      * @param distros the distros WSL lists, found without starting one
@@ -338,6 +339,14 @@ public final class MachineEnvironments {
                 "", false, "the install in " + name + " is still running; the dashboard shows it");
     }
 
+    /**
+     * Hands {@code listener} each operation's new state as {@code {distro, operation}}, the
+     * operation as {@link #list} reports it: queued, each step, and done or failed.
+     */
+    public void onChange(Consumer<Map<String, Object>> listener) {
+        this.onChange = listener;
+    }
+
     /** The current operation of distro {@code name}; null when it has had none. */
     public @Nullable Status status(String name) {
         return status.get(key(name));
@@ -416,7 +425,16 @@ public final class MachineEnvironments {
     }
 
     private void update(String distro, Action action, String state, String step) {
-        status.put(key(distro), new Status(distro, action, state, step, clock.millis()));
+        Status now = new Status(distro, action, state, step, clock.millis());
+        status.put(key(distro), now);
+        Map<String, Object> change = new LinkedHashMap<>();
+        change.put("distro", distro);
+        change.put("operation", now.toMap());
+        try {
+            onChange.accept(change);
+        } catch (RuntimeException e) {
+            Log.debug("wsl setup: change not published: " + e.getMessage());
+        }
     }
 
     private static void sleep(long ms) {
