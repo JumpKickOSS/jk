@@ -25,6 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 class EngineInstallTest {
@@ -787,10 +789,20 @@ class EngineInstallTest {
         assertThat(jarsIn(store)).hasSize(2);
     }
 
+    /** The jar rides on a child shell's command line as its {@code $0}; the shell outlives the check. */
     @Test
-    void a_jar_on_a_live_process_command_line_is_running() {
-        assertThat(EngineInstall.runningJars().test(Path.of("/nonexistent/jk-engine-0.0.0.jar")))
-                .isFalse();
+    @DisabledOnOs(OS.WINDOWS)
+    void a_jar_on_a_live_process_command_line_is_running(@TempDir Path tmp) throws Exception {
+        Path jar = Files.writeString(tmp.resolve("jk-engine-0.0.0.jar"), "jar");
+        Process holder = new ProcessBuilder("sh", "-c", "sleep 60; :", jar.toString()).start();
+        try {
+            // start() returns once the child has exec'd, so its command line is already the shell's.
+            assertThat(EngineInstall.runningJars().test(jar)).isTrue();
+            assertThat(EngineInstall.runningJars().test(tmp.resolve("jk-engine-9.9.9.jar")))
+                    .isFalse();
+        } finally {
+            holder.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+        }
     }
 
     private static List<Path> jarsIn(EngineInstall store) throws IOException {

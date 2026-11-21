@@ -111,12 +111,6 @@ class PluginSpecTest {
         assertThat(s.offline()).isFalse();
     }
 
-    /**
-     * The one line whose absence is not "unset". Every other field defaults to empty or zero, but a
-     * spec that never states a network policy has to read as the restrictive answer: the failure
-     * mode of a fork path that forgot to stamp it must be a refusal a developer sees, not a request
-     * a user was told would not happen.
-     */
     /** A null string config is unset, not a null literal the reader trips over. */
     @Test
     void a_null_string_config_is_unset(@TempDir Path dir) throws Exception {
@@ -168,6 +162,12 @@ class PluginSpecTest {
         assertThat(read.entries().get("plain")).isEmpty();
     }
 
+    /**
+     * The one line whose absence is not "unset". Every other field defaults to empty or zero, but a
+     * spec that never states a network policy has to read as the restrictive answer: the failure
+     * mode of a fork path that forgot to stamp it must be a refusal a developer sees, not a request
+     * a user was told would not happen.
+     */
     @Test
     void a_spec_with_no_policy_line_reads_as_offline(@TempDir Path dir) throws Exception {
         Path spec = dir.resolve("bare.spec");
