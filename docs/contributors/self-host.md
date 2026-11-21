@@ -22,13 +22,30 @@ jk install -g                    # the push gate: engine, e2e and worker suites 
 
 The fleet's gate hosts run the whole gate from a checkout as `scripts/gate/run.sh <n> <sha>`. It
 takes the host's gate lock (`GATE_LOCK`, default `/var/tmp/fleet-gate.lock`), detaches the checkout
-at the tip, runs the classes listed in `scripts/gate/pre-classes.txt` first so a class that failed
-an earlier gate fails this one in a minute, then `jk guard`, `jk install -S` (the reinstall without
-tests), `jk install -g` under a freshly started engine (the one run of the fast tier, with the gated
-tiers), a check that the engine which served it is the tip's, `jk test -s release`, the shell
-fixtures and the release notes, and writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
-`GATE_LOG_DIR`. It never pushes. The header of `scripts/gate/gate.sh`
-lists its settings; `scripts/test-gate.sh` holds the class list to classes that exist.
+at the tip, runs `jk guard`, `jk install -S` (the reinstall without tests), `jk install -g` under
+a freshly started engine (the one run of the fast tier, with the gated tiers), a check that the
+engine which served it is the tip's, `jk test -s release`, the shell fixtures and the release
+notes, and writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under `GATE_LOG_DIR`. It never
+pushes. The header of `scripts/gate/gate.sh` lists its settings; `scripts/test-gate.sh` runs it
+against a stand-in `jk`.
+
+### Flaky tests
+
+A red `jk install -g` runs once more. Under the same inputs JumpKick re-runs only the classes that
+did not pass, and a class that passes now is flaky: its `test-passed-on-rerun` warning in the
+run's `details.jsonl` becomes a `rerun-pass` row of `flaky-history.tsv` under `GATE_LOG_DIR`. The
+gate stays red. `scripts/gate/flaky.sh` keeps that history:
+
+| Command | What it does |
+|---|---|
+| `flaky.sh record <details.jsonl> <tip>` | Appends each class the run passed on re-run |
+| `flaky.sh review` | Quarantines a class with two re-run passes in 30 days (`FLAKY_THRESHOLD`, `FLAKY_WINDOW_DAYS`), opening a `flake` ticket that carries its history; releases a class whose ticket is done or canceled, and counts only its passes after that |
+| `flaky.sh list` | The quarantine: `<module> <class> <ticket>` |
+| `flaky.sh excused <details.jsonl>` | Exit 0 when every error of the run is a test failure in a quarantined class |
+
+Every gate ends with `review`. The gate runs every class, quarantined or not; a tier that blocks a
+push leaves the quarantine out with `list` or `excused`. A class that cannot get a ticket is not
+quarantined.
 
 ## The merge queue
 

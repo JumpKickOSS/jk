@@ -214,10 +214,11 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   classpath and the installed JumpKick must report the same `-SNAPSHOT` version; `jk test -g`
   against a snapshot-installed JumpKick does not). The merge queue on bocabox runs it, as
   `scripts/gate/gate.sh`, on each batch of submitted branches; nobody else pushes `main` (see
-  [Landing on `origin/main`](#landing-on-originmain)). The gate: the pre-run classes in
-  `scripts/gate/pre-classes.txt`, `jk guard`, `jk install -S` (the reinstall without tests),
-  `jk install -g` (which runs the fast tier once, with the gated tiers), the release suite and the
-  shell fixtures, under the host's gate lock ([self-host](docs/contributors/self-host.md#the-gate)).
+  [Landing on `origin/main`](#landing-on-originmain)). The gate: `jk guard`, `jk install -S` (the
+  reinstall without tests), `jk install -g` (which runs the fast tier once, with the gated tiers),
+  the release suite and the shell fixtures, under the host's gate lock; a class that fails and
+  passes on re-run is recorded, and past a threshold quarantined with a ticket
+  ([self-host](docs/contributors/self-host.md#the-gate)).
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
   which runs `jk guard` and the fast tier of the modules the branch changed, and records the pass
   that `scripts/queue/submit.sh` requires.

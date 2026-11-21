@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# The gate a tip must pass before it is pushed to origin/main: the pre-run classes, `jk guard`,
-# the reinstall without tests (`jk install -S`), the push gate (`jk install -g -c`, the fast tier
-# with the gated tiers, run once) under a freshly started engine, the engine check, the release
-# suite, the shell fixtures and the release notes. It detaches a checkout at the tip and never
-# pushes. Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
+# The gate a tip must pass before it is pushed to origin/main: `jk guard`, the reinstall without
+# tests (`jk install -S`), the push gate (`jk install -g -c`, the fast tier with the gated tiers,
+# run once) under a freshly started engine, the engine check, the release suite, the shell fixtures
+# and the release notes. A red push gate runs once more, only to record the classes that pass on
+# that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red. It detaches a checkout at
+# the tip and never pushes. Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
 # or a line starting `RED` (or the checkout's refusal), and `GATE<n> DONE` last. Per-step output
 # lands beside it as g<n>-<step>.log. Run it through scripts/gate/run.sh, which takes the host's
 # gate lock first.
@@ -13,13 +14,12 @@
 #   GATE_CHECKOUT     checkout to detach at the tip (default: the one holding this script); clean
 #   GATE_LOG_DIR      where the logs go (default /var/tmp/jk-gate)
 #   GATE_BRANCH       fetch this branch from origin before the checkout (default: no fetch)
-#   GATE_PRE_CLASSES  the pre-run class list, relative to the checkout
-#                     (default scripts/gate/pre-classes.txt, read at the tip)
-#   PRE_SUITES        suites for the pre-run classes (default "test integration")
-#   PRE_MODULES       modules whose whole suites run after the classes; PRE_MODULE_SUITES their suites
+#   PRE_MODULES       modules whose whole suites run first; PRE_MODULE_SUITES their suites
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
 #   PRE_SESSION       non-empty: log what scripts/release-session.sh says about the tree
+#   FLAKY_*           the flaky record and quarantine's settings (scripts/gate/flaky.sh); the
+#                     history defaults to $GATE_LOG_DIR/flaky-history.tsv
 #
 # The whole body is one brace group, so bash has read all of it before the checkout below can
 # change this file under it.
@@ -54,29 +54,7 @@
   fi
   echo "tip $(git rev-parse --short HEAD) $(date +%H:%M:%S) jk $(jk --version)" >>"$L"
 
-  # Targeted tests first, fail fast: the class list, then PRE_MODULES, then PRE_SCRIPTS.
-  pre_list="${GATE_PRE_CLASSES:-scripts/gate/pre-classes.txt}"
-  if [ -f "$pre_list" ]; then
-    plan="$(bash scripts/gate/pre-classes.sh "$pre_list" 2>>"$L")" || red "RED (pre: $pre_list)"
-  else
-    plan=""
-    echo "PRE no class list at $pre_list" >>"$L"
-  fi
-  while read -r pm pc; do
-    [ -n "$pm" ] || continue
-    sargs=()
-    for c in ${pc//,/ }; do sargs+=(-S "$c"); done
-    for su in ${PRE_SUITES:-test integration}; do sargs+=(-s "$su"); done
-    jk test ${PRE_REDO:+-r} -m "$pm" "${sargs[@]}" >>"$D/g$n-pre.log" 2>&1 </dev/null
-    pe=$?
-    # A class that lives in a suite the pre-run did not select ran nothing: that is a red pre-run.
-    if grep -aqE 'warning: Run Tests.*(are|is) in the [a-z]+ suite' "$D/g$n-pre.log"; then
-      noansi "$D/g$n-pre.log" | grep -aE 'warning: Run Tests.*(are|is) in the [a-z]+ suite' >>"$L"
-      pe=98
-    fi
-    echo "PRE $pm $pc EXIT=$pe $(date +%H:%M:%S)" >>"$L"
-    [ "$pe" -ne 0 ] && pre_red
-  done <<<"$plan"
+  # Targeted tests first, fail fast: PRE_MODULES, then PRE_SCRIPTS.
   for pm in ${PRE_MODULES:-}; do
     margs=()
     for su in ${PRE_MODULE_SUITES:-}; do margs+=(-s "$su"); done
@@ -126,6 +104,14 @@
   echo "PUSHGATE_EXIT=$s $(date +%H:%M:%S)" >>"$L"
   [ "$s" -ne 0 ] && noansi "$D/g$n-snapshot.log" | grep -aE "FAILED |OutOfMemory" >>"$L"
   noansi "$D/g$n-snapshot.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
+  # A red push gate runs once more under the same inputs, which runs only the classes that did not
+  # pass; those that pass now are flaky, and the history keeps them. The verdict stays red.
+  if [ "$s" -ne 0 ]; then
+    jk install -g -c >"$D/g$n-rerun.log" 2>&1
+    echo "RERUN_EXIT=$? $(date +%H:%M:%S)" >>"$L"
+    jk results -O jsonl >"$D/g$n-rerun.jsonl" 2>/dev/null
+    GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh record "$D/g$n-rerun.jsonl" "$(git rev-parse HEAD)" >>"$L" 2>&1
+  fi
 
   # The engine's commit, read after the push gate ran under a freshly started engine. It counts when
   # it is the tip, or when no build input changed between it and the tip (a reused engine jar keeps
@@ -178,6 +164,9 @@
   else
     echo "RED" >>"$L"
   fi
+
+  # Quarantine the classes past the threshold and release those whose ticket closed.
+  GATE_LOG_DIR="$D" bash scripts/gate/flaky.sh review >>"$L" 2>&1 || echo "FLAKY review failed" >>"$L"
 
   # What a no-op build after the gate would still do: a gate that leaves work behind is a finding.
   for ex in "explain -g" "explain"; do
