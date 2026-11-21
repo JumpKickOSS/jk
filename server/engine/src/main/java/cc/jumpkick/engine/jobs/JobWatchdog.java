@@ -70,14 +70,15 @@ final class JobWatchdog {
     }
 
     /**
-     * Start the watchdog for a job admitted at {@code startMillis} that counts {@code done} down
-     * when it ends, or return {@code null} when no arm is live. The deadline runs from the job's
-     * admission — the one start the join and the journal also measure from — not from when this
-     * thread happens to run. On deadline: cancel, worker shutdown (grace then force), interrupt the
-     * runner, and one {@code error} line for the client. On silence: one log line naming the job.
+     * The watchdog loop for a job admitted at {@code startMillis} that counts {@code done} down
+     * when it ends, for the caller to run on a thread of its own, or {@code null} when no arm is
+     * live. The deadline runs from the job's admission — the one start the join and the journal
+     * also measure from — not from when the loop's thread happens to run. On deadline: cancel,
+     * worker shutdown (grace then force), interrupt the runner, and one {@code error} line for the
+     * client. On silence: one log line naming the job.
      */
     @Nullable
-    Thread start(
+    Runnable loop(
             long eventRequestId,
             String kind,
             String dir,
@@ -90,7 +91,7 @@ final class JobWatchdog {
         Watch watch = watch(eventRequestId, kind, dir, cancelToken, runnerRef, writer, deadline, startMillis);
         if (watch == null) return null;
         // Holds the job's cancel token explicitly; reads no session.
-        return Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
+        return () -> {
             while (done.getCount() > 0) {
                 long wait = watch.nextWait();
                 if (wait < 0) {
@@ -106,13 +107,13 @@ final class JobWatchdog {
                 if (done.getCount() == 0) return;
                 watch.pass();
             }
-        });
+        };
     }
 
     /**
      * One job's watch — what a tick does and how long the next one waits — or {@code null} when no
-     * arm is live. The thread {@link #start} runs is the loop around it; a test drives the passes
-     * itself against a clock it advances, so nothing it asserts waits on the wall.
+     * arm is live. {@link #loop} is the loop around it; a test drives the passes itself against a
+     * clock it advances, so nothing it asserts waits on the wall.
      */
     @Nullable
     Watch watch(

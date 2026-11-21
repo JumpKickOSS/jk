@@ -1820,16 +1820,12 @@ in     = "cc.jumpkick.engine.jobs.JobEnvelope#submit"
 reason = "the admit thread reads neither the job's request nor its session"
 
 [[guards.request-thread-carries-session.allow]]
-in     = "cc.jumpkick.engine.jobs.JobEnvelope#proceed"
-reason = "the detached join reads neither the job's request nor its session"
+in     = "cc.jumpkick.engine.jobs.JobEnvelope$JobThreads#<clinit>"
+reason = "a started job's watchdog, which holds its cancel token explicitly, and the detached join, which reads neither the job's request nor its session"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.jobs.JobEnvelope#startRunner"
 reason = "the runner binds the job's request itself and the body its session inside the verb"
-
-[[guards.request-thread-carries-session.allow]]
-in     = "cc.jumpkick.engine.jobs.JobWatchdog#start"
-reason = "holds the job's cancel token explicitly"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.jobs.LiveJobRegistry#beginCancel"

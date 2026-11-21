@@ -125,8 +125,11 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
     @Nullable
     Boolean lastNoTimeline;
 
-    /** When set, registering a job's accumulator throws it: a fault after admission, before the runner starts. */
-    volatile @Nullable RuntimeException registerThrows;
+    /**
+     * When set, registering a job's accumulator throws it: a fault after admission, before the
+     * runner starts. A runtime exception or an error.
+     */
+    volatile @Nullable Throwable registerThrows;
 
     /** When set, {@link #coordOf} throws it: a fault inside admission. */
     volatile @Nullable RuntimeException coordThrows;
@@ -145,8 +148,9 @@ final class FakeEnvelopeHost implements JobEnvelope.Host {
             boolean rebuild,
             long buildNumber,
             @Nullable String journalId) {
-        RuntimeException fault = registerThrows;
-        if (fault != null) throw fault;
+        Throwable fault = registerThrows;
+        if (fault instanceof RuntimeException e) throw e;
+        if (fault instanceof Error e) throw e;
         lastNoTimeline = noTimeline;
         lastBuildNumber = buildNumber;
         if (perRequest) accumulators.put(id, new BuildAccumulator(kind, dir, null, trigger));

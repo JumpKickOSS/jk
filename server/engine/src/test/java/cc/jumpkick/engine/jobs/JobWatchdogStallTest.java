@@ -102,16 +102,17 @@ class JobWatchdogStallTest {
                 logs::add,
                 5_000L);
         CountDownLatch done = new CountDownLatch(1);
-        Thread thread = Objects.requireNonNull(watchdog.start(
-                9L,
-                "test",
-                "/tmp/app",
-                Session.CancelToken.live(),
-                new AtomicReference<>(),
-                done,
-                null,
-                UNBOUNDED,
-                1_000L));
+        Thread thread = Thread.ofVirtual()
+                .start(Objects.requireNonNull(watchdog.loop(
+                        9L,
+                        "test",
+                        "/tmp/app",
+                        Session.CancelToken.live(),
+                        new AtomicReference<>(),
+                        done,
+                        null,
+                        UNBOUNDED,
+                        1_000L)));
         done.countDown();
         thread.join(Duration.ofMinutes(1));
         assertThat(thread.isAlive()).as("the loop ends on the job's latch").isFalse();

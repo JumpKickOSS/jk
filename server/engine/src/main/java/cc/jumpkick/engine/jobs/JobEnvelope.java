@@ -81,6 +81,15 @@ public final class JobEnvelope {
     private final MemoryAdmission admission;
     private final long terminalGraceMs;
     private final long joinBufferMs;
+    private final JobThreads threads;
+
+    /** Starts a thread that serves a started job: its watchdog, or a detached job's joiner. */
+    @FunctionalInterface
+    interface JobThreads {
+        JobThreads VIRTUAL = (name, body) -> Thread.ofVirtual().name(name, 0).start(body);
+
+        Thread start(String name, Runnable body);
+    }
 
     /** {@code limits} come from the engine's resolved config; the envelope never reads the environment. */
     public JobEnvelope(Host host, JobLimits limits) {
@@ -94,6 +103,18 @@ public final class JobEnvelope {
 
     /** As above with each connection's terminal grace and join buffer in millis (tests). */
     JobEnvelope(Host host, JobLimits limits, MemoryAdmission admission, long terminalGraceMs, long joinBufferMs) {
+        this(host, limits, admission, terminalGraceMs, joinBufferMs, JobThreads.VIRTUAL);
+    }
+
+    /** As above with the threads that serve a started job supplied (tests). */
+    JobEnvelope(
+            Host host,
+            JobLimits limits,
+            MemoryAdmission admission,
+            long terminalGraceMs,
+            long joinBufferMs,
+            JobThreads threads) {
+        this.threads = threads;
         this.terminalGraceMs = terminalGraceMs;
         this.joinBufferMs = joinBufferMs;
         this.host = host;
@@ -195,12 +216,17 @@ public final class JobEnvelope {
             } catch (RuntimeException refused) {
                 if (!answer.completeExceptionally(refused))
                     refusals.publishLateRefusal(eventRequestId, eventKind, eventDir, refused);
+            } catch (Error e) {
+                // Left uncompleted, the caller's join below would wait for the engine's life.
+                answer.completeExceptionally(e);
+                throw e;
             }
         });
         try {
             return answer.join();
         } catch (CompletionException e) {
             if (e.getCause() instanceof RuntimeException cause) throw cause;
+            if (e.getCause() instanceof Error cause) throw cause;
             throw e;
         }
     }
@@ -260,7 +286,10 @@ public final class JobEnvelope {
             if (admit.rejected() == null) admitted = startRunner(sub, admit, eventStartMillis, trigger, session);
         } catch (Throwable t) {
             giveBackUnstarted(sub, claimedBuildPlanSlot, admit, eventStartMillis, t);
-            throw t;
+            // Admitted, the job ended as a runner that died: a client on the wire has read why and
+            // its job-finish, and a further error line would land after its terminal.
+            if (admit == null || sub.writer() == null) throw t;
+            return eventRequestId;
         }
         InFlightBuilds.Hold running = admit.rejected();
         if (running != null) {
@@ -270,22 +299,10 @@ public final class JobEnvelope {
         }
         Admitted a = Objects.requireNonNull(admitted);
         BufferedWriter writer = a.writer();
-        final Thread watchdog = watchdogs.start(
-                eventRequestId,
-                eventKind,
-                a.eventDir(),
-                a.cancelToken(),
-                a.runnerRef(),
-                a.done(),
-                writer,
-                a.deadline(),
-                eventStartMillis);
+        // The runner has started, and only finish() settles the job: nothing from here may skip it.
+        Thread watchdog = startWatchdog(a);
         Runnable finish = () -> finish(a, sub.reader(), watchdog);
-        if (a.detached()) {
-            // Joins and journals the detached job; reads no session.
-            Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
-            return eventRequestId;
-        }
+        if (a.detached() && startJoiner(eventRequestId, finish)) return eventRequestId;
         try {
             finish.run();
         } finally {
@@ -294,6 +311,41 @@ public final class JobEnvelope {
             if (writer != null) WireWriter.awaitLanded(writer);
         }
         return eventRequestId;
+    }
+
+    /**
+     * The started job's watchdog thread, or {@code null} when no arm is live or the thread would not
+     * start; without it the job still runs to its deadline, which the join enforces too.
+     */
+    private @Nullable Thread startWatchdog(Admitted a) {
+        long jid = a.eventRequestId();
+        try {
+            Runnable loop = watchdogs.loop(
+                    jid,
+                    a.eventKind(),
+                    a.eventDir(),
+                    a.cancelToken(),
+                    a.runnerRef(),
+                    a.done(),
+                    a.writer(),
+                    a.deadline(),
+                    a.eventStartMillis());
+            return loop == null ? null : threads.start("jk-job-watchdog", loop);
+        } catch (RuntimeException | Error e) {
+            host.log("jk engine: job " + jid + " runs without its watchdog: " + e);
+            return null;
+        }
+    }
+
+    /** Joins and journals a detached job on a thread of its own; {@code false} when that thread would not start. */
+    private boolean startJoiner(long jid, Runnable finish) {
+        try {
+            threads.start("jk-job-join-", finish);
+            return true;
+        } catch (RuntimeException | Error e) {
+            host.log("jk engine: job " + jid + " is joined on its submitting thread: " + e);
+            return false;
+        }
     }
 
     /** The admitted job's session, journal stub, wire start and live registration, then its runner, started. */
