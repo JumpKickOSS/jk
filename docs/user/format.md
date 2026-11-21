@@ -50,8 +50,10 @@ them, so the next plain `jk format` is fast again. Its summary counts what it vi
 | **Groovy** | Spotless removeSemicolons | — | FQCN shorten |
 | **Scala** | Spotless scalafmt | 4-space / 120-col | FQCN shorten |
 
-Java unnamed classes are skipped silently by Palantir/Google formatters (they cannot format
-them). Mixed-language modules format each file with the matching pipeline.
+Java compact source files (unnamed classes: no type, package or module declaration) are skipped
+silently, since Palantir and Google cannot format them; `package-info.java` and
+`module-info.java` are formatted like any other file. Mixed-language modules format each file
+with the matching pipeline.
 
 **Generated files are left as they are**, in every language: a file whose leading comments, the
 ones before its first line of code, say `DO NOT EDIT` or `@generated`, or have a line that starts

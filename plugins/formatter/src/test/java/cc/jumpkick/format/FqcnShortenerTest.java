@@ -126,6 +126,32 @@ class FqcnShortenerTest {
     }
 
     @Test
+    void an_import_after_a_tab_is_left_whole() {
+        String src = "package demo;\n\nimport\tjava.util.concurrent.ConcurrentHashMap;\n\n"
+                + "public class Uses {\n    java.util.concurrent.ConcurrentHashMap<String, Integer> m;\n}\n";
+        FqcnShortener.Result r = FqcnShortener.shorten(src, TypeIndex.jdkOnly());
+        assertThat(r.source())
+                .contains("import\tjava.util.concurrent.ConcurrentHashMap;")
+                .contains("    ConcurrentHashMap<String, Integer> m;")
+                .doesNotContain("import\tConcurrentHashMap;");
+    }
+
+    @Test
+    void a_module_import_keeps_new_names_qualified() {
+        String src = """
+                package demo;
+
+                import module java.base;
+
+                public class Uses {
+                    java.util.concurrent.ConcurrentHashMap<String, Integer> m;
+                }
+                """;
+        FqcnShortener.Result r = FqcnShortener.shorten(src, TypeIndex.jdkOnly());
+        assertThat(r.changed()).isFalse();
+    }
+
+    @Test
     void jdk_types_shorten_without_project_sources() {
         String src = """
                 package demo;

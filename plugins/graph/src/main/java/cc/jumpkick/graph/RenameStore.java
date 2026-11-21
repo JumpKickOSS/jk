@@ -52,13 +52,13 @@ final class RenameStore {
         for (Map.Entry<String, String> e : plan.before.entrySet()) {
             Path blob = undo.resolve("f" + n++);
             Files.writeString(blob, e.getValue(), StandardCharsets.UTF_8);
-            manifest.add("restore\t" + e.getKey() + "\t" + blob.getFileName());
+            manifest.add("restore\t" + esc(e.getKey()) + "\t" + blob.getFileName());
         }
         for (String rel : plan.after.keySet()) {
-            if (!plan.before.containsKey(rel)) manifest.add("delete\t" + rel);
+            if (!plan.before.containsKey(rel)) manifest.add("delete\t" + esc(rel));
         }
         for (Map.Entry<String, String> e : plan.rawMoves.entrySet()) {
-            manifest.add("unmove\t" + e.getValue() + "\t" + e.getKey());
+            manifest.add("unmove\t" + esc(e.getValue()) + "\t" + esc(e.getKey()));
         }
         AtomicWrites.replace(undo.resolve("manifest"), String.join("\n", manifest) + "\n");
         try {
@@ -79,12 +79,20 @@ final class RenameStore {
             emptied.addAll(plan.rawMoves.keySet());
             pruneEmptyDirs(root, emptied);
         } catch (IOException | RuntimeException failed) {
-            undo(root, out);
+            try {
+                undo(root, out);
+            } catch (IOException | RuntimeException notUndone) {
+                failed.addSuppressed(notUndone);
+            }
             throw failed;
         }
     }
 
-    /** Puts back the files the last write changed, as {@code undo/} holds them; the paths it restored. */
+    /**
+     * Puts back the files the last write changed, as {@code undo/} holds them; the paths it restored.
+     * Manifest paths are {@linkplain #esc escaped}. A move whose source is still there never happened
+     * (a write that failed part way), so its destination, whatever it holds, is left alone.
+     */
     static List<String> undo(Path root, Path out) throws IOException {
         Path undo = dir(out).resolve(UNDO);
         Path manifest = undo.resolve("manifest");
@@ -93,26 +101,29 @@ final class RenameStore {
         Set<String> deleted = new TreeSet<>();
         for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
             String[] f = line.split("\t");
-            if (f.length >= 2 && f[0].equals("delete")) {
-                Files.deleteIfExists(inside(root, f[1]));
-                deleted.add(f[1]);
+            if (f.length == 2 && f[0].equals("delete")) {
+                String rel = unesc(f[1]);
+                Files.deleteIfExists(inside(root, rel));
+                deleted.add(rel);
             } else if (f.length == 3 && f[0].equals("unmove")) {
-                Path from = inside(root, f[1]);
-                if (Files.isRegularFile(from)) {
-                    Path back = inside(root, f[2]);
+                String rel = unesc(f[1]);
+                Path from = inside(root, rel);
+                Path back = inside(root, unesc(f[2]));
+                if (Files.isRegularFile(from) && !Files.exists(back)) {
                     Files.createDirectories(back.getParent());
                     Files.move(from, back);
-                    deleted.add(f[1]);
+                    deleted.add(rel);
                 }
             }
         }
         for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
             String[] f = line.split("\t");
             if (f.length == 3 && f[0].equals("restore")) {
-                Path target = inside(root, f[1]);
+                String rel = unesc(f[1]);
+                Path target = inside(root, rel);
                 Files.createDirectories(target.getParent());
                 AtomicWrites.replace(target, Files.readString(undo.resolve(f[2]), StandardCharsets.UTF_8));
-                done.add(f[1]);
+                done.add(rel);
             }
         }
         pruneEmptyDirs(root, deleted);

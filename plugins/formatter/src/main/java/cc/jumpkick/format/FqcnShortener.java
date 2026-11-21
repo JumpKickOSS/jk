@@ -186,7 +186,15 @@ final class FqcnShortener {
         int lineStart = blanked.lastIndexOf('\n', pos - 1) + 1;
         int i = lineStart;
         while (i < blanked.length() && (blanked.charAt(i) == ' ' || blanked.charAt(i) == '\t')) i++;
-        return blanked.startsWith("import ", i) || blanked.startsWith("package ", i);
+        return keywordAt(blanked, i, "import") || keywordAt(blanked, i, "package");
+    }
+
+    /** Whether {@code keyword} starts at {@code i}, followed by a space or a tab. */
+    private static boolean keywordAt(String blanked, int i, String keyword) {
+        int after = i + keyword.length();
+        return blanked.startsWith(keyword, i)
+                && after < blanked.length()
+                && (blanked.charAt(after) == ' ' || blanked.charAt(after) == '\t');
     }
 
     private static Map<String, String> existingImports(String source) {

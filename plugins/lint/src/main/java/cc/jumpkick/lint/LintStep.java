@@ -103,12 +103,15 @@ final class LintStep {
                 output::add);
         // Checkstyle opens its -o file before it reads the configuration, so a rule set it cannot
         // load leaves an empty report behind it: that is a failed run, not a clean one.
+        List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
+        String said = tail.isEmpty() ? "" : ":\n" + String.join("\n", tail);
         if (!Files.isRegularFile(report) || Files.size(report) == 0 || !ran(tool, exit)) {
-            List<String> tail = output.subList(Math.max(0, output.size() - TAIL), output.size());
-            throw new IllegalStateException(label + " failed (exit " + exit + ") before writing its report"
-                    + (tail.isEmpty() ? "" : ":\n" + String.join("\n", tail)));
+            throw new IllegalStateException(label + " failed (exit " + exit + ") before writing its report" + said);
         }
         List<Finding> findings = Reports.parse(tool, report, roots, exclusions(tool, exec));
+        if (tool == LintTool.CHECKSTYLE && !checkstyleFinished(exit, findings)) {
+            throw new IllegalStateException(label + " failed (exit " + exit + ") part way through its files" + said);
+        }
         String failOnKey = config.stringOpt(tool.id() + "-fail-on").isPresent() ? tool.id() + "-fail-on" : "fail-on";
         String failOn = config.stringOpt(failOnKey).orElse(Finding.ERROR).toLowerCase(Locale.ROOT);
         int errors = 0;
@@ -144,6 +147,20 @@ final class LintStep {
             case SPOTBUGS -> exit >= 0 && exit <= 3; // bit 1 bugs found, bit 2 classes missing; anything else an error
             case DETEKT -> exit == 0 || exit == 2; // 2: the configured issue budget is spent
         };
+    }
+
+    /**
+     * Whether Checkstyle's {@code exit} is a finished run's: it exits with its error count, as the
+     * system keeps it (the low eight bits), and with -1 or -2 (255 or 254) when it stops on a bad
+     * command line or on an exception part way through the files, after closing a well-formed
+     * report of the files it got to. Either of those two is a stop unless {@code findings} holds
+     * that many errors.
+     */
+    static boolean checkstyleFinished(int exit, List<Finding> findings) {
+        int status = exit & 0xFF;
+        if (status < 254) return true;
+        long errors = findings.stream().filter(Finding::isError).count();
+        return (errors & 0xFF) == status;
     }
 
     /** The tool's command line for the table's own run, its report at {@code report}. */
@@ -308,8 +325,13 @@ final class LintStep {
         for (int i = 0; i < g.length(); i++) {
             char c = g.charAt(i);
             if (c == '*' && i + 1 < g.length() && g.charAt(i + 1) == '*') {
-                re.append(".*");
-                i++;
+                if (i + 2 < g.length() && g.charAt(i + 2) == '/') {
+                    re.append("(?:.*/)?"); // `**/` inside the glob spans no directory as well as many
+                    i += 2;
+                } else {
+                    re.append(".*");
+                    i++;
+                }
             } else if (c == '*') {
                 re.append("[^/]*");
             } else if (c == '?') {

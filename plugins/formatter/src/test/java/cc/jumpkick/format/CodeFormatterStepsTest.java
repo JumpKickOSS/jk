@@ -93,6 +93,38 @@ class CodeFormatterStepsTest {
                 .isFalse();
     }
 
+    @Test
+    void package_and_module_declarations_are_not_unnamed_classes() {
+        String packageInfo = """
+                /** The widgets. */
+                @NullMarked
+                package com.acme.widgets;
+
+                import org.jspecify.annotations.NullMarked;
+                """;
+        String moduleInfo = """
+                open module com.acme.widgets {
+                    requires java.sql;
+                    exports com.acme.widgets;
+                }
+                """;
+        assertThat(CodeFormatter.isUnnamedClass(packageInfo.getBytes())).isFalse();
+        assertThat(CodeFormatter.isUnnamedClass(moduleInfo.getBytes())).isFalse();
+    }
+
+    @Test
+    void a_type_name_inside_a_literal_does_not_make_a_compact_file_named() {
+        String compact = """
+                void main() {
+                    IO.println("class Foo");
+                    IO.println(\"""
+                            record Bar(int x)
+                            \""");
+                }
+                """;
+        assertThat(CodeFormatter.isUnnamedClass(compact.getBytes())).isTrue();
+    }
+
     private static CodeFormatter.Spec baseSpec() {
         var spec = new CodeFormatter.Spec();
         spec.javaStyle = "palantir";

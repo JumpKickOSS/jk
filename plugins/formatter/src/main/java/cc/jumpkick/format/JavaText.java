@@ -33,11 +33,13 @@ final class JavaText {
 
     /**
      * An import whose supplied simple names this pass cannot enumerate: on-demand ({@code x.*},
-     * Scala {@code x._}), a Scala/Kotlin brace list, or an {@code as} alias. Any of these can already
-     * be binding the name a new single-type import would claim.
+     * Scala {@code x._}), a Java module import ({@code import module java.base;}), a Scala/Kotlin
+     * brace list, or an {@code as} alias. Any of these can already be binding the name a new
+     * single-type import would claim.
      */
-    static final Pattern OPAQUE_IMPORT = Pattern.compile(
-            "(?m)^\\s*import\\s+(?:static\\s+)?[\\w.]*(?:\\*|_\\s*$|\\{)|^\\s*import\\s+[\\w.]+\\s+as\\s+\\w+");
+    static final Pattern OPAQUE_IMPORT = Pattern.compile("(?m)^\\s*import\\s+(?:static\\s+)?[\\w.]*(?:\\*|_\\s*$|\\{)"
+            + "|^\\s*import\\s+[\\w.]+\\s+as\\s+\\w+"
+            + "|^\\s*import\\s+module\\s+[\\w.]+\\s*;");
 
     static final Pattern TYPE_DECL = Pattern.compile(
             "\\b(?:class|interface|enum|record|object|trait)\\s+([A-Z][\\w]*)|@interface\\s+([A-Z][\\w]*)");

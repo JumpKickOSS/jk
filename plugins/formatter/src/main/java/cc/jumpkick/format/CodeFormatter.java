@@ -682,19 +682,23 @@ public final class CodeFormatter implements Plugin {
         return List.of(ScalaFmtStep.create(spec.scalaVersion, provisioner(spec.scalaJars), config));
     }
 
-    /** Palantir-aligned defaults: 4-space indent, 120 columns, Scala 3 dialect. */
+    /**
+     * Palantir-aligned defaults: 4-space indent, 120 columns, Scala 3 dialect. Each pool thread builds
+     * its own chain and scalafmt reads this file as it does, so it is replaced whole and only when it
+     * differs: a reader never sees it truncated by another thread's write.
+     */
     private static @Nullable File scalaConfig(Spec spec) {
         Path dir = spec.cacheDir;
         if (dir == null) return null;
         try {
             Files.createDirectories(dir);
             Path conf = dir.resolve("jk-scalafmt.conf");
-            Files.writeString(conf, """
+            AtomicWrites.replaceIfChanged(conf, """
                     version = "%s"
                     runner.dialect = scala3
                     maxColumn = 120
                     indent.main = 4
-                    """.formatted(spec.scalaVersion), StandardCharsets.UTF_8);
+                    """.formatted(spec.scalaVersion));
             return conf.toFile();
         } catch (IOException e) {
             return null;
@@ -730,11 +734,19 @@ public final class CodeFormatter implements Plugin {
     private static final Pattern TYPE_DECL =
             Pattern.compile("\\b(class|interface|enum|record)\\s+\\w|@interface\\s+\\w");
 
-    /** True if the source has no top-level type declaration (Java 21+ unnamed class). */
+    /** A package or module declaration: {@code package} is a keyword, and {@code module} is followed by its body. */
+    private static final Pattern PACKAGE_OR_MODULE_DECL =
+            Pattern.compile("\\bpackage\\s+[\\w.]+\\s*;|\\bmodule\\s+[\\w.]+\\s*\\{");
+
+    /**
+     * True if the source is a compact source file (an unnamed class): no type declaration, read off
+     * a copy with comments and literals blanked. A file with a {@code package} declaration is never
+     * one, which keeps {@code package-info.java} formatted, and neither is a module declaration.
+     */
     static boolean isUnnamedClass(byte[] bytes) {
-        String src = new String(bytes, StandardCharsets.UTF_8);
-        String stripped = src.replaceAll("//[^\n]*", "").replaceAll("(?s)/\\*.*?\\*/", " ");
-        return !TYPE_DECL.matcher(stripped).find();
+        String blanked = JavaText.blanked(new String(bytes, StandardCharsets.UTF_8));
+        return !TYPE_DECL.matcher(blanked).find()
+                && !PACKAGE_OR_MODULE_DECL.matcher(blanked).find();
     }
 
     enum Kind {

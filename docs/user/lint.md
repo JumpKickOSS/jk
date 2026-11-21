@@ -20,7 +20,7 @@ detekt     = true                                               # detekt over th
 |---|---|---|
 | `sources` | The module-relative Java source roots the Java tools read; add `src/test/java` to lint the tests | `["src/main/java"]` |
 | `kotlin-sources` | The Kotlin roots detekt reads | `["src/main/kotlin"]` |
-| `exclude` | Module-relative Ant-style path globs Checkstyle and detekt leave out (`**/generated/**`); PMD excludes through its ruleset's `exclude-pattern`, SpotBugs through `spotbugs-exclude` | `[]` |
+| `exclude` | Module-relative Ant-style path globs Checkstyle and detekt leave out (`**/generated/**`; `src/**/gen/*.java` covers `src/gen` too); PMD excludes through its ruleset's `exclude-pattern`, SpotBugs through `spotbugs-exclude` | `[]` |
 | `fail-on` | The finding severity that fails a step: `error`, `warning`, or `never`. Findings render as diagnostics either way | `"error"` |
 | `checkstyle-fail-on`, `pmd-fail-on`, `spotbugs-fail-on`, `detekt-fail-on` | One tool's own threshold, taking precedence over `fail-on` for that tool — Maven's plugins each fail on their own terms (Checkstyle on errors, PMD and SpotBugs on every finding), and `jk import` writes these when the tools of a module differ | `fail-on` |
 | `checkstyle` | Enable Checkstyle with this configuration file — a module-relative path, the rule set at an `https://` URL, fetched once into the store and read from there on every build after, or a resource inside a `checkstyle-classpath` jar, named as Checkstyle resolves it (`checkstyle.xml`) | off |
@@ -92,7 +92,8 @@ what fails a step: `error` (the default) lets warnings through, `warning` fails 
 `never` reports and passes; a tool with its own `<tool>-fail-on` follows that instead, so
 `pmd-fail-on = "warning"` beside the default fails the build on any PMD finding while Checkstyle
 fails on errors alone, and the failure names the key that applied. A tool that cannot run — a rule set that does not parse, a missing
-PMD ruleset — fails the step with the tool's last lines. Two cases are not failures: a module
+PMD ruleset, Checkstyle stopping on a file it cannot parse — fails the step with the tool's last
+lines. Two cases are not failures: a module
 whose roots hold no file for the tool (Checkstyle's `exclude` globs covering every source, a test
 module with no `src/main/java`) is a step labelled `(no sources)` with an empty report, and a
 `checkstyle` or `detekt-config` file the module does not hold — the spelling `jk import` keeps for

@@ -9,6 +9,7 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -462,6 +463,37 @@ class LintStepTest {
         assertThat("/w/src/gen/Model.java").containsPattern(LintStep.excludeRegex("src/gen/*.java"));
         assertThat("/w/src/gen/deep/Model.java").doesNotContainPattern(LintStep.excludeRegex("src/gen/*.java"));
         assertThat("/w/src/Model.java.bak").doesNotContainPattern(LintStep.excludeRegex("src/Model.java"));
+    }
+
+    @Test
+    void a_double_star_inside_an_exclude_glob_spans_no_directory_too() {
+        String regex = LintStep.excludeRegex("src/**/gen/*.java");
+        assertThat("/w/src/gen/Model.java").containsPattern(regex);
+        assertThat("/w/src/main/java/gen/Model.java").containsPattern(regex);
+        assertThat("/w/src/main/java/regen/Model.java").doesNotContainPattern(regex);
+        assertThat("/w/src/gen/deep/Model.java").doesNotContainPattern(regex);
+    }
+
+    @Test
+    void a_checkstyle_exit_its_report_does_not_explain_is_a_stop_part_way() {
+        Finding error = new Finding(Finding.ERROR, "A.java", 1, 1, "EmptyBlock", "empty block");
+        Finding warning = new Finding(Finding.WARNING, "A.java", 1, 1, "EmptyBlock", "empty block");
+        assertThat(LintStep.checkstyleFinished(0, List.of(warning))).isTrue();
+        assertThat(LintStep.checkstyleFinished(1, List.of(error, warning))).isTrue();
+        assertThat(LintStep.checkstyleFinished(254, List.of())).isFalse();
+        assertThat(LintStep.checkstyleFinished(255, List.of(error))).isFalse();
+        assertThat(LintStep.checkstyleFinished(-2, List.of())).isFalse();
+        assertThat(LintStep.checkstyleFinished(254, Collections.nCopies(254, error)))
+                .isTrue();
+    }
+
+    @Test
+    @Tag("integration") // forks Checkstyle
+    void checkstyle_stopping_on_a_file_it_cannot_parse_fails_the_step(@TempDir Path tmp) throws Exception {
+        FakeBuildIo io = lintModule(tmp, "error", "package demo;\n\nclass A { void f( {\n");
+
+        assertThatThrownBy(() -> LintStep.run(io, LintTool.CHECKSTYLE))
+                .hasMessageContaining("part way through its files");
     }
 
     /**
