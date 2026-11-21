@@ -40,6 +40,15 @@ public interface PluginCommandExec {
      */
     Optional<Path> mainArtifact();
 
+    /**
+     * The resolved value of the plugin's secret key {@code key} ({@code secret = true} in its
+     * schema), as {@link TaskExec#secret} gives a step; empty when the module sets none. Never in
+     * {@link #config()}. NEVER echo a secret into output, labels or errors.
+     */
+    default Optional<String> secret(String key) {
+        return Optional.empty();
+    }
+
     /** Emit one user-facing output line (the client prints these in order). */
     void out(String line);
 

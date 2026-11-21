@@ -94,6 +94,10 @@ public final class PluginCommands {
             for (var tool : tools.entrySet()) {
                 specWriter.extra(tool.getKey(), tool.getValue());
             }
+            // A command reads its plugin's secrets as a step does: from the spec, never its command line.
+            for (var secret : active.config().secrets().entrySet()) {
+                specWriter.secret(secret.getKey(), secret.getValue());
+            }
             Path spec = specWriter.writeTempSpec();
             try {
                 List<String> output = new ArrayList<>();

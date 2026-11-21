@@ -716,6 +716,11 @@ public final class BuildPluginHarness {
             return Optional.ofNullable(spec.artifactPath()).filter(Files::isRegularFile);
         }
 
+        @Override
+        public Optional<String> secret(String key) {
+            return Optional.ofNullable(spec.secrets().get(key));
+        }
+
         /**
          * Loud rather than defaulted: a command spec with no {@code java-home} line is an engine
          * bug, and the wrong fallback ({@code System.getProperty("java.home")}) is invisible —

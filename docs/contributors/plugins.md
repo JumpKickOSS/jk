@@ -139,7 +139,8 @@ range in it (`(4)`, `>=4.0 <5`) is refused at parse, located at the key. A strin
 true` (a password, a signing credential) is the plugin's secret: the user writes it as is or as
 `env:NAME`, which resolves through the caller's shell and the module's `.env`, and the engine moves
 it off the config before anything reads it, so it is in no describe request, config token or log
-line. A step reads it with `TaskExec.secret(key)` and a packager with `PackageIo.secret(key)` (a key
+line. A step reads it with `TaskExec.secret(key)`, a packager with `PackageIo.secret(key)` and a
+command with `PluginCommandExec.secret(key)` (a key
 in a named group is `<group>.<key>`, `signing.store-password`; one in an `[entries]` sub-table is
 `<entry>.<key>`); no other plugin receives it, and it
 keys no step (a packager takes it sealed, since a signing credential is part of what it writes).

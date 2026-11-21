@@ -63,6 +63,7 @@ class ThirdPartyPluginTest {
 
             [schema]
             greeting = { type = "string", default = "hi" }
+            token    = { type = "string", secret = true }
 
             [[contribute.compiler-args]]
             javac = ["-Averbose.greeting=${config.greeting}"]
@@ -82,6 +83,9 @@ class ThirdPartyPluginTest {
                         throw new IllegalStateException("hello worker cannot start: no greeting");
                     } else if (spec.contains("\\"op\\":\\"command\\"")) {
                         System.out.println("##HELLO:{\\"t\\":\\"command-out\\",\\"line\\":\\"hello from the plugin worker\\"}");
+                        String secret = "{\\"t\\":\\"secret\\",\\"key\\":\\"token\\",\\"value\\":\\"sesame\\"}";
+                        String said = spec.contains(secret) ? "the token arrived" : "no token";
+                        System.out.println("##HELLO:{\\"t\\":\\"command-out\\",\\"line\\":\\"" + said + "\\"}");
                     }
                 }
             }
@@ -130,6 +134,7 @@ class ThirdPartyPluginTest {
 
                 [hello]
                 greeting = "yo"
+                token = "sesame"
                 """.formatted(repo.toUri(), GROUP, ARTIFACT, VERSION, hex));
 
         // 1. Pre-lock: the declaration is unresolved — the parse stays soft, no config yet.
@@ -200,12 +205,13 @@ class ThirdPartyPluginTest {
                 .hasMessageContaining("not trusted")
                 .hasMessageContaining("jk trust plugin com.example:hello-jk-plugin");
 
-        // 5. Trusted: describe answers, and the command runs through the real command machinery.
+        // 5. Trusted: describe answers, and the command runs through the real command machinery,
+        // its plugin's secret on the spec it reads.
         TrustedPlugins.load(stateDir).add(GROUP + ":" + ARTIFACT);
         var report = PluginCommands.run(project, cache, "hello", List.of());
         assertThat(report.error()).isNull();
         assertThat(report.exit()).isZero();
-        assertThat(report.output()).containsExactly("hello from the plugin worker");
+        assertThat(report.output()).containsExactly("hello from the plugin worker", "the token arrived");
 
         // 6. A worker that dies before it speaks the protocol fails the command with its stderr.
         var crashed = PluginCommands.run(project, cache, "hello", List.of("--crash"));
