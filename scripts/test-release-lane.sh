@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Fixture test for scripts/release-lane.sh, network-free: a throwaway checkout tagged v9.8.7 whose
-# bootstrap, takeover, repo stage and assembly are stubs, and a jk on PATH that writes a dist. A lane
-# whose every step succeeds reports itself done; a lane whose assembly fails after writing part of
-# its tree must fail, never print "== lane … done", and name the log.
+# bootstrap, green check, takeover, repo stage and assembly are stubs, and a jk on PATH that writes a
+# dist. A lane whose every step succeeds reports itself done; a lane whose assembly fails after
+# writing part of its tree must fail, never print "== lane … done", and name the log.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,7 +21,7 @@ REPO="$WORK/repo"
 mkdir -p "$REPO/scripts" "$WORK/bin"
 cp "$ROOT/scripts/release-lane.sh" "$ROOT/scripts/release-version.sh" "$REPO/scripts/"
 printf 'version = "%s"\n' "$V" >"$REPO/jk.toml"
-for s in ci-bootstrap ci-takeover release-session; do printf '#!/usr/bin/env bash\necho "%s ok $*"\n' "$s" >"$REPO/scripts/$s.sh"; done
+for s in ci-bootstrap ci-takeover release-session release-green; do printf '#!/usr/bin/env bash\necho "%s ok $*"\n' "$s" >"$REPO/scripts/$s.sh"; done
 # The repo stage: one jar.
 cat >"$REPO/scripts/publish-maven-repo.sh" <<'SH'
 #!/usr/bin/env bash

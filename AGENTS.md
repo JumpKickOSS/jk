@@ -219,10 +219,15 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   in the others, and the shell fixtures; a failure only in a quarantined class does not block it.
 - **Full tier** — `scripts/gate/gate.sh` with `GATE_TIER=full`: `jk guard`, `jk install -S` (the
   reinstall without tests), `jk install -g` (the fast tier once, with every integration and e2e
-  class, against the JumpKick it installed), the release suite and the shell fixtures. It does not
+  class, against the JumpKick it installed), the release suite, the slow tier when a plugin changed
+  since `green`, and the shell fixtures. It does not
   block a push, so `main` may be red on it for a cycle or two; a class that fails and passes on
   re-run is recorded, and past a threshold quarantined with a ticket
-  ([self-host](docs/contributors/self-host.md#the-gate)).
+  ([self-host](docs/contributors/self-host.md#the-gate)). `scripts/gate/full-loop.sh` runs it back
+  to back on the newest `main` and moves origin's `green` branch to each commit that passes;
+  releases are cut from `green`. A red cycle names the batch that caused it on its tickets, and
+  after two the queue lands only the fix
+  ([Full tier loop](docs/contributors/self-host.md#the-full-tier-loop)).
 - **Branch tier** — before a branch is submitted to the queue: `scripts/queue/branch-tier.sh`,
   which runs `jk guard` and the fast tier of the modules the branch changed, and records the pass
   that `scripts/queue/submit.sh` requires.
@@ -243,8 +248,8 @@ work on something else and read answers with `ka inbox`. Stopping without finish
 | `jk install` | Exactly what `jk build` runs (every module compiled and packaged, its fast tier, the model/module/workspace/output lanes), then the reinstall | Every local merge |
 | `scripts/queue/branch-tier.sh` | `jk guard`, then the fast tier of the modules the branch changed | Before submitting a branch to the merge queue |
 | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | The Queue tier: guard, one install, the changed modules' integration suites, the curated lane, the shell fixtures | Every batch the merge queue lands (the push gate) |
-| `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, behind the queue; before a release |
-| `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; nightly |
+| `jk install -g` | Engine/CLI e2e, workers, install, lock: every integration class | The Full tier, back to back behind the queue (`scripts/gate/full-loop.sh`) |
+| `jk test -s slow` | Framework and language e2e (Android, Grails, Scala, KSP, Protobuf) | Before submitting a plugin or toolchain change; the Full tier when a plugin changed since `green`; nightly |
 
 Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
 

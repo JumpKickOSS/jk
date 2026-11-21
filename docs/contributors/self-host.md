@@ -31,7 +31,8 @@ the tier `GATE_TIER` names ([tiers](test-suite-tiers.md#gate-tiers)). It takes t
   (`scripts/gate/changed-modules.sh`) and the curated lane's classes in the other modules.
 - **`GATE_TIER=full`** (the default): `jk install -S` (the reinstall without tests), `jk install -g`
   under a freshly started engine (the one run of the fast tier, with the gated tiers), then
-  `jk test -s release` and the release notes.
+  `jk test -s release`, `jk test -s slow` when a member under `plugins/` or a root build file
+  changed since `GATE_BASE` (none without it), and the release notes.
 
 Both then check that the engine which served the tests is the tip's, run the shell fixtures, and
 write `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under `GATE_LOG_DIR`. A gate never pushes.
@@ -124,6 +125,38 @@ file. `jk test -s slow` is due before the push that carries a change to a framew
 The shell fixtures and lints are part of the same bar when a script or a workflow moves:
 `for f in scripts/test-*.sh; do bash "$f"; done`, `scripts/shellcheck.sh` (also the `shellcheck`
 guard, G100, under `jk guard`; skipped on Windows) and `actionlint .github/workflows/*.yml`.
+
+## The Full tier loop
+
+The Queue tier leaves most integration classes out, so the Full tier runs behind it, back to back
+on the newest `origin/main`: `scripts/gate/full-loop.sh` on the queue's gate host, under the same
+gate lock, so a queue batch and a Full cycle take turns. Each cycle gates the tip of `origin/main`
+with `GATE_TIER=full`, unless that commit was judged already. Its base is `green` (`GATE_BASE`), so
+the gate also runs the slow tier when a plugin, or a root build file, changed since the last commit
+that passed; before there is a `green`, it always does. Then:
+
+- **Green** pushes the tip to origin's `green` branch as a fast-forward. `green` is the newest commit
+  that passed the Full tier, and releases are cut from it ([releases](releases.md#cutting-a-release-by-hand)).
+- **Red** finds the batch that made it red among the queue's batches landed since `green`
+  (`queue-batches.log`). It bisects them: it gates batch tips with the Full tier until it knows the
+  first red one, and gates no commit twice. It names that batch, with its branches and the log of
+  its red gate, in `full-runs.log`, and comments once on each ticket its commits name (a subject
+  `<ticket>: …`). Revert the batch's commits or fix forward, through the queue.
+- **Two red cycles in a row** (`FULL_HOLD_AFTER`) write `full-hold` in the queue's repository: the
+  batch's tickets (`ticket <id>`) and commits (`commit <sha>`). While it exists the queue lands only
+  a fix, a branch with a commit for one of those tickets or one that reverts one of those commits;
+  the others wait, and `scripts/queue/status.sh` shows them `held`. The next green cycle removes it.
+  A hold that names nothing (no batch was found red) lands nothing until a person adds a line to it.
+
+On bocabox it runs beside the queue, in a checkout of its own:
+
+```bash
+FULL_CHECKOUT=~/src/jk-full-checkout scripts/gate/full-loop.sh
+```
+
+Its gate logs are `integ-gate-f<n>.log` beside the queue's, so the two share one flaky history.
+The header of `scripts/gate/full-loop.sh` lists its settings; `scripts/test-full-loop.sh` holds it
+and the queue's hold to the rules above in scratch repositories.
 
 ## CI
 

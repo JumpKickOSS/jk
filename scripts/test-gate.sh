@@ -9,6 +9,7 @@
 # members a range changed (none for docs and scripts, every one for a root build file), one install
 # that runs the fast tier, the integration suite of the changed members and the curated lane in the
 # others, a red run excused only when it failed in quarantine, and none of the Full tier's steps.
+# In the same workspace, the Full tier runs the slow tier only when a plugin changed since its base.
 # Last of all it runs itself once more under a gate's environment, as the gate's own fixture run
 # does, and must pass there too.
 set -euo pipefail
@@ -17,7 +18,7 @@ set -euo pipefail
 # log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
 # each case here is written against. Neither the settings nor the stand-ins' switches carry in.
 unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
-  FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE
+  FAIL_SLOW FAIL_INTEG_ONCE FAIL_INSTALL_ONCE RESULTS_FIRST RERUN_JSONL JK_CALLS KA_STATE
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
@@ -135,7 +136,8 @@ flaky $((t0 + 43 * day)) review >/dev/null
 # --- the gate, against a stand-in jk ---
 # The stand-in logs each call, fails the push gate's first run when FAIL_PUSHGATE is set, the
 # reinstall without tests when FAIL_REINSTALL is set, an exclusive test run when FAIL_INTEG is set
-# (the first one only under FAIL_INTEG_ONCE) and the first `install -c` under FAIL_INSTALL_ONCE,
+# (the first one only under FAIL_INTEG_ONCE), the slow tier when FAIL_SLOW is set and the first
+# `install -c` under FAIL_INSTALL_ONCE,
 # prints $RESULTS_FIRST as the first run's transcript and $RERUN_JSONL as any later one's, and
 # reports the checkout's HEAD as the engine's commit.
 export HOME="$WORK/home"
@@ -154,6 +156,7 @@ case "$1" in
     fi
     ;;
   test)
+    [[ -n "${FAIL_SLOW:-}" && " $* " == *" -s slow "* ]] && { echo "FAIL a.AndroidE2eTest"; exit 4; }
     if [[ " $* " == *" -X "* ]]; then
       [[ -n "${FAIL_INTEG:-}" ]] && { echo "FAIL a.FlakyTest"; exit 4; }
       [[ -n "${FAIL_INTEG_ONCE:-}" && "$(grep -c -- ' -X ' "$JK_CALLS")" -eq 1 ]] && { echo "FAIL b.NewTest"; exit 4; }
@@ -213,6 +216,7 @@ $got
 want:
 $want"
 [[ ! -f "$WORK/logs/flaky-history.tsv" ]] || fail "a green gate recorded flaky classes"
+if grep -q -- '-s slow' "$WORK/calls-1"; then fail "a Full tier with no base ran the slow tier: $(cat "$WORK/calls-1")"; fi
 
 gate 2 FAIL_PUSHGATE=1
 [[ "$(verdict 2)" == "RED" ]] || fail "a push gate green only on its re-run was not red: $(cat "$WORK/logs/integ-gate-2.log")"
@@ -232,7 +236,7 @@ gate 4
 # --- the Queue tier ---
 # A workspace of three members, one nested in another, and a curated lane over two of them.
 q="$WORK/qrepo"
-mkdir -p "$q/scripts/gate" "$q/mod/a/packs/p" "$q/mod/b" "$q/docs"
+mkdir -p "$q/scripts/gate" "$q/mod/a/packs/p" "$q/mod/b" "$q/plugins/x" "$q/docs"
 cp "$ROOT"/scripts/gate/*.sh "$q/scripts/gate/"
 cp "$ROOT/scripts/curated-integration.sh" "$q/scripts/"
 cp "$repo/scripts/release-notes.sh" "$repo/scripts/test-ok.sh" "$q/scripts/"
@@ -243,6 +247,7 @@ modules = [
   # a comment that names [brackets]
   "mod/a/packs/p",
   "mod/b", # trailing comment
+  "plugins/x",
 ]
 
 [test]
@@ -251,7 +256,7 @@ cat >"$q/curated-integration.txt" <<'EOF'
 mod/a | a.CuratedATest | wire  | success | The client half.
 mod/b | b.CuratedBTest | spawn | success | The engine half.
 EOF
-for f in mod/a/A.java mod/a/packs/p/P.java mod/b/B.java docs/d.md README.md; do echo 1 >"$q/$f"; done
+for f in mod/a/A.java mod/a/packs/p/P.java mod/b/B.java plugins/x/X.java docs/d.md README.md; do echo 1 >"$q/$f"; done
 qc() { git -C "$q" add -A && git -C "$q" -c user.name=gate -c user.email=gate@example.invalid commit -qm "$1"; }
 git -C "$q" init -q
 qc base
@@ -326,6 +331,28 @@ gate 8 GATE_TIER=queue GATE_BASE="$qtip"
 got="$(grep -E '^test' "$WORK/calls-8")"
 [[ "$got" == 'test -s integration -c --no-ansi' ]] || fail "a root change ran: $got"
 
+# The Full tier: no slow tier when no plugin changed since its base; the slow tier when one did,
+# and the gate is red when it is.
+gate 13 GATE_TIER=full GATE_BASE="$qtip"
+[[ "$(verdict 13)" == "GREEN $tip" ]] || fail "the Full tier over a root change was not green: $(cat "$WORK/logs/integ-gate-13.log")"
+grep -qx 'test -s slow -c --no-ansi' "$WORK/calls-13" || fail "a root build file change did not run the slow tier: $(cat "$WORK/calls-13")"
+git -C "$q" checkout -q --detach "$qroot"
+echo 2 >"$q/mod/b/B.java" && qc b
+tip="$(git -C "$q" rev-parse HEAD)"
+gate 14 GATE_TIER=full GATE_BASE="$qroot"
+[[ "$(verdict 14)" == "GREEN $tip" ]] || fail "the Full tier with no plugin changed was not green: $(cat "$WORK/logs/integ-gate-14.log")"
+if grep -q -- '-s slow' "$WORK/calls-14"; then fail "the Full tier ran the slow tier with no plugin changed: $(cat "$WORK/calls-14")"; fi
+grep -q '^SLOW skipped' "$WORK/logs/integ-gate-14.log" || fail "the log does not say the slow tier was skipped"
+echo 2 >"$q/plugins/x/X.java" && qc plugin
+tip="$(git -C "$q" rev-parse HEAD)"
+gate 15 GATE_TIER=full GATE_BASE="$qroot"
+[[ "$(verdict 15)" == "GREEN $tip" ]] || fail "the Full tier over a plugin change was not green: $(cat "$WORK/logs/integ-gate-15.log")"
+grep -qx 'test -s slow -c --no-ansi' "$WORK/calls-15" || fail "a plugin change did not run the slow tier: $(cat "$WORK/calls-15")"
+grep -q '^SLOW_EXIT=0 (changed since .*: plugins/x)' "$WORK/logs/integ-gate-15.log" || fail "the log does not say why the slow tier ran: $(cat "$WORK/logs/integ-gate-15.log")"
+gate 16 GATE_TIER=full GATE_BASE="$qroot" FAIL_SLOW=1
+[[ "$(verdict 16)" == "RED" ]] || fail "a red slow tier was not red: $(cat "$WORK/logs/integ-gate-16.log")"
+grep -q '^SLOW_EXIT=4' "$WORK/logs/integ-gate-16.log" || fail "the log does not name the red slow tier"
+
 gate 9 GATE_TIER=fast
 [[ "$(verdict 9)" == "RED (GATE_TIER is 'fast'; full or queue)" ]] || fail "an unknown tier was gated: $(cat "$WORK/logs/integ-gate-9.log")"
 
@@ -338,4 +365,4 @@ if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
     fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
 fi
 
-echo "test-gate: ok (flaky record and quarantine; 12 gate runs; again under a gate's environment)"
+echo "test-gate: ok (flaky record and quarantine; 16 gate runs; again under a gate's environment)"

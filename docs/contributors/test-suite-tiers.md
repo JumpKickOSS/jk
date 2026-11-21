@@ -84,15 +84,16 @@ that the marked table above matches it.
 
 ## Gate tiers
 
-Five tiers judge a change on its way to a release, each cheaper and narrower than the next. Only
-the first two block: a branch does not reach the queue without the Branch tier, and `origin/main`
-does not move without the Queue tier.
+Five tiers judge a change on its way to a release, each cheaper and narrower than the next. The
+first two block: a branch does not reach the queue without the Branch tier, and `origin/main`
+does not move without the Queue tier. The Full tier blocks a release, which is cut from `green`,
+the last commit it passed.
 
 | Tier | Command | What runs | When | Blocks |
 |------|---------|-----------|------|--------|
 | Branch | `scripts/queue/branch-tier.sh` | `jk guard`, then `jk build -e <merge-base>`: the fast tier of the modules the branch changed and their dependents | Before a branch is submitted to the merge queue | The submission |
 | Queue | `GATE_TIER=queue scripts/gate/run.sh <n> <sha>` | `jk guard`; one `jk install -c` (every module's fast tier, then the reinstall); the integration suite of each module the batch changed (`scripts/gate/changed-modules.sh`); the [curated lane](#the-curated-integration-lane)'s classes in every other module; the shell fixtures | Every batch the merge queue gates | The push to `origin/main` |
-| Full | `scripts/gate/run.sh <n> <sha>` (`GATE_TIER=full`) | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration` and `e2e` class); `jk test -s release`; the shell fixtures; the release notes | By hand on a gate host, under the same lock as the queue; before a release ([releases](releases.md)) | Nothing: `main` may be red on it for a cycle or two |
+| Full | `scripts/gate/full-loop.sh`, each cycle `GATE_TIER=full scripts/gate/gate.sh <n> <sha>` | `jk guard`; `jk install -S`; `jk install -g -c` (the fast tier once, with every `integration` and `e2e` class); `jk test -s release`; `jk test -s slow` when a plugin (a member under `plugins/`) or a root build file changed since `green` (`GATE_BASE`); the shell fixtures; the release notes | Back to back on the newest `main`, on the queue's gate host and under its lock ([the Full tier loop](self-host.md#the-full-tier-loop)) | A release: it is cut from `green`. `main` may be red on it for a cycle or two; after two red cycles the queue lands only the fix |
 | Nightly | `ci-nightly.yml` | `integration`, `slow`, `network`, `bench`, the coverage ratchet, the examples | Its schedule, when the workflow is enabled | Nothing |
 | Release | `ci.yml` on the release tag | The fast tier, the curated lane, `release`, the whole `integration` tier, Windows and macOS | `jk release` pushes a tag | The release |
 

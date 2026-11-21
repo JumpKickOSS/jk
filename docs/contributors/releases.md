@@ -229,8 +229,10 @@ path, network-free, against a fixture release signed with a throwaway key.
 
 ## Cutting a release
 
-A release starts with `jk release` on the release commit: it checks the version `jk.toml` declares,
-tags the commit with the `[release] tag` template (`v<version>`, annotated), and commits the next
+A release starts with `jk release` on the release commit, the one origin's `green` branch names:
+the newest commit that passed the Full tier ([self-host](self-host.md#the-full-tier-loop)). It
+checks the version `jk.toml` declares, tags the commit with the `[release] tag` template
+(`v<version>`, annotated), and commits the next
 version to `jk.toml`, the lock, the workspace members and the `[release] files` (the installers'
 floors). Local development then continues on the next version; `jk install` is the inner loop
 for it. `jk release --dry-run` says what it would do.
@@ -490,11 +492,11 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 
 | Step | Where | What |
 |------|-------|------|
-| 1 | release commit | `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; gates green (`jk guard`, `jk install`, `jk install -g`, `jk test -s release`), the [What's new](../user/whats-new.md) entry passes `scripts/release-notes.sh <version>`, `scripts/test-*.sh` pass |
+| 1 | release commit: `git fetch origin && git checkout origin/green` | `scripts/release-green.sh` prints it: the Full tier passed it (`jk guard`, `jk install -g`, `jk test -s release`, `jk test -s slow` when a plugin changed, `scripts/test-*.sh`, the release notes). The release's own changes (the [What's new](../user/whats-new.md) entry, floors) land through the queue first, and the release waits for `green` to reach them. `scripts/release-floors.sh` lists every floor (manifest, installers, locks, guard rules, bootstrap pin, what jumpkick.build serves) and they agree; the What's new entry passes `scripts/release-notes.sh <version>` |
 | 1b | release commit, installed with `jk install` | `scripts/release-check-routes.sh --examples <jk-examples checkout>`: every template, generated fresh, and every example builds twice with the candidate, the second build a no-op, and each template passes `CI=1 jk guard`; every row of `target/release-check-routes/summary.md` is green (`--skip` only a route this host cannot build, named in the release notes) |
 | 2 | any | `jk release --dry-run`, then `jk release --skip-tests`: the tag and the local "Start <next>" commit |
 | 3 **outward** | any, `gh` with write access | `gh workflow disable Release`, then `gh workflow list --all` shows it `disabled_manually`. Only then `git push origin v<version>` (the tag alone) |
-| 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag: it ends `== lane <os>-<arch> done`, its engine jar is `jk-engine-<version>.jar`, its `jk --version` says `jk <version>`, and no file under `out/` names a `SNAPSHOT` (the lane checks the last two) |
+| 4 | each platform's machine | `scripts/release-lane.sh <work-dir>` from a checkout of the tag: it refuses a tag that is not on `green`'s history, and it ends `== lane <os>-<arch> done`, its engine jar is `jk-engine-<version>.jar`, its `jk --version` says `jk <version>`, and no file under `out/` names a `SNAPSHOT` (the lane checks the last two) |
 | 4w **outward** | GitHub Actions, `gh` | windows-x86_64 is not a lane on a machine of ours: `gh workflow run sign-windows.yml --ref v<version>` builds and Authenticode-signs it ([Authenticode](#authenticode-jkexe)); `gh run download` its `release-<version>-windows-x86_64` artifact into the staging directory, then, on a Windows host, `Get-AuthenticodeSignature` on the `jk.exe` inside its `.zip` reports `Valid` and the expected signer, and that `jk.exe --version` says `jk <version>` |
 | 5 | the signing machine | copy every lane's `out/` and the Windows artifact over, `scripts/release-merge.sh <staging> <out>` |
 | 6 | the signing machine | `scripts/release-publish.sh sign <out> <release-key.pem>` |
@@ -503,7 +505,7 @@ The sequence the owner runs, start to finish. Steps marked **outward** change wh
 | 9 **outward** | jk-templates checkout | fast-forward the catalogue's `main` to the branch synced for this release, push |
 | 10 **outward** | the signing machine, `gh` | `scripts/release-publish.sh github <out>` |
 | 11 | any | `scripts/release-publish.sh install-check`, then the post-publish matrix below |
-| 12 **outward** | any | once the CI run on the tag has finished (or is cancelled), `gh workflow enable Release`; commit the bootstrap pin and push `main` |
+| 12 **outward** | any | once the CI run on the tag has finished (or is cancelled), `gh workflow enable Release`; commit the bootstrap pin on top of "Start <next>" and submit that branch to the merge queue (`origin/main` has moved past `green` meanwhile; the queue applies it there) |
 
 **Routes** (`scripts/release-check-routes.sh`). The routes users reach a project by — `jk new` with
 each template of `templates/` and of each first-party plugin, and each project of jk-examples — are

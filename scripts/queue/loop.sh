@@ -17,6 +17,10 @@
 # every ticket its commit subjects start with. A branch never leaves the queue unrecorded: after
 # each batch, every branch it saw is still waiting, landed or ejected, or is recorded as dropped.
 #
+# While the Full tier holds the queue (<QUEUE_REPO>/full-hold, written by scripts/gate/full-loop.sh
+# after red cycles on origin/main), only a fix of what the hold names lands; the other branches wait,
+# recorded as held.
+#
 # Where each branch stands is <QUEUE_REPO>/queue-state/<branch> (scripts/queue/status.sh reads it);
 # every batch is one line of <QUEUE_REPO>/queue-batches.log: its number, base, tip, result and
 # branches. A batch that could not gate at all (a dirty checkout, a failed fetch, no verdict) puts
@@ -116,11 +120,31 @@
   git fetch -q --prune "$repo" "+refs/queue/*:refs/queue-in/*" || { echo "queue: fetching $repo failed" >&2; exit 2; }
   base="$(git rev-parse refs/remotes/origin/main)"
 
+  # While the Full tier holds the queue (scripts/gate/full-loop.sh writes full-hold), a branch is a
+  # fix when one of its commits is for a ticket the hold names or reverts a commit it names.
+  hold="$repo/full-hold"
+  is_fix() {
+    local msgs kind id
+    msgs="$(git log --format='%s%n%b' "$base..$1")"
+    while read -r kind id; do
+      case "$kind" in
+        ticket) awk -v p="$id: " 'index($0, p) == 1 { f = 1 } END { exit !f }' <<<"$msgs" && return 0 ;;
+        commit) grep -qF "This reverts commit $id" <<<"$msgs" && return 0 ;;
+      esac
+    done <"$hold"
+    return 1
+  }
+
   # Waiting branches, oldest tip first. A group split out of a red batch is gated before anything
-  # else, the lowest group first.
+  # else, the lowest group first. A held branch is not gated, and leaves its group.
   names=() shas=() grouped=()
   while read -r name sha; do
     [ -n "$name" ] || continue
+    if [ -f "$hold" ] && ! is_fix "$sha"; then
+      head -1 "$S/$name" 2>/dev/null | grep -q "^waiting $sha held:" \
+        || record "$name" "waiting $sha held: the Full tier is red on origin/main, so only its fix lands ($hold)"
+      continue
+    fi
     g="$(head -1 "$S/$name" 2>/dev/null | sed -n "s/^waiting $sha group \([0-9.]*\): .*/\1/p")"
     [ -z "$g" ] || grouped+=("$g")
     names+=("$name") shas+=("$sha")

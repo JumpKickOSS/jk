@@ -4,8 +4,9 @@
 #
 # The Full tier (GATE_TIER=full, the default): the reinstall without tests (`jk install -S`), then
 # `jk install -g -c` (the fast tier with the gated tiers, run once) under a freshly started engine,
-# the release suite and the release notes. A red `jk install -g` runs once more, only to record the
-# classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red.
+# the release suite, the slow tier when a plugin (a member under plugins/) or a root build file
+# changed since GATE_BASE, and the release notes. A red `jk install -g` runs once more, only to
+# record the classes that pass on that re-run as flaky (scripts/gate/flaky.sh); its verdict stays red.
 #
 # The Queue tier (GATE_TIER=queue), the one that blocks a push from the merge queue: one install
 # that runs every module's fast tier (`jk install -c`), then, under a freshly started engine, the
@@ -28,7 +29,8 @@
 #   GATE_BRANCH       fetch this branch from origin before the checkout (default: no fetch)
 #   GATE_TIER         full (default) or queue
 #   GATE_BASE         the Queue tier's changed modules are those changed since this commit
-#                     (default origin/main)
+#                     (default origin/main); in the Full tier, the slow tier runs when a plugin
+#                     changed since it (default: no slow tier)
 #   PRE_MODULES       modules whose whole suites run first; PRE_MODULE_SUITES their suites
 #   PRE_SCRIPTS       scripts that must pass before guard; POST_SCRIPTS after the fixtures
 #   PRE_REDO          non-empty: the pre-run ignores cached verdicts (`jk test -r`)
@@ -106,7 +108,7 @@
     red "RED (guard)"
   fi
 
-  m=0 s=0 r=0 rn=0
+  m=0 s=0 r=0 rn=0 sl=0
   if [ "$tier" = queue ]; then
     # tested <label> <excusable> <jk args...>: one jk run that runs tests, its exit in $e. A red run
     # is excused when <excusable> is set and it failed only in quarantined classes. Otherwise a run
@@ -241,6 +243,19 @@
     r=$?
     echo "RELEASE_SUITE_EXIT=$r $(date +%H:%M:%S)" >>"$L"
     noansi "$D/g$n-release.log" | grep -E "^(FAIL|T |OK|E )" | tail -4 >>"$L"
+    # The slow tier holds the framework and language e2e the plugins drive (Android, Grails, ...).
+    if [ -n "${GATE_BASE:-}" ]; then
+      mods="$(bash scripts/gate/changed-modules.sh "$GATE_BASE" HEAD 2>>"$L")" || red "RED (changed modules since $GATE_BASE)"
+      plugins="$(grep -E '^(\*|plugins/)' <<<"$mods" | tr '\n' ' ')"
+      if [ -n "$plugins" ]; then
+        jk test -s slow -c --no-ansi >"$D/g$n-slow.log" 2>&1
+        sl=$?
+        echo "SLOW_EXIT=$sl (changed since $GATE_BASE: ${plugins% }) $(date +%H:%M:%S)" >>"$L"
+        noansi "$D/g$n-slow.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
+      else
+        echo "SLOW skipped: no plugin or root build file changed since $GATE_BASE" >>"$L"
+      fi
+    fi
   fi
 
   ff=0
@@ -264,7 +279,7 @@
   fi
   git status --porcelain >>"$L"
 
-  if [ "$eng" -eq 0 ] && [ "$m" -eq 0 ] && [ "$s" -eq 0 ] && [ "$r" -eq 0 ] && [ "$ff" -eq 0 ] \
+  if [ "$eng" -eq 0 ] && [ "$m" -eq 0 ] && [ "$s" -eq 0 ] && [ "$r" -eq 0 ] && [ "$sl" -eq 0 ] && [ "$ff" -eq 0 ] \
     && [ "$rn" -eq 0 ] && [ -z "$(git status --porcelain)" ]; then
     echo "GREEN $(git rev-parse HEAD)" >>"$L"
   else
