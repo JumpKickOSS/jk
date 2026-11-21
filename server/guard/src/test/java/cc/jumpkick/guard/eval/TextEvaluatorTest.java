@@ -11,6 +11,7 @@ import cc.jumpkick.guard.rules.GuardsPresence;
 import cc.jumpkick.guard.rules.LoadResult;
 import cc.jumpkick.guard.schema.Lane;
 import cc.jumpkick.model.GuardsConfig;
+import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -226,6 +227,27 @@ class TextEvaluatorTest {
         assertThat(allowed.outcome()).as("the allow excuses B and is used").isEqualTo(Outcome.CLEAN);
         Evaluation atMost = ev(run(root, rule.replace("min = 1", "max = 1")), "prefix-everywhere");
         assertThat(atMost.outcome()).isEqualTo(Outcome.CLEAN);
+    }
+
+    /** The per-file presence rule docs/user/guards.md shows, run as written. */
+    @Test
+    void the_documented_header_rule_requires_the_header_on_every_files_first_line(@TempDir Path root) throws Exception {
+        String page = Files.readString(RepoRoot.file(TextEvaluatorTest.class, "docs/user/guards.md"));
+        int start = page.indexOf("[guards.spdx-header]");
+        assertThat(start).as("guards.md shows the spdx-header rule").isPositive();
+        String rule = page.substring(start, page.indexOf("```", start));
+        Path a = Files.createDirectories(root.resolve("mod-a/src/main/java/a"));
+        Files.writeString(a.resolve("Headed.java"), "// SPDX-License-Identifier: MIT\npackage a;\nclass Headed {}\n");
+        Files.writeString(a.resolve("Late.java"), "package a;\n// SPDX-License-Identifier: MIT\nclass Late {}\n");
+        Files.writeString(a.resolve("Bare.java"), "package a;\nclass Bare {}\n");
+        Files.writeString(root.resolve("README.md"), "# Readme\n");
+
+        Evaluation e = ev(run(root, rule), "spdx-header");
+
+        assertThat(e.observations())
+                .extracting(Observation::file)
+                .containsExactlyInAnyOrder("mod-a/src/main/java/a/Late.java", "mod-a/src/main/java/a/Bare.java");
+        assertThat(e.observations()).allSatisfy(o -> assertThat(o.detail()).contains("expected at least 1, found 0"));
     }
 
     @Test

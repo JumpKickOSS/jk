@@ -254,6 +254,28 @@ count rises above its entry while the entry follows the count down. `lint.checks
 `lint.spotbugs` and `lint.detekt` count one tool's report alone. A module with no report is skipped;
 no report anywhere is `not-evaluated`, naming the file looked for.
 
+A `text` rule with a `count` judges how often its pattern matches instead of banning it. Under
+`per = "file"`, the default, every file the rule reads is a unit, a file with no match included, so
+`min = 1` requires the pattern in each of them. A licence header on the first line of every Java
+source:
+
+```toml
+[guards.spdx-header]
+kind      = "text"
+pattern   = '\A// SPDX-License-Identifier: \S+'
+blank     = "none"
+languages = ["java"]
+count     = { min = 1, per = "file" }
+hit       = "// SPDX-License-Identifier: Apache-2.0\npackage a;"
+instead   = "// SPDX-License-Identifier: <licence> as the file's first line"
+why       = "a file copied out of the tree keeps its licence"
+```
+
+`blank = "none"` lets the pattern see the header, which the default view blanks with every other
+comment, and `\A` holds it to the first line: a pattern reads the whole file, not one line at a
+time. A file without the header is reported as `count | <path>`, `expected at least 1, found 0`;
+an `allow` entry excuses one file.
+
 The class predicates `classes` reads in `that` and `annotate` reads in `matching` are `reside-in` (a
 package pattern), `annotated-with`, `implement`, `extend`, `assignable-to`, `are` or `be`
 (`interface`, `abstract`, `enum`, `record`, `annotation`, `public`, `final`, `nested`, `top-level`,
