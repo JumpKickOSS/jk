@@ -735,7 +735,11 @@ public final class GraphRunner {
                         "uncompiled",
                         indexes.uncompiled().stream().map(Uncompiled::row).toList())
                 .configList("rules", rules)
-                .configList("libraries", apis ? libraryRows(root) : List.of())
+                .configList(
+                        "libraries",
+                        apis
+                                ? libraryRows(root, "read".equals(r.op()) ? LibrarySources.target(r.args()) : null)
+                                : List.of())
                 .configString("apiCache", apis ? JkStores.resolve("graph-api").toString() : null)
                 .configList("modulePrefixes", prefixes)
                 .configList("aliases", aliasRows(graphConfig(root)))
@@ -1006,9 +1010,10 @@ public final class GraphRunner {
     /**
      * {@code coord \t jar \t sources} for every jar of the workspace lock the store holds, every
      * scope, {@code sources} empty when no {@code -sources.jar} is on disk: what {@code read} and
-     * {@code find} answer a type the workspace does not declare from.
+     * {@code find} answer a type the workspace does not declare from. The sources jar of the one jar
+     * that declares {@code read}'s type, when there is one, is fetched first unless offline.
      */
-    static List<String> libraryRows(Path root) {
+    static List<String> libraryRows(Path root, @Nullable String read) {
         Path lock = root.resolve(ManifestNames.LOCK);
         if (!Files.isRegularFile(lock)) return List.of();
         List<String> out = new ArrayList<>();
@@ -1018,14 +1023,26 @@ public final class GraphRunner {
             boolean m2 = JkM2Config.resolve().integration()
                     && locked.modules().stream().noneMatch(m -> Boolean.FALSE.equals(m.m2integration()));
             ArtifactLocator locator = new ArtifactLocator(cas.root(), m2);
+            Map<Lockfile.Artifact, Path> jars = new LinkedHashMap<>();
             for (ClasspathResolver.Entry e :
                     new ClasspathResolver(cas).entriesOnDisk(locked, EnumSet.allOf(Scope.class))) {
                 Path jar = e.jar();
-                if (jar != null && jar.getFileName().toString().endsWith(".jar")) {
-                    Path sources = locator.locateSources(e.artifact()).orElse(null);
-                    out.add(e.artifact().displayCoord() + "\t" + jar + "\t" + (sources == null ? "" : sources));
+                if (jar != null && jar.getFileName().toString().endsWith(".jar")) jars.putIfAbsent(e.artifact(), jar);
+            }
+            Map<Lockfile.Artifact, @Nullable Path> sources = new HashMap<>();
+            jars.keySet().forEach(a -> sources.put(a, locator.locateSources(a).orElse(null)));
+            if (read != null
+                    && sources.containsValue(null)
+                    && !SessionContext.current().offline()) {
+                Lockfile.Artifact wanted = LibrarySources.declaring(jars, read);
+                if (wanted != null && sources.get(wanted) == null) {
+                    sources.put(wanted, LibrarySources.fetch(cas, m2, locked, wanted, locator));
                 }
             }
+            jars.forEach((artifact, jar) -> {
+                Path s = sources.get(artifact);
+                out.add(artifact.displayCoord() + "\t" + jar + "\t" + (s == null ? "" : s));
+            });
         } catch (IOException | RuntimeException unreadable) {
             Log.debug("graph: no locked jars for " + root, unreadable);
         }

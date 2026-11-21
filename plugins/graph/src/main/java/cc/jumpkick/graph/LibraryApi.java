@@ -161,7 +161,7 @@ final class LibraryApi {
         Path sources = t.jar().sources();
         String why;
         if (sources == null) {
-            why = "no sources jar on this machine (jk sync --sources fetches one when published)";
+            why = "no sources jar (its repository publishes none, or could not be reached)";
         } else {
             String file = sourceFile(t, model);
             String text = entry(sources, file);
@@ -178,18 +178,22 @@ final class LibraryApi {
     }
 
     /**
-     * The answer {@code text}, the type's source file in its sources jar, gives for the type or its
-     * {@code member}; {@code null} when that source does not declare it.
+     * The answer {@code text}, the type's source file in its sources jar, gives for the type, its
+     * public and protected API without bodies, or its {@code member}; {@code null} when that source
+     * does not declare it.
      */
     private static @Nullable String fromSource(
             Type t, @Nullable String member, String file, String text, SymbolReader.@Nullable View view, int budget) {
         Extractor extractor = Extractors.forPath(file);
         if (extractor == null || !Extractors.isJvmSource(file)) return null;
         CodeGraph g = Linker.link(List.of(extractor.extract(file, text)));
-        String head = "[i] " + t.jar().coord() + " is the locked version; source and Javadoc from its sources jar.";
+        String head = "[i] " + t.jar().coord() + " is the locked version; "
+                + (member == null
+                        ? "its public API and Javadoc from its sources jar. Type.member reads a member's source."
+                        : "source and Javadoc from its sources jar.");
         String address = member == null ? t.dotted() : t.dotted() + "." + member;
         String body = new SymbolReader(g, Scope.ALL, rel -> rel.equals(file) ? text : null)
-                .withDocComments()
+                .publicApi()
                 .read(address, view, Math.max(1, budget - head.length() / Budget.CHARS_PER_TOKEN - 1));
         if (body.startsWith("No symbol") || body.startsWith("Nothing at")) return null;
         return head + "\n\n" + body;

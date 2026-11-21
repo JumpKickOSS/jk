@@ -107,7 +107,7 @@ class LibraryApiTest {
         LibraryApi api = new LibraryApi(List.of(new LibraryApi.Jar("org.lib:lib:1.0", jar(dir))), dir.resolve("cache"));
         String out = api.read("Mapper", null, 2000);
         assertThat(out)
-                .startsWith("[i] org.lib:lib:1.0 is the locked version; no sources jar on this machine")
+                .startsWith("[i] org.lib:lib:1.0 is the locked version; no sources jar (its repository publishes none")
                 .contains("signatures from the class file, without Javadoc.")
                 .contains("== org.lib.Mapper  (org.lib:lib:1.0, library)\npublic class Mapper implements Serializable")
                 .contains("  public static final int VERSION")
@@ -154,9 +154,17 @@ class LibraryApiTest {
     void aLibraryTypeReadsInTheRichestViewTheBudgetFits(@TempDir Path dir) throws IOException {
         LibraryApi api = withSources(dir);
         assertThat(api.read("org.lib.Mapper", null, 4000))
+                .startsWith(
+                        "[i] org.lib:lib:1.0 is the locked version; its public API and Javadoc from its sources jar.")
                 .contains("| /** Maps JSON text to objects. */")
                 .contains("| public class Mapper implements java.io.Serializable {")
-                .contains("return null;");
+                .contains("|      * Reads {@code json} as a {@code type}.")
+                .contains("|     public <T> T readValue(byte[] json, Class<T> type) throws IOException {")
+                .contains("|     protected void hook(long millis, int times) {}")
+                .contains("|     public interface Feature {")
+                .doesNotContain("hidden")
+                .doesNotContain("Secret")
+                .doesNotContain("return null;");
         String structure = api.read("org.lib.Mapper", null, 250);
         assertThat(structure)
                 .startsWith("[i] org.lib:lib:1.0 is the locked version")

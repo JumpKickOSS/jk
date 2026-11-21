@@ -178,7 +178,7 @@ class SymbolReaderTest {
     }
 
     @Test
-    void withDocCommentsTheContentViewStartsAtTheDocAboveTheDeclaration() {
+    void aPublicApiReadStartsAtTheDocAboveTheDeclaration() {
         String src = """
                 package a;
                 public class Owner {
@@ -203,11 +203,94 @@ class SymbolReaderTest {
         SymbolReader reader = new SymbolReader(g, Scope.ALL, rel -> src);
         assertThat(reader.read("Owner.pet", View.CONTENT, 2000))
                 .startsWith("== Owner.pet  src/main/java/a/Owner.java:14-16");
-        assertThat(reader.withDocComments().read("Owner.pet", View.CONTENT, 2000))
+        assertThat(reader.publicApi().read("Owner.pet", View.CONTENT, 2000))
                 .startsWith("== Owner.pet  src/main/java/a/Owner.java:10-16")
                 .contains("10|     /**")
                 .contains("13|     @Deprecated");
-        assertThat(reader.withDocComments().read("Owner.name", View.CONTENT, 2000))
+        assertThat(reader.publicApi().read("Owner.name", View.CONTENT, 2000))
                 .startsWith("== Owner.name  src/main/java/a/Owner.java:6-8");
+    }
+
+    @Test
+    void aPublicApiReadOfATypeIsItsPublicDeclarationsWithTheirDocAndNoBodies() {
+        String src = """
+                package a;
+
+                /** Keeps pets. */
+                public class Owner {
+                    /** The largest household. */
+                    public static final int MAX_PETS = 3;
+
+                    private static final int SECRET = 4;
+
+                    /** A new owner. */
+                    public Owner() {}
+
+                    /**
+                     * By name.
+                     */
+                    @Deprecated
+                    public String pet(String name) {
+                        return name + "!";
+                    }
+
+                    protected void groom(int times) {
+                        System.out.println(times);
+                    }
+
+                    private void hidden() {
+                        System.out.println("hidden");
+                    }
+
+                    /** How a pet sleeps. */
+                    public enum Sleep {
+                        CURLED,
+                        STRETCHED;
+
+                        public boolean deep() {
+                            return this == STRETCHED;
+                        }
+                    }
+
+                    private static class Vault {}
+                }
+                """;
+        String rel = "src/main/java/a/Owner.java";
+        CodeGraph g = Linker.link(
+                List.of(Objects.requireNonNull(Extractors.forPath(rel)).extract(rel, src)));
+        SymbolReader api = new SymbolReader(g, Scope.ALL, f -> src).publicApi();
+
+        String content = api.read("a.Owner", View.CONTENT, 4000);
+        assertThat(content)
+                .startsWith("== a.Owner  src/main/java/a/Owner.java:3-")
+                .contains(" 3| /** Keeps pets. */")
+                .contains(" 4| public class Owner {")
+                .contains(" 6|     public static final int MAX_PETS = 3;")
+                .contains("11|     public Owner() {}")
+                .contains("13|     /**")
+                .contains("16|     @Deprecated")
+                .contains("17|     public String pet(String name) {")
+                .contains("21|     protected void groom(int times) {")
+                .contains("29|     /** How a pet sleeps. */")
+                .contains("31|         CURLED,")
+                .contains("32|         STRETCHED;")
+                .contains("34|         public boolean deep() {")
+                .doesNotContain("SECRET")
+                .doesNotContain("hidden")
+                .doesNotContain("Vault")
+                .doesNotContain("return name")
+                .doesNotContain("println");
+
+        assertThat(api.read("a.Owner", View.STRUCTURE, 4000))
+                .contains("public String pet(String name)")
+                .contains("protected void groom(int times)")
+                .doesNotContain("hidden")
+                .doesNotContain("SECRET")
+                .doesNotContain("Vault");
+        assertThat(api.read("Owner.*", View.HEADLINE, 4000))
+                .contains("Owner.pet")
+                .doesNotContain("hidden");
+        assertThat(new SymbolReader(g, Scope.ALL, f -> src).read("a.Owner", View.CONTENT, 4000))
+                .contains("println(\"hidden\")");
     }
 }

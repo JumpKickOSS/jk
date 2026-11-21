@@ -66,7 +66,7 @@ public final class SymbolReader {
     private final Function<String, @Nullable String> files;
     private final Library library;
     private final Function<GraphNode, @Nullable String> inferred;
-    private final boolean docComments;
+    private final boolean api;
 
     /** The Kotlin sources a headline view read to see whether a declaration writes its type. */
     private final Map<String, List<String>> kotlinText = new HashMap<>();
@@ -115,17 +115,21 @@ public final class SymbolReader {
             Function<String, @Nullable String> files,
             Library library,
             Function<GraphNode, @Nullable String> inferred,
-            boolean docComments) {
+            boolean api) {
         this.graph = graph;
         this.scope = scope;
         this.files = files;
         this.library = library;
         this.inferred = inferred;
-        this.docComments = docComments;
+        this.api = api;
     }
 
-    /** This reader, with the {@code content} view of a declaration starting at the doc comment above it. */
-    public SymbolReader withDocComments() {
+    /**
+     * This reader, for a library's source: every view shows only public and protected declarations,
+     * the {@code content} view of a declaration starts at the doc comment above it, and that of a
+     * type is its API, each declaration's doc comment and signature without bodies.
+     */
+    public SymbolReader publicApi() {
         return new SymbolReader(graph, scope, files, library, inferred, true);
     }
 
@@ -254,7 +258,8 @@ public final class SymbolReader {
             spans.addAll(spans(n, from, to));
             return null;
         }
-        List<GraphNode> kids = all ? descendants(n) : children(n);
+        List<GraphNode> kids = (all ? descendants(n) : children(n))
+                .stream().filter(this::shown).toList();
         if (kids.isEmpty()) return "'" + name + "' declares no members.";
         for (GraphNode k : kids) spans.addAll(spans(k, from, to));
         return null;
@@ -424,7 +429,17 @@ public final class SymbolReader {
 
     private void content(Span s, Map<String, List<String>> text, List<String> out) {
         List<String> lines = lines(s.file(), text);
-        int from = Math.max(1, docComments ? docStart(s, lines) : s.from());
+        GraphNode n = s.node();
+        if (api && n != null && Decl.isType(n) && s.from() == Math.max(Decl.line(n), 1) && !lines.isEmpty()) {
+            List<String> body = new ArrayList<>();
+            int width = String.valueOf(Math.min(lines.size(), s.to())).length();
+            signatures(n, lines, width, body);
+            out.add(title(s, Math.max(1, docStart(s, lines)), Math.min(lines.size(), s.to())));
+            out.addAll(body);
+            out.add("");
+            return;
+        }
+        int from = Math.max(1, api ? docStart(s, lines) : s.from());
         int to = Math.min(lines.size(), s.to());
         out.add(title(s, from, to));
         if (lines.isEmpty()) {
@@ -455,6 +470,50 @@ public final class SymbolReader {
             if (l.startsWith("/*") || j < i && l.contains("*/")) return s.from();
         }
         return s.from();
+    }
+
+    /**
+     * The type {@code n} as its API: its doc comment and declaration, an enum's constants, then each
+     * shown member's doc comment and signature, nested types in turn, at their own line numbers.
+     */
+    private void signatures(GraphNode n, List<String> lines, int width, List<String> out) {
+        List<int[]> ranges = new ArrayList<>();
+        ranges.add(new int[] {Math.max(Decl.line(n), 1), Math.min(end(n), lines.size())});
+        ranges.addAll(Decl.more(n));
+        int to = 0;
+        for (int[] r : ranges) {
+            int from = Math.max(1, docStart(new Span(n, n.sourceFile(), r[0], r[1]), lines));
+            to = signatureEnd(r[0], Math.min(r[1], lines.size()), lines);
+            for (int i = from; i <= Math.min(to, lines.size()); i++) out.add(number(i, width) + lines.get(i - 1));
+        }
+        if (!Decl.isType(n)) return;
+        List<GraphNode> kids = children(n);
+        if ("enum".equals(Decl.kind(n))) {
+            int stop = Math.min(ranges.getFirst()[1], kids.isEmpty() ? Integer.MAX_VALUE : Decl.line(kids.getFirst()));
+            for (int i = to + 1; i < stop; i++) {
+                out.add(number(i, width) + lines.get(i - 1));
+                if (lines.get(i - 1).strip().endsWith(";")) break;
+            }
+        }
+        for (GraphNode k : kids) {
+            if (shown(k)) signatures(k, lines, width, out);
+        }
+    }
+
+    /** The line a declaration starting at {@code line} opens its body or ends on, at most {@code limit}. */
+    private static int signatureEnd(int line, int limit, List<String> lines) {
+        for (int i = line; i <= Math.min(limit, line + HEADER_LINES - 1); i++) {
+            String l = lines.get(i - 1);
+            if (l.indexOf('{') >= 0 || l.indexOf(';') >= 0) return i;
+        }
+        return line;
+    }
+
+    /** Whether {@code n} is shown: any declaration, or for a library only one callers outside it can use. */
+    private boolean shown(GraphNode n) {
+        if (!api) return true;
+        String vis = Decl.vis(n);
+        return vis == null || vis.equals("public") || vis.equals("protected");
     }
 
     private void structure(Span s, Map<String, List<String>> text, List<String> out) {
@@ -492,7 +551,9 @@ public final class SymbolReader {
         for (int[] more : Decl.more(n)) out.add(number(more[0], width) + indent + header(n, more[0], lines));
         String kind = Decl.kind(n);
         if (kind != null && !Decl.isType(n)) return;
-        for (GraphNode k : children(n)) declarations(k, lines, width, indent + "  ", out, seen);
+        for (GraphNode k : children(n)) {
+            if (shown(k)) declarations(k, lines, width, indent + "  ", out, seen);
+        }
     }
 
     /**
