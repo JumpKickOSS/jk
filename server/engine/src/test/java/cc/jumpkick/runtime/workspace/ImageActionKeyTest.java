@@ -120,4 +120,39 @@ class ImageActionKeyTest {
                 .as("[image] name, tag or the module version: an image never loaded under the new name")
                 .isNotEqualTo(tokens(mainJar, CONFIG_BASE, workerJar, "renamed:1.0"));
     }
+
+    /**
+     * No order of the dependency jars reaches the image: Jib writes a layer's files sorted by
+     * path and the entrypoint names them by wildcard or sorted, so a reorder keeps the key and a
+     * changed jar moves it.
+     */
+    @Test
+    void the_dependency_jars_key_as_a_set(@TempDir Path tmp) throws Exception {
+        Path mainJar = Files.writeString(tmp.resolve("app.jar"), "app");
+        Path workerJar = Files.writeString(tmp.resolve("worker.jar"), "worker");
+        Path a = Files.writeString(tmp.resolve("a.jar"), "a");
+        Path b = Files.writeString(tmp.resolve("b.jar"), "b");
+        Path s = Files.writeString(tmp.resolve("s.jar"), "s");
+        Path t = Files.writeString(tmp.resolve("t.jar"), "t");
+
+        List<String> ab = tokens(mainJar, workerJar, List.of(a, b), List.of(s, t));
+        assertThat(tokens(mainJar, workerJar, List.of(b, a), List.of(t, s))).isEqualTo(ab);
+
+        Files.writeString(b, "b2");
+        assertThat(tokens(mainJar, workerJar, List.of(a, b), List.of(s, t))).isNotEqualTo(ab);
+    }
+
+    private List<String> tokens(Path mainJar, Path workerJar, List<Path> releases, List<Path> siblings)
+            throws IOException {
+        return ImagePlans.imageTokens(
+                mainJar,
+                new ImagePlans.RuntimeJars(releases, List.of(), siblings, Map.of()),
+                null,
+                "com.example.Main",
+                CONFIG_BASE,
+                config(),
+                "app:1.0",
+                "",
+                workerJar);
+    }
 }

@@ -222,9 +222,8 @@ JumpKick shows you this page's new entries after it updates itself.
   Processors javac finds on the classpath (`-proc:full` or `-processor` with no processor path) keep
   their generated classes across incremental compiles and run again when the classpath changes, at
   the cost of a whole compile of that module whenever a classpath entry is rewritten. Reordering a
-  classpath re-runs tests, rebuilds a native image and a fat jar and reruns a plugin step that names
-  it. Every
-  cached result is rebuilt once after this upgrade.
+  classpath re-runs tests, rebuilds a native image, a fat jar and a javadoc jar and reruns a plugin
+  step that names it. Every cached result is rebuilt once after this upgrade.
 - **The installers refuse a pre-release of the release they ship with, and keep cached templates
   when offline.** A latest-release pointer naming `0.53.1-rc1` is refused under a floor of `0.53.1`.
   An offline reinstall keeps the cached templates instead of deleting them. `install.sh` refuses an

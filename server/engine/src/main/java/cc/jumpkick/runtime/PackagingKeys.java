@@ -41,7 +41,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -704,10 +703,14 @@ public final class PackagingKeys {
         return Hashing.sha256Hex(sb.toString());
     }
 
+    /**
+     * The documented classpath's ABI in its order: javadoc, Dokka and scaladoc resolve a type from
+     * the first entry that holds it, as javac does, so two entries trading places can change the
+     * signatures and inherited members the pages show.
+     */
     private static String classpathAbiToken(List<Path> classpath, ActionKey.EntryToken cp) throws IOException {
         List<String> parts = new ArrayList<>(classpath.size());
         for (Path p : classpath) parts.add(cp.of(p));
-        parts.sort(Comparator.naturalOrder());
         return Hashing.sha256Hex(String.join("\n", parts));
     }
 }

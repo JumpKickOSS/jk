@@ -621,6 +621,10 @@ public final class ImagePlans {
             String appTree,
             Path workerJar)
             throws IOException {
+        // The dependency jars key as sets: no order of them reaches the image. Jib writes a
+        // layer's files sorted by path, the classic entrypoint reads /app/libs/* in directory
+        // order, the AOT one names the jars sorted by name, and the lib-dir layout runs by its
+        // jar's Class-Path, which apptree keys by content.
         return List.of(
                 "mainjar:" + ClasspathFingerprint.entry(mainJar),
                 "deps:" + ClasspathFingerprint.of(jars.releases()),
