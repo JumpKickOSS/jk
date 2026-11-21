@@ -915,7 +915,7 @@ public final class ActionCache {
         Files.createDirectories(target.getParent());
         if (identicalTo(target, blob, sha)) return true;
         Files.deleteIfExists(target);
-        if (Files.size(blob.path()) >= CLONE_MIN_BYTES) {
+        if (blob.size() >= CLONE_MIN_BYTES) {
             try {
                 Files.copy(blob.path(), target);
             } catch (NoSuchFileException vanished) {
