@@ -2,6 +2,8 @@
 package cc.jumpkick.repo;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.Assertions.tuple;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
@@ -107,6 +109,64 @@ class EffectivePomHostClassifierTest {
         assertThat(pom.hostClassified())
                 .as("the chain's own value is not the host's")
                 .isEmpty();
+    }
+
+    @Test
+    void a_dependency_inherited_from_a_parent_keeps_its_host_expression(@TempDir Path tempDir) throws Exception {
+        registerPom("org.demo", "parent", "1.0", """
+                <project>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.openjfx</groupId>
+                      <artifactId>javafx-base</artifactId>
+                      <version>25.0.3</version>
+                      <classifier>${javafx.platform}</classifier>
+                    </dependency>
+                    <dependency>
+                      <groupId>io.grpc</groupId>
+                      <artifactId>protoc-gen-grpc-java</artifactId>
+                      <version>1.70.0</version>
+                      <classifier>${os.detected.classifier}</classifier>
+                      <type>exe</type>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        registerPom("org.demo", "app", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.demo</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>app</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>io.grpc</groupId>
+                      <artifactId>protoc-gen-grpc-java</artifactId>
+                      <version>1.71.0</version>
+                      <classifier>%s</classifier>
+                      <type>exe</type>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(
+                        HostClassifiers.properties().get("os.detected.classifier")));
+
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.demo", "app", "1.0"));
+
+        assertThat(pom.dependencies())
+                .extracting(Pom.Dep::module, Pom.Dep::version)
+                .containsExactlyInAnyOrder(
+                        tuple("org.openjfx:javafx-base", "25.0.3"), tuple("io.grpc:protoc-gen-grpc-java", "1.71.0"));
+        assertThat(pom.hostClassified())
+                .as("the parent's host-classified dependency carries its expression; the one the child"
+                        + " redeclares with a written classifier does not")
+                .containsExactly(entry("org.openjfx:javafx-base", "${javafx.platform}"));
     }
 
     private EffectivePomBuilder newBuilder(Path tempDir) {

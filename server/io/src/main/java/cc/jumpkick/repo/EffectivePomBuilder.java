@@ -426,8 +426,8 @@ public final class EffectivePomBuilder {
         List<Pom.Dep> mergedDeps = new ArrayList<>();
         if (parent != null) mergedDeps.addAll(parent.dependencies());
         mergedDeps.addAll(child.dependencies());
-        Map<String, String> hostClassified = hostClassified(mergedDeps, props);
         mergedDeps = dedupeByModule(substituteAll(mergedDeps, props));
+        Map<String, String> hostClassified = hostClassified(child.dependencies(), parent, props);
 
         // 5. Apply dependencyManagement defaults. Maven fills in not just the
         // version but the scope / type / classifier / exclusions a dep leaves
@@ -537,14 +537,26 @@ public final class EffectivePomBuilder {
     }
 
     /**
-     * The dependencies whose classifier is still a {@code ${...}} expression that a host property
-     * (and not the chain's own properties) will fill, keyed by valued module, valued by the
-     * expression.
+     * The dependencies whose classifier a host property (and not the chain's own properties) filled,
+     * keyed by valued module, valued by the {@code ${...}} expression. The child's own are read off
+     * its classifiers as written. The parent's arrive valued, so they come from the parent's map,
+     * except one the child redeclares, which replaces it.
      */
-    private static Map<String, String> hostClassified(List<Pom.Dep> deps, Map<String, String> props) {
+    private static Map<String, String> hostClassified(
+            List<Pom.Dep> own, @Nullable EffectivePom parent, Map<String, String> props) {
         Map<String, String> out = new LinkedHashMap<>();
+        if (parent != null && !parent.hostClassified().isEmpty()) {
+            Set<String> ownKeys = new HashSet<>();
+            for (Pom.Dep dep : substituteAll(own, props)) ownKeys.add(depKey(dep));
+            for (Pom.Dep dep : parent.dependencies()) {
+                String expression = parent.hostClassified().get(dep.module());
+                if (expression != null && !ownKeys.contains(depKey(dep))) {
+                    out.put(dep.module(), expression);
+                }
+            }
+        }
         Map<String, String> hostWords = HostClassifiers.properties();
-        for (Pom.Dep dep : deps) {
+        for (Pom.Dep dep : own) {
             String classifier = dep.classifier();
             if (classifier == null) continue;
             Matcher m = PomInterpolation.PROPERTY_REF.matcher(classifier);

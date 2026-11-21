@@ -419,8 +419,9 @@ add the repository that publishes it to `[repositories]` and re-run `jk lock`.
 
 ## Rows that follow the host
 
-A dependency POM may spell a classifier with a property Maven values from the machine —
-OpenJFX's `${javafx.platform}`, os-maven-plugin's `${os.detected.classifier}`. The row `jk lock`
+A dependency POM, or a parent it inherits dependencies from, may spell a classifier with a
+property Maven values from the machine — OpenJFX's `${javafx.platform}`, os-maven-plugin's
+`${os.detected.classifier}`. The row `jk lock`
 writes for such an edge is the artifact of the host that ran it (`org.openjfx:javafx-graphics:jar:linux`),
 and the lock output carries one note per edge naming the module, the classifier it took and the
 expression the POM wrote. Relocking on another platform rewrites those rows for that platform;
