@@ -41,6 +41,16 @@ public interface WorkspaceBuildListener {
      */
     default void onPreflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {}
 
+    /**
+     * {@link #onPreflightFailed(String, long, String, SourceLocation)} for a lock freshen whose
+     * resolve has no solution, with its {@code conflict} as one JSON object for readers that are not
+     * a person ({@code ""} for any other failure).
+     */
+    default void onPreflightFailed(
+            String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
+        onPreflightFailed(stage, millis, reason, at);
+    }
+
     /** The resolved modules in dependency order, each with its assembled plan + estimated weight. */
     default void onPlan(List<ModulePlan> plan) {}
 

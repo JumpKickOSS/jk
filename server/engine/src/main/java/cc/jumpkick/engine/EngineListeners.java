@@ -116,8 +116,9 @@ public final class EngineListeners {
             }
 
             @Override
-            public void preflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
-                journal.accPreflightFailed(rid, stage, millis, reason, at);
+            public void preflightFailed(
+                    String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
+                journal.accPreflightFailed(rid, stage, millis, reason, at, conflict);
             }
 
             @Override

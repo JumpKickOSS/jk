@@ -174,9 +174,9 @@ public final class JournalWriter {
     }
 
     public void accPreflightFailed(
-            long requestId, String stage, long millis, String reason, @Nullable SourceLocation at) {
+            long requestId, String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
         BuildAccumulator a = sessions.accumulator(requestId);
-        if (a != null) a.addPreflightFailure(stage, millis, reason, at);
+        if (a != null) a.addPreflightFailure(stage, millis, reason, at, conflict);
     }
 
     /** A compiler warning a module the run did not build said again; the reports carry it as the module's. */

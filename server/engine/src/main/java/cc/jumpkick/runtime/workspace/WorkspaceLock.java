@@ -66,14 +66,15 @@ public final class WorkspaceLock {
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), false, repoUrl);
             if (r.status() == 0) return BuildService.LockGuard.OK;
             return new BuildService.LockGuard(
-                    r.status(), onDisk ? AutoLock.RefreshFailed.message(staleness, r.error()) : r.error(), null);
+                    r.status(), onDisk ? AutoLock.RefreshFailed.message(staleness, r.error()) : r.error(), null, "");
         } catch (UnsatisfiableException e) {
-            return new BuildService.LockGuard(Exit.RESOLVE, e.getMessage(), FailureLocation.of(e, root));
+            return new BuildService.LockGuard(
+                    Exit.RESOLVE, e.getMessage(), FailureLocation.of(e, root), e.conflictJson());
         } catch (Exception e) {
             // Never carry on with a stale lock in silence: the build stops, naming why.
             String reason = Errors.text(e);
             return new BuildService.LockGuard(
-                    Exit.RESOLVE, onDisk ? AutoLock.RefreshFailed.message(staleness, reason) : reason, null);
+                    Exit.RESOLVE, onDisk ? AutoLock.RefreshFailed.message(staleness, reason) : reason, null, "");
         }
     }
 

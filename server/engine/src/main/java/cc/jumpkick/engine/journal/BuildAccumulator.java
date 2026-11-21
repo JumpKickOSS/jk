@@ -656,15 +656,27 @@ public final class BuildAccumulator {
      * terminal cannot relabel it as a cancel, and {@code jk-results.md} names what the solver said.
      */
     public void addPreflightFailure(String stage, long millis, String reason, @Nullable SourceLocation at) {
+        addPreflightFailure(stage, millis, reason, at, "");
+    }
+
+    /** As above, the error carrying a resolve with no solution's {@code conflict} ({@code ""} for none). */
+    public void addPreflightFailure(
+            String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
         String step = stage == null || stage.isBlank() ? "preflight" : stage;
         addTask("", step, "resolve", "FAIL", millis, 0L);
         anyFailure = true;
-        addDiag(locatedError(step, step, reason == null ? "" : reason, at));
+        addDiag(locatedError(step, step, reason == null ? "" : reason, at, conflict));
     }
 
     /** An error row with no module, step output or test identity, at {@code at} when known. */
     private static BuildRecord.Diag locatedError(
             @Nullable String step, String code, String message, @Nullable SourceLocation at) {
+        return locatedError(step, code, message, at, "");
+    }
+
+    /** As above, carrying a resolve with no solution's {@code conflict} ({@code ""} for none). */
+    private static BuildRecord.Diag locatedError(
+            @Nullable String step, String code, String message, @Nullable SourceLocation at, String conflict) {
         return new BuildRecord.Diag(
                 "error",
                 "",
@@ -683,7 +695,10 @@ public final class BuildAccumulator {
                 at == null ? 0 : at.column(),
                 0,
                 List.of(),
-                0);
+                0,
+                "",
+                "",
+                conflict);
     }
 
     /**

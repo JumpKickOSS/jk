@@ -4,11 +4,14 @@ package cc.jumpkick.engine.listen;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.BuildPlan;
+import cc.jumpkick.run.SourceLocation;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.wire.runtime.ModulePlan;
 import cc.jumpkick.wire.runtime.StepCost;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
@@ -34,6 +37,28 @@ class BridgingWorkspaceListenerTest {
         assertThat(phase.name()).isEqualTo("resolve");
         assertThat(phase.status()).isEqualTo("start");
         assertThat(preflights.get()).isEqualTo(1);
+    }
+
+    /** A lock freshen with no solution hands its conflict to the journal, and the stream no line. */
+    @Test
+    void a_preflight_failure_hands_its_conflict_to_the_journal() {
+        RecordingEventSink sink = new RecordingEventSink();
+        List<String> journaled = new ArrayList<>();
+        BridgingWorkspaceListener listener =
+                new BridgingWorkspaceListener("ws", sink, new BridgingWorkspaceListener.Hooks() {
+                    @Override
+                    public void preflightFailed(
+                            String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
+                        journaled.add(stage + "|" + reason + "|" + conflict);
+                    }
+                });
+
+        listener.onPreflightFailed("lock", 40, "Cannot resolve dependencies", null, "{\"packages\":[\"a:b\"]}");
+        listener.onPreflightFailed("format", 1, "unformatted", null);
+
+        assertThat(journaled)
+                .containsExactly("lock|Cannot resolve dependencies|{\"packages\":[\"a:b\"]}", "format|unformatted|");
+        assertThat(sink.events()).isEmpty();
     }
 
     @Test

@@ -383,7 +383,8 @@ public final class WorkspacePreflightPhase {
         }
         if (guard.status() != 0) {
             String error = guard.error() != null ? guard.error() : "dependency resolution failed";
-            listener.onPreflightFailed("lock", (clock.nanos() - started) / 1_000_000L, error, guard.location());
+            listener.onPreflightFailed(
+                    "lock", (clock.nanos() - started) / 1_000_000L, error, guard.location(), guard.conflict());
             return Optional.of(completed(false, guard.status(), List.of(error)));
         }
         listener.onPreflight("lock", 1, 1, "Workspace lock ready");

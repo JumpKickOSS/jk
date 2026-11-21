@@ -42,15 +42,13 @@ public final class BuildService {
     private BuildService() {}
 
     /**
-     * Outcome of the pre-build workspace lock-freshness guard.
-     *
-     * @param status process exit code — {@code 0} means the lock is fresh (or was re-locked OK)
-     * @param error a bare message to surface (no command prefix), or {@code null}
+     * A lock freshen's verdict: its exit status ({@code 0} when the lock is fresh or was re-locked),
+     * the reason it failed as a bare message, where in the project that points, and a resolve with
+     * no solution's conflict as one JSON object ({@code ""} for any other failure).
      */
-    /** A lock freshen's verdict: its exit status, the reason it failed and where in the project that points. */
     public record LockGuard(
-            int status, @Nullable String error, @Nullable SourceLocation location) {
-        public static final LockGuard OK = new LockGuard(0, null, null);
+            int status, @Nullable String error, @Nullable SourceLocation location, String conflict) {
+        public static final LockGuard OK = new LockGuard(0, null, null, "");
     }
 
     /**

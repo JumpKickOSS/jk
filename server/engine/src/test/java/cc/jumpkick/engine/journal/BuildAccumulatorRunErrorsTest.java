@@ -61,4 +61,18 @@ class BuildAccumulatorRunErrorsTest {
                 .containsExactlyInAnyOrder(
                         tuple("run-error", "/ws/jk.toml", 4, 1), tuple("lock", "/ws/app/jk.toml", 7, 1));
     }
+
+    @Test
+    void a_preflight_failure_with_no_solution_keeps_its_conflict_on_the_error_row() {
+        BuildAccumulator a = new BuildAccumulator("build", "/ws", "g:ws", "cli");
+        String conflict = "{\"facts\":[{\"kind\":\"no-versions\",\"package\":\"a:b\"}]}";
+        a.addPreflightFailure("lock", 40, "no version of a:b satisfies 2.0", null, conflict);
+
+        BuildRecord r = a.toRecord(2_000, false, 100, "9.9", null);
+
+        assertThat(r.diagnostics()).singleElement().satisfies(d -> {
+            assertThat(d.step()).isEqualTo("lock");
+            assertThat(d.conflict()).isEqualTo(conflict);
+        });
+    }
 }

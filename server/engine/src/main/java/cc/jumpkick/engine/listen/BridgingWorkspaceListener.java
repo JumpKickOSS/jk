@@ -33,7 +33,9 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
     public interface Hooks {
         default void preflight(String stage, int done, int total) {}
 
-        default void preflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {}
+        /** A preflight step failed; {@code conflict} is a resolve with no solution's, {@code ""} otherwise. */
+        default void preflightFailed(
+                String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {}
 
         default void workModel(WorkModel model) {}
 
@@ -106,7 +108,14 @@ public final class BridgingWorkspaceListener implements WorkspaceBuildListener {
      */
     @Override
     public void onPreflightFailed(String stage, long millis, String reason, @Nullable SourceLocation at) {
-        hooks.preflightFailed(stage == null ? "" : stage, millis, reason == null ? "" : reason, at);
+        onPreflightFailed(stage, millis, reason, at, "");
+    }
+
+    @Override
+    public void onPreflightFailed(
+            String stage, long millis, String reason, @Nullable SourceLocation at, String conflict) {
+        hooks.preflightFailed(
+                stage == null ? "" : stage, millis, reason == null ? "" : reason, at, conflict == null ? "" : conflict);
     }
 
     @Override
