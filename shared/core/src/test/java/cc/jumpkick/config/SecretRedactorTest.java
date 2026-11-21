@@ -7,8 +7,10 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import org.junit.jupiter.api.Test;
@@ -49,6 +51,68 @@ class SecretRedactorTest {
     void longer_secrets_are_replaced_before_shorter_prefixes() {
         SecretRedactor r = SecretRedactor.of(List.of("abcdef", "abcdefghij"));
         assertThat(r.redact("x-abcdefghij-y")).isEqualTo("x-" + SecretRedactor.MASK + "-y");
+    }
+
+    @Test
+    void overlapping_secrets_are_masked_together_leaving_no_piece_of_either() {
+        List<String> overlapping = List.of("cdefghij", "abcdef");
+        List<String> many = new ArrayList<>(overlapping);
+        for (int i = 0; many.size() <= SecretRedactor.AUTOMATON_ABOVE; i++) many.add("unrelated-filler-" + i);
+        for (List<String> secrets : List.of(overlapping, many)) {
+            SecretRedactor r = SecretRedactor.of(secrets);
+            assertThat(r.redact("x abcdefghij y"))
+                    .as("%d secrets", secrets.size())
+                    .isEqualTo("x *** y");
+            assertThat(r.redact("abcdefcdefghij")).as("touching").isEqualTo("******");
+            assertThat(r.redact("abcdef abcdef")).isEqualTo("*** ***");
+            assertThat(r.containsSecret("--cdefghij--")).isTrue();
+            assertThat(r.containsSecret("abcde fghij")).isFalse();
+            assertThat(r.forCacheKey("plain")).isEqualTo("plain");
+        }
+    }
+
+    /** One pass of the automaton masks exactly what a scan per secret finds. */
+    @Test
+    void many_secrets_mask_what_a_scan_per_secret_finds() {
+        Random random = new Random(20261121L);
+        for (int round = 0; round < 200; round++) {
+            List<String> secrets = new ArrayList<>();
+            for (int i = 0; i < 9 + random.nextInt(40); i++) secrets.add(word(random, 6 + random.nextInt(6)));
+            SecretRedactor r = SecretRedactor.of(secrets);
+            String text = word(random, random.nextInt(300));
+            assertThat(r.redact(text)).as("%s in %s", secrets, text).isEqualTo(naive(secrets, text));
+            assertThat(r.containsSecret(text)).isEqualTo(secrets.stream().anyMatch(text::contains));
+        }
+    }
+
+    private static String word(Random random, int length) {
+        StringBuilder b = new StringBuilder(length);
+        for (int i = 0; i < length; i++) b.append("abc".charAt(random.nextInt(3)));
+        return b.toString();
+    }
+
+    /** Every char any occurrence covers, each run of overlapping occurrences one mask. */
+    private static String naive(List<String> secrets, String text) {
+        int[] reach = new int[text.length()];
+        Arrays.fill(reach, -1);
+        for (String s : secrets) {
+            for (int at = text.indexOf(s); at >= 0; at = text.indexOf(s, at + 1)) {
+                reach[at] = Math.max(reach[at], at + s.length());
+            }
+        }
+        StringBuilder out = new StringBuilder();
+        int i = 0;
+        while (i < text.length()) {
+            if (reach[i] < 0) {
+                out.append(text.charAt(i++));
+                continue;
+            }
+            int end = reach[i];
+            for (int j = i + 1; j < end; j++) end = Math.max(end, reach[j]);
+            out.append(SecretRedactor.MASK);
+            i = end;
+        }
+        return out.toString();
     }
 
     @Test

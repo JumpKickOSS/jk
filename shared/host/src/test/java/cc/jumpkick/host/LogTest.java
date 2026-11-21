@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.UnaryOperator;
 import java.util.logging.Logger;
 import org.junit.jupiter.api.AfterEach;
@@ -39,6 +42,34 @@ class LogTest {
         sink.print("still-open");
         assertThat(sink.checkError()).isFalse();
         assertThat(written()).contains("still-open");
+    }
+
+    @Test
+    void a_line_still_being_redacted_does_not_hold_up_another_thread_s_line() throws Exception {
+        CountDownLatch redacting = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        install(System.Logger.Level.INFO, text -> {
+            if (text.contains("slow line")) {
+                redacting.countDown();
+                try {
+                    release.await(30, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return text;
+        });
+        Thread slow = new Thread(() -> Log.info("slow line"));
+        slow.start();
+        try {
+            assertThat(redacting.await(10, TimeUnit.SECONDS)).isTrue();
+            CompletableFuture.runAsync(() -> Log.info("fast line")).get(10, TimeUnit.SECONDS);
+            assertThat(written()).contains("fast line").doesNotContain("slow line");
+        } finally {
+            release.countDown();
+            slow.join(10_000);
+        }
+        assertThat(written()).contains("slow line");
     }
 
     @Test

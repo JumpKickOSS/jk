@@ -4,7 +4,6 @@ package cc.jumpkick.host;
 import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -12,12 +11,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
+import java.util.logging.ErrorManager;
 import java.util.logging.Formatter;
 import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
-import java.util.logging.StreamHandler;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -137,28 +136,8 @@ public final class Log {
             h.flush();
             root.removeHandler(h);
         }
-        // StreamHandler.close() closes its stream. A worker's stderr is merged into the
-        // protocol pipe, so that close must not close the process's stderr.
-        PrintStream sink = new PrintStream(out, false, StandardCharsets.UTF_8) {
-            @Override
-            public void close() {
-                flush();
-            }
-        };
-        Handler handler = new StreamHandler(sink, new LineFormatter(redact)) {
-            @Override
-            public synchronized void publish(LogRecord record) {
-                super.publish(record);
-                flush();
-            }
-        };
-        handler.setLevel(Level.ALL);
-        try {
-            handler.setEncoding("UTF-8");
-        } catch (UnsupportedEncodingException impossible) {
-            throw new IllegalStateException(impossible);
-        }
-        root.addHandler(handler);
+        root.addHandler(
+                new LineHandler(new PrintStream(out, false, StandardCharsets.UTF_8), new LineFormatter(redact)));
         root.setLevel(Level.INFO);
         Logger jk = Logger.getLogger(Backend.LOGGER.getName());
         jk.setLevel(julLevel(level));
@@ -182,6 +161,47 @@ public final class Log {
             case ERROR -> Level.SEVERE;
             case OFF -> Level.OFF;
         };
+    }
+
+    /**
+     * Writes each record as one line to {@code sink}. The record is formatted and redacted on the
+     * logging thread before the write lock is taken, so threads logging at once wait only for each
+     * other's writes. Closing it leaves the stream open: a worker's stderr is its protocol pipe.
+     */
+    private static final class LineHandler extends Handler {
+        private final PrintStream sink;
+
+        LineHandler(PrintStream sink, Formatter formatter) {
+            this.sink = sink;
+            setFormatter(formatter);
+            setLevel(Level.ALL);
+        }
+
+        @Override
+        public void publish(LogRecord record) {
+            if (!isLoggable(record)) return;
+            String line;
+            try {
+                line = getFormatter().format(record);
+            } catch (RuntimeException e) {
+                reportError(null, e, ErrorManager.FORMAT_FAILURE);
+                return;
+            }
+            synchronized (this) {
+                sink.print(line);
+                sink.flush();
+            }
+        }
+
+        @Override
+        public void flush() {
+            sink.flush();
+        }
+
+        @Override
+        public void close() {
+            flush();
+        }
     }
 
     /** {@code HH:mm:ss.SSS LEVEL message\n[stack]}, redacted as one text. */

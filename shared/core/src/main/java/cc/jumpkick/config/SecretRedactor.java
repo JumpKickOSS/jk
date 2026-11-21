@@ -65,8 +65,17 @@ public final class SecretRedactor {
 
     private static final SecretRedactor NONE = new SecretRedactor(List.of());
 
-    /** Longest first so a value that is a prefix of another never leaves a residue. */
+    /**
+     * Above this many secrets a text is scanned once by a {@link SecretAutomaton} rather than once per
+     * secret: the engine log's redactor knows every secret the process has seen.
+     */
+    static final int AUTOMATON_ABOVE = 8;
+
+    /** Longest first, so the longest value is the first a dangling prefix is matched against. */
     private final List<String> secrets;
+
+    /** Built on first use, for a redactor with more than {@link #AUTOMATON_ABOVE} secrets. */
+    private volatile @Nullable SecretAutomaton automaton;
 
     private SecretRedactor(List<String> secrets) {
         this.secrets = List.copyOf(secrets);
@@ -146,7 +155,7 @@ public final class SecretRedactor {
 
     private static List<String> sorted(Collection<String> values) {
         List<String> list = new ArrayList<>(values);
-        // Longest first: replacing a shorter substring first can leave pieces of a longer secret.
+        // Longest first, then by value, so one set of secrets always builds the same redactor.
         list.sort(Comparator.comparingInt(String::length).reversed().thenComparing(s -> s));
         return list;
     }
@@ -209,6 +218,7 @@ public final class SecretRedactor {
     /** True when {@code text} contains at least one known secret substring. */
     public boolean containsSecret(String text) {
         if (text == null || text.isEmpty() || secrets.isEmpty()) return false;
+        if (secrets.size() > AUTOMATON_ABOVE) return automaton().matchesIn(text);
         for (String s : secrets) {
             if (text.contains(s)) return true;
         }
@@ -216,16 +226,30 @@ public final class SecretRedactor {
     }
 
     /**
-     * Replace every occurrence of a known secret in {@code text} with {@link #MASK}. Null stays
-     * null; when there are no secrets the input is returned unchanged.
+     * Replace every occurrence of a known secret in {@code text} with {@link #MASK}; secrets that
+     * overlap are masked together, so no piece of either is left. Null stays null; when there are no
+     * secrets the input is returned unchanged.
      */
     public String redact(String text) {
         if (text == null || text.isEmpty() || secrets.isEmpty()) return text;
-        String out = text;
-        for (String s : secrets) {
-            if (out.contains(s)) out = out.replace(s, MASK);
+        SecretAutomaton.Spans spans = new SecretAutomaton.Spans();
+        if (secrets.size() > AUTOMATON_ABOVE) {
+            automaton().find(text, spans);
+        } else {
+            for (String s : secrets) {
+                for (int at = text.indexOf(s); at >= 0; at = text.indexOf(s, at + 1)) spans.add(at, at + s.length());
+            }
         }
-        return out;
+        return spans.mask(text, MASK);
+    }
+
+    private SecretAutomaton automaton() {
+        SecretAutomaton a = automaton;
+        if (a == null) {
+            a = new SecretAutomaton(secrets);
+            automaton = a;
+        }
+        return a;
     }
 
     /**
