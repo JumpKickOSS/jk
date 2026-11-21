@@ -142,30 +142,44 @@ public final class VersionRanges {
         if (comma < 0) {
             // One version is Maven's exact pin, [1.0]; with no version, or a bound that points
             // away from it, the range names nothing.
-            String only = inner.trim();
-            if (only.isEmpty() || !minInclusive || !maxInclusive) {
+            if (!minInclusive || !maxInclusive) {
                 throw new IllegalArgumentException("malformed Maven range: " + spec);
             }
+            String only = version(inner, spec);
             return sets.between(only, true, only, true);
         }
-        String minStr = inner.substring(0, comma).trim();
-        String maxStr = inner.substring(comma + 1).trim();
-        String min = minStr.isEmpty() ? null : minStr;
-        String max = maxStr.isEmpty() ? null : maxStr;
+        String minStr = inner.substring(0, comma);
+        String maxStr = inner.substring(comma + 1);
+        String min = minStr.isBlank() ? null : version(minStr, spec);
+        String max = maxStr.isBlank() ? null : version(maxStr, spec);
         if (min == null && max == null) return sets.all();
         if (min == null) return sets.between(null, false, Objects.requireNonNull(max), maxInclusive);
         if (max == null) return sets.between(min, minInclusive, null, false);
         return sets.between(min, minInclusive, max, maxInclusive);
     }
 
+    /**
+     * One comparator: {@code >=1.0}, {@code >1.0}, {@code <=2}, {@code <2}, {@code =1.0} or a bare
+     * version. The version after the operator is required, so {@code >=} alone is refused, and so
+     * is {@code >=1.0 <2.0}, a space written for the comma, which would read as one version.
+     */
     private static <S> S readComparator(String spec, Sets<S> sets) {
-        if (spec.startsWith(">=")) return sets.between(spec.substring(2).trim(), true, null, false);
-        if (spec.startsWith(">")) return sets.between(spec.substring(1).trim(), false, null, false);
-        if (spec.startsWith("<="))
-            return sets.between(null, false, spec.substring(2).trim(), true);
-        if (spec.startsWith("<"))
-            return sets.between(null, false, spec.substring(1).trim(), false);
-        String exact = spec.startsWith("=") ? spec.substring(1).trim() : spec;
+        if (spec.startsWith(">=")) return sets.between(version(spec.substring(2), spec), true, null, false);
+        if (spec.startsWith(">")) return sets.between(version(spec.substring(1), spec), false, null, false);
+        if (spec.startsWith("<=")) return sets.between(null, false, version(spec.substring(2), spec), true);
+        if (spec.startsWith("<")) return sets.between(null, false, version(spec.substring(1), spec), false);
+        String exact = version(spec.startsWith("=") ? spec.substring(1) : spec, spec);
         return sets.between(exact, true, exact, true);
+    }
+
+    /** {@code raw} trimmed, refused when nothing is left or a space sits inside it: no version holds one. */
+    private static String version(String raw, String spec) {
+        String version = raw.trim();
+        if (version.isEmpty())
+            throw new IllegalArgumentException("malformed version range: " + spec + " names no version");
+        if (version.chars().anyMatch(Character::isWhitespace)) {
+            throw new IllegalArgumentException("malformed version range: " + spec + " holds a space inside a version");
+        }
+        return version;
     }
 }

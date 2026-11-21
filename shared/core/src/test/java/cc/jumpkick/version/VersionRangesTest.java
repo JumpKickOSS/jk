@@ -24,7 +24,9 @@ class VersionRangesTest {
                 ">1.0",
                 "<=2",
                 "=1.0",
-                "[1.0,1.0]"
+                "[1.0,1.0]",
+                ">= 1.2, < 2",
+                "[ 1.0 , 2.0 )"
             })
     void a_range_the_resolver_reads_passes_the_check(String spec) {
         assertThatCode(() -> VersionRanges.check(spec)).doesNotThrowAnyException();
@@ -34,5 +36,13 @@ class VersionRangesTest {
     @ValueSource(strings = {"(1.0)", "[1.0)", "[]", "()", "[1.0,2.0", "[1.0,2.0),3.0]", ",", "[2.0,1.0]", "(1.0,1.0]"})
     void a_range_that_names_no_version_is_refused(String spec) {
         assertThatThrownBy(() -> VersionRanges.check(spec)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {">=", ">=,<2", "<", "=", ">=1.0 <2.0", "1.0 2.0", "[1.0 2.0]", "[1.0,2 .0)"})
+    void a_bound_that_is_empty_or_holds_a_space_is_refused(String spec) {
+        assertThatThrownBy(() -> VersionRanges.check(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageStartingWith("malformed version range");
     }
 }
