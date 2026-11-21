@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.EngineInstall.ClientKind;
 import cc.jumpkick.cache.EngineInstall.InstalledClient;
+import cc.jumpkick.cache.PathClients;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,7 +48,7 @@ public final class InstalledClients {
 
     /**
      * This process when it is the installed PATH client: the JVM client its launcher names, or this
-     * native image when it is the binary {@link EngineInstall#pathClient} names under {@code binDir}.
+     * native image when it is the binary {@link PathClients#pathClient} names under {@code binDir}.
      * A client run from anywhere else (a build's dist, a test) is no installed client.
      */
     public static Optional<Self> installedSelf(Path binDir) {
@@ -59,7 +60,7 @@ public final class InstalledClients {
         Optional<String> exe = ProcessHandle.current().info().command();
         if (exe.isEmpty()) return Optional.empty();
         Path self = Path.of(exe.get());
-        Path onPath = EngineInstall.pathClient(binDir);
+        Path onPath = PathClients.pathClient(binDir);
         try {
             return Files.isRegularFile(onPath) && Files.isSameFile(self, onPath)
                     ? Optional.of(new Self(self, ClientKind.NATIVE))

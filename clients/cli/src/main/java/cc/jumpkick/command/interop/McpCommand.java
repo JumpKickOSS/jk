@@ -2,6 +2,7 @@
 package cc.jumpkick.command.interop;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.api.ProjectRoots;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -128,7 +129,7 @@ public final class McpCommand implements CliCommand {
 
     /** {@code bin/jk engine start}: the installed release starts its engine; its output stays off this bridge's stdout. */
     private static void startInstalledEngine(String version) throws IOException {
-        Path jk = EngineInstall.pathClient(JkDirs.binDir());
+        Path jk = PathClients.pathClient(JkDirs.binDir());
         if (!Files.isRegularFile(jk)) {
             throw new IOException(
                     "JumpKick was updated to " + version + " but " + jk + " is missing; reinstall JumpKick");

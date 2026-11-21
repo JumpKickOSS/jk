@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.command.pipeline.InstallCommand;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
@@ -89,7 +90,7 @@ class InstallProductBinTest {
 
         pointer.rollback(cas, EngineInstall.nativeClients(bin));
 
-        assertThat(EngineInstall.pathClient(bin)).hasContent("client 0.51.0-SNAPSHOT");
+        assertThat(PathClients.pathClient(bin)).hasContent("client 0.51.0-SNAPSHOT");
         assertThat(pointer.currentInstall().orElseThrow().version()).isEqualTo("0.51.0-SNAPSHOT");
     }
 
@@ -115,7 +116,7 @@ class InstallProductBinTest {
         assertThat(previous.version()).isEqualTo("1.0.0");
         assertThat(Objects.requireNonNull(previous.client()).sha256())
                 .isEqualTo(Hashing.sha256Hex(target.resolve("jk-a")));
-        assertThat(EngineInstall.pathClient(bin)).hasContent("client C");
+        assertThat(PathClients.pathClient(bin)).hasContent("client C");
     }
 
     @Test
@@ -140,7 +141,7 @@ class InstallProductBinTest {
                 .hasMessage("jk 0.51.0 is installed, newer than 0.51.0-SNAPSHOT; nothing was installed"
                         + " (-F replaces it, or a private JK_HOME takes it)");
 
-        assertThat(EngineInstall.pathClient(bin)).hasContent("client 0.51.0");
+        assertThat(PathClients.pathClient(bin)).hasContent("client 0.51.0");
         assertThat(pointer.configFile()).hasContent(pointerBefore);
     }
 
@@ -177,7 +178,7 @@ class InstallProductBinTest {
         assertThatThrownBy(() -> pointer.pass("1.1.0", null))
                 .isInstanceOf(IOException.class)
                 .hasMessage("client 1.1.0 needs its engine, and this install has engine 1.0.0; nothing was installed");
-        assertThat(EngineInstall.pathClient(bin)).hasContent("client A");
+        assertThat(PathClients.pathClient(bin)).hasContent("client A");
     }
 
     /** One checkout install pass of {@code version}: the client placed, then the engine. */

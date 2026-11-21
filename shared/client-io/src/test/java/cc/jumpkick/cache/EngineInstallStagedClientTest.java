@@ -47,7 +47,7 @@ class EngineInstallStagedClientTest {
                 stagedAt(bin.resolve(".jk-new-1111"), now - Duration.ofHours(2).toMillis());
         Path fresh = stagedAt(bin.resolve(".jk-new-2222"), now);
 
-        EngineInstall.installBinaries(Files.writeString(tmp.resolve("new-jk"), "new-jk"), bin, false);
+        PathClients.installBinaries(Files.writeString(tmp.resolve("new-jk"), "new-jk"), bin, false);
 
         assertThat(stale).doesNotExist();
         assertThat(fresh).exists();

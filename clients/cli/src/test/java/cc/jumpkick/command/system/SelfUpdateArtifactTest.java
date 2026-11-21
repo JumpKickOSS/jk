@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -102,11 +102,11 @@ class SelfUpdateArtifactTest {
 
     @Test
     void the_path_client_is_the_exe_then_the_bat_launcher_then_the_binary(@TempDir Path tmp) throws Exception {
-        assertThat(EngineInstall.pathClient(tmp)).isEqualTo(tmp.resolve("jk"));
+        assertThat(PathClients.pathClient(tmp)).isEqualTo(tmp.resolve("jk"));
         Files.writeString(tmp.resolve("jk.bat"), "@echo off\r\n");
-        assertThat(EngineInstall.pathClient(tmp)).isEqualTo(tmp.resolve("jk.bat"));
+        assertThat(PathClients.pathClient(tmp)).isEqualTo(tmp.resolve("jk.bat"));
         Files.writeString(tmp.resolve("jk.exe"), "MZ");
-        assertThat(EngineInstall.pathClient(tmp)).isEqualTo(tmp.resolve("jk.exe"));
+        assertThat(PathClients.pathClient(tmp)).isEqualTo(tmp.resolve("jk.exe"));
     }
 
     @Test

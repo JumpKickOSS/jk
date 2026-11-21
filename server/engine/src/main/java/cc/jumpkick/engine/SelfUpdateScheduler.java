@@ -2,6 +2,7 @@
 package cc.jumpkick.engine;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.GlobalConfig;
@@ -150,7 +151,7 @@ final class SelfUpdateScheduler implements AutoCloseable, SelfUpdateControl {
         if (Versions.isSnapshot(version) || !runsInstalledJar(System.getProperty("java.class.path", ""))) {
             return Optional.empty();
         }
-        Path client = EngineInstall.pathClient(JkDirs.binDir());
+        Path client = PathClients.pathClient(JkDirs.binDir());
         return Optional.of(new SelfUpdateScheduler(
                 version,
                 activeBuildPlans,

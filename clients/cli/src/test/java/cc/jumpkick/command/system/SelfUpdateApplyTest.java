@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.cli.engine.InstallLock;
 import cc.jumpkick.config.SelfUpdatePolicy;
@@ -81,7 +82,7 @@ class SelfUpdateApplyTest {
         SelfCommand.UpdateSub.apply(prepared(cas, "0.17.0"), install, cas, false);
 
         assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.17.0");
-        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir()))).isEqualTo("client 0.17.0");
+        assertThat(Files.readString(PathClients.pathClient(JkDirs.binDir()))).isEqualTo("client 0.17.0");
         assertThat(PreparedUpdate.read(install.engineHome())).isEmpty();
     }
 
@@ -94,13 +95,13 @@ class SelfUpdateApplyTest {
         PreparedUpdate older = prepared(cas, "0.16.2");
         assertThatThrownBy(() -> SelfCommand.UpdateSub.apply(older, install, cas, false))
                 .hasMessageContaining("refusing to replace");
-        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+        assertThat(Files.readString(PathClients.pathClient(JkDirs.binDir())))
                 .as("a refused update moves nothing")
                 .isEqualTo("client 0.17.0");
         SelfCommand.UpdateSub.apply(older, install, cas, true);
 
         assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.16.2");
-        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir()))).isEqualTo("client 0.16.2");
+        assertThat(Files.readString(PathClients.pathClient(JkDirs.binDir()))).isEqualTo("client 0.16.2");
     }
 
     /**
@@ -144,7 +145,7 @@ class SelfUpdateApplyTest {
         var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
 
         assertThat(back.version()).isEqualTo("0.16.2");
-        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+        assertThat(Files.readString(PathClients.pathClient(JkDirs.binDir())))
                 .as("the client paired with the engine put back")
                 .isEqualTo("client 0.16.2");
     }
@@ -161,7 +162,7 @@ class SelfUpdateApplyTest {
         var back = install.rollback(cas, ClientPlacement.at(JkDirs.binDir()));
 
         assertThat(back.version()).isEqualTo("0.18.0");
-        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+        assertThat(Files.readString(PathClients.pathClient(JkDirs.binDir())))
                 .as("the client of the engine put back, not the one before it")
                 .isEqualTo("client 0.18.0");
     }
@@ -184,7 +185,7 @@ class SelfUpdateApplyTest {
                 .isInstanceOf(IOException.class);
 
         assertThat(install.currentInstall().orElseThrow().version()).isEqualTo("0.17.0");
-        assertThat(Files.readString(EngineInstall.pathClient(JkDirs.binDir())))
+        assertThat(Files.readString(PathClients.pathClient(JkDirs.binDir())))
                 .as("the client beside a 0.17.0 pointer")
                 .isEqualTo("client 0.17.0");
     }

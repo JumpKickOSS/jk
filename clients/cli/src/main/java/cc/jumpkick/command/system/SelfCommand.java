@@ -4,6 +4,7 @@ package cc.jumpkick.command.system;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.EngineInstall;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.cache.StoreCasGc;
 import cc.jumpkick.cli.api.CliOutput;
@@ -562,7 +563,7 @@ public final class SelfCommand extends GroupCommand {
                 if (in.isSet("now")) {
                     EngineProcessControl.forceStop(EnginePaths.activeSocket(paths));
                 }
-                Path newJk = EngineInstall.pathClient(JkDirs.binDir());
+                Path newJk = PathClients.pathClient(JkDirs.binDir());
                 int handed = Files.isRegularFile(newJk) ? handOver(newJk, version, in.isSet("now")) : 0;
                 if (handed == 0) announce(running, version);
                 return handed;
@@ -737,7 +738,7 @@ public final class SelfCommand extends GroupCommand {
             install.requireAccepts(prepared.version(), downgrade);
             if (install.liveClient().isEmpty()) {
                 Optional<EngineInstall.InstalledClient> inPlace =
-                        InstalledClients.running(cas, EngineInstall.pathClient(JkDirs.binDir()));
+                        InstalledClients.running(cas, PathClients.pathClient(JkDirs.binDir()));
                 if (inPlace.isPresent()) install.recordClient(inPlace.get());
             }
             // A release's client carries its own commit; none is recorded for it.

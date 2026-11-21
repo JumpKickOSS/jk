@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.pipeline;
 
-import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cli.api.PathDisplay;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.JkVersion;
@@ -81,7 +81,7 @@ final class InstallOrder {
      * not selected): that client would hand every command to itself and refuse the newer engine.
      */
     static void refuseOlderPathClient(Path binDir, String engineVersion, PathClientVersion probe) throws IOException {
-        Path client = EngineInstall.pathClient(binDir);
+        Path client = PathClients.pathClient(binDir);
         if (!Files.isRegularFile(client)) return;
         Optional<String> pathVersion = probe.of(client);
         if (pathVersion.isEmpty() || !strandedBy(pathVersion.get(), engineVersion)) return;

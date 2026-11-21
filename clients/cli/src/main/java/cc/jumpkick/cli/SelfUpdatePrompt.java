@@ -2,6 +2,7 @@
 package cc.jumpkick.cli;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cache.PreparedUpdate;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.tui.Interactivity;
@@ -141,7 +142,7 @@ final class SelfUpdatePrompt {
 
     /** {@code jk self update <version>} on the PATH client: installs the download and hands the engine over. */
     private static void install(String version) throws IOException {
-        Path jk = EngineInstall.pathClient(JkDirs.binDir());
+        Path jk = PathClients.pathClient(JkDirs.binDir());
         if (!Files.isRegularFile(jk)) return;
         try {
             ProcessTrees.awaitExit(

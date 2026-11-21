@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
-import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.ClientUpdate;
 import cc.jumpkick.cli.watch.ProcessTrees;
@@ -52,7 +52,7 @@ final class SupersededClient {
     /** {@code args} on the installed {@code bin/jk}, this process's terminal handed to it; the child's exit code. */
     private static OptionalInt runInstalled(String[] args) {
         try {
-            Path jk = EngineInstall.pathClient(JkDirs.binDir());
+            Path jk = PathClients.pathClient(JkDirs.binDir());
             if (!Files.isRegularFile(jk)) return OptionalInt.empty();
             List<String> command = new ArrayList<>(List.of(jk.toString()));
             command.addAll(List.of(args));

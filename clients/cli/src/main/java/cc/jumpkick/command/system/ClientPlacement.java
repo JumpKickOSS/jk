@@ -2,6 +2,7 @@
 package cc.jumpkick.command.system;
 
 import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.jdk.JdkFingerprint;
 import java.io.IOException;
@@ -22,9 +23,9 @@ public final class ClientPlacement {
     public static EngineInstall.ClientPlacer at(Path binDir) {
         return (client, blob, version) -> switch (client.kind()) {
             case NATIVE -> {
-                EngineInstall.installBinaries(blob, binDir);
+                PathClients.installBinaries(blob, binDir);
                 JvmClientInstall.retire(binDir, JvmClientInstall.libDir(), Os.isWindows());
-                yield EngineInstall.pathClient(binDir);
+                yield PathClients.pathClient(binDir);
             }
             case JVM -> {
                 JvmClientInstall.install(

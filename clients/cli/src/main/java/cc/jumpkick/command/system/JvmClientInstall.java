@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command.system;
 
-import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.cli.engine.JvmClient;
 import cc.jumpkick.command.toolchain.JkxLink;
 import cc.jumpkick.host.AtomicWrites;
@@ -103,7 +103,7 @@ public final class JvmClientInstall {
             try {
                 Files.deleteIfExists(p);
             } catch (IOException mapped) {
-                if (!p.getFileName().toString().endsWith(".old")) EngineInstall.displaceToOld(p);
+                if (!p.getFileName().toString().endsWith(".old")) PathClients.displaceToOld(p);
             }
         }
     }
@@ -130,7 +130,7 @@ public final class JvmClientInstall {
                 throw new IOException("could not mark " + staged + " executable");
             }
         } catch (IOException | RuntimeException staging) {
-            EngineInstall.discardStaged(staged, staging);
+            PathClients.discardStaged(staged, staging);
             throw staging;
         }
         Path exe = binDir.resolve("jk.exe");
@@ -142,16 +142,16 @@ public final class JvmClientInstall {
             // POSIX renames over the live client, which keeps its inode, so the name is never
             // missing; Windows refuses to replace a mapped file, so the live one is parked first.
             if (windows) {
-                parkedExe = EngineInstall.displaceToOld(exe);
-                parkedJkxExe = EngineInstall.displaceToOld(jkxExe);
-                parkedLauncher = EngineInstall.displaceToOld(launcher);
+                parkedExe = PathClients.displaceToOld(exe);
+                parkedJkxExe = PathClients.displaceToOld(jkxExe);
+                parkedLauncher = PathClients.displaceToOld(launcher);
             }
             AtomicWrites.moveInto(staged, launcher);
         } catch (IOException | RuntimeException publish) {
-            EngineInstall.restoreParked(parkedLauncher, launcher, publish);
-            EngineInstall.restoreParked(parkedJkxExe, jkxExe, publish);
-            EngineInstall.restoreParked(parkedExe, exe, publish);
-            EngineInstall.discardStaged(staged, publish);
+            PathClients.restoreParked(parkedLauncher, launcher, publish);
+            PathClients.restoreParked(parkedJkxExe, jkxExe, publish);
+            PathClients.restoreParked(parkedExe, exe, publish);
+            PathClients.discardStaged(staged, publish);
             throw publish;
         }
         JkxLink.ensure(binDir, launcher);
@@ -173,7 +173,7 @@ public final class JvmClientInstall {
         if (windows) {
             Path launcher = launcher(binDir, true);
             if (Files.isRegularFile(launcher)) AtomicWrites.replace(launcher, renderForwarder());
-            EngineInstall.displaceToOld(binDir.resolve("jkx.cmd"));
+            PathClients.displaceToOld(binDir.resolve("jkx.cmd"));
         }
         if (!Files.isDirectory(libDir)) return;
         List<Path> jars = new ArrayList<>();
@@ -186,7 +186,7 @@ public final class JvmClientInstall {
             try {
                 Files.deleteIfExists(jar);
             } catch (IOException mapped) {
-                EngineInstall.displaceToOld(jar);
+                PathClients.displaceToOld(jar);
             }
         }
     }

@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.cache.EngineInstall;
+import cc.jumpkick.cache.PathClients;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +25,7 @@ class InstallPathClientTest {
 
     @Test
     void an_older_released_path_client_the_pass_did_not_replace_refuses_the_engine(@TempDir Path bin) throws Exception {
-        Path client = Files.writeString(EngineInstall.pathClient(bin), "released client");
+        Path client = Files.writeString(PathClients.pathClient(bin), "released client");
 
         assertThatThrownBy(() -> InstallOrder.refuseOlderPathClient(bin, "0.51.0-SNAPSHOT", c -> Optional.of("0.50.5")))
                 .hasMessageContaining("not installing engine 0.51.0-SNAPSHOT")
@@ -38,7 +38,7 @@ class InstallPathClientTest {
         assertThatCode(() -> InstallOrder.refuseOlderPathClient(bin, "0.51.0-SNAPSHOT", c -> Optional.of("0.50.5")))
                 .as("no PATH client")
                 .doesNotThrowAnyException();
-        Files.writeString(EngineInstall.pathClient(bin), "client");
+        Files.writeString(PathClients.pathClient(bin), "client");
         for (String path : List.of("0.51.0-SNAPSHOT", "0.50.5-SNAPSHOT", "0.51.0", "0.52.0")) {
             assertThatCode(() -> InstallOrder.refuseOlderPathClient(bin, "0.51.0-SNAPSHOT", c -> Optional.of(path)))
                     .as(path)
