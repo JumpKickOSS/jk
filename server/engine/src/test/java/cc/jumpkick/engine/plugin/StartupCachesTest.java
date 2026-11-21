@@ -269,10 +269,17 @@ class StartupCachesTest {
         assertThat(StartupCaches.shortfall(null)).isZero();
         assertThat(StartupCaches.shortfall(new JkCacheConfig.DiskSpace(228 * gib, 30 * gib)))
                 .isZero();
-        var justUnder = new JkCacheConfig.DiskSpace(228 * gib, (long) (228 * gib * 0.099));
+        assertThat(StartupCaches.shortfall(new JkCacheConfig.DiskSpace(228 * gib, (long) (228 * gib * 0.099))))
+                .as("under 10% but over 10 GiB free: not critical")
+                .isZero();
+        var justUnder = new JkCacheConfig.DiskSpace(60 * gib, (long) (60 * gib * 0.099));
         assertThat(DiskGuard.critical(justUnder)).isTrue();
         assertThat(StartupCaches.shortfall(justUnder))
-                .isEqualTo((long) Math.ceil(228 * gib * 0.10) - justUnder.freeBytes());
+                .isEqualTo((long) Math.ceil(60 * gib * 0.10) - justUnder.freeBytes());
+        var large = new JkCacheConfig.DiskSpace(1000 * gib, 9 * gib);
+        assertThat(StartupCaches.shortfall(large))
+                .as("a large disk: the 10 GiB cap decides")
+                .isEqualTo(gib);
         assertThat(StartupCaches.shortfall(new JkCacheConfig.DiskSpace(10 * gib, gib)))
                 .as("a small disk: the 2 GiB floor decides")
                 .isEqualTo(gib);

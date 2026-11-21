@@ -47,9 +47,12 @@ class CachePruneSchedulerTest {
         long now = System.currentTimeMillis();
         Files.writeString(cacheRoot.resolve(".last-pruned"), Long.toString(now - 60_000), StandardCharsets.UTF_8);
 
-        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(95), now))
-                .as("9.5% free: critical, so now")
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(9), now))
+                .as("9 GiB free, 0.9%: critical, so now")
                 .isTrue();
+        assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, freeGib(95), now))
+                .as("9.5% free is still 95 GiB: not critical, so not yet")
+                .isFalse();
         assertThat(CachePruneScheduler.shouldRun(ON, cacheRoot, new JkCacheConfig.DiskSpace(10 * GIB, GIB), now))
                 .as("1 GiB free on a small disk: under the 2 GiB floor, so now")
                 .isTrue();

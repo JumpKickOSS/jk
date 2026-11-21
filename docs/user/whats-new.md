@@ -10,6 +10,11 @@ JumpKick shows you this page's new entries after it updates itself.
   Central refuses this host, its requests go to Google's mirror, which can lag Central. A file the
   mirror does not have now fails the fetch naming Central's refusal and saying the artifact may
   exist, instead of `not found in central`.
+
+- **A large disk under 10% free still caches your native image.** The disk guard now calls a volume
+  nearly full under 2 GiB free, or under 10% and 10 GiB free, so a laptop with 20 GiB left no longer
+  rebuilds its heaviest step on every run. When the disk does keep a native image out of the cache,
+  `jk explain` says so beside the step.
 - **Another web page cannot drive your engine, and a report link is not your dashboard token.** A
   request that would build, write a file, answer a decision or call MCP is refused when it comes from
   another page's origin, whatever token it carries. The coverage **HTML report** link carries a token

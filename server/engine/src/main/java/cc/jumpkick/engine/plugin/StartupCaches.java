@@ -282,9 +282,7 @@ public final class StartupCaches {
     /** Bytes {@code space} lacks to be off {@link DiskGuard}'s critical line; 0 when it is not critical. */
     static long shortfall(JkCacheConfig.@Nullable DiskSpace space) {
         if (space == null || !DiskGuard.critical(space)) return 0;
-        long line = Math.max(
-                DiskGuard.CRITICAL_FREE_BYTES, (long) Math.ceil(space.totalBytes() * DiskGuard.CRITICAL_FREE_RATIO));
-        return Math.max(1, line - space.freeBytes());
+        return Math.max(1, DiskGuard.criticalLine(space.totalBytes()) - space.freeBytes());
     }
 
     /**

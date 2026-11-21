@@ -992,7 +992,9 @@ public final class PlannerNative {
                         binaryPresent ? "" : "binary missing · restores from cache",
                         null);
             }
-            return run(binaryPresent ? "native-image · action cache miss" : "native-image · binary missing");
+            String why = binaryPresent ? "native-image · action cache miss" : "native-image · binary missing";
+            String disk = PackagingCache.heavyNotCached(s.cache);
+            return run(disk == null ? why : why + " · " + disk);
         } catch (NotLocal e) {
             return run("native-image · provisional: " + e.getMessage());
         } catch (Exception | LinkageError e) {

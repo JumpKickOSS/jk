@@ -14,10 +14,11 @@ import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The one rule jk never breaks: it does not fill a disk. A volume is <em>critical</em> when less
- * than {@link #CRITICAL_FREE_RATIO} of it or less than {@link #CRITICAL_FREE_BYTES} is free; on a
- * critical volume jk writes no {@linkplain #HEAVY_BYTES heavy} blob to its caches, whatever the
- * cache would gain, and the engine prunes at once ({@link #refused} wakes it).
+ * The one rule jk never breaks: it does not fill a disk. A volume is <em>critical</em> when less is
+ * free than its {@linkplain #criticalLine line}: {@link #CRITICAL_FREE_RATIO} of it, but never less
+ * than {@link #CRITICAL_FREE_BYTES} nor more than {@link #CRITICAL_RATIO_CAP_BYTES}. On a critical
+ * volume jk writes no {@linkplain #HEAVY_BYTES heavy} blob to its caches, whatever the cache would
+ * gain, and the engine prunes at once ({@link #refused} wakes it).
  *
  * <p>Retention windows shrink with {@link DiskPressure} well before this; the guard is the floor
  * under them. A probe is one {@code statfs}, remembered for {@link #PROBE_MILLIS} per path, so a
@@ -32,6 +33,12 @@ public final class DiskGuard {
 
     /** Below this many bytes free, the volume is critical, however large it is. */
     public static final long CRITICAL_FREE_BYTES = 2 * GIB;
+
+    /**
+     * With this many bytes free, the volume is not critical, however small a share of it that is: a
+     * heavy blob is a sliver of it, and the retention windows are already at their shortest.
+     */
+    public static final long CRITICAL_RATIO_CAP_BYTES = 10 * GIB;
 
     /**
      * A blob this large or larger is heavy: a native image, a fat jar, a jlink image. Expensive to
@@ -58,8 +65,13 @@ public final class DiskGuard {
     /** True when {@code space} is critical; no probe is never critical. */
     public static boolean critical(JkCacheConfig.@Nullable DiskSpace space) {
         if (space == null || space.totalBytes() <= 0) return false;
-        return space.freeBytes() < CRITICAL_FREE_BYTES
-                || (double) space.freeBytes() / space.totalBytes() < CRITICAL_FREE_RATIO;
+        return space.freeBytes() < criticalLine(space.totalBytes());
+    }
+
+    /** The free bytes under which a volume of {@code totalBytes} is critical. */
+    public static long criticalLine(long totalBytes) {
+        long ratio = (long) Math.ceil(totalBytes * CRITICAL_FREE_RATIO);
+        return Math.max(CRITICAL_FREE_BYTES, Math.min(CRITICAL_RATIO_CAP_BYTES, ratio));
     }
 
     /** True when the volume holding {@code path} is critical, from a probe at most {@link #PROBE_MILLIS} old. */

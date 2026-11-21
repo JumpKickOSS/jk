@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/** jk never fills a disk: under 10% or 2 GiB free, no heavy blob goes into a cache. */
+/** jk never fills a disk: under 2 GiB free, or under 10% and 10 GiB free, no heavy blob goes into a cache. */
 class DiskGuardTest {
 
     private static final long GIB = 1024L * 1024 * 1024;
@@ -29,12 +29,21 @@ class DiskGuardTest {
     }
 
     @Test
-    void a_volume_is_critical_under_ten_percent_or_two_gib_free() {
+    void a_volume_is_critical_under_two_gib_free_or_under_ten_percent_and_ten_gib_free() {
+        assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(50 * GIB, (long) (4.9 * GIB))))
+                .as("9.8% of a small disk, under 10 GiB")
+                .isTrue();
+        assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(50 * GIB, (long) (5.1 * GIB))))
+                .isFalse();
+        assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(228 * GIB, (long) (22.7 * GIB))))
+                .as("9.96% of a laptop disk is still 22.7 GiB of room")
+                .isFalse();
         assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(1000 * GIB, 99 * GIB)))
                 .as("9.9% of a terabyte")
-                .isTrue();
-        assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(1000 * GIB, 101 * GIB)))
                 .isFalse();
+        assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(1000 * GIB, (long) (9.9 * GIB))))
+                .as("under 10 GiB free and under 10%")
+                .isTrue();
         assertThat(DiskGuard.critical(new JkCacheConfig.DiskSpace(16 * GIB, (long) (1.9 * GIB))))
                 .as("12% of a small disk, but under the 2 GiB floor")
                 .isTrue();
@@ -93,6 +102,17 @@ class DiskGuardTest {
         assertThat(DiskGuard.space(cache))
                 .as("closed: the path is probed again")
                 .isNotEqualTo(full);
+    }
+
+    @Test
+    void the_line_is_ten_percent_held_between_two_and_ten_gib() {
+        assertThat(DiskGuard.criticalLine(10 * GIB))
+                .as("a small disk: the floor")
+                .isEqualTo(2 * GIB);
+        assertThat(DiskGuard.criticalLine(50 * GIB)).isEqualTo(5 * GIB);
+        assertThat(DiskGuard.criticalLine(1000 * GIB))
+                .as("a large disk: the cap")
+                .isEqualTo(10 * GIB);
     }
 
     @Test

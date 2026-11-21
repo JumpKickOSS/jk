@@ -64,6 +64,30 @@ class PackagingCacheDiskGuardTest {
         assertThat(ctx.warnings).isEmpty();
     }
 
+    @Test
+    void explain_names_the_disk_when_no_heavy_output_can_be_cached(@TempDir Path tmp) {
+        Path cache = tmp.resolve("cache");
+        try (DiskGuard.Pin full = DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(100 * GIB, GIB))) {
+            assertThat(PackagingCache.heavyNotCached(cache))
+                    .isEqualTo("not cached: the disk is nearly full (1.0 GiB free of 100.0 GiB (1%))");
+        }
+        try (DiskGuard.Pin room =
+                DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(228 * GIB, (long) (22.7 * GIB)))) {
+            assertThat(PackagingCache.heavyNotCached(cache))
+                    .as("under 10% of a laptop disk, but 22.7 GiB of room")
+                    .isNull();
+        }
+    }
+
+    @Test
+    void a_heavy_image_under_ten_percent_of_a_large_volume_is_stored(@TempDir Path tmp) throws Exception {
+        Recording ctx = new Recording();
+        String key = store(tmp, new JkCacheConfig.DiskSpace(228 * GIB, (long) (22.7 * GIB)), ctx);
+
+        assertThat(cache(tmp).lookup(key)).isPresent();
+        assertThat(ctx.warnings).isEmpty();
+    }
+
     /** Stores a heavy image file as package-jlink does, with the cache's volume pinned at {@code space}. */
     private static String store(Path tmp, JkCacheConfig.DiskSpace space, Recording ctx) throws Exception {
         assumeTrue(HeavyTtl.caches(HeavyTtl.resolve()), "heavy outputs are not cached here at all (CI or heavy-ttl 0)");

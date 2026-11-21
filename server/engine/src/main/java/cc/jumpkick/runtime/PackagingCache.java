@@ -117,9 +117,20 @@ final class PackagingCache {
         if (DiskGuard.admits(cacheRoot, artifacts)) return true;
         ctx.warn(
                 DISK_LOW,
-                "not cached: the disk is nearly full (" + DiskGuard.describe(DiskGuard.space(cacheRoot))
-                        + "); the output stays where it was built and JumpKick is reclaiming space");
+                diskFull(cacheRoot) + "; the output stays where it was built and JumpKick is reclaiming space");
         return false;
+    }
+
+    /**
+     * Why no heavy output can be served from the cache under {@code cacheRoot}, or null when its volume
+     * has room: what {@code jk explain} says beside a heavy step's miss.
+     */
+    static @Nullable String heavyNotCached(Path cacheRoot) {
+        return DiskGuard.critical(cacheRoot) ? diskFull(cacheRoot) : null;
+    }
+
+    private static String diskFull(Path cacheRoot) {
+        return "not cached: the disk is nearly full (" + DiskGuard.describe(DiskGuard.space(cacheRoot)) + ")";
     }
 
     /** The warning a packaging step carries when the disk guard kept its artifact out of the cache. */
