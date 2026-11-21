@@ -10,6 +10,7 @@ import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.config.RequestShell;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.api.BuildJobFingerprint;
+import cc.jumpkick.engine.api.InFlightBuilds;
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.journal.BuildAccumulator;
@@ -226,113 +227,61 @@ public final class JobEnvelope {
 
     /** Admission, the plan slot and the start of {@code sub}; {@code onQueued} runs when it waits for memory. */
     private long proceed(Submission sub, Runnable onQueued) {
-        String requestLine = sub.requestLine();
-        JobRequest job = sub.job();
-        BufferedReader reader = sub.reader();
-        BufferedWriter writer = sub.writer();
-        boolean detached = sub.detached();
-        WallDeadline deadline = sub.deadline();
-        String threadPrefix = sub.threadPrefix();
-        JobBody runner = sub.runner();
-        boolean plan = sub.plan();
-        boolean workspaceStream = sub.workspaceStream();
-        String eventKind = sub.eventKind();
-        String eventDir = sub.eventDir();
-        String fingerprint = sub.fingerprint();
         long eventRequestId = sub.eventRequestId();
-        ChangeActor actor = sub.actor();
+        String eventKind = sub.eventKind();
         boolean claimedBuildPlanSlot = false;
-        if (plan) {
-            Long refused = admitPlan(eventRequestId, eventKind, eventDir, workspaceStream, detached, writer, onQueued);
+        if (sub.plan()) {
+            Long refused = admitPlan(
+                    eventRequestId,
+                    eventKind,
+                    sub.eventDir(),
+                    sub.workspaceStream(),
+                    sub.detached(),
+                    sub.writer(),
+                    onQueued);
             if (refused != null) return refused;
             claimedBuildPlanSlot = true;
         }
-        Session.CancelToken cancelToken = Session.CancelToken.live();
-        CountDownLatch done = new CountDownLatch(1);
-        // Released by the first user cancel: the joiner parks on the runner's end and on this,
-        // so a cancel that reaches a body wedged past its interrupt still ends in a bounded join.
-        CountDownLatch cancelSignal = new CountDownLatch(1);
         long eventStartMillis = host.nowMillis();
-        boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
-        // Who asked: default "cli"; optimize/calibrate mark synthetic history. The session (an MCP
-        // connection, an IDE window) rides beside it when the requester has one.
-        String trigger = Jsonl.str(requestLine, "trigger");
-        if (trigger == null || trigger.isBlank()) trigger = "cli";
-        String session = Jsonl.str(requestLine, "session");
-        AdmitResult admit = JobAdmit.admit(host, eventRequestId, eventKind, eventDir, fingerprint, trigger, session);
-        if (admit.rejected() != null) {
+        // From the plan slot to the runner's start this thread alone holds what the job claimed:
+        // the slot, its memory share, the checkout and, once admitted, its journal row and
+        // dashboard card. A throw in between gives them back, or they are held for the engine's
+        // life; once the runner has started, its teardown and finish() own them.
+        AdmitResult admit = null;
+        Admitted admitted = null;
+        try {
+            // Who asked: default "cli"; optimize/calibrate mark synthetic history. The session (an
+            // MCP connection, an IDE window) rides beside it when the requester has one.
+            String trigger = Jsonl.str(sub.requestLine(), "trigger");
+            if (trigger == null || trigger.isBlank()) trigger = "cli";
+            String session = Jsonl.str(sub.requestLine(), "session");
+            admit = JobAdmit.admit(
+                    host, eventRequestId, eventKind, sub.eventDir(), sub.fingerprint(), trigger, session);
+            if (admit.rejected() == null) admitted = startRunner(sub, admit, eventStartMillis, trigger, session);
+        } catch (Throwable t) {
+            giveBackUnstarted(sub, claimedBuildPlanSlot, admit, eventStartMillis, t);
+            throw t;
+        }
+        InFlightBuilds.Hold running = admit.rejected();
+        if (running != null) {
             admission.release(eventRequestId);
-            return refusals.refuseAlreadyRunning(admit.rejected(), eventKind, detached, claimedBuildPlanSlot, writer);
+            return refusals.refuseAlreadyRunning(
+                    running, eventKind, sub.detached(), claimedBuildPlanSlot, sub.writer());
         }
-        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
-        // startup env is not the client's. Opened only once admitted: no path retires a refused id.
-        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
-        String leader = Jsonl.str(requestLine, "sessionLeader");
-        if (leader != null && !leader.isBlank()) host.sessionLeader(trigger, session, leader);
-        host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
-        host.registerAccumulator(
-                eventRequestId,
-                eventKind,
-                eventDir,
-                trigger,
-                session,
-                !job.kind().writesTimeline() || Jsonl.bool(requestLine, "noTimeline", false),
-                rebuildRun,
-                admit.buildNumber(),
-                admit.journalId());
-        // The slot was already claimed above, atomically with the shutdown check.
-        AtomicReference<Thread> runnerRef = new AtomicReference<>();
-        // Public jid surface — client tracks this for Ctrl-C / jk cancel.
-        if (writer != null) {
-            try {
-                WireWriter.send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
-            } catch (IOException ignored) {
-                // client gone before job body — still run cancel registration below
-            }
-        }
-        // A detached run has no CLI to open its transcript: the engine writes the header itself.
-        if (detached)
-            JobAdmit.openDetachedTranscript(host, eventRequestId, eventKind, eventDir, trigger, session, admit);
-        ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log, terminalGraceMs, joinBufferMs);
-        live.registerLiveJob(
-                eventRequestId,
-                cancelToken,
-                runnerRef,
-                writer,
-                cancelSignal,
-                eventDir,
-                eventKind,
-                eventStartMillis,
-                workspaceStream);
-        Admitted admitted = new Admitted(
-                requestLine,
-                runner,
-                plan,
-                detached,
-                eventRequestId,
-                eventKind,
-                eventDir,
-                eventStartMillis,
-                workspaceStream,
-                cancelToken,
-                done,
-                cancelSignal,
-                runnerRef,
-                writer,
-                watch,
-                deadline,
-                actor,
-                new AtomicBoolean(),
-                writer != null && ProtoSession.shellFactsOf(requestLine).answers() ? new ClientAsk(writer) : null);
-        // The runner binds the job's request; the body binds its own session inside the verb
-        // (SessionContext.where). Unstarted so runnerRef is set first.
-        Thread started = Thread.ofVirtual().name(threadPrefix, 0).unstarted(() -> runBody(admitted));
-        runnerRef.set(started);
-        started.start(); // register live job + runnerRef before start
+        Admitted a = Objects.requireNonNull(admitted);
+        BufferedWriter writer = a.writer();
         final Thread watchdog = watchdogs.start(
-                eventRequestId, eventKind, eventDir, cancelToken, runnerRef, done, writer, deadline, eventStartMillis);
-        Runnable finish = () -> finish(admitted, reader, watchdog);
-        if (detached) {
+                eventRequestId,
+                eventKind,
+                a.eventDir(),
+                a.cancelToken(),
+                a.runnerRef(),
+                a.done(),
+                writer,
+                a.deadline(),
+                eventStartMillis);
+        Runnable finish = () -> finish(a, sub.reader(), watchdog);
+        if (a.detached()) {
             // Joins and journals the detached job; reads no session.
             Thread.ofVirtual().name("jk-job-join-", 0).start(finish);
             return eventRequestId;
@@ -345,6 +294,125 @@ public final class JobEnvelope {
             if (writer != null) WireWriter.awaitLanded(writer);
         }
         return eventRequestId;
+    }
+
+    /** The admitted job's session, journal stub, wire start and live registration, then its runner, started. */
+    private Admitted startRunner(
+            Submission sub, AdmitResult admit, long eventStartMillis, String trigger, @Nullable String session) {
+        String requestLine = sub.requestLine();
+        BufferedWriter writer = sub.writer();
+        long eventRequestId = sub.eventRequestId();
+        String eventKind = sub.eventKind();
+        String eventDir = sub.eventDir();
+        Session.CancelToken cancelToken = Session.CancelToken.live();
+        CountDownLatch done = new CountDownLatch(1);
+        // Released by the first user cancel: the joiner parks on the runner's end and on this,
+        // so a cancel that reaches a body wedged past its interrupt still ends in a bounded join.
+        CountDownLatch cancelSignal = new CountDownLatch(1);
+        boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
+        // The requesting shell's JK_PROGRESS_MODE rides the request — the resident engine's own
+        // startup env is not the client's. Opened only once admitted: no path retires a refused id.
+        host.putMode(eventRequestId, ProtoJobs.progressModeOf(requestLine));
+        String leader = Jsonl.str(requestLine, "sessionLeader");
+        if (leader != null && !leader.isBlank()) host.sessionLeader(trigger, session, leader);
+        host.publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
+        host.registerAccumulator(
+                eventRequestId,
+                eventKind,
+                eventDir,
+                trigger,
+                session,
+                !sub.job().kind().writesTimeline() || Jsonl.bool(requestLine, "noTimeline", false),
+                rebuildRun,
+                admit.buildNumber(),
+                admit.journalId());
+        // The plan slot was claimed in proceed, atomically with the shutdown check.
+        AtomicReference<Thread> runnerRef = new AtomicReference<>();
+        // Public jid surface — client tracks this for Ctrl-C / jk cancel.
+        if (writer != null) {
+            try {
+                WireWriter.send(writer, JobAdmit.jobStartLine(host, eventRequestId, eventKind, eventDir, admit));
+            } catch (IOException ignored) {
+                // client gone before job body — still run cancel registration below
+            }
+        }
+        // A detached run has no CLI to open its transcript: the engine writes the header itself.
+        if (sub.detached())
+            JobAdmit.openDetachedTranscript(host, eventRequestId, eventKind, eventDir, trigger, session, admit);
+        ConnectionWatch watch = new ConnectionWatch(host::nowMillis, host::log, terminalGraceMs, joinBufferMs);
+        live.registerLiveJob(
+                eventRequestId,
+                cancelToken,
+                runnerRef,
+                writer,
+                cancelSignal,
+                eventDir,
+                eventKind,
+                eventStartMillis,
+                sub.workspaceStream());
+        Admitted admitted = new Admitted(
+                requestLine,
+                sub.runner(),
+                sub.plan(),
+                sub.detached(),
+                eventRequestId,
+                eventKind,
+                eventDir,
+                eventStartMillis,
+                sub.workspaceStream(),
+                cancelToken,
+                done,
+                cancelSignal,
+                runnerRef,
+                writer,
+                watch,
+                sub.deadline(),
+                sub.actor(),
+                new AtomicBoolean(),
+                writer != null && ProtoSession.shellFactsOf(requestLine).answers() ? new ClientAsk(writer) : null);
+        // The runner binds the job's request; the body binds its own session inside the verb
+        // (SessionContext.where). Unstarted so runnerRef is set first.
+        Thread started = Thread.ofVirtual().name(sub.threadPrefix(), 0).unstarted(() -> runBody(admitted));
+        runnerRef.set(started);
+        started.start(); // register live job + runnerRef before start
+        return admitted;
+    }
+
+    /**
+     * {@code t} escaped between the plan slot and the runner's start: give back what the job
+     * claimed. Before admission that is the slot and the memory share, as a refusal gives them
+     * back. Once admitted the job ends as a runner that died does: the client and the log hear
+     * why, the job leaves the live table, the checkout and the memory share, and the settlement
+     * writes its record, releases the slot and resolves the dashboard card and the client's wait.
+     */
+    private void giveBackUnstarted(
+            Submission sub, boolean claimedBuildPlanSlot, @Nullable AdmitResult admit, long startMillis, Throwable t) {
+        long jid = sub.eventRequestId();
+        String dir = sub.eventDir();
+        BufferedWriter writer = sub.writer();
+        try {
+            live.unregisterLiveJob(jid);
+            host.inFlight().release(jid);
+            admission.release(jid);
+            if (admit == null) {
+                host.log("jk engine: job " + jid + " failed before it was admitted: " + t);
+                if (claimedBuildPlanSlot) host.abandonBuildPlanSlot();
+                return;
+            }
+            reportDeadJob(jid, dir, writer, t);
+            BuildAccumulator acc = host.accumulatorOf(jid);
+            if (acc != null) {
+                acc.addEscapedThrow(t);
+                acc.stamp(JobOutcome.failed(Exit.SOFTWARE));
+            } else if (admit.journalId() != null) {
+                // No accumulator to write it: the stub JobAdmit began would read as running forever.
+                host.journal().delete(admit.journalId(), host.coordOf(dir), dir);
+            }
+            settlement.settle(jid, sub.eventKind(), dir, sub.plan(), sub.workspaceStream(), writer, startMillis, false);
+            if (writer != null) WireWriter.awaitLanded(writer);
+        } catch (RuntimeException | Error cleanup) {
+            t.addSuppressed(cleanup);
+        }
     }
 
     /**

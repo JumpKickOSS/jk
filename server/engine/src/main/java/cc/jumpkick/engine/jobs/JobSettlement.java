@@ -60,8 +60,9 @@ final class JobSettlement {
         // Harmless if the runner already sent workspace-/plan-finish (client has returned).
         if (cancelled && writer != null) {
             // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
-            // their client loop only ends on plan-finish.
-            WireWriter.sendQuiet(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
+            // their client loop only ends on plan-finish. Never paced: a cancel unpaces the
+            // stream, and a paced line that finds no room on an unpaced stream is dropped.
+            WireWriter.sendNoWait(writer, LiveJobRegistry.cancelledTerminalLine(workspaceStream, dir));
         }
         // Built before the journal write, which takes the accumulator the byte counters live on.
         // activeBuildPlans is set again once the slot is released; the key keeps its place.
@@ -97,7 +98,8 @@ final class JobSettlement {
             // returns mid-write and a following `jk clean` races the memo/journal writers.
             // In a finally so a throwing journal can never strand the client.
             // A no-op says so: its run has no directory, so the client keeps no transcript for it.
-            if (writer != null) WireWriter.sendQuiet(writer, ProtoLifecycle.jobFinish(jid, noop, warning));
+            // Queued past any backlog, as the cancelled terminal above is, so it is never dropped.
+            if (writer != null) WireWriter.sendNoWait(writer, ProtoLifecycle.jobFinish(jid, noop, warning));
             // After the journal: clearProgress retires the JobSession (drops the accumulator), and
             // an MCP wait counts the job live until its session retires.
             events.clearProgress(jid);

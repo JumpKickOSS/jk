@@ -6,6 +6,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A cancelled HTTP or MCP job that ignores the cancel ends in seconds, not at its one-hour
+  deadline.** Time the machine slept or the engine was stopped no longer counts against a job's
+  deadline. An engine fault while a job was starting no longer leaves the project unbuildable or the
+  engine unable to drain until restart. A cancelled job's final line always reaches the client,
+  however far behind the client is.
 - **A failed cache restore keeps a module's resources, and a damaged cache record is a miss, not a
   failed build.** The action cache keeps a module's copied resources and merged Kotlin/Groovy
   classes when a restore fails on a bad blob. It no longer replaces a local record with a remote one

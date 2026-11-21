@@ -9,6 +9,7 @@ import cc.jumpkick.wire.runtime.RemainingWork;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +27,37 @@ class JobSessionsTest {
         assertThat(sessions.get(5)).isNull();
         assertThat(sessions.open(5)).isNull();
         assertThat(sessions.liveCount()).isZero();
+    }
+
+    /**
+     * An open and a retire of one id race from two threads, as a late progress event and the
+     * job's settlement do. Whichever wins, no session is left in the map once the id is retired.
+     */
+    @Test
+    void an_open_racing_a_retire_leaves_no_session_behind() throws Exception {
+        JobSessions sessions = new JobSessions(() -> 0L);
+        int ids = 200_000;
+        AtomicInteger arrived = new AtomicInteger();
+        Thread retirer = Thread.ofPlatform().start(() -> {
+            for (int id = 1; id <= ids; id++) {
+                meet(arrived, id);
+                sessions.retire(id);
+            }
+        });
+        for (int id = 1; id <= ids; id++) {
+            meet(arrived, id);
+            sessions.open(id);
+        }
+        retirer.join();
+        assertThat(sessions.liveCount())
+                .as("sessions opened for ids already retired")
+                .isZero();
+    }
+
+    /** Spin until both racers have reached round {@code id}, so each round starts them together. */
+    private static void meet(AtomicInteger arrived, int id) {
+        arrived.incrementAndGet();
+        while (arrived.get() < 2 * id) Thread.onSpinWait();
     }
 
     @Test

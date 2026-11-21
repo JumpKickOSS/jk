@@ -1817,7 +1817,11 @@ reason = "the admit thread reads neither the job's request nor its session"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.jobs.JobEnvelope#proceed"
-reason = "the runner binds the job's request itself and the body its session inside the verb; the detached join reads neither"
+reason = "the detached join reads neither the job's request nor its session"
+
+[[guards.request-thread-carries-session.allow]]
+in     = "cc.jumpkick.engine.jobs.JobEnvelope#startRunner"
+reason = "the runner binds the job's request itself and the body its session inside the verb"
 
 [[guards.request-thread-carries-session.allow]]
 in     = "cc.jumpkick.engine.jobs.JobWatchdog#start"

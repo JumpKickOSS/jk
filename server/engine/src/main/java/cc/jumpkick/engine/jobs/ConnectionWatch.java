@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Suspensions;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
@@ -9,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.LongUnaryOperator;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -16,7 +18,7 @@ import org.jspecify.annotations.Nullable;
  * read that waits for the client's EOF sits on a thread of its own: a blocked socket read can only
  * be ended by the peer (a half-close from this side does not wake it on Windows), so the
  * connection thread never parks in it and needs no wake to run the finish tail. Its only host
- * collaborators are the clock and the log.
+ * collaborators are the clock, the time a job spent suspended, and the log.
  */
 final class ConnectionWatch {
 
@@ -35,6 +37,7 @@ final class ConnectionWatch {
     static final long JOIN_BUFFER_MS = 500L;
 
     private final LongSupplier nowMillis;
+    private final LongUnaryOperator suspendedMillis;
     private final Consumer<String> log;
     private final long terminalGraceMs;
     private final long joinBufferMs;
@@ -45,7 +48,21 @@ final class ConnectionWatch {
 
     /** As above with the terminal grace and the join buffer in millis (tests). */
     ConnectionWatch(LongSupplier nowMillis, Consumer<String> log, long terminalGraceMs, long joinBufferMs) {
+        this(nowMillis, Suspensions.system()::suspendedMillis, log, terminalGraceMs, joinBufferMs);
+    }
+
+    /**
+     * As above with {@code suspendedMillis}: how long a job, by its id, ran across times the engine
+     * was not running, which its wall deadline does not count (tests).
+     */
+    ConnectionWatch(
+            LongSupplier nowMillis,
+            LongUnaryOperator suspendedMillis,
+            Consumer<String> log,
+            long terminalGraceMs,
+            long joinBufferMs) {
         this.nowMillis = nowMillis;
+        this.suspendedMillis = suspendedMillis;
         this.log = log;
         this.terminalGraceMs = terminalGraceMs;
         this.joinBufferMs = joinBufferMs;
@@ -118,11 +135,11 @@ final class ConnectionWatch {
 
     /**
      * Wait for the runner with one of two budgets so a wedged runner can never hang the
-     * connection: under a wall deadline, until deadline plus grace and then one last chance after
-     * enforcing it; otherwise until the runner's own finally ends the wait or a cancel begins —
-     * {@code cancelled} is released by the first user cancel, however it arrived — and from a
-     * cancel, a short cancel grace, a force kill, and a bounded wait for the runner's next cancel
-     * check before the job is written off.
+     * connection: under a wall deadline, until deadline plus grace (less the time the engine was
+     * suspended) and then one last chance after enforcing it; otherwise until the runner's own
+     * finally ends the wait. Either way a cancel ends the wait — {@code cancelled} is released by
+     * the first user cancel, however it arrived — and from a cancel, a short cancel grace, a force
+     * kill, and a bounded wait for the runner's next cancel check before the job is written off.
      */
     void awaitRunner(
             long jid,
@@ -137,7 +154,15 @@ final class ConnectionWatch {
         try {
             if (deadline.bounded()) {
                 joinUnderDeadline(
-                        jid, done, deadline.ms(), deadlineGraceMs, cancelGraceMs, startMillis, enforceDeadline);
+                        jid,
+                        done,
+                        deadline.ms(),
+                        deadlineGraceMs,
+                        cancelGraceMs,
+                        startMillis,
+                        cancelled,
+                        enforceDeadline,
+                        forceKill);
             } else {
                 awaitRunnerOrCancel(done, cancelled);
                 if (done.getCount() > 0) joinAfterCancel(jid, done, cancelGraceMs, forceKill);
@@ -148,7 +173,7 @@ final class ConnectionWatch {
     }
 
     /**
-     * How often the open-ended join looks for a cancel. Two latches, one waiter: the runner's
+     * How often either join looks for a cancel. Two latches, one waiter: the runner's
      * finally releases the first, a user cancel the second, and a park on either alone would miss
      * the other. The tick is a fraction of the cancel grace, so it does not stretch the join.
      */
@@ -160,6 +185,12 @@ final class ConnectionWatch {
         }
     }
 
+    /**
+     * The deadline's join. The budget is read again on every look, on the host's clock less the
+     * time the job spent suspended, as the deadline watchdog reads it: a wait on the monotonic
+     * clock alone counts a sleep on Windows, and a stopped engine everywhere, against the job. A
+     * cancel seen on a look takes the cancel's bounded join instead of waiting out the deadline.
+     */
     private void joinUnderDeadline(
             long jid,
             CountDownLatch done,
@@ -167,11 +198,21 @@ final class ConnectionWatch {
             long graceMs,
             long cancelGraceMs,
             long startMillis,
-            Runnable enforceDeadline)
+            CountDownLatch cancelled,
+            Runnable enforceDeadline,
+            Runnable forceKill)
             throws InterruptedException {
-        long elapsed = nowMillis.getAsLong() - startMillis;
-        long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
-        if (done.await(budget, TimeUnit.MILLISECONDS)) return;
+        while (true) {
+            long ran = nowMillis.getAsLong() - startMillis - suspendedMillis.applyAsLong(jid);
+            long remaining = deadlineMs + graceMs - ran;
+            if (remaining <= 0) break;
+            if (cancelled.getCount() == 0) {
+                joinAfterCancel(jid, done, cancelGraceMs, forceKill);
+                return;
+            }
+            if (done.await(Math.min(remaining, CANCEL_LOOK_MS), TimeUnit.MILLISECONDS)) return;
+        }
+        if (done.getCount() == 0) return;
         enforceDeadline.run();
         // Last chance for the runner to unwind after worker kill / interrupt.
         // Cap hard so UX never waits the full 30s grace when the job is deadlocked.

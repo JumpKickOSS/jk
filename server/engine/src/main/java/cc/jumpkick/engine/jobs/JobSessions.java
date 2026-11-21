@@ -33,10 +33,17 @@ public final class JobSessions {
         return byId.get(id);
     }
 
-    /** Live session, creating one if this id is not retired. */
+    /**
+     * Live session, creating one if this id is not retired. A {@link #retire} that lands between
+     * the first look and the insert has already removed what it found, so the marker is read again
+     * after the insert and a session that slipped in is taken back out.
+     */
     public @Nullable JobSession open(long id) {
         if (id <= 0 || retired.containsKey(id)) return null;
-        return byId.computeIfAbsent(id, JobSession::new);
+        JobSession s = byId.computeIfAbsent(id, JobSession::new);
+        if (!retired.containsKey(id)) return s;
+        if (byId.remove(id, s)) s.retire();
+        return null;
     }
 
     /** Live or freshly opened session; {@code null} only for id ≤ 0 or retired. */

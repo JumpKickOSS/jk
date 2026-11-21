@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 /** The EOF watch and the three join budgets, driven without an engine. */
@@ -182,6 +183,108 @@ class ConnectionWatchTest {
         assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
         assertThat(enforced).hasValue(1);
         assertThat(log).singleElement().asString().contains("still running after deadline+");
+    }
+
+    /**
+     * A detached job always runs under a wall deadline. A cancel of one whose runner ignores it
+     * ends in the cancel's bounded join, with the workers killed, not at the deadline an hour on.
+     */
+    @Test
+    void under_a_deadline_a_cancel_takes_the_bounded_cancel_join() {
+        List<String> log = new ArrayList<>();
+        ConnectionWatch watch = new ConnectionWatch(
+                System::currentTimeMillis, log::add, ConnectionWatch.TERMINAL_GRACE_MS, JOIN_BUFFER_MS);
+        AtomicInteger enforced = new AtomicInteger();
+        AtomicInteger kills = new AtomicInteger();
+        long start = System.nanoTime();
+        watch.awaitRunner(
+                10L,
+                new CountDownLatch(1),
+                new WallDeadline(30_000L, "test"),
+                100L,
+                50L,
+                System.currentTimeMillis(),
+                new CountDownLatch(0),
+                enforced::incrementAndGet,
+                kills::incrementAndGet);
+        assertThat(Duration.ofNanos(System.nanoTime() - start)).isLessThan(Duration.ofSeconds(5));
+        assertThat(kills).hasValue(1);
+        assertThat(enforced)
+                .as("a cancelled job is not also cancelled by its deadline")
+                .hasValue(0);
+        assertThat(log).singleElement().asString().contains("still running after cancel+");
+    }
+
+    /**
+     * Time the engine was suspended is not the job's: a job whose wall clock ran past its deadline
+     * only across a suspend is still inside it, and the join waits for its runner.
+     */
+    @Test
+    void under_a_deadline_the_time_suspended_is_not_counted() throws Exception {
+        long suspended = 60_000L;
+        ConnectionWatch watch = new ConnectionWatch(
+                System::currentTimeMillis,
+                jid -> jid == 11L ? suspended : 0L,
+                s -> {},
+                ConnectionWatch.TERMINAL_GRACE_MS,
+                JOIN_BUFFER_MS);
+        AtomicInteger enforced = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        Thread runner = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(200L);
+            } catch (InterruptedException ignored) {
+                // the test ends first
+            }
+            done.countDown();
+        });
+        watch.awaitRunner(
+                11L,
+                done,
+                new WallDeadline(5_000L, "test"),
+                100L,
+                50L,
+                System.currentTimeMillis() - suspended,
+                new CountDownLatch(1),
+                enforced::incrementAndGet,
+                () -> {});
+        runner.join();
+        assertThat(enforced).as("the job ran 200ms of a 5s deadline").hasValue(0);
+        assertThat(done.getCount()).isZero();
+    }
+
+    /** A suspend that lands while the join waits moves the wall clock, not the job's deadline. */
+    @Test
+    void a_suspend_during_the_join_does_not_spend_the_deadline() throws Exception {
+        AtomicLong away = new AtomicLong();
+        AtomicLong now = new AtomicLong(1_000L);
+        ConnectionWatch watch = new ConnectionWatch(
+                now::get, jid -> away.get(), s -> {}, ConnectionWatch.TERMINAL_GRACE_MS, JOIN_BUFFER_MS);
+        AtomicInteger enforced = new AtomicInteger();
+        CountDownLatch done = new CountDownLatch(1);
+        Thread runner = Thread.ofVirtual().start(() -> {
+            try {
+                Thread.sleep(150L);
+                away.set(3_600_000L);
+                now.addAndGet(3_600_000L);
+                Thread.sleep(150L);
+            } catch (InterruptedException ignored) {
+                // the test ends first
+            }
+            done.countDown();
+        });
+        watch.awaitRunner(
+                12L,
+                done,
+                new WallDeadline(5_000L, "test"),
+                100L,
+                50L,
+                1_000L,
+                new CountDownLatch(1),
+                enforced::incrementAndGet,
+                () -> {});
+        runner.join();
+        assertThat(enforced).hasValue(0);
     }
 
     @Test
