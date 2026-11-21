@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.GroovycRequest;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -23,8 +24,9 @@ import org.objectweb.asm.Type;
 
 /**
  * What a compile's own code reads of a dependency beyond its JVM ABI moves the compile's key: the
- * {@code kotlin.Metadata} an annotation processor reads, and the body of a local Groovy AST
- * transform groovyc runs. Neither moves the key of a compile that reads neither.
+ * {@code kotlin.Metadata} an annotation processor reads, and the body of a Groovy AST transform
+ * groovyc runs and of every class that transform reaches. Neither moves the key of a compile that
+ * reads neither.
  */
 class ProcessorReadKeyTest {
 
@@ -73,6 +75,57 @@ class ProcessorReadKeyTest {
         Path v2 = jar(dir.resolve("v2/lib.jar"), Map.of("t/Impl.class", impl(2)));
 
         assertThat(groovycTokens(dir, v1)).isEqualTo(groovycTokens(dir, v2));
+    }
+
+    @Test
+    void a_transform_helpers_body_in_another_entry_moves_the_groovyc_key(@TempDir Path dir) throws IOException {
+        Path transform = jar(
+                dir.resolve("transform.jar"),
+                Map.of("t/Marker.class", marker(false), "t/Impl.class", calling("t/Impl", "h/Helper")));
+        Path v1 = jar(dir.resolve("v1/helper.jar"), Map.of("h/Helper.class", returning("h/Helper", 1)));
+        Path v2 = jar(dir.resolve("v2/helper.jar"), Map.of("h/Helper.class", returning("h/Helper", 2)));
+        assertThat(ClasspathAbi.token(v2)).as("a body edit").isEqualTo(ClasspathAbi.token(v1));
+
+        assertThat(groovycTokens(dir, transform, v1)).isNotEqualTo(groovycTokens(dir, transform, v2));
+    }
+
+    @Test
+    void a_helper_reached_through_another_helper_moves_the_groovyc_key(@TempDir Path dir) throws IOException {
+        Path transform = jar(
+                dir.resolve("transform.jar"),
+                Map.of("t/Marker.class", marker(false), "t/Impl.class", calling("t/Impl", "h/Helper")));
+        Path helper = jar(dir.resolve("helper.jar"), Map.of("h/Helper.class", calling("h/Helper", "d/Deep")));
+        Path v1 = jar(dir.resolve("v1/deep.jar"), Map.of("d/Deep.class", returning("d/Deep", 1)));
+        Path v2 = jar(dir.resolve("v2/deep.jar"), Map.of("d/Deep.class", returning("d/Deep", 2)));
+
+        assertThat(groovycTokens(dir, transform, helper, v1)).isNotEqualTo(groovycTokens(dir, transform, helper, v2));
+    }
+
+    @Test
+    void a_global_transform_helpers_body_moves_the_groovyc_key(@TempDir Path dir) throws IOException {
+        Path transform = jar(
+                dir.resolve("transform.jar"),
+                Map.of(
+                        "META-INF/services/org.codehaus.groovy.transform.ASTTransformation",
+                        "t.Impl\n".getBytes(StandardCharsets.UTF_8),
+                        "t/Impl.class",
+                        calling("t/Impl", "h/Helper")));
+        Path v1 = jar(dir.resolve("v1/helper.jar"), Map.of("h/Helper.class", returning("h/Helper", 1)));
+        Path v2 = jar(dir.resolve("v2/helper.jar"), Map.of("h/Helper.class", returning("h/Helper", 2)));
+
+        assertThat(groovycTokens(dir, transform, v1)).isNotEqualTo(groovycTokens(dir, transform, v2));
+    }
+
+    @Test
+    void a_body_edit_no_transform_reaches_keeps_the_groovyc_key(@TempDir Path dir) throws IOException {
+        Path transform = jar(
+                dir.resolve("transform.jar"),
+                Map.of("t/Marker.class", marker(false), "t/Impl.class", calling("t/Impl", "h/Helper")));
+        Path helper = jar(dir.resolve("helper.jar"), Map.of("h/Helper.class", returning("h/Helper", 1)));
+        Path v1 = jar(dir.resolve("v1/lib.jar"), Map.of("l/Lib.class", returning("l/Lib", 1)));
+        Path v2 = jar(dir.resolve("v2/lib.jar"), Map.of("l/Lib.class", returning("l/Lib", 2)));
+
+        assertThat(groovycTokens(dir, transform, helper, v1)).isEqualTo(groovycTokens(dir, transform, helper, v2));
     }
 
     private static CompileRequest javac(Path src, Path dir, Path dep, List<Path> processorPath) {
@@ -145,6 +198,34 @@ class ProcessorReadKeyTest {
         mv.visitLdcInsn(v);
         mv.visitInsn(Opcodes.IRETURN);
         mv.visitMaxs(1, 1);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    /** {@code public class owner { public static int n() { return v; } }}: {@code v} moves the body only. */
+    private static byte[] returning(String owner, int v) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "n", "()I", null, null);
+        mv.visitCode();
+        mv.visitLdcInsn(v);
+        mv.visitInsn(Opcodes.IRETURN);
+        mv.visitMaxs(1, 0);
+        mv.visitEnd();
+        cw.visitEnd();
+        return cw.toByteArray();
+    }
+
+    /** {@code public class owner { public static int n() { return callee.n(); } }}. */
+    private static byte[] calling(String owner, String callee) {
+        ClassWriter cw = new ClassWriter(0);
+        cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
+        MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "n", "()I", null, null);
+        mv.visitCode();
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, callee, "n", "()I", false);
+        mv.visitInsn(Opcodes.IRETURN);
+        mv.visitMaxs(1, 0);
         mv.visitEnd();
         cw.visitEnd();
         return cw.toByteArray();

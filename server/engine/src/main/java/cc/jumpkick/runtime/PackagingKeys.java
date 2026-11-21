@@ -267,9 +267,9 @@ public final class PackagingKeys {
     }
 
     /**
-     * Content fingerprint of dep jars matching {@link ClasspathFingerprint#of}, recovering sibling
-     * jars wiped by {@code jk clean} from the CAS shas the walk pinned off each sibling's current
-     * package record.
+     * Content fingerprint of dep jars matching {@link ClasspathFingerprint#ordered}, recovering
+     * sibling jars wiped by {@code jk clean} from the CAS shas the walk pinned off each sibling's
+     * current package record. In order: the assembly keeps the first jar's copy of a duplicate entry.
      */
     static String fingerprintDepJars(List<Path> depJars, ActionCache actionCache, Map<Path, String> restoredJarShas)
             throws IOException {
@@ -277,7 +277,6 @@ public final class PackagingKeys {
         for (Path jar : depJars) {
             parts.add(fingerprintJarOrCached(jar, actionCache, restoredJarShas));
         }
-        parts.sort(Comparator.naturalOrder());
         return Hashing.sha256Hex(String.join("\n", parts));
     }
 

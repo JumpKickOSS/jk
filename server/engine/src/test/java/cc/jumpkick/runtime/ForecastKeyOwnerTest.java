@@ -418,7 +418,7 @@ class ForecastKeyOwnerTest {
         List<String> expectedTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "contrib:" + PackagedClasses.contributionsToken(List.of()),
-                "deps:" + ClasspathFingerprint.of(List.of()),
+                "deps:" + ClasspathFingerprint.ordered(List.of()),
                 "main:t.Main",
                 "sbom:" + Hashing.sha256Hex(Objects.requireNonNull(sbom)),
                 "manifest:" + project.manifest(),
@@ -434,7 +434,7 @@ class ForecastKeyOwnerTest {
                 project,
                 ClasspathFingerprint.entry(classes),
                 PackagedClasses.contributionsToken(List.of()),
-                ClasspathFingerprint.of(List.of()),
+                ClasspathFingerprint.ordered(List.of()),
                 sbom);
         assertThat(keyed.tokens()).isEqualTo(expectedTokens);
         assertThat(keyed.key()).isEqualTo(expectedKey);

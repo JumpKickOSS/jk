@@ -88,15 +88,27 @@ class TaskForecasterPackageKeyTest {
     void forecast_dep_fingerprint_is_spelled_the_way_the_build_spells_it(@TempDir Path tmp) throws Exception {
         // Both assembly sites emit a "deps:" token, and the guard checks that they both do. What it
         // cannot check is that the two sides compute the same string for it: the build calls
-        // ClasspathFingerprint.of, the forecast calls fingerprintDepJars because it also has to
+        // ClasspathFingerprint.ordered, the forecast calls fingerprintDepJars because it also has to
         // recover jars a `jk clean` wiped. When those two disagree the key never matches and explain
         // shows a permanent "repackage".
         Path a = Files.writeString(tmp.resolve("a.jar"), "a-bytes");
         Path b = Files.writeString(tmp.resolve("b.jar"), "b-bytes");
-        List<Path> depJars = List.of(b, a); // declaration order, not sorted: both sides must sort
+        List<Path> depJars = List.of(b, a);
 
         assertThat(PackagingKeys.fingerprintDepJars(
                         depJars, new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("cache")), Map.of()))
-                .isEqualTo(ClasspathFingerprint.of(depJars));
+                .isEqualTo(ClasspathFingerprint.ordered(depJars));
+    }
+
+    @Test
+    void the_assembly_dep_fingerprint_follows_the_merge_order(@TempDir Path tmp) throws Exception {
+        // The assembly writes the first jar's copy of a duplicate entry, so two jars trading places
+        // can change the fat jar.
+        Path a = Files.writeString(tmp.resolve("a.jar"), "a-bytes");
+        Path b = Files.writeString(tmp.resolve("b.jar"), "b-bytes");
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("cache"));
+
+        assertThat(PackagingKeys.fingerprintDepJars(List.of(a, b), cache, Map.of()))
+                .isNotEqualTo(PackagingKeys.fingerprintDepJars(List.of(b, a), cache, Map.of()));
     }
 }

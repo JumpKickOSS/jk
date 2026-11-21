@@ -75,7 +75,8 @@ extension modules), which a processor or groovyc reads besides the API; a compil
 processors keys a Kotlin dependency's `kotlin.Metadata` too, which holds what the JVM signatures
 leave out (a type argument's nullability) and a Kotlin-aware processor reads. A jar that registers a
 global Groovy AST transform, a jar groovyc loads a local AST transform from (a class an annotation's
-`@GroovyASTTransformationClass` names), and every dependency of a compile that asks javac to find
+`@GroovyASTTransformationClass` names), every jar holding a class such a transform's code calls,
+directly or through another, and every dependency of a compile that asks javac to find
 its processors on the classpath (`-proc:full` with no processor path), are keyed on their full
 content, since their bodies run in the compile. Processors found on the classpath are treated as a
 processor path's are: what they generate is tracked across incremental compiles, and a change to

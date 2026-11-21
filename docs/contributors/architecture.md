@@ -545,7 +545,8 @@ and exclusions stay GA-scoped.
    `target/incremental/warnings/<step>`, which an up-to-date step and a module the build does not
    run say again. The processor path stays full content. A compile that runs processors keys each
    entry's `kotlin.Metadata` beside its ABI (`ClasspathAbi.kotlinMetadata`), and groovyc keys an
-   entry it loads a global or local AST transform from by content (`GroovyLocalTransforms`).
+   entry it loads a global or local AST transform from by content, and every entry holding a class
+   such an entry names in its constant pool, transitively (`GroovyTransforms`).
    A body-only change in a dependency therefore
    leaves every consumer's compile key — and its freshness stamp — alone; the compilers still see
    the full jars and directories. A jar's ABI is extracted through `JarClassReader`, which scans
@@ -554,7 +555,7 @@ and exclusions stay GA-scoped.
    megabytes on a bundle jar of four hundred thousand classes), and digests each class's API
    lines as they are read, so no jar's size decides whether a build fits the engine's heap. **Package, test, native and image** keys hash full bytes
    (`ClasspathFingerprint`; a classpath that is run, a test JVM's, a native image's or a plugin
-   input's, in its order), so the same change re-packages the producer and re-runs every suite
+   input's, and a fat jar's dependencies, whose first copy of a duplicate entry wins, in its order), so the same change re-packages the producer and re-runs every suite
    whose runtime classpath carries it. Artifact keys also carry the producing engine's identity
    (`BuildIdentity.keyId()`), so a reinstalled engine re-runs plugin steps, guard lanes,
    build-logic and packaging once and never restores what the previous engine produced. That

@@ -125,11 +125,13 @@ JumpKick shows you this page's new entries after it updates itself.
   `@NullMarked` on a package, or an annotation on an enum constant, now recompiles Kotlin code that
   reads the Java source; swapping the components of a Kotlin `@JvmRecord` recompiles its Java
   consumers; a compile that runs annotation processors recompiles when a Kotlin dependency's
-  metadata changes; and groovyc recompiles when the body of a local AST transform changes.
+  metadata changes; and groovyc recompiles when the body of an AST transform changes, or of a class
+  in another jar that the transform calls.
   Processors javac finds on the classpath (`-proc:full` or `-processor` with no processor path) keep
   their generated classes across incremental compiles and run again when the classpath changes, at
   the cost of a whole compile of that module whenever a classpath entry is rewritten. Reordering a
-  classpath re-runs tests, rebuilds a native image and reruns a plugin step that names it. Every
+  classpath re-runs tests, rebuilds a native image and a fat jar and reruns a plugin step that names
+  it. Every
   cached result is rebuilt once after this upgrade.
 - **The installers refuse a pre-release of the release they ship with, and keep cached templates
   when offline.** A latest-release pointer naming `0.53.1-rc1` is refused under a floor of `0.53.1`.

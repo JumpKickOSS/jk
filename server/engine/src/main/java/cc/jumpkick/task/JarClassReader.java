@@ -12,7 +12,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -186,6 +188,13 @@ public final class JarClassReader implements Closeable {
             if (found[0] == null) found[0] = e;
         });
         return found[0] == null ? null : read(found[0]);
+    }
+
+    /** The names in {@code names} this jar has an entry for: one streamed pass over the central directory. */
+    Set<String> present(Set<String> names) throws IOException {
+        Set<String> found = new HashSet<>();
+        scan(n -> names.contains(new String(n, StandardCharsets.UTF_8)), e -> found.add(e.name()));
+        return found;
     }
 
     /** One pass over the central directory, handing every entry whose raw name {@code wanted} accepts to {@code sink}. */

@@ -175,14 +175,12 @@ public final class ActionKey {
 
     /**
      * How a groovyc compile's classpath entries are spelled: see {@link #groovycClasspathTokens}.
-     * {@code transforms} are the entries groovyc loads a local AST transform from ({@link
-     * GroovyLocalTransforms#holders}).
+     * {@code transforms} are the entries groovyc runs code from ({@link GroovyTransforms#entries}).
      */
     private static EntryToken groovycEntryToken(EntryToken cp, Set<Path> transforms) {
-        return entry ->
-                transforms.contains(entry.toAbsolutePath().normalize()) || ClasspathAbi.hasGlobalTransform(entry)
-                        ? ClasspathFingerprint.entry(entry)
-                        : withResources(cp).of(entry);
+        return entry -> transforms.contains(entry.toAbsolutePath().normalize())
+                ? ClasspathFingerprint.entry(entry)
+                : withResources(cp).of(entry);
     }
 
     /**
@@ -460,8 +458,8 @@ public final class ActionKey {
      * classpath's JVM ABI — groovyc's compile-time view of a Java or Groovy dependency is JVM
      * signatures and constant values, the same token javac keys on ({@link #javacClasspathTokens});
      * the Groovy worker is always a full compile, so this is the only skip a body-only sibling
-     * change can give it. An entry groovyc loads an AST transform from, global or local, is keyed
-     * by content instead. {@code worker:} is the worker's Groovy closure by content — that is the
+     * change can give it. An entry groovyc loads an AST transform from, global or local, and every
+     * entry that transform's code reaches, is keyed by content instead. {@code worker:} is the worker's Groovy closure by content — that is the
      * compiler, and its CAS paths already encode the version. {@code pp:} is the processor path by
      * content, as for javac.
      */
@@ -474,12 +472,13 @@ public final class ActionKey {
         List<String> lines = new ArrayList<>();
         // groovyc loads extension modules and global AST transforms off the compile classpath's
         // META-INF, and the local transforms an annotation names off its classes; a transform's
-        // body is the compile's behaviour, so the entry it loads from keys by content.
+        // body and its helpers' are the compile's behaviour, so the entries they load from key by
+        // content.
         appendCpTokens(
                 lines,
                 "cp:",
                 request.classpath(),
-                groovycEntryToken(cp, GroovyLocalTransforms.holders(request.classpath())));
+                groovycEntryToken(cp, GroovyTransforms.entries(request.classpath())));
         appendCpTokens(lines, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         return lines;
@@ -602,7 +601,7 @@ public final class ActionKey {
                 result,
                 "cp:",
                 request.classpath(),
-                groovycEntryToken(ClasspathAbi::token, GroovyLocalTransforms.holders(request.classpath())));
+                groovycEntryToken(ClasspathAbi::token, GroovyTransforms.entries(request.classpath())));
         snapshotEntries(result, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("jvmTarget", Integer.toString(request.jvmTarget()));

@@ -282,7 +282,7 @@ public final class PlannerTails {
                             assemblyAttrs,
                             guard.token(classes),
                             contributionsToken(contributed),
-                            ClasspathFingerprint.of(depJars),
+                            ClasspathFingerprint.ordered(depJars),
                             assemblySbom);
                     String shTask = keyed.taskId();
                     String shKey = keyed.key();
@@ -295,7 +295,7 @@ public final class PlannerTails {
                                     keyedAttrs,
                                     ClasspathFingerprint.entry(classes),
                                     contributionsToken(contributed),
-                                    ClasspathFingerprint.of(depJars),
+                                    ClasspathFingerprint.ordered(depJars),
                                     assemblySbom)
                             .key());
                     if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
