@@ -4,13 +4,18 @@ package cc.jumpkick.cli.tui;
 import cc.jumpkick.cli.api.CliOutput;
 import cc.jumpkick.cli.engine.EngineCancel;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.Signals;
 import cc.jumpkick.terminal.Terminals;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /**
  * App-level SIGINT, SIGTERM and SIGHUP handler — cancel the live engine job through the same
@@ -64,6 +69,15 @@ public final class GlobalCancel {
      * stop button, a {@code kill}, a terminal that closed or did not forward to the process group.
      */
     private static final List<Runnable> INTERRUPT_HOOKS = new CopyOnWriteArrayList<>();
+
+    /**
+     * The session of each open invocation. The handler runs on a thread of the signal's own, where
+     * no invocation is bound, so each one registers how to reach its session from anywhere.
+     */
+    private static final List<Supplier<Session>> INVOCATIONS = new CopyOnWriteArrayList<>();
+
+    /** Set by the first signal; every later one leaves the handling to it. */
+    private static final AtomicBoolean HANDLING = new AtomicBoolean();
 
     /** How long the hooks may take together; a wedged child must not defeat the halt. */
     public static final long HOOKS_BOUND_MILLIS = 6_000;
@@ -154,14 +168,38 @@ public final class GlobalCancel {
         Signals.register("HUP", () -> onSignal(HUNG_UP));
     }
 
+    /**
+     * Run {@code body} as one CLI invocation ({@link SessionContext#invocation}) whose session a
+     * signal cancels for as long as it runs.
+     */
+    public static <T> T invocation(Callable<T> body) throws Exception {
+        return SessionContext.invocation(() -> {
+            Supplier<Session> session = Objects.requireNonNull(SessionContext.invocationSession());
+            INVOCATIONS.add(session);
+            try {
+                return body.call();
+            } finally {
+                INVOCATIONS.remove(session);
+            }
+        });
+    }
+
+    /** Cancel the session of every open invocation: what a signal does first. */
+    static void cancelInvocations() {
+        for (Supplier<Session> session : INVOCATIONS) session.get().cancel().cancel();
+    }
+
     private static void onSignal(int exitCode) {
+        // Each signal runs this on a thread of its own; a second Ctrl-C while the first is still
+        // settling would print the cancel twice and run every hook twice. The first one halts.
+        if (!HANDLING.compareAndSet(false, true)) return;
         // 0) Claim the exit code before anything that can block or throw: from here on this
         // process is signalled no matter which thread reaches the exit.
-        if (signalExit == 0) signalExit = exitCode;
+        signalExit = exitCode;
         // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
         // background thread so the user sees the cancelled settle immediately instead of a
         // still-animating spinner while a wedged engine eats socket watchdogs.
-        SessionContext.current().cancel().cancel();
+        cancelInvocations();
         Thread rpc = Thread.ofPlatform()
                 .daemon(true)
                 .name("jk-sigint-cancel")

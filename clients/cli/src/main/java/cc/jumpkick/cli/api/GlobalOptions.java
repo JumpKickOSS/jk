@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.api;
 
+import cc.jumpkick.cli.args.ParseException;
 import cc.jumpkick.cli.engine.TimelineOpts;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.JkEngineConfig;
@@ -202,25 +203,9 @@ public final class GlobalOptions {
         g.configFile = in.value("config-file").map(CliPaths::abs).orElse(null);
         g.noConfig = in.isSet("no-config");
         g.dir = in.value("dir").map(Path::of).orElse(null);
-        g.maxRamPercent = in.value("ram-percent")
-                .map(s -> {
-                    try {
-                        return Double.valueOf(s.trim());
-                    } catch (NumberFormatException e) {
-                        return null;
-                    }
-                })
-                .orElse(null);
+        g.maxRamPercent = in.value("ram-percent").map(GlobalOptions::ramPercent).orElse(null);
         g.jvmArgs = in.values("jvm-arg");
-        g.jobs = in.value("jobs")
-                .map(s -> {
-                    try {
-                        return Integer.valueOf(s.trim());
-                    } catch (NumberFormatException e) {
-                        return null;
-                    }
-                })
-                .orElse(null);
+        g.jobs = in.value("jobs").map(GlobalOptions::jobs).orElse(null);
         g.jdk = in.value("jdk").orElse(null);
         g.graal = in.value("graal").orElse(null);
         // Carry the top-tier JDK/GraalVM selection and the client's JVM-tuning layers on the
@@ -246,6 +231,48 @@ public final class GlobalOptions {
                 // (VariantSelection layers those on top): a lock's resolve reads the caller's token.
                 .withVariant(current.variant(), ClientEnvForward.layerUnder(current.clientEnv())));
         return g;
+    }
+
+    /**
+     * Refuse a numeric global that is not a number it takes: {@code -j} a whole number from 0, and
+     * {@code --ram-percent} a number above 0 and at most 100. Dispatch calls it right after the
+     * parse, so a typo is a usage error instead of the default it would silently fall back to.
+     */
+    public static void checkNumbers(Invocation in) throws ParseException {
+        Optional<String> jobs = in.value("jobs");
+        if (jobs.isPresent() && jobs(jobs.get()) == null) {
+            throw new ParseException(
+                    ParseException.Kind.INVALID_VALUE,
+                    jobs.get(),
+                    "option -j/--jobs takes a whole number (0 = all cores), not '" + jobs.get() + "'");
+        }
+        Optional<String> ram = in.value("ram-percent");
+        if (ram.isPresent() && ramPercent(ram.get()) == null) {
+            throw new ParseException(
+                    ParseException.Kind.INVALID_VALUE,
+                    ram.get(),
+                    "option --ram-percent takes a number above 0 and at most 100, not '" + ram.get() + "'");
+        }
+    }
+
+    /** {@code -j}'s value, or null when it is not a whole number from 0. */
+    private static @Nullable Integer jobs(String raw) {
+        try {
+            int n = Integer.parseInt(raw.trim());
+            return n >= 0 ? n : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** {@code --ram-percent}'s value, or null when it is not a number above 0 and at most 100. */
+    private static @Nullable Double ramPercent(String raw) {
+        try {
+            double pct = Double.parseDouble(raw.trim());
+            return pct > 0 && pct <= 100 ? pct : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /**

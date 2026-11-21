@@ -143,7 +143,7 @@ public final class Jk {
     public static int execute(String... args) {
         try {
             // What this invocation changes outside a project is journaled as this command line's doing.
-            return Request.actingAs(shellActor(args), () -> SessionContext.invocation(() -> executeInvocation(args)));
+            return Request.actingAs(shellActor(args), () -> GlobalCancel.invocation(() -> executeInvocation(args)));
         } catch (RuntimeException | Error e) {
             throw e;
         } catch (Exception e) {
@@ -301,14 +301,11 @@ public final class Jk {
     /**
      * Fold the explicit global flags in argv into {@link SessionContext} before dispatch, so the
      * help and version paths and {@link Quietable}'s mute see them before the first println. argv
-     * is read against the global option table itself ({@link ArgParser#scan}): short forms and
-     * bundles count, and so do globals after the command, matched exactly. Dispatch folds the full
-     * parse once more for the command it runs ({@link GlobalOptions#cliLayer}).
+     * is read as {@link #scanGlobals} reads it. Dispatch folds the full parse once more for the
+     * command it runs ({@link GlobalOptions#cliLayer}).
      */
     static void applyCliOverrides(String[] args) {
-        List<String> own = List.of(args).subList(0, CommandDispatch.ownArgsEnd(List.of(args)));
-        int commandAt = CommandDispatch.commandIndex(own);
-        Invocation in = ArgParser.scan(GlobalOptions.globals(), own, commandAt < 0 ? own.size() : commandAt);
+        Invocation in = scanGlobals(args);
         JkConfig cli = GlobalOptions.cliLayer(in);
         Path directory = in.value("dir").map(WorkingDirectory::resolve).orElse(null);
         if (directory != null) cli = cli.withDir(directory);
@@ -316,19 +313,30 @@ public final class Jk {
     }
 
     /**
-     * Read {@code --config-file} / {@code --no-config} out of raw argv with a cheap linear scan, then
-     * ask {@link JkConfigLoader} to build the merged {@link JkConfig} and install it on the {@link
-     * cc.jumpkick.config.SessionContext}. This runs before picocli parsing so the rest of the CLI
-     * sees an already-resolved config.
-     *
-     * <p>CLI flag values (the highest layer) are folded in lazily as each command's {@link
-     * GlobalOptions} mixin reads them after parsing.
+     * The global options within jk's own args ({@link CommandDispatch#ownArgsEnd}), read against the
+     * global option table itself ({@link ArgParser#scan}): short forms and bundles count, and so do
+     * globals after the command, matched exactly.
      */
-    private static void loadAndInstallConfig(String[] args) {
+    private static Invocation scanGlobals(String[] args) {
+        List<String> own = List.of(args).subList(0, CommandDispatch.ownArgsEnd(List.of(args)));
+        int commandAt = CommandDispatch.commandIndex(own);
+        return ArgParser.scan(GlobalOptions.globals(), own, commandAt < 0 ? own.size() : commandAt);
+    }
+
+    /**
+     * Read {@code --config-file}, {@code --no-config} and {@code --dir} out of argv, then ask {@link
+     * JkConfigLoader} to build the merged {@link JkConfig} from the project {@code --dir} names (else
+     * the working directory) and install it on the {@link SessionContext}. This runs before dispatch
+     * parses argv, so the rest of the CLI sees an already-resolved config.
+     *
+     * <p>CLI flag values (the highest layer) are folded in by {@link #applyCliOverrides}, then once
+     * more by dispatch for the command it runs.
+     */
+    static void loadAndInstallConfig(String[] args) {
         ConfigSwitches switches = ConfigSwitches.scan(args);
         Path cwd;
         try {
-            cwd = WorkingDirectory.current();
+            cwd = switches.dir().orElseGet(WorkingDirectory::current);
         } catch (Error e) {
             // The native image answers a vanished working directory with an Error from properties
             // initialisation; the shell is sitting in a directory that no longer exists.
@@ -350,23 +358,14 @@ public final class Jk {
         }
     }
 
-    /** {@code --no-config} / {@code --config-file} as they appear within jk's own args. */
-    record ConfigSwitches(boolean noConfig, Optional<Path> explicit) {
+    /** {@code --no-config}, {@code --config-file} and {@code --dir} as they appear within jk's own args. */
+    record ConfigSwitches(boolean noConfig, Optional<Path> explicit, Optional<Path> dir) {
         static ConfigSwitches scan(String[] args) {
-            int end = CommandDispatch.ownArgsEnd(List.of(args));
-            boolean noConfig = false;
-            Optional<Path> explicit = Optional.empty();
-            for (int i = 0; i < end; i++) {
-                String a = args[i];
-                if ("--no-config".equals(a)) {
-                    noConfig = true;
-                } else if ("--config-file".equals(a) && i + 1 < end) {
-                    explicit = Optional.of(WorkingDirectory.resolve(args[++i]));
-                } else if (a.startsWith("--config-file=")) {
-                    explicit = Optional.of(WorkingDirectory.resolve(a.substring("--config-file=".length())));
-                }
-            }
-            return new ConfigSwitches(noConfig, explicit);
+            Invocation in = scanGlobals(args);
+            return new ConfigSwitches(
+                    in.isSet("no-config"),
+                    in.value("config-file").map(WorkingDirectory::resolve),
+                    in.value("dir").map(WorkingDirectory::resolve));
         }
     }
 
@@ -405,13 +404,16 @@ public final class Jk {
         return out;
     }
 
+    /** Rewrite the command, the first positional after any leading globals, when it is a verb alias. */
     static String[] rewriteAlias(String[] args) {
-        if (args.length == 0) return args;
-        List<String> mapped = VERB_ALIASES.get(args[0]);
+        int at = CommandDispatch.commandIndex(List.of(args));
+        if (at < 0) return args;
+        List<String> mapped = VERB_ALIASES.get(args[at]);
         if (mapped == null) return args;
         String[] out = new String[mapped.size() + args.length - 1];
-        for (int i = 0; i < mapped.size(); i++) out[i] = mapped.get(i);
-        System.arraycopy(args, 1, out, mapped.size(), args.length - 1);
+        System.arraycopy(args, 0, out, 0, at);
+        for (int i = 0; i < mapped.size(); i++) out[at + i] = mapped.get(i);
+        System.arraycopy(args, at + 1, out, at + mapped.size(), args.length - at - 1);
         return out;
     }
 }

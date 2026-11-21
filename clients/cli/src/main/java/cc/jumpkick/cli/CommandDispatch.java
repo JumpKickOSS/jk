@@ -497,7 +497,7 @@ public final class CommandDispatch {
         }
         Invocation in;
         try {
-            in = passthrough ? parsePassthrough(cmd, args) : ArgParser.parse(withGlobals(cmd), args.joined());
+            in = parseChecked(cmd, args, passthrough);
         } catch (ParseException e) {
             onErr(() -> printError(qualified, cmd, e));
             return Exit.USAGE;
@@ -598,6 +598,13 @@ public final class CommandDispatch {
             }
         }
         return code;
+    }
+
+    /** The command's parse, with the numeric globals checked: a value they do not take is a usage error. */
+    private static Invocation parseChecked(CliCommand cmd, Split args, boolean passthrough) throws ParseException {
+        Invocation in = passthrough ? parsePassthrough(cmd, args) : ArgParser.parse(withGlobals(cmd), args.joined());
+        GlobalOptions.checkNumbers(in);
+        return in;
     }
 
     /**
@@ -886,30 +893,11 @@ public final class CommandDispatch {
     }
 
     /**
-     * Index of the command — the first non-option token, skipping any leading global options (and the
-     * value of a value-taking one, e.g. {@code -C dir}). Returns -1 when there's none (bare {@code
-     * jk}, or {@code jk --help}).
+     * Index of the command — the first non-option token after any leading global options; -1 when
+     * there's none (bare {@code jk}, or {@code jk --help}). See {@link CommandIndex}.
      */
     static int commandIndex(List<String> args) {
-        Map<String, Opt> valueGlobals = new LinkedHashMap<>();
-        for (Opt o : GlobalOptions.globalOpts()) {
-            if (o.takesValue()) {
-                for (String n : o.allNames()) valueGlobals.put(n, o);
-            }
-        }
-        int i = 0;
-        while (i < args.size()) {
-            String a = args.get(i);
-            if (a.equals("--")) return i + 1 < args.size() ? i + 1 : -1;
-            if (!a.startsWith("-") || a.equals("-")) return i; // first positional = command
-            String name = a.contains("=") ? a.substring(0, a.indexOf('=')) : a;
-            // A value-taking global before the command (exact or unique prefix, e.g. --di for
-            // --dir) consumes the next token, so skip both to reach the command.
-            boolean consumesNext = !a.contains("=")
-                    && Abbreviations.resolve(name, valueGlobals).resolved();
-            i += consumesNext ? 2 : 1;
-        }
-        return -1;
+        return CommandIndex.of(args);
     }
 
     /** A leaf command's help, then whatever this invocation's arguments add to it. */

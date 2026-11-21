@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **Global options before the command are read the way the parser reads them.** `jk -q check` runs
+  `compile`, `jk -qC app build` builds in `app`, `-H` and `-D` skip or replace the config files as
+  their long forms do, and `jk -C app ...` reads `app`'s `[config]`. `-j` and `--ram-percent` refuse
+  a value they do not take with a usage error instead of silently using the default. Ctrl-C cancels
+  the running command's own session, so a command that unwinds reports a cancel rather than a closed
+  connection. Closing the terminal restores its modes, and Shift, Ctrl and application-mode arrows
+  read as one key.
 - **`jk dev` on a stack of node dev servers no longer spins a CPU core, and `jk watch` waits for a
   save burst to finish.** `jk dev` at a workspace root whose members are all node dev servers waits
   on them and stops when they have all exited. `jk watch` and `jk dev` start a pass once sources

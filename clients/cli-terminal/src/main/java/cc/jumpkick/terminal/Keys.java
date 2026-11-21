@@ -61,42 +61,66 @@ final class Keys {
         };
     }
 
+    /**
+     * After ESC: a CSI sequence ({@code ESC [}, parameters, intermediates, one final byte, as ECMA-48
+     * lays it out) or an SS3 one ({@code ESC O} and one final byte, the arrows of application cursor
+     * mode) is one key; otherwise ESC is Escape and the byte after it is the next key. An arrow
+     * with modifiers ({@code ESC [ 1 ; 2 A}) is the arrow.
+     */
     private static Key parseEscape(ByteFeed feed) {
         int peek = feed.read(ESC_PEEK);
         if (peek < 0) {
+            return Key.Escape.INSTANCE;
+        }
+        if (peek == 'O') {
+            int fin = feed.read(ESC_PEEK);
+            if (isFinal(fin)) {
+                return finalKey(fin);
+            }
+            if (fin >= 0) {
+                // Only one byte can go back: keep the one that would otherwise be lost.
+                feed.unread(fin);
+                return new Key.Char('O');
+            }
+            feed.unread(peek);
             return Key.Escape.INSTANCE;
         }
         if (peek != '[') {
             feed.unread(peek);
             return Key.Escape.INSTANCE;
         }
-        int code = feed.read(ESC_PEEK);
-        if (code < 0) {
+        int b = feed.read(ESC_PEEK);
+        if (b < 0) {
             return Key.Escape.INSTANCE;
         }
-        Key key =
-                switch (code) {
-                    case 'A' -> Key.Up.INSTANCE;
-                    case 'B' -> Key.Down.INSTANCE;
-                    case 'C' -> Key.Right.INSTANCE;
-                    case 'D' -> Key.Left.INSTANCE;
-                    default -> new Key.Unknown(code);
-                };
-        drainTrailing(feed);
-        return key;
+        for (int n = 0; n < MAX_CSI_BYTES && b >= 0; n++) {
+            if (isFinal(b)) {
+                return finalKey(b);
+            }
+            if (b < 0x20 || b > 0x3F) {
+                // Not a parameter or intermediate byte: the sequence was cut short.
+                feed.unread(b);
+                return new Key.Unknown('[');
+            }
+            b = feed.read(CSI_PEEK);
+        }
+        return new Key.Unknown('[');
     }
 
-    private static void drainTrailing(ByteFeed feed) {
-        while (true) {
-            int p = feed.read(CSI_PEEK);
-            if (p < 0) {
-                return;
-            }
-            if ((p >= '0' && p <= '9') || p == ';' || p == '~') {
-                continue;
-            }
-            feed.unread(p);
-            return;
-        }
+    /** Parameter and intermediate bytes read before a CSI sequence is given up as malformed. */
+    private static final int MAX_CSI_BYTES = 32;
+
+    private static boolean isFinal(int b) {
+        return b >= 0x40 && b <= 0x7E;
+    }
+
+    private static Key finalKey(int b) {
+        return switch (b) {
+            case 'A' -> Key.Up.INSTANCE;
+            case 'B' -> Key.Down.INSTANCE;
+            case 'C' -> Key.Right.INSTANCE;
+            case 'D' -> Key.Left.INSTANCE;
+            default -> new Key.Unknown(b);
+        };
     }
 }

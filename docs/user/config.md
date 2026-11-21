@@ -32,6 +32,10 @@ force = false
 | `quiet` / `verbose` / `offline` / `force` | `-q` / `-v` / `--offline` / `-F` | `JK_QUIET` / `JK_VERBOSE` / `JK_OFFLINE` / `JK_FORCE` |
 | agent report | `--agent` | `JK_AGENT=1` ( `JK_AGENT=0` keeps the human report) |
 
+The project layer is the `jk.toml` nearest the directory `-C` / `--dir` names, else the working
+directory. `-D` / `--config-file` replaces it with the file it names, and `-H` / `--no-config`
+reads neither file layer.
+
 **`--agent`:** commands that report a run (`build`, `test`, `run`, `lock`, …) print the
 verdict on stdout and skip progress, colour, and OSC. Shapes are in [MCP](mcp.md#verdict).
 The same text is selected when stdout is not a terminal and the process carries a variable a

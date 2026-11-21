@@ -79,6 +79,14 @@ public final class SessionContext {
     }
 
     /**
+     * The open invocation's session as any thread can read it, or {@code null} outside one. A signal
+     * handler runs on a thread no binding reaches, where {@link #current()} is the process static.
+     */
+    public static @Nullable Supplier<Session> invocationSession() {
+        return INVOCATION.isBound() ? INVOCATION.get().session()::get : null;
+    }
+
+    /**
      * {@code compute}'s value for {@code key}, read once per CLI invocation: every later ask in the
      * same invocation gets the first answer until its {@link #nextPass}, and the next invocation in the
      * same JVM reads afresh.

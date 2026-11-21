@@ -159,6 +159,28 @@ class RegionPainterTest {
         assertThat(vt.text(vt.row - 1)).isEqualTo("three");
     }
 
+    @Test
+    void aRegionWhoseTopScrolledOutOfReachIsWipedAndRepaintedFromAsHighAsItReaches() {
+        int rows = 10;
+        RegionPainter p = new RegionPainter(RegionPainter.Park.BELOW);
+        VtScreen vt = new VtScreen(rows, COLS);
+        StringBuilder first = new StringBuilder();
+        p.paint(first, List.of("one", "two", "three"), COLS, 0, rows - 1);
+        vt.write(first);
+        int drift = rows;
+        for (int d = 0; d < drift; d++) vt.write("child line " + d + "\r\n");
+
+        StringBuilder f = new StringBuilder();
+        p.paint(f, List.of("ONE", "two", "three"), COLS, drift, rows - 1);
+        vt.write(f);
+
+        assertThat(f.toString()).startsWith(RegionPainter.Moves.up(rows - 1) + "\r" + Ansi.ERASE_DISPLAY_TO_END);
+        assertThat(vt.row)
+                .as("the region starts again at the top row the cursor reached")
+                .isEqualTo(3);
+        assertShows(vt, List.of("ONE", "two", "three"), "after the wipe");
+    }
+
     private static void assertShows(VtScreen vt, List<String> frame, String why) {
         assertThat(vt.col).as(why + ": parked at column 0").isZero();
         int top = vt.row - frame.size();

@@ -386,12 +386,13 @@ public final class PosixTty implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (!open) {
             return;
         }
-        open = false;
+        // Restore while still open: applyCooked does nothing on a closed terminal.
         applyCooked();
+        open = false;
         try {
             if (closeMh != null && fd > 0) {
                 int ignored = (int) closeMh.invokeExact(fd);

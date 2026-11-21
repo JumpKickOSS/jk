@@ -176,8 +176,8 @@ public final class RegionPainter {
         if (parkRow - reach > maxClimb) {
             // The region's top scrolled out of reach: wipe what can be reached and start over there.
             int up = Math.min(parkRow, maxClimb);
-            if (up > 0) pass.sb.append(Moves.up(up));
-            pass.sb.append('\r').append(Ansi.ERASE_DISPLAY_TO_END);
+            if (up > 0) out.append(Moves.up(up));
+            out.append('\r').append(Ansi.ERASE_DISPLAY_TO_END);
             pass = new Pass(cols, 0, 0);
             known.clear();
             stale = false;

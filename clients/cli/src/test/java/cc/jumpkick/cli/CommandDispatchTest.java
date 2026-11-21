@@ -83,6 +83,68 @@ class CommandDispatchTest {
     }
 
     @Test
+    void commandIndex_resolvesALongPrefixAgainstEveryGlobal() {
+        // --o names --offline as much as --output: ambiguous, so it takes no value and build is the command.
+        assertThat(CommandDispatch.commandIndex(List.of("--o", "build"))).isEqualTo(1);
+        assertThat(CommandDispatch.commandIndex(List.of("--of", "build"))).isEqualTo(1);
+        assertThat(CommandDispatch.commandIndex(List.of("--ou", "json", "build")))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void commandIndex_readsABundleOfShortFlagsLetterByLetter() {
+        assertThat(CommandDispatch.commandIndex(List.of("-qC", "app", "build"))).isEqualTo(2);
+        assertThat(CommandDispatch.commandIndex(List.of("-qv", "build"))).isEqualTo(1);
+        assertThat(CommandDispatch.commandIndex(List.of("-Capp", "build"))).isEqualTo(1);
+        assertThat(CommandDispatch.commandIndex(List.of("-qCapp", "build"))).isEqualTo(1);
+    }
+
+    @Test
+    void commandIndex_aValueGlobalTakesACommandNameAsItsValue() {
+        // As the parser reads it: -C's value is `build`, and the command is test.
+        assertThat(CommandDispatch.commandIndex(List.of("-C", "build", "test"))).isEqualTo(2);
+        assertThat(CommandDispatch.commandIndex(List.of("-qC", "build", "test")))
+                .isEqualTo(2);
+    }
+
+    @Test
+    void commandIndex_aValueIsNeverAnOption() {
+        assertThat(CommandDispatch.commandIndex(List.of("-C", "-q", "build"))).isEqualTo(2);
+        assertThat(CommandDispatch.commandIndex(List.of("-j", "-q"))).isEqualTo(-1);
+    }
+
+    @Test
+    void a_numeric_global_that_is_not_a_number_is_a_usage_error() throws Exception {
+        for (String[] argv : List.of(
+                new String[] {"-j", "abc", "cache", "dir"},
+                new String[] {"--jobs=-2", "cache", "dir"},
+                new String[] {"cache", "dir", "--ram-percent=bogus"},
+                new String[] {"--ram-percent", "0", "cache", "dir"},
+                new String[] {"-K", "150", "cache", "dir"})) {
+            int[] exit = {-1};
+            Capture.Streams out = NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute(argv)));
+            assertThat(exit[0]).as(String.join(" ", argv)).isEqualTo(Exit.USAGE);
+            assertThat(out.out()).as(String.join(" ", argv)).isEmpty();
+            assertThat(out.err()).as(String.join(" ", argv)).contains("takes a");
+        }
+        int[] exit = {-1};
+        NoAnsi.forced(() -> Capture.both(() -> exit[0] = Jk.execute("-j", "0", "-K", "50", "cache", "dir")));
+        assertThat(exit[0]).as("in range").isZero();
+    }
+
+    @Test
+    void a_verb_alias_is_rewritten_after_leading_globals() {
+        assertThat(Jk.rewriteAlias(new String[] {"-q", "check"})).containsExactly("-q", "compile");
+        assertThat(Jk.rewriteAlias(new String[] {"--dir=app", "package", "-x"}))
+                .containsExactly("--dir=app", "build", "-x");
+        assertThat(Jk.rewriteAlias(new String[] {"-qC", "app", "plan"})).containsExactly("-qC", "app", "explain");
+        String[] value = {"-C", "package", "build"};
+        assertThat(Jk.rewriteAlias(value))
+                .as("a global's value that spells an alias")
+                .isSameAs(value);
+    }
+
+    @Test
     void commandIndex_dirConsumesValue() {
         assertThat(CommandDispatch.commandIndex(List.of("--dir", "/tmp", "build")))
                 .isEqualTo(2);

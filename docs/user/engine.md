@@ -366,7 +366,8 @@ column says when a change takes effect: keys read at *engine start* need `jk eng
 (the resident engine keeps the env it was spawned with), keys read *each command* or
 *each job* take effect on the next one, and *each idle cycle* keys are re-read from the
 file between builds. Precedence is **env > file > default**, resolved at that moment.
-`jobs` also has CLI `-j` / `--jobs`, which wins over env.
+`jobs` also has CLI `-j` / `--jobs`, which wins over env. It takes a whole number from 0, and
+`--ram-percent` a number above 0 and at most 100; anything else is a usage error.
 
 `CI=1` / `true` (also `yes` / `on`) raises the *unset* heap default 256 → 512 and the
 *unset* `continue` default fail-fast → keep-going, and it turns worker-lease overbooking off.

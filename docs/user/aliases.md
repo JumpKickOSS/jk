@@ -12,9 +12,10 @@ option. Product prose always uses the canonical name.
 | Alias           | Canonical | Origin                     |
 | --------------- | --------- | -------------------------- |
 
-## Verb rewrites (first argument only)
+## Verb rewrites (the command word only)
 
-Rewritten before dispatch (`Jk.VERB_ALIASES`); they never join unique-prefix matching. That keeps
+Rewritten before dispatch (`Jk.VERB_ALIASES`) where they stand as the command, after any leading
+global options (`jk -q check` is `jk -q compile`), and nowhere else; they never join unique-prefix matching. That keeps
 `jk wh` uniquely `jk why` (not `why-rebuilt`) and keeps `jk pl` from becoming a prefix of `plan`.
 
 | Alias           | Canonical | Origin                                   |

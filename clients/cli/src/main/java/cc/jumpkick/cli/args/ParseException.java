@@ -22,6 +22,8 @@ public final class ParseException extends Exception {
         TOO_MANY_ARGS,
         /** A JVM flag such as {@code -Xmx2g} given where jk's own short options are parsed. */
         JVM_OPTION,
+        /** An option given a value it does not take, such as a word where a number belongs. */
+        INVALID_VALUE,
     }
 
     private final transient Kind kind;

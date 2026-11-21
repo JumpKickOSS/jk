@@ -57,6 +57,10 @@ public final class WindowsConsole implements AutoCloseable {
     static final int VK_DOWN = 0x28;
 
     private static final int SLICE_MS = 50;
+
+    /** {@code takeQueuedKeyByte}: a record was read and discarded. */
+    private static final int CONSUMED = -3;
+
     private static final byte[] EMPTY = new byte[0];
 
     private final MemorySegment conIn;
@@ -244,6 +248,10 @@ public final class WindowsConsole implements AutoCloseable {
                 if (b >= 0) {
                     return b;
                 }
+                if (b == CONSUMED) {
+                    // A key-up, a modifier or a mouse record: the next record may already be waiting.
+                    continue;
+                }
                 long elapsed = System.nanoTime() - t0;
                 if (waited == WAIT_OBJECT_0 && elapsed < 1_000_000L) {
                     Thread.sleep(SLICE_MS);
@@ -277,18 +285,20 @@ public final class WindowsConsole implements AutoCloseable {
     }
 
     @Override
-    public void close() {
+    public synchronized void close() {
         if (!open) {
             return;
         }
-        open = false;
+        // Restore while still open: restoreOriginal does nothing on a closed console.
         restoreOriginal();
+        open = false;
         closeBoth(conIn, conOut);
     }
 
     /**
      * Peek the front record; only then {@code ReadConsoleInputW} so an empty buffer cannot block.
-     * Discards non-key records. Returns the first UTF-8 byte, or -1 if nothing to emit.
+     * Discards non-key records. Returns the first UTF-8 byte, {@link #CONSUMED} when a record was
+     * read that emits nothing, or -1 when there was no record to read.
      */
     private int takeQueuedKeyByte(Arena arena) throws Throwable {
         MemorySegment rec = arena.allocate(INPUT_RECORD_BYTES);
@@ -308,7 +318,7 @@ public final class WindowsConsole implements AutoCloseable {
         int repeat = Math.max(1, Short.toUnsignedInt(rec.get(ValueLayout.JAVA_SHORT, OFF_REPEAT)));
         byte[] bytes = bytesForKeyEvent(eventType, keyDown, unicode, vk);
         if (bytes.length == 0) {
-            return -1;
+            return CONSUMED;
         }
         for (int r = 0; r < repeat; r++) {
             for (byte value : bytes) {

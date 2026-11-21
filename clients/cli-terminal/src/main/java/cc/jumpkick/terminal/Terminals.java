@@ -214,7 +214,8 @@ public final class Terminals {
     public static void suspendForStop() {
         NativeTerminal s = singleton;
         if (s != null) s.suspendForStop();
-        System.err.print("\u001B[?25h");
+        // A redirected stderr never hid the cursor; the escape would only land in its file.
+        if (stderrIsTty()) System.err.print(Ansi.SHOW_CURSOR);
         System.out.flush();
         System.err.flush();
     }
