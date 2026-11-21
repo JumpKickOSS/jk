@@ -503,7 +503,7 @@
     },
     "resolve": {
       "type": "object",
-      "description": "[resolve] table: how platform BOMs and unmanaged diamonds resolve. Your own exact pins and every transitive resolve highest-wins; there is no pin policy.",
+      "description": "[resolve] table: how platform BOMs and unmanaged diamonds resolve, and whether repositories a dependency's POM declares are consulted. Your own exact pins and every transitive resolve highest-wins; there is no pin policy.",
       "properties": {
         "platform": {
           "type": "string",
@@ -514,6 +514,11 @@
           "type": "string",
           "enum": ["mediate", "strict"],
           "description": "mediate (default): a module no BOM manages resolves to the highest version its POMs declare. strict: an unmanaged diamond is an error."
+        },
+        "pom-repositories": {
+          "type": "string",
+          "enum": ["use", "ignore"],
+          "description": "use (default): a repository a dependency's POM declares is consulted for that POM's subtree, after [repositories]. ignore: only the repositories the project declares are consulted."
         }
       },
       "additionalProperties": false

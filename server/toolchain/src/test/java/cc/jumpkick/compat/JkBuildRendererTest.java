@@ -22,6 +22,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PomMetadata;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
 import cc.jumpkick.model.Project;
@@ -357,6 +358,19 @@ class JkBuildRendererTest {
         String out = JkBuildRenderer.render(floor);
         assertThat(out).contains("[resolve]\nplatform = \"floor\"").doesNotContain("unmapped =");
         assertThat(JkBuildParser.parse(out).build().platformPolicy()).isEqualTo(PlatformPolicy.FLOOR);
+
+        String ignoring = JkBuildRenderer.render(JkBuildParser.parse("""
+                group = "com.example"
+                name = "widget"
+                version = "1.0.0"
+
+                [resolve]
+                pom-repositories = "ignore"
+                """));
+        assertThat(ignoring)
+                .contains("[resolve]\npom-repositories = \"ignore\"")
+                .doesNotContain("platform =");
+        assertThat(JkBuildParser.parse(ignoring).build().pomRepositories()).isEqualTo(PomRepositoriesPolicy.IGNORE);
     }
 
     @Test

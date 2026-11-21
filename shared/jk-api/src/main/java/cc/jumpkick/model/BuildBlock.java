@@ -128,6 +128,11 @@ public record BuildBlock(
          */
         UnmappedPolicy unmappedPolicy,
         /**
+         * {@code [resolve] pom-repositories}: whether repositories a dependency's POM declares are
+         * consulted. Default {@link PomRepositoriesPolicy#USE}.
+         */
+        PomRepositoriesPolicy pomRepositories,
+        /**
          * {@code [test] env} — what every forked test JVM's environment gets, in the order the
          * manifest lists it. Test-scoped like {@code testPluginJars}, hence its home here.
          *
@@ -244,6 +249,7 @@ public record BuildBlock(
             false,
             PlatformPolicy.ENFORCED,
             UnmappedPolicy.MEDIATE,
+            PomRepositoriesPolicy.USE,
             List.of(),
             List.of(),
             TestJvm.EMPTY,
@@ -285,6 +291,7 @@ public record BuildBlock(
         testSuites = suiteClasses(testSuites);
         platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
         unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
+        pomRepositories = pomRepositories == null ? PomRepositoriesPolicy.USE : pomRepositories;
         testEnv = testEnv == null ? List.of() : List.copyOf(testEnv);
         testTools = testTools == null ? List.of() : List.copyOf(testTools);
         testJvm = testJvm == null ? TestJvm.EMPTY : testJvm;

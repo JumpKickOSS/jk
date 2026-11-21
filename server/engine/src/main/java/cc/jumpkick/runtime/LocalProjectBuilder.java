@@ -95,6 +95,7 @@ public final class LocalProjectBuilder {
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(project, projectDir))
                 .withPlatformPolicy(project.build().platformPolicy())
                 .withUnmappedPolicy(project.build().unmappedPolicy())
+                .withPomRepositories(project.build().pomRepositories())
                 .lock(project, jkVersion);
         List<Path> classpath = new ArrayList<>(new ClasspathResolver(cas)
                 .classpathFor(lock, ClasspathResolver.COMPILE_MAIN, false, project, projectDir));

@@ -44,7 +44,9 @@ import org.jspecify.annotations.Nullable;
  * artifact without a published checksum fails the lock naming the repository, as it would for a
  * {@code [repositories]} entry without {@code allow-unverified}. A row a declared repository serves records it in {@code source}, and every
  * repository that served a row is named once in a lock note with the POM that introduced it; a
- * repository merely declared earns none.
+ * repository merely declared earns none. Under {@code [resolve] pom-repositories = "ignore"} ({@link
+ * #ignoreAll}) nothing is granted, and each repository a POM with dependencies declares is named once
+ * in a note as not used.
  */
 final class DeclaredRepositories {
 
@@ -67,6 +69,9 @@ final class DeclaredRepositories {
     private final Set<String> projectHosts;
 
     private final HostAddresses addresses;
+
+    /** {@code [resolve] pom-repositories = "ignore"}: no POM's repository is granted to anything. */
+    private volatile boolean ignored;
 
     /** {@code group:artifact} → the repositories granted to it, in the order they were granted. */
     private final ConcurrentHashMap<String, Set<Pom.Repository>> granted = new ConcurrentHashMap<>();
@@ -101,6 +106,14 @@ final class DeclaredRepositories {
      * group:artifact} keys whose grant grew, so the caller can drop what it cached for them.
      */
     Set<String> propagate(String pkg, EffectivePom pom, List<String> children) {
+        if (ignored) {
+            if (children.isEmpty()) return Set.of();
+            for (Pom.Repository repository : pom.repositories()) {
+                notes.add("repository `" + repository.id() + "` (" + display(repository.url()) + ") from the POM of "
+                        + repository.declaredBy() + " not used: [resolve] pom-repositories = \"ignore\"");
+            }
+            return Set.of();
+        }
         Set<Pom.Repository> inherited = granted.getOrDefault(ga(pkg), Set.of());
         if (inherited.isEmpty() && pom.repositories().isEmpty()) return Set.of();
         LinkedHashSet<Pom.Repository> available = new LinkedHashSet<>(inherited);
@@ -120,6 +133,11 @@ final class DeclaredRepositories {
             for (Pom.Repository repository : pom.repositories()) declared.putIfAbsent(repository.url(), repository);
         }
         return grew;
+    }
+
+    /** Grant nothing from here on: the project resolves through its own repositories alone. */
+    void ignoreAll() {
+        ignored = true;
     }
 
     /** The group a package's versions, POM and artifact are asked of. */

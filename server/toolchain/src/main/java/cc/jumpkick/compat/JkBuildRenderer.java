@@ -19,6 +19,7 @@ import cc.jumpkick.model.NullnessConfig;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PomMetadata;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.ReleaseSources;
@@ -335,12 +336,17 @@ public final class JkBuildRenderer {
     private static void renderResolve(StringBuilder sb, BuildBlock build) {
         boolean platform = build.platformPolicy() != PlatformPolicy.ENFORCED;
         boolean unmapped = build.unmappedPolicy() != UnmappedPolicy.MEDIATE;
-        if (!platform && !unmapped) return;
+        boolean pomRepositories = build.pomRepositories() != PomRepositoriesPolicy.USE;
+        if (!platform && !unmapped && !pomRepositories) return;
         sb.append("\n[resolve]\n");
         if (platform)
             sb.append("platform = \"").append(build.platformPolicy().wireName()).append("\"\n");
         if (unmapped)
             sb.append("unmapped = \"").append(build.unmappedPolicy().wireName()).append("\"\n");
+        if (pomRepositories)
+            sb.append("pom-repositories = \"")
+                    .append(build.pomRepositories().wireName())
+                    .append("\"\n");
     }
 
     /**

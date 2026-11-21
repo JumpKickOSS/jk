@@ -398,6 +398,7 @@ public final class LockPipeline {
                 .withJvmEnvironment(PluginContributions.jvmEnvironment(pathPrep.project(), lockDir))
                 .withPlatformPolicy(policy.platform())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
+                .withPomRepositories(pathPrep.project().build().pomRepositories())
                 .withPinsAsFloors(policy.pinsAsFloors())
                 .withConditionalDependencies(conditionalRules(pathPrep.project()));
         if (rounds != null) orchestrator.withRounds(rounds);

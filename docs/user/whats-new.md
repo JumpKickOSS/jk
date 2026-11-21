@@ -14,6 +14,8 @@ JumpKick shows you this page's new entries after it updates itself.
 - **The dashboard opens with no network.** Vue, and the Markdown renderer and sanitizer behind file
   previews, now ship inside JumpKick instead of loading from a CDN, so the dashboard and Markdown
   previews work offline. Diagrams, AsciiDoc and the code editor still load from the CDN when first used.
+- **`[resolve] pom-repositories = "ignore"` keeps the resolve on your own repositories.** No
+  repository a dependency's POM declares is asked anything; `jk lock` notes each one it passed over.
 - **A dependency's POM cannot send the resolve into your network.** A repository a POM declares
   whose host resolves to a private, link-local, unique-local or loopback address is not used, and
   `jk lock` notes it, unless the project already resolves through that host. Declare it under

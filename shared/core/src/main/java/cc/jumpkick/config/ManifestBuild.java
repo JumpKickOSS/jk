@@ -13,6 +13,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.Sidecar;
@@ -336,6 +337,7 @@ public final class ManifestBuild {
                     false,
                     policies.platform(),
                     policies.unmapped(),
+                    policies.pomRepositories(),
                     List.of(),
                     List.of(),
                     TestJvm.EMPTY,
@@ -383,6 +385,7 @@ public final class ManifestBuild {
                 s.testCacheModule,
                 policies.platform(),
                 policies.unmapped(),
+                policies.pomRepositories(),
                 List.of(),
                 s.testTools,
                 new TestJvm(s.testJvmArgs, s.testSystemProperties, s.testLocale, s.testTimezone),
@@ -403,10 +406,11 @@ public final class ManifestBuild {
     }
 
     /** The keys {@code [resolve]} may carry; the schema names exactly these. */
-    public static final List<String> RESOLVE_KEYS = List.of("platform", "unmapped");
+    public static final List<String> RESOLVE_KEYS = List.of("platform", "unmapped", "pom-repositories");
 
-    /** The two {@code [resolve]} policies, at their defaults when the table or key is absent. */
-    private record ResolvePolicies(PlatformPolicy platform, UnmappedPolicy unmapped) {}
+    /** The {@code [resolve]} policies, at their defaults when the table or key is absent. */
+    private record ResolvePolicies(
+            PlatformPolicy platform, UnmappedPolicy unmapped, PomRepositoriesPolicy pomRepositories) {}
 
     private static ResolvePolicies resolvePolicies(@Nullable TomlTable resolve) {
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
@@ -441,7 +445,19 @@ public final class ManifestBuild {
                 throw new JkBuildParseException("[resolve].unmapped: " + e.getMessage());
             }
         }
-        return new ResolvePolicies(platformPolicy, unmappedPolicy);
+        PomRepositoriesPolicy pomRepositories = PomRepositoriesPolicy.USE;
+        if (resolve != null && resolve.contains("pom-repositories")) {
+            String raw = resolve.getString("pom-repositories");
+            if (raw == null || raw.isBlank()) {
+                throw new JkBuildParseException("[resolve].pom-repositories must be a string (use or ignore)");
+            }
+            try {
+                pomRepositories = PomRepositoriesPolicy.parse(raw);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("[resolve].pom-repositories: " + e.getMessage());
+            }
+        }
+        return new ResolvePolicies(platformPolicy, unmappedPolicy, pomRepositories);
     }
 
     /** The keys one {@code [dev.sidecars.<name>]} table may carry; the schema names exactly these. */

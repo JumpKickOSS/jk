@@ -8,6 +8,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -65,6 +66,8 @@ public final class LockOrchestrator {
 
     /** Unmapped-fill policy; default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
     private UnmappedPolicy unmappedPolicy = UnmappedPolicy.MEDIATE;
+
+    private PomRepositoriesPolicy pomRepositories = PomRepositoriesPolicy.USE;
 
     /** Whether each root's exact pin reads as a floor the graph may raise; see {@link #withPinsAsFloors}. */
     private boolean pinsAsFloors;
@@ -293,6 +296,12 @@ public final class LockOrchestrator {
     /** Unmapped-fill policy under a platform (see {@link cc.jumpkick.model.UnmappedPolicy}). */
     public LockOrchestrator withUnmappedPolicy(UnmappedPolicy policy) {
         if (policy != null) this.unmappedPolicy = policy;
+        return this;
+    }
+
+    /** Whether repositories a dependency's POM declares are consulted (see {@link PomRepositoriesPolicy}). */
+    public LockOrchestrator withPomRepositories(PomRepositoriesPolicy policy) {
+        if (policy != null) this.pomRepositories = policy;
         return this;
     }
 
@@ -832,6 +841,7 @@ public final class LockOrchestrator {
             sharedSource.setManagedExclusions(constraints.managedExclusions());
             sharedSource.setWorkspaceModules(workspaceModules);
             sharedSource.setFloorVersions(floors);
+            sharedSource.setPomRepositories(pomRepositories);
         }
 
         progress.graphPhase(roots.declaredCount());

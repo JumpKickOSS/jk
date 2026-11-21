@@ -11,6 +11,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.MavenMetaversion;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.repo.DownloadSlots;
@@ -307,6 +308,11 @@ public final class MavenPackageSource implements PackageSource {
      */
     public List<String> declaredRepositoryNotes(Collection<Lockfile.Artifact> rows) {
         return declared.notes(rows);
+    }
+
+    /** {@code [resolve] pom-repositories}: under {@link PomRepositoriesPolicy#IGNORE} no POM's repository is consulted. */
+    public void setPomRepositories(PomRepositoriesPolicy policy) {
+        if (policy == PomRepositoriesPolicy.IGNORE) declared.ignoreAll();
     }
 
     /** Every repository a dependency POM declared during the solves, by URL, with its releases/snapshots policy. */

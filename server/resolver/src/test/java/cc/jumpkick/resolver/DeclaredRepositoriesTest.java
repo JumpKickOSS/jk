@@ -72,6 +72,27 @@ class DeclaredRepositoriesTest {
     }
 
     @Test
+    void under_pom_repositories_ignore_no_pom_repository_is_granted_and_each_is_noted_once() {
+        DeclaredRepositories declared = declaredOver(base("https://repo1.maven.org/maven2/"));
+        declared.ignoreAll();
+
+        assertThat(declared.propagate(
+                        "org.acme:parent", pomDeclaring("https://jitpack.io/"), List.of("org.acme:child")))
+                .isEmpty();
+        declared.propagate("org.acme:parent", pomDeclaring("https://jitpack.io/"), List.of("org.acme:other"));
+        declared.propagate("org.acme:parent", pomDeclaring("https://jitpack.io/"), List.of());
+
+        assertThat(declared.grants()).isEmpty();
+        assertThat(declared.byUrl()).isEmpty();
+        assertThat(declared.reposFor("org.acme:child").repos())
+                .extracting(r -> r.baseUrl().toString())
+                .containsExactly("https://repo1.maven.org/maven2/");
+        assertThat(declared.notes(List.of()))
+                .containsExactly("repository `jitpack` (https://jitpack.io/) from the POM of org.acme:parent:1.0"
+                        + " not used: [resolve] pom-repositories = \"ignore\"");
+    }
+
+    @Test
     void a_project_that_resolves_through_loopback_may_be_sent_to_loopback_by_a_pom() {
         DeclaredRepositories declared = declaredOver(base("http://127.0.0.1:41234/"));
         declared.propagate("org.acme:parent", pomDeclaring("http://127.0.0.1:41235/"), List.of("org.acme:child"));

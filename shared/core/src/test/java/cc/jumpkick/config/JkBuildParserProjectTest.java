@@ -10,6 +10,7 @@ import cc.jumpkick.model.DebugInfo;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PlatformPolicy;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.SuiteSettings;
 import cc.jumpkick.model.UnmappedPolicy;
 import cc.jumpkick.model.VersionSelector;
@@ -70,6 +71,28 @@ class JkBuildParserProjectTest {
         assertThat(parsed.build().unmappedPolicy()).isEqualTo(UnmappedPolicy.STRICT);
         // Default is mediate.
         assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy()).isEqualTo(UnmappedPolicy.MEDIATE);
+    }
+
+    @Test
+    void resolve_pom_repositories_parses_use_or_ignore_and_refuses_anything_else() {
+        assertThat(JkBuildParser.parse(PROJECT).build().pomRepositories()).isEqualTo(PomRepositoriesPolicy.USE);
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                        [resolve]
+                        pom-repositories = "ignore"
+                        """).build().pomRepositories())
+                .isEqualTo(PomRepositoriesPolicy.IGNORE);
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                        [resolve]
+                        pom-repositories = "use"
+                        """).build().pomRepositories()).isEqualTo(PomRepositoriesPolicy.USE);
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+
+                        [resolve]
+                        pom-repositories = "https-only"
+                        """))
+                .hasMessageContaining("[resolve].pom-repositories: unknown pom-repositories policy `https-only`");
     }
 
     @Test

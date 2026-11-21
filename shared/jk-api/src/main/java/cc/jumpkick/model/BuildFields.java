@@ -53,6 +53,7 @@ final class BuildFields {
     boolean testCacheModule;
     PlatformPolicy platformPolicy;
     UnmappedPolicy unmappedPolicy;
+    PomRepositoriesPolicy pomRepositories;
     List<EnvDecl> testEnv;
     List<String> testTools;
     TestJvm testJvm;
@@ -112,6 +113,7 @@ final class BuildFields {
         testCacheModule = b.testCacheModule();
         platformPolicy = b.platformPolicy();
         unmappedPolicy = b.unmappedPolicy();
+        pomRepositories = b.pomRepositories();
         testEnv = b.testEnv();
         testTools = b.testTools();
         testJvm = b.testJvm();
@@ -160,6 +162,7 @@ final class BuildFields {
                 testCacheModule,
                 platformPolicy,
                 unmappedPolicy,
+                pomRepositories,
                 testEnv,
                 testTools,
                 testJvm,

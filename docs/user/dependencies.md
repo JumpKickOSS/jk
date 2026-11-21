@@ -362,6 +362,20 @@ with one rule:
   Declaring the same URL under `[repositories]` makes it a project repository with the project's
   order and opt-ins.
 
+To resolve only through the repositories you declare, as a build that must not reach a host its
+`[repositories]` and mirrors do not name, set:
+
+```toml
+[resolve]
+pom-repositories = "ignore"   # default "use"
+```
+
+No repository a dependency's POM declares is then asked anything, and `jk lock` notes each one once
+(`repository `jitpack` (https://jitpack.io) from the POM of … not used: [resolve] pom-repositories =
+"ignore"`). A dependency only such a repository has fails the lock as one no repository has; declare
+that repository under `[repositories]` to use it. In a workspace the root's `[resolve]` decides. The
+setting is part of `jk.toml`, so changing it makes the lock stale.
+
 ### Snapshots
 
 A `-SNAPSHOT` version is asked only of repositories whose snapshot policy is on — never of Maven

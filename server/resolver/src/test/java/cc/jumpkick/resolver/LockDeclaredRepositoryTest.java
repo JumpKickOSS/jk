@@ -9,6 +9,7 @@ import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PomRepositoriesPolicy;
 import cc.jumpkick.model.Project;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
@@ -88,6 +89,36 @@ class LockDeclaredRepositoryTest {
         assertThat(notes).singleElement().satisfies(note -> assertThat(note)
                 .startsWith("repository `jitpack.io` (" + jitpack.baseUrl() + ")")
                 .contains("from the POM of io.apicurio:schema-util-json:2.6.13"));
+    }
+
+    @Test
+    void under_pom_repositories_ignore_the_poms_repository_is_never_asked(@TempDir Path dir) {
+        assertThatThrownBy(() -> new LockOrchestrator(repos(dir))
+                        .withPomRepositories(PomRepositoriesPolicy.IGNORE)
+                        .lock(project("io.apicurio:schema-util-json", "=2.6.13"), "test", List.of(), true, observer()))
+                .hasMessageContaining("org.everit.json.schema");
+        assertThat(jitpack.requested()).isEmpty();
+    }
+
+    @Test
+    void under_pom_repositories_ignore_a_transitive_the_projects_repositories_have_locks_from_them_with_a_note(
+            @TempDir Path dir) throws Exception {
+        new MavenStub(central).leaf("com.github.everit-org.json-schema", "org.everit.json.schema", "1.14.4");
+
+        Lockfile lock = new LockOrchestrator(repos(dir))
+                .withPomRepositories(PomRepositoriesPolicy.IGNORE)
+                .lock(project("io.apicurio:schema-util-json", "=2.6.13"), "test", List.of(), true, observer());
+
+        Lockfile.Artifact everit = lock.artifacts().stream()
+                .filter(a -> a.name().startsWith("com.github.everit-org.json-schema:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(everit.source()).doesNotContain("jitpack");
+        assertThat(jitpack.requested()).isEmpty();
+        assertThat(notes)
+                .containsExactly("repository `jitpack.io` (" + jitpack.baseUrl()
+                        + ") from the POM of io.apicurio:schema-util-json:2.6.13 not used:"
+                        + " [resolve] pom-repositories = \"ignore\"");
     }
 
     /** The row of a package a declared repository served reads its POM there too: its licences are recorded. */
