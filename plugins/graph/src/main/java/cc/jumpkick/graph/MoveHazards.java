@@ -160,6 +160,57 @@ final class MoveHazards {
         }
     }
 
+    /**
+     * What changes when {@code m} moves up to {@code toBin} as written: a private member the source
+     * type would no longer see, a {@code super} call that would reach a class further up, and an
+     * override that would apply to every subclass of the target.
+     */
+    void pulled(FileEdit from, Member m, String head, String block, String toBin) {
+        String what = RenameProof.show(m.symbol());
+        if (m.modifiers().contains("private")) {
+            add("visibility", "  " + what + " is private; its own type would not see it in " + canonical(toBin));
+        }
+        Matcher sup = Pattern.compile("\\bsuper\\s*(?:\\.|::)").matcher(block);
+        while (sup.find()) {
+            if (RenameText.inString(line(block, sup.start()), column(block, sup.start()))) continue;
+            add(
+                    "super",
+                    "  calls super, which in " + canonical(toBin) + " is its own superclass  " + from.rel + ":"
+                            + (m.from() + lineNumber(block, sup.start()) - 1));
+        }
+        if (head.contains("@Override")) {
+            add(
+                    "overrides",
+                    "  " + what + " overrides a supertype's method; in " + canonical(toBin)
+                            + " it would override it for every subclass");
+        }
+    }
+
+    /** A pulled-up method that overrides one above the target: every subclass of the target would run it. */
+    void overrides(GraphService.Workspace w, CodeGraph g, String fromBin, String name, String toBin) {
+        if (OBJECT.contains(name)) {
+            add(
+                    "overrides",
+                    "  " + name + " is a method of Object; in " + canonical(toBin)
+                            + " it would override it for every subclass");
+        }
+        GraphTools tools = GraphService.tools(w, g, Scope.ALL);
+        for (String id : tools.members(canonical(fromBin) + "." + name)) {
+            for (GraphEdge e : g.incident(id)) {
+                if (!e.relation().equals(Relations.OVERRIDES) || !e.source().equals(id)) continue;
+                GraphNode o = g.node(e.target());
+                add(
+                        "overrides",
+                        "  overrides " + GraphQuery.clean(g.display(e.target())) + "; in " + canonical(toBin)
+                                + " it would override it for every subclass"
+                                + (o == null ? "" : "  " + o.sourceFile() + ":" + Decl.line(o)));
+            }
+        }
+    }
+
+    /** Object's methods a class may override. */
+    private static final Set<String> OBJECT = Set.of("equals", "hashCode", "toString", "clone", "finalize");
+
     /** Each non-inert annotation on the moved member: a framework may find it on its type by reflection. */
     void framework(String head, String name) {
         for (String a : SafeDelete.annotations(List.of(), List.of(head.split("\n")))) {

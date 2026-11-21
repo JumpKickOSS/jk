@@ -232,7 +232,7 @@ class MoveMemberTest {
 
         assertThat(answer)
                 .startsWith("Not moved, nothing is written: Order.summary() is an instance method; a move takes static"
-                        + " members.")
+                        + " members, or an instance member up to the class its type extends.")
                 .contains("instance state: Order.status  " + SHOP + "Order.java:34")
                 .contains("1 use reaches it through an instance of org.acme.shop.Order:")
                 .contains(SHOP + "Checkout.java:13");

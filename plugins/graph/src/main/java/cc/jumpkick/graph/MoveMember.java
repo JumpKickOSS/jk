@@ -43,7 +43,9 @@ import org.jspecify.annotations.Nullable;
  * type, an import the old type no longer needs goes, and the moved code gets the imports and
  * qualifiers it needs where it lands. Anything that would break or change behaviour without a
  * compile error (instance state, an override, a member one side cannot see, a use javac did not
- * index, a string naming it) writes nothing and is listed. The edit goes through the rename's write
+ * index, a string naming it) writes nothing and is listed. An instance method or field moves only to
+ * the class its type extends, a pull-up: its uses bind there as written, and another subclass that
+ * declares the method gets {@code @Override}. The edit goes through the rename's write
  * path and undo record; the engine then compiles the modules it touched and checks that the moved
  * symbols have the references the old ones had ({@code phase=verify}), or undoes it whole ({@code
  * phase=undo}).
@@ -127,12 +129,12 @@ final class MoveMember {
         String stale = SafeDelete.edited(w.indexes(), "Not moved", "move");
         if (stale != null) throw new RenameRefusal(stale);
         Plan p = new Plan(w, g, address, target);
-        if (!p.members.stream().allMatch(m -> m.modifiers().contains("static"))) {
+        if (!p.up && !p.members.stream().allMatch(m -> m.modifiers().contains("static"))) {
             p.h.instance(w, g, p.from, p.fromBin, p.members, p.field);
             List<String> answer = new ArrayList<>();
             answer.add("Not moved, nothing is written: " + p.what + " is an instance "
-                    + (p.field ? "field" : "method") + "; a move takes static members. What ties it to "
-                    + canonical(p.fromBin) + ":");
+                    + (p.field ? "field" : "method") + "; a move takes static members, or an instance member"
+                    + " up to the class its type extends. What ties it to " + canonical(p.fromBin) + ":");
             answer.addAll(p.h.lines());
             return Budget.lines(answer, budget, "Raise the budget");
         }
@@ -141,8 +143,8 @@ final class MoveMember {
         p.check();
         if (!p.h.isEmpty()) {
             List<String> answer = new ArrayList<>();
-            answer.add("Not moved, nothing is written: moving " + p.what + " to " + canonical(p.toBin)
-                    + " would break or change:");
+            answer.add("Not moved, nothing is written: " + (p.up ? "pulling up " : "moving ") + p.what + " to "
+                    + canonical(p.toBin) + " would break or change:");
             answer.addAll(p.h.lines());
             return Budget.lines(answer, budget, "Raise the budget");
         }
@@ -165,6 +167,9 @@ final class MoveMember {
         final List<Member> members;
         final boolean field;
         final String what;
+
+        /** A pull-up: instance members to the class the source type extends, whose uses bind there unedited. */
+        final boolean up;
 
         /** Each moved symbol → the same symbol on the target. */
         final Map<String, String> symbols = new LinkedHashMap<>();
@@ -225,6 +230,7 @@ final class MoveMember {
             for (Member m : members)
                 symbols.put(m.symbol(), m.symbol().replace(" " + fromBin + "#", " " + toBin + "#"));
             at = new Resolver(w, g, files, types);
+            up = members.stream().noneMatch(m -> m.modifiers().contains("static")) && extended(fromType, toBin);
         }
 
         /** The moved code edited for where it lands: {@link #blocks} and {@link #blockMarks}. */
@@ -239,7 +245,7 @@ final class MoveMember {
                 int start = lineStart(from.text, m.from());
                 int end = lineEnd(from.text, m.to());
                 List<Op> ops = new ArrayList<>();
-                Body b = new Body(at, h, from, to, fromBin, toBin, symbols, qualifiers, ops);
+                Body b = new Body(at, h, from, to, fromBin, toBin, symbols, qualifiers, ops, up);
                 for (ReferenceIndex.Span s : from.spans) {
                     if (s.start() < start || s.start() >= end) continue;
                     String moved = symbols.get(s.symbol());
@@ -250,8 +256,11 @@ final class MoveMember {
                 block = block.endsWith("\n") ? block.substring(0, block.length() - 1) : block;
                 blocks.add(block);
                 blockLine += block.split("\n", -1).length + 1;
-                h.framework(from.text.substring(lineStart(from.text, m.cutFrom()), m.name()), name);
+                String head = from.text.substring(lineStart(from.text, m.cutFrom()), m.name());
+                h.framework(head, name);
+                if (up) h.pulled(from, m, head, block, toBin);
             }
+            if (up && !field) h.overrides(w, g, fromBin, name, toBin);
             if (!field && name.equals("main")) h.add("entry point", "  an entry point: the JVM runs main by name");
         }
 
@@ -270,12 +279,14 @@ final class MoveMember {
                     }
                     continue;
                 }
-                staticImports(f, fromBin, toBin, name);
+                if (!up) staticImports(f, fromBin, toBin, name);
                 for (ReferenceIndex.Span s : f.spans) {
                     String moved = symbols.get(s.symbol());
                     if (moved == null || f == from && inside(members, s.line())) continue;
                     if (importLine(f.text, s.start())) continue;
-                    use(at, h, f, toBin, moved, s);
+                    // A pulled-up member is inherited: each use binds to it where it lands, as written.
+                    if (up) f.marks.add(new Mark(s.start(), moved, s.kind()));
+                    else use(at, h, f, toBin, moved, s);
                     if (s.kind() != 'd') outside.merge(f.rel, 1, Integer::sum);
                 }
             }
@@ -283,11 +294,88 @@ final class MoveMember {
 
         /** The hazards no single use shows: sources javac did not index, strings, visibility, clashes, hiding. */
         void check() throws IOException {
+            if (up) {
+                h.strings(w, g, from, members, name);
+                h.collisions(to, toBin, name, field);
+                reach();
+                if (!field) overriders();
+                return;
+            }
             h.unindexed(w, g, fromType, name);
             h.strings(w, g, from, members, name);
             h.visibility(at, members.getFirst(), what, toBin, toType, outside, files);
             h.collisions(to, toBin, name, field);
             h.hiding(g, fromType, name, field, types);
+        }
+
+        /**
+         * The files that use a package-private or protected member and would not see it in a target in
+         * another package: a protected one stays visible to a file declaring a subclass of the target.
+         */
+        void reach() {
+            Set<String> mods = members.getFirst().modifiers();
+            if (mods.contains("public") || mods.contains("private")) return;
+            boolean prot = mods.contains("protected");
+            Set<String> heirs = new TreeSet<>();
+            if (prot) {
+                for (String bin : subtypes(types, Set.of(toBin))) {
+                    GraphNode t = types.get(bin);
+                    if (t != null) heirs.add(t.sourceFile());
+                }
+            }
+            for (String rel : outside.keySet()) {
+                FileEdit f = files.get(rel);
+                if (f == null || f.pkg.equals(pkg(toBin)) || heirs.contains(rel)) continue;
+                h.add(
+                        "visibility",
+                        "  " + what + " is " + (prot ? "protected" : "package-private") + "; " + rel
+                                + " uses it and would not see it in " + canonical(toBin));
+            }
+        }
+
+        /** The {@code @Override} annotations {@link #overriders} adds. */
+        int overrides;
+
+        /**
+         * The other subclasses of the target that declare the pulled-up method: one with its parameters
+         * now overrides it and gets {@code @Override}; one with other parameters is an overload a call
+         * may now resolve away from.
+         */
+        void overriders() {
+            Set<String> params = new TreeSet<>();
+            for (Member m : members) params.add(params(m.symbol()));
+            Set<String> mine = subtypes(types, Set.of(fromBin));
+            for (String bin : subtypes(types, Set.of(toBin))) {
+                if (bin.equals(toBin) || mine.contains(bin)) continue;
+                GraphNode t = types.get(bin);
+                if (t == null || !t.sourceFile().endsWith(".java")) continue;
+                FileEdit f = edit(w, g, files, t.sourceFile());
+                if (f == null) {
+                    h.add(
+                            "not indexed",
+                            "  javac's index does not describe " + t.sourceFile() + ", which extends "
+                                    + canonical(toBin) + ", as it stands");
+                    continue;
+                }
+                String[] lines = f.text.split("\n", -1);
+                for (ReferenceIndex.Span s : f.spans) {
+                    if (s.kind() != 'd' || !s.symbol().startsWith("M " + bin + "#" + name + "(")) continue;
+                    String where = f.rel + ":" + s.line();
+                    if (!params.contains(params(s.symbol()))) {
+                        h.add(
+                                "overload",
+                                "  " + RenameProof.show(s.symbol()) + " takes other parameters; a call"
+                                        + " may pick the pulled-up method instead  " + where);
+                        continue;
+                    }
+                    int first = s.line();
+                    while (first > 1 && modifierLine(lines[first - 2])) first--;
+                    if (f.text.substring(lineStart(f.text, first), s.start()).contains("@Override")) continue;
+                    int at = lineStart(f.text, first);
+                    f.ops.add(new Op(at, at, indent(lines[first - 1]) + "@Override\n"));
+                    overrides++;
+                }
+            }
         }
 
         /** Cuts the members out, puts them before the target's closing brace, fixes imports, writes; the answer. */
@@ -319,7 +407,10 @@ final class MoveMember {
                     imports += f.imports.size() + f.staticImports.size();
                     f.ops.add(importOp(f));
                 }
-                if (f.ops.isEmpty()) continue;
+                if (f.ops.isEmpty()) {
+                    for (Mark m : f.marks) refs.add(ref(m.symbol(), f.rel, lineNumber(f.text, m.at())));
+                    continue;
+                }
                 Map<Op, Integer> starts = new HashMap<>();
                 String after = apply(f.text, f.ops, starts);
                 plan.edit(f.rel, f.text, after, changed(f, after, starts, refs));
@@ -336,8 +427,9 @@ final class MoveMember {
             RenameStore.write(w.root(), w.out(), plan);
             RenameStore.writeProof(w.out(), RenameOp.touched(g, plan), symbols, refs);
             List<String> answer = new ArrayList<>();
-            answer.add("Moved " + what + " to " + canonical(toBin) + ": " + uses + (uses == 1 ? " use" : " uses")
-                    + " and " + imports + (imports == 1 ? " import" : " imports") + " in " + plan.after.size()
+            answer.add((up ? "Pulled up " : "Moved ") + what + " to " + canonical(toBin) + ": " + uses
+                    + (uses == 1 ? " use" : " uses") + " and " + imports + (imports == 1 ? " import" : " imports")
+                    + (overrides == 0 ? "" : ", " + overrides + " @Override") + " in " + plan.after.size()
                     + (plan.after.size() == 1 ? " file" : " files") + "; each use javac bound.");
             plan.lines.forEach(
                     (rel, lines) -> answer.add("  " + rel + (lines.isEmpty() ? "" : ":" + RenamePlan.numbers(lines))));
@@ -441,7 +533,8 @@ final class MoveMember {
             String toBin,
             Map<String, String> symbols,
             Set<Integer> qualifiers,
-            List<Op> ops) {
+            List<Op> ops,
+            boolean up) {
 
         void name(ReferenceIndex.Span s) {
             String text = from.text;
@@ -466,6 +559,14 @@ final class MoveMember {
             }
             String owner = s.symbol().substring(2, s.symbol().indexOf('#'));
             Set<String> mods = at.modifiers(s.symbol());
+            boolean instance = mods != null && !mods.contains("static");
+            if (up && instance && owner.equals(fromBin) && !inherited(this, s.symbol())) {
+                h.add(
+                        "state",
+                        "  uses " + RenameProof.show(s.symbol()) + ", which " + canonical(toBin) + " does not have  "
+                                + where);
+                return;
+            }
             if (mods != null) h.access(at, s.symbol(), owner, toBin, where);
             boolean mine = owner.equals(fromBin) || fromBin.startsWith(owner + "$");
             int k = before(text, s.start());
@@ -476,6 +577,7 @@ final class MoveMember {
             }
             if (qualifier != null || afterQualifier(text, s.start())) return;
             if (owner.equals(toBin) || toBin.startsWith(owner + "$")) return;
+            if (up && (instance || mods == null)) return;
             if (mine) {
                 if (mods != null && !mods.contains("static")) {
                     h.add("instance", "  uses " + RenameProof.show(s.symbol()) + ", an instance member  " + where);
@@ -488,13 +590,76 @@ final class MoveMember {
             String imported = staticImport(text, canonical(owner), ReferenceIndex.simpleName(s.symbol()));
             if (imported != null) {
                 to.staticImports.add(imported);
-            } else {
+            } else if (!up) {
                 h.add(
                         "unqualified",
                         "  uses " + RenameProof.show(s.symbol()) + " unqualified, which " + canonical(toBin)
                                 + " does not see  " + where);
             }
         }
+    }
+
+    /**
+     * Whether a method of the source type the pulled-up code calls is one the target has too: the
+     * target declares it, or the source type's declaration overrides it ({@code @Override}).
+     */
+    private static boolean inherited(Body b, String symbol) {
+        if (!symbol.startsWith("M ")) return false;
+        String there = "M " + b.toBin() + symbol.substring(symbol.indexOf('#'));
+        for (ReferenceIndex.Span s : b.to().spans) {
+            if (s.kind() == 'd' && s.symbol().equals(there)) return true;
+        }
+        for (ReferenceIndex.Span s : b.from().spans) {
+            if (s.kind() != 'd' || !s.symbol().equals(symbol)) continue;
+            String[] lines = b.from().text.split("\n", -1);
+            int first = s.line();
+            while (first > 1 && modifierLine(lines[first - 2])) first--;
+            return b.from()
+                    .text
+                    .substring(lineStart(b.from().text, first), s.start())
+                    .contains("@Override");
+        }
+        return false;
+    }
+
+    /** {@code M a.B#name(params)ret} → {@code (params)}. */
+    private static String params(String symbol) {
+        String sig = symbol.substring(symbol.indexOf('#'));
+        int open = sig.indexOf('(');
+        int close = sig.indexOf(')');
+        return open < 0 || close < 0 ? sig : sig.substring(open, close + 1);
+    }
+
+    /** Whether {@code type} extends {@code binary}, as its declaration writes the name. */
+    private static boolean extended(GraphNode type, String binary) {
+        String canonical = canonical(binary);
+        String simple = canonical.substring(canonical.lastIndexOf('.') + 1);
+        for (String e : Decl.superclass(type)) {
+            String raw = e.contains("<") ? e.substring(0, e.indexOf('<')).strip() : e.strip();
+            if (raw.equals(canonical) || raw.equals(binary) || raw.equals(simple) || canonical.endsWith("." + raw))
+                return true;
+        }
+        return false;
+    }
+
+    /** {@code roots} and every workspace type that extends one of them, directly or not. */
+    private static Set<String> subtypes(Map<String, GraphNode> types, Set<String> roots) {
+        Set<String> out = new TreeSet<>(roots);
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (Map.Entry<String, GraphNode> t : types.entrySet()) {
+                if (out.contains(t.getKey())) continue;
+                for (String r : List.copyOf(out)) {
+                    if (extended(t.getValue(), r)) {
+                        out.add(t.getKey());
+                        grew = true;
+                        break;
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     /** One use of a moved symbol outside the moved code: the qualifier becomes the target, or the target is added. */

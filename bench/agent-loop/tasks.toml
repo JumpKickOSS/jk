@@ -265,6 +265,23 @@ data already stored must still load.
 """
 test   = ["jk", "-u", "-x", "-a", "test", "-S", "PhoneColumnTests", "-S", "OwnerControllerTests", "-S", "ClinicServiceTests"]
 
+# A pull-up: an instance method planted in Owner moves to Person, its superclass, so Vet has it too.
+# Its caller reaches it through an Owner and must keep compiling; the hidden check reads where it is
+# declared and calls it on a Vet.
+[tasks.petclinic-pullup-display-name]
+repo   = "spring-petclinic"
+kind   = "pull-up"
+tools  = ["jk", "mvn"]
+inject = [
+  { file = "src/main/java/org/springframework/samples/petclinic/owner/Owner.java", from = "\tpublic String getAddress() {", to = "\tpublic String getDisplayName() {\n\t\treturn getFirstName() + \" \" + getLastName();\n\t}\n\n\tpublic String getAddress() {" },
+]
+prompt = """
+Vets need the display name owners have. Pull `Owner.getDisplayName()` up into `Person`, its
+superclass, so it is declared once there and no longer in `Owner`, keeping its behaviour, and keep
+every caller working.
+"""
+test   = ["jk", "-u", "-x", "-a", "test", "-S", "PersonDisplayNameTests", "-S", "OwnerTests", "-S", "VetTests"]
+
 [tasks.petclinic-rename-owner-customer]
 repo   = "spring-petclinic"
 kind   = "rename"
