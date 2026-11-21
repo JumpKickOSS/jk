@@ -168,30 +168,43 @@ public final class InputTrees {
         roots.add(mod.resolve("src"));
         if (!ModuleLayout.isCompact(mod)) return roots;
         roots.add(mod.resolve("test"));
-        try {
-            PathUtil.forEachChild(mod, (child, attrs) -> {
-                if (!attrs.isDirectory()) return true;
-                Path name = child.getFileName();
-                if (name == null) return true;
-                String n = name.toString();
-                // Exactly the sibling filter TestSuites.discover applies. Anything else —
-                // .github/, Demo/, website assets — is never queried as a suite, so covering it
-                // would spend retain budget (and possibly flip the job stream-only) on a tree no
-                // collector reads.
-                if (!TestSuites.isSuiteName(n) || TestSuites.SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-                // Discovery reads <suite>/src and nothing else of the sibling, so that is what is
-                // covered: a workspace root's children (clients/, server/ — 70k files of build output
-                // and node_modules between them on jk's own tree) are suite names too, and covering
-                // the whole child listed every one of those files into the job's snapshot.
-                roots.add(child.resolve("src"));
-                return true;
-            });
-        } catch (IOException ignored) {
-            // cover is best-effort; collectors still live-walk
+        for (String n : childDirectoryNames(mod)) {
+            // Exactly the sibling filter TestSuites.discover applies. Anything else — .github/,
+            // Demo/, website assets — is never queried as a suite, so covering it would spend
+            // retain budget (and possibly flip the job stream-only) on a tree no collector reads.
+            if (!TestSuites.isSuiteName(n) || TestSuites.SIMPLE_RESERVED.contains(n.toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            // Discovery reads <suite>/src and nothing else of the sibling, so that is what is
+            // covered: a workspace root's children (clients/, server/ — 70k files of build output
+            // and node_modules between them on jk's own tree) are suite names too, and covering
+            // the whole child listed every one of those files into the job's snapshot.
+            roots.add(mod.resolve(n).resolve("src"));
         }
         return roots;
+    }
+
+    /**
+     * The names of the directories directly in {@code dir}, a link to one included, in listing
+     * order. Inside a job the directory is listed once and every later ask is answered from that
+     * listing, as the trees below it are. A directory that cannot be listed has none.
+     */
+    public static List<String> childDirectoryNames(Path dir) {
+        Path abs = dir.toAbsolutePath().normalize();
+        if (!RequestScope.hasRequest() || isBuildOutput(abs)) return listChildDirectoryNames(abs);
+        return RequestScope.current()
+                .get(new ChildDirsMemo(abs), k -> listChildDirectoryNames(abs), InputTrees::nameListBytes);
+    }
+
+    private static List<String> listChildDirectoryNames(Path dir) {
+        List<String> names = new ArrayList<>();
+        try {
+            for (Path child : PathUtil.childDirectories(dir))
+                names.add(child.getFileName().toString());
+        } catch (IOException e) {
+            return List.of();
+        }
+        return List.copyOf(names);
     }
 
     /** Copy this job's counters to last-job and return its bytes to the process pool. */
@@ -570,9 +583,18 @@ public final class InputTrees {
     /** Memo key for a per-request existence probe. */
     private record AnyMemo(Path root, String skipId, String ext) {}
 
+    /** Memo key for a per-request listing of a directory's child directories. */
+    private record ChildDirsMemo(Path dir) {}
+
     /** A path list over a listing's own paths: the list alone, the paths are the listing's. */
     static long sharedListBytes(List<Path> paths) {
         return 16L + 8L * paths.size();
+    }
+
+    private static long nameListBytes(List<String> names) {
+        long bytes = 16L + 8L * names.size();
+        for (String n : names) bytes += 40L + 2L * n.length();
+        return bytes;
     }
 
     /** A path list a live walk made: the list and every path in it. */

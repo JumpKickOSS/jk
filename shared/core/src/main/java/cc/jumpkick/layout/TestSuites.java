@@ -4,7 +4,6 @@ package cc.jumpkick.layout;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.config.WorkspaceModules;
 import cc.jumpkick.config.WorkspaceScan;
-import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.model.DeclaredSuite;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -100,41 +99,28 @@ public final class TestSuites {
         if (compact) {
             // Under a workspace root a sibling holding src/ is a member, not a suite of the root.
             Set<Path> members = Set.copyOf(WorkspaceModules.memberDirs(projectDir));
-            try {
-                PathUtil.childDirectories(projectDir).stream()
-                        .filter(p -> !members.contains(p.normalize()))
-                        .map(p -> p.getFileName().toString())
-                        .filter(TestSuites::maySimpleSuite)
-                        .sorted()
-                        .forEach(n -> {
-                            if (holdsSources(projectDir, true, n)) names.add(n);
-                        });
-            } catch (IOException ignored) {
-                // discovery is best-effort
-            }
+            InputTrees.childDirectoryNames(projectDir).stream()
+                    .filter(n -> !members.contains(projectDir.resolve(n).normalize()))
+                    .filter(TestSuites::maySimpleSuite)
+                    .sorted()
+                    .forEach(n -> {
+                        if (holdsSources(projectDir, true, n)) names.add(n);
+                    });
         } else {
-            Path src = projectDir.resolve("src");
-            if (Files.isDirectory(src)) {
-                try {
-                    PathUtil.childDirectories(src).stream()
-                            .map(p -> p.getFileName().toString())
-                            .filter(n -> !"main".equals(n) && !"test".equals(n))
-                            .filter(n -> !FIXTURES_DIR.equals(n) && !GUARD.equals(n))
-                            .filter(TestSuites::isSuiteName)
-                            .sorted()
-                            .forEach(n -> {
-                                if (hasSources(
-                                        javaRoots(projectDir, false, n),
-                                        kotlinRoots(projectDir, false, n),
-                                        groovyRoots(projectDir, false, n),
-                                        scalaRoots(projectDir, false, n))) {
-                                    names.add(n);
-                                }
-                            });
-                } catch (IOException ignored) {
-                    // best-effort
-                }
-            }
+            InputTrees.childDirectoryNames(projectDir.resolve("src")).stream()
+                    .filter(n -> !"main".equals(n) && !"test".equals(n))
+                    .filter(n -> !FIXTURES_DIR.equals(n) && !GUARD.equals(n))
+                    .filter(TestSuites::isSuiteName)
+                    .sorted()
+                    .forEach(n -> {
+                        if (hasSources(
+                                javaRoots(projectDir, false, n),
+                                kotlinRoots(projectDir, false, n),
+                                groovyRoots(projectDir, false, n),
+                                scalaRoots(projectDir, false, n))) {
+                            names.add(n);
+                        }
+                    });
             // Ensure default is first if present
             if (names.remove(DEFAULT)) {
                 List<String> ordered = new ArrayList<>();

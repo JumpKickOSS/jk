@@ -210,6 +210,25 @@ class InputTreesTest {
     }
 
     @Test
+    void suite_discovery_reads_the_module_listing_the_cover_took(@TempDir Path dir) throws Exception {
+        Files.writeString(Files.createDirectories(dir.resolve("src")).resolve("A.java"), "class A {}");
+        Files.createDirectories(dir.resolve("test"));
+        Path integration = Files.createDirectories(dir.resolve("integration/src"));
+        Files.writeString(integration.resolve("IT.java"), "class IT {}");
+
+        inRequest(() -> {
+            InputTrees.coverModule(dir);
+            long walks = PathUtil.walks();
+            for (int i = 0; i < 3; i++) {
+                assertThat(TestSuites.discover(dir, true)).contains("integration");
+            }
+            assertThat(PathUtil.walks())
+                    .as("the module directory was listed by the cover")
+                    .isEqualTo(walks);
+        });
+    }
+
+    @Test
     void stream_only_queries_are_still_memoized_per_request(@TempDir Path dir) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src"));
         for (int i = 0; i < 5; i++) {
