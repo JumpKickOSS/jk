@@ -4,6 +4,7 @@ package cc.jumpkick.graph;
 import cc.jumpkick.codegraph.Fragment;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.plugin.build.TaskExec;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,12 +28,17 @@ final class ScriptReader {
     /** The extensions oxc parses; Vue single-file components stay with the scanner. */
     private static final Set<String> EXTENSIONS = Set.of("js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts");
 
+    /** The packages whose versions decide what a fragment holds: the parser's syntax tree and the resolver's paths. */
+    private static final List<String> PACKAGES = List.of("oxc-parser", "oxc-resolver");
+
     private final @Nullable Path node;
     private final @Nullable Path oxc;
+    private final String flavor;
 
     ScriptReader(@Nullable Path node, @Nullable Path oxc) {
         this.node = node;
         this.oxc = oxc;
+        this.flavor = active() && oxc != null ? "+oxc" + versions(oxc.resolve("node_modules")) : "";
     }
 
     /** Whether oxc will read script files on this run. */
@@ -42,9 +48,28 @@ final class ScriptReader {
                 && Files.isDirectory(oxc.resolve("node_modules").resolve("oxc-parser"));
     }
 
-    /** The suffix that keeps an oxc fragment and a scanner fragment of the same bytes apart in the store. */
+    /**
+     * The suffix that keeps an oxc fragment and a scanner fragment of the same bytes apart in the store,
+     * naming the oxc versions installed, so an upgraded parser or resolver reads every script again.
+     */
     String flavor(String rel) {
-        return active() && handles(rel) ? "+oxc" : "";
+        return handles(rel) ? flavor : "";
+    }
+
+    /** {@code @parser@resolver}; a version that cannot be read is {@code ?}. */
+    private static String versions(Path modules) {
+        StringBuilder out = new StringBuilder();
+        for (String name : PACKAGES) {
+            String version = null;
+            try {
+                version = MiniJson.str(
+                        MiniJson.parse(Files.readString(modules.resolve(name).resolve("package.json"))), "version");
+            } catch (IOException | RuntimeException unreadable) {
+                Log.debug("graph: unreadable " + name + " package.json", unreadable);
+            }
+            out.append('@').append(version == null ? "?" : version);
+        }
+        return out.toString();
     }
 
     static boolean handles(String rel) {
