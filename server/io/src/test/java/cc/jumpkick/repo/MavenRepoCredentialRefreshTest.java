@@ -7,9 +7,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
 import cc.jumpkick.model.Coordinate;
+import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -33,6 +36,9 @@ class MavenRepoCredentialRefreshTest {
 
     private static final URI BASE = URI.create("https://corp.example/maven/");
 
+    /** A loopback address makes the repository passable: a refusal puts it out of the job. */
+    private static final URI LOOPBACK = URI.create("http://127.0.0.1/maven/");
+
     private static final String POM =
             "<project><groupId>com.acme</groupId><artifactId>lib</artifactId><version>1.0</version></project>";
 
@@ -42,12 +48,28 @@ class MavenRepoCredentialRefreshTest {
         final List<String> tokensSeen = Collections.synchronizedList(new ArrayList<>());
         final Map<String, byte[]> served;
 
+        final URI base;
+
         TokenChecking(String accepted) {
+            this(accepted, BASE);
+        }
+
+        TokenChecking(String accepted, URI base) {
             this.accepted.set(accepted);
+            this.base = base;
             byte[] pom = POM.getBytes(StandardCharsets.UTF_8);
+            byte[] jar = "not really a jar".getBytes(StandardCharsets.UTF_8);
             String path = "com/acme/lib/1.0/lib-1.0.pom";
+            String jarPath = "com/acme/lib/1.0/lib-1.0.jar";
             this.served = Map.of(
-                    path, pom, path + ".sha1", Hashing.hashHex("SHA-1", pom).getBytes(StandardCharsets.UTF_8));
+                    path,
+                    pom,
+                    path + ".sha1",
+                    Hashing.hashHex("SHA-1", pom).getBytes(StandardCharsets.UTF_8),
+                    jarPath,
+                    jar,
+                    jarPath + ".sha1",
+                    Hashing.hashHex("SHA-1", jar).getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
@@ -55,7 +77,7 @@ class MavenRepoCredentialRefreshTest {
             String token = credential instanceof RepoCredential.Bearer b ? b.token() : "<none>";
             tokensSeen.add(token);
             if (!token.equals(accepted.get())) throw new HttpStatusException(401, uri);
-            String rel = BASE.relativize(uri).getPath();
+            String rel = base.relativize(uri).getPath();
             return Optional.ofNullable(served.get(rel));
         }
 
@@ -74,7 +96,7 @@ class MavenRepoCredentialRefreshTest {
     private static MavenRepo repo(TokenChecking transport, Path tmp, String token) {
         return MavenRepo.overTransport(
                 "corp",
-                BASE,
+                transport.base,
                 transport,
                 new Cas(tmp.resolve("cas")),
                 new RepoCredential.Bearer(token),
@@ -101,6 +123,75 @@ class MavenRepoCredentialRefreshTest {
         assertThat(transport.tokensSeen).first().isEqualTo("token-1");
         assertThat(transport.tokensSeen).last().isEqualTo("token-2");
         assertThat(repo.credential()).isEqualTo(new RepoCredential.Bearer("token-2"));
+    }
+
+    /**
+     * A stored artifact whose published checksum is refused with an expired helper credential is
+     * confirmed with a fresh one, and the repository stays in the job for the next request.
+     */
+    @Test
+    void a_refused_checksum_of_a_stored_artifact_refreshes_the_credential(@TempDir Path tmp) throws Exception {
+        TokenChecking transport = new TokenChecking("token-1", LOOPBACK);
+        Coordinate lib = Coordinate.of("com.acme", "lib", "1.0");
+        repo(transport, tmp, "token-1").fetchArtifact(lib);
+        transport.accepted.set("token-2");
+        AtomicInteger refreshes = new AtomicInteger();
+        MavenRepo repo = repo(transport, tmp, "token-1").refreshingCredentialWith(() -> {
+            refreshes.incrementAndGet();
+            return new RepoCredential.Bearer("token-2");
+        });
+        assertThat(repo.passable()).isTrue();
+
+        repo.fetchArtifact(lib);
+        repo.fetchPom(lib);
+
+        assertThat(refreshes).hasValue(1);
+        assertThat(transport.tokensSeen).last().isEqualTo("token-2");
+    }
+
+    /** An expired helper credential refused for a version list is refreshed, not answered from a stale copy. */
+    @Test
+    void a_refused_version_list_refreshes_the_credential_rather_than_reading_a_stale_copy(@TempDir Path tmp)
+            throws Exception {
+        AtomicReference<String> accepted = new AtomicReference<>("token-1");
+        AtomicReference<String> versions = new AtomicReference<>("<version>1.0</version>");
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/maven/com/acme/lib/maven-metadata.xml", exchange -> {
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            if (!("Bearer " + accepted.get()).equals(auth)) {
+                exchange.sendResponseHeaders(401, -1);
+            } else {
+                byte[] body = ("<metadata><groupId>com.acme</groupId><artifactId>lib</artifactId>"
+                                + "<versioning><versions>" + versions.get() + "</versions></versioning></metadata>")
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+            exchange.close();
+        });
+        server.start();
+        try {
+            URI base = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/maven/");
+            Coordinate lib = Coordinate.of("com.acme", "lib", "1.0");
+            Cas cas = new Cas(tmp.resolve("cas"));
+            assertThat(new MavenRepo("corp", base, new Http(), cas, new RepoCredential.Bearer("token-1"), false)
+                            .availableVersions(lib))
+                    .containsExactly("1.0");
+            accepted.set("token-2");
+            versions.set("<version>1.0</version><version>2.0</version>");
+            MavenMetadataCache.dropBodyMemo();
+            AtomicInteger refreshes = new AtomicInteger();
+            MavenRepo repo = new MavenRepo("corp", base, new Http(), cas, new RepoCredential.Bearer("token-1"), false)
+                    .refreshingCredentialWith(() -> {
+                        refreshes.incrementAndGet();
+                        return new RepoCredential.Bearer("token-2");
+                    });
+
+            assertThat(repo.availableVersions(lib)).containsExactly("1.0", "2.0");
+            assertThat(refreshes).hasValue(1);
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test

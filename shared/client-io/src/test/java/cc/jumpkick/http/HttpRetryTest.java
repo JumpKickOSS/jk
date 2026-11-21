@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.testing.LoopbackHttp;
+import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -99,6 +100,46 @@ class HttpRetryTest {
                 .isNull();
     }
 
+    /** A mirror asked after Central's silence has its short rate limit waited out like any host's. */
+    @Test
+    void a_mirror_asked_after_central_s_silence_has_its_retry_after_honoured(@TempDir Path dir) throws Exception {
+        CentralMirror m = new CentralMirror(
+                dir, Duration.ofHours(4), true, "127.0.0.1", mirror.baseUrl().replaceAll("/$", "") + "/mirror");
+        central.server().createContext("/maven2/", HttpRetryTest::silent);
+        AtomicInteger hits = new AtomicInteger();
+        mirror.server().createContext(mirror.base().getPath() + "/mirror/", exchange -> {
+            if (hits.getAndIncrement() == 0) {
+                exchange.getResponseHeaders().add("Retry-After", "1");
+                exchange.sendResponseHeaders(429, -1);
+            } else {
+                byte[] body = "<project/>".getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+            exchange.close();
+        });
+
+        HttpResponse<byte[]> response = http(m).withRequestTimeout(Duration.ofMillis(300))
+                .get(central.base().resolve("/maven2/g/a/1/a-1.pom"));
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(hits).hasValue(2);
+    }
+
+    /** A mirror as silent as Central fails the request as no answer, naming the timeout. */
+    @Test
+    void a_silent_mirror_after_central_s_silence_is_no_answer(@TempDir Path dir) {
+        CentralMirror m = new CentralMirror(
+                dir, Duration.ofHours(4), true, "127.0.0.1", mirror.baseUrl().replaceAll("/$", "") + "/mirror");
+        central.server().createContext("/maven2/", HttpRetryTest::silent);
+        mirror.server().createContext(mirror.base().getPath() + "/mirror/", HttpRetryTest::silent);
+
+        assertThatThrownBy(() -> http(m).withRequestTimeout(Duration.ofMillis(300))
+                        .get(central.base().resolve("/maven2/g/a/1/a-1.pom")))
+                .isInstanceOf(Http.NoAnswerException.class)
+                .hasMessageContaining("within 300 ms");
+    }
+
     /**
      * An address that answered with a status on some attempts is up: a connect fault on another
      * attempt neither makes the failure "no answer" nor puts the address out of reach.
@@ -151,6 +192,16 @@ class HttpRetryTest {
                 .noAnswerWithin("PUT", uri, request, new HttpTimeoutException("silent"));
 
         assertThat(failure).hasMessageContaining("within 120 s");
+    }
+
+    /** A handler that accepts and says nothing for longer than the tests' request timeout. */
+    private static void silent(HttpExchange exchange) throws IOException {
+        try {
+            Thread.sleep(1_500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        exchange.close();
     }
 
     private static void readHead(InputStream in) throws IOException {

@@ -105,6 +105,9 @@ public final class MavenRepo {
      */
     private final @Nullable Http http;
 
+    /** The client made once, when {@link #http} is null, for the repositories derived from this one. */
+    private volatile @Nullable Http derivedHttp;
+
     /**
      * {@code allow-unverified} on the declaring repository table: an artifact this repository
      * publishes no checksum sidecar for may be pinned unverified. Off for every repository that is
@@ -268,7 +271,7 @@ public final class MavenRepo {
      * written without.
      */
     public MavenRepo mirroredThrough(Mirror mirror) {
-        Http client = http != null ? http : new Http();
+        Http client = clientForDerived();
         // A refused mirror is asked nothing, so its URL selects no transport (it may name none jk has).
         RepoTransport over = mirror.refusal() == null ? RepoTransports.forUrl(mirror.url(), client) : transport;
         return new MavenRepo(
@@ -456,6 +459,21 @@ public final class MavenRepo {
     }
 
     /**
+     * The client a repository derived from this one is built over: this one's, else one made on
+     * first use and shared by every later derivation, since each client holds threads and a
+     * connection pool of its own.
+     */
+    private Http clientForDerived() {
+        if (http != null) return http;
+        Http made = derivedHttp;
+        if (made != null) return made;
+        synchronized (this) {
+            if (derivedHttp == null) derivedHttp = new Http();
+            return Objects.requireNonNull(derivedHttp);
+        }
+    }
+
+    /**
      * A repository a dependency's POM declares, over this repository's store and client: anonymous,
      * with neither {@code allow-unverified} nor {@code allow-insecure} — a POM has no table to opt in
      * with, so its repository is held to the rule a project-declared one meets by default — with
@@ -463,7 +481,7 @@ public final class MavenRepo {
      * passable}, as Maven falls through a POM's repository that answers nothing.
      */
     public MavenRepo declaredByPom(String name, URI url, boolean releases, boolean snapshots) {
-        Http client = (http != null ? http : new Http()).withoutSilenceRetries();
+        Http client = clientForDerived().withoutSilenceRetries();
         return new MavenRepo(
                 name,
                 url,
@@ -689,12 +707,19 @@ public final class MavenRepo {
         return CatalogVersions.of(xml, coord, name, uri, metadataCache);
     }
 
-    /** {@code uri} through the metadata cache, sent once more with a fresh credential after a refusal. */
+    /**
+     * {@code uri} through the metadata cache, sent once more with a fresh credential after a refusal.
+     * While a fresh credential can still be had, a refusal is not answered from a stale copy.
+     */
     private byte[] cachedMetadata(URI uri) throws IOException, InterruptedException {
         MavenMetadataCache cache = Objects.requireNonNull(metadataCache, "metadataCache");
         RepoCredential used = credential;
+        boolean refreshable;
+        synchronized (refreshLock) {
+            refreshable = credentialRefresh != null && !credentialRefreshed;
+        }
         try {
-            return cache.fetch(uri, used);
+            return cache.fetch(uri, used, !refreshable);
         } catch (ArtifactNotFoundException | FetchAbortedException e) {
             throw e;
         } catch (IOException e) {
@@ -1158,20 +1183,24 @@ public final class MavenRepo {
         if (abort.getAsBoolean() || unreachable.get() != null) {
             return unvouched ? Optional.empty() : Optional.of(local);
         }
+        RepoCredential used = credential;
         try {
-            if (download.confirmStored(
-                    coord,
-                    vouchFor(fetchBase.resolve(relativePath)),
-                    relativePath,
-                    local.cachePath(),
-                    local.sha256(),
-                    leg,
-                    requirePublished)) {
-                verified.put(relativePath, local.sha256());
-                return Optional.of(local);
+            try {
+                return confirmedOnce(coord, relativePath, local, leg, requirePublished);
+            } catch (MissingChecksumException refused) {
+                throw refused;
+            } catch (IOException e) {
+                // A refused sidecar is asked once more with a fresh credential before the refusal
+                // can put the repository out of the job.
+                if (!refreshedAfter(e, used)) throw e;
+                try {
+                    return confirmedOnce(coord, relativePath, local, leg, requirePublished);
+                } catch (MissingChecksumException refused) {
+                    throw refused;
+                } catch (IOException again) {
+                    throw refusedAgain(again);
+                }
             }
-            repoStore.evict(relativePath);
-            return Optional.empty();
         } catch (MissingChecksumException refused) {
             return Optional.empty();
         } catch (IOException transport) {
@@ -1181,6 +1210,25 @@ public final class MavenRepo {
             unreachableOr(transport);
             return unvouched ? Optional.empty() : Optional.of(local);
         }
+    }
+
+    /** One check of {@code local} against the checksum this repository publishes; empty when it differs. */
+    private Optional<Fetched> confirmedOnce(
+            Coordinate coord, String relativePath, Fetched local, Leg leg, boolean requirePublished)
+            throws IOException, InterruptedException {
+        if (download.confirmStored(
+                coord,
+                vouchFor(fetchBase.resolve(relativePath)),
+                relativePath,
+                local.cachePath(),
+                local.sha256(),
+                leg,
+                requirePublished)) {
+            verified.put(relativePath, local.sha256());
+            return Optional.of(local);
+        }
+        repoStore.evict(relativePath);
+        return Optional.empty();
     }
 
     /** Artifacts this run confirmed by the checksum this repository publishes (downloads and adoptions). */

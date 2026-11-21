@@ -28,7 +28,7 @@ import java.util.concurrent.Callable;
  *
  * <p><strong>Local first:</strong> within {@link #DEFAULT_TTL} (24h, Maven's daily policy) a
  * cached body is returned with <em>no</em> HTTP. Past TTL, conditional GET ({@code ETag} /
- * {@code Last-Modified}); 304 restarts the TTL. Network/429 errors reuse a stale copy; 404 →
+ * {@code Last-Modified}); 304 restarts the TTL. Network/4xx errors reuse a stale copy; 404 →
  * {@link MavenRepo.ArtifactNotFoundException}, remembered for {@link RepoMisses#CATALOGS}' hour.
  *
  * <p>{@link #withForceRevalidate} / {@code -F} skip the TTL short-circuit (still conditional
@@ -113,10 +113,22 @@ public final class MavenMetadataCache {
 
     /** Metadata bytes for {@code uri}; 404 → {@link MavenRepo.ArtifactNotFoundException}. */
     public byte[] fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+        return fetch(uri, credential, true);
+    }
+
+    /**
+     * As {@link #fetch(URI, RepoCredential)}; with {@code staleOnRefusal} false a 401 or 403 is
+     * thrown as an {@link HttpStatusException} rather than answered from a stale copy, for a caller
+     * that can send the request again with a fresh credential.
+     */
+    public byte[] fetch(URI uri, RepoCredential credential, boolean staleOnRefusal)
+            throws IOException, InterruptedException {
         Path body = dir.resolve(Hashing.sha256Hex(uri.toString()));
         boolean force = SessionContext.current().config().forceOr(false) || forceRevalidate();
         // Two graphs of one lock read the same catalog at once: one request, and each caller its own copy.
-        return FLIGHTS.run(List.of(body, force, credential), () -> read(uri, credential, body, force))
+        return FLIGHTS.run(
+                        List.of(body, force, credential, staleOnRefusal),
+                        () -> read(uri, credential, body, force, staleOnRefusal))
                 .clone();
     }
 
@@ -137,7 +149,7 @@ public final class MavenMetadataCache {
     /** One catalog read per body file at a time, process-wide. */
     private static final SingleFlight<byte[]> FLIGHTS = new SingleFlight<>(failure -> false);
 
-    private byte[] read(URI uri, RepoCredential credential, Path body, boolean force)
+    private byte[] read(URI uri, RepoCredential credential, Path body, boolean force, boolean staleOnRefusal)
             throws IOException, InterruptedException {
         Path meta = body.resolveSibling(body.getFileName() + ".h");
 
@@ -186,16 +198,14 @@ public final class MavenMetadataCache {
                 RepoMisses.CATALOGS.record(uri);
                 throw new MavenRepo.ArtifactNotFoundException("not found: " + uri);
             }
-            // 4xx (incl. 429) / other: reuse a stale copy rather than fail the
+            // 4xx (incl. 429) / other: the catch below reuses a stale copy rather than fail the
             // resolve when the server won't hand us a fresh index right now.
-            if (Files.isRegularFile(body)) {
-                return Files.readAllBytes(body);
-            }
             throw new HttpStatusException(status, uri);
         } catch (MavenRepo.ArtifactNotFoundException notFound) {
             throw notFound; // a real miss, not a transport hiccup
         } catch (IOException networkError) {
-            if (Files.isRegularFile(body)) {
+            boolean refused = networkError instanceof HttpStatusException answer && answer.refusesAccess();
+            if (Files.isRegularFile(body) && (staleOnRefusal || !refused)) {
                 return Files.readAllBytes(body); // offline / unreachable: stale-but-usable
             }
             throw networkError;

@@ -773,10 +773,12 @@ public final class Http {
         IOException lastIo = null;
         int lastStatus = -1;
         boolean answered = false;
+        boolean rerouted = false;
         for (int attempt = 0; attempt < backoffs.length + 1; attempt++) {
-            if (attempt > 0) {
+            if (attempt > 0 && !rerouted) {
                 Thread.sleep(jittered(backoffs[attempt - 1]));
             }
+            rerouted = false;
             // Do not ask a host that is already refusing. One 429 costs one request, not one
             // per permit per attempt — six concurrent permits times five attempts would turn a single
             // refusal into thirty more, which is how a quota window gets held open.
@@ -868,22 +870,16 @@ public final class Http {
                 if (!retriesSilence) break;
             } catch (HttpTimeoutException e) {
                 // The server accepted and said nothing for the whole timeout. Central gets one more
-                // chance on the mirror; anyone else has answered, and the URL is named.
+                // chance on the mirror, asked at once as an extra attempt of this loop, so the
+                // mirror's own refusals and faults are read as any host's; anyone else has
+                // answered, and the URL is named.
                 URI mirrored = centralMirror.enabled() && centralMirror.matches(request.uri())
                         ? centralMirror.toMirror(request.uri())
                         : request.uri();
-                if (!mirrored.equals(request.uri())) {
-                    request = reissue(request, mirrored).build();
-                    HttpResponse<T> reissued = send(request, handler, drain);
-                    if (reissued.statusCode() < 500) {
-                        return reissued;
-                    }
-                    if (drain != null) drain.handle(reissued);
-                    lastStatus = reissued.statusCode();
-                    answered = true;
-                    continue;
-                }
-                throw noAnswerWithin(verb, uri, request, e);
+                if (mirrored.equals(request.uri())) throw noAnswerWithin(verb, uri, request, e);
+                request = reissue(request, mirrored).build();
+                rerouted = true;
+                attempt--;
             } catch (IOException e) {
                 // A body over the limit is an answer, and the same body would come back; a body
                 // that stopped arriving is not asked for again, as silence before the headers is not.
