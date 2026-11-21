@@ -252,7 +252,7 @@ final class GuardKeys {
             @Nullable String testFacts,
             List<String> suite)
             throws IOException {
-        List<String> tokens = moduleTokens(module, factsDigest, dir);
+        List<String> tokens = moduleTokens(module, factsDigest, dir, testFacts != null);
         if (testFacts != null) tokens.add("test-facts:" + testFacts);
         if (!testsIndexed) tokens.add(TESTS_NOT_COMPILED);
         tokens.addAll(suite);
@@ -264,11 +264,14 @@ final class GuardKeys {
      * digest, and what its type hierarchy resolves through besides its own classes — the Java level
      * of the JDK the engine runs on ({@link ToolchainPolicy#engineMajor}: a verdict is a record field
      * the reader matches by {@code jdk-match}, never the build), and the ABI of
-     * each compile-scope sibling's classes tree, in closure order. An override or a subtype check
-     * moves with either, while the module's own facts do not. The siblings are read off the
-     * manifest on disk, so the run and the forecast name the same ones.
+     * each compile-scope sibling's classes tree, in closure order, then, when the lane reads a test
+     * tree ({@code tests}), of each sibling only the tests compile against, where a test's tags may
+     * be composed. An override or a subtype check moves with either, while the module's own facts do
+     * not. The siblings are read off the manifest on disk, so the run and the forecast name the same
+     * ones.
      */
-    private static List<String> moduleTokens(String module, String factsDigest, Path dir) throws IOException {
+    private static List<String> moduleTokens(String module, String factsDigest, Path dir, boolean tests)
+            throws IOException {
         JkBuild project = JkBuildParser.parse(ManifestPaths.manifestIn(dir));
         List<String> tokens = new ArrayList<>();
         tokens.add("module:" + module);
@@ -277,6 +280,13 @@ final class GuardKeys {
         WorkspaceClasspath.Result siblings =
                 WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.COMPILE_SCOPES);
         for (Path classes : siblings.siblingClosureClasses()) tokens.add("sibling:" + ClasspathAbi.token(classes));
+        if (tests) {
+            for (Path classes : WorkspaceClasspath.resolve(dir, project, WorkspaceClasspath.TEST_SCOPES)
+                    .siblingClosureClasses()) {
+                if (!siblings.siblingClosureClasses().contains(classes))
+                    tokens.add("test-sibling:" + ClasspathAbi.token(classes));
+            }
+        }
         return tokens;
     }
 

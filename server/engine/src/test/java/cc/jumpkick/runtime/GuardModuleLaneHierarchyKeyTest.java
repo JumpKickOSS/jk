@@ -15,7 +15,7 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** A module lane's key moves with what its type hierarchy resolves through: a sibling's ABI. */
+/** A module lane's key moves with what its type hierarchies resolve through: a sibling's ABI. */
 class GuardModuleLaneHierarchyKeyTest {
 
     @Test
@@ -68,6 +68,57 @@ class GuardModuleLaneHierarchyKeyTest {
         assertThat(key(root, app, appLayout, load))
                 .as("a new supertype on the sibling changes what app's classes are, though none of them moved")
                 .isNotEqualTo(key);
+    }
+
+    @Test
+    void a_test_only_sibling_api_change_moves_the_key_of_a_lane_that_reads_tests(@TempDir Path tmp) throws Exception {
+        Path root = Files.createDirectories(tmp.resolve("tree"));
+        Files.writeString(root.resolve("jk.toml"), """
+                group = "t"
+                name  = "root"
+                version = "0.0.1"
+                java = 25
+
+                [workspace]
+                modules = ["testing", "app"]
+                """);
+        Path testing = Files.createDirectories(root.resolve("testing"));
+        Files.writeString(
+                testing.resolve("jk.toml"), "group = \"t\"\nname = \"testing\"\nversion = \"0.0.1\"\njava = 25\n");
+        Path app = Files.createDirectories(root.resolve("app"));
+        Files.writeString(app.resolve("jk.toml"), """
+                group = "t"
+                name  = "app"
+                version = "0.0.1"
+                java = 25
+
+                [test-dependencies]
+                testing = { workspace = true }
+                """);
+        BuildLayout testingLayout = BuildLayout.of(testing, JkBuildParser.parse(testing.resolve("jk.toml")));
+        BuildLayout appLayout = BuildLayout.of(app, JkBuildParser.parse(app.resolve("jk.toml")));
+
+        compile(tmp.resolve("testing-1"), testingLayout.classesDir(), "Slow", "public @interface Slow {}");
+        compile(tmp.resolve("app-src"), appLayout.classesDir(), "Main", "public class Main {}");
+        compile(tmp.resolve("app-test"), appLayout.testClassesDir(), "MainTest", "public class MainTest {}");
+        FactsIndexing.ensure(appLayout.classesDir(), FactsIndexing.indexPath(appLayout.buildDir(), "main"));
+        FactsIndexing.ensure(appLayout.testClassesDir(), FactsIndexing.indexPath(appLayout.buildDir(), "test"));
+        LoadResult load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        String key = key(root, app, appLayout, load);
+        String untested = Objects.requireNonNull(
+                GuardKeys.probeModuleLane(root, app, appLayout, load, false).key(), "the lane's key");
+
+        compile(
+                tmp.resolve("testing-2"),
+                testingLayout.classesDir(),
+                "Slow",
+                "@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Slow {}");
+        assertThat(key(root, app, appLayout, load))
+                .as("a composed tag the tests read may have changed, though none of app's classes moved")
+                .isNotEqualTo(key);
+        assertThat(GuardKeys.probeModuleLane(root, app, appLayout, load, false).key())
+                .as("a lane that reads no tests does not key what only the tests compile against")
+                .isEqualTo(untested);
     }
 
     private static String key(Path root, Path module, BuildLayout layout, LoadResult load) throws Exception {
