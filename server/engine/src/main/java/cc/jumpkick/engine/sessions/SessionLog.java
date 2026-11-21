@@ -726,17 +726,12 @@ public final class SessionLog {
             }
         }
         if (journal != null) {
-            List<SessionRecord> stored = new ArrayList<>();
-            for (Map<String, Object> doc : journal.list()) {
-                if (doc.get("session") instanceof Map<?, ?> s) stored.add(SessionRecord.of(s));
-            }
             // Newest first, so only the sessions that can still make the page have their episodes read.
-            stored.sort(Comparator.comparingLong(SessionRecord::lastActiveAt).reversed());
             int kept = 0;
-            for (SessionRecord r : stored) {
+            for (SessionRecord r : StoredSessions.newestFirst(journal)) {
                 if (kept >= limit) break;
                 if (live.contains(r.id()) || rows.containsKey(r.id())) continue;
-                List<Episode> episodes = storedEpisodes(r.id());
+                List<Episode> episodes = StoredSessions.episodes(journal, r.id());
                 Map<String, Object> row = onProject(row(r, null, episodes), r, episodes, projectId, projectIds::named);
                 if (row == null) continue;
                 rows.put(r.id(), row);
@@ -779,31 +774,18 @@ public final class SessionLog {
         }
         if (record == null) {
             if (stored == null) return Optional.empty();
-            Optional<Map<String, Object>> doc = stored.read(id);
-            if (doc.isEmpty() || !(doc.get().get("session") instanceof Map<?, ?> s)) return Optional.empty();
-            record = SessionRecord.of(s);
-            episodes = storedEpisodes(id);
+            record = StoredSessions.record(stored, id).orElse(null);
+            if (record == null) return Optional.empty();
+            episodes = StoredSessions.episodes(stored, id);
         }
-        if (actions == null) {
-            List<ActionRecord> read = new ArrayList<>();
-            if (stored != null) for (Map<String, Object> m : stored.actions(id)) read.add(ActionRecord.of(m));
-            actions = read;
-        }
-        int end = actions.size();
-        if (before > 0) {
-            end = 0;
-            while (end < actions.size() && actions.get(end).seq() < before) end++;
-        }
-        int start = Math.max(0, end - Math.max(1, limit));
-        List<Map<String, Object>> page = new ArrayList<>();
-        for (ActionRecord a : actions.subList(start, end)) page.add(a.toMap());
-        long next = start > 0 ? actions.get(start).seq() : 0;
+        if (actions == null) actions = stored == null ? List.of() : StoredSessions.actions(stored, id);
+        StoredSessions.Slice page = StoredSessions.page(actions, before, limit);
         List<Map<String, Object>> eps = new ArrayList<>();
         for (Episode e : episodes.reversed()) {
             if (eps.size() == EpisodeInference.KEEP) break;
             eps.add(projectIds.named(e).toMap());
         }
-        return Optional.of(new Page(sessionMap(record, state), eps, page, next));
+        return Optional.of(new Page(sessionMap(record, state), eps, page.actions(), page.next()));
     }
 
     // ---- internals -----------------------------------------------------------------------------
@@ -995,18 +977,6 @@ public final class SessionLog {
         m.put("episode", projectIds.namedIfKnown(e.episode()).toMap());
         m.put("state", e.state());
         return m;
-    }
-
-    /** A stored session's kept episodes, oldest first. */
-    private List<Episode> storedEpisodes(String id) {
-        SessionJournal stored = journal;
-        if (stored == null) return List.of();
-        List<Episode> out = new ArrayList<>();
-        for (EpisodeInference.Stored e : EpisodeLines.latest(stored.episodeLines(id))) out.add(e.episode());
-        out.sort(Comparator.comparingInt(Episode::number));
-        return out.size() > EpisodeInference.KEEP
-                ? List.copyOf(out.subList(out.size() - EpisodeInference.KEEP, out.size()))
-                : out;
     }
 
     /** True while this engine writes the records; false for good once {@link #writes} fails or it is stopped. */
