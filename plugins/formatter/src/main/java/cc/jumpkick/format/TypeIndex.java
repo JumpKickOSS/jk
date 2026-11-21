@@ -7,13 +7,17 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import org.jspecify.annotations.Nullable;
@@ -21,7 +25,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Known types for FQCN shortening: top-level names from project sources plus (lazily) public JDK
  * classes from {@code jrt:/}. A name shortens when it is in this index and its simple name does
- * not collide.
+ * not collide. A served worker keeps each source's names between runs and re-reads only the sources
+ * that changed.
  */
 final class TypeIndex {
 
@@ -69,7 +74,8 @@ final class TypeIndex {
         if (sources != null) {
             // This runs in the formatter's own worker process, where no request value is carried.
             List<List<String>> declared = new ArrayList<>(sources)
-                    .parallelStream().map(TypeIndex::topLevelTypes).toList();
+                    .parallelStream().map(TypeIndex::declaredIn).toList();
+            if (DECLARED.size() > MAX_REMEMBERED) forgetAllBut(sources);
             for (List<String> types : declared) {
                 for (String fqcn : types) add(fqcn, known, bySimple);
             }
@@ -102,6 +108,45 @@ final class TypeIndex {
             b.computeIfAbsent(e.getKey(), x -> new ArrayList<>()).addAll(e.getValue());
         }
         return new TypeIndex(k, b);
+    }
+
+    /**
+     * Each source's top-level types as last read, by absolute path, so a served worker's next scan
+     * reads and lexes only the files whose size or modification time moved.
+     */
+    private static final Map<Path, Declared> DECLARED = new ConcurrentHashMap<>();
+
+    /** Sources remembered before a scan forgets every one it was not given. */
+    static final int MAX_REMEMBERED = 65_536;
+
+    /** The types one source declared when it had this size and modification time. */
+    private record Declared(long size, FileTime modified, List<String> types) {}
+
+    /** {@link #topLevelTypes} of {@code file}, from {@link #DECLARED} while its stamp holds. */
+    private static List<String> declaredIn(@Nullable Path file) {
+        if (file == null) return List.of();
+        Path key = file.toAbsolutePath().normalize();
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(key, BasicFileAttributes.class);
+        } catch (IOException gone) {
+            DECLARED.remove(key);
+            return List.of();
+        }
+        Declared known = DECLARED.get(key);
+        if (known != null && known.size() == attrs.size() && known.modified().equals(attrs.lastModifiedTime())) {
+            return known.types();
+        }
+        List<String> types = topLevelTypes(key);
+        DECLARED.put(key, new Declared(attrs.size(), attrs.lastModifiedTime(), types));
+        return types;
+    }
+
+    /** Drop every remembered source but {@code sources}. */
+    private static void forgetAllBut(Collection<Path> sources) {
+        Set<Path> keep = new HashSet<>();
+        for (Path p : sources) if (p != null) keep.add(p.toAbsolutePath().normalize());
+        DECLARED.keySet().retainAll(keep);
     }
 
     /** The top-level types {@code file} declares, as FQCNs in declaration order. */
