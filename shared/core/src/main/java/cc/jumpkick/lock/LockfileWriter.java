@@ -166,9 +166,10 @@ public final class LockfileWriter {
         return withoutWriter(Files.readString(file)).equals(withoutWriter(text));
     }
 
+    /** {@code text} without the writer lines, line endings read as {@code \n} (a checkout may hold the lock with CRLF). */
     private static String withoutWriter(String text) {
         StringBuilder out = new StringBuilder(text.length());
-        for (String line : text.split("\n", -1)) {
+        for (String line : text.split("\r?\n", -1)) {
             if (line.startsWith("generated-by")) continue;
             out.append(line).append('\n');
         }
@@ -223,90 +224,101 @@ public final class LockfileWriter {
         }
     }
 
-    /** One {@code [[artifact]]} row per artifact, sorted by name then version. */
+    /**
+     * One {@code [[artifact]]} row per artifact, sorted by name then version, then by the row's text:
+     * a coordinate can hold several rows at one version (a member's beside the plain one), and their
+     * order must not follow the order the solve produced them in.
+     */
     private static void writeArtifacts(StringBuilder out, Lockfile lockfile) {
-        List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
-        sorted.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));
+        record Row(Lockfile.Artifact artifact, String text) {}
+        List<Row> rows = new ArrayList<>(lockfile.artifacts().size());
+        for (Lockfile.Artifact pkg : lockfile.artifacts()) rows.add(new Row(pkg, artifactRow(pkg)));
+        rows.sort(Comparator.comparing((Row r) -> r.artifact().name())
+                .thenComparing(r -> r.artifact().version())
+                .thenComparing(Row::text));
+        for (Row row : rows) out.append(row.text());
+    }
 
-        for (Lockfile.Artifact pkg : sorted) {
-            out.append('\n');
-            out.append("[[artifact]]\n");
-            out.append("name     = ").append(quote(pkg.name())).append('\n');
-            out.append("version  = ").append(quote(pkg.version())).append('\n');
-            out.append("source   = ").append(quote(pkg.source())).append('\n');
-            if (pkg.checksum() != null) {
-                out.append("checksum = ").append(quote(pkg.checksum())).append('\n');
-            }
-            if (pkg.sourcesChecksum() != null) {
-                out.append("sources  = ").append(quote(pkg.sourcesChecksum())).append('\n');
-            }
-            if (pkg.pinnedBy() != null) {
-                out.append("pinned-by = ").append(quote(pkg.pinnedBy())).append('\n');
-            }
-            if (pkg.path() != null) {
-                out.append("path     = ").append(quote(pkg.path())).append('\n');
-            }
-            if (pkg.git() != null) {
-                out.append("git      = ").append(quote(pkg.git().url())).append('\n');
-                out.append("rev      = ").append(quote(pkg.git().rev())).append('\n');
-                if (pkg.git().ref() != null) {
-                    out.append("ref      = ").append(quote(pkg.git().ref())).append('\n');
-                }
-            }
-            if (!pkg.scopes().isEmpty()) {
-                List<Scope> sortedScopes = new ArrayList<>(pkg.scopes());
-                sortedScopes.sort(Comparator.naturalOrder());
-                out.append("scopes   = [");
-                for (int i = 0; i < sortedScopes.size(); i++) {
-                    if (i > 0) out.append(", ");
-                    out.append(quote(sortedScopes.get(i).canonical()));
-                }
-                out.append("]\n");
-            }
-            if (pkg.licenses() != null) {
-                out.append("licenses = [");
-                for (int i = 0; i < pkg.licenses().size(); i++) {
-                    if (i > 0) out.append(", ");
-                    out.append(quote(pkg.licenses().get(i)));
-                }
-                out.append("]\n");
-            }
-            if (!pkg.members().isEmpty()) {
-                out.append("members  = [");
-                for (int i = 0; i < pkg.members().size(); i++) {
-                    if (i > 0) out.append(", ");
-                    out.append(quote(pkg.members().get(i)));
-                }
-                out.append("]\n");
-            }
-            if (!pkg.deps().isEmpty()) {
-                List<String> deps = new ArrayList<>(pkg.deps());
-                deps.sort(Comparator.naturalOrder());
-                out.append("deps = [\n");
-                for (String dep : deps) {
-                    out.append("  ").append(quote(dep)).append(",\n");
-                }
-                out.append("]\n");
-            }
-            if (!pkg.excludedBy().isEmpty()) {
-                List<String> excluded = new ArrayList<>(pkg.excludedBy());
-                excluded.sort(Comparator.naturalOrder());
-                out.append("excluded-by = [\n");
-                for (String line : excluded) {
-                    out.append("  ").append(quote(line)).append(",\n");
-                }
-                out.append("]\n");
-            }
-            if (!pkg.addedBy().isEmpty()) {
-                List<String> added = new ArrayList<>(pkg.addedBy());
-                added.sort(Comparator.naturalOrder());
-                out.append("added-by = [\n");
-                for (String line : added) {
-                    out.append("  ").append(quote(line)).append(",\n");
-                }
-                out.append("]\n");
+    private static String artifactRow(Lockfile.Artifact pkg) {
+        StringBuilder out = new StringBuilder(256);
+        out.append('\n');
+        out.append("[[artifact]]\n");
+        out.append("name     = ").append(quote(pkg.name())).append('\n');
+        out.append("version  = ").append(quote(pkg.version())).append('\n');
+        out.append("source   = ").append(quote(pkg.source())).append('\n');
+        if (pkg.checksum() != null) {
+            out.append("checksum = ").append(quote(pkg.checksum())).append('\n');
+        }
+        if (pkg.sourcesChecksum() != null) {
+            out.append("sources  = ").append(quote(pkg.sourcesChecksum())).append('\n');
+        }
+        if (pkg.pinnedBy() != null) {
+            out.append("pinned-by = ").append(quote(pkg.pinnedBy())).append('\n');
+        }
+        if (pkg.path() != null) {
+            out.append("path     = ").append(quote(pkg.path())).append('\n');
+        }
+        if (pkg.git() != null) {
+            out.append("git      = ").append(quote(pkg.git().url())).append('\n');
+            out.append("rev      = ").append(quote(pkg.git().rev())).append('\n');
+            if (pkg.git().ref() != null) {
+                out.append("ref      = ").append(quote(pkg.git().ref())).append('\n');
             }
         }
+        if (!pkg.scopes().isEmpty()) {
+            List<Scope> sortedScopes = new ArrayList<>(pkg.scopes());
+            sortedScopes.sort(Comparator.naturalOrder());
+            out.append("scopes   = [");
+            for (int i = 0; i < sortedScopes.size(); i++) {
+                if (i > 0) out.append(", ");
+                out.append(quote(sortedScopes.get(i).canonical()));
+            }
+            out.append("]\n");
+        }
+        if (pkg.licenses() != null) {
+            out.append("licenses = [");
+            for (int i = 0; i < pkg.licenses().size(); i++) {
+                if (i > 0) out.append(", ");
+                out.append(quote(pkg.licenses().get(i)));
+            }
+            out.append("]\n");
+        }
+        if (!pkg.members().isEmpty()) {
+            out.append("members  = [");
+            for (int i = 0; i < pkg.members().size(); i++) {
+                if (i > 0) out.append(", ");
+                out.append(quote(pkg.members().get(i)));
+            }
+            out.append("]\n");
+        }
+        if (!pkg.deps().isEmpty()) {
+            List<String> deps = new ArrayList<>(pkg.deps());
+            deps.sort(Comparator.naturalOrder());
+            out.append("deps = [\n");
+            for (String dep : deps) {
+                out.append("  ").append(quote(dep)).append(",\n");
+            }
+            out.append("]\n");
+        }
+        if (!pkg.excludedBy().isEmpty()) {
+            List<String> excluded = new ArrayList<>(pkg.excludedBy());
+            excluded.sort(Comparator.naturalOrder());
+            out.append("excluded-by = [\n");
+            for (String line : excluded) {
+                out.append("  ").append(quote(line)).append(",\n");
+            }
+            out.append("]\n");
+        }
+        if (!pkg.addedBy().isEmpty()) {
+            List<String> added = new ArrayList<>(pkg.addedBy());
+            added.sort(Comparator.naturalOrder());
+            out.append("added-by = [\n");
+            for (String line : added) {
+                out.append("  ").append(quote(line)).append(",\n");
+            }
+            out.append("]\n");
+        }
+        return out.toString();
     }
 
     private static void writePlugins(StringBuilder out, Lockfile lockfile) {

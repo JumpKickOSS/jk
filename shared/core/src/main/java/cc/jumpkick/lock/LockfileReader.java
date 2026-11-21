@@ -377,9 +377,9 @@ public final class LockfileReader {
     }
 
     private static Lockfile.Artifact toArtifact(LockToml table) {
-        String name = requireRowString(table, "name");
-        String version = requireRowString(table, "version");
-        String source = requireRowString(table, "source");
+        String name = requireRowString(table, "artifact", "name");
+        String version = requireRowString(table, "artifact", "version");
+        String source = requireRowString(table, "artifact", "source");
         String checksum = table.getString("checksum");
         String path = table.getString("path");
         String pinnedBy = table.getString("pinned-by"); // optional
@@ -414,7 +414,8 @@ public final class LockfileReader {
         Lockfile.Artifact.GitInfo git = null;
         String gitUrl = table.getString("git");
         if (gitUrl != null) {
-            git = new Lockfile.Artifact.GitInfo(gitUrl, requireRowString(table, "rev"), table.getString("ref"));
+            git = new Lockfile.Artifact.GitInfo(
+                    gitUrl, requireRowString(table, "artifact", "rev"), table.getString("ref"));
         }
         String sourcesChecksum = table.getString("sources"); // optional
         List<String> excludedBy = new ArrayList<>();
@@ -504,8 +505,8 @@ public final class LockfileReader {
         if (pluginArray == null) return plugins;
         for (int i = 0; i < pluginArray.size(); i++) {
             LockToml t = pluginArray.getTable(i);
-            String coord = requireRowString(t, "coordinate");
-            String ver = requireRowString(t, "version");
+            String coord = requireRowString(t, "plugin", "coordinate");
+            String ver = requireRowString(t, "plugin", "version");
             String chk = t.getString("checksum");
             String path = t.getString("path");
             if (chk != null && path != null) {
@@ -541,9 +542,9 @@ public final class LockfileReader {
                         null,
                         stringList(t, "files"),
                         resolvedBy,
-                        requireRowString(t, "inputs"),
+                        requireRowString(t, "tool", "inputs"),
                         t.getString("module"),
-                        requireRowString(t, "plugin")));
+                        requireRowString(t, "tool", "plugin")));
                 continue;
             }
             String url = t.getString("url");
@@ -553,7 +554,7 @@ public final class LockfileReader {
                         null,
                         ToolEntry.FILE,
                         null,
-                        requireRowString(t, "checksum"),
+                        requireRowString(t, "tool", "checksum"),
                         Map.of(),
                         url,
                         List.of(),
@@ -561,8 +562,8 @@ public final class LockfileReader {
                         List.of()));
                 continue;
             }
-            String coord = requireRowString(t, "coordinate");
-            String ver = requireRowString(t, "version");
+            String coord = requireRowString(t, "tool", "coordinate");
+            String ver = requireRowString(t, "tool", "version");
             String type = t.getString("type");
             Map<String, String> shas = new TreeMap<>();
             LockToml sha256 = t.getTable("sha256");
@@ -596,10 +597,11 @@ public final class LockfileReader {
         return out;
     }
 
-    private static String requireRowString(LockToml table, String key) {
+    /** {@code key} of one row of the array table {@code array} ({@code artifact}, {@code plugin}, {@code tool}). */
+    private static String requireRowString(LockToml table, String array, String key) {
         String value = table.getString(key);
         if (value == null) {
-            throw new IllegalArgumentException("[[artifact]] is missing required key `" + key + "`");
+            throw new IllegalArgumentException("[[" + array + "]] is missing required key `" + key + "`");
         }
         return value;
     }

@@ -563,27 +563,6 @@ version  = "33.8.0-jre"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
 pinned-by = "jk.toml:guava"
-scopes   = ["provided", "test"]
-licenses = ["Apache-2.0"]
-members  = ["clients/maven-spy"]
-deps = [
-  "com.google.errorprone:error_prone_annotations:jar:@2.48.0",
-  "com.google.guava:failureaccess:jar:@1.0.3",
-  "org.jspecify:jspecify:jar:@1.0.1",
-]
-excluded-by = [
-  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.10.0",
-  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.10.0",
-  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.10.0",
-  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.10.0",
-]
-
-[[artifact]]
-name     = "com.google.guava:guava:jar:"
-version  = "33.8.0-jre"
-source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
-pinned-by = "jk.toml:guava"
 scopes   = ["provided", "processor"]
 licenses = ["Apache-2.0"]
 members  = ["plugins/quarkus"]
@@ -597,6 +576,27 @@ excluded-by = [
   "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
   "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
   "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.9.16, org.apache.maven:maven-embedder@3.9.16",
+]
+
+[[artifact]]
+name     = "com.google.guava:guava:jar:"
+version  = "33.8.0-jre"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:97b79ec3f2c0a6313a0c2df51ce1abdf8907e6531803467b81efcaaf99b35161"
+pinned-by = "jk.toml:guava"
+scopes   = ["provided", "test"]
+licenses = ["Apache-2.0"]
+members  = ["clients/maven-spy"]
+deps = [
+  "com.google.errorprone:error_prone_annotations:jar:@2.48.0",
+  "com.google.guava:failureaccess:jar:@1.0.3",
+  "org.jspecify:jspecify:jar:@1.0.1",
+]
+excluded-by = [
+  "com.google.errorprone:error_prone_annotations <- org.apache.maven:maven-core@3.10.0",
+  "com.google.guava:failureaccess <- org.apache.maven:maven-core@3.10.0",
+  "com.google.guava:listenablefuture <- org.apache.maven:maven-core@3.10.0",
+  "com.google.j2objc:j2objc-annotations <- org.apache.maven:maven-core@3.10.0",
 ]
 
 [[artifact]]
@@ -2221,16 +2221,17 @@ name     = "org.apache.httpcomponents:httpclient:jar:"
 version  = "4.5.14"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
-scopes   = ["provided", "test"]
+pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
+scopes   = ["provided"]
 licenses = ["Apache-2.0"]
-members  = ["clients/maven-spy"]
+members  = ["plugins/quarkus"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
 ]
 excluded-by = [
-  "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-apache@2.0.24",
-  "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-apache@2.0.24",
+  "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
+  "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
 ]
 
 [[artifact]]
@@ -2254,17 +2255,16 @@ name     = "org.apache.httpcomponents:httpclient:jar:"
 version  = "4.5.14"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
+members  = ["clients/maven-spy"]
 deps = [
   "commons-codec:commons-codec:jar:@1.22.1",
   "org.apache.httpcomponents:httpcore:jar:@4.4.16",
 ]
 excluded-by = [
-  "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
-  "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-http@1.9.27",
+  "commons-codec:commons-codec <- org.apache.maven.resolver:maven-resolver-transport-apache@2.0.24",
+  "commons-logging:commons-logging <- org.apache.maven.resolver:maven-resolver-transport-apache@2.0.24",
 ]
 
 [[artifact]]
@@ -3112,9 +3112,10 @@ name     = "org.codehaus.plexus:plexus-cipher:jar:"
 version  = "2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:9a7f1b5c5a9effd61eadfd8731452a2f76a8e79111fac391ef75ea801bea203a"
-scopes   = ["provided", "test"]
+pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
+scopes   = ["provided"]
 licenses = ["Apache-2.0"]
-members  = ["clients/maven-spy"]
+members  = ["plugins/quarkus"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
 ]
@@ -3124,10 +3125,9 @@ name     = "org.codehaus.plexus:plexus-cipher:jar:"
 version  = "2.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:9a7f1b5c5a9effd61eadfd8731452a2f76a8e79111fac391ef75ea801bea203a"
-pinned-by = "io.quarkus:quarkus-bootstrap-bom:3.40.1.1"
-scopes   = ["provided"]
+scopes   = ["provided", "test"]
 licenses = ["Apache-2.0"]
-members  = ["plugins/quarkus"]
+members  = ["clients/maven-spy"]
 deps = [
   "javax.inject:javax.inject:jar:@1",
 ]
