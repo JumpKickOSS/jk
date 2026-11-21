@@ -245,43 +245,72 @@ public final class ClasspathAbi {
     }
 
     private static void extract(Path abs, BasicFileAttributes attrs, Lines out) throws IOException {
-        if (attrs.isDirectory()) {
-            extractDir(abs, out);
-            return;
-        }
-        try {
-            extractJar(abs, out);
-        } catch (ZipException notAZip) {
-            out.accept(abs.getFileName().toString());
-            for (String line : ClassAbi.apiLines(Files.readAllBytes(abs))) out.accept(line);
-        }
-    }
-
-    private static void extractDir(Path root, Lines out) throws IOException {
-        List<Path> classes = new ArrayList<>();
-        // Guard G45: the walk already read each entry's attributes, so ask for them once rather
-        // than re-resolving the path to ask again.
-        TreeContent.forEach(root, (rel, f, a) -> {
-            if (rel.endsWith(".class")) classes.add(f);
+        forEachClass(abs, attrs, (name, bytes) -> {
+            out.accept(name);
+            for (String line : ClassAbi.apiLines(bytes)) out.accept(line);
         });
-        classes.sort(Comparator.comparing(p -> root.relativize(p).toString().replace('\\', '/')));
-        for (Path f : classes) {
-            out.accept(root.relativize(f).toString().replace('\\', '/'));
-            for (String line : ClassAbi.apiLines(Files.readAllBytes(f))) out.accept(line);
-        }
     }
 
     /**
-     * The classes in name order through {@link JarClassReader}, which holds a window of names at a
-     * time rather than the jar's whole directory: a bundle jar of four hundred thousand classes
-     * costs the same few megabytes as a small one.
+     * Every class of an entry in name order, by its entry-relative name: a tree's {@code .class}
+     * files, a jar's through {@link JarClassReader}, which holds a window of names at a time rather
+     * than the jar's whole directory (a bundle jar of four hundred thousand classes costs the same
+     * few megabytes as a small one), or a lone file that is not an archive as itself.
      */
-    private static void extractJar(Path jar, Lines out) throws IOException {
-        try (JarClassReader classes = JarClassReader.open(jar)) {
-            classes.forEachClass((name, bytes) -> {
-                out.accept(name);
-                for (String line : ClassAbi.apiLines(bytes)) out.accept(line);
+    static void forEachClass(Path abs, BasicFileAttributes attrs, JarClassReader.ClassSink sink) throws IOException {
+        if (attrs.isDirectory()) {
+            List<Path> classes = new ArrayList<>();
+            // Guard G45: the walk already read each entry's attributes, so ask for them once rather
+            // than re-resolving the path to ask again.
+            TreeContent.forEach(abs, (rel, f, a) -> {
+                if (rel.endsWith(".class")) classes.add(f);
             });
+            classes.sort(Comparator.comparing(p -> abs.relativize(p).toString().replace('\\', '/')));
+            for (Path f : classes) sink.accept(abs.relativize(f).toString().replace('\\', '/'), Files.readAllBytes(f));
+            return;
         }
+        try (JarClassReader classes = JarClassReader.open(abs)) {
+            classes.forEachClass(sink);
+        } catch (ZipException notAZip) {
+            sink.accept(abs.getFileName().toString(), Files.readAllBytes(abs));
+        }
+    }
+
+    /** Memo namespace of {@link #kotlinMetadata}, keyed on the entry's content. */
+    private static final String KOTLIN_METADATA_NAMESPACE = "kotlin-metadata.1:";
+
+    /** What {@link #kotlinMetadata} memoizes for an entry with no Kotlin class. */
+    private static final String NO_KOTLIN_METADATA = "none";
+
+    /**
+     * The {@code kotlin.Metadata} of every class in the entry ({@link ClassAbi#kotlinMetadata}):
+     * {@code km:<sha256>}, or the empty string when the entry has no Kotlin class or is absent. A
+     * processor reads it and the ABI leaves it out, so a compile that runs processors keys it
+     * beside the ABI. Memoized on the entry's content.
+     */
+    public static String kotlinMetadata(Path entry) throws IOException {
+        Path abs = entry.toAbsolutePath().normalize();
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(abs, BasicFileAttributes.class);
+        } catch (IOException absent) {
+            return "";
+        }
+        if (!attrs.isRegularFile() && !attrs.isDirectory()) return "";
+        String identity = KOTLIN_METADATA_NAMESPACE + ClasspathFingerprint.entry(abs);
+        String hit = AbiMemo.get(identity);
+        if (hit != null) return hit.equals(NO_KOTLIN_METADATA) ? "" : hit;
+        Lines digest = new Lines();
+        boolean[] any = {false};
+        forEachClass(abs, attrs, (name, bytes) -> {
+            String metadata = ClassAbi.kotlinMetadata(bytes);
+            if (metadata == null) return;
+            any[0] = true;
+            digest.accept(name);
+            digest.accept(metadata);
+        });
+        String token = any[0] ? "km:" + digest.hex() : "";
+        AbiMemo.put(identity, token.isEmpty() ? NO_KOTLIN_METADATA : token);
+        return token;
     }
 }

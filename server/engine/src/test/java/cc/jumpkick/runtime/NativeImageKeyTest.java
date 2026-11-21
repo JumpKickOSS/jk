@@ -21,6 +21,41 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class NativeImageKeyTest {
 
+    /** native-image loads a class from the first classpath entry that has it: the order is an input. */
+    @Test
+    void reordering_the_image_classpath_changes_the_key(@TempDir Path tmp) throws Exception {
+        Path javaHome = Files.createDirectories(tmp.resolve("graal"));
+        Files.writeString(javaHome.resolve("release"), "JAVA_VERSION=\"25\"\n");
+        Path a = Files.writeString(tmp.resolve("a.jar"), "a");
+        Path b = Files.writeString(tmp.resolve("b.jar"), "b");
+        Path out = tmp.resolve("target/native/app");
+        String ab = PlannerNative.imageKey(
+                        javaHome,
+                        List.of(a, b),
+                        List.of(),
+                        "app.Main",
+                        false,
+                        out,
+                        null,
+                        null,
+                        List.of(),
+                        ClasspathFingerprint.ON_DISK)
+                .key();
+        String ba = PlannerNative.imageKey(
+                        javaHome,
+                        List.of(b, a),
+                        List.of(),
+                        "app.Main",
+                        false,
+                        out,
+                        null,
+                        null,
+                        List.of(),
+                        ClasspathFingerprint.ON_DISK)
+                .key();
+        assertThat(ba).isNotEqualTo(ab);
+    }
+
     @Test
     void the_train_reachability_content_is_an_image_input(@TempDir Path tmp) throws Exception {
         Path javaHome = Files.createDirectories(tmp.resolve("graal"));

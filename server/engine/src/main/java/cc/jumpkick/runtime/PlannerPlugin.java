@@ -365,8 +365,9 @@ public final class PlannerPlugin {
                 case TEST_CLASSES ->
                     tokens.add("test-classes:"
                             + ClasspathFingerprint.entry(src.layout().testClassesDir()));
-                case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.of(src.runtimeClasspath()));
-                case COMPILE_CLASSPATH -> tokens.add("ccp:" + ClasspathFingerprint.of(src.compileClasspath()));
+                // In order: a plugin hands a classpath to a tool that loads from its first match.
+                case RUNTIME_CLASSPATH -> tokens.add("cp:" + ClasspathFingerprint.ordered(src.runtimeClasspath()));
+                case COMPILE_CLASSPATH -> tokens.add("ccp:" + ClasspathFingerprint.ordered(src.compileClasspath()));
                 case RUNTIME_ENTRIES, TEST_RUNTIME_ENTRIES -> {
                     // The test closure is keyed by the entries themselves below; the production
                     // classpath token rides both arms so a runtime jar swap moves either key.

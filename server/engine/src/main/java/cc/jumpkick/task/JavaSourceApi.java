@@ -4,6 +4,7 @@ package cc.jumpkick.task;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import com.sun.source.tree.AnnotationTree;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.ExpressionTree;
@@ -41,7 +42,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Declaration-level digest of a Java source file: what a compiler that reads the file for its
  * declarations rather than compiling it — kotlinc over {@code -Xjava-source-roots}, groovyc's
- * joint mode — can see of it. The package, the imports, every type with its modifiers,
+ * joint mode — can see of it. The package with its annotations ({@code package-info.java}'s
+ * {@code @NullMarked} decides how kotlinc reads every type in it), the imports, every type with its modifiers,
  * annotations, type parameters, supertypes and permitted subclasses, every member's signature at
  * every access level (an annotation processor shapes its output from a private field), and the
  * initializer of every {@code final} field (a compile-time constant is copied into the consumer).
@@ -75,8 +77,8 @@ public final class JavaSourceApi {
      * the exported view even though they are private: their accessors are the record's API.
      */
     public enum View {
-        DECLARATIONS("java-src:"),
-        EXPORTED("java-api:"),
+        DECLARATIONS("java-src.2:"),
+        EXPORTED("java-api.2:"),
         /**
          * What an annotation processor can shape output from: {@link #DECLARATIONS} less private
          * methods that carry no annotation. A processor generates from fields, types and annotated
@@ -84,8 +86,9 @@ public final class JavaSourceApi {
          * method, so renaming one is a body edit even in a module that runs a processor. The
          * forecast's body-only hint reads it; compile keys keep {@link #DECLARATIONS}.
          */
-        PROCESSOR("java-proc:");
+        PROCESSOR("java-proc.2:");
 
+        /** The memo's key prefix; it moves with what {@link #renderUnit} writes, so no earlier shape is served. */
         private final String memoNamespace;
 
         View(String memoNamespace) {
@@ -299,7 +302,9 @@ public final class JavaSourceApi {
 
     private static void renderUnit(CompilationUnitTree unit, StringBuilder sb, View view) {
         ExpressionTree pkg = unit.getPackageName();
-        sb.append("package ").append(pkg == null ? "" : pkg).append('\n');
+        sb.append("package ").append(pkg == null ? "" : pkg);
+        annotations(unit.getPackageAnnotations(), sb);
+        sb.append('\n');
         for (ImportTree imp : unit.getImports())
             sb.append(imp.toString().strip()).append('\n');
         ModuleTree module = unit.getModule();
@@ -348,8 +353,11 @@ public final class JavaSourceApi {
             ClassTree owner, VariableTree field, boolean implicitlyFinal, StringBuilder sb, int depth) {
         indent(sb, depth);
         if (isEnumConstant(owner, field)) {
-            // The constant's arguments and body are the enum's implementation; its name is the API.
-            sb.append("enum-constant ").append(field.getName()).append('\n');
+            // The constant's arguments and body are the enum's implementation; its name and
+            // annotations are the API.
+            sb.append("enum-constant ").append(field.getName());
+            annotations(field.getModifiers().getAnnotations(), sb);
+            sb.append('\n');
             return;
         }
         sb.append(field.getModifiers().toString().strip())
@@ -362,6 +370,11 @@ public final class JavaSourceApi {
         ExpressionTree init = field.getInitializer();
         if (constantCandidate && init != null) sb.append(" = ").append(init);
         sb.append('\n');
+    }
+
+    private static void annotations(List<? extends AnnotationTree> annotations, StringBuilder sb) {
+        for (AnnotationTree annotation : annotations)
+            sb.append(' ').append(annotation.toString().strip());
     }
 
     private static boolean isPrivate(ModifiersTree modifiers) {

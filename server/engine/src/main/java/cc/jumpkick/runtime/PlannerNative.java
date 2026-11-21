@@ -512,7 +512,7 @@ public final class PlannerNative {
         // architecture. A home with no release file keys its content, never the machine's path.
         String graalTok = JdkToolchain.token(javaHome);
         List<String> nativeTokens = new ArrayList<>(List.of(
-                "cp:" + ClasspathFingerprint.of(classpath, identity),
+                "cp:" + ClasspathFingerprint.ordered(classpath, identity),
                 "args:" + ActionKey.optionsToken(allArgs),
                 "main:" + (mainClass == null ? "" : mainClass),
                 "shared:" + shared,

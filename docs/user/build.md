@@ -71,10 +71,15 @@ inlined constant or an inline function recompiles the consumers, and `jk explain
 the dependency whose API moved. Annotation processors are keyed on their full content, so a
 processor jar change always recompiles the modules that run it. A compile that runs processors,
 and every Groovy compile, also keys each dependency's `META-INF` resources (service files,
-extension modules), which a processor or groovyc reads besides the API; a jar that registers a
-global Groovy AST transform, and every dependency of a compile that asks javac to find its
-processors on the classpath (`-proc:full` with no processor path), are keyed on their full
-content, since their bodies run in the compile. A jar's ABI is read from its
+extension modules), which a processor or groovyc reads besides the API; a compile that runs
+processors keys a Kotlin dependency's `kotlin.Metadata` too, which holds what the JVM signatures
+leave out (a type argument's nullability) and a Kotlin-aware processor reads. A jar that registers a
+global Groovy AST transform, a jar groovyc loads a local AST transform from (a class an annotation's
+`@GroovyASTTransformationClass` names), and every dependency of a compile that asks javac to find
+its processors on the classpath (`-proc:full` with no processor path), are keyed on their full
+content, since their bodies run in the compile. Processors found on the classpath are treated as a
+processor path's are: what they generate is tracked across incremental compiles, and a change to
+any classpath entry compiles the module whole. A jar's ABI is read from its
 central directory as a stream, a window of names at a time, so a bundle jar of several hundred
 thousand classes is keyed in the same few megabytes of engine heap as a small one.
 

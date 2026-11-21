@@ -24,8 +24,8 @@ import org.objectweb.asm.TypePath;
  * package-private method from, any class of its package, a same-package test compile included),
  * generic {@code Signature}, {@code throws}, {@code ConstantValue} of {@code final} fields,
  * API annotations with values (type-use ones such as JSpecify's {@code @Nullable} included, array
- * values in declared order), {@code MethodParameters}, the class-file version, record components,
- * permitted subclasses, {@code module-info}. Method bodies, private and synthetic package-private
+ * values in declared order), {@code MethodParameters}, the class-file version, record components
+ * in declared order, permitted subclasses, {@code module-info}. Method bodies, private and synthetic package-private
  * members, other debug attributes, and {@code kotlin.Metadata} stay out. Named nested classes fold into their owner's fingerprint
  * ({@link #of(byte[], SortedMap)}) for affected-test ranking.
  */
@@ -37,7 +37,7 @@ public final class ClassAbi {
      * Names the shape of {@link #apiLines}. Moves with any change to what a line carries or how
      * it is rendered, so a token memoized under the earlier shape is never served again.
      */
-    static final String FORMAT = "3";
+    static final String FORMAT = "4";
 
     private ClassAbi() {}
 
@@ -71,6 +71,33 @@ public final class ClassAbi {
         } catch (IllegalArgumentException | IndexOutOfBoundsException malformed) {
             return List.of("RAW " + Hashing.sha256Hex(classBytes));
         }
+    }
+
+    /**
+     * The class's {@code kotlin.Metadata} as one line with its values, or null when it has none.
+     * {@link #apiLines} leaves it out: javac reads none of it and kotlinc keys its classpath by its
+     * own snapshot. An annotation processor can read it, a Kotlin-aware one does, and it holds what
+     * the JVM signatures do not (a type argument's nullability, a property's declaration), so a
+     * compile that runs processors keys it beside the ABI.
+     */
+    static @Nullable String kotlinMetadata(byte[] classBytes) {
+        List<String> found = new ArrayList<>(1);
+        try {
+            new ClassReader(classBytes)
+                    .accept(
+                            new ClassVisitor(Opcodes.ASM9) {
+                                @Override
+                                public @Nullable AnnotationVisitor visitAnnotation(String descriptor, boolean visible) {
+                                    return KOTLIN_METADATA.equals(descriptor)
+                                            ? ClassAbiAnns.collect(descriptor, visible, found, null)
+                                            : null;
+                                }
+                            },
+                            ClassReader.SKIP_CODE | ClassReader.SKIP_FRAMES | ClassReader.SKIP_DEBUG);
+        } catch (IllegalArgumentException | IndexOutOfBoundsException malformed) {
+            return null;
+        }
+        return found.isEmpty() ? null : found.getFirst();
     }
 
     public enum Kind {
@@ -114,7 +141,8 @@ public final class ClassAbi {
             out.addAll(permitted);
             Collections.sort(inners);
             out.addAll(inners);
-            Collections.sort(records);
+            // Declared order: a deconstruction pattern binds by position, and kotlinc's records carry
+            // no MethodParameters to say the order elsewhere.
             out.addAll(records);
             Collections.sort(anns);
             out.addAll(anns);

@@ -152,6 +152,22 @@ public final class ClasspathFingerprint {
     }
 
     /**
+     * Content fingerprint of a classpath in its order: a JVM loads a class from the first entry that
+     * has it, so for a classpath that is run (a test JVM, a native image, a plugin's tool) two
+     * entries trading places can change what runs. {@link #of} is for a set of entries.
+     */
+    public static String ordered(List<Path> entries) throws IOException {
+        return ordered(entries, ON_DISK);
+    }
+
+    /** As {@link #ordered(List)} with each entry's identity read through {@code identity}. */
+    public static String ordered(List<Path> entries, EntryIdentity identity) throws IOException {
+        List<String> parts = new ArrayList<>(entries.size());
+        for (Path p : entries) parts.add(identity.of(p));
+        return Hashing.sha256Hex(String.join("\n", parts));
+    }
+
+    /**
      * Directory fingerprint matching {@link #entry(Path)} for a classes tree that is not on disk —
      * typically the outputs map from a compile action record after {@code jk clean}. Keys are
      * forward-slash relative paths; values are content SHA-256 hex. Stamp / {@code .jk-*} scratch

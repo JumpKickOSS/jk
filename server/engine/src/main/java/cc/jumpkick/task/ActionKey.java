@@ -150,21 +150,39 @@ public final class ActionKey {
 
     /**
      * How a javac compile's classpath entries are spelled: their ABI, with their {@code META-INF}
-     * resources beside it when processors run, or their whole content when javac finds the
-     * processors on the classpath itself, whose bodies are then the compile's behaviour.
+     * resources and their classes' {@code kotlin.Metadata} beside it when processors run, or their
+     * whole content when javac finds the processors on the classpath itself, whose bodies are then
+     * the compile's behaviour.
      */
     private static EntryToken javacEntryToken(CompileRequest request, EntryToken cp) {
         boolean asked = processingAsked(request.extraOptions());
         if (asked && request.processorPath().isEmpty()) return ClasspathFingerprint::entry;
-        if (asked || !request.processorPath().isEmpty()) return withResources(cp);
+        if (asked || !request.processorPath().isEmpty()) return withKotlinMetadata(withResources(cp));
         return cp;
     }
 
-    /** How a groovyc compile's classpath entries are spelled: see {@link #groovycClasspathTokens}. */
-    private static EntryToken groovycEntryToken(EntryToken cp) {
-        return entry -> ClasspathAbi.hasGlobalTransform(entry)
-                ? ClasspathFingerprint.entry(entry)
-                : withResources(cp).of(entry);
+    /**
+     * {@code cp} with the entry's {@code kotlin.Metadata} ({@link ClasspathAbi#kotlinMetadata})
+     * beside it when it holds a Kotlin class: a processor reads what the JVM signatures leave out.
+     */
+    private static EntryToken withKotlinMetadata(EntryToken cp) {
+        return entry -> {
+            String token = cp.of(entry);
+            String metadata = ClasspathAbi.kotlinMetadata(entry);
+            return metadata.isEmpty() ? token : token + "+" + metadata;
+        };
+    }
+
+    /**
+     * How a groovyc compile's classpath entries are spelled: see {@link #groovycClasspathTokens}.
+     * {@code transforms} are the entries groovyc loads a local AST transform from ({@link
+     * GroovyLocalTransforms#holders}).
+     */
+    private static EntryToken groovycEntryToken(EntryToken cp, Set<Path> transforms) {
+        return entry ->
+                transforms.contains(entry.toAbsolutePath().normalize()) || ClasspathAbi.hasGlobalTransform(entry)
+                        ? ClasspathFingerprint.entry(entry)
+                        : withResources(cp).of(entry);
     }
 
     /**
@@ -442,7 +460,8 @@ public final class ActionKey {
      * classpath's JVM ABI — groovyc's compile-time view of a Java or Groovy dependency is JVM
      * signatures and constant values, the same token javac keys on ({@link #javacClasspathTokens});
      * the Groovy worker is always a full compile, so this is the only skip a body-only sibling
-     * change can give it. {@code worker:} is the worker's Groovy closure by content — that is the
+     * change can give it. An entry groovyc loads an AST transform from, global or local, is keyed
+     * by content instead. {@code worker:} is the worker's Groovy closure by content — that is the
      * compiler, and its CAS paths already encode the version. {@code pp:} is the processor path by
      * content, as for javac.
      */
@@ -454,8 +473,13 @@ public final class ActionKey {
     public static List<String> groovycClasspathTokens(GroovycRequest request, EntryToken cp) throws IOException {
         List<String> lines = new ArrayList<>();
         // groovyc loads extension modules and global AST transforms off the compile classpath's
-        // META-INF; a transform's body is the compile's behaviour, so its jar keys by content.
-        appendCpTokens(lines, "cp:", request.classpath(), groovycEntryToken(cp));
+        // META-INF, and the local transforms an annotation names off its classes; a transform's
+        // body is the compile's behaviour, so the entry it loads from keys by content.
+        appendCpTokens(
+                lines,
+                "cp:",
+                request.classpath(),
+                groovycEntryToken(cp, GroovyLocalTransforms.holders(request.classpath())));
         appendCpTokens(lines, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         appendCpTokens(lines, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         return lines;
@@ -574,7 +598,11 @@ public final class ActionKey {
     public static Map<String, String> snapshotInputs(GroovycRequest request) throws IOException {
         Map<String, String> result = new LinkedHashMap<>();
         snapshotSources(result, GroovycInputs.compileSet(request));
-        snapshotEntries(result, "cp:", request.classpath(), groovycEntryToken(ClasspathAbi::token));
+        snapshotEntries(
+                result,
+                "cp:",
+                request.classpath(),
+                groovycEntryToken(ClasspathAbi::token, GroovyLocalTransforms.holders(request.classpath())));
         snapshotEntries(result, "worker:", request.workerClasspath(), ClasspathFingerprint::entry);
         snapshotEntries(result, "pp:", request.processorPath(), ClasspathFingerprint::entry);
         result.put("jvmTarget", Integer.toString(request.jvmTarget()));

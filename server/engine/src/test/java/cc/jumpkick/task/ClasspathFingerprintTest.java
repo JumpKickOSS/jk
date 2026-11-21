@@ -40,6 +40,16 @@ class ClasspathFingerprintTest {
     }
 
     @Test
+    void the_ordered_fingerprint_follows_the_order_and_the_set_one_does_not(@TempDir Path dir) throws IOException {
+        Path a = write(dir.resolve("a.jar"), "A");
+        Path b = write(dir.resolve("b.jar"), "B");
+        assertThat(ClasspathFingerprint.ordered(List.of(b, a)))
+                .isNotEqualTo(ClasspathFingerprint.ordered(List.of(a, b)));
+        assertThat(ClasspathFingerprint.ordered(List.of(a, b))).isEqualTo(ClasspathFingerprint.ordered(List.of(a, b)));
+        assertThat(ClasspathFingerprint.of(List.of(b, a))).isEqualTo(ClasspathFingerprint.of(List.of(a, b)));
+    }
+
+    @Test
     void jar_entry_is_keyed_by_file_content(@TempDir Path dir) throws IOException {
         Path jar = write(dir.resolve("repos/central/g/a/1/a-1.jar"), "anything");
         String fp = ClasspathFingerprint.entry(jar);

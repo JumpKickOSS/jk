@@ -33,7 +33,8 @@ import xsbti.compile.Output;
 
 /**
  * ToolProvider javac for every in-process compile this worker runs, recording generated-file
- * provenance through its file manager when there are processors to install.
+ * provenance through its file manager when processors may run: there are processors to install,
+ * or the options turn processing on and javac finds them on the classpath.
  *
  * <p>This is used instead of Zinc's {@code JavaCompiler.local} whether or not a processor path is
  * present, because the file manager it compiles through is pooled across compiles rather than opened
@@ -126,12 +127,14 @@ final class ProvenanceJavac implements JavaCompiler {
             // here, and a compile that fails without a diagnostic is explained by it.
             StringWriter written = new StringWriter();
             // Processors get javac's own environment; what they write is recorded where the Filer
-            // meets the file manager instead, see ProvenanceFileManager.
-            JavaFileManager manager = loader == null
-                    ? fileOps.wrap(fm)
-                    : provenance.manager(fileOps.wrap(fm), descriptorRoot(srcPaths), path -> fm.getJavaFileObjects(path)
+            // meets the file manager instead, see ProvenanceFileManager. With processing turned on
+            // and no processor path, javac finds the processors on the classpath itself.
+            boolean processorsMayRun = loader != null || ZincWorkdir.processingAsked(Arrays.asList(options));
+            JavaFileManager manager = processorsMayRun
+                    ? provenance.manager(fileOps.wrap(fm), descriptorRoot(srcPaths), path -> fm.getJavaFileObjects(path)
                             .iterator()
-                            .next());
+                            .next())
+                    : fileOps.wrap(fm);
             JavacTask task = (JavacTask) javac.getTask(written, manager, diags, Arrays.asList(options), null, units);
             if (loader != null) task.setProcessors(ZincJavaCompiler.freshProcessors(loader));
             if (constants != null) constants.listen(task);

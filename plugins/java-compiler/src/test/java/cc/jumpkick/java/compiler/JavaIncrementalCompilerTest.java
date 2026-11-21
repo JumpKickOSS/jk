@@ -462,7 +462,7 @@ class JavaIncrementalCompilerTest {
     }
 
     /** As {@link #writeGenProcessor(Path)}, with {@code members} as the body of every generated class. */
-    private static void writeGenProcessor(Path procDir, String members) throws Exception {
+    static void writeGenProcessor(Path procDir, String members) throws Exception {
         compile(procDir, Map.of("gen.Gen", """
                         package gen;
                         import java.lang.annotation.*;

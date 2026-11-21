@@ -117,6 +117,14 @@ final class ZincWorkdir {
         }
     }
 
+    /** Whether {@code options} turn annotation processing on: javac then runs what it finds. */
+    static boolean processingAsked(List<String> options) {
+        for (String o : options) {
+            if (o.equals("-proc:full") || o.equals("-proc:only") || o.equals("-processor")) return true;
+        }
+        return false;
+    }
+
     /** {@link #classpathDigest} over the processor path; the empty string when there is none. */
     static String processorDigest(List<Path> processorPath) throws IOException {
         return processorPath.isEmpty() ? "" : classpathDigest(processorPath);

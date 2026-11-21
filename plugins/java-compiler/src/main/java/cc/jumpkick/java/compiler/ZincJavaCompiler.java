@@ -430,7 +430,7 @@ public final class ZincJavaCompiler {
             createDirectories(classOutput, workdir, sourceOutput);
             ZincWorkdir zinced = ZincWorkdir.of(workdir);
             zinced.discardAnalysisIfAggregating();
-            String processorDigest = ZincWorkdir.processorDigest(processorPath, classOutput);
+            String processorDigest = ZincWorkdir.processorDigest(job.processorSource(), classOutput);
             zinced.discardAnalysisIfProcessorsChanged(processorDigest);
 
             IncrementalCompiler zinc = ZincUtil.defaultIncrementalCompiler();
@@ -641,7 +641,7 @@ public final class ZincJavaCompiler {
         if (!zinced.hasAnalysis()) {
             return new Plan(true, "no zinc analysis", allSources(sources, "no zinc analysis"));
         }
-        if (!FILER_PROVENANCE && processorPath != null && !processorPath.isEmpty()) {
+        if (!FILER_PROVENANCE && !job.processorSource().isEmpty()) {
             String why = "annotation processors on a JDK below 18";
             return new Plan(true, why, allSources(sources, why));
         }
@@ -651,7 +651,7 @@ public final class ZincJavaCompiler {
                     "aggregating annotation processors",
                     allSources(sources, "aggregating annotation processors"));
         }
-        if (zinced.processorsChanged(processorPath, classOutput)) {
+        if (zinced.processorsChanged(job.processorSource(), classOutput)) {
             return new Plan(
                     true, "annotation processors changed", allSources(sources, "annotation processors changed"));
         }

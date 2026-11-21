@@ -75,6 +75,16 @@ public record JavaCompileJob(
         classpathAnalyses = Map.copyOf(classpathAnalyses);
     }
 
+    /**
+     * The entries this compile's processors load from: the processor path, or, when the options
+     * turn processing on without one, the compile classpath, where javac then finds them. Empty
+     * when no processor runs.
+     */
+    List<Path> processorSource() {
+        if (!processorPath.isEmpty()) return processorPath;
+        return ZincWorkdir.processingAsked(extraOptions) ? classpath : List.of();
+    }
+
     /** The same job with {@code classpathAnalyses} as its producer analyses. */
     public JavaCompileJob withClasspathAnalyses(Map<Path, Path> classpathAnalyses) {
         return new JavaCompileJob(

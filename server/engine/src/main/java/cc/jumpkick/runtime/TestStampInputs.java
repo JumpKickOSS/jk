@@ -359,7 +359,7 @@ public record TestStampInputs(
                     "suites",
                     run,
                     "cpFp",
-                    ClasspathFingerprint.of(stampRt, identity),
+                    ClasspathFingerprint.ordered(stampRt, identity),
                     "mainFp",
                     mainClassesFingerprint != null ? mainClassesFingerprint : ClasspathFingerprint.entry(mainClasses));
         }

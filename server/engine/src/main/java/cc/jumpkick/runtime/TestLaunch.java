@@ -299,7 +299,7 @@ final class TestLaunch {
                     "X",
                     extras,
                     "cpFp",
-                    ClasspathFingerprint.of(testRtCp),
+                    ClasspathFingerprint.ordered(testRtCp),
                     "mainFp",
                     ClasspathFingerprint.entry(mainClasses(ctx)));
         }

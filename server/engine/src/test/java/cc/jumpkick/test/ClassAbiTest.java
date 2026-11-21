@@ -71,6 +71,20 @@ class ClassAbiTest {
                 .isEqualTo(ClassAbi.Kind.ABI);
     }
 
+    /**
+     * A deconstruction pattern binds by component position, so two components trading places is
+     * API even where nothing else moves: kotlinc writes a {@code @JvmRecord}'s Record attribute
+     * with no MethodParameters on its constructor, so the constructor's descriptor is all that is
+     * left of the order, and for two components of one type it does not change.
+     */
+    @Test
+    void swapping_two_record_components_of_one_type_is_abi() {
+        assertThat(ClassAbi.classify(
+                        ClassAbi.of(recordClass(new String[] {"x", "I"}, new String[] {"y", "I"})),
+                        ClassAbi.of(recordClass(new String[] {"y", "I"}, new String[] {"x", "I"}))))
+                .isEqualTo(ClassAbi.Kind.ABI);
+    }
+
     @Test
     void permits_change_is_abi() {
         assertThat(ClassAbi.classify(ClassAbi.of(sealedClass("A")), ClassAbi.of(sealedClass("B"))))
@@ -174,10 +188,24 @@ class ClassAbiTest {
     }
 
     private static byte[] recordClass(String component, String desc) {
+        return recordClass(new String[] {component, desc});
+    }
+
+    /** A record with each {@code {name, descriptor}} component in order, its accessors and constructor. */
+    private static byte[] recordClass(String[]... components) {
         ClassWriter cw = new ClassWriter(0);
         cw.visit(Opcodes.V25, Opcodes.ACC_PUBLIC | Opcodes.ACC_RECORD, "R", null, "java/lang/Record", null);
-        RecordComponentVisitor rv = cw.visitRecordComponent(component, desc, null);
-        rv.visitEnd();
+        StringBuilder ctor = new StringBuilder("(");
+        for (String[] c : components) {
+            RecordComponentVisitor rv = cw.visitRecordComponent(c[0], c[1], null);
+            rv.visitEnd();
+            cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_FINAL, c[0], c[1], null, null)
+                    .visitEnd();
+            cw.visitMethod(Opcodes.ACC_PUBLIC, c[0], "()" + c[1], null, null).visitEnd();
+            ctor.append(c[1]);
+        }
+        cw.visitMethod(Opcodes.ACC_PUBLIC, "<init>", ctor.append(")V").toString(), null, null)
+                .visitEnd();
         cw.visitEnd();
         return cw.toByteArray();
     }

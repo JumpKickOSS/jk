@@ -148,6 +148,28 @@ class JavaSourceApiTest {
     }
 
     @Test
+    void a_package_annotation_is_part_of_the_declaration(@TempDir Path dir) throws IOException {
+        // The import stays in both: only the annotation on the package moves.
+        Path info = dir.resolve("package-info.java");
+        Files.writeString(info, "package com.example;\n\nimport org.jspecify.annotations.NullMarked;\n");
+        String bare = JavaSourceApi.digest(info);
+        assertThat(JavaSourceApi.parsed(bare)).isTrue();
+        Files.writeString(info, "@NullMarked\npackage com.example;\n\nimport org.jspecify.annotations.NullMarked;\n");
+        assertThat(JavaSourceApi.digest(info))
+                .as("@NullMarked on the package changes how kotlinc reads every type in it")
+                .isNotEqualTo(bare);
+    }
+
+    @Test
+    void an_enum_constants_annotation_is_part_of_the_declaration(@TempDir Path dir) throws IOException {
+        String plain = "package com.example;\n\npublic enum Mode { FAST, SLOW }\n";
+        String base = digest(dir, plain);
+        assertThat(digest(dir, plain.replace("FAST,", "@Deprecated FAST,")))
+                .as("a constant's annotation is read by the consumer and by a processor")
+                .isNotEqualTo(base);
+    }
+
+    @Test
     void a_file_javac_cannot_parse_keys_on_its_content(@TempDir Path dir) throws IOException {
         String broken = digest(dir, "package com.example; public class Lib { public static int twice(int n) {");
         assertThat(JavaSourceApi.parsed(broken)).isFalse();

@@ -125,6 +125,38 @@ class PluginActionKeyTokensTest {
                 .isNotEqualTo(reference);
     }
 
+    /**
+     * A plugin hands a declared classpath to a tool that loads a class from the first entry that
+     * has it, so two entries trading places is another input even with the same bytes.
+     */
+    @Test
+    void reordering_a_declared_classpath_changes_its_token(@TempDir Path tmp) throws Exception {
+        List<PluginBuild.ProdEntry> entries = twoEntries(tmp);
+        List<Path> jars = entries.stream().map(PluginBuild.ProdEntry::jar).toList();
+        List<Path> swapped = List.of(jars.get(1), jars.get(0));
+        for (In kind : List.of(In.runtimeClasspath(), In.compileClasspath())) {
+            assertThat(classpathTokens(tmp, swapped, entries, kind))
+                    .as(kind.wireName())
+                    .isNotEqualTo(classpathTokens(tmp, jars, entries, kind));
+        }
+    }
+
+    /** The declared-input tokens for {@code kind} over {@code jars} as both classpaths. */
+    private static List<String> classpathTokens(Path tmp, List<Path> jars, List<PluginBuild.ProdEntry> entries, In kind)
+            throws Exception {
+        PlannerPlugin.InputSources src = new PlannerPlugin.InputSources(
+                Files.createDirectories(tmp.resolve("classes")),
+                jars,
+                jars,
+                entries,
+                new PluginConfig("fake", Map.of()),
+                BuildLayout.of(tmp, JkBuildParser.parse(TOML)),
+                tmp,
+                Map.of(),
+                PluginRepositories.NONE);
+        return PlannerPlugin.declaredInputTokens(List.of(kind.wireName()), src);
+    }
+
     /** Two release entries with distinct content, in lock order. */
     private static List<PluginBuild.ProdEntry> twoEntries(Path tmp) throws Exception {
         Path a = Files.writeString(tmp.resolve("a-1.0.jar"), "a");

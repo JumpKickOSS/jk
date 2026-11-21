@@ -34,6 +34,11 @@ final class ClassAbiAnns {
     static @Nullable AnnotationVisitor line(
             String descriptor, boolean visible, List<String> sink, @Nullable String prefix) {
         if (ClassAbi.KOTLIN_METADATA.equals(descriptor)) return null;
+        return collect(descriptor, visible, sink, prefix);
+    }
+
+    /** {@link #line} for any annotation, {@code kotlin.Metadata} included. */
+    static AnnotationVisitor collect(String descriptor, boolean visible, List<String> sink, @Nullable String prefix) {
         StringBuilder sb = new StringBuilder();
         if (prefix != null) sb.append(prefix).append(' ');
         sb.append("A ").append(visible ? "v " : "i ").append(descriptor);

@@ -39,6 +39,20 @@ class TestStampTest {
         assertThat(k1).isNotNull().isEqualTo(k2);
     }
 
+    /** The test JVM loads a class from the first entry that has it: two entries trading places re-run the suite. */
+    @Test
+    void reordering_the_runtime_classpath_busts_the_key(@TempDir Path dir) throws IOException {
+        Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        Path a = write(dir.resolve("a/a.jar"), "A");
+        Path b = write(dir.resolve("b/b.jar"), "B");
+
+        String ab = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(a, b), List.of());
+        String ba = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), List.of(b, a), List.of());
+        assertThat(ab).isNotNull();
+        assertThat(ba).isNotEqualTo(ab);
+    }
+
     @Test
     void own_main_change_busts_the_key(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
