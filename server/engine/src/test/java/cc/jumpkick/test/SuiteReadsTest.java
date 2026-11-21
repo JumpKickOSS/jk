@@ -176,7 +176,7 @@ class SuiteReadsTest {
                         Path tool = Path.of("../../tool");
                         File temp = Files.createTempFile(tool, "cache", null).toFile();
                         try (OutputStream out = new FileOutputStream(temp)) { out.write(2); }
-                        if (!temp.renameTo(tool.resolve("cache.properties").toFile())) throw new IllegalStateException();
+                        Files.move(temp.toPath(), tool.resolve("cache.properties"), StandardCopyOption.REPLACE_EXISTING);
                         try (OutputStream out = new FileOutputStream("../../tool/tool.log")) { out.write(3); }
                         File scratch = Files.createTempFile(Path.of("../../conf"), "config", null).toFile();
                         try (OutputStream out = new FileOutputStream(scratch)) { out.write(4); }
