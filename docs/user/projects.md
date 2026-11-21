@@ -103,6 +103,12 @@ and the resolver reads them as Maven does ([Dependencies](dependencies.md#coordi
 `jk update` rewrites those numbers — [Lockfile](lockfile.md#jk-update). A `^N` major-line
 floor is the floating form of a framework version (`[spring-boot] version = "^4"`).
 
+A range is written as a comparator list (`">=1.2,<2"`) or in the bracket spelling a POM uses
+(`"[1.2,2)"`), read as [Dependencies](dependencies.md#managed-versions) describes for POMs. A
+dependency or compiler range that names no version, such as `"(1.2)"`, `"[]"` or `"[2,1.2]"`, is
+refused when `jk.toml` is read, naming the file and the line of the key. A plugin `version` key is
+checked at the next resolve.
+
 ## Dependency scopes
 
 | Table | Typical use |

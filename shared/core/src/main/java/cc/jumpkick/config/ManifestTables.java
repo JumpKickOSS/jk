@@ -234,6 +234,7 @@ public final class ManifestTables {
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("[dokka] version: " + e.getMessage());
             }
+            selector = ManifestSelectors.checked(selector, table, "version", "[dokka] version");
         }
         String format = stringOrThrow(table, "format", "dokka.format");
         BuildBlock.Dokka.Format shape = BuildBlock.Dokka.DEFAULT.format();
@@ -660,7 +661,7 @@ public final class ManifestTables {
             Object value = wsDeps.get(List.of(name));
             String displayPath = "workspace.dependencies." + name;
             if (value instanceof String shorthand) {
-                out.put(name, parseWorkspaceShorthand(name, shorthand, displayPath, catalog));
+                out.put(name, parseWorkspaceShorthand(name, shorthand, displayPath, catalog, wsDeps));
             } else if (value instanceof TomlTable entry) {
                 out.put(name, parseWorkspaceDepEntry(name, entry, catalog));
             } else {
@@ -681,7 +682,7 @@ public final class ManifestTables {
      * is refused too, because a shared entry exists to carry the version members pin against.
      */
     static WorkspaceDependency parseWorkspaceShorthand(
-            String name, String value, String displayPath, LibraryCatalog catalog) {
+            String name, String value, String displayPath, LibraryCatalog catalog, TomlTable table) {
         if (value.isBlank()) {
             throw new JkBuildParseException(displayPath + " has an empty value string");
         }
@@ -692,7 +693,7 @@ public final class ManifestTables {
             throw new JkBuildParseException(displayPath + ": write a git source as `{ git = \"...\" }`");
         }
         if (value.indexOf(':') >= 0) {
-            Dependency gav = ManifestDeps.parseGavShorthand(name, value, displayPath);
+            Dependency gav = ManifestDeps.parseGavShorthand(name, value, displayPath, table);
             if (gav.isPlatformManaged()) {
                 throw new JkBuildParseException(
                         displayPath + ": `" + value + "` has no version; write `group:artifact:1.2.3`");
@@ -702,7 +703,11 @@ public final class ManifestTables {
         LibraryCatalog.Module mod = catalog.lookup(name)
                 .orElseThrow(() ->
                         new JkBuildParseException(ManifestDeps.unknownLibraryMessage(displayPath, name, catalog)));
-        return new WorkspaceDependency(mod.group(), mod.artifact(), VersionSelector.parse(value), null);
+        return new WorkspaceDependency(
+                mod.group(),
+                mod.artifact(),
+                ManifestSelectors.checked(VersionSelector.parse(value), table, name, displayPath),
+                null);
     }
 
     static WorkspaceDependency parseWorkspaceDepEntry(String name, TomlTable entry, LibraryCatalog catalog) {
@@ -762,7 +767,8 @@ public final class ManifestTables {
         return new WorkspaceDependency(
                 group,
                 artifact,
-                VersionSelector.parse(versionRaw),
+                ManifestSelectors.checked(
+                        VersionSelector.parse(versionRaw), entry, "version", displayPath + ".version"),
                 null,
                 DependencyExclusions.parseList(entry, displayPath));
     }

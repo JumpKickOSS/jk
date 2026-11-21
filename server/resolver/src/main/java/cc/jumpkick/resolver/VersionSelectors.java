@@ -3,8 +3,10 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import cc.jumpkick.version.VersionRanges;
 import cc.jumpkick.version.Versions;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Converts jk's {@link VersionSelector} (caret-by-default semantics from {@code jk.toml}) into the
@@ -60,109 +62,38 @@ public final class VersionSelectors {
     }
 
     /**
-     * Parse a range expression. Accepts Maven-bracket syntax ({@code [1.0,2.0)}, {@code [1.0]},
-     * {@code (,2.0]}), the ISO 31-11 spelling of an exclusive bound that Gradle writes into module
-     * metadata ({@code [1.0,2.0[}, {@code ]1.0,2.0]}), multi-ranges ({@code [1.0,2.0),[3.0,4.0]}),
-     * and comma-separated comparator lists ({@code ">=1.0, <2.0"}).
+     * Parse a range expression in the grammar {@link VersionRanges} reads: Maven and ISO bracket
+     * ranges, unions of them, and comma-separated comparator lists.
      */
     public static VersionSet parseRange(String spec) {
-        String trimmed = spec.trim();
-        if (trimmed.isEmpty()) throw new IllegalArgumentException("malformed Maven range: empty");
-        if (isRangeOpen(trimmed.charAt(0))) {
-            return parseMavenBracketRanges(trimmed);
-        }
-        VersionSet result = null;
-        for (String part : trimmed.split(",")) {
-            String token = part.trim();
-            if (token.isEmpty()) continue;
-            VersionSet one = parseComparator(token);
-            result = result == null ? one : result.intersect(one);
-        }
-        if (result == null) throw new IllegalArgumentException("malformed Maven range: " + spec);
-        return result;
+        return VersionRanges.read(spec, SETS);
     }
 
-    /**
-     * One or more adjacent bracket ranges, unioned. Each range runs from its opening bracket to the
-     * first closing one; versions carry no brackets, so no nesting is possible. Single range
-     * delegates to {@link #parseMavenBracketRange}.
-     */
-    static VersionSet parseMavenBracketRanges(String spec) {
-        VersionSet acc = null;
-        int i = 0;
-        while (i < spec.length()) {
-            while (i < spec.length() && (spec.charAt(i) == ',' || Character.isWhitespace(spec.charAt(i)))) {
-                i++;
-            }
-            if (i >= spec.length()) break;
-            if (!isRangeOpen(spec.charAt(i))) {
-                throw new IllegalArgumentException("malformed Maven range: " + spec);
-            }
-            int j = i + 1;
-            while (j < spec.length() && !isRangeClose(spec.charAt(j))) j++;
-            if (j >= spec.length()) {
-                throw new IllegalArgumentException("malformed Maven range: " + spec);
-            }
-            VersionSet part = parseMavenBracketRange(spec.substring(i, j + 1));
-            acc = acc == null ? part : acc.union(part);
-            i = j + 1;
+    private static final VersionRanges.Sets<VersionSet> SETS = new VersionRanges.Sets<>() {
+        @Override
+        public VersionSet all() {
+            return VersionSet.ALL;
         }
-        if (acc == null) {
-            throw new IllegalArgumentException("malformed Maven range: " + spec);
+
+        @Override
+        public VersionSet between(
+                @Nullable String min, boolean minInclusive, @Nullable String max, boolean maxInclusive) {
+            if (min == null && max == null) return VersionSet.ALL;
+            if (min == null) return VersionSet.lessThan(Objects.requireNonNull(max), maxInclusive);
+            if (max == null) return VersionSet.atLeast(min, minInclusive);
+            return VersionSet.between(min, minInclusive, max, maxInclusive);
         }
-        return acc;
-    }
 
-    /** {@code [} and {@code (} open a range; so does {@code ]}, the ISO spelling of an exclusive lower bound. */
-    private static boolean isRangeOpen(char c) {
-        return c == '[' || c == '(' || c == ']';
-    }
-
-    /** {@code ]} and {@code )} close a range; so does {@code [}, the ISO spelling of an exclusive upper bound. */
-    private static boolean isRangeClose(char c) {
-        return c == ']' || c == ')' || c == '[';
-    }
-
-    /**
-     * One bracket range. A bound is inclusive when its bracket points at the version ({@code [a}
-     * and {@code b]}) and exclusive when it points away ({@code (a}, {@code ]a}, {@code b)},
-     * {@code b[}): Maven's and the ISO 31-11 spelling both read this way.
-     */
-    static VersionSet parseMavenBracketRange(String spec) {
-        if (spec.length() < 2 || !isRangeOpen(spec.charAt(0)) || !isRangeClose(spec.charAt(spec.length() - 1))) {
-            throw new IllegalArgumentException("malformed Maven range: " + spec);
+        @Override
+        public VersionSet union(VersionSet a, VersionSet b) {
+            return a.union(b);
         }
-        boolean minInclusive = spec.charAt(0) == '[';
-        boolean maxInclusive = spec.charAt(spec.length() - 1) == ']';
-        String inner = spec.substring(1, spec.length() - 1);
-        int comma = inner.indexOf(',');
-        if (comma < 0) {
-            // One version is Maven's exact pin, [1.0]; with no version, or a bound that points
-            // away from it, the range names nothing.
-            String only = inner.trim();
-            if (only.isEmpty() || !minInclusive || !maxInclusive) {
-                throw new IllegalArgumentException("malformed Maven range: " + spec);
-            }
-            return VersionSet.exact(only);
-        }
-        String minStr = inner.substring(0, comma).trim();
-        String maxStr = inner.substring(comma + 1).trim();
-        String min = minStr.isEmpty() ? null : minStr;
-        String max = maxStr.isEmpty() ? null : maxStr;
-        if (min == null && max == null) return VersionSet.ALL;
-        if (min == null) return VersionSet.lessThan(Objects.requireNonNull(max), maxInclusive);
-        if (max == null) return VersionSet.atLeast(min, minInclusive);
-        return VersionSet.between(min, minInclusive, max, maxInclusive);
-    }
 
-    static VersionSet parseComparator(String spec) {
-        if (spec.startsWith(">=")) return VersionSet.atLeast(spec.substring(2).trim(), true);
-        if (spec.startsWith(">")) return VersionSet.atLeast(spec.substring(1).trim(), false);
-        if (spec.startsWith("<=")) return VersionSet.lessThan(spec.substring(2).trim(), true);
-        if (spec.startsWith("<")) return VersionSet.lessThan(spec.substring(1).trim(), false);
-        if (spec.startsWith("=")) return VersionSet.exact(spec.substring(1).trim());
-        return VersionSet.exact(spec);
-    }
+        @Override
+        public VersionSet intersect(VersionSet a, VersionSet b) {
+            return a.intersect(b);
+        }
+    };
 
     /**
      * Cargo-style caret semantics: increment the leading non-zero segment, zero out everything after

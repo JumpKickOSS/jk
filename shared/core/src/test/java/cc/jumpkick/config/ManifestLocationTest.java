@@ -4,6 +4,7 @@ package cc.jumpkick.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.run.SourceLocation;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,6 +45,61 @@ class ManifestLocationTest {
     }
 
     @Test
+    void a_malformed_range_in_a_dependency_entry_is_refused_at_its_version_key(@TempDir Path dir) throws Exception {
+        String entry = "lib = { group = \"com.example\", version = \"(1.0)\" }";
+        Path file = write(dir, HEAD + "java = 25\n\n[dependencies]\n" + entry + "\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessage("dependencies.lib.version: malformed version range \"(1.0)\"");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, entry.indexOf("version") + 1));
+    }
+
+    @Test
+    void a_malformed_range_in_a_shorthand_is_refused_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n[test-dependencies]\nlib = \"com.example:lib:[]\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("malformed version range \"[]\"");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 7, 1));
+    }
+
+    @Test
+    void a_range_whose_bounds_cross_is_refused_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "kotlin = \"[2.0,1.0]\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessage("kotlin: malformed version range \"[2.0,1.0]\"");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 4, 1));
+    }
+
+    @Test
+    void a_malformed_range_in_workspace_dependencies_is_refused_at_its_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, """
+                group = "x.y"
+                name = "ws"
+                version = "0.1.0"
+                java = 25
+
+                [workspace]
+                modules = []
+
+                [workspace.dependencies]
+                lib = { group = "com.example", version = "[1.0,2.0" }
+                """);
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessage("workspace.dependencies.lib.version: malformed version range \"[1.0,2.0\"");
+        assertThat(e.location()).isNotNull();
+        assertThat(Objects.requireNonNull(e.location()).line()).isEqualTo(10);
+    }
+
+    @Test
+    void a_well_formed_range_parses(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir,
+                HEAD + "java = 25\n\n[dependencies]\n"
+                        + "a = { group = \"com.example\", version = \">=1.0,<2\" }\n"
+                        + "b = \"com.example:b:[1.0,2.0)\"\n");
+        assertThat(JkBuildParser.parse(file).dependencies().of(Scope.MAIN)).hasSize(2);
+    }
+
+    @Test
     void a_check_that_names_no_key_is_the_whole_file(@TempDir Path dir) throws Exception {
         Path file = write(dir, "group = \"x.y\"\nversion = \"0.1.0\"\n");
         assertThat(locationOf(file)).isEqualTo(SourceLocation.of(file));
@@ -70,11 +126,16 @@ class ManifestLocationTest {
     }
 
     private static SourceLocation locationOf(Path file) {
-        JkBuildParseException e = catchThrowableOfType(JkBuildParseException.class, () -> JkBuildParser.parse(file));
-        assertThat(e).as("the manifest is refused").isNotNull();
+        JkBuildParseException e = refusal(file);
         SourceLocation at = e.location();
         assertThat(at).as("the refusal is located").isNotNull();
         return Objects.requireNonNull(at);
+    }
+
+    private static JkBuildParseException refusal(Path file) {
+        JkBuildParseException e = catchThrowableOfType(JkBuildParseException.class, () -> JkBuildParser.parse(file));
+        assertThat(e).as("the manifest is refused").isNotNull();
+        return e;
     }
 
     private static Path write(Path dir, String text) throws Exception {

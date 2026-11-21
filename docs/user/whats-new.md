@@ -6,6 +6,9 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
+  version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
+  failing the next `jk lock` with no place to look.
 - **A file Central's mirror lacks is no longer reported as missing from Central.** While Maven
   Central refuses this host, its requests go to Google's mirror, which can lag Central. A file the
   mirror does not have now fails the fetch naming Central's refusal and saying the artifact may

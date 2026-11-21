@@ -264,11 +264,13 @@ public final class ManifestBuild {
         if (raw.isBlank()) {
             throw new JkBuildParseException("[native].metadata-repository must not be blank");
         }
+        VersionSelector selector;
         try {
-            return VersionSelector.parse(raw);
+            selector = VersionSelector.parse(raw);
         } catch (IllegalArgumentException e) {
             throw new JkBuildParseException("[native].metadata-repository: " + e.getMessage());
         }
+        return ManifestSelectors.checked(selector, native_, "metadata-repository", "[native].metadata-repository");
     }
 
     /**

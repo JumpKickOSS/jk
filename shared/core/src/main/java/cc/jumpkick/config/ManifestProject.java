@@ -532,7 +532,7 @@ public final class ManifestProject {
             throw new JkBuildParseException("kotlin must be a version string, e.g. \"2.3.21\"");
         }
         if (raw.isBlank()) return null;
-        return VersionSelector.parse(raw);
+        return ManifestSelectors.checked(VersionSelector.parse(raw), root, "kotlin", "kotlin");
     }
 
     /**
@@ -547,7 +547,7 @@ public final class ManifestProject {
             throw new JkBuildParseException("groovy must be a version string, e.g. \"5.0.4\"");
         }
         if (raw.isBlank()) return null;
-        return VersionSelector.parse(raw);
+        return ManifestSelectors.checked(VersionSelector.parse(raw), root, "groovy", "groovy");
     }
 
     /**
@@ -562,7 +562,7 @@ public final class ManifestProject {
             throw new JkBuildParseException("scala must be a version string, e.g. \"3.8.4\"");
         }
         if (raw.isBlank()) return null;
-        return VersionSelector.parse(raw);
+        return ManifestSelectors.checked(VersionSelector.parse(raw), root, "scala", "scala");
     }
 
     /**

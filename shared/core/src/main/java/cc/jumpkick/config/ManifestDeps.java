@@ -144,7 +144,7 @@ public final class ManifestDeps {
                 // Cargo-style one-liner: `name = "1.0.0"`. Resolve the
                 // coord via the bundled catalog; the user provides only
                 // the version selector.
-                result.add(parseShorthandEntry(name, versionShorthand, scope, catalog));
+                result.add(parseShorthandEntry(name, versionShorthand, scope, catalog, scopeTable));
                 continue;
             }
             if (!(value instanceof TomlTable entry)) {
@@ -177,7 +177,8 @@ public final class ManifestDeps {
      * as a {@code group:artifact} string without a third slot does.
      * </ol>
      */
-    static Dependency parseShorthandEntry(String name, String value, Scope scope, LibraryCatalog catalog) {
+    static Dependency parseShorthandEntry(
+            String name, String value, Scope scope, LibraryCatalog catalog, TomlTable scopeTable) {
         String displayPath = scope.tomlSection() + "." + name;
         if (value.isBlank()) {
             throw new JkBuildParseException(displayPath + " has an empty value string");
@@ -205,7 +206,7 @@ public final class ManifestDeps {
         }
 
         if (value.indexOf(':') >= 0) {
-            return parseGavShorthand(name, value, displayPath);
+            return parseGavShorthand(name, value, displayPath, scopeTable);
         }
 
         // Version spec or reserved keyword → catalog lookup.
@@ -223,7 +224,8 @@ public final class ManifestDeps {
             LibraryCatalog.Module mod = catalog.lookup(name)
                     .orElseThrow(() -> new JkBuildParseException(unknownLibraryMessage(displayPath, name, catalog)));
             if (Dependency.MANAGED_KEYWORD.equals(value)) return Dependency.platformManaged(name, mod.moduleKey());
-            VersionSelector selector = VersionSelector.parse(value);
+            VersionSelector selector =
+                    ManifestSelectors.checked(VersionSelector.parse(value), scopeTable, name, displayPath);
             return Dependency.of(name, mod.moduleKey(), selector);
         }
 
@@ -252,7 +254,7 @@ public final class ManifestDeps {
      * {@code group:artifact[:selector]}. Split on {@code :} with a limit of three so a range such as
      * {@code g:a:>=1.2,<2} keeps its commas; a fourth field (classifier or type) is refused.
      */
-    static Dependency parseGavShorthand(String name, String value, String displayPath) {
+    static Dependency parseGavShorthand(String name, String value, String displayPath, TomlTable table) {
         String[] parts = value.split(":", 3);
         String group = parts[0].trim();
         String artifact = parts.length > 1 ? parts[1].trim() : "";
@@ -278,6 +280,7 @@ public final class ManifestDeps {
         } catch (IllegalArgumentException e) {
             throw new JkBuildParseException(displayPath + ".version: " + e.getMessage());
         }
+        selector = ManifestSelectors.checked(selector, table, name, displayPath + ".version");
         return Dependency.of(name, group + ":" + artifact, selector);
     }
 
@@ -566,7 +569,8 @@ public final class ManifestDeps {
         if (versionRaw == null || versionRaw.isBlank()) {
             throw new JkBuildParseException(displayPath + ".version must not be blank");
         }
-        VersionSelector selector = VersionSelector.parse(versionRaw);
+        VersionSelector selector = ManifestSelectors.checked(
+                VersionSelector.parse(versionRaw), entry, "version", displayPath + ".version");
         return Dependency.of(name, group + ":" + artifact, selector);
     }
 
