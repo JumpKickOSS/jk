@@ -1256,7 +1256,9 @@ stores no marker; a test that rewrites it unchanged is replayed from the next ru
 changes it on every run (appends to it, say) runs on every build. Outside the workspace, a file the
 suite both reads and writes is some tool's own state (a daemon registry, a resolver's status file,
 preferences) that your project cannot fix, so it keys nothing: keyed, it would keep a suite that
-uses the Gradle Tooling API or the Kotlin daemon from ever replaying.
+uses the Gradle Tooling API or the Kotlin daemon from ever replaying. The same goes for a file the
+suite reads and then replaces by renaming a temp file it wrote beside it, as the JDK refreshes its
+font cache under `~/.java/fonts` once the system's fonts change.
 
 **A suite that reaches the network is never replayed.** "Reaches the network" means a test JVM
 read from or wrote to a socket whose address is not this machine's: loopback (`localhost`,

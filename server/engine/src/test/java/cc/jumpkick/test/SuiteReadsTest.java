@@ -149,6 +149,59 @@ class SuiteReadsTest {
                         registry.toAbsolutePath().normalize());
     }
 
+    /**
+     * Outside the workspace a file the run read and then replaced with a temp file it wrote beside it
+     * is a tool's state too, as the JDK keeps its font cache ({@code ~/.java/fonts}): the recording
+     * names the temp file's write, never the file's. A file beside which the run left a file of its
+     * own, or whose temp file it removed without replacing it, is still an input.
+     */
+    @Test
+    void a_file_outside_the_workspace_the_jvm_replaces_through_a_temp_file_is_no_input(@TempDir Path tmp)
+            throws Exception {
+        Path ws = Files.createDirectories(tmp.resolve("ws"));
+        Path module = Files.createDirectories(ws.resolve("a"));
+        Path tool = Files.createDirectories(tmp.resolve("tool"));
+        Path cache = Files.writeString(tool.resolve("cache.properties"), "old");
+        Path settings = Files.writeString(tool.resolve("settings.xml"), "<settings/>");
+        Path config =
+                Files.writeString(Files.createDirectories(tmp.resolve("conf")).resolve("config.json"), "{}");
+        Path probe = Files.writeString(tmp.resolve("Probe.java"), """
+                import java.io.*;
+                import java.nio.file.*;
+                class Probe {
+                    public static void main(String[] a) throws Exception {
+                        for (String f : new String[] {"cache.properties", "settings.xml", "../conf/config.json"}) {
+                            try (InputStream in = new FileInputStream("../../tool/" + f)) { in.readAllBytes(); }
+                        }
+                        Path tool = Path.of("../../tool");
+                        File temp = Files.createTempFile(tool, "cache", null).toFile();
+                        try (OutputStream out = new FileOutputStream(temp)) { out.write(2); }
+                        if (!temp.renameTo(tool.resolve("cache.properties").toFile())) throw new IllegalStateException();
+                        try (OutputStream out = new FileOutputStream("../../tool/tool.log")) { out.write(3); }
+                        File scratch = Files.createTempFile(Path.of("../../conf"), "config", null).toFile();
+                        try (OutputStream out = new FileOutputStream(scratch)) { out.write(4); }
+                        Files.delete(scratch.toPath());
+                    }
+                }
+                """);
+        Path recordings = tmp.resolve("rec");
+        String flag = SuiteReads.prepare(recordings);
+        Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        Processes.Captured run = Processes.capture(
+                new ProcessBuilder(java.toString(), flag, probe.toString())
+                        .directory(module.toFile())
+                        .redirectErrorStream(true),
+                Duration.ofMinutes(2));
+        assertThat(run.exit()).as(run.output()).isZero();
+
+        SuiteReads.Observed seen = SuiteReads.collect(recordings, module, ws, f -> true);
+        assertThat(seen.files())
+                .contains(
+                        settings.toAbsolutePath().normalize(),
+                        config.toAbsolutePath().normalize())
+                .doesNotContain(cache.toAbsolutePath().normalize());
+    }
+
     @Test
     void a_workspace_file_is_an_input_when_its_first_read_comes_before_its_first_write(@TempDir Path tmp) {
         Path readFirst = tmp.resolve("read-first");

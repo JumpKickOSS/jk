@@ -268,15 +268,57 @@ public final class SuiteReads {
          * as first: it may have seen the old bytes. A file the run wrote first is its own output. A file
          * outside the workspace the run both read and wrote is some tool's own state (a daemon registry,
          * a resolver's status file, preferences), which the project cannot fix and which, keyed, would
-         * keep the suite from ever replaying.
+         * keep the suite from ever replaying. So is one outside it the run replaced by renaming a temp
+         * file over it ({@link #replacedFirst}), as the JDK rewrites its font cache.
          */
         Set<Path> inputs() {
+            Map<Path, Long> replaced = replacedFirst();
             Set<Path> out = new TreeSet<>();
             read.forEach((f, at) -> {
                 Long wrote = written.get(f);
-                if (wrote == null || (f.startsWith(workspace) && at <= wrote)) out.add(f);
+                if (f.startsWith(workspace)) {
+                    if (wrote == null || at <= wrote) out.add(f);
+                } else if (wrote == null && !replacedDuringRun(f, replaced.get(f.getParent()))) {
+                    out.add(f);
+                }
             });
             return out;
+        }
+
+        /**
+         * For each directory outside the workspace that holds a file the run read, the first write
+         * of a file the run wrote there and that is gone now: a temp file renamed over its target
+         * leaves no write of the target in the recording, only of the temp file.
+         */
+        private Map<Path, Long> replacedFirst() {
+            Set<Path> dirs = new TreeSet<>();
+            for (Path f : read.keySet()) {
+                Path dir = f.getParent();
+                if (dir != null && !f.startsWith(workspace)) dirs.add(dir);
+            }
+            Map<Path, Long> first = new HashMap<>();
+            written.forEach((w, at) -> {
+                Path dir = w.getParent();
+                if (dir != null && dirs.contains(dir) && !read.containsKey(w) && !Files.exists(w)) {
+                    first.merge(dir, at, Math::min);
+                }
+            });
+            return first;
+        }
+
+        /**
+         * Whether {@code f} was last modified no earlier than {@code tempWrittenNanos}, the first write
+         * of a temp file beside it the run left gone: the rename gave {@code f} that temp file's time.
+         */
+        private static boolean replacedDuringRun(Path f, @Nullable Long tempWrittenNanos) {
+            if (tempWrittenNanos == null) return false;
+            try {
+                FileTime modified = Files.getLastModifiedTime(f);
+                long latest = modified.toMillis() + (wholeSecond(modified) ? 999 : 0);
+                return latest >= TimeUnit.NANOSECONDS.toMillis(tempWrittenNanos) - BIRTH_SLACK_MILLIS;
+            } catch (IOException gone) {
+                return false;
+            }
         }
     }
 
