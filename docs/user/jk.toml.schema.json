@@ -263,7 +263,21 @@
     },
     "native": {
       "type": "object",
-      "description": "[native] table; keys are documented in docs/user."
+      "description": "[native]: build a GraalVM native image of the module with jk native, and with jk build when enabled = \"always\" (docs/user/native.md). The table alone enables it.",
+      "properties": {
+        "enabled": {
+          "oneOf": [{ "type": "boolean" }, { "const": "always" }],
+          "description": "true (default): jk native builds the image; \"always\": jk build does too; false: the table stays but no image is built."
+        },
+        "main": { "type": "string", "description": "The main class of the image. Default the module's main." },
+        "name": { "type": "string", "description": "The image's file name. Default the module name; a trailing .exe is ignored." },
+        "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments passed to native-image." },
+        "graal": { "type": ["string", "integer"], "description": "The GraalVM that builds the image: \"graalvm-25\", \"25\" or \"native\". Default a GraalVM of the project's own major." },
+        "graal-vendor": { "type": "string", "description": "The GraalVM distribution's vendor, beside graal-version." },
+        "graal-version": { "type": ["string", "integer"], "description": "The GraalVM version, 25 or \"25.0.4\", beside graal-vendor." },
+        "metadata-repository": { "type": "string", "description": "The GraalVM reachability-metadata repository release, in the dependency version grammar: \"latest\" (default), \"^1\" or an exact \"1.1.4\"." }
+      },
+      "additionalProperties": false
     },
     "image": {
       "type": "object",
@@ -649,7 +663,19 @@
     },
     "format": {
       "type": "object",
-      "description": "[format] table; keys are documented in docs/user."
+      "description": "[format]: how jk format and jk guard shape Java and Kotlin sources (docs/user/format.md).",
+      "properties": {
+        "style": { "type": "string", "description": "A cross-language preset: \"standard\" is palantir for Java and kotlinlang for Kotlin." },
+        "java": { "type": "string", "enum": ["palantir", "google", "aosp"], "description": "The Java style, over style. Default \"palantir\"." },
+        "kotlin": { "type": "string", "enum": ["kotlinlang", "google", "meta"], "description": "The Kotlin style, over style. Default \"kotlinlang\"." },
+        "optimize-imports": { "type": "boolean", "description": "Shorten fully qualified names and add imports (Java). Default true." },
+        "import-order": { "type": "boolean", "description": "Order imports (Java). Default true." },
+        "remove-unused-imports": { "type": "boolean", "description": "Remove unused imports (Java). Default true." },
+        "enforce": { "type": "boolean", "description": "jk guard formats the sources that changed before it builds; under CI it checks instead. Default false." },
+        "ratchet-from": { "type": "string", "description": "With enforce, only files changed since this git ref's merge-base, such as \"origin/main\"." },
+        "exclude": { "type": "array", "items": { "type": "string" }, "description": "Globs, relative to the workspace root, of files never formatted, such as \"vendor/**\"." }
+      },
+      "additionalProperties": false
     },
     "resolve": {
       "type": "object",
@@ -826,7 +852,22 @@
     },
     "config": {
       "type": "object",
-      "description": "[config] table; keys are documented in docs/user."
+      "description": "[config]: CLI preferences of the project, under the flags and the environment and over ~/.jk/config.toml (docs/user/config.md).",
+      "properties": {
+        "color": { "type": "string", "enum": ["auto", "always", "never"], "description": "Default \"auto\"." },
+        "offline": { "type": "boolean" },
+        "no-progress": { "type": "boolean" },
+        "quiet": { "type": "boolean" },
+        "verbose": { "type": "boolean" },
+        "dir": { "type": "string", "description": "The default -C directory." },
+        "force": { "type": "boolean" },
+        "no-ansi": { "type": "boolean", "description": "ASCII-only output; implies no-progress." },
+        "force-ansi": { "type": "boolean", "description": "Emit ANSI even into a file, or under TERM=dumb or CI." },
+        "no-osc": { "type": "boolean" },
+        "notify": { "type": ["string", "boolean"], "enum": ["auto", "always", "never", true, false], "description": "Desktop notification when a run takes a minute or more. Default \"auto\"." },
+        "build-output": { "type": "boolean", "description": "Show the live plan's process-output peek (Ctrl-O)." }
+      },
+      "additionalProperties": false
     },
     "forge": {
       "type": "object",

@@ -257,6 +257,85 @@ class JkTomlSchemaTest {
     }
 
     @Test
+    void native_properties_are_exactly_the_parser_s_native_keys() throws Exception {
+        assertClosedTable("native", ManifestBuild.NATIVE_KEYS);
+    }
+
+    @Test
+    void format_properties_are_exactly_the_parser_s_format_keys() throws Exception {
+        assertClosedTable("format", ManifestTables.FORMAT_KEYS);
+    }
+
+    @Test
+    void config_properties_are_exactly_the_config_loader_s_keys() throws Exception {
+        assertClosedTable("config", JkConfigLoader.KEYS);
+    }
+
+    @Test
+    void jlink_properties_are_exactly_the_parser_s_jlink_keys() throws Exception {
+        assertClosedTable("jlink", ManifestJlink.KEYS);
+    }
+
+    @Test
+    void library_properties_are_exactly_the_parser_s_library_keys() throws Exception {
+        assertClosedTable("library", ManifestTables.LIBRARY_KEYS);
+    }
+
+    @Test
+    void resources_properties_are_exactly_the_parser_s_resources_keys() throws Exception {
+        assertClosedTable("resources", ManifestResources.KEYS);
+    }
+
+    @Test
+    void war_properties_are_exactly_the_parser_s_war_keys() throws Exception {
+        assertClosedTable("war", ManifestTables.WAR_KEYS);
+    }
+
+    @Test
+    void release_properties_are_exactly_the_parser_s_release_keys() throws Exception {
+        String release = assertClosedTable("release", ManifestTables.RELEASE_KEYS);
+        String file = table(table(table(release, "properties"), "files"), "items");
+        assertThat(keysOf(table(file, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestTables.RELEASE_FILE_KEYS);
+        assertThat(ownAdditionalProperties(file))
+                .as("an unknown key on a [release] files entry is what an editor should flag")
+                .isFalse();
+    }
+
+    @Test
+    void publish_properties_are_exactly_the_parser_s_publish_keys() throws Exception {
+        String publish = assertClosedTable("publish", ManifestTables.PUBLISH_KEYS);
+        String properties = table(publish, "properties");
+        String license = table(table(properties, "licenses"), "items");
+        assertThat(keysOf(table(license, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestTables.PUBLISH_LICENSE_KEYS);
+        assertThat(ownAdditionalProperties(license)).isFalse();
+        String developer = table(table(properties, "developers"), "items");
+        assertThat(keysOf(table(developer, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestTables.PUBLISH_DEVELOPER_KEYS);
+        assertThat(ownAdditionalProperties(developer)).isFalse();
+        String scm = table(properties, "scm");
+        assertThat(keysOf(table(scm, "properties")))
+                .containsExactlyInAnyOrderElementsOf(ManifestTables.PUBLISH_SCM_KEYS);
+        assertThat(ownAdditionalProperties(scm)).isFalse();
+    }
+
+    /**
+     * Asserts the top-level table {@code key} names exactly {@code keys} and refuses any other,
+     * as the parser does, and returns the table for the nested checks a caller adds.
+     */
+    private static String assertClosedTable(String key, List<String> keys) throws Exception {
+        String declared = topLevel(key);
+        assertThat(keysOf(table(declared, "properties")))
+                .as("docs/user/jk.toml.schema.json [%s] properties", key)
+                .containsExactlyInAnyOrderElementsOf(keys);
+        assertThat(ownAdditionalProperties(declared))
+                .as("an unknown key under [%s] is what an editor should flag", key)
+                .isFalse();
+        return declared;
+    }
+
+    @Test
     void the_schema_names_the_dependency_scope_tables_the_parser_reads() throws Exception {
         String schema = Files.readString(SCHEMA);
         for (Scope s : Scope.values()) {
