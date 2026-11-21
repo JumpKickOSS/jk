@@ -1,0 +1,92 @@
+name = "jk-cli-e2e"
+description = "The CLI driven against a real engine: the tests that need jk-engine and its workers"
+
+# The new-project conformance test runs the dashboard wizard's view model under the Node.js jk
+# provisions and pins in jk-lock.toml, the same major as clients/web.
+node = 24
+
+# Tests only: it ships nothing, and jk install, jk publish and jk release leave it out.
+[publish]
+skip = true
+
+# The jk-engine edge is what makes these suites launch the workspace engine: the engine assembly
+# and every first-party worker this build produced reach the test JVM as -Djk.engine.jar and
+# -Djk.<worker>.plugin.jar, and an isolated JK_HOME and JK_STATE_DIR keep the host engine alone.
+[test-dependencies]
+jk-cli = { workspace = true, fixtures = true }
+jk-engine.workspace = true
+jk-host = { workspace = true, fixtures = true }
+jk-core = { workspace = true, fixtures = true }
+jk-client-io = { workspace = true, fixtures = true }
+jk-resolver = { workspace = true, fixtures = true }
+assertj-core = "3.27.7"
+junit-jupiter = "6.1.3"
+# The new-project wizard's browser test (release tier): Playwright drives Chromium.
+playwright = { group = "com.microsoft.playwright", name = "playwright", version = "1.64.0" }
+bcpg-jdk18on = "1.86"
+
+[build]
+# Each entry is a hard build-order edge AND a -D<worker>.plugin.jar handed to the test JVM, so an
+# integration class that builds a fixture runs the workers THIS build produced rather than
+# whatever a store happens to hold: the list, declared once.
+#
+# Without it the sandbox JK_HOME has no store and no override, so a fixture whose lock pins a
+# freshly built first-party plugin cannot resolve it at all — and only for the one test that
+# declares a `[spring-boot]` table.
+#
+# Keep this to workers this module's test JVM actually locates: an unused name is a build-order
+# edge and a stamp input for nothing, and re-runs this suite on an unrelated plugin edit.
+test-plugin-jars = [
+  "test-runner",
+  "java-compiler",
+  "kotlin-compiler",
+  "groovy-compiler",
+  "spring-boot",
+  # The plugins whose jars bundle templates: TemplateCatalogE2eTest scaffolds and builds each through
+  # the jar this build produced.
+  "grails",
+  "cc.jumpkick:jk-quarkus",
+  "micronaut",
+  "cc.jumpkick:jk-android",
+  # jk publish, which stages this checkout's plugin SDK in a file repository for a plugin build
+  # (TemplateCatalogE2eTest's plugin template, ThirdPartyPluginExampleTest).
+  "publisher",
+  # Rule packs the templates declare, templates/ and the plugins': staged into the test sandbox
+  # store, where a scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
+  "cc.jumpkick.guards:spring",
+  "cc.jumpkick.guards:quarkus",
+  "cc.jumpkick.guards:helidon",
+  "cc.jumpkick.guards:android",
+  "cc.jumpkick.guards:library",
+  "cc.jumpkick.guards:monorepo",
+]
+
+[test]
+# Its end-to-end builds resolve compilers and libraries through the real Maven Central into the
+# shared test cache, so whenever that cache's metadata is stale a run asks Central again. A release
+# does not change under its version, so its green result is kept knowingly; loopback stand-ins for
+# the remotes would let it drop this, as for jk-engine.
+network = "allowed"
+env = [
+  # Rendered-output assertions must not depend on the terminal the developer happens to be in:
+  # the same pins as clients/cli's suite.
+  { TERM = "xterm-256color", CI = "false", NO_COLOR = "", JK_NERD_FONT = "false" },
+  # An in-process engine under test shares the module's sandbox JK_HOME store, and the resident
+  # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
+  # files for its own explicit prune request. Explicit `jk cache clean` is unaffected.
+  { JK_AUTO_PRUNE = "false" },
+  # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
+  # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
+  { JK_JDK_PROBES = "java-home,jk" },
+  # Loopback TCP for the engines these suites spawn, for two reasons: a TCP port has no `sun_path`
+  # budget, so no sandbox path can be too long to bind; and Windows stops being the only platform
+  # that exercises this lane.
+  { JK_ENGINE_TRANSPORT = "tcp" },
+  # The GraalVM a native end-to-end test links with (TemplateCatalogE2eTest, slow tier), when the
+  # shell running jk names one; unset, that test skips by assumption.
+  "GRAALVM_HOME",
+  # The Android SDK the slow template build looks for before building the android template
+  # (TemplateCatalogE2eTest); unset, it falls back to the store's managed SDK or skips.
+  "ANDROID_HOME",
+  "ANDROID_SDK_ROOT",
+]

@@ -35,7 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>The SDK is published from this checkout's own {@code shared/host} and {@code shared/plugin-sdk}
  * sources, not a released one. {@code jk publish} runs in the publisher worker, which
- * {@code clients/cli}'s {@code test-plugin-jars} names: the run-tests step builds that worker first
+ * {@code e2e/cli}'s {@code test-plugin-jars} names: the run-tests step builds that worker first
  * and hands its jar to the test JVM, so the test needs no prior {@code jk build}.
  */
 @Tag("integration")

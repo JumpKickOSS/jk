@@ -29,7 +29,7 @@ the push gate, run on the local `main` before it is pushed. The house rules run 
 <!-- test-tiers:end -->
 
 **Suites are scope, tags are cost.** A suite that claims a tag takes its tests from every test
-source a module has: `jk test -s integration` runs `clients/cli`'s `src/e2e` integration test
+source a module has: `jk test -s integration` runs `e2e/cli`'s `src/e2e` integration test
 (`E2eSuiteEngineTest`) beside every `src/test` integration class, and the `jk test -s integration`
 step of `ci.yml` (release tag) and `ci-nightly.yml` is its CI run. A directory suite keeps what no
 tag suite claims, and `e2e` is in `guard-suites`, so the push gate runs whatever `src/e2e` holds untagged. The
@@ -54,6 +54,14 @@ fails. Every fast-tier JVM also carries `JK_ENGINE_NO_SPAWN=1`: a client that fi
 serving it fails at once with `EngineSpawnForbiddenException` instead of starting or taking one
 over. Code under test that asks the engine for something (`ProjectInfos`, `EngineClient`) takes that
 lookup as a parameter in a unit test; a test that needs a real engine is an integration test.
+
+**The CLI's tests that need a real engine live in `e2e/cli`.** `clients/cli` declares no test
+edge to `jk-engine` and no `test-plugin-jars`, so its suites read only the wire module, the shared
+libraries and stubs, and an engine change that leaves `shared/wire` alone re-runs none of them.
+`e2e/cli` (tests only, never shipped) takes the classes that spawn an engine or compile against
+engine classes; its `jk-engine` test edge is what hands its JVMs the engine and worker jars this
+build made and isolates their `JK_HOME` and `JK_STATE_DIR`. The harness both share (output capture,
+the isolated roots, the engine extension e2e/cli registers) is `clients/cli`'s `src/fixtures`.
 
 **The integration tier is walled off from the release site.** `[test.suites.integration] env` hands
 its JVMs `JK_HTTP_DENY_HOSTS=jumpkick.build`: the version under test is never published while it

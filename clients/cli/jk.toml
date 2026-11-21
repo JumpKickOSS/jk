@@ -1,10 +1,6 @@
 name = "jk-cli"
 description = "The CLI (and primary) client for interacting with the JumpKick build system"
 
-# The new-project conformance test runs the dashboard wizard's view model under the Node.js jk
-# provisions and pins in jk-lock.toml, the same major as clients/web.
-node = 24
-
 [application]
 main = "cc.jumpkick.cli.Jk"
 # The fat jar is the client for every host without a native binary: shipped as jk-<version>.jar
@@ -59,11 +55,8 @@ jk-host = { workspace = true, fixtures = true }
 jk-core = { workspace = true, fixtures = true }
 jk-client-io = { workspace = true, fixtures = true }
 jk-resolver = { workspace = true, fixtures = true }
-jk-engine.workspace = true
 assertj-core = "3.27.7"
 junit-jupiter = "6.1.3"
-# The new-project wizard's browser test (release tier): Playwright drives Chromium.
-playwright = { group = "com.microsoft.playwright", name = "playwright", version = "1.64.0" }
 bcpg-jdk18on = "1.86"
 # JkWireModel (see [test] extra-src below) imports org.jetbrains.annotations because the
 # IntelliJ platform API does. jk has no test-provided scope, and an annotations-only jar on the
@@ -88,52 +81,12 @@ args = [
   "--initialize-at-build-time=cc.jumpkick.model.BuildStamp",
 ]
 
-[build]
-# Each entry is a hard build-order edge AND a -D<worker>.plugin.jar handed to the test JVM, so an
-# integration class that builds a fixture runs the workers THIS build produced rather than
-# whatever a store happens to hold: the list, declared once.
-#
-# Without it the sandbox JK_HOME has no store and no override, so a fixture whose lock pins a
-# freshly built first-party plugin cannot resolve it at all — and only for the one test that
-# declares a `[spring-boot]` table.
-#
-# Keep this to workers the CLI's own test JVM actually locates: an unused name is a build-order
-# edge and a stamp input for nothing, and re-runs this suite on an unrelated plugin edit.
-test-plugin-jars = [
-  "test-runner",
-  "java-compiler",
-  "kotlin-compiler",
-  "groovy-compiler",
-  "spring-boot",
-  # The plugins whose jars bundle templates: TemplateCatalogE2eTest scaffolds and builds each through
-  # the jar this build produced.
-  "grails",
-  "cc.jumpkick:jk-quarkus",
-  "micronaut",
-  "cc.jumpkick:jk-android",
-  # jk publish, which stages this checkout's plugin SDK in a file repository for a plugin build
-  # (TemplateCatalogE2eTest's plugin template, ThirdPartyPluginExampleTest).
-  "publisher",
-  # Rule packs the templates declare, templates/ and the plugins': staged into the test sandbox
-  # store, where a scaffolded project's lock looks for a first-party pack (TemplateCatalogE2eTest).
-  "cc.jumpkick.guards:spring",
-  "cc.jumpkick.guards:quarkus",
-  "cc.jumpkick.guards:helidon",
-  "cc.jumpkick.guards:android",
-  "cc.jumpkick.guards:library",
-  "cc.jumpkick.guards:monorepo",
-]
-
 [test]
-# The suites' shared harness (src/fixtures/java): the extension that materializes the engine under
-# test into the sandbox JK_HOME and stops it at the end, and the @TempDir deletion strategy. Every
-# suite's classpath carries it, src/test's and src/e2e's alike.
+# The harness this suite and e2e/cli share (src/fixtures/java): output capture, the isolated roots,
+# a mock Maven server, the @TempDir deletion strategy, and the extension e2e/cli registers to
+# materialize the engine under test into its sandbox JK_HOME. This suite runs no engine: its tests
+# talk to the wire module and to stubs.
 fixtures = true
-# Its end-to-end builds resolve compilers and libraries through the real Maven Central into the
-# shared test cache, so whenever that cache's metadata is stale a run asks Central again. A release
-# does not change under its version, so its green result is kept knowingly; loopback stand-ins for
-# the remotes would let it drop this, as for jk-engine.
-network = "allowed"
 # Two files out of the IntelliJ plugin's package, single-sourced from the plugin's own tree: the
 # wire model and its JSON reader need no platform SDK (java.util + org.jetbrains.annotations),
 # while their neighbours do — so this names the files, not the directory. Their package-info.java
@@ -153,22 +106,9 @@ env = [
   # NO_COLOR from the other side. Tests that exercise the glyphs pass caps explicitly, so pinning
   # the ambient default off costs no coverage.
   { TERM = "xterm-256color", CI = "false", NO_COLOR = "", JK_NERD_FONT = "false" },
-  # An in-process engine under test shares the module's sandbox JK_HOME store, and the resident
-  # engine queues a cache GC on startup when idle — which races any fixture staging prune-eligible
-  # files for its own explicit prune request. Explicit `jk cache clean` is unaffected.
-  { JK_AUTO_PRUNE = "false" },
   # The JDK probe chain is the machine's unless narrowed. A jdk verb under test would otherwise
   # list, default to, write pointers at or uninstall the developer's own sdkman/mise/OS installs.
   { JK_JDK_PROBES = "java-home,jk" },
-  # Loopback TCP for the tier that spawns real engines, for two reasons: a TCP port has no
-  # `sun_path` budget, so no sandbox path can be too long to bind; and Windows stops being the only
-  # platform that exercises this lane.
+  # The transport e2e/cli runs its engines on, so the client's engine paths resolve here as there.
   { JK_ENGINE_TRANSPORT = "tcp" },
-  # The GraalVM a native end-to-end test links with (TemplateCatalogE2eTest, slow tier), when the
-  # shell running jk names one; unset, that test skips by assumption.
-  "GRAALVM_HOME",
-  # The Android SDK the slow template build looks for before building the android template
-  # (TemplateCatalogE2eTest); unset, it falls back to the store's managed SDK or skips.
-  "ANDROID_HOME",
-  "ANDROID_SDK_ROOT",
 ]

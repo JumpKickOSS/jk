@@ -85,6 +85,8 @@ modules = [
   "clients/intellij",
   # A Maven core extension jk mvn attaches to the user's Maven; not a jk plugin
   "clients/maven-spy",
+  # The CLI driven against a real engine; tests only
+  "e2e/cli",
   # Plugins/Workers
   "plugins/test-runner",
   "plugins/java-compiler",

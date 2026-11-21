@@ -16,8 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * nested-engine CLI modules must fingerprint worker/engine jars in the TestStamp extras
- * that both forecast and live run-tests use.
+ * A module whose tests depend on the workspace engine must fingerprint the worker and engine jars in
+ * the TestStamp extras that both forecast and live run-tests use; a module without that edge folds
+ * neither.
  */
 class TestStampWorkerJarsParityTest {
 
@@ -25,17 +26,17 @@ class TestStampWorkerJarsParityTest {
     Path tmp;
 
     @Test
-    void cli_module_enriches_worker_jars_into_stamp_extras() throws Exception {
-        Path cli = tmp.resolve("clients/cli");
+    void engine_suite_enriches_worker_jars_into_stamp_extras() throws Exception {
+        Path cli = tmp.resolve("e2e/cli");
         Files.createDirectories(cli);
         Files.writeString(cli.resolve("jk.toml"), """
                 group = "cc.jumpkick"
-                name = "jk-cli"
+                name = "jk-cli-e2e"
                 version = "0.0.1"
                 java = 25
 
-                [application]
-                main = "cc.jumpkick.cli.Jk"
+                [test-dependencies]
+                jk-engine.workspace = true
                 """);
         // The sibling's main jar is at <module>/target/<name>-<ver>.jar.
         Path engine = tmp.resolve("server/engine");
@@ -55,7 +56,7 @@ class TestStampWorkerJarsParityTest {
                 version = "0.0.1"
 
                 [workspace]
-                modules = ["clients/cli", "server/engine"]
+                modules = ["e2e/cli", "server/engine"]
                 """);
         Path engineJar = tmp.resolve("server/engine/target/jk-engine-0.0.1-SNAPSHOT.jar");
         Files.createDirectories(engineJar.getParent());
@@ -127,17 +128,17 @@ class TestStampWorkerJarsParityTest {
     }
 
     @Test
-    void cli_module_names_the_workspace_engine_assembly_even_before_it_is_built() throws Exception {
-        Path cli = tmp.resolve("clients/cli");
+    void engine_suite_names_the_workspace_engine_assembly_even_before_it_is_built() throws Exception {
+        Path cli = tmp.resolve("e2e/cli");
         Files.createDirectories(cli);
         Files.writeString(cli.resolve("jk.toml"), """
                 group = "cc.jumpkick"
-                name = "jk-cli"
+                name = "jk-cli-e2e"
                 version = "0.0.1"
                 java = 25
 
-                [application]
-                main = "cc.jumpkick.cli.Jk"
+                [test-dependencies]
+                jk-engine.workspace = true
                 """);
         // The engine module has no assembly on disk yet: the test run packages it before the suite.
         Path engine = tmp.resolve("server/engine");
@@ -161,7 +162,7 @@ class TestStampWorkerJarsParityTest {
                 version = "0.0.1"
 
                 [workspace]
-                modules = ["clients/cli", "server/engine"]
+                modules = ["e2e/cli", "server/engine"]
                 """);
 
         JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
@@ -170,6 +171,49 @@ class TestStampWorkerJarsParityTest {
                 .as("the suite runs the workspace engine's assembly, never a host or installed engine")
                 .isEqualTo(engine.resolve("target/jk-engine-0.0.1-SNAPSHOT-all.jar")
                         .normalize());
+    }
+
+    @Test
+    void the_cli_without_an_engine_test_edge_folds_no_engine_into_its_stamp() throws Exception {
+        Path cli = tmp.resolve("clients/cli");
+        Files.createDirectories(cli);
+        Files.writeString(cli.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "jk-cli"
+                version = "0.0.1"
+                java = 25
+
+                [application]
+                main = "cc.jumpkick.cli.Jk"
+                """);
+        Path engine = tmp.resolve("server/engine");
+        Files.createDirectories(engine);
+        Files.writeString(engine.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "jk-engine"
+                version = "0.0.1"
+                java = 25
+
+                [application]
+                main = "cc.jumpkick.engine.EngineMain"
+                assembly = true
+                """);
+        Files.writeString(tmp.resolve("jk.toml"), """
+                group = "cc.jumpkick"
+                name = "ws"
+                version = "0.0.1"
+
+                [workspace]
+                modules = ["clients/cli", "server/engine"]
+                """);
+
+        JkBuild project = JkBuildParser.parse(cli.resolve("jk.toml"));
+        assertThat(SelfHostEngine.needsNestedEngineIsolation(project))
+                .as("a client that talks to the engine only over the wire launches none")
+                .isFalse();
+        assertThat(TestStampInputs.testStampWorkerJars(cli, project))
+                .as("an engine edit must not re-run the client's suites")
+                .isEmpty();
     }
 
     /** Minimal zip so the sibling's jar is a real file. */

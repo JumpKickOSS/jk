@@ -165,7 +165,7 @@ final class TestLaunch {
     /**
      * Sandboxed JK_HOME/JK_M2_LOCAL plus this module's [test] env — without it a forked test JVM
      * inherits the engine's environment and runs against the developer's real product layout.
-     * Nested-engine suites (jk-cli) isolate JK_STATE_DIR so EngineTestExtension cannot kill the
+     * Nested-engine suites (e2e/cli) isolate JK_STATE_DIR so EngineTestExtension cannot kill the
      * host engine running this test step; that isolation layers on top and wins on any key both set.
      */
     static WorkerEnv testEnvironment(TaskContext ctx, BuildPlanner.Inputs in, JkBuild projectUnderTest)

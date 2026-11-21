@@ -1,0 +1,11 @@
+cc.jumpkick.config.testing.SessionGlobal
+cc.jumpkick.config.testing.StoreWriteGateGlobal
+cc.jumpkick.cli.api.CliOutputGlobal
+cc.jumpkick.cli.theme.ThemeGlobal
+cc.jumpkick.cli.tui.TerminalReflowGlobal
+cc.jumpkick.cli.tui.SizeGlobal
+cc.jumpkick.cli.tui.ConfirmGlobal
+cc.jumpkick.http.testing.ConnectFaultsGlobal
+cc.jumpkick.resolve.testing.ResolveProcessCacheGlobal
+cc.jumpkick.config.testing.JkEnvGlobal
+cc.jumpkick.m2.testing.MavenLocalRepoGlobal

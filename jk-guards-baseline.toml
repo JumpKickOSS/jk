@@ -758,7 +758,7 @@ unit   = "clients/cli/src/test/java/cc/jumpkick/cli/tui/TableAppendTest.java"
 value  = 2
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]
-unit   = "clients/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java"
+unit   = "e2e/cli/src/test/java/cc/jumpkick/command/system/SelfNukeCommandTest.java"
 value  = 2
 reason = "carried over from fqcn-baseline.txt on 2026-09-06; the per-file reasons (collisions, unreachable-by-the-formatter, outside-the-recipe) stay readable in its ## sections until the Gradle twin retires"
 [[no-fqcn.entries]]

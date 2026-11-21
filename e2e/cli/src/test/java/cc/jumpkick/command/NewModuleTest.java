@@ -224,8 +224,7 @@ class NewModuleTest {
 
         assertThat(exit).isZero();
         assertThat(cwd.resolve("demo/jk.toml")).isRegularFile();
-        assertThat(RepoRoot.find(NewModuleTest.class).resolve("clients/cli/demo"))
-                .doesNotExist();
+        assertThat(RepoRoot.find(NewModuleTest.class).resolve("e2e/cli/demo")).doesNotExist();
     }
 
     @Test

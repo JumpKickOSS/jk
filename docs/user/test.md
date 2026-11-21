@@ -247,10 +247,10 @@ judged together: a pattern that only matches serial-tagged classes is a match.
 `-m` narrows the run to the selected modules **and their prerequisites**, and a prerequisite
 runs its own suite too (a green suite replays from its stamp; a dirty one runs). `-m` is the
 same cone for `jk build` and `jk test`. To reach one module's class from the workspace root,
-name the class: `jk test -m clients/cli -S SelfNukeCommandTest` runs it in `clients/cli`
+name the class: `jk test -m e2e/cli -S SelfNukeCommandTest` runs it in `e2e/cli`
 and skips the prerequisites, whose suites match nothing. A prerequisite compiles its tests and
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
-The run's count is the whole cone's: `jk test -m clients/cli` reports that module's tests
+The run's count is the whole cone's: `jk test -m e2e/cli` reports that module's tests
 plus those of every module it builds on, and the Tests table of `jk-results.md` splits the total
 by module. Piped or under an agent, the run report says how many modules the count spans:
 `OK test app · 3265 tests in 5 modules · 41s`. `--exclusive` below counts the selected modules alone.

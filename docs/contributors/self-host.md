@@ -301,10 +301,11 @@ jk install -g                   # the push gate
 ```
 
 Workspace members: libraries, `clients/cli`, `clients/cli-terminal`, `clients/web`, `server/engine`
-(assembly fat jar), the rule packs, and all first-party `plugins/*` workers (thin jars;
-`PluginMain` implied by `jk-plugin.toml`). The CLI's integration classes spawn nested engines in
+(assembly fat jar), the rule packs, all first-party `plugins/*` workers (thin jars;
+`PluginMain` implied by `jk-plugin.toml`), and `e2e/cli`, the CLI's tests that drive a real engine
+(tests only, `[publish] skip`). Those classes spawn nested engines in
 isolated sandboxes, so `jk test` in this tree never touches your resident engine's state. Those
-engines run this checkout's engine: `jk test -m jk-cli` packages `server/engine`'s fat jar before
+engines run this checkout's engine: `jk test -m jk-cli-e2e` packages `server/engine`'s fat jar before
 the suite starts and hands it to the tests as `-Djk.engine.jar`, so an engine or library change is
 exercised without `jk install` first. The workers those engines fork are the checkout's too
 (`-Djk.<worker>.plugin.jar`), and so are the libraries they run on: a first-party worker jar

@@ -1,0 +1,4 @@
+cc.jumpkick.config.testing.SessionBoundary
+cc.jumpkick.config.testing.ClassOrderRecorder
+cc.jumpkick.cli.engine.EngineOwnerListener
+cc.jumpkick.templates.testing.SharedHomeTemplateCatalog

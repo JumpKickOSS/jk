@@ -1,0 +1,4 @@
+cc.jumpkick.cli.engine.EngineTestExtension
+cc.jumpkick.testing.CheckoutUntouched
+cc.jumpkick.testing.TempWorkingDirectory
+cc.jumpkick.config.testing.HermeticReads

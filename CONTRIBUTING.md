@@ -157,7 +157,7 @@ The fleet's gate hosts run the whole gate as `scripts/gate/run.sh <n> <sha>`
 
 On Windows the same gate is expected to pass, so a red test there is a finding, not the platform.
 The push gate is long; to chase a failure, run its suites a module at a time
-(`jk test -g -m jk-engine`, `-m jk-cli`, …, with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
+(`jk test -g -m jk-engine`, `-m jk-cli-e2e`, …, with `--continue` past a dependency's failure). A failure that only one checkout reproduces is
 usually its stale test sandbox under `~/.jk/test-homes/`: delete that slot and it is reseeded.
 Tests stay portable through `cc.jumpkick.testing`: `Sleepers` for stand-in processes (never a
 literal `sleep` or `bash`), `Symlinks.create` for links, `ShortTempDirs` for synthetic absolute
@@ -198,13 +198,16 @@ jk test --coverage && jk guard               # nightly coverage ratchet (G91)
 
 #### Engine / CLI tests under self-host
 
-`server/engine` and `clients/cli` declare `[build].test-plugin-jars`: each name is a build-order
+`server/engine` and `e2e/cli` declare `[build].test-plugin-jars`: each name is a build-order
 edge and a `-Djk.<worker>.plugin.jar` the run-tests step hands the test JVM, so a test that forks a
-worker runs the one this build produced. CLI integration tests spawn a real engine from the
-assembly the same step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME` — no in-process
-dual path. The fast tier (`jk test`) is the pure unit tier (TUI/args/jsonl) with no engine spawn.
+worker runs the one this build produced. The CLI's tests live in two modules. `clients/cli` holds
+the ones that talk to the wire module and to stubs; it has no test edge to `jk-engine` or to any
+worker, so an engine change that leaves `shared/wire` alone re-runs none of its suites. `e2e/cli`
+holds the ones that drive a real engine: its `jk-engine` test edge makes them spawn the assembly the
+run-tests step names (`-Djk.engine.jar`), in an isolated sandbox `JK_HOME`, with no in-process dual
+path. The fast tier (`jk test`) spawns no engine in either module.
 
-Use `-m` and `--class` mid-ticket (`jk test -m clients/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
+Use `-m` and `--class` mid-ticket (`jk test -m e2e/cli -S cc.jumpkick.cli.engine.EngineClientTest -s integration`);
 the push gate is the whole of `jk install -g`. Tier model:
 [docs/contributors/test-suite-tiers.md](docs/contributors/test-suite-tiers.md).
 

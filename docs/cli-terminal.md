@@ -1623,7 +1623,7 @@ This is a local CLI, not a service. No metrics backend.
   `MissingForeignRegistrationError` per descriptor; `PosixTty.ensure()` binds independently so
   one miss does not null `open`/`tcgetattr`. A hole here makes `canPrompt()` false on a live
   TTY and `jk new` skips the wizard.
-- **Alerting:** none. Dogfood + `jk test -m clients/cli` / `jk test -s integration -m clients/cli` / reinstall smoke.
+- **Alerting:** none. Dogfood + `jk test -m clients/cli` / `jk test -s integration -m e2e/cli` / reinstall smoke.
 
 Latency targets: `controlling()` first open < 5ms (no 200ms grapheme timeout). `readKey(75ms)`
 worst case is the timeout plus a single `read`. Restore < 10ms so the 500ms halt budget is

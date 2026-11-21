@@ -7,8 +7,10 @@ import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.Scope;
 import cc.jumpkick.runtime.base.TestEnv;
 import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
@@ -28,16 +30,19 @@ public final class SelfHostEngine {
     private SelfHostEngine() {}
 
     /**
-     * CLI integration suite: tests spawn a real engine via the wire and register {@code
-     * EngineTestExtension}, which force-stops the engine after each class. Under pure-jk {@code jk
-     * test} that must not share the host engine's {@code JK_STATE_DIR} (host would die mid-suite).
+     * A jk module whose tests depend on {@link #ENGINE_MODULE}: they spawn the workspace engine over
+     * the wire, so they run under their own {@code JK_HOME} and {@code JK_STATE_DIR}, away from the
+     * host engine running the test step, and are handed the engine and worker jars this build made.
      */
     public static boolean needsNestedEngineIsolation(JkBuild project) {
         if (project == null || !selfHosted(project)) return false;
-        return "jk-cli".equals(project.project().name()) || "cc.jumpkick.cli.Jk".equals(project.mainClass());
+        for (Dependency dep : project.dependencies().of(Scope.TEST)) {
+            if (ENGINE_MODULE.equals(dep.library()) || dep.module().endsWith(":" + ENGINE_MODULE)) return true;
+        }
+        return false;
     }
 
-    /** The group of jk's own modules: a project named {@code jk-cli} under any other is the user's. */
+    /** The group of jk's own modules: a module of any other group is the user's, whatever it depends on. */
     static final String SELF_GROUP = "cc.jumpkick";
 
     private static boolean selfHosted(JkBuild project) {

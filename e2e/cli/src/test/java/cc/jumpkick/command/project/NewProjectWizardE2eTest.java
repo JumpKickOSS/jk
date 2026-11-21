@@ -254,7 +254,7 @@ class NewProjectWizardE2eTest {
 
     private void screenshot(String name) throws IOException {
         Path dir = Files.createDirectories(
-                RepoRoot.find(NewProjectWizardE2eTest.class).resolve("clients/cli/target/new-project-wizard"));
+                RepoRoot.find(NewProjectWizardE2eTest.class).resolve("e2e/cli/target/new-project-wizard"));
         page.screenshot(
                 new Page.ScreenshotOptions().setPath(dir.resolve(name + ".png")).setFullPage(true));
     }

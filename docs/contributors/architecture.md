@@ -784,7 +784,7 @@ keys** when adding a read-only remote later — only add an optional remote look
 | Guard lanes | A lane key is its read set (facts digests, tree text, manifests and lock, the rules' sources, the baseline slice). A module lane adds `java:<engine major>` (the engine JDK's platform classes answer its `java.*` supertypes; `ToolchainPolicy.expectOnEngineMajor` states it, held to the major) where it named the JDK build; only a module lane that runs a `src/guard` suite adds `os:<os.name>`, since suite code may throw `Skipped.onThisPlatform` | Verdicts are shared across operating systems, architectures and patches of one major |
 | Build info | `[build-info]`'s `git.properties` and Boot's `META-INF/build-info.properties` by their stable entries (`BuildInfoKeys.stableDigest`: the commit, branch, dirty state and times left out) in the run-tests `main:` token and a compile's `res:` token; a suite whose sources name a volatile value keys the files whole (`BuildInfoKeys.namedBy`) | The rule `BuildIdentity.keyId` applies to the engine's `Build-Commit`/`Build-Time` |
 
-`CrossHostKeyEqualityTest` (clients/cli, integration tier) is the guard for this table: one project
+`CrossHostKeyEqualityTest` (e2e/cli, integration tier) is the guard for this table: one project
 built by two client processes with cleared environments against two engines in fresh homes, at two
 checkout paths, under two users, `$HOME`s, temp roots, locales (`en_US.UTF-8` and `de_DE.UTF-8` with
 `LC_ALL`) and time zones, must key every step alike; a key that differs fails naming each input whose

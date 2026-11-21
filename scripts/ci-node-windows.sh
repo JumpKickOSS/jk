@@ -26,15 +26,15 @@ integration=(
   jk-engine:cc.jumpkick.runtime.NodeRegistryAuthTest
   jk-engine:cc.jumpkick.runtime.NodeStepsE2eTest
   jk-engine:cc.jumpkick.runtime.NodeUnlockedNpxTest
-  jk-cli:cc.jumpkick.command.pipeline.NodeModuleBuildE2eTest
-  jk-cli:cc.jumpkick.command.pipeline.NodePackagingE2eTest
-  jk-cli:cc.jumpkick.command.pipeline.NodeSideBySideE2eTest
-  jk-cli:cc.jumpkick.command.project.NewNodeE2eTest
-  jk-cli:cc.jumpkick.command.toolchain.NodeCommandE2eTest
+  jk-cli-e2e:cc.jumpkick.command.pipeline.NodeModuleBuildE2eTest
+  jk-cli-e2e:cc.jumpkick.command.pipeline.NodePackagingE2eTest
+  jk-cli-e2e:cc.jumpkick.command.pipeline.NodeSideBySideE2eTest
+  jk-cli-e2e:cc.jumpkick.command.project.NewNodeE2eTest
+  jk-cli-e2e:cc.jumpkick.command.toolchain.NodeCommandE2eTest
 )
 networked=(
-  jk-cli:cc.jumpkick.command.pipeline.BootNodeSideBySideNetworkTest
-  jk-cli:cc.jumpkick.command.project.NewNodeNetworkTest
+  jk-cli-e2e:cc.jumpkick.command.pipeline.BootNodeSideBySideNetworkTest
+  jk-cli-e2e:cc.jumpkick.command.project.NewNodeNetworkTest
 )
 
 # jk test -m … --class … for one set of module:class pairs, plus any extra flags.
@@ -59,6 +59,7 @@ module_dir() {
     jk-toolchain) echo server/toolchain ;;
     jk-engine) echo server/engine ;;
     jk-cli) echo clients/cli ;;
+    jk-cli-e2e) echo e2e/cli ;;
     *) echo "ci-node-windows: no directory for module $1" >&2; exit 2 ;;
   esac
 }

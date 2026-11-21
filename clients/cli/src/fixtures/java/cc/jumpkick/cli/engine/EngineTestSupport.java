@@ -21,7 +21,7 @@ import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Suite fixture for wire-only CLI tests: materialize {@code jk-engine} into the test {@code JK_HOME}
+ * Suite fixture for the CLI's engine tests (e2e/cli): materialize {@code jk-engine} into the test {@code JK_HOME}
  * and stop the resident engine so {@code @TempDir} can delete project trees that held open CAS
  * links.
  */
@@ -48,7 +48,7 @@ public final class EngineTestSupport {
                         + (engineJar == null
                                 ? "server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"
                                 : engineJar)
-                        + " — CLI tests run the checkout's engine; `jk test -m jk-cli` packages it");
+                        + " — CLI tests run the checkout's engine; `jk test -m jk-cli-e2e` packages it");
             }
             try {
                 // Ensure UDS parent exists (pure-jk isolation creates it once; do not rely on a

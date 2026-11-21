@@ -132,7 +132,7 @@ one run per cell, fail fast.
 | Resolve | PubGrub (`server/resolver`) |
 | Cache | Content-addressed store + action cache |
 | Wire | JSONL client↔engine protocol (`shared/wire`) |
-| Modules | `shared/` (client-safe), `server/` (engine-only), `clients/`, `plugins/` |
+| Modules | `shared/` (client-safe), `server/` (engine-only), `clients/`, `plugins/`, `e2e/` (tests only) |
 
 Build with the installed JumpKick (`jk build`; a GraalVM-capable JDK for the native client — see CONTRIBUTING). Use a **separate worktree** for parallel work; the resident engine serializes the builds of one workspace. **One heavy run per machine:** JumpKick's full integration tier and an uncached full `jk build` of this tree start nested engines with their own worker pools, so do not run two at once or alongside a benchmark (`bench/`, jk-examples `bench/`), which also needs an otherwise idle host. Editing and narrow `-m` / `--class` tests in parallel worktrees are fine ([details](docs/contributors/test-suite-tiers.md#one-heavy-run-per-machine)).
 

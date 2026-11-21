@@ -5,7 +5,8 @@ import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
 /**
- * Global CLI suite extension (autodetected):
+ * The extension e2e/cli registers for every class of its suites (autodetected), and clients/cli
+ * does not, since its suites run no engine:
  *
  * <ul>
  * <li>BeforeAll (per class) — materialize the engine jar into the test {@code JK_HOME}

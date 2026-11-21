@@ -83,6 +83,7 @@ class SelfHostingTomlTest {
                         "clients/web",
                         "clients/intellij",
                         "clients/maven-spy",
+                        "e2e/cli",
                         "plugins/test-runner",
                         "plugins/java-compiler",
                         "plugins/kotlin-compiler",
@@ -298,6 +299,24 @@ class SelfHostingTomlTest {
                     .as(module + " must not set assembly (thin workers)")
                     .isFalse();
         }
+    }
+
+    @Test
+    void the_cli_suite_runs_without_the_engine_and_e2e_cli_runs_with_it() throws Exception {
+        // An engine edit that leaves the wire alone must re-run no CLI suite: neither a test edge
+        // onto the engine nor a worker jar may reach the CLI's test steps. What drives a real
+        // engine lives in e2e/cli.
+        JkBuild cli = JkBuildParser.parse(REPO.resolve("clients/cli/jk.toml"));
+        assertThat(cli.dependencies().of(Scope.TEST))
+                .extracting(d -> d.library())
+                .doesNotContain("jk-engine");
+        assertThat(cli.build().testPluginJars()).isEmpty();
+
+        JkBuild e2e = JkBuildParser.parse(REPO.resolve("e2e/cli/jk.toml"));
+        assertThat(e2e.dependencies().of(Scope.TEST))
+                .extracting(d -> d.library())
+                .contains("jk-cli", "jk-engine");
+        assertThat(e2e.build().testPluginJars()).isNotEmpty();
     }
 
     @Test

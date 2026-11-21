@@ -56,7 +56,7 @@ import org.junit.jupiter.api.io.TempDir;
 class DevSidecarFixtureTest {
 
     private static final Path EXAMPLE =
-            RepoRoot.find(DevSidecarFixtureTest.class).resolve("clients/cli/fixtures/projects/vite-sidecar");
+            RepoRoot.find(DevSidecarFixtureTest.class).resolve("e2e/cli/fixtures/projects/vite-sidecar");
 
     /** A cold engine, a compile, a JVM start and a probe all fit; a hang does not. */
     private static final long READY_WAIT_SECONDS = 180;
