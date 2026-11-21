@@ -245,9 +245,10 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
     }
 
     /**
-     * The journal's files that hold the canary. An atomic write's staging sibling is skipped: the
-     * engine may still be settling the run, and the file can be renamed onto its target between the
-     * listing and the read; what it holds is checked under the target's own name.
+     * The journal's files that hold the canary. An atomic write's staging sibling and a run
+     * directory still being staged are skipped: the engine may still be settling the run, and either
+     * can be renamed onto its target between the listing and the read; what it holds is checked
+     * under the target's own name.
      */
     private static List<Path> journalLeaks() throws IOException {
         List<Path> leaks = new ArrayList<>();
@@ -262,9 +263,18 @@ class RunSourceSecretsE2eTest extends EngineServerHarness {
         return leaks;
     }
 
-    /** Whether {@code f} is a staging sibling {@link cc.jumpkick.host.AtomicWrites#staging} made. */
+    /**
+     * Whether {@code f} is a staging sibling {@link cc.jumpkick.host.AtomicWrites#staging} made, or
+     * sits in a run directory the journal is still staging ({@code .<run>.tmp}, {@code
+     * .<run>.complete.tmp}) and renames whole.
+     */
     private static boolean staging(Path f) {
-        return STAGING.matcher(f.getFileName().toString()).matches();
+        if (STAGING.matcher(f.getFileName().toString()).matches()) return true;
+        for (Path part : f) {
+            String name = part.toString();
+            if (name.startsWith(".") && name.endsWith(".tmp")) return true;
+        }
+        return false;
     }
 
     /** {@code /api/history} and the record's own history answer, each checked to be a 200. */
