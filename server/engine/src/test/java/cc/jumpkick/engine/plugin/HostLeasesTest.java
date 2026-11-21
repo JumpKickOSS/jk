@@ -347,6 +347,24 @@ class HostLeasesTest {
     }
 
     @Test
+    void a_release_the_shared_file_could_not_take_is_recorded_once_it_can() throws Exception {
+        WorkerLeases.Ledger ledger = engine(1001, BUDGET, 8, owner -> true);
+        Path file = engineDir.resolve(HostLeases.FILE);
+        WorkerLeases.Grant held = ledger.acquireBytes(GIB, true, 3L);
+        String holding = "1001 0 " + BUDGET + " 8 " + GIB + " 1 0\n";
+        awaitFile(holding);
+        // A directory where the file was: every read and write of it fails until it is put back.
+        Files.delete(file);
+        Files.createDirectory(file);
+        held.close();
+        // Long enough for the release's first attempt, and Windows' own retries of a denied read, to fail.
+        Thread.sleep(1_500);
+        Files.delete(file);
+        Files.writeString(file, holding);
+        awaitFile("1001 0 " + BUDGET + " 8 0 0 0\n");
+    }
+
+    @Test
     void a_dead_engines_surviving_workers_are_stopped_when_its_line_is_reclaimed() throws Exception {
         Process orphan = sleeper();
         Process stranger = sleeper();

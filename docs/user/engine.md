@@ -522,6 +522,9 @@ can read their output, and their memory would otherwise be counted by nobody. A 
 killed only when its pid still names the process that started when the line says. The
 engine log records both:
 `reclaimed 3.0 GiB of worker leases held by engine pid 4242, which is gone; stopped 2 workers it left running`.
+When the file cannot be read or written, an engine says so once in the engine log, leases
+against the others' last reading, and offers its line again, after a pause that doubles up to
+5 seconds, until the file takes it: a release is never lost to one failed write.
 The file costs each fork a few file-locked rewrites of a few hundred bytes, a fraction of a
 millisecond each. A test JVM's in-process engine keeps its own ledger, and a nested engine
 under `jk test` has its own state directory, so neither shares the host's limits.

@@ -38,7 +38,9 @@ import org.jspecify.annotations.Nullable;
  * is stopped only when its pid still names the process started when the line says.
  *
  * <p>When the file cannot be read or written the engine leases against the other engines' last
- * reading, and says so once in the engine log.
+ * reading, says so once in the engine log, and its ledger offers its line again, after a pause
+ * that doubles from {@value #RETRY_FIRST_MILLIS} ms up to {@value #RETRY_MOST_MILLIS} ms, until the
+ * file takes it.
  */
 final class HostLeases {
 
@@ -50,6 +52,12 @@ final class HostLeases {
 
     /** Waiting this long or more for the file lock counts as contention in {@link SharedLeaseCounts#lockWaits}. */
     static final long CONTENDED_NANOS = 10_000_000L;
+
+    /** The pause before a line the file did not take is offered again the first time. */
+    private static final long RETRY_FIRST_MILLIS = 50;
+
+    /** The longest pause between offers of a line the file did not take. */
+    private static final long RETRY_MOST_MILLIS = 5_000;
 
     /**
      * What this engine records: its own budget and JVM cap, its charged bytes, its running JVMs, its
@@ -198,13 +206,51 @@ final class HostLeases {
         }
     }
 
-    /** Record {@code line}, number {@code seq}; no file access when it is unchanged or older than the recorded one. */
-    void publish(long seq, Line line) {
+    /**
+     * Record {@code line}, number {@code seq}; no file access when it is unchanged or older than the
+     * recorded one. False when the file could not be read or written, and {@code line} is not recorded.
+     */
+    boolean publish(long seq, Line line) {
         synchronized (state) {
-            if (read && (seq < publishedSeq || line.equals(published))) return;
+            if (read && seq <= publishedSeq) return true;
+            if (read && line.equals(published)) {
+                publishedSeq = seq;
+                return true;
+            }
         }
         Publication p = new Publication(seq, line);
-        exchange(o -> p);
+        try {
+            exchange(o -> p);
+        } catch (RuntimeException e) {
+            synchronized (state) {
+                if (!warned) Log.warn("jk engine: worker leases not recorded for the other engines: " + e.getMessage());
+                warned = true;
+            }
+        }
+        return recordedSeq() >= seq;
+    }
+
+    /** The number of the newest line the file is known to hold; {@code -1} before any. */
+    long recordedSeq() {
+        synchronized (state) {
+            return publishedSeq;
+        }
+    }
+
+    /**
+     * Sleep before a line the file did not take is offered again, the {@code failures}th time in a
+     * row: from {@value #RETRY_FIRST_MILLIS} ms, doubling up to {@value #RETRY_MOST_MILLIS} ms. False,
+     * with the interrupt kept, when the thread is interrupted.
+     */
+    static boolean pauseBeforeRetry(int failures) {
+        long millis = RETRY_FIRST_MILLIS << Math.min(Math.max(0, failures - 1), 7);
+        try {
+            Thread.sleep(Math.min(RETRY_MOST_MILLIS, millis));
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /** The other engines' reading, read now. */

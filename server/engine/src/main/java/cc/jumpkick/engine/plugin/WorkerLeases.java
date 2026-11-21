@@ -249,9 +249,6 @@ public final class WorkerLeases {
         /** Changes to this ledger's line for the other engines, counted; each line is recorded with its number. */
         private long version;
 
-        /** The number of the newest line the shared file is known to hold. */
-        private long written = -1;
-
         /** A thread is recording this ledger's line ({@link #publishPending}). */
         private boolean publishing;
 
@@ -310,9 +307,9 @@ public final class WorkerLeases {
                 seq = ++version;
                 line = line();
             }
-            share.publish(seq, line);
+            boolean recorded = share.publish(seq, line);
             synchronized (lock) {
-                written = Math.max(written, seq);
+                if (!recorded) changed();
             }
             return this;
         }
@@ -397,30 +394,32 @@ public final class WorkerLeases {
         }
 
         /**
-         * Record this ledger's newest line until the shared file holds it. Each line carries its
-         * number, so one made before a grant's confirmed line never replaces it.
+         * Record this ledger's newest line until the shared file holds it, offering a line the file
+         * did not take again after a {@linkplain HostLeases#pauseBeforeRetry pause}: a release left
+         * unrecorded would stay counted by every other engine. Each line carries its number, so one
+         * made before a grant's confirmed line never replaces it.
          */
         private void publishPending() {
+            int failures = 0;
             while (true) {
                 HostLeases h;
                 long seq;
                 HostLeases.Line line;
                 synchronized (lock) {
                     h = host;
-                    if (h == null || written >= version) {
+                    if (h == null || h.recordedSeq() >= version) {
                         publishing = false;
                         return;
                     }
                     seq = version;
                     line = line();
                 }
-                try {
-                    h.publish(seq, line);
-                } catch (RuntimeException e) {
-                    Log.warn("jk engine: worker leases not recorded for the other engines: " + e.getMessage());
-                }
-                synchronized (lock) {
-                    written = Math.max(written, seq);
+                if (h.publish(seq, line)) failures = 0;
+                else if (!HostLeases.pauseBeforeRetry(++failures)) {
+                    synchronized (lock) {
+                        publishing = false;
+                    }
+                    return;
                 }
             }
         }
@@ -875,7 +874,7 @@ public final class WorkerLeases {
                 }
             });
             synchronized (lock) {
-                written = Math.max(written, seq[0]);
+                if (h.recordedSeq() < seq[0]) changed();
                 if (stands[0] && waiter.overbooked) logOverbook(waiter);
                 if (!stands[0]) lock.notifyAll();
             }
