@@ -166,18 +166,33 @@ class OsvAuditorTest {
         assertThat(report.findings().getFirst().severity()).isEqualTo(AuditReport.Severity.LOW);
     }
 
+    /** An advisory with only a CVSS v4 vector and no label is rated by the vector's score. */
+    @Test
+    void a_cvss_v4_vector_without_a_label_is_rated_by_its_score() throws Exception {
+        AuditReport report = auditOne("""
+                {
+                  "id":"CVE-2025-0003",
+                  "summary":"v4 only",
+                  "severity":[
+                    {"type":"CVSS_V4","score":"CVSS:4.0/AV:L/AC:L/AT:N/PR:L/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N"}
+                  ]
+                }
+                """);
+        assertThat(report.findings().getFirst().severity()).isEqualTo(AuditReport.Severity.MEDIUM);
+    }
+
     /**
-     * A CVSS v4 vector alone, or a v3 vector that does not parse, is not scored: the advisory stays
-     * UNKNOWN and is reported at every threshold.
+     * A CVSS vector that does not parse is not scored: an advisory with nothing else stays UNKNOWN
+     * and is reported at every threshold.
      */
     @Test
     void an_unscored_vector_only_advisory_is_unknown_and_still_gates() throws Exception {
         AuditReport report = auditOne("""
                 {
                   "id":"CVE-2025-0002",
-                  "summary":"v4 only",
+                  "summary":"malformed vectors",
                   "severity":[
-                    {"type":"CVSS_V4","score":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"},
+                    {"type":"CVSS_V4","score":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H"},
                     {"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N"}
                   ]
                 }

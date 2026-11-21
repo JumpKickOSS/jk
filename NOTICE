@@ -8,3 +8,8 @@ this repository, or at http://www.apache.org/licenses/LICENSE-2.0.
 This product includes a vendored copy of Apache Maven's ComparableVersion
 (maven-artifact 3.9.16), licensed under the Apache License 2.0.
 Copyright the Apache Software Foundation.
+
+The jk-auditor plugin's CVSS v4.0 scoring is ported from the CVSS v4.0 reference calculator
+(https://github.com/RedHatProductSecurity/cvss-v4-calculator), and its MacroVector score table is
+copied from it, licensed under the BSD 2-Clause License.
+Copyright (c) 2023 FIRST.ORG, Inc., Red Hat, and contributors.

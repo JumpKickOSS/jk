@@ -285,12 +285,12 @@ jk audit -O jsonl              # one JSON line per finding
 
 The exit status is the verdict. `jk audit` exits **0** when no finding at or above
 `--severity` (default `LOW`) is outstanding, and **1** when one is. An advisory OSV gives no
-severity label is rated by the highest base score of its CVSS v3 vectors (9.0 and up `CRITICAL`,
-7.0 `HIGH`, 4.0 `MEDIUM`, below that `LOW`). One with neither (a CVSS v4 vector alone) counts at
-every threshold — the audit fails closed rather than hide what it cannot classify. A finding
-covered by an unexpired `[audit] ignore` entry is reported but never counted. `--offline` is
-refused before anything is queried: an audit has no cached answer, and a clean report produced
-without asking OSV would be a claim about safety nobody made.
+severity label is rated by the highest score of its CVSS v3 and v4 vectors (9.0 and up
+`CRITICAL`, 7.0 `HIGH`, 4.0 `MEDIUM`, below that `LOW`). One with neither counts at every
+threshold — the audit fails closed rather than hide what it cannot classify. A finding covered by
+an unexpired `[audit] ignore` entry is reported but never counted. `--offline` is refused before
+anything is queried: an audit has no cached answer, and a clean report produced without asking OSV
+would be a claim about safety nobody made.
 
 Each advisory's details are kept in the cache root's `osv-vulns/` and fetched again only when OSV
 reports the advisory changed, so a repeat audit asks OSV one batch query; an entry no audit has
@@ -318,7 +318,7 @@ With `-O jsonl` every finding is one line in the [machine envelope](machine-outp
 |-------|---------|
 | `id` | The advisory id as OSV reports it (`GHSA-…`, `CVE-…`) |
 | `package` / `version` | The locked package (`group:artifact`) and version the advisory applies to |
-| `severity` | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` when OSV gave neither a label nor a CVSS v3 vector |
+| `severity` | `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, or `UNKNOWN` when OSV gave neither a label nor a CVSS v3 or v4 vector |
 | `summary` | OSV's one-line summary |
 | `fixedIn` | The nearest fixed version above the locked one; absent when OSV names none |
 | `aliases` | The advisory's other ids (the `CVE-…` of a `GHSA-…`); absent when it has none |

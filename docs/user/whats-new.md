@@ -45,9 +45,9 @@ JumpKick shows you this page's new entries after it updates itself.
 
 - **`[audit] ignore` matches an advisory's aliases.** An entry written for `CVE-2026-1234` now
   covers the `GHSA-…` advisory OSV reports for it, and `-O jsonl` lists each finding's `aliases`.
-- **An advisory with a CVSS v3 vector and no severity label gets a severity.** `jk audit` rates it
-  by the vector's base score instead of `UNKNOWN`, so `-s HIGH` no longer stops on a low-scored
-  advisory GitHub never labelled. A CVSS v4 vector alone still fails closed.
+- **An advisory with a CVSS vector and no severity label gets a severity.** `jk audit` rates it
+  by the highest score of its CVSS v3 and v4 vectors instead of `UNKNOWN`, so `-s HIGH` no longer
+  stops on a low-scored advisory GitHub never labelled.
 - **A repeat `jk audit` fetches only the advisories OSV changed.** Each advisory's details are kept
   in the cache's `osv-vulns/` until OSV reports it modified.
 - **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and

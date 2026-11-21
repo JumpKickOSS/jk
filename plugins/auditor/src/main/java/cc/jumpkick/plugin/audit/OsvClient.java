@@ -295,9 +295,9 @@ public final class OsvClient {
 
     /**
      * The advisory's severity <em>label</em>: {@code database_specific.severity}, the label OSV and
-     * GitHub publish; failing that, the rating of the highest base score among its CVSS v3 vectors
-     * ({@code severity[].score}, {@code CVSS:3.1/AV:N/...}), which is never a label itself. An
-     * advisory with neither (a CVSS v4 vector alone) stays {@code UNKNOWN}, which fails closed.
+     * GitHub publish; failing that, the rating of the highest score among its CVSS v3 and v4 vectors
+     * ({@code severity[].score}, {@code CVSS:3.1/AV:N/...} or {@code CVSS:4.0/AV:N/...}), which is
+     * never a label itself. An advisory with neither stays {@code UNKNOWN}, which fails closed.
      */
     private static String extractSeverity(Map<?, ?> node) {
         Object label = object(node.get("database_specific")).get("severity");
@@ -305,7 +305,8 @@ public final class OsvClient {
         Double best = null;
         if (node.get("severity") instanceof List<?> scores) {
             for (Object entry : scores) {
-                if (!"CVSS_V3".equals(textOrEmpty(object(entry), "type"))) continue;
+                String type = textOrEmpty(object(entry), "type");
+                if (!type.equals("CVSS_V3") && !type.equals("CVSS_V4")) continue;
                 Double score = Cvss.baseScore(textOrEmpty(object(entry), "score"));
                 if (score != null && (best == null || score > best)) best = score;
             }

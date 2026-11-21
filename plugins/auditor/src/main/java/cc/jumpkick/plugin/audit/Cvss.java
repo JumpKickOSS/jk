@@ -7,9 +7,10 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The base score of a CVSS v3.0 or v3.1 vector and its qualitative rating, per the
- * <a href="https://www.first.org/cvss/v3.1/specification-document">CVSS v3.1 specification</a>
- * (section 7). Used when an advisory carries a vector but no severity label.
+ * The score of a CVSS v3.0, v3.1 or v4.0 vector and its qualitative rating. A v3 vector is scored per
+ * the <a href="https://www.first.org/cvss/v3.1/specification-document">CVSS v3.1 specification</a>
+ * (section 7), a v4.0 one by {@link Cvss4}. Used when an advisory carries a vector but no severity
+ * label.
  */
 final class Cvss {
 
@@ -18,10 +19,12 @@ final class Cvss {
     private static final Set<String> BASE = Set.of("AV", "AC", "PR", "UI", "S", "C", "I", "A");
 
     /**
-     * The base score of {@code vector} ({@code CVSS:3.1/AV:N/AC:L/...}), 0.0 to 10.0; null when it
-     * is not a v3.0 or v3.1 vector carrying every base metric once with a value the spec defines.
+     * The score of {@code vector} ({@code CVSS:3.1/AV:N/AC:L/...} or {@code CVSS:4.0/AV:N/...}), 0.0 to
+     * 10.0; null when it is not a v3.0, v3.1 or v4.0 vector carrying every base metric once with a
+     * value its specification defines.
      */
     static @Nullable Double baseScore(String vector) {
+        if (vector.trim().startsWith("CVSS:4.0/")) return Cvss4.score(vector);
         String[] parts = vector.trim().split("/");
         boolean v30 = parts[0].equals("CVSS:3.0");
         if (!v30 && !parts[0].equals("CVSS:3.1")) return null;
@@ -61,7 +64,10 @@ final class Cvss {
         return v30 ? Math.ceil(raw * 10) / 10 : roundUp(raw);
     }
 
-    /** The qualitative rating of a base score: the label {@code AuditReport.Severity} reads. */
+    /**
+     * The qualitative rating of a score, the same scale in v3 and v4: the label {@code
+     * AuditReport.Severity} reads.
+     */
     static String label(double score) {
         if (score >= 9.0) return "CRITICAL";
         if (score >= 7.0) return "HIGH";
