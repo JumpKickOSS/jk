@@ -311,8 +311,8 @@ Source files hang off the same route:
 ```
 
 The project page has two tabs, **Runs** and **Sessions**. Sessions renders `projectSessionRows`
-(`console.js`) over `GET /api/sessions?limit=200` filtered to the sessions whose project (or
-current episode's) is this one, and the pages of the newest twenty, for their episodes on it.
+(`console.js`) over one read, `GET /api/sessions?limit=200&project=<id>`: the engine answers only
+the sessions that worked on this project, each with its episodes on it.
 
 The **run page** above the build history renders `projectRun` (`projects.js`): the
 pinned record when the route names a build number the project has, else the newest — a live
@@ -494,7 +494,16 @@ outage — a cached page holding its stream would keep one of the browser's six 
 engine for as long as the page is kept. Metrics are
 **view-scoped** (Admin / Projects / project detail), not a global chrome poll. All REST GETs go
 through a single-flight gate (`fetchOnce`) so reconnect cannot stack duplicate in-flight calls.
-Relative “ago” labels use a local 1 s `now` tick only (no network).
+Relative “ago” labels use a local 1 s `now` tick only (no network). The tick stops while the tab
+is hidden and `now` is set again the moment it shows, so every counter is current on the first
+frame. The console's episode timeline and earlier episodes are computeds of their own that do not
+read `now`; only the episode header follows the clock. A finished build reads only the newer runs
+(`GET /api/history?since=`): after the newest finish the page holds, and before the start of any run
+it still holds as going. A reconnect reads the whole list.
+
+The stream's frames queue and drain on animation frames, at most 6 ms a turn, so a burst of compiler
+output cannot freeze the page. A hidden tab gets no animation frames and its timers run as late as
+once a minute, so it drains the whole queue on each one; no frame is dropped.
 
 **Hard refresh mid-build:** `GET /api/history` enriches in-flight rows with live `jid`,
 `progress`, `startedAt`, residual/`R0`, and mid-flight `modules`/`tasks`. On SSE connect the

@@ -489,9 +489,14 @@ export function events(onEvent, onState) {
     if (!isServerFrame(e)) onState('offline');
   };
 
-  /** @type {{type: string, data: object}[]} */
-  const queue = [];
-  /** Coalesced slots: key → index in queue (or latest object replaces in place). */
+  /**
+   * Frames not yet handed over start at {@code head}: a drain advances it instead of shifting the
+   * array, and the queue empties (or sheds its handed-over front) in one step.
+   * @type {({type: string, data: object} | undefined)[]}
+   */
+  let queue = [];
+  let head = 0;
+  /** Coalesced slots: key → index in queue of the pending frame a newer one replaces in place. */
   const coalesceAt = new Map();
   let drainScheduled = false;
 
@@ -515,7 +520,8 @@ export function events(onEvent, onState) {
     const key = coalesceKey(event.type, event.data);
     if (key != null) {
       const idx = coalesceAt.get(key);
-      if (idx != null && queue[idx]) {
+      // A slot before head was handed over already: the newer frame queues behind it.
+      if (idx != null && idx >= head) {
         queue[idx] = event; // keep position; replace payload with newest
         return;
       }
@@ -530,29 +536,36 @@ export function events(onEvent, onState) {
     // The first frame is delivered whatever the clock says: a turn preempted (or paused for GC)
     // between reading `start` and the first check would otherwise deliver nothing and only
     // re-arm, and a page that loses every such race never shows a frame.
-    const budgetMs = 6;
+    // A hidden tab paints nothing and its next timer may be a minute away: it takes the lot.
+    const budgetMs = document.hidden ? Infinity : 6;
     const start = performance.now();
     let n = 0;
-    while (queue.length && (n === 0 || performance.now() - start < budgetMs)) {
-      const ev = queue.shift();
+    while (head < queue.length && (n === 0 || performance.now() - start < budgetMs)) {
+      const ev = queue[head];
+      queue[head++] = undefined;
       n++;
-      // Rebuild coalesce index cheaply when we drain — clear and re-index remaining.
-      if (n === 1) coalesceAt.clear();
       try {
         onEvent(ev);
       } catch {
         // a bad handler must not stall the drain loop
       }
     }
-    // Re-index coalesce map for anything still queued.
-    if (queue.length) {
+    if (head === queue.length) {
+      queue = [];
+      head = 0;
       coalesceAt.clear();
-      for (let i = 0; i < queue.length; i++) {
-        const k = coalesceKey(queue[i].type, queue[i].data);
-        if (k != null) coalesceAt.set(k, i);
-      }
-      scheduleDrain();
+      return;
     }
+    // Shed the handed-over front once it outweighs what waits, so the array stays proportional.
+    if (head > 1024 && head * 2 > queue.length) {
+      queue = queue.slice(head);
+      for (const [k, i] of coalesceAt) {
+        if (i < head) coalesceAt.delete(k);
+        else coalesceAt.set(k, i - head);
+      }
+      head = 0;
+    }
+    scheduleDrain();
   }
 
   function scheduleDrain() {

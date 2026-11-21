@@ -551,14 +551,14 @@ export function sessionOfEpisode(episodeId) {
 }
 
 /**
- * The project page's Sessions tab: every session whose project is this one, newest first, each
- * with the episodes it spent on the project (from its page when loaded, else its current one).
+ * The project page's Sessions tab: every session that worked on this project, most recently active
+ * first, each with the episodes it spent on it (`GET /api/sessions?project=` lists them as
+ * `episodes`; a row without them stands on its current episode).
  */
-export function projectSessionRows(sessions, details, projectId) {
+export function projectSessionRows(sessions, projectId) {
   const rows = [];
   for (const s of sessions || []) {
-    const page = details && details[s.id];
-    const eps = ((page && page.episodes) || (s.current ? [s.current] : [])).filter((e) => e.projectId === projectId);
+    const eps = (s.episodes || (s.current ? [s.current] : [])).filter((e) => e.projectId === projectId);
     if (!eps.length && s.projectId !== projectId) continue;
     rows.push({
       id: s.id,

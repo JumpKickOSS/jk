@@ -94,6 +94,9 @@ and a folder without `jk` and `lib/jk-engine-<version>.jar` is ignored; a reques
 A host engine is the machine's front door. `GET /api/engines` lists it and every engine that answers
 `GET /api/identity` on a band port (8911 to 8999, all asked at once: on Windows a loopback port with
 no listener takes about a second to refuse), each marked `paired` when this engine can proxy it.
+One sweep of the band answers every list asked for within 2 s of its start, and callers that
+arrive while it runs wait for it rather than sweep again, so an engine that starts or stops shows
+within about 3 s; `paired` and this engine's own row are read fresh on every list.
 `GET /api/engines` takes the token and no epoch header, like `/api/status`, since a proxied page
 holds another engine's epoch.
 
@@ -676,8 +679,11 @@ in flight. A session with no leader ends at the session expiry. The session id i
 
 ### `GET /api/sessions`
 
-`GET /api/sessions[?limit=N]` (default 50, at most 200): `{ sessions: [...] }`, live and recent
-sessions, most recently active first. A session row is `{ id, origin, client?, label?, project?,
+`GET /api/sessions[?limit=N][&project=<id>]` (default 50, at most 200): `{ sessions: [...] }`, live
+and recent sessions, most recently active first. With `project`, a durable project id, only the
+sessions that worked on that project (an episode on it, or the session's own `projectId`), and each
+row also carries `episodes`: its episodes on the project, newest first, so the project page's
+Sessions tab is one read. A `project` with malformed percent-encoding is a **400**. A session row is `{ id, origin, client?, label?, project?,
 projectId?, startedAt, lastActiveAt, endedAt?, state, episode?, current? }`: `origin` is the
 trigger (`mcp`, `bsp`, `web`, `cli`), `client` the name the client gave itself (the host the
 dashboard shows), `label` the run records' `session` (`claude-code 3f9a`, `terminal 4c1e9a`;

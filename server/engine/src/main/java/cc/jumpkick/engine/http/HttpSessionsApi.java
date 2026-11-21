@@ -26,11 +26,23 @@ final class HttpSessionsApi {
         this.sessions = sessions;
     }
 
-    /** {@code GET /api/sessions?limit=N}: live and recent sessions, each with its current episode. */
+    /**
+     * {@code GET /api/sessions?limit=N&project=<id>}: live and recent sessions, each with its current
+     * episode; with {@code project}, only those that worked on it, each with its episodes there.
+     */
     void handleSessions(HttpExchange exchange) throws IOException {
         int limit = bounded(exchange, "limit", SESSIONS_DEFAULT, SESSIONS_MAX);
+        String project;
+        try {
+            project = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "project");
+        } catch (IllegalArgumentException e) {
+            // A filter that cannot be read must not answer every session.
+            HttpResponses.sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+            return;
+        }
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("sessions", sessions.sessions(limit));
+        body.put("sessions", sessions.sessions(limit, project == null || project.isBlank() ? null : project.strip()));
         HttpResponses.sendJson(exchange, 200, JsonOut.rawObject(body).toString());
     }
 

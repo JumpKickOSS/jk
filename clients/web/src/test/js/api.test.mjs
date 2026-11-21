@@ -243,6 +243,90 @@ test('the presence ping and a notification skip the drain queue', () => {
   assert.deepEqual(got.map((e) => e.type), ['presence', 'notify'], 'synchronously, before any drain');
 });
 
+/** An EventSource stand-in whose listeners a test calls, and a timer queue the test runs a turn at a time. */
+function streamHarness(hidden) {
+  const sources = [];
+  const timers = [];
+  const saved = { document: globalThis.document, setTimeout: globalThis.setTimeout, performance: Object.getOwnPropertyDescriptor(globalThis, 'performance') };
+  globalThis.document = { hidden, addEventListener() {}, removeEventListener() {} };
+  globalThis.EventSource = class {
+    static CLOSED = 2;
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      sources.push(this);
+    }
+    addEventListener(type, fn) {
+      this.listeners.set(type, fn);
+    }
+  };
+  globalThis.setTimeout = (fn) => timers.push(fn);
+  let clock = 0;
+  // Every reading is 4 ms after the last: a shown tab's 6 ms budget hands over two frames a turn.
+  Object.defineProperty(globalThis, 'performance', { value: { now: () => (clock += 4) }, configurable: true });
+  const got = [];
+  events((ev) => got.push(ev), () => {});
+  return {
+    got,
+    send: (type, data) => sources[0].listeners.get(type)({ data: JSON.stringify(data) }),
+    turn: () => timers.splice(0).forEach((fn) => fn()),
+    turns: () => {
+      let n = 0;
+      while (timers.length) {
+        timers.splice(0).forEach((fn) => fn());
+        n++;
+      }
+      return n;
+    },
+    restore: () => {
+      globalThis.document = saved.document;
+      globalThis.setTimeout = saved.setTimeout;
+      Object.defineProperty(globalThis, 'performance', saved.performance);
+    },
+  };
+}
+
+// A hidden tab's timers fire as late as once a minute; at 6 ms of frames a turn, a long build's
+// output outran the drain and the queue grew for as long as the tab stayed hidden.
+test('a hidden tab hands over every queued frame on its next timer', () => {
+  const h = streamHarness(true);
+  try {
+    for (let i = 0; i < 50; i++) h.send('output', { jid: 1, line: 'l' + i });
+    h.turn();
+    assert.equal(h.got.length, 50, 'one turn, the whole queue');
+    assert.deepEqual(h.got.map((e) => e.data.line), Array.from({ length: 50 }, (_, i) => 'l' + i));
+  } finally {
+    h.restore();
+  }
+});
+
+test('a long backlog drains in order, a newer progress frame replacing the one still waiting', () => {
+  const h = streamHarness(false);
+  try {
+    for (let i = 0; i < 3000; i++) h.send('output', { jid: 1, line: 'l' + i });
+    h.send('progress', { jid: 1, dir: 'a', pct: 1 });
+    h.send('output', { jid: 1, line: 'tail' });
+    h.send('progress', { jid: 1, dir: 'a', pct: 2 }); // replaces pct 1 in its place
+    // Past the point where the handed-over front is shed, a waiting slot still takes the newer frame.
+    while (h.got.length < 2100) h.turn();
+    h.send('progress', { jid: 1, dir: 'a', pct: 3 });
+    h.turns();
+    const lines = h.got.filter((e) => e.type === 'output').map((e) => e.data.line);
+    assert.equal(lines.length, 3001);
+    assert.equal(lines[2999], 'l2999');
+    assert.equal(lines[3000], 'tail');
+    const progress = h.got.filter((e) => e.type === 'progress');
+    assert.deepEqual(progress.map((e) => e.data.pct), [3]);
+    assert.equal(h.got.indexOf(progress[0]), 3000, 'in the first progress frame\'s place');
+    // Once everything is handed over, a new frame of the same key queues afresh.
+    h.send('progress', { jid: 1, dir: 'a', pct: 4 });
+    h.turns();
+    assert.deepEqual(h.got.slice(-1).map((e) => e.data.pct), [4]);
+  } finally {
+    h.restore();
+  }
+});
+
 test('isServerFrame tells an engine frame from a dropped connection', () => {
   assert.equal(isServerFrame({ type: 'error', data: '{}' }), true);
   assert.equal(isServerFrame({ type: 'error' }), false);

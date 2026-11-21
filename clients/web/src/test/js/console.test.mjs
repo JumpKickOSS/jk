@@ -42,7 +42,7 @@ const {
 } = await spa('console.js');
 const { historyCard } = await spa('fold.js');
 const { buildConsoleHash, buildProjectHash, routeFromHash } = await spa('route.js');
-const { consoleMethods } = await spa('consoleview.js');
+const { consoleComputed, consoleMethods } = await spa('consoleview.js');
 
 const NOW = 1_800_000_000_000;
 const ep = (over) => ({
@@ -388,13 +388,90 @@ test('the run page names its episode and attempt', () => {
 });
 
 test("the project's Sessions tab lists each session's episodes on that project", () => {
-  const details = {
-    'mcp-3f9a': { episodes: [ep({ id: 'mcp-3f9a.1', number: 1 }), ep({ id: 'mcp-3f9a.2', number: 2, projectId: 'p2' }), ep({ id: 'mcp-3f9a.3', number: 3 })] },
-  };
-  const rows = projectSessionRows([claude(), shell(), claude({ id: 'mcp-zz', projectId: 'p2', current: ep({ projectId: 'p2' }) })], details, 'p1');
+  const episodes = [ep({ id: 'mcp-3f9a.3', number: 3 }), ep({ id: 'mcp-3f9a.1', number: 1 })];
+  const rows = projectSessionRows([claude({ episodes }), shell(), claude({ id: 'mcp-zz', projectId: 'p2', current: ep({ projectId: 'p2' }) })], 'p1');
   assert.deepEqual(rows.map((r) => r.id), ['mcp-3f9a', 'cli-shell-x']);
   assert.deepEqual(rows[0].episodes.map((e) => e.id), ['mcp-3f9a.3', 'mcp-3f9a.1']);
   assert.equal(rows[1].host, 'shell');
+});
+
+test("opening a project's Sessions tab is one read, filtered by the engine", async () => {
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  const sessions = Array.from({ length: 30 }, (_, i) => claude({ id: 'mcp-' + i, episodes: [ep({ id: 'mcp-' + i + '.1' })] }));
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    return new Response(JSON.stringify(String(url).includes('project=') ? { sessions } : { sessions, episodes: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  try {
+    const vm = { ...consoleMethods, authModal: false, selectedProjectId: 'p1', projectSessions: null, handleHttpError: () => false };
+    await vm.loadProjectSessions();
+    assert.deepEqual(asked, ['/api/sessions?limit=200&project=p1']);
+    assert.equal(vm.projectSessions.projectId, 'p1');
+    assert.equal(vm.projectSessions.sessions.length, 30);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+/**
+ * {@code computed} over {@code state} as Vue 3.5 keeps them: each caches its value and the keys it
+ * read, a write recomputes the computeds that read that key, and only a changed value goes on to
+ * the computeds that read it.
+ */
+function computedVm(state, computed) {
+  const cache = new Map();
+  let reading = null;
+  const vm = new Proxy(state, {
+    get(target, key) {
+      if (reading) reading.add(key);
+      if (!(key in computed)) return target[key];
+      if (!cache.has(key)) {
+        const outer = reading;
+        reading = new Set();
+        try {
+          const value = computed[key].call(vm);
+          cache.set(key, { value, deps: reading });
+        } finally {
+          reading = outer;
+        }
+      }
+      return cache.get(key).value;
+    },
+    set(target, key, value) {
+      target[key] = value;
+      changed(key);
+      return true;
+    },
+  });
+  const changed = (key) => {
+    for (const [name, c] of [...cache]) {
+      if (!cache.has(name) || !c.deps.has(key)) continue;
+      cache.delete(name);
+      if (!Object.is(vm[name], c.value)) changed(name);
+    }
+  };
+  return vm;
+}
+
+test("the clock's tick moves the episode's wall but does not rebuild its timeline", () => {
+  const detail = { session: claude(), episodes: [ep()], actions: [runAction(1, 1066, 'red')] };
+  for (const routed of ['mcp-3f9a', null]) {
+    const vm = computedVm(
+      { sessions: [claude()], cards: [], decisions: [], projectHistory: [run({})], sessionDetail: detail, consoleSession: routed, consoleAutoSession: null, now: NOW },
+      consoleComputed,
+    );
+    const before = vm.consoleEpisode;
+    assert.equal(before.timeline.length, 1);
+    vm.now = NOW + 1_000;
+    const after = vm.consoleEpisode;
+    assert.equal(after.header.wallMillis - before.header.wallMillis, 1_000, 'the header follows the clock');
+    assert.equal(after.timeline, before.timeline, 'routed ' + routed + ': the same timeline, not a rebuilt one');
+    assert.equal(after.earlier, before.earlier);
+  }
 });
 
 test('routes: the console is the landing page and selects a session; the project has a Sessions tab', () => {

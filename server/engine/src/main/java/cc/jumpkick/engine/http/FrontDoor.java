@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -185,17 +186,12 @@ public final class FrontDoor {
             out.add(m);
         }
         Map<String, GuestPairing.Pair> paired = paired();
-        Map<Integer, CompletableFuture<@Nullable Map<String, Object>>> asked = new LinkedHashMap<>();
-        for (int port : ports) {
-            if (port != myPort) asked.putIfAbsent(port, identityAsync(port, PROBE));
-        }
-        long deadline = clock.nanos() + PROBE.toNanos() + TimeUnit.MILLISECONDS.toNanos(200);
         // One row per engine: an engine answering on two ports (or a port listed twice) is listed once,
         // at the port it says it serves on when one of them is that port.
         Map<String, Map<String, Object>> found = new LinkedHashMap<>();
-        for (Map.Entry<Integer, CompletableFuture<@Nullable Map<String, Object>>> e : asked.entrySet()) {
-            Map<String, Object> id = await(e.getValue(), deadline - clock.nanos());
-            if (id == null || (me != null && me.id().equals(id.get("id")))) continue;
+        for (Map.Entry<Integer, Map<String, Object>> e : swept(myPort).entrySet()) {
+            Map<String, Object> id = e.getValue();
+            if (me != null && me.id().equals(id.get("id"))) continue;
             // A host engine on the band is another home's on this host (a scratch, test or gate home moved
             // off 8910), not a guest this front door could pair with: listing it would offer a dead row.
             if ("host".equals(id.get("role"))) continue;
@@ -211,6 +207,73 @@ public final class FrontDoor {
         }
         out.addAll(found.values());
         return out;
+    }
+
+    /**
+     * How long one sweep of the band answers {@link #engines}: every dashboard tab lists the engines
+     * every 30 s and the machine view on each refresh, and each sweep asks every band port. An engine
+     * that starts or stops shows within this, plus the one sweep at most {@link #PROBE} long.
+     */
+    private static final long SWEPT_FOR_NANOS = TimeUnit.SECONDS.toNanos(2);
+
+    /** One sweep of the band from {@code port}: when it started, and each answering port's identity in band order. */
+    private record Sweep(int port, long startedNanos, CompletableFuture<Map<Integer, Map<String, Object>>> answers) {}
+
+    private final Object sweepLock = new Object();
+
+    /** The newest sweep of the band, running or done; callers within {@link #SWEPT_FOR_NANOS} share it. */
+    private @Nullable Sweep sweep;
+
+    /**
+     * Each band port but {@code myPort} that answers an identity, in band order: the sweep running
+     * or done within {@link #SWEPT_FOR_NANOS} when there is one, else a new one. The pairing and this
+     * engine's own row are not part of it; {@link #engines} reads those fresh on every call.
+     */
+    private Map<Integer, Map<String, Object>> swept(int myPort) {
+        Sweep current;
+        boolean mine = false;
+        synchronized (sweepLock) {
+            current = sweep;
+            long now = clock.nanos();
+            if (current == null || current.port() != myPort || now - current.startedNanos() >= SWEPT_FOR_NANOS) {
+                current = new Sweep(myPort, now, new CompletableFuture<>());
+                sweep = current;
+                mine = true;
+            }
+        }
+        if (mine) {
+            try {
+                Map<Integer, Map<String, Object>> answers = sweepBand(myPort);
+                // An interrupted sweep stopped waiting early: its answers are short and not for sharing.
+                if (Thread.currentThread().isInterrupted()) forget(current);
+                current.answers().complete(answers);
+            } catch (RuntimeException | Error e) {
+                forget(current);
+                current.answers().completeExceptionally(e);
+                throw e;
+            }
+        }
+        return current.answers().join();
+    }
+
+    private void forget(Sweep done) {
+        synchronized (sweepLock) {
+            if (sweep == done) sweep = null;
+        }
+    }
+
+    private Map<Integer, Map<String, Object>> sweepBand(int myPort) {
+        Map<Integer, CompletableFuture<@Nullable Map<String, Object>>> asked = new LinkedHashMap<>();
+        for (int port : ports) {
+            if (port != myPort) asked.putIfAbsent(port, identityAsync(port, PROBE));
+        }
+        long deadline = clock.nanos() + PROBE.toNanos() + TimeUnit.MILLISECONDS.toNanos(200);
+        Map<Integer, Map<String, Object>> answers = new LinkedHashMap<>();
+        for (Map.Entry<Integer, CompletableFuture<@Nullable Map<String, Object>>> e : asked.entrySet()) {
+            Map<String, Object> id = await(e.getValue(), deadline - clock.nanos());
+            if (id != null) answers.put(e.getKey(), Collections.unmodifiableMap(id));
+        }
+        return Collections.unmodifiableMap(answers);
     }
 
     private static @Nullable Map<String, Object> await(

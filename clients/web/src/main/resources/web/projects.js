@@ -16,8 +16,19 @@ import { moduleFocus } from './strip.js';
  * never written (it writes `tasks`), silently ignoring every FAIL task on the page.
  */
 function recordOutcome(rec) {
-  return outcomeOf(historyCard(rec));
+  let outcome = OUTCOMES.get(rec);
+  if (outcome === undefined) {
+    outcome = outcomeOf(historyCard(rec));
+    OUTCOMES.set(rec, outcome);
+  }
+  return outcome;
 }
+
+/**
+ * Each record's outcome, folded once: a record is never changed in place (a newer read of the same
+ * run is a new object), so the tab's recomputes on every live frame fold only what is new.
+ */
+const OUTCOMES = new WeakMap();
 
 /**
  * The cache's estimated wall-clock benefit for a run, from the engine-computed `benefit` snapshot —

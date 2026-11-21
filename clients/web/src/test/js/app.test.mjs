@@ -16,7 +16,7 @@ globalThis.sessionStorage = {
 globalThis.localStorage = globalThis.sessionStorage;
 globalThis.location = { hash: '', hostname: '127.0.0.1', pathname: '/', search: '' };
 
-const { appOptions, mergeHistory, newestFinish } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'app.js')));
+const { appOptions, historySince, mergeHistory } = await import(pathToFileURL(path.join(process.env.JK_APP_DIR, 'app.js')));
 
 /** A detached component instance: data + methods, no Vue. */
 function vm(over = {}) {
@@ -400,6 +400,23 @@ test('the Projects tab decides a record outcome with the one outcome rule', () =
   assert.equal(appOptions.computed.projectsList.call(v)[0].state, 'failed');
 });
 
+test("the Projects tab folds each record's outcome once, not once per figure", () => {
+  let folds = 0;
+  const counted = (n) => {
+    const rec = { ...REAL_RECORD, id: 'r' + n, buildNumber: n, finishedAt: 1_000 + n };
+    // historyCard reads `numerator` once per fold, and nothing else on the tab reads it.
+    Object.defineProperty(rec, 'numerator', { get: () => (folds++, undefined), enumerable: true });
+    return rec;
+  };
+  const records = Array.from({ length: 30 }, (_, i) => counted(30 - i));
+  const v = vm({ selectedProjectId: REAL_RECORD.projectId, projectHistory: records });
+  appOptions.computed.projectsList.call(v);
+  appOptions.computed.projectDetail.call(v);
+  assert.equal(folds, 30, 'one fold per record across the list and the page');
+  appOptions.computed.projectsList.call(v); // a live frame recomputes the tab
+  assert.equal(folds, 30, 'a recompute folds nothing it folded before');
+});
+
 test('a module-level FAIL task also reaches the Projects tab', () => {
   const failedModule = {
     ...REAL_RECORD,
@@ -507,14 +524,78 @@ test('a finished build merges only the newer runs into the history already held'
     { id: 'b', finishedAt: 200 },
     { id: 'a', finishedAt: 100 },
   ];
-  assert.equal(newestFinish(held), 200);
-  assert.equal(newestFinish([{ id: 'r', running: true, startedAt: 900 }]), 0);
+  assert.equal(historySince(held), 200);
+  assert.equal(historySince([{ id: 'r', running: true, startedAt: 900 }]), 0);
   const merged = mergeHistory(held, [
     { id: 'c', finishedAt: 300 },
     { id: 'b', finishedAt: 200, note: 'rewritten' },
   ]);
   assert.deepEqual(merged.map((r) => r.id), ['c', 'b', 'a']);
   assert.equal(merged[1].note, 'rewritten');
+});
+
+// Two runs in flight, the later finishing first: when the earlier one's record is written after the
+// list was read, the list holds it as going beside a newer finish, and a cursor at that newest
+// finish never asks for it again, leaving it running on the page until a reload.
+test('a run held as going is fetched again however early it finishes', () => {
+  const held = [
+    { id: 'b', finishedAt: 200 },
+    { id: 'a', running: true, startedAt: 50 },
+  ];
+  assert.equal(historySince(held), 49, 'a finish of a at 90 is after the cursor');
+  assert.equal(historySince([{ id: 'r', running: true }, { id: 'b', finishedAt: 200 }]), 0, 'no start, whole list');
+});
+
+test('a finished build reads only the newer runs, in one request', async () => {
+  const sources = [];
+  globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {} };
+  globalThis.EventSource = class {
+    static CLOSED = 2;
+    constructor() {
+      this.readyState = 1;
+      this.listeners = new Map();
+      sources.push(this);
+    }
+    addEventListener(type, fn) {
+      this.listeners.set(type, fn);
+    }
+    close() {}
+  };
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    asked.push(String(url));
+    return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const v = vm({ view: 'projects', connection: 'live', projectHistory: [{ id: 'a', finishedAt: 100, dir: '/p' }] });
+    delete v.loadProjectHistory; // the real one, not the harness's no-op
+    v.scheduleSessionReload = () => {};
+    v.connectEvents();
+    sources[0].listeners.get('request-finish')({ data: JSON.stringify({ jid: 7, success: true }) });
+    const deadline = Date.now() + 5_000;
+    while (!asked.some((u) => u.includes('/api/history')) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(asked.filter((u) => u.includes('/api/history')), ['/api/history?since=100']);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('the clock stops while the tab is hidden and is current the moment it shows', (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'Date'], now: 1_000_000 });
+  const v = vm();
+  v.runClock(false);
+  t.mock.timers.tick(3_000);
+  assert.equal(v.now, 1_003_000);
+  v.runClock(true);
+  t.mock.timers.tick(60_000);
+  assert.equal(v.now, 1_003_000, 'no tick while hidden');
+  v.runClock(false);
+  assert.equal(v.now, 1_063_000, 'caught up on show, before the next tick');
+  t.mock.timers.tick(1_000);
+  assert.equal(v.now, 1_064_000);
+  v.runClock(true);
 });
 
 test('no method of the root overrides a view mixin method of the same name', async () => {

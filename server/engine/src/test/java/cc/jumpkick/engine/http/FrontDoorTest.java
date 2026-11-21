@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.host.Guest;
+import cc.jumpkick.host.time.Clock;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -24,6 +25,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -185,6 +189,70 @@ class FrontDoorTest {
         assertThat(engines).hasSize(2);
         // Serially, a Windows host's ~1 s per refused loopback port made this 40 s.
         assertThat(ms).isLessThan(5_000);
+    }
+
+    @Test
+    void discovery_shares_one_sweep_of_the_band_for_two_seconds_and_sees_a_change_after_it() throws Exception {
+        AtomicBoolean up = new AtomicBoolean();
+        AtomicInteger asked = new AtomicInteger();
+        HttpServer s = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
+        int port = s.getAddress().getPort();
+        s.createContext("/api/identity", ex -> {
+            asked.incrementAndGet();
+            if (!up.get()) {
+                ex.sendResponseHeaders(404, -1);
+                ex.close();
+                return;
+            }
+            try {
+                Thread.sleep(200); // long enough for every caller below to arrive while it runs
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            send(ex, "{\"id\":\"" + GUEST_ID + "\",\"role\":\"guest\",\"port\":" + port + "}");
+        });
+        s.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        s.start();
+        started.add(s);
+        AtomicLong later = new AtomicLong();
+        Clock clock = new Clock() {
+            @Override
+            public long millis() {
+                return Clock.SYSTEM.millis() + later.get() / 1_000_000;
+            }
+
+            @Override
+            public long nanos() {
+                return Clock.SYSTEM.nanos() + later.get();
+            }
+        };
+        EngineIdentity self = new EngineIdentity("90cec5c68a24", "windows", Guest.NONE, "box", "C:/me/.jk", "1.0");
+        FrontDoor door = new FrontDoor(() -> self, () -> 8910, guests, List.of(port), clock);
+        List<Object> ids = List.of("90cec5c68a24", GUEST_ID);
+
+        assertThat(door.engines()).hasSize(1);
+        up.set(true);
+        assertThat(door.engines()).as("within the sweep's two seconds").hasSize(1);
+        assertThat(asked).hasValue(1);
+
+        later.addAndGet(2_000_000_000L);
+        List<List<Map<String, Object>>> seen = new CopyOnWriteArrayList<>();
+        List<Thread> callers = new ArrayList<>();
+        for (int i = 0; i < 4; i++) callers.add(Thread.startVirtualThread(() -> seen.add(door.engines())));
+        for (Thread t : callers) t.join();
+        assertThat(seen).hasSize(4).allSatisfy(list -> assertThat(list)
+                .extracting(m -> m.get("id"))
+                .isEqualTo(ids));
+        assertThat(asked).as("four callers at once, one sweep").hasValue(2);
+
+        GuestPairing.write(guests, new GuestPairing.Pair(GUEST_ID, port, "guest-token"));
+        assertThat(door.engines().get(1)).as("a pairing shows at once").containsEntry("paired", true);
+        up.set(false);
+        assertThat(door.engines()).extracting(m -> m.get("id")).isEqualTo(ids);
+        assertThat(asked).hasValue(2);
+        later.addAndGet(2_000_000_000L);
+        assertThat(door.engines()).as("a stopped engine is gone after it").hasSize(1);
+        assertThat(asked).hasValue(3);
     }
 
     @Test

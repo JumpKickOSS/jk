@@ -33,8 +33,6 @@ import { LOG, SSE } from './wire.js';
 /** Sessions the rail asks for; the Sessions tab of a project asks for more. */
 const RAIL_LIMIT = 50;
 const PROJECT_LIMIT = 200;
-/** Session pages the Sessions tab loads to list each one's episodes on the project. */
-const PROJECT_PAGES = 20;
 /** Event marks a page keeps before it clears them, so a tab left open for days does not grow. */
 const EVENT_MARKS = 500;
 
@@ -52,7 +50,7 @@ export function consoleData(route) {
     decisions: [], // open decisions, oldest first
     decisionsAvailable: false, // false while the engine has no decision queue (404)
     runEpisodePage: null, // the session page holding the run page's episode
-    projectSessions: null, // the Sessions tab: { projectId, sessions, details }
+    projectSessions: null, // the Sessions tab: { projectId, sessions }
     consolePaintedMs: null, // first meaningful paint of the console, ms since navigation start
     fileView: null, // the edited file open read-only over the page: { projectId, dir, path, mark }
   };
@@ -82,19 +80,34 @@ export const consoleComputed = {
       detail: this.sessionDetail,
     });
   },
-  /** The selected session's current episode: header, timeline, and the earlier ones folded. */
-  consoleEpisode() {
+  /** The selected session's page, while it is the one the page has loaded. */
+  consoleDetail() {
     const detail = this.sessionDetail;
-    if (!detail || !detail.session || detail.session.id !== this.selectedSessionId) return null;
+    return detail && detail.session && detail.session.id === this.selectedSessionId ? detail : null;
+  },
+  /** The current episode's timeline. Apart from the header so the 1 s clock does not rebuild it. */
+  consoleTimeline() {
+    const detail = this.consoleDetail;
     const ep = currentEpisode(detail);
     if (!ep) return null;
-    const timeline = episodeTimeline(ep, {
+    return episodeTimeline(ep, {
       actions: detail.actions,
       records: this.projectHistory,
       cards: this.cards,
       session: detail.session,
       current: true,
     });
+  },
+  /** The selected session's earlier episodes, folded. */
+  consoleEarlier() {
+    return earlierEpisodes(this.consoleDetail);
+  },
+  /** The selected session's current episode: header, timeline, and the earlier ones folded. */
+  consoleEpisode() {
+    const detail = this.consoleDetail;
+    const ep = currentEpisode(detail);
+    const timeline = this.consoleTimeline;
+    if (!ep || !timeline) return null;
     return {
       header: episodeHeader(ep, {
         timeline,
@@ -104,7 +117,7 @@ export const consoleComputed = {
         now: this.now,
       }),
       timeline,
-      earlier: earlierEpisodes(detail),
+      earlier: this.consoleEarlier,
     };
   },
   sessionChanges() {
@@ -133,7 +146,7 @@ export const consoleComputed = {
   projectSessionRows() {
     const ps = this.projectSessions;
     if (!ps || ps.projectId !== this.selectedProjectId) return null;
-    return projectSessionRows(ps.sessions, ps.details, ps.projectId);
+    return projectSessionRows(ps.sessions, ps.projectId);
   },
 };
 
@@ -292,25 +305,13 @@ export const consoleMethods = {
       this.handleHttpError(e);
     }
   },
-  /** The Sessions tab: this project's sessions, and the pages of the newest to list their episodes. */
+  /** The Sessions tab: the sessions that worked on this project, each with its episodes there, in one read. */
   async loadProjectSessions(projectId = this.selectedProjectId) {
     if (this.authModal || !projectId) return;
     try {
-      const body = await get('/api/sessions?limit=' + PROJECT_LIMIT);
-      const all = (body && body.sessions) || [];
-      const mine = all.filter((s) => s.projectId === projectId || (s.current && s.current.projectId === projectId));
-      const details = {};
-      await Promise.all(
-        mine.slice(0, PROJECT_PAGES).map(async (s) => {
-          try {
-            details[s.id] = await get('/api/sessions/' + encodeURIComponent(s.id) + '?limit=1');
-          } catch {
-            // the row's current episode stands in for its page
-          }
-        }),
-      );
+      const body = await get('/api/sessions?limit=' + PROJECT_LIMIT + '&project=' + encodeURIComponent(projectId));
       if (projectId !== this.selectedProjectId) return;
-      this.projectSessions = { projectId, sessions: mine, details };
+      this.projectSessions = { projectId, sessions: (body && body.sessions) || [] };
     } catch (e) {
       this.handleHttpError(e);
     }

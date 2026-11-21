@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **The dashboard asks the engine for less.** A finished build reads only the newer runs instead of
+  also reloading the whole history, a project's Sessions tab is one request instead of twenty-one, a
+  hidden tab stops its one-second clock and catches up when shown, a long backlog of live events
+  drains in linear time, and the engines list is shared across tabs for 2 s.
 - **A workspace member gets the BOMs of the siblings it depends on.** When a sibling names its BOM
   through the root's `[workspace.dependencies]`, the BOM was silently dropped for the members that
   depend on that sibling; it now constrains them. A member with its own annotation-processor version

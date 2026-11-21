@@ -65,11 +65,19 @@ import { emptyWizard, wizardComputed, wizardMethods } from './wizard.js';
 if (typeof document !== 'undefined') bootstrapToken();
 
 // Exported for the headless harness; the browser block below mounts it.
-/** The latest finish time among {@code records}, 0 when none has finished. */
-export function newestFinish(records) {
-  let max = 0;
-  for (const r of records || []) if (!r.running && r.finishedAt > max) max = r.finishedAt;
-  return max;
+/**
+ * The {@code ?since=} that brings {@code records} up to date: their newest finish, lowered to before
+ * the start of any run they still hold as going, whose finish can be older than that newest one when
+ * its record was written late. 0, the whole list, when none has finished or a held run has no start.
+ */
+export function historySince(records) {
+  let since = 0;
+  let open = Infinity;
+  for (const r of records || []) {
+    if (r.running) open = Math.min(open, r.startedAt > 0 ? r.startedAt - 1 : 0);
+    else if (r.finishedAt > since) since = r.finishedAt;
+  }
+  return Math.max(0, Math.min(since, open));
 }
 
 /**
@@ -190,13 +198,13 @@ export const appOptions = {
     // pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
     document.addEventListener('visibilitychange', () => {
       this.reportPresence(); // a hidden tab is not in use, so the engine notifies outside the page
+      this.runClock(document.hidden);
       if (document.hidden) this.clearOfflineStatusFallback();
       else if (this.connection !== 'live' && this.connection !== 'unauthorized') {
         this.scheduleOfflineStatusFallback();
       }
     });
-    // Local clock only — no network (relative "ago" labels).
-    setInterval(() => (this.now = Date.now()), 1_000);
+    this.runClock(document.hidden);
   },
 
   computed: {
@@ -302,6 +310,18 @@ export const appOptions = {
       if (!now || now.id === was.id) return false;
       this.markOtherEngine(now);
       return true;
+    },
+    /**
+     * The 1 s clock behind elapsed counters and "ago" stamps ({@code now}) ticks only while the tab
+     * shows; showing it again sets {@code now} at once, so everything that reads it is current on
+     * the first frame. Local only, no network.
+     */
+    runClock(hidden) {
+      clearInterval(this._clockTimer);
+      this._clockTimer = null;
+      if (hidden) return;
+      this.now = Date.now();
+      this._clockTimer = setInterval(() => (this.now = Date.now()), 1_000);
     },
     /** The machine's engines, as the front door lists them, for the header's switcher. */
     async refreshEngines() {
@@ -443,8 +463,7 @@ export const appOptions = {
           if (event.type === SSE.requestFinish) {
             clearTimeout(this._reconcileTimer);
             this._reconcileTimer = setTimeout(() => {
-              this.loadHistory({ newer: true });
-              this.loadProjectHistory();
+              this.loadHistory({ newer: true }); // the Projects tab reads the same list
               this.scheduleSessionReload(); // the finished run joins its session's timeline
               // Metrics are view-scoped; refresh them only where they paint.
               if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
@@ -722,11 +741,11 @@ export const appOptions = {
     // Backfill the feed from the persisted journal (/api/history), reconciled with live cards.
     // Always reassign `this.cards` so a bulk seed after a hard-refresh repaints (Vue tracks the
     // array identity as well as mutations).
-    // With { newer: true } — after a build finishes — only the runs finished since the newest one
-    // held, and any still going, are fetched and merged into the list already here.
+    // With { newer: true } — after a build finishes — only the runs finished since the list held
+    // here was current (historySince), and any still going, are fetched and merged into it.
     async loadHistory({ newer = false } = {}) {
       if (this.authModal) return;
-      const since = newer ? newestFinish(this.projectHistory) : 0;
+      const since = newer ? historySince(this.projectHistory) : 0;
       return this.fetchOnce(since > 0 ? 'history-newer' : 'history', async () => {
         try {
           const fetched = await get(since > 0 ? '/api/history?since=' + since : '/api/history');

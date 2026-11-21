@@ -620,17 +620,34 @@ public final class SessionLog {
 
     /** Live and recent sessions, most recently active first, each with its current episode. */
     public List<Map<String, Object>> sessions(int limit) {
+        return sessions(limit, null);
+    }
+
+    /**
+     * As {@link #sessions(int)}; with a {@code projectId}, only the sessions that worked on that
+     * project (an episode on it, or the session's own project), each also listing its
+     * {@code episodes} on it, newest first.
+     */
+    public List<Map<String, Object>> sessions(int limit, @Nullable String projectId) {
         sweep();
         Map<String, Map<String, Object>> rows = new LinkedHashMap<>();
+        Set<String> live = new HashSet<>();
         synchronized (this) {
-            for (Live live : byId.values()) rows.put(live.record.id(), row(live, live.episodes.episodes()));
+            for (Live l : byId.values()) {
+                live.add(l.record.id());
+                List<Episode> episodes = l.episodes.episodes();
+                Map<String, Object> row = onProject(row(l, episodes), l.record, episodes, projectId);
+                if (row != null) rows.put(l.record.id(), row);
+            }
         }
         if (journal != null) {
             for (Map<String, Object> doc : journal.list()) {
                 if (!(doc.get("session") instanceof Map<?, ?> s)) continue;
                 SessionRecord r = SessionRecord.of(s);
-                if (rows.containsKey(r.id())) continue;
-                rows.put(r.id(), row(r, null, storedEpisodes(r.id())));
+                if (live.contains(r.id()) || rows.containsKey(r.id())) continue;
+                List<Episode> episodes = storedEpisodes(r.id());
+                Map<String, Object> row = onProject(row(r, null, episodes), r, episodes, projectId);
+                if (row != null) rows.put(r.id(), row);
             }
         }
         List<Map<String, Object>> out = new ArrayList<>(rows.values());
@@ -1014,6 +1031,23 @@ public final class SessionLog {
             if (e.id().equals(r.episode())) m.put("current", withProjectId(e).toMap());
         }
         return m;
+    }
+
+    /**
+     * {@code row} with {@code episodes}, the session's episodes on project {@code projectId} newest
+     * first, or null when it never worked on that project. A null {@code projectId} keeps every row as is.
+     */
+    private @Nullable Map<String, Object> onProject(
+            Map<String, Object> row, SessionRecord r, List<Episode> episodes, @Nullable String projectId) {
+        if (projectId == null) return row;
+        List<Map<String, Object>> on = new ArrayList<>();
+        for (Episode e : episodes.reversed()) {
+            Episode named = withProjectId(e);
+            if (projectId.equals(named.projectId())) on.add(named.toMap());
+        }
+        if (on.isEmpty() && !projectId.equals(r.projectId())) return null;
+        row.put("episodes", on);
+        return row;
     }
 
     private Episode withProjectId(Episode e) {
