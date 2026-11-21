@@ -238,8 +238,11 @@ last-built = "2026-09-20T13:01:02Z"
 Every writer — build admission, the journal, `jk lock`, `jk new` — upserts its own checkout
 through `ProjectIdentity.IdentityFile.write`, a read-fold-write under the file's `.lock` like
 every other ledger, so two engines cannot drop each other's rows. A checkout is spelled by its
-real path, so a symlinked spelling and its target are one entry. The fold drops an entry whose
-directory is gone or now carries another project's lock or explicit id.
+real path, so a symlinked spelling and its target are one entry. The tiers below the lock read
+the same real path: recovery from `identity.toml`, the path within the git worktree and the path
+hash, so a checkout reached through a symlink (macOS `/tmp` is `/private/tmp`) is one id. The fold
+drops an entry whose directory is gone or now carries another project's lock or explicit id, an id
+outside the grammar included.
 `ProjectIdentity.checkoutsForId` answers the live ones; a caller that needs one path says which
 (`selectCheckout`, real-path compared). Nothing reads "the" path of an id.
 

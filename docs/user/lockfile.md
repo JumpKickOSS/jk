@@ -732,7 +732,9 @@ classpath family alone — main, runtime and test are one family, since the test
 the main rows — while a plain row of the same coordinate on the annotation processor path, a graph
 of its own — the Guava an Error Prone processor path reads beside a main classpath a member pins to
 another Guava — is still the member's to read, and so is the processor part of a plain row that
-spans both. A sibling's pin gives a member rows like these too:
+spans both. A member's processor row likewise replaces only the processor part of such a plain row:
+the member reads the plain row's version on its main classpath and its own on the processor path,
+never two versions on one path. A sibling's pin gives a member rows like these too:
 
 ```toml
 [[artifact]]

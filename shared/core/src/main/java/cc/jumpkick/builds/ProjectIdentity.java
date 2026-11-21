@@ -105,6 +105,9 @@ public record ProjectIdentity(
     public static ProjectIdentity resolve(@Nullable Path projectDir, @Nullable Lockfile lock) {
         Path abs = projectDir == null ? WorkingDirectory.current() : WorkingDirectory.resolve(projectDir);
         String coord = coordOf(abs);
+        // The checkout's one spelling, as identity.toml records it: a symlinked path and the
+        // directory it points at recover, and hash to, one id.
+        Path real = canonical(abs);
 
         Optional<String> explicit = explicitId(abs);
         if (explicit.isPresent()) {
@@ -116,14 +119,14 @@ public record ProjectIdentity(
             return new ProjectIdentity(lockId.get(), coord, abs, Source.LOCK, null, null);
         }
 
-        Optional<GitInfo> git = gitInfo(abs);
+        Optional<GitInfo> git = gitInfo(real);
 
         // Before minting a hash, recover an id already recorded for this checkout (identity.toml
         // path or git match). This keeps locked/previously-built projects on one id even when the
         // checkout has no lock right now — including dead checkouts (deleted workspace) whose
         // history rows must still route to the existing project home, not a fresh
         // unknown:unknown hash.
-        Optional<String> recovered = recoverId(abs, git);
+        Optional<String> recovered = recoverId(real, git);
         if (recovered.isPresent()) {
             if (git.isPresent()) {
                 return new ProjectIdentity(
@@ -146,7 +149,7 @@ public record ProjectIdentity(
             return new ProjectIdentity(hashId(material), coord, abs, Source.GIT, g.remote(), g.relPath());
         }
 
-        String material = "path\0" + abs;
+        String material = "path\0" + real;
         return new ProjectIdentity(hashId(material), coord, abs, Source.PATH, null, null);
     }
 
@@ -176,11 +179,14 @@ public record ProjectIdentity(
      * re-lock recovery after a wiped lockfile.
      */
     public static Optional<String> recoverId(Path projectDir) {
-        Path abs = projectDir.toAbsolutePath().normalize();
-        return recoverId(abs, gitInfo(abs));
+        Path real = canonical(projectDir);
+        return recoverId(real, gitInfo(real));
     }
 
-    /** {@link #recoverId(Path)} with git info the caller already computed (resolve's hot path). */
+    /**
+     * {@link #recoverId(Path)} for the {@link #canonical} spelling {@code abs}, with git info the
+     * caller already computed (resolve's hot path).
+     */
     private static Optional<String> recoverId(Path abs, Optional<GitInfo> git) {
         Path root = ProjectBuilds.projectsRoot();
         if (!Files.isDirectory(root)) return Optional.empty();
@@ -331,13 +337,14 @@ public record ProjectIdentity(
 
     private record GitInfo(String remote, String relPath) {}
 
+    /** The remote and the path within its worktree of {@code projectDir}, both read through symlinks. */
     private static Optional<GitInfo> gitInfo(Path projectDir) {
         Path top = gitTopLevel(projectDir);
         if (top == null) return Optional.empty();
         String remote = gitRemote(top);
         if (remote == null || remote.isBlank()) return Optional.empty();
         remote = canonicalizeRemote(remote);
-        Path abs = projectDir.toAbsolutePath().normalize();
+        Path abs = canonical(projectDir);
         Path rel;
         try {
             rel = top.relativize(abs);
@@ -353,7 +360,7 @@ public record ProjectIdentity(
         String out = git(dir, "rev-parse", "--show-toplevel");
         if (out == null || out.isBlank()) return null;
         Path p = Path.of(out.trim());
-        return Files.isDirectory(p) ? p.toAbsolutePath().normalize() : null;
+        return Files.isDirectory(p) ? canonical(p) : null;
     }
 
     private static @Nullable String gitRemote(Path top) {
@@ -423,7 +430,13 @@ public record ProjectIdentity(
          */
         public boolean live(String id) {
             if (!Files.isDirectory(path)) return false;
-            Optional<String> own = explicitId(path).or(() -> lockId(path));
+            // A manifest's id that is not this one, even one that breaks the id grammar, is another
+            // project's.
+            String declared =
+                    TomlScan.scan(ManifestPaths.manifestIn(path), "id").get("id");
+            if (declared != null && !declared.isBlank())
+                return validId(declared).filter(id::equals).isPresent();
+            Optional<String> own = lockId(path);
             return own.isEmpty() || own.get().equals(id);
         }
     }

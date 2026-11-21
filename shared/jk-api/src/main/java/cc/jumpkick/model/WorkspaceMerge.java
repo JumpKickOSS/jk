@@ -85,11 +85,11 @@ public final class WorkspaceMerge {
         // member's own, then those of the siblings it depends on — a BOM constrains the member that
         // declares it and the members that depend on that member, never an unrelated one.
         List<Dependency> platform = new ArrayList<>();
-        for (Dependency d : root.dependencies().of(Scope.PLATFORM)) addPlatform(platform, d);
+        addTable(platform, root.dependencies().of(Scope.PLATFORM), siblingByArtifact, wsDeps, internal);
         for (Dependency d : resolvedByScope.getOrDefault(Scope.PLATFORM, List.of())) addPlatform(platform, d);
         // The managed table folds the same way: the root's entries first, then the member's own.
         List<Dependency> managed = new ArrayList<>();
-        for (Dependency d : root.dependencies().of(Scope.MANAGED)) addPlatform(managed, d);
+        addTable(managed, root.dependencies().of(Scope.MANAGED), siblingByArtifact, wsDeps, internal);
         for (Dependency d : resolvedByScope.getOrDefault(Scope.MANAGED, List.of())) addPlatform(managed, d);
 
         Set<String> own = new HashSet<>();
@@ -102,8 +102,8 @@ public final class WorkspaceMerge {
         while (!queue.isEmpty()) {
             JkBuild sibling = siblingByArtifact.get(queue.poll());
             if (sibling == null) continue;
-            for (Dependency d : sibling.dependencies().of(Scope.PLATFORM)) addPlatform(platform, d);
-            for (Dependency d : sibling.dependencies().of(Scope.MANAGED)) addPlatform(managed, d);
+            addTable(platform, sibling.dependencies().of(Scope.PLATFORM), siblingByArtifact, wsDeps, internal);
+            addTable(managed, sibling.dependencies().of(Scope.MANAGED), siblingByArtifact, wsDeps, internal);
             for (Scope scope : List.of(Scope.MAIN, Scope.EXPORT)) {
                 for (Dependency d : sibling.dependencies().of(scope)) {
                     // A sibling's optional dependency is its own, as a POM's optional edge is.
@@ -138,6 +138,23 @@ public final class WorkspaceMerge {
     /** Add a BOM or managed entry to a member's table unless an earlier entry already manages that module. */
     private static void addPlatform(List<Dependency> platform, Dependency bom) {
         if (platform.stream().noneMatch(e -> e.module().equals(bom.module()))) platform.add(bom);
+    }
+
+    /**
+     * Add the root's or a sibling's BOM or managed table to a member's, each {@code workspace = true}
+     * entry read as its coordinate; an entry naming a member of the workspace is no BOM a
+     * repository serves, and is left out as {@link #merge} leaves it out.
+     */
+    private static void addTable(
+            List<Dependency> table,
+            List<Dependency> entries,
+            Map<String, JkBuild> siblingByArtifact,
+            Map<String, Workspace.WorkspaceDependency> wsDeps,
+            Set<String> internal) {
+        for (Dependency d : entries) {
+            Dependency r = resolve(d, siblingByArtifact, wsDeps);
+            if (!internal.contains(r.module())) addPlatform(table, r);
+        }
     }
 
     /**

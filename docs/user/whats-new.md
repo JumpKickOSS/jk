@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A workspace member gets the BOMs of the siblings it depends on.** When a sibling names its BOM
+  through the root's `[workspace.dependencies]`, the BOM was silently dropped for the members that
+  depend on that sibling; it now constrains them. A member with its own annotation-processor version
+  of a library no longer sees the workspace's version on its processor path as well. A project
+  reached through a symlink, such as macOS `/tmp` or `/var`, keeps the history id of the directory
+  it points at, and a worktree whose `jk.toml` declares an id jk cannot read no longer breaks
+  recording another checkout's build.
 - **Global options before the command are read the way the parser reads them.** `jk -q check` runs
   `compile`, `jk -qC app build` builds in `app`, `-H` and `-D` skip or replace the config files as
   their long forms do, and `jk -C app ...` reads `app`'s `[config]`. `-j` and `--ram-percent` refuse

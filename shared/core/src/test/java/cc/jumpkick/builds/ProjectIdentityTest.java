@@ -332,6 +332,66 @@ class ProjectIdentityTest {
                 .containsExactly(b.toRealPath());
     }
 
+    /**
+     * A checkout reached through a symlink recovers the id its directory recorded: identity.toml
+     * lists the real path, and the symlinked spelling is matched by it.
+     */
+    @Test
+    void a_symlinked_spelling_recovers_the_recorded_id(@TempDir Path tmp, @TempDir Path stateDir) throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
+        Path real = Files.createDirectories(tmp.resolve("checkout"));
+        Path link = Symlinks.create(tmp.resolve("link"), real);
+        String recorded = "aabbccddeeff00112233445566778899";
+        ProjectIdentity.IdentityFile.write(
+                stateDir.resolve("builds").resolve("projects").resolve(recorded),
+                new ProjectIdentity(recorded, "com.example:demo", real, ProjectIdentity.Source.PATH, null, null));
+
+        assertThat(ProjectIdentity.resolve(link).id()).isEqualTo(recorded);
+        assertThat(ProjectIdentity.recoverId(link)).contains(recorded);
+    }
+
+    /** With nothing recorded, a symlinked spelling and the directory it points at are one id. */
+    @Test
+    void a_symlinked_spelling_hashes_to_the_same_id(@TempDir Path tmp, @TempDir Path stateDir) throws Exception {
+        System.setProperty("jk.env.JK_STATE_DIR", stateDir.toString());
+        Path real = Files.createDirectories(tmp.resolve("checkout"));
+        Files.writeString(real.resolve("jk.toml"), """
+                group = "com.example"
+                name = "demo"
+                version = "0.1.0"
+                """);
+        Path link = Symlinks.create(tmp.resolve("link"), real);
+
+        ProjectIdentity viaLink = ProjectIdentity.resolve(link);
+        ProjectIdentity direct = ProjectIdentity.resolve(real);
+
+        assertThat(viaLink.id()).isEqualTo(direct.id());
+        assertThat(viaLink.gitRelPath()).isEqualTo(direct.gitRelPath());
+    }
+
+    /**
+     * A recorded checkout whose manifest now declares an id outside the grammar names another
+     * project: recording a checkout of this id drops it instead of failing.
+     */
+    @Test
+    void a_checkout_declaring_an_unreadable_id_is_not_live(@TempDir Path tmp, @TempDir Path home) throws Exception {
+        String id = "aabbccddeeff00112233445566778899";
+        Path a = Files.createDirectories(tmp.resolve("wt-a"));
+        Path b = Files.createDirectories(tmp.resolve("wt-b"));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, a));
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+        Files.writeString(a.resolve("jk.toml"), "id = \"not/an id\"\nname = \"other\"\n");
+
+        ProjectIdentity.IdentityFile.write(home, identityAt(id, b));
+
+        ProjectIdentity.IdentityFile file =
+                ProjectIdentity.IdentityFile.read(home).orElseThrow();
+        assertThat(file.checkouts()).extracting(ProjectIdentity.Checkout::path).containsExactly(b.toRealPath());
+        assertThat(file.liveCheckouts())
+                .extracting(ProjectIdentity.Checkout::path)
+                .containsExactly(b.toRealPath());
+    }
+
     /** Writers in several processes upsert their own checkout and lose none of the others. */
     @Test
     void concurrent_writers_keep_every_checkout(@TempDir Path tmp, @TempDir Path home) throws Exception {

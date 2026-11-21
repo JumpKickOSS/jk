@@ -15,7 +15,7 @@ import org.jspecify.annotations.Nullable;
  * on a partition reads that row in place of the plain row of the scopes it carries, every other
  * member reads the plain one. A plain row in a scope none of the member's partitions carries — the
  * processor path's Guava beside a main classpath pinned to another Guava — is still the member's
- * to read, and so is the processor part of a plain row that also carries main scopes. A coordinate
+ * to read, and so is the part of a plain row on a classpath none of them lands on. A coordinate
  * only a member's own graph reaches has no plain row, and no other member reads it.
  */
 public final class MemberRows {
@@ -37,49 +37,44 @@ public final class MemberRows {
             List<Lockfile.Artifact> own = mine.get(row.packageKey());
             if (own != null && own.contains(row)) {
                 out.add(row);
-            } else if (!row.isPartition() && (own == null || !sharesScope(own, row))) {
-                out.add(row);
-            } else if (!row.isPartition() && own != null && own.stream().noneMatch(MemberRows::hasProcessor)) {
-                Lockfile.Artifact processor = processorPart(row);
-                if (processor != null) out.add(processor);
+            } else if (!row.isPartition()) {
+                Lockfile.Artifact unshadowed = own == null ? row : unshadowed(row, own);
+                if (unshadowed != null) out.add(unshadowed);
             }
         }
         return out;
     }
 
     /**
-     * True when any of {@code partitions} lands on a classpath {@code plain} lands on. The main and
-     * test scopes are one family — the test classpath carries the main rows, so a member's own main
-     * row displaces the workspace's test-only row of the same coordinate — while the annotation
-     * processor path is a graph of its own: a member's main partition leaves the processor row the
-     * compiler needs alone.
+     * {@code plain} less the scopes a classpath of {@code partitions} lands on already carries, or
+     * {@code null} when none is left. The main and test scopes are one family — the test classpath
+     * carries the main rows, so a member's own main row displaces the workspace's test-only row of
+     * the same coordinate — while the annotation processor path is a graph of its own: a member's
+     * main partition leaves the processor part of a plain row the compiler needs alone, and a
+     * processor partition leaves its main part.
      */
-    private static boolean sharesScope(List<Lockfile.Artifact> partitions, Lockfile.Artifact plain) {
-        boolean plainProcessor = processorOnly(plain);
+    private static Lockfile.@Nullable Artifact unshadowed(Lockfile.Artifact plain, List<Lockfile.Artifact> partitions) {
+        boolean classpath = false;
+        boolean processor = false;
         for (Lockfile.Artifact partition : partitions) {
-            if (processorOnly(partition) == plainProcessor) return true;
+            for (Scope scope : partition.scopes()) {
+                if (isProcessor(scope)) {
+                    processor = true;
+                } else {
+                    classpath = true;
+                }
+            }
         }
-        return false;
+        List<Scope> kept = new ArrayList<>();
+        for (Scope scope : plain.scopes()) {
+            if (!(isProcessor(scope) ? processor : classpath)) kept.add(scope);
+        }
+        if (kept.isEmpty()) return null;
+        return kept.size() == plain.scopes().size() ? plain : plain.withScopes(kept);
     }
 
-    private static boolean hasProcessor(Lockfile.Artifact row) {
-        return row.scopes().contains(Scope.PROCESSOR) || row.scopes().contains(Scope.TEST_PROCESSOR);
-    }
-
-    /** {@code row} on the annotation processor path alone, or {@code null} when it is not on it. */
-    private static Lockfile.@Nullable Artifact processorPart(Lockfile.Artifact row) {
-        List<Scope> processor = new ArrayList<>();
-        for (Scope scope : row.scopes()) {
-            if (scope == Scope.PROCESSOR || scope == Scope.TEST_PROCESSOR) processor.add(scope);
-        }
-        return processor.isEmpty() ? null : row.withScopes(processor);
-    }
-
-    private static boolean processorOnly(Lockfile.Artifact row) {
-        for (Scope scope : row.scopes()) {
-            if (scope != Scope.PROCESSOR && scope != Scope.TEST_PROCESSOR) return false;
-        }
-        return !row.scopes().isEmpty();
+    private static boolean isProcessor(Scope scope) {
+        return scope == Scope.PROCESSOR || scope == Scope.TEST_PROCESSOR;
     }
 
     /**

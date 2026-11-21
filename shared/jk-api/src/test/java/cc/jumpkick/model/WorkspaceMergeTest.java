@@ -516,6 +516,32 @@ class WorkspaceMergeTest {
         assertThat(noDefaults.dependencies().of(Scope.MAIN)).isEmpty();
     }
 
+    /**
+     * The BOMs a member's lock folds from the root and from the siblings it depends on arrive as
+     * coordinates: a sibling's {@code workspace = true} BOM reads the root's {@code
+     * [workspace.dependencies]} entry, and a root BOM entry naming a member is no BOM and is left
+     * out, as the merged manifest leaves it out.
+     */
+    @Test
+    void a_members_platform_table_reads_workspace_boms_as_coordinates() {
+        Workspace.WorkspaceDependency bom =
+                new Workspace.WorkspaceDependency("org.example", "the-bom", VersionSelector.parse("1.0"), null);
+        JkBuild root = JkBuild.builder(new Project("cc.jumpkick", "ws", "0.1.0", 0))
+                .dependencies(new JkBuild.Dependencies(
+                        new EnumMap<>(Map.of(Scope.PLATFORM, List.of(workspacePlaceholder("versions"))))))
+                .workspace(new Workspace(List.of("versions", "lib", "app"), Map.of("the-bom", bom)))
+                .build();
+        JkBuild versions = newProject("versions", Map.of());
+        JkBuild lib = newProject("lib", Map.of(Scope.PLATFORM, List.of(workspacePlaceholder("the-bom"))));
+        JkBuild app = newProject("app", Map.of(Scope.MAIN, List.of(workspacePlaceholder("lib"))));
+
+        JkBuild scope = WorkspaceMerge.applyToModule(root, app, List.of(versions, lib, app));
+
+        assertThat(scope.dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::module)
+                .containsExactly("org.example:the-bom");
+    }
+
     private static JkBuild newProject(String artifact, Map<Scope, List<Dependency>> depsByScope) {
         EnumMap<Scope, List<Dependency>> by = new EnumMap<>(Scope.class);
         depsByScope.forEach(by::put);
