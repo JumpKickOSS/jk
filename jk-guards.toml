@@ -1500,28 +1500,15 @@ why        = "a wall-clock read the caller cannot move is a test that has to sle
 
 # Every JSON object line is built through cc.jumpkick.jsonl.JsonFields (or the wire package's
 # RequestJson over it). A string literal that opens an object, or a `+ ",\"field\"` fragment, is a
-# second writer with its own separator and escaping. This rule measures the sites; the ratchet
-# below holds the count and only lets it fall — `owner` is the whole main tree because a match is
-# tolerated wherever the ratchet still lists it, never legal anywhere in particular.
+# second writer with its own separator and escaping, and no file may hold one.
 [guards.json-concat]
 kind     = "text"
 files    = ["**/src/main/java/**/*.java"]
 blank    = "comments"
 patterns = ['"\{\\"', '\+\s*",\\"']
-owner    = ["**/src/main/java/**/*.java"]
 hit      = 'return "{\"type\":\"" + type + "}";'
 miss     = 'return JsonFields.object().string("type", type).finish();'
 instead  = "build the line with JsonFields (RequestJson in the wire package)"
-why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"
-
-# The ratchet over json-concat: per file, the count of hand-built JSON fragments, baselined at the
-# swept count and tightened on every build until the pattern is a straight ban.
-[guards.json-concat-ratchet]
-kind     = "metric"
-measure  = "matches:json-concat"
-per      = "file"
-cap      = 0
-baseline = true
 why      = "a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first"
 
 # G101. jk builds one HttpClient: Http's, routed through the proxy ProxyEnvironment decides per

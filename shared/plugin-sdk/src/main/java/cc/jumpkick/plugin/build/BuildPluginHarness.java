@@ -160,15 +160,13 @@ public final class BuildPluginHarness {
                 @Nullable TaskSpec step = recorder.step(spec.stepName());
                 TaskSpec.@Nullable Body body = step == null ? null : step.body();
                 if (body == null) {
-                    out.emit("{\"t\":\"error\",\"code\":\"unknown-step\",\"message\":"
-                            + Jsonl.quote("no registered step named " + spec.stepName()) + "}");
+                    out.emit(PluginReply.error("unknown-step", "no registered step named " + spec.stepName()));
                     return 65;
                 }
                 try {
                     body.run(new SpecTaskExec(spec, out));
                 } catch (Exception e) {
-                    out.emit("{\"t\":\"error\",\"code\":\"step-failed\",\"message\":"
-                            + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
+                    out.emit(PluginReply.error("step-failed", String.valueOf(e.getMessage())));
                     return 1;
                 }
             }
@@ -176,16 +174,14 @@ public final class BuildPluginHarness {
                 @Nullable PluginCommandSpec command = recorder.command(spec.stepName());
                 PluginCommandSpec.@Nullable Body body = command == null ? null : command.body();
                 if (body == null) {
-                    out.emit("{\"t\":\"error\",\"code\":\"unknown-command\",\"message\":"
-                            + Jsonl.quote("no registered command named " + spec.stepName()) + "}");
+                    out.emit(PluginReply.error("unknown-command", "no registered command named " + spec.stepName()));
                     return 65;
                 }
                 try {
                     int exit = body.run(new SpecCommandExec(spec, out));
                     return exit;
                 } catch (Exception e) {
-                    out.emit("{\"t\":\"error\",\"code\":\"command-failed\",\"message\":"
-                            + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
+                    out.emit(PluginReply.error("command-failed", String.valueOf(e.getMessage())));
                     return 1;
                 }
             }
@@ -193,20 +189,18 @@ public final class BuildPluginHarness {
                 @Nullable PackagerSpec packager = recorder.packager();
                 PackagerSpec.@Nullable Body body = packager == null ? null : packager.body();
                 if (body == null) {
-                    out.emit("{\"t\":\"error\",\"code\":\"no-packager\",\"message\":"
-                            + Jsonl.quote("plugin registered no packager") + "}");
+                    out.emit(PluginReply.error("no-packager", "plugin registered no packager"));
                     return 65;
                 }
                 try {
                     body.produce(new SpecPackageIo(spec, out));
                 } catch (Exception e) {
-                    out.emit("{\"t\":\"error\",\"code\":\"package-failed\",\"message\":"
-                            + Jsonl.quote(String.valueOf(e.getMessage())) + "}");
+                    out.emit(PluginReply.error("package-failed", String.valueOf(e.getMessage())));
                     return 1;
                 }
             }
             default -> {
-                out.emit("{\"t\":\"error\",\"code\":\"unknown-op\",\"message\":" + Jsonl.quote(spec.op()) + "}");
+                out.emit(PluginReply.error("unknown-op", spec.op()));
                 return 64;
             }
         }
@@ -217,66 +211,49 @@ public final class BuildPluginHarness {
         for (TaskSpec step : recorder.steps()) {
             @Nullable String classesTransform = step.classesTransform();
             @Nullable String stage = step.stage();
-            StringBuilder b = new StringBuilder("{\"t\":\"task\",\"name\":")
-                    .append(Jsonl.quote(step.name()))
-                    .append(",\"requires\":")
-                    .append(quoteArray(step.requires()))
-                    .append(",\"inputs\":")
-                    .append(quoteArray(
-                            step.declaredInputs().stream().map(In::wireName).toList()))
-                    .append(",\"outputs\":")
-                    .append(quoteArray(step.declaredOutputs()))
-                    .append(",\"contributesClasses\":")
-                    .append(quoteArray(step.classesContributions()))
-                    .append(",\"contributesResources\":")
-                    .append(quoteArray(step.resourcesContributions()))
-                    .append(",\"contributesSources\":")
-                    .append(quoteArray(step.sourcesContributions()))
-                    .append(",\"contributesTestSources\":")
-                    .append(quoteArray(step.testSourcesContributions()))
-                    .append(",\"contributesTestClasspath\":")
-                    .append(quoteArray(step.testClasspathContributions()))
-                    .append(",\"contributesTestJvmArgs\":")
-                    .append(quoteArray(step.testJvmArgsContributions()))
-                    .append(",\"oneTestJvm\":")
-                    .append(step.runsTestsInOneJvm())
-                    .append(",\"transformsClasses\":")
-                    .append(Jsonl.quote(classesTransform == null ? "" : classesTransform))
-                    .append(",\"stage\":")
-                    .append(Jsonl.quote(stage == null ? "" : stage));
+            JsonFields line = JsonFields.object()
+                    .string(PluginProtocol.T, "task")
+                    .string("name", step.name())
+                    .array("requires", step.requires())
+                    .array(
+                            "inputs",
+                            step.declaredInputs().stream().map(In::wireName).toList())
+                    .array("outputs", step.declaredOutputs())
+                    .array("contributesClasses", step.classesContributions())
+                    .array("contributesResources", step.resourcesContributions())
+                    .array("contributesSources", step.sourcesContributions())
+                    .array("contributesTestSources", step.testSourcesContributions())
+                    .array("contributesTestClasspath", step.testClasspathContributions())
+                    .array("contributesTestJvmArgs", step.testJvmArgsContributions())
+                    .bool("oneTestJvm", step.runsTestsInOneJvm())
+                    .string("transformsClasses", classesTransform, "")
+                    .string("stage", stage, "");
             @Nullable KeyProbe probe = step.keyProbe();
             if (probe != null) {
-                b.append(",\"probeMain\":")
-                        .append(Jsonl.quote(probe.main()))
-                        .append(",\"probeTools\":")
-                        .append(quoteArray(probe.tools()))
-                        .append(",\"probeArgs\":")
-                        .append(quoteArray(probe.args()))
-                        .append(",\"probeSecretEnv\":")
-                        .append(Jsonl.map(new TreeMap<>(probe.secretEnv())));
+                line.string("probeMain", probe.main())
+                        .array("probeTools", probe.tools())
+                        .array("probeArgs", probe.args())
+                        .map("probeSecretEnv", new TreeMap<>(probe.secretEnv()));
             }
-            b.append('}');
-            out.emit(b.toString());
+            out.emit(line.finish());
         }
         @Nullable PackagerSpec packager = recorder.packager();
         if (packager != null) {
-            out.emit("{\"t\":\"packager\",\"name\":" + Jsonl.quote(packager.name()) + ",\"inputs\":"
-                    + quoteArray(
-                            packager.declaredInputs().stream().map(In::wireName).toList()) + "}");
+            out.emit(JsonFields.object()
+                    .string(PluginProtocol.T, "packager")
+                    .string("name", packager.name())
+                    .array(
+                            "inputs",
+                            packager.declaredInputs().stream().map(In::wireName).toList())
+                    .finish());
         }
         for (PluginCommandSpec command : recorder.commands()) {
-            out.emit("{\"t\":\"command\",\"name\":" + Jsonl.quote(command.name()) + ",\"description\":"
-                    + Jsonl.quote(command.description()) + "}");
+            out.emit(JsonFields.object()
+                    .string(PluginProtocol.T, "command")
+                    .string("name", command.name())
+                    .string("description", command.description())
+                    .finish());
         }
-    }
-
-    private static String quoteArray(List<String> values) {
-        StringBuilder b = new StringBuilder("[");
-        for (int i = 0; i < values.size(); i++) {
-            if (i > 0) b.append(',');
-            b.append(Jsonl.quote(values.get(i)));
-        }
-        return b.append(']').toString();
     }
 
     // ---- registration recording ----------------------------------------------------------
@@ -676,7 +653,7 @@ public final class BuildPluginHarness {
 
         @Override
         public void label(String text) {
-            out.emit("{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}");
+            out.emit(PluginReply.label(text));
         }
 
         @Override
@@ -750,7 +727,7 @@ public final class BuildPluginHarness {
 
         @Override
         public void label(String text) {
-            out.emit("{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}");
+            out.emit(PluginReply.label(text));
         }
     }
 
@@ -817,13 +794,17 @@ public final class BuildPluginHarness {
 
         @Override
         public void label(String text) {
-            out.emit("{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}");
+            out.emit(PluginReply.label(text));
         }
 
         @Override
         public void produced(Path path) {
-            out.emit("{\"t\":\"produced\",\"path\":"
-                    + Jsonl.quote(path.toAbsolutePath().normalize().toString()) + "}");
+            out.emit(JsonFields.object()
+                    .string(PluginProtocol.T, "produced")
+                    .string(
+                            PluginProtocol.PATH,
+                            path.toAbsolutePath().normalize().toString())
+                    .finish());
         }
     }
 

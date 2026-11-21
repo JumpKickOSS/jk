@@ -14,18 +14,17 @@ import cc.jumpkick.guard.schema.SchemaText;
 import cc.jumpkick.guard.validate.EngineValidations;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.jsonl.JsonFields;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.GuardsConfig;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
@@ -278,8 +277,13 @@ public final class GuardExplain {
     }
 
     static String validationJson(EngineValidations.Info v) {
-        return "{\"validations\":[{\"code\":" + Jsonl.quote(v.code()) + ",\"lanes\":" + Jsonl.quote(v.lanes())
-                + ",\"checks\":" + Jsonl.quote(v.what()) + ",\"why\":" + Jsonl.quote(v.why()) + "}]}";
+        String validation = JsonFields.object()
+                .string("code", v.code())
+                .string("lanes", v.lanes())
+                .string("checks", v.what())
+                .string("why", v.why())
+                .finish();
+        return JsonFields.object().token("validations", "[" + validation + "]").finish();
     }
 
     private static void shas(StringBuilder sb, String rulesSha, String baselineSha) {
@@ -302,38 +306,26 @@ public final class GuardExplain {
     }
 
     static String json(List<Card> cards, String rulesSha, String baselineSha) {
-        StringBuilder sb = new StringBuilder("{\"rules\":[");
-        boolean first = true;
+        StringJoiner rules = new StringJoiner(",", "[", "]");
         for (Card c : cards) {
-            if (!first) sb.append(',');
-            first = false;
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("id", c.id());
-            m.put("kind", c.kind());
-            m.put("scope", c.scope());
-            m.put("why", c.why());
-            m.put("instead", c.instead());
-            m.put("source", c.source());
-            m.put("layer", c.layer());
-            m.put("population", c.population());
-            m.put("baselineEntries", c.baselineEntries());
-            m.put("lastOutcome", c.lastOutcome());
-            sb.append('{');
-            boolean f2 = true;
-            for (var e : m.entrySet()) {
-                if (!f2) sb.append(',');
-                f2 = false;
-                sb.append(Jsonl.quote(e.getKey())).append(':');
-                sb.append(
-                        e.getValue() instanceof Integer i
-                                ? Integer.toString(i)
-                                : Jsonl.quote(String.valueOf(e.getValue())));
-            }
-            sb.append('}');
+            rules.add(JsonFields.object()
+                    .string("id", c.id())
+                    .string("kind", c.kind())
+                    .string("scope", c.scope())
+                    .string("why", c.why())
+                    .string("instead", c.instead())
+                    .string("source", c.source())
+                    .string("layer", c.layer())
+                    .string("population", c.population())
+                    .number("baselineEntries", c.baselineEntries())
+                    .string("lastOutcome", c.lastOutcome())
+                    .finish());
         }
-        sb.append("],\"rulesSha\":").append(Jsonl.quote(rulesSha));
-        sb.append(",\"baselineSha\":").append(Jsonl.quote(baselineSha)).append('}');
-        return sb.toString();
+        return JsonFields.object()
+                .token("rules", rules.toString())
+                .string("rulesSha", rulesSha)
+                .string("baselineSha", baselineSha)
+                .finish();
     }
 
     /** Ids sharing the longest prefix with {@code q} first, then the rest, at most five. */

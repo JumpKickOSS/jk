@@ -5,6 +5,7 @@ import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.RuleReport;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
@@ -51,19 +52,20 @@ public final class RuleSummaries {
         StringBuilder sb = new StringBuilder();
         long now = System.currentTimeMillis();
         for (RuleReport r : result.reports()) {
-            sb.append("{\"code\":").append(Jsonl.quote(r.id()));
-            sb.append(",\"lane\":").append(Jsonl.quote(taskId));
-            sb.append(",\"outcome\":")
-                    .append(Jsonl.quote(
-                            r.outcome().name().toLowerCase(Locale.ROOT).replace('_', '-')));
-            sb.append(",\"population\":")
-                    .append(Jsonl.quote(population(r.evaluation().population())));
-            sb.append(",\"fresh\":").append(r.fresh().size());
-            sb.append(",\"baselined\":").append(r.baselined().size());
-            sb.append(",\"bite\":").append(r.evaluation().bites());
-            sb.append(",\"note\":").append(Jsonl.quote(r.note()));
-            sb.append(",\"ts\":").append(now);
-            sb.append("}\n");
+            sb.append(JsonFields.object()
+                            .string("code", r.id())
+                            .string("lane", taskId)
+                            .string(
+                                    "outcome",
+                                    r.outcome().name().toLowerCase(Locale.ROOT).replace('_', '-'))
+                            .string("population", population(r.evaluation().population()))
+                            .number("fresh", r.fresh().size())
+                            .number("baselined", r.baselined().size())
+                            .bool("bite", r.evaluation().bites())
+                            .string("note", r.note())
+                            .number("ts", now)
+                            .finish())
+                    .append('\n');
         }
         Path file = file(root, taskId);
         if (sb.length() == 0) Files.deleteIfExists(file);

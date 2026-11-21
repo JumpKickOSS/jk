@@ -5,6 +5,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.config.RequestScope;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.StatIdentity;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.ManifestPaths;
 import java.io.IOException;
@@ -289,25 +290,17 @@ public final class InputTrees {
     public static String lastStatusJson() {
         LastJob j = LAST;
         if (j == LastJob.EMPTY) return "";
-        return "{\"maxMb\":"
-                + j.maxMb
-                + ",\"poolMaxMb\":"
-                + (j.poolMaxBytes / (1024 * 1024))
-                + ",\"poolUsedMb\":"
-                + (j.poolUsedBytes / (1024 * 1024))
-                + ",\"nodes\":"
-                + j.nodes
-                + ",\"bytes\":"
-                + j.bytes
-                + ",\"walks\":"
-                + j.walks
-                + ",\"hits\":"
-                + j.hits
-                + ",\"misses\":"
-                + j.misses
-                + ",\"streamOnly\":"
-                + j.streamOnly
-                + "}";
+        return JsonFields.object()
+                .number("maxMb", j.maxMb)
+                .number("poolMaxMb", j.poolMaxBytes / (1024 * 1024))
+                .number("poolUsedMb", j.poolUsedBytes / (1024 * 1024))
+                .number("nodes", j.nodes)
+                .number("bytes", j.bytes)
+                .number("walks", j.walks)
+                .number("hits", j.hits)
+                .number("misses", j.misses)
+                .bool("streamOnly", j.streamOnly)
+                .finish();
     }
 
     /** Additive proto-1: splice last-job {@code vfs} into a {@code status-ack} JSON object. */

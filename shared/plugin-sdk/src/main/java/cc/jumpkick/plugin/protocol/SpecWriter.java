@@ -2,7 +2,6 @@
 package cc.jumpkick.plugin.protocol;
 
 import cc.jumpkick.jsonl.JsonFields;
-import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.build.ProjectFacts;
 import cc.jumpkick.plugin.build.RepositoryRoute;
@@ -25,13 +24,12 @@ public final class SpecWriter {
     private final List<String> lines = new ArrayList<>();
 
     public SpecWriter op(String op, @Nullable String name, String pluginId) {
-        StringBuilder b = new StringBuilder("{\"t\":")
-                .append(Jsonl.quote(PluginProtocol.OP))
-                .append(",\"op\":")
-                .append(Jsonl.quote(op));
-        if (name != null) b.append(",\"name\":").append(Jsonl.quote(name));
-        b.append(",\"plugin\":").append(Jsonl.quote(pluginId)).append('}');
-        lines.add(b.toString());
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, PluginProtocol.OP)
+                .string("op", op)
+                .optionalString("name", name)
+                .string("plugin", pluginId)
+                .finish());
         return this;
     }
 
@@ -41,7 +39,10 @@ public final class SpecWriter {
      * never gets this line reads back as offline.
      */
     public SpecWriter offline(boolean offline) {
-        lines.add("{\"t\":" + Jsonl.quote(PluginProtocol.OFFLINE) + ",\"value\":" + offline + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, PluginProtocol.OFFLINE)
+                .bool("value", offline)
+                .finish());
         return this;
     }
 
@@ -140,59 +141,51 @@ public final class SpecWriter {
     }
 
     public SpecWriter project(ProjectFacts p) {
-        StringBuilder b = new StringBuilder("{\"t\":\"project\",\"group\":")
-                .append(Jsonl.quote(p.group()))
-                .append(",\"name\":")
-                .append(Jsonl.quote(p.name()))
-                .append(",\"version\":")
-                .append(Jsonl.quote(p.version()))
-                .append(",\"javaRelease\":")
-                .append(p.javaRelease())
-                .append(",\"nativeDeclared\":")
-                .append(p.nativeDeclared())
-                .append(",\"kotlin\":")
-                .append(p.kotlin());
-        @Nullable String mainClass = p.mainClass();
-        if (mainClass != null && !mainClass.isBlank()) {
-            b.append(",\"mainClass\":").append(Jsonl.quote(mainClass));
-        }
-        b.append('}');
-        lines.add(b.toString());
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "project")
+                .string("group", p.group())
+                .string("name", p.name())
+                .string("version", p.version())
+                .number("javaRelease", p.javaRelease())
+                .bool("nativeDeclared", p.nativeDeclared())
+                .bool("kotlin", p.kotlin())
+                .optionalNonBlankString("mainClass", p.mainClass())
+                .finish());
         for (Map.Entry<String, String> e : p.manifest().entrySet()) {
-            lines.add("{\"t\":\"manifest-attr\",\"key\":" + Jsonl.quote(e.getKey()) + ",\"value\":"
-                    + Jsonl.quote(e.getValue()) + "}");
+            lines.add(JsonFields.object()
+                    .string(PluginProtocol.T, "manifest-attr")
+                    .string("key", e.getKey())
+                    .string("value", e.getValue())
+                    .finish());
         }
         return this;
     }
 
     public SpecWriter layout(Map<String, Path> dirs) {
-        StringBuilder b = new StringBuilder("{\"t\":\"layout\"");
+        JsonFields line = JsonFields.object().string(PluginProtocol.T, "layout");
         for (Map.Entry<String, Path> e : dirs.entrySet()) {
-            b.append(',')
-                    .append(Jsonl.quote(e.getKey()))
-                    .append(':')
-                    .append(Jsonl.quote(e.getValue().toAbsolutePath().toString()));
+            line.string(e.getKey(), e.getValue().toAbsolutePath().toString());
         }
-        b.append('}');
-        lines.add(b.toString());
+        lines.add(line.finish());
         return this;
     }
 
     public SpecWriter javaHome(Path javaHome) {
-        lines.add("{\"t\":\"java-home\",\"path\":"
-                + Jsonl.quote(javaHome.toAbsolutePath().toString()) + "}");
+        lines.add(pathLine("java-home", javaHome));
         return this;
     }
 
     public SpecWriter artifact(Path path) {
-        lines.add("{\"t\":\"artifact\",\"path\":"
-                + Jsonl.quote(path.toAbsolutePath().toString()) + "}");
+        lines.add(pathLine("artifact", path));
         return this;
     }
 
     public SpecWriter cp(Path path, String role) {
-        lines.add("{\"t\":\"cp\",\"path\":" + Jsonl.quote(path.toAbsolutePath().toString()) + ",\"role\":"
-                + Jsonl.quote(role) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "cp")
+                .string(PluginProtocol.PATH, path.toAbsolutePath().toString())
+                .string("role", role)
+                .finish());
         return this;
     }
 
@@ -214,9 +207,12 @@ public final class SpecWriter {
 
     /** The build-plugin worker layout: classes tree, module dir, and the step scratch dir. */
     public SpecWriter layout(Path classesDir, Path moduleDir, Path scratch) {
-        lines.add("{\"t\":\"layout\",\"classesDir\":" + Jsonl.quote(String.valueOf(classesDir))
-                + ",\"moduleDir\":" + Jsonl.quote(String.valueOf(moduleDir))
-                + ",\"scratch\":" + Jsonl.quote(String.valueOf(scratch)) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "layout")
+                .string("classesDir", String.valueOf(classesDir))
+                .string("moduleDir", String.valueOf(moduleDir))
+                .string("scratch", String.valueOf(scratch))
+                .finish());
         return this;
     }
 
@@ -302,54 +298,62 @@ public final class SpecWriter {
             String artifact,
             String version,
             @Nullable String role) {
-        StringBuilder b = new StringBuilder("{\"t\":\"entry\",\"file\":").append(Jsonl.quote(fileName));
-        if (role != null)
-            b.append(",\"").append(PluginProtocol.ROLE).append("\":").append(Jsonl.quote(role));
+        JsonFields line = JsonFields.object()
+                .string(PluginProtocol.T, "entry")
+                .string("file", fileName)
+                .optionalString(PluginProtocol.ROLE, role);
         if (!group.isEmpty()) {
-            b.append(",\"group\":")
-                    .append(Jsonl.quote(group))
-                    .append(",\"artifact\":")
-                    .append(Jsonl.quote(artifact))
-                    .append(",\"version\":")
-                    .append(Jsonl.quote(version));
+            line.string("group", group).string("artifact", artifact).string("version", version);
         }
-        if (jar != null)
-            b.append(",\"path\":").append(Jsonl.quote(jar.toAbsolutePath().toString()));
-        b.append(",\"snapshot\":").append(snapshot);
-        if (container != null)
-            b.append(",\"container\":")
-                    .append(Jsonl.quote(container.toAbsolutePath().toString()));
-        b.append('}');
-        lines.add(b.toString());
+        lines.add(line.optionalString(
+                        PluginProtocol.PATH,
+                        jar == null ? null : jar.toAbsolutePath().toString())
+                .bool("snapshot", snapshot)
+                .optionalString(
+                        "container",
+                        container == null ? null : container.toAbsolutePath().toString())
+                .finish());
         return this;
     }
 
     public SpecWriter source(Path path) {
-        lines.add("{\"t\":\"source\",\"path\":"
-                + Jsonl.quote(path.toAbsolutePath().toString()) + "}");
+        lines.add(pathLine("source", path));
         return this;
     }
 
     public SpecWriter arg(String value) {
-        lines.add("{\"t\":\"arg\",\"value\":" + Jsonl.quote(value) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "arg")
+                .string("value", value)
+                .finish());
         return this;
     }
 
     public SpecWriter compilerPlugin(String id, Path jar, List<String> options) {
-        lines.add("{\"t\":\"compiler-plugin\",\"id\":" + Jsonl.quote(id) + ",\"path\":"
-                + Jsonl.quote(jar.toAbsolutePath().toString()) + ",\"options\":" + array(options) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "compiler-plugin")
+                .string("id", id)
+                .string(PluginProtocol.PATH, jar.toAbsolutePath().toString())
+                .array("options", options)
+                .finish());
         return this;
     }
 
     public SpecWriter stepOutput(String name, Path dir) {
-        lines.add("{\"t\":\"step-output\",\"name\":" + Jsonl.quote(name) + ",\"dir\":"
-                + Jsonl.quote(dir.toAbsolutePath().toString()) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "step-output")
+                .string("name", name)
+                .string("dir", dir.toAbsolutePath().toString())
+                .finish());
         return this;
     }
 
     public SpecWriter extra(String name, Path path) {
-        lines.add("{\"t\":\"extra\",\"name\":" + Jsonl.quote(name) + ",\"path\":"
-                + Jsonl.quote(path.toAbsolutePath().toString()) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "extra")
+                .string("name", name)
+                .string(PluginProtocol.PATH, path.toAbsolutePath().toString())
+                .finish());
         return this;
     }
 
@@ -382,12 +386,19 @@ public final class SpecWriter {
      * describe; never echoed by plugins.
      */
     public SpecWriter secret(String key, String value) {
-        lines.add("{\"t\":\"secret\",\"key\":" + Jsonl.quote(key) + ",\"value\":" + Jsonl.quote(value) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "secret")
+                .string(PluginProtocol.KEY, key)
+                .string("value", value)
+                .finish());
         return this;
     }
 
     public SpecWriter commandArgs(List<String> args) {
-        lines.add("{\"t\":\"command-args\",\"values\":" + array(args) + "}");
+        lines.add(JsonFields.object()
+                .string(PluginProtocol.T, "command-args")
+                .array("values", args)
+                .finish());
         return this;
     }
 
@@ -402,7 +413,11 @@ public final class SpecWriter {
         return spec;
     }
 
-    private static String array(List<String> values) {
-        return Jsonl.array(values);
+    /** A line of type {@code t} whose one field is {@code path}'s absolute form. */
+    private static String pathLine(String t, Path path) {
+        return JsonFields.object()
+                .string(PluginProtocol.T, t)
+                .string(PluginProtocol.PATH, path.toAbsolutePath().toString())
+                .finish();
     }
 }

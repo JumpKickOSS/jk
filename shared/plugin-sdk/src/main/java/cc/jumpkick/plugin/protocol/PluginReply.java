@@ -20,12 +20,15 @@ public final class PluginReply {
 
     /** A free-text progress label. */
     public static String label(String text) {
-        return "{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}";
+        return JsonFields.object().string("t", "label").string("text", text).finish();
     }
 
     /** One user-facing output line (command ops). */
     public static String commandOut(String line) {
-        return "{\"t\":\"command-out\",\"line\":" + Jsonl.quote(line) + "}";
+        return JsonFields.object()
+                .string("t", "command-out")
+                .string("line", line)
+                .finish();
     }
 
     /** A structured compiler/format diagnostic; {@code file} may be null, {@code line}/{@code col} 0 when unknown. */
@@ -40,18 +43,24 @@ public final class PluginReply {
      */
     public static String diagnostic(
             String sev, @Nullable String file, int line, int col, String msg, @Nullable String key) {
-        StringBuilder b = new StringBuilder("{\"t\":\"diagnostic\",\"sev\":").append(Jsonl.quote(sev));
-        if (file != null) b.append(",\"file\":").append(Jsonl.quote(file));
-        if (line > 0) b.append(",\"line\":").append(line);
-        if (col > 0) b.append(",\"col\":").append(col);
-        if (key != null && !key.isEmpty()) b.append(",\"key\":").append(Jsonl.quote(key));
-        b.append(",\"msg\":").append(Jsonl.quote(msg)).append('}');
-        return b.toString();
+        return JsonFields.object()
+                .string("t", "diagnostic")
+                .string("sev", sev)
+                .optionalString("file", file)
+                .optionalNumber("line", line, 0)
+                .optionalNumber("col", col, 0)
+                .optionalNonEmptyString("key", key)
+                .string("msg", msg)
+                .finish();
     }
 
     /** Annotation-processing provenance: a generated file and its originating sources. */
     public static String provenance(String generated, List<String> sources) {
-        return "{\"t\":\"provenance\",\"gen\":" + Jsonl.quote(generated) + ",\"src\":" + Jsonl.array(sources) + "}";
+        return JsonFields.object()
+                .string("t", "provenance")
+                .string("gen", generated)
+                .array("src", sources)
+                .finish();
     }
 
     /**
@@ -66,39 +75,36 @@ public final class PluginReply {
             String summary,
             @Nullable String fixedIn,
             List<String> aliases) {
-        StringBuilder b = new StringBuilder("{\"t\":\"finding\",\"module\":")
-                .append(Jsonl.quote(module))
-                .append(",\"version\":")
-                .append(Jsonl.quote(version))
-                .append(",\"id\":")
-                .append(Jsonl.quote(id))
-                .append(",\"severity\":")
-                .append(Jsonl.quote(severity))
-                .append(",\"summary\":")
-                .append(Jsonl.quote(summary));
-        if (fixedIn != null) b.append(",\"fixedIn\":").append(Jsonl.quote(fixedIn));
-        if (!aliases.isEmpty()) b.append(",\"aliases\":").append(Jsonl.array(aliases));
-        return b.append('}').toString();
+        return JsonFields.object()
+                .string("t", "finding")
+                .string("module", module)
+                .string("version", version)
+                .string("id", id)
+                .string("severity", severity)
+                .string("summary", summary)
+                .optionalString("fixedIn", fixedIn)
+                .optionalArray("aliases", aliases)
+                .finish();
     }
 
     /** A formatter per-file outcome. */
     public static String file(String path, String status, @Nullable String msg) {
-        StringBuilder b = new StringBuilder("{\"t\":\"file\",\"path\":")
-                .append(Jsonl.quote(path))
-                .append(",\"status\":")
-                .append(Jsonl.quote(status));
-        if (msg != null) b.append(",\"msg\":").append(Jsonl.quote(msg));
-        return b.append('}').toString();
+        return JsonFields.object()
+                .string("t", "file")
+                .string("path", path)
+                .string("status", status)
+                .optionalString("msg", msg)
+                .finish();
     }
 
     /** A compat-import wrote-a-file note. */
     public static String wrote(String path) {
-        return "{\"t\":\"wrote\",\"path\":" + Jsonl.quote(path) + "}";
+        return JsonFields.object().string("t", "wrote").string("path", path).finish();
     }
 
     /** Pull-protocol: the worker can accept one {@code COMPILE}/{@code PLAN} (or {@code DONE}). */
     public static String ready() {
-        return "{\"t\":\"ready\"}";
+        return JsonFields.object().string("t", "ready").finish();
     }
 
     /** Serve mode: one run ended with {@code code}; {@code retire} when the worker exits next. */
@@ -132,16 +138,18 @@ public final class PluginReply {
 
     /** A terminal typed result payload; {@code fields} serialized by shape. */
     public static String result(Map<String, Object> fields) {
-        StringBuilder b = new StringBuilder("{\"t\":\"result\"");
-        for (Map.Entry<String, Object> e : fields.entrySet()) {
-            b.append(',').append(Jsonl.quote(e.getKey())).append(':').append(value(e.getValue()));
-        }
-        return b.append('}').toString();
+        JsonFields json = JsonFields.object().string("t", "result");
+        for (Map.Entry<String, Object> e : fields.entrySet()) json.token(e.getKey(), value(e.getValue()));
+        return json.finish();
     }
 
     /** A structured error. */
     public static String error(String code, String message) {
-        return "{\"t\":\"error\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
+        return JsonFields.object()
+                .string("t", "error")
+                .string("code", code)
+                .string("message", message)
+                .finish();
     }
 
     private static String value(Object v) {

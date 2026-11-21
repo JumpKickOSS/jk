@@ -169,10 +169,18 @@ public final class JkWireModel {
      * onto the stream, so a warm-up line before the model does not break the parse.
      */
     public static @NotNull JkWireModel parse(@NotNull String json) {
-        int start = json.lastIndexOf("{\"type\"");
+        int start = lastTypedObject(json);
         if (start < 0) start = json.indexOf('{');
         if (start < 0) throw new IllegalArgumentException("ide-model JSON: no object on stdout");
         return new JkWireModel(JkJson.object(JkJson.parse(json, start), Map.of()));
+    }
+
+    /** Where the last object whose first key is {@code type} opens, or -1. */
+    private static int lastTypedObject(String json) {
+        for (int at = json.lastIndexOf("\"type\""); at >= 0; at = json.lastIndexOf("\"type\"", at - 1)) {
+            if (at > 0 && json.charAt(at - 1) == '{') return at - 1;
+        }
+        return -1;
     }
 
     private static String str(Map<String, Object> o, String key) {

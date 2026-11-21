@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.protocol.EngineProtocol;
 import cc.jumpkick.wire.protocol.EventCatalog;
@@ -251,8 +252,13 @@ public final class HttpEvents {
      */
     static String mcpFrame(long id, String type, String data) {
         // data is an encoded JSON object from JsonOut; the splicer refuses anything else.
-        String params = Jsonl.append(data, "\"event\":" + Jsonl.quote(type));
-        String rpc = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/jk/event\",\"params\":" + params + "}";
+        String params =
+                Jsonl.append(data, JsonFields.fields().string("event", type).body());
+        String rpc = JsonFields.object()
+                .string("jsonrpc", "2.0")
+                .string("method", "notifications/jk/event")
+                .token("params", params)
+                .finish();
         return "id: " + id + "\nevent: message\ndata: " + rpc + "\n\n";
     }
 

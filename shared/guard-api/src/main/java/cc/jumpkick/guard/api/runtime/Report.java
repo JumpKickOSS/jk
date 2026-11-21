@@ -8,7 +8,7 @@ import cc.jumpkick.guard.api.Site;
 import cc.jumpkick.guard.api.TextSite;
 import cc.jumpkick.guard.api.ToolSite;
 import cc.jumpkick.guard.api.Violations;
-import cc.jumpkick.jsonl.Jsonl;
+import cc.jumpkick.jsonl.JsonFields;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -17,6 +17,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.StringJoiner;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -133,47 +134,37 @@ public final class Report {
             Collector collector) {
 
         public String toJson() {
-            StringBuilder sb = new StringBuilder("{");
-            sb.append("\"id\":").append(Jsonl.quote(id));
-            sb.append(",\"why\":").append(Jsonl.quote(why));
-            sb.append(",\"instead\":").append(Jsonl.quote(instead));
-            sb.append(",\"source\":").append(Jsonl.quote(source));
-            sb.append(",\"scope\":").append(Jsonl.quote(scope.name().toLowerCase(Locale.ROOT)));
-            sb.append(",\"params\":[");
-            for (int i = 0; i < params.size(); i++) sb.append(i > 0 ? "," : "").append(Jsonl.quote(params.get(i)));
-            sb.append("],\"allows\":[");
-            for (int i = 0; i < allows.size(); i++) {
-                sb.append(i > 0 ? "," : "")
-                        .append("{\"in\":")
-                        .append(Jsonl.quote(allows.get(i).in()))
-                        .append(",\"reason\":")
-                        .append(Jsonl.quote(allows.get(i).reason()))
-                        .append('}');
+            StringJoiner allowsJson = new StringJoiner(",", "[", "]");
+            for (AllowEntry allow : allows) {
+                allowsJson.add(JsonFields.object()
+                        .string("in", allow.in())
+                        .string("reason", allow.reason())
+                        .finish());
             }
-            sb.append(']');
-            if (fixture != null) sb.append(",\"fixture\":").append(Jsonl.quote(fixture));
-            sb.append(",\"outcome\":").append(Jsonl.quote(collector.outcome));
-            if (collector.error != null) sb.append(",\"error\":").append(Jsonl.quote(collector.error));
-            if (!collector.tools.isEmpty()) {
-                sb.append(",\"tools\":[");
-                for (int i = 0; i < collector.tools.size(); i++)
-                    sb.append(i > 0 ? "," : "").append(Jsonl.quote(collector.tools.get(i)));
-                sb.append(']');
+            JsonFields json = JsonFields.object()
+                    .string("id", id)
+                    .string("why", why)
+                    .string("instead", instead)
+                    .string("source", source)
+                    .string("scope", scope.name().toLowerCase(Locale.ROOT))
+                    .array("params", params)
+                    .token("allows", allowsJson.toString())
+                    .optionalString("fixture", fixture)
+                    .string("outcome", collector.outcome)
+                    .optionalString("error", collector.error)
+                    .optionalArray("tools", collector.tools)
+                    .optionalNumber("population", collector.population, -1);
+            StringJoiner violations = new StringJoiner(",", "[", "]");
+            for (String[] s : collector.sites) {
+                JsonFields site = JsonFields.object()
+                        .string("fingerprint", s[0])
+                        .optionalString("file", s[1])
+                        .token("line", s[2])
+                        .string("detail", s[3]);
+                if (s[4] != null) site.token("value", s[4]);
+                violations.add(site.string("root", s[5]).finish());
             }
-            if (collector.population >= 0) sb.append(",\"population\":").append(collector.population);
-            sb.append(",\"violations\":[");
-            for (int i = 0; i < collector.sites.size(); i++) {
-                String[] s = collector.sites.get(i);
-                sb.append(i > 0 ? "," : "").append("{\"fingerprint\":").append(Jsonl.quote(s[0]));
-                if (s[1] != null) sb.append(",\"file\":").append(Jsonl.quote(s[1]));
-                sb.append(",\"line\":").append(s[2]);
-                sb.append(",\"detail\":").append(Jsonl.quote(s[3]));
-                if (s[4] != null) sb.append(",\"value\":").append(s[4]);
-                sb.append(",\"root\":").append(Jsonl.quote(s[5]));
-                sb.append('}');
-            }
-            sb.append("]}");
-            return sb.toString();
+            return json.token("violations", violations.toString()).finish();
         }
     }
 

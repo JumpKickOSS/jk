@@ -954,8 +954,8 @@ validation exists with that kind, and every rule and guard test is claimed by ex
 | G89 | a literal `group:artifact:version` coordinate in a Gradle script — every pin lives in gradle/libs.versions.toml, which the lockfiles and verification metadata are written from | text, `**/*.gradle.kts`, code only | retired: the product tree has no Gradle build; the lock is the one version source |
 | G90 | a wall-clock or monotonic read (System.currentTimeMillis, System.nanoTime, Instant.now) outside cc.jumpkick.host.time — a time the caller cannot move is a test that has to sleep | forbid, baselined at the swept count and tightened on every build | `clock-owner` (forbid) |
 | G91 | a module's unit-test line coverage falling below its baselined entry — and an improvement that is not banked, because a number nobody tightens stops meaning anything | metric, `coverage.line` per module against a floor, baselined with a half-point band; nightly, after `jk test --coverage` | `coverage-band` (metric) |
-| G92 | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code; measured here, held by G93 | text, `**/src/main/java`, comments blanked; measured only (the owner is the tree) | `json-concat` (text) |
-| G93 | a file's count of hand-built JSON fragments growing past its baseline — the count only falls, until the pattern is a ban | metric, `matches:json-concat` per file, baselined and tightened on every build | `json-concat-ratchet` (metric) |
+| G92 | a JSON object line built by string concatenation — a literal opening `{"` or a `+ ",\"field\"` fragment — in main code | text, `**/src/main/java`, comments blanked; no match tree-wide | `json-concat` (text) |
+| G93 | a file's count of hand-built JSON fragments growing past its baseline | metric, `matches:json-concat` per file | retired: the count reached zero in every file, so G92 is a ban |
 | G94 | a schema field compared to an integer literal (`schema >= 3`) instead of to its `SCHEMA` constant — G85 pins the constant, this pins every comparison against it | text, no match tree-wide | `schema-compared-to-its-constant` (text) |
 | G95 | a git verb after `-C <dir>` that is not a known read — the write searches upward and lands in whatever repository encloses the path, not the one meant | text, no match tree-wide | `git-writes-are-pinned` (text) |
 | G96 | a write to System.out / System.err, printStackTrace() or dumpStack() in server or shared main code outside `cc.jumpkick.host.Log` — a print has no level, misses the engine log's size cap and skips its redaction | forbid, `@jdk-system-out`, scope `server/*` and `shared/*` | `engine-log-owner` (forbid) |
@@ -1087,7 +1087,6 @@ by id, kind and why. This block is a `generated` guard's rendering
 | jdk-installs-in-engine | forbid | a JDK the client installs before the request downloads outside the run: its own progress UI, and no place in the run's download display, timing or record |
 | jdk-removal-confined | forbid | an ordinary build once deleted the JDK it was running on, twice in one afternoon |
 | json-concat | text | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
-| json-concat-ratchet | metric | a hand-built JSON line spells its own separator and escaping, and every second speller has drifted from the first |
 | local-repo-owner | text | a second spelling of ~/.m2 skips the overrides, so one command writes a repository the next one never reads |
 | lock-version-is-one | text | the lockfile schema is version 1 until 1.0 |
 | manifest-names | vocabulary | a file JumpKick owns is named once, in ManifestNames |

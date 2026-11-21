@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.surface;
 
+import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.StringJoiner;
 
 /**
  * A {@link DynamicSurface} as GraalVM's unified {@code reachability-metadata.json}.
  *
  * <p>The document is assembled here rather than through a tree writer because Graal's schema is a
- * handful of arrays of flat objects and the on-disk layout is stable; every string in it is
- * escaped by {@link Jsonl#quote}, the one JSON escaper.
+ * handful of arrays of flat objects and the on-disk layout is stable; every object in it is built
+ * by {@link JsonFields}, the one JSON object writer.
  *
  * <p>{@link DynamicSurface.Kind#GENERIC_REFLECTION} produces nothing. It exists because R8 drops
  * a class's generic signature unless the class is kept; Graal retains signatures without being
@@ -37,7 +39,9 @@ public final class ReachabilityMetadataEmitter {
                 case SERIALIZATION_TYPE -> serialization.add(serializationObject(entry));
                 // GraalVM's unified schema: resources are a flat glob array, and a proxy is a
                 // reflection entry with a map-shaped type.
-                case RESOURCE -> resources.add("{\"glob\":" + Jsonl.quote(entry.name()) + "}");
+                case RESOURCE ->
+                    resources.add(
+                            JsonFields.object().string("glob", entry.name()).finish());
                 case PROXY_INTERFACE -> reflection.add(proxyObject(entry.name()));
                 // The unified schema has no regex resource form and no excludes; both ride in the
                 // split-format resource-config.json from emitResourceConfig.
@@ -68,16 +72,20 @@ public final class ReachabilityMetadataEmitter {
         List<String> excludes = new ArrayList<>();
         for (DynamicSurface.Entry entry : surface.entries()) {
             switch (entry.kind()) {
-                case RESOURCE_PATTERN -> includes.add("{\"pattern\":" + Jsonl.quote(entry.name()) + "}");
-                case RESOURCE_EXCLUDE_PATTERN -> excludes.add("{\"pattern\":" + Jsonl.quote(entry.name()) + "}");
+                case RESOURCE_PATTERN -> includes.add(pattern(entry.name()));
+                case RESOURCE_EXCLUDE_PATTERN -> excludes.add(pattern(entry.name()));
                 default -> {}
             }
         }
         if (includes.isEmpty() && excludes.isEmpty()) return "";
-        List<String> sections = new ArrayList<>();
-        if (!includes.isEmpty()) sections.add("\"includes\":[\n  " + String.join(",\n  ", includes) + "\n]");
-        if (!excludes.isEmpty()) sections.add("\"excludes\":[\n  " + String.join(",\n  ", excludes) + "\n]");
-        return "{\"resources\":{" + String.join(",", sections) + "}}\n";
+        JsonFields resources = JsonFields.object();
+        if (!includes.isEmpty()) resources.token("includes", "[\n  " + String.join(",\n  ", includes) + "\n]");
+        if (!excludes.isEmpty()) resources.token("excludes", "[\n  " + String.join(",\n  ", excludes) + "\n]");
+        return JsonFields.object().token("resources", resources.finish()).finish() + "\n";
+    }
+
+    private static String pattern(String regex) {
+        return JsonFields.object().string("pattern", regex).finish();
     }
 
     /**
@@ -85,12 +93,9 @@ public final class ReachabilityMetadataEmitter {
      * emitted whole, because Graal matches proxy registrations by exact ordered list.
      */
     private static String proxyObject(String name) {
-        StringBuilder interfaces = new StringBuilder();
-        for (String iface : name.split(",")) {
-            if (interfaces.length() > 0) interfaces.append(',');
-            interfaces.append(Jsonl.quote(iface));
-        }
-        return "{\"type\":{\"proxy\":[" + interfaces + "]}}";
+        String proxy =
+                JsonFields.object().array("proxy", List.of(name.split(","))).finish();
+        return JsonFields.object().token("type", proxy).finish();
     }
 
     /**
@@ -101,17 +106,23 @@ public final class ReachabilityMetadataEmitter {
     private static String serializationObject(DynamicSurface.Entry entry) {
         for (String member : entry.members()) {
             if (member.startsWith("c:")) {
-                return "{\"type\":" + Jsonl.quote(entry.name()) + ",\"customTargetConstructorClass\":"
-                        + Jsonl.quote(member.substring(2)) + "}";
+                return JsonFields.object()
+                        .string("type", entry.name())
+                        .string("customTargetConstructorClass", member.substring(2))
+                        .finish();
             }
         }
         return typeObject(entry.name(), false);
     }
 
     private static String typeObject(String name, boolean allDeclared) {
-        if (!allDeclared) return "{\"type\":" + Jsonl.quote(name) + "}";
-        return "{\"type\":" + Jsonl.quote(name) + ",\"allDeclaredFields\":true,\"allDeclaredMethods\":true,"
-                + "\"allDeclaredConstructors\":true}";
+        JsonFields type = JsonFields.object().string("type", name);
+        if (allDeclared) {
+            type.bool("allDeclaredFields", true)
+                    .bool("allDeclaredMethods", true)
+                    .bool("allDeclaredConstructors", true);
+        }
+        return type.finish();
     }
 
     /**
@@ -135,22 +146,18 @@ public final class ReachabilityMetadataEmitter {
                 methods.add(member);
             }
         }
-        StringBuilder sb = new StringBuilder("{\"type\":").append(Jsonl.quote(entry.name()));
-        appendMembers(sb, "fields", fields);
-        appendMembers(sb, "methods", methods);
-        return sb.append('}').toString();
+        JsonFields type = JsonFields.object().string("type", entry.name());
+        appendMembers(type, "fields", fields);
+        appendMembers(type, "methods", methods);
+        return type.finish();
     }
 
-    private static void appendMembers(StringBuilder sb, String key, Set<String> names) {
+    private static void appendMembers(JsonFields type, String key, Set<String> names) {
         if (names.isEmpty()) return;
-        sb.append(",\"").append(key).append("\":[");
-        boolean first = true;
-        for (String name : names) {
-            if (!first) sb.append(',');
-            first = false;
-            sb.append("{\"name\":").append(Jsonl.quote(name)).append('}');
-        }
-        sb.append(']');
+        StringJoiner members = new StringJoiner(",", "[", "]");
+        for (String name : names)
+            members.add(JsonFields.object().string("name", name).finish());
+        type.token(key, members.toString());
     }
 
     private static void addArray(List<String> sections, String key, List<String> values) {
