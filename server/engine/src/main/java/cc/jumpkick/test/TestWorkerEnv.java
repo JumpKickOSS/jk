@@ -5,8 +5,10 @@ import cc.jumpkick.engine.plugin.WorkerEnv;
 import cc.jumpkick.host.HostLoad;
 import cc.jumpkick.host.HostProcessors;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.util.KeychainSandbox;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -22,22 +24,44 @@ final class TestWorkerEnv {
      * its siblings mid-request. The suffix stays short: the state dir holds Unix domain sockets,
      * and the JDK stops binding past 102 characters (the budget is
      * {@code UnixSocketPaths.MAX_PATH_LENGTH}, proven there by binding).
+     *
+     * <p>With {@code ownHome} each worker also gets a {@code JK_HOME} of its own under the run's,
+     * with the git configuration and keychain that live in it. The home holds what a test of the
+     * product writes and an engine stop reads: {@code config.toml}, the materialized engine under
+     * {@code lib}, {@code bin}, credentials. A stop of "this home's engines" claims every engine
+     * whose command line names a path inside the home, so on a shared home one worker's stop takes
+     * its siblings' engines down. The store, cache, JDKs and Maven local repository are pinned by
+     * their own variables and stay shared.
      */
-    static WorkerEnv forWorker(WorkerEnv base, int workerId, Path tmp) {
+    static WorkerEnv forWorker(WorkerEnv base, int workerId, Path tmp, boolean ownHome) {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TMPDIR", tmp.toString());
         env.put("TMP", tmp.toString());
         env.put("TEMP", tmp.toString());
-        // A CHILD of the run's state dir, not a sibling of it. The sibling spelling
-        // (`<base>-w0`) put every worker's state outside the one directory the run cleans, so
-        // deleting `<base>` recursively never reached them and they accumulated under /tmp
-        // forever. TestTmpDir.forWorker already splits the temp root this way; one idea deserves
-        // one spelling, and this is the one that cannot leak.
-        String stateDir = base.extras().get("JK_STATE_DIR");
+        // A child of the run's state dir, as TestTmpDir.forWorker splits the temp root, so deleting
+        // the run's dir reaches every worker's.
+        Map<String, String> extras = base.extras();
+        String stateDir = extras.get("JK_STATE_DIR");
         if (stateDir != null)
             env.put("JK_STATE_DIR", Path.of(stateDir).resolve("w" + workerId).toString());
+        String home = extras.get("JK_HOME");
+        if (ownHome && home != null) {
+            Path runHome = Path.of(home);
+            Path workerHome = runHome.resolve("w" + workerId);
+            env.put("JK_HOME", workerHome.toString());
+            for (String name : HOME_FILES) {
+                String value = extras.get(name);
+                if (value == null) continue;
+                Path path = Path.of(value);
+                if (path.startsWith(runHome))
+                    env.put(name, workerHome.resolve(runHome.relativize(path)).toString());
+            }
+        }
         return base.with(env);
     }
+
+    /** The variables naming a file or directory inside the test home that a worker home re-roots. */
+    private static final List<String> HOME_FILES = List.of("GIT_CONFIG_GLOBAL", KeychainSandbox.ENV);
 
     /** The silence a test worker is allowed on a quiet host before it is taken for hung. */
     static final long DEFAULT_IDLE_MS = 10 * 60_000L;

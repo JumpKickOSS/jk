@@ -287,7 +287,11 @@ real-path spelling, emptied at each launch by `TestTmpDir`). The three roots are
 explicitly because `WorkerEnv` lets the engine's own spellings of them through by name: an engine
 started with `JK_STATE_DIR` or `JK_STORE_DIR` in its shell would otherwise hand every suite its
 real build history — and a nested `jk self nuke` its real store. With `W > 1` each runner gets a
-child state dir and a jqwik database of its own under its temp root.
+child state dir and a jqwik database of its own under its temp root. The CLI's suite, whose tests
+start real engines, also gives each runner a child home (`<home>/w<N>`, with its own `gitconfig`
+and keychain), so its integration classes shard like any other: a `config.toml`, an installed
+engine or a `jk engine stop` in one runner never reaches another's, while the store, cache, JDKs
+and Maven local repository stay shared and warm.
 
 The OS keychain is sandboxed the same way: `JK_KEYCHAIN_SANDBOX` names `<home>/keychain`, so
 `SecretVault.current()` in a test JVM (and in every `jk` and engine it starts) is a file-backed

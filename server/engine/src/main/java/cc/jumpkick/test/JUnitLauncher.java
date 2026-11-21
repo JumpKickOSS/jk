@@ -252,6 +252,9 @@ public final class JUnitLauncher {
      * The test JVM's environment: the module's {@link WorkerEnv} policy plus the sandbox the planner
      * hands over ({@code JK_HOME}, {@code JK_STATE_DIR} for nested-engine suites, the temp root).
      */
+    /** Whether each pooled test JVM gets a {@code JK_HOME} of its own; see {@link #withWorkerHomes}. */
+    private boolean workerHomes;
+
     private WorkerEnv testEnv = WorkerEnv.strict();
 
     /** Module coord for failure lines (e.g. {@code cc.jumpkick:jk-core}); empty when unknown. */
@@ -486,6 +489,19 @@ public final class JUnitLauncher {
     public JUnitLauncher withSerialTags(List<String> tags) {
         this.serialTags = tags == null ? List.of() : List.copyOf(tags);
         return this;
+    }
+
+    /**
+     * Gives each test JVM of a pool of more than one its own {@code JK_HOME} under the suite's, for
+     * a suite whose tests start engines and write the product's home ({@link TestWorkerEnv}).
+     */
+    public JUnitLauncher withWorkerHomes(boolean workerHomes) {
+        this.workerHomes = workerHomes;
+        return this;
+    }
+
+    boolean workerHomes() {
+        return workerHomes;
     }
 
     /** List-only discovery with {@code extraExcludes} folded in — the serial-tag partition view. */

@@ -476,6 +476,7 @@ final class TestLaunch {
                 .withModuleLabel(moduleLabel)
                 .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                 .withSerialTags(projectUnderTest.build().testSerialTags())
+                .withWorkerHomes(needsNestedEngineIsolation(projectUnderTest))
                 .withAssertions(projectUnderTest.build().testAssertions())
                 .withFailureSnapshot(projectUnderTest.build().testFailureSnapshot())
                 .withIdleTimeout(projectUnderTest.build().testIdleTimeoutMs())

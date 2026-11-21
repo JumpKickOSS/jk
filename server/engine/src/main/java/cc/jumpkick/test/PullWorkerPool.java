@@ -261,7 +261,9 @@ final class PullWorkerPool {
         try {
             WorkerEnv testEnv = launcher.testEnv();
             Path tmp = TestTmpDir.forWorker(launcher.testTmpDir(), workerId, totalWorkers);
-            WorkerEnv env = totalWorkers > 1 && tmp != null ? TestWorkerEnv.forWorker(testEnv, workerId, tmp) : testEnv;
+            WorkerEnv env = totalWorkers > 1 && tmp != null
+                    ? TestWorkerEnv.forWorker(testEnv, workerId, tmp, launcher.workerHomes())
+                    : testEnv;
             List<String> flags = launcher.jvmFlags(JvmRole.PULL_WORKER, totalWorkers, tmp);
             command.set(PluginLoader.command(javaHome, classpath, flags, args));
             HeapScope.Key key = SuiteRetry.key(

@@ -146,10 +146,6 @@ extra-src = [
   "../intellij/src/main/java/cc/jumpkick/idea/JkJson.java",
   "../intellij/src/main/java/cc/jumpkick/idea/package-info.java",
 ]
-# Nested engines / shared sockets: integration classes materialize the resident engine and
-# share its JK_HOME store, so they stay on one serial trailing worker (serial-tags) while
-# the hermetic unit tier shards across this build's auto share of workers.
-serial-tags = ["integration"]
 env = [
   # Rendered-output assertions must not depend on the terminal the developer happens to be in.
   # Unpinned, `auto` nerd-font detection inspects TERM_PROGRAM and the terminal's own config, so

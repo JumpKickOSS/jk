@@ -122,8 +122,7 @@ serial-tagged) with its classes' recorded walls, their sum and the longest; a su
 JVMs its newest sample ran on, its other samples read at that count, and once it starts on another
 count it is re-priced at it. A wall goes with the suite's parallel bound, `max(longest class, class
 walls / JVMs)`, to the power 0.6 (`StepCost.scale`): JVM start and contention take a share, and a
-suite its longest class bounds gains nothing (the CLI's integration suite took 636 s on 2 and 631 s
-on 8).
+suite its longest class bounds gains nothing.
 
 **Re-pricing.** The engine re-notes each live request's residual on every step and test-class event
 and once a second in between (`EtaStepTicker`), so a running step counts down between events.
