@@ -570,7 +570,7 @@ connect"). Every row carries `dir`, the checkout it ran in — several worktrees
 share a `projectId` and one build-number sequence, and `dir` is what tells their rows apart —
 plus `trigger` (`cli` / `mcp` / `web` / `bsp`, or a fixture trigger the
 list already hides) and, when the surface had one, `session` — the MCP connection's
-`<client> <id>`, the BSP client's `<displayName> <id>`, or the CLI's `<client> <key>` (below). A run a
+`<client> <tag>`, the BSP client's `<displayName> <id>`, or the CLI's `<client> <key>` (below). A run a
 session owns also carries `episode`, the id of the episode it was admitted into (below). The
 dashboard's console and the project page's followed run read only these
 fields, so they show exactly what `jk-results.md` prints.
@@ -911,15 +911,21 @@ respawn. `jk engine rotate-token` is the explicit way to invalidate it.
 ## MCP sessions and server requests
 
 `McpHandler` opens one `McpConnection` per `initialize`: the `Mcp-Session-Id`, the `McpRevision`
-it negotiated and the `McpElicitModes` the client declared.
+it negotiated and the `McpElicitModes` the client declared. The id is 32 hex digits of
+`SecureRandom`, drawn again (at most eight times) while a loaded or stored connection has it, so an
+id that ended is never handed to another client. Its label (`claude-code 3f9a`, the session's key and
+what the runs record) shows the id's first four hex digits, or the shortest longer prefix whose label
+no loaded connection or open session has, so two open sessions never share one.
 
 `McpConnections` is a cache over the session records. A connection is written to its session's
-`connection.json` (id, client, pinned project, bound dir, revision, elicitation modes, created and
+`connection.json` (id, tag, client, pinned project, bound dir, revision, elicitation modes, created and
 last seen) once its session opens, again when its bind changes, and at most once a minute for
 last seen. A request whose `Mcp-Session-Id` the engine has not loaded (it started after the
 connection opened, or the table unloaded it) is answered from the connection an open session
 holds, with the same id, label and session and no new `initialize`. A connection goes when its
-session ends, at `DELETE /mcp` or at the session expiry (above).
+session ends, at `DELETE /mcp` or at the session expiry (above); a call still waiting on that
+client for an elicitation answer stops waiting then and gets `Failed` ("the session ended"), and
+the update offer forgets what the session answered.
 
 The table holds at most `[mcp] max-sessions` connections (default 256) while any of them is idle:
 stored, with no request being served and none for 30 seconds. To load one more past that, it

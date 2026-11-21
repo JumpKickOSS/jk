@@ -148,7 +148,7 @@ class McpConnectionReplacementTest {
         HttpResponse<String> served = http.send(post(url, stored, CALL), HttpResponse.BodyHandlers.ofString());
         assertThat(served.statusCode()).as(served.body()).isEqualTo(200);
         assertThat(served.body()).contains("\"result\"");
-        assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + stored);
+        assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + stored.substring(0, 4));
     }
 
     @Test

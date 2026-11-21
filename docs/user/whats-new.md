@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **MCP session ids are not reused, and ending a session stops what waits on it.** An
+  `Mcp-Session-Id` is now 128 random bits and is never handed to another client, so an agent
+  returning with an ended id gets a `404` instead of joining someone else's session; the label in
+  the dashboard stays short. Ending a session (`DELETE /mcp` or expiry) stops any call still waiting
+  on that client's answer at once. The `details` tool no longer fails on a line cut short in a
+  transcript still being written, and paging deep into a large transcript no longer reads it all
+  into memory.
 - **A dependency's POM cannot send the resolve to this machine's files or services.** A repository a
   dependency's POM declares is used only over https to a network host: a `file:` tree, an `s3://`,
   `ftp://` or other scheme, and a loopback address (unless the project itself resolves through one)

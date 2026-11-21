@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +24,7 @@ class McpConnectionsTest {
     private final AtomicLong now = new AtomicLong(1_000_000L);
     private final Map<String, Map<String, Object>> disk = new ConcurrentHashMap<>();
     private final McpConnections table = new McpConnections(now::get);
+    private volatile Predicate<String> openLabels = label -> false;
 
     {
         table.store(new McpConnections.Store() {
@@ -40,6 +42,11 @@ class McpConnectionsTest {
             @Override
             public boolean holds(String id) {
                 return disk.containsKey(id);
+            }
+
+            @Override
+            public boolean labelled(String label) {
+                return openLabels.test(label);
             }
         });
     }
@@ -131,6 +138,46 @@ class McpConnectionsTest {
         quiet();
         assertThatThrownBy(() -> opened("cursor")).isInstanceOf(McpConnections.Full.class);
         assertThat(table.loaded(unsaved.id())).isTrue();
+    }
+
+    @Test
+    void a_session_id_is_128_random_bits_and_its_label_shows_the_first_four_hex_digits() {
+        McpConnection a = opened("claude-code");
+        McpConnection b = opened("claude-code");
+
+        assertThat(a.id()).matches("[0-9a-f]{32}").isNotEqualTo(b.id());
+        assertThat(a.tag()).isEqualTo(a.id().substring(0, 4));
+        assertThat(a.label()).isEqualTo("claude-code " + a.id().substring(0, 4));
+        McpConnection back = requireNonNull(McpConnection.of(requireNonNull(disk.get(a.id()))));
+        assertThat(back.id()).isEqualTo(a.id());
+        assertThat(back.label()).as("a reloaded connection keeps its label").isEqualTo(a.label());
+    }
+
+    @Test
+    void a_label_an_open_session_already_shows_takes_more_digits_of_the_id() {
+        openLabels = label -> label.matches("claude-code [0-9a-f]{4}");
+        McpConnection c = opened("claude-code");
+        assertThat(c.label()).isEqualTo("claude-code " + c.id().substring(0, 5));
+
+        McpConnection other = opened("cursor");
+        assertThat(other.label()).as("another client's labels are its own").isEqualTo("cursor " + other.tag());
+        assertThat(other.tag()).hasSize(4);
+    }
+
+    @Test
+    void closing_a_connection_fails_every_request_still_waiting_on_its_client() {
+        McpConnection c = opened("claude-code");
+        McpConnection.Expected question = c.expect();
+
+        assertThat(table.close(c.id())).isTrue();
+
+        assertThat(question.answer()).isCompletedExceptionally();
+        assertThat(c.answer(Map.of("id", question.requestId(), "result", Map.of())))
+                .as("a late answer finds nothing waiting")
+                .isFalse();
+        assertThat(c.expect().answer())
+                .as("a question asked after close fails at once")
+                .isCompletedExceptionally();
     }
 
     /** A connection opened and stored, as {@code initialize} leaves it. */

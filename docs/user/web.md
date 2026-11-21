@@ -80,8 +80,8 @@ the line opens the run page, and the cancel button stops the run.
 ## Who asked
 
 Every run carries its **trigger** — `cli`, `mcp`, `web` or `bsp` — and, when the surface has
-one, the **session** that asked: an MCP connection is `<client> <id>` (`claude-code 3f9a`,
-from the client's `initialize` and the id the engine minted for that connection), a BSP client
+one, the **session** that asked: an MCP connection is `<client> <tag>` (`claude-code 3f9a`,
+from the client's `initialize` and the first hex digits of the id the engine minted for that connection), a BSP client
 is the IDE's `displayName` plus a per-process id (`IntelliJ-BSP 7b2c`). A command-line run is
 `cli`, and its session names who ran it ([below](#command-line-sessions)): `terminal 4c1e9a` for a
 terminal tab or SSH connection, `script` with no terminal, `claude-code (shell) 9b20e1` for the

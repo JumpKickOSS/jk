@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.mcp.McpRevision;
 import java.security.SecureRandom;
@@ -35,8 +36,20 @@ public final class McpConnections {
     /** How long a connection with no request being served must be quiet before it may unload. */
     static final long QUIET_MILLIS = Duration.ofSeconds(30).toMillis();
 
-    /** Four hex digits: short enough to read aloud beside the client name, unique among open ids. */
-    private static final int ID_HEX_DIGITS = 4;
+    /**
+     * An {@code Mcp-Session-Id} is 128 random bits: an id once ended is never handed to another
+     * client, so a client that returns with it is told it is gone rather than joined to a stranger.
+     */
+    static final int ID_HEX_DIGITS = 32;
+
+    /**
+     * A label shows the first four hex digits of the id, short enough to read aloud beside the
+     * client name, and more when four would repeat the label of an open session.
+     */
+    static final int TAG_HEX_DIGITS = 4;
+
+    /** Fresh ids drawn before giving up; one taken already is a broken random source. */
+    static final int ID_ATTEMPTS = 8;
 
     /** How stale a stored {@code lastSeenAt} may get before a request rewrites it. */
     static final long SEEN_EVERY_MILLIS = Duration.ofMinutes(1).toMillis();
@@ -53,6 +66,9 @@ public final class McpConnections {
         /** True when {@code id} is stored, so a new connection must not take it. */
         boolean holds(String id);
 
+        /** True when an open session goes by {@code label}, so a new connection must not show as it. */
+        boolean labelled(String label);
+
         Store NONE = new Store() {
             @Override
             public void save(McpConnection connection) {}
@@ -64,6 +80,11 @@ public final class McpConnections {
 
             @Override
             public boolean holds(String id) {
+                return false;
+            }
+
+            @Override
+            public boolean labelled(String label) {
                 return false;
             }
         };
@@ -134,17 +155,42 @@ public final class McpConnections {
             synchronized (this) {
                 long now = clock.getAsLong();
                 if (!makeRoom(now, unloaded)) throw new Full(max, retryAfterSeconds(now));
-                String id;
-                do {
-                    id = String.format("%0" + ID_HEX_DIGITS + "x", random.nextInt(1 << (4 * ID_HEX_DIGITS)));
-                } while (live.containsKey(id) || store.holds(id));
-                c = new McpConnection(id, client, project, revision, elicitation, now);
-                live.put(id, c);
+                c = mint(client, project, revision, elicitation, now);
+                live.put(c.id(), c);
             }
         } finally {
             unloaded.forEach(store::save);
         }
         return c;
+    }
+
+    /**
+     * A connection with a fresh id no loaded or stored connection has, shown by the shortest prefix
+     * of it (at least {@link #TAG_HEX_DIGITS}) whose label no loaded connection or open session has.
+     */
+    private McpConnection mint(
+            @Nullable String client,
+            @Nullable String project,
+            McpRevision revision,
+            McpElicitModes elicitation,
+            long now) {
+        for (int attempt = 0; attempt < ID_ATTEMPTS; attempt++) {
+            byte[] bits = new byte[ID_HEX_DIGITS / 2];
+            random.nextBytes(bits);
+            String id = Hashing.hex(bits);
+            if (live.containsKey(id) || store.holds(id)) continue;
+            for (int digits = TAG_HEX_DIGITS; digits <= ID_HEX_DIGITS; digits++) {
+                McpConnection c =
+                        new McpConnection(id, id.substring(0, digits), client, project, revision, elicitation, now);
+                if (!labelTaken(c.label())) return c;
+            }
+        }
+        throw new IllegalStateException("could not mint an MCP session id no session holds");
+    }
+
+    private boolean labelTaken(String label) {
+        for (McpConnection c : live.values()) if (c.label().equals(label)) return true;
+        return store.labelled(label);
     }
 
     /** Store {@code c} as it stands; it is stored again whenever its bind changes. */
@@ -197,11 +243,20 @@ public final class McpConnections {
         return c;
     }
 
-    /** {@code DELETE /mcp}: the client is done with this connection. */
-    public synchronized boolean close(@Nullable String id) {
+    /**
+     * {@code DELETE /mcp}, or its session ended: the client is done with this connection. A call
+     * still waiting on the client for an answer stops waiting.
+     */
+    public boolean close(@Nullable String id) {
         if (id == null) return false;
-        stored.remove(id.trim());
-        return live.remove(id.trim()) != null;
+        McpConnection closed;
+        synchronized (this) {
+            stored.remove(id.trim());
+            closed = live.remove(id.trim());
+        }
+        if (closed == null) return false;
+        closed.close();
+        return true;
     }
 
     /** Connections loaded right now. */

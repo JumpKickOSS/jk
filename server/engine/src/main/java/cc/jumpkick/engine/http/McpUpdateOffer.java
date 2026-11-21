@@ -86,6 +86,16 @@ final class McpUpdateOffer {
         };
     }
 
+    /** The connection {@code connectionId} closed: nothing more is kept for it. */
+    void forget(@Nullable String connectionId) {
+        if (connectionId != null) asked.remove(connectionId.trim());
+    }
+
+    /** True while an answer, or a question in flight, is kept for {@code connectionId}. */
+    boolean remembers(String connectionId) {
+        return asked.containsKey(connectionId);
+    }
+
     /** The question reached nobody: the session's next call asks again. */
     private @Nullable String unasked(McpConnection connection, String version) {
         asked.remove(connection.id(), version);

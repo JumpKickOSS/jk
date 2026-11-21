@@ -51,4 +51,64 @@ class McpDetailsTailTest {
                 .doesNotContain("e4990")
                 .doesNotContain("e4984");
     }
+
+    @Test
+    void a_deep_cursor_reads_only_its_window_not_every_matching_line() throws Exception {
+        Path file = transcript(5_000);
+
+        McpDetails.Matching window = McpDetails.window(file, Set.of("error"), 4_000, 5);
+
+        assertThat(window.total()).isEqualTo(5_000);
+        assertThat(window.lines()).hasSize(5);
+        assertThat(window.lines().getFirst()).contains("\"e995\"");
+        assertThat(window.lines().getLast()).contains("\"e999\"");
+        assertThat(McpDetails.window(file, Set.of("error"), Integer.MAX_VALUE, McpDetails.MAX_TAIL)
+                        .lines())
+                .isEmpty();
+    }
+
+    @Test
+    void a_cursor_past_every_event_answers_none_and_no_further_cursor() throws Exception {
+        Path file = transcript(50);
+        Map<String, Object> page =
+                McpDetails.tail(Map.of("id", "r1"), id -> Optional.of(file), List.of("error"), 5, Integer.MAX_VALUE);
+
+        assertThat(page).containsEntry("count", 50).containsEntry("truncatedTail", false);
+        assertThat(page).doesNotContainKey("nextCursor").doesNotContainKey("error");
+        assertThat((List<?>) page.get("events")).isEmpty();
+    }
+
+    @Test
+    void a_line_cut_short_is_skipped_and_paging_neither_repeats_nor_loses_an_event() throws Exception {
+        String line = "{\"schema\":1,\"type\":\"error\",\"message\":\"e%d\"}\n";
+        Path file = Files.writeString(
+                tmp.resolve("details.jsonl"),
+                line.formatted(0) + line.formatted(1) + line.formatted(2)
+                        + "{\"schema\":1,\"type\":\"error\",\"message\":\"torn\n"
+                        + line.formatted(3) + line.formatted(4)
+                        + "{\"schema\":1,\"type\":\"error\",\"message\":\"still being writ");
+
+        Map<String, Object> newest =
+                McpDetails.tail(Map.of("id", "r1"), id -> Optional.of(file), List.of("error"), 3, 0);
+        assertThat(String.valueOf(newest.get("events")))
+                .contains("e3")
+                .contains("e4")
+                .doesNotContain("e2");
+        assertThat(newest).containsEntry("truncatedTail", true).containsEntry("nextCursor", 3);
+
+        Map<String, Object> older =
+                McpDetails.tail(Map.of("id", "r1"), id -> Optional.of(file), List.of("error"), 3, 3);
+        assertThat(String.valueOf(older.get("events")))
+                .contains("e1")
+                .contains("e2")
+                .doesNotContain("e0")
+                .doesNotContain("e3")
+                .doesNotContain("torn");
+        assertThat(older).containsEntry("truncatedTail", true).containsEntry("nextCursor", 6);
+
+        Map<String, Object> oldest =
+                McpDetails.tail(Map.of("id", "r1"), id -> Optional.of(file), List.of("error"), 3, 6);
+        assertThat(String.valueOf(oldest.get("events"))).contains("e0").doesNotContain("e1");
+        assertThat(oldest).containsEntry("truncatedTail", false);
+    }
 }

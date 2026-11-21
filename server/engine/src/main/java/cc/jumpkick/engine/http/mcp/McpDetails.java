@@ -39,24 +39,63 @@ public final class McpDetails {
 
     private McpDetails() {}
 
-    /** The newest {@code keep} lines of a transcript whose type is wanted, and how many matched in all. */
+    /**
+     * Matching lines read in one pass with a ring at most this long; a window reaching deeper is
+     * read in two passes (count, then collect), so no cursor makes the tail hold the transcript.
+     */
+    static final int ONE_PASS_LINES = 2 * MAX_TAIL;
+
+    /**
+     * The matching lines of a window, oldest first, and how many lines of a transcript matched in
+     * all. The window is the {@code want} matching lines that come before the newest {@code skip}.
+     */
     record Matching(List<String> lines, int total) {}
 
-    /** Read {@code file} once, holding at most {@code keep} matching lines. */
+    /** Read {@code file} for the window of {@code want} matching lines before the newest {@code skip}. */
+    static Matching window(Path file, Set<String> wanted, int skip, int want) throws IOException {
+        if ((long) skip + want <= ONE_PASS_LINES) {
+            Matching newest = lastMatching(file, wanted, skip + want);
+            List<String> lines = newest.lines();
+            return new Matching(lines.subList(0, Math.max(0, lines.size() - skip)), newest.total());
+        }
+        int total = 0;
+        try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            for (String line; (line = in.readLine()) != null; ) if (matches(line, wanted)) total++;
+        }
+        // A transcript still being written may grow between the passes: the window stays where the count put it.
+        long end = Math.max(0L, (long) total - skip);
+        long start = Math.max(0L, end - want);
+        List<String> lines = new ArrayList<>();
+        int index = 0;
+        try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            for (String line; index < end && (line = in.readLine()) != null; ) {
+                if (!matches(line, wanted)) continue;
+                if (index >= start) lines.add(line);
+                index++;
+            }
+        }
+        return new Matching(List.copyOf(lines), total);
+    }
+
+    /** Read {@code file} once, holding at most {@code keep} matching lines: the newest. */
     static Matching lastMatching(Path file, Set<String> wanted, int keep) throws IOException {
         ArrayDeque<String> ring = new ArrayDeque<>(Math.min(keep, 1_024));
         int total = 0;
         try (BufferedReader in = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             for (String line; (line = in.readLine()) != null; ) {
-                if (line.isBlank()) continue;
-                String type = Jsonl.str(line, "type");
-                if (type == null || !wanted.contains(type)) continue;
+                if (!matches(line, wanted)) continue;
                 total++;
                 if (ring.size() == keep) ring.removeFirst();
                 ring.addLast(line);
             }
         }
         return new Matching(List.copyOf(ring), total);
+    }
+
+    private static boolean matches(String line, Set<String> wanted) {
+        if (line.isBlank()) return false;
+        String type = Jsonl.str(line, "type");
+        return type != null && wanted.contains(type);
     }
 
     /**
@@ -91,32 +130,37 @@ public final class McpDetails {
         m.put("types", new ArrayList<>(wanted));
 
         int want = Math.max(1, Math.min(tail <= 0 ? DEFAULT_TAIL : tail, MAX_TAIL));
-        int skipNewest = Math.min(Math.max(0, next), Integer.MAX_VALUE - MAX_TAIL);
-        Matching kept;
+        int skipNewest = Math.max(0, next);
+        Matching window;
         try {
-            kept = lastMatching(file.get(), wanted, want + skipNewest);
+            window = window(file.get(), wanted, skipNewest, want);
         } catch (IOException e) {
             m.put("error", "reading " + file.get() + ": " + e.getMessage());
             return m;
         }
-        List<String> matching = kept.lines();
-        int total = kept.total();
+        List<String> matching = window.lines();
+        int total = window.total();
         m.put("count", total);
 
-        // Indices below are into the kept lines, the newest want + next of the total.
-        int dropped = total - matching.size();
-        int end = Math.max(0, matching.size() - skipNewest);
-        int start = Math.max(0, end - want);
+        // Matching events older than the window.
+        long older = Math.max(0L, (long) total - skipNewest - matching.size());
+        int end = matching.size();
         // Enforce the byte budget from the newest edge of the window backward.
         int chars = 0;
         List<Map<String, Object>> events = new ArrayList<>();
         int first = end;
-        for (int i = end - 1; i >= start; i--) {
+        for (int i = end - 1; i >= 0; i--) {
             String line = matching.get(i);
             if (chars + line.length() > MAX_CHARS && !events.isEmpty()) break;
             chars += line.length();
             first = i;
-            Object parsed = MiniJson.parse(line);
+            Object parsed;
+            try {
+                parsed = MiniJson.parse(line);
+            } catch (IllegalArgumentException e) {
+                // A line cut short (a transcript still being written) or corrupt: skip it, keep the rest.
+                continue;
+            }
             if (parsed instanceof Map<?, ?> map) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> ev = (Map<String, Object>) map;
@@ -124,9 +168,9 @@ public final class McpDetails {
             }
         }
         m.put("events", events);
-        boolean truncated = dropped + first > 0;
+        boolean truncated = older + first > 0;
         m.put("truncatedTail", truncated);
-        if (truncated) m.put("nextCursor", skipNewest + events.size());
+        if (truncated) m.put("nextCursor", skipNewest + (end - first));
         return m;
     }
 }

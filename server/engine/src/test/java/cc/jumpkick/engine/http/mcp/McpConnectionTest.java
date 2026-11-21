@@ -56,7 +56,7 @@ class McpConnectionTest {
     void the_session_is_stable_on_one_connection_and_differs_across_connections() {
         String claude = initialize("claude-code");
         String codex = initialize("codex");
-        assertThat(claude).matches("[0-9a-f]{4}").isNotEqualTo(codex);
+        assertThat(claude).matches("[0-9a-f]{32}").isNotEqualTo(codex);
 
         run(claude);
         run(claude);
@@ -65,10 +65,10 @@ class McpConnectionTest {
 
         assertThat(specs).hasSize(4);
         assertThat(specs.get(0).origin().trigger()).isEqualTo("mcp");
-        assertThat(specs.get(0).origin().session()).isEqualTo("claude-code " + claude);
+        assertThat(specs.get(0).origin().session()).isEqualTo("claude-code " + claude.substring(0, 4));
         assertThat(specs.get(1).origin().session())
                 .isEqualTo(specs.get(0).origin().session());
-        assertThat(specs.get(2).origin().session()).isEqualTo("codex " + codex);
+        assertThat(specs.get(2).origin().session()).isEqualTo("codex " + codex.substring(0, 4));
         // A client that echoes no session id still runs, journaled as mcp with no session.
         assertThat(specs.get(3).origin().trigger()).isEqualTo("mcp");
         assertThat(specs.get(3).origin().session()).isNull();
@@ -85,7 +85,7 @@ class McpConnectionTest {
                 .doesNotContain("dashboard", "session", "trigger");
         // Who asked is still on the job the engine journals, not in the reply.
         assertThat(specs.getLast().origin().trigger()).isEqualTo("mcp");
-        assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + id);
+        assertThat(specs.getLast().origin().session()).isEqualTo("claude-code " + id.substring(0, 4));
     }
 
     @Test
@@ -119,7 +119,8 @@ class McpConnectionTest {
     void a_closed_session_id_is_a_404() {
         String id = initialize(null);
         run(id);
-        assertThat(specs.getLast().origin().session()).isEqualTo(id); // no client name: the bare id
+        // No client name: the bare tag.
+        assertThat(specs.getLast().origin().session()).isEqualTo(id.substring(0, 4));
         assertThat(mcp.closeConnection(id)).isTrue();
         assertThat(mcp.closeConnection(id)).isFalse();
         McpHandler.Reply reply = mcp.handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}", id);

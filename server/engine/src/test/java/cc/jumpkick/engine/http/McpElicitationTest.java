@@ -171,6 +171,22 @@ class McpElicitationTest {
     }
 
     @Test
+    void closing_the_session_ends_a_call_waiting_on_the_client_at_once() throws Exception {
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"form\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+        requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+
+        assertThat(mcp.closeConnection(session)).isTrue();
+
+        assertThat(text(call.get(5, TimeUnit.SECONDS)))
+                .as("well before the question's own timeout")
+                .startsWith("failed: ")
+                .contains("the session ended");
+    }
+
+    @Test
     void over_http_the_call_answers_as_an_event_stream_that_carries_the_question_first() throws Exception {
         URI url = serve();
         HttpClient http = HttpClient.newBuilder().executor(threads).build();
@@ -324,6 +340,29 @@ class McpElicitationTest {
                 session);
         again.get(10, TimeUnit.SECONDS);
         assertThat(update.did).containsExactly("snooze");
+    }
+
+    @Test
+    void a_closed_session_leaves_no_update_answer_behind() throws Exception {
+        FakeUpdate update = new FakeUpdate();
+        mcp.setSelfUpdate(() -> update);
+        String session = initialize("2025-11-25", "{\"elicitation\":{\"form\":{}}}");
+        BlockingQueue<Map<String, Object>> sent = new LinkedBlockingQueue<>();
+        CompletableFuture<McpHandler.Reply> call =
+                CompletableFuture.supplyAsync(() -> mcp.handle(CALL, session, null, null, sent::add), threads);
+        Map<String, Object> asked = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + asked.get("id") + "\",\"result\":{\"action\":\"decline\"}}",
+                session);
+        Map<String, Object> own = requireNonNull(sent.poll(10, TimeUnit.SECONDS));
+        mcp.handle(
+                "{\"jsonrpc\":\"2.0\",\"id\":\"" + own.get("id") + "\",\"result\":{\"action\":\"decline\"}}", session);
+        call.get(10, TimeUnit.SECONDS);
+        assertThat(mcp.updateOfferRemembers(session)).isTrue();
+
+        assertThat(mcp.closeConnection(session)).isTrue();
+
+        assertThat(mcp.updateOfferRemembers(session)).isFalse();
     }
 
     @Test

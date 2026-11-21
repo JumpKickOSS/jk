@@ -72,6 +72,11 @@ public final class McpHandler {
         updateOffer.control(control);
     }
 
+    /** True while the update offer keeps an answer for connection {@code id}. */
+    boolean updateOfferRemembers(String id) {
+        return updateOffer.remembers(id);
+    }
+
     /** Which rows {@code tools/list} answers; the loop set unless the machine config opted into all. */
     private volatile McpTools.Surface surface = McpTools.Surface.LOOP;
 
@@ -191,6 +196,7 @@ public final class McpHandler {
         sessions.whenConnectionEnds(id -> {
             connections.close(id);
             ctx.progressTokens().forget(id);
+            updateOffer.forget(id);
         });
         String engine = ctx.version();
         ctx.connections().store(new McpConnections.Store() {
@@ -219,6 +225,11 @@ public final class McpHandler {
             public boolean holds(String id) {
                 return sessions.holdsConnection(id);
             }
+
+            @Override
+            public boolean labelled(String label) {
+                return sessions.where(ORIGIN, label).isPresent();
+            }
         });
     }
 
@@ -229,7 +240,10 @@ public final class McpHandler {
     public boolean closeConnection(@Nullable String sessionId) {
         McpConnection c = ctx.connections().find(sessionId);
         boolean closed = ctx.connections().close(sessionId);
-        if (closed) ctx.progressTokens().forget(sessionId);
+        if (closed) {
+            ctx.progressTokens().forget(sessionId);
+            updateOffer.forget(sessionId);
+        }
         SessionLog log = ctx.sessions();
         if (closed && c != null && log != null) log.end(ORIGIN, c.label());
         return closed;
