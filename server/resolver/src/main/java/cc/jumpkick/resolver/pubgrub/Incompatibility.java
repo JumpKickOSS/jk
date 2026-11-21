@@ -35,12 +35,18 @@ public record Incompatibility(List<Term> terms, Cause cause) {
          * what decided {@code to}'s versions when the edge's own did not: a BOM as {@code
          * group:artifact:version}, a {@code [managed-dependencies]} entry as {@code
          * jk.toml:<handle>}, or {@code [dependencies]} for a test edge held at the main graph's pin;
-         * {@code null} otherwise.
+         * {@code null} otherwise. {@code written} is the selector the project wrote for one of its
+         * own edges ({@code ^1.5}), printed in place of the range it stands for; {@code null} on
+         * every other edge.
          */
-        record Dependency(Term from, Term to, @Nullable String pinnedBy) implements Cause {
+        record Dependency(
+                Term from,
+                Term to,
+                @Nullable String pinnedBy,
+                @Nullable String written) implements Cause {
             /** An edge whose own version decides the target's. */
             public Dependency(Term from, Term to) {
-                this(from, to, null);
+                this(from, to, null, null);
             }
         }
 

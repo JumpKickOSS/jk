@@ -98,6 +98,28 @@ class DiagnosticsTest {
         }
     }
 
+    /** A set the project asked for with a selector reads as that selector wherever it recurs. */
+    @Test
+    void a_root_set_prints_as_the_selector_the_project_wrote() throws Exception {
+        PackageSource src = InMemoryPackageSource.builder()
+                .version("widget", "1.0")
+                .version("widget", "3.0")
+                .build();
+        Term caret = Term.positive("widget", VersionSet.between("2.0", true, "3.0-alpha-SNAPSHOT", false));
+        try {
+            new PubGrubSolver(src).withWrittenRoots(Map.of(caret, "^2.0")).solve("<root>", "1.0", List.of(caret));
+            fail("expected UnsatisfiableException");
+        } catch (UnsatisfiableException e) {
+            assertThat(Diagnostics.render(e.rootCause()))
+                    .contains("The project depends on widget ^2.0")
+                    .contains("No versions of widget match ^2.0")
+                    .doesNotContain("alpha-SNAPSHOT");
+            assertThat(e.conflict().facts())
+                    .extracting(Conflict.Fact::kind, Conflict.Fact::versions)
+                    .contains(tuple("dependency", "^2.0"), tuple("no-versions", "^2.0"));
+        }
+    }
+
     @Test
     void renders_unknown_package() {
         PackageSource src = InMemoryPackageSource.builder().build();

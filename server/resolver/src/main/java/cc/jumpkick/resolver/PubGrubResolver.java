@@ -9,6 +9,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.UnmappedPolicy;
+import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -138,11 +139,17 @@ public final class PubGrubResolver implements Resolver {
     @Override
     public Resolution resolve(List<Dependency> roots) throws IOException, InterruptedException {
         List<Term> rootTerms = new ArrayList<>(roots.size());
+        Map<Term, String> written = new HashMap<>();
         Map<String, String> rootDepNames = new HashMap<>();
         for (Dependency dep : roots) {
             // Declared GAs → g:a:jar:; kind=tests → g:a:jar:tests.
             String pkg = dep.packageKey();
-            rootTerms.add(Term.positive(pkg, VersionSelectors.toVersionSet(dep.version())));
+            Term term = Term.positive(pkg, VersionSelectors.toVersionSet(dep.version()));
+            rootTerms.add(term);
+            // A pin reads the same either way; a floating selector reads as the user wrote it.
+            if (!(dep.version() instanceof VersionSelector.Exact)) {
+                written.putIfAbsent(term, dep.version().raw().trim());
+            }
             // Skip workspace placeholders — they never hit the network so
             // the artifact-defaulting hint would be misleading there.
             if (!dep.isWorkspace()) {
@@ -162,7 +169,7 @@ public final class PubGrubResolver implements Resolver {
             // Parallel-load BOM/lock pins and the roots before the first decide (warm disk, cold process).
             source.warmUp();
             if (source instanceof MavenPackageSource mps) mps.prefetchRoots(rootTerms);
-            decisions = solveFor(rootTerms);
+            decisions = solveFor(rootTerms, written);
             // A package expands under the exclusions of the paths registered by then: a clean
             // path found later, or a path the solver backtracked away from, leaves its expansion
             // disagreeing with the set its live paths converge on. Re-solve against the decided
@@ -170,7 +177,7 @@ public final class PubGrubResolver implements Resolver {
             if (source instanceof MavenPackageSource mps) {
                 mps.decided(decisions);
                 for (int round = 0; round < 4 && mps.anyExpansionStale(); round++) {
-                    decisions = solveFor(rootTerms);
+                    decisions = solveFor(rootTerms, written);
                     mps.decided(decisions);
                 }
             }
@@ -286,10 +293,12 @@ public final class PubGrubResolver implements Resolver {
     }
 
     /** Run the solver, retrying once with full candidate histories, and render diagnostics on unsat. */
-    private Map<String, String> solveFor(List<Term> rootTerms) throws IOException, InterruptedException {
+    private Map<String, String> solveFor(List<Term> rootTerms, Map<Term, String> written)
+            throws IOException, InterruptedException {
         Map<String, String> decisions;
         try {
-            PubGrubSolver solver = new PubGrubSolver(source).withPinFloors(pinFloors);
+            PubGrubSolver solver =
+                    new PubGrubSolver(source).withPinFloors(pinFloors).withWrittenRoots(written);
             if (onDecision != null) solver.withOnDecision(onDecision);
             try {
                 decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
@@ -299,8 +308,10 @@ public final class PubGrubResolver implements Resolver {
                 // revisits the starved package. Source caches make the retry cheap; a real
                 // unsat fails again and its (better-informed) diagnostics win.
                 if (!solver.maybeIncomplete()) throw first;
-                PubGrubSolver wide =
-                        new PubGrubSolver(source).withPinFloors(pinFloors).withWideUniverses();
+                PubGrubSolver wide = new PubGrubSolver(source)
+                        .withPinFloors(pinFloors)
+                        .withWrittenRoots(written)
+                        .withWideUniverses();
                 if (onDecision != null) wide.withOnDecision(onDecision);
                 decisions = wide.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
             }

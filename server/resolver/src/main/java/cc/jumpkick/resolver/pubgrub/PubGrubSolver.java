@@ -217,6 +217,14 @@ public class PubGrubSolver {
         return this;
     }
 
+    /** The selector the project wrote for each root term ({@code ^1.5}), for diagnostics to print. */
+    private Map<Term, String> writtenRoots = Map.of();
+
+    public PubGrubSolver withWrittenRoots(Map<Term, String> written) {
+        this.writtenRoots = Map.copyOf(written);
+        return this;
+    }
+
     public PubGrubSolver withWideUniverses() {
         this.wideUniverses = true;
         return this;
@@ -273,7 +281,7 @@ public class PubGrubSolver {
         for (Term dep : rootDeps) {
             addIncompatibility(new Incompatibility(
                     List.of(rootTerm, dep.invert()),
-                    new Incompatibility.Cause.Dependency(rootTerm, dep, pinnedBy(dep))));
+                    new Incompatibility.Cause.Dependency(rootTerm, dep, pinnedBy(dep), writtenRoots.get(dep))));
             if (dep.versions().asExactSingleton().isEmpty()) floatingRoots.add(dep.pkg());
         }
 
@@ -848,7 +856,7 @@ public class PubGrubSolver {
         for (Term depTerm : deps) {
             addIncompatibility(new Incompatibility(
                     List.of(decisionTerm, depTerm.invert()),
-                    new Incompatibility.Cause.Dependency(decisionTerm, depTerm, pinnedBy(depTerm))));
+                    new Incompatibility.Cause.Dependency(decisionTerm, depTerm, pinnedBy(depTerm), null)));
         }
         return pkg;
     }

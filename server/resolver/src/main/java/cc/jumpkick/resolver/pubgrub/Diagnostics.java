@@ -6,6 +6,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -104,7 +105,7 @@ public final class Diagnostics {
         String bang = ansi ? palette.header() + "‼" + palette.reset() : "‼";
         out.append(bang).append(" Cannot resolve dependencies:\n");
         String rail = ansi ? palette.rail() + "  │" + palette.reset() + " " : "  │ ";
-        renderInco(rootCause, out, rail, sharedNodes(rootCause), palette);
+        renderInco(rootCause, out, rail, sharedNodes(rootCause), palette, writtenSelectors(rootCause));
         out.append('\n');
         appendSuggestions(rootCause, out, palette);
         return out.toString();
@@ -170,8 +171,34 @@ public final class Diagnostics {
         return List.copyOf(out);
     }
 
+    /**
+     * The selector the project wrote for each of its own edges that has one ({@code ^1.5}), by the
+     * term it stands for: a set equal to one of these terms prints as the user wrote it.
+     */
+    private static Map<Term, String> writtenSelectors(Incompatibility rootCause) {
+        Map<Term, String> written = new HashMap<>();
+        Set<Incompatibility> visited = identitySet();
+        Deque<Incompatibility> stack = new ArrayDeque<>();
+        stack.push(rootCause);
+        while (!stack.isEmpty()) {
+            Incompatibility inco = stack.pop();
+            if (!visited.add(inco)) continue;
+            switch (inco.cause()) {
+                case Incompatibility.Cause.Derived d -> {
+                    stack.push(d.b());
+                    stack.push(d.a());
+                }
+                case Incompatibility.Cause.Dependency dep
+                when isRoot(dep) && dep.written() != null -> written.putIfAbsent(dep.to(), dep.written());
+                default -> {}
+            }
+        }
+        return written;
+    }
+
     /** {@link Conflict#of}: the facts in pre-order over the DAG, each node once. */
     static Conflict conflict(Incompatibility rootCause) {
+        Map<Term, String> written = writtenSelectors(rootCause);
         List<Conflict.Fact> facts = new ArrayList<>();
         Set<Incompatibility> visited = identitySet();
         Deque<Incompatibility> stack = new ArrayDeque<>();
@@ -184,7 +211,7 @@ public final class Diagnostics {
                 stack.push(d.a());
                 continue;
             }
-            Conflict.Fact fact = fact(inco.cause());
+            Conflict.Fact fact = fact(inco.cause(), written);
             if (fact != null) facts.add(fact);
         }
         LinkedHashSet<String> packages = new LinkedHashSet<>();
@@ -192,10 +219,13 @@ public final class Diagnostics {
             if (!isRoot(t)) packages.add(gaOf(t.pkg()));
         }
         return new Conflict(
-                describeConclusion(rootCause, Palette.PLAIN), List.copyOf(packages), facts, rootConstraints(rootCause));
+                describeConclusion(rootCause, Palette.PLAIN, written),
+                List.copyOf(packages),
+                facts,
+                rootConstraints(rootCause));
     }
 
-    private static Conflict.@Nullable Fact fact(Incompatibility.Cause cause) {
+    private static Conflict.@Nullable Fact fact(Incompatibility.Cause cause, Map<Term, String> written) {
         return switch (cause) {
             case Incompatibility.Cause.Dependency dep -> {
                 boolean constraint = !dep.to().positive();
@@ -203,7 +233,9 @@ public final class Diagnostics {
                 yield new Conflict.Fact(
                         constraint ? "constraint" : "dependency",
                         gaOf(dep.to().pkg()),
-                        versionsOf(dep.to().effectiveVersions()),
+                        project && dep.written() != null
+                                ? dep.written()
+                                : versionsOf(dep.to().effectiveVersions()),
                         project ? null : gaOf(dep.from().pkg()),
                         project ? null : versionsOf(dep.from().effectiveVersions()),
                         dep.pinnedBy(),
@@ -214,7 +246,7 @@ public final class Diagnostics {
                 new Conflict.Fact(
                         nv.unknownPackage() ? "not-found" : "no-versions",
                         gaOf(nv.pkg()),
-                        versionsOf(nv.requested()),
+                        spelled(nv.pkg(), nv.requested(), written),
                         null,
                         null,
                         null,
@@ -231,6 +263,12 @@ public final class Diagnostics {
 
     private static String versionsOf(VersionSet versions) {
         return stripBraces(versions.toString());
+    }
+
+    /** {@code versions} of {@code pkg} as the project wrote them, when one of its edges asked for exactly that set. */
+    private static String spelled(String pkg, VersionSet versions, Map<Term, String> written) {
+        String selector = written.get(Term.positive(pkg, versions));
+        return selector != null ? selector : versionsOf(versions);
     }
 
     private static String gaOf(String pkg) {
@@ -330,7 +368,12 @@ public final class Diagnostics {
      * one conclusion: an unshared derived input of such a node draws no "Therefore" of its own.
      */
     private static void renderInco(
-            Incompatibility rootCause, StringBuilder out, String prefix, Set<Incompatibility> shared, Palette palette) {
+            Incompatibility rootCause,
+            StringBuilder out,
+            String prefix,
+            Set<Incompatibility> shared,
+            Palette palette,
+            Map<Term, String> written) {
         Map<Incompatibility, Integer> numbered = new IdentityHashMap<>();
         Set<Incompatibility> emitted = identitySet();
         Deque<Frame> stack = new ArrayDeque<>();
@@ -343,7 +386,7 @@ public final class Diagnostics {
                 out.append(prefix)
                         .append(label(inco, shared, numbered))
                         .append("Therefore, ")
-                        .append(describeConclusion(inco, palette))
+                        .append(describeConclusion(inco, palette, written))
                         .append('\n');
                 continue;
             }
@@ -360,7 +403,7 @@ public final class Diagnostics {
                 stack.push(new Frame(d.a(), false, !chainLink(d.a(), d.b(), shared)));
                 continue;
             }
-            renderLeaf(inco, out, prefix, label(inco, shared, numbered), palette);
+            renderLeaf(inco, out, prefix, label(inco, shared, numbered), palette, written);
         }
     }
 
@@ -387,13 +430,18 @@ public final class Diagnostics {
     }
 
     private static void renderLeaf(
-            Incompatibility inco, StringBuilder out, String prefix, String label, Palette palette) {
+            Incompatibility inco,
+            StringBuilder out,
+            String prefix,
+            String label,
+            Palette palette,
+            Map<Term, String> written) {
         switch (inco.cause()) {
             case Incompatibility.Cause.Derived d -> throw new IllegalStateException("derived nodes render by frame");
             case Incompatibility.Cause.Dependency dep -> {
                 // A coordinate keeps its case at the head of the sentence: ch.qos.logback is a
                 // name, and capitalising it spells a group id nothing publishes.
-                String from = isRoot(dep.from()) ? "The project" : describe(dep.from(), palette);
+                String from = isRoot(dep.from()) ? "The project" : describe(dep.from(), palette, Map.of());
                 // A negative target is a constraint: it bounds the package to the complement of
                 // its set without requiring it, so it reads as what it allows.
                 boolean constraint = !dep.to().positive();
@@ -402,7 +450,7 @@ public final class Diagnostics {
                         .append(label)
                         .append(from)
                         .append(constraint ? " constrains " : " depends on ")
-                        .append(describe(to, palette));
+                        .append(describe(to, palette, isRoot(dep) ? written : Map.of()));
                 if (dep.pinnedBy() != null)
                     out.append(" (pinned by ").append(dep.pinnedBy()).append(')');
                 out.append('\n');
@@ -420,7 +468,7 @@ public final class Diagnostics {
                             .append("No versions of ")
                             .append(colorPkg(nv.pkg(), palette))
                             .append(" match ")
-                            .append(colorVersion(stripBraces(nv.requested().toString()), palette))
+                            .append(colorVersion(spelled(nv.pkg(), nv.requested(), written), palette))
                             .append('\n');
                     if (!nv.available().isEmpty()) {
                         out.append(prefix)
@@ -458,7 +506,7 @@ public final class Diagnostics {
         }
     }
 
-    private static String describeConclusion(Incompatibility inco, Palette palette) {
+    private static String describeConclusion(Incompatibility inco, Palette palette, Map<Term, String> written) {
         boolean ansi = !palette.reset().isEmpty();
         List<Term> terms = inco.terms();
         if (terms.isEmpty()) return "this combination is impossible";
@@ -468,14 +516,14 @@ public final class Diagnostics {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < terms.size(); i++) {
             if (i > 0) sb.append(" and ");
-            sb.append(describeForConclusion(terms.get(i), palette));
+            sb.append(describeForConclusion(terms.get(i), palette, written));
         }
         sb.append(" cannot be resolved");
         return sb.toString();
     }
 
-    /** Compact user-facing version of {@link Term#toString()}. */
-    private static String describe(Term term, Palette palette) {
+    /** Compact user-facing version of {@link Term#toString()}; {@code written} as {@link #spelled}. */
+    private static String describe(Term term, Palette palette, Map<Term, String> written) {
         boolean ansi = !palette.reset().isEmpty();
         if (isRoot(term)) return "the project";
         String prefix = term.positive() ? "" : "not ";
@@ -488,14 +536,14 @@ public final class Diagnostics {
                 && r.min().equals(r.max())) {
             return prefix + colorPkg(term.pkg(), palette) + " " + colorVersion(r.min(), palette);
         }
-        return prefix + colorPkg(term.pkg(), palette) + " " + colorVersion(stripBraces(vs.toString()), palette);
+        return prefix + colorPkg(term.pkg(), palette) + " " + colorVersion(spelled(term.pkg(), vs, written), palette);
     }
 
     /** Like {@link #describe} but used inside conclusion sentences (already lower-case context). */
-    private static String describeForConclusion(Term term, Palette palette) {
+    private static String describeForConclusion(Term term, Palette palette, Map<Term, String> written) {
         boolean ansi = !palette.reset().isEmpty();
         if (isRoot(term)) return "the project";
-        return describe(term, palette);
+        return describe(term, palette, written);
     }
 
     /** True when the term refers to the synthetic PubGrub root package. */

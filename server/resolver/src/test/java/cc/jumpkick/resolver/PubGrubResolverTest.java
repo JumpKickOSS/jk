@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
@@ -13,6 +14,7 @@ import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.nio.file.Path;
@@ -21,6 +23,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 /**
  * End-to-end tests for {@link PubGrubResolver} with a platform BOM map. Other PubGrub semantics are
@@ -279,6 +283,42 @@ class PubGrubResolverTest {
                   </dependencies>
                 </project>
                 """.formatted(artifact);
+    }
+
+    /** A caret or tilde the project wrote reads in a conflict as written, not as the range it stands for. */
+    @ParameterizedTest
+    @ValueSource(strings = {"^1.5", "~1.5"})
+    void a_floating_root_prints_as_written_in_a_conflict(String written, @TempDir Path tempDir) throws Exception {
+        upstream.metadata("com.foo", "middle", "1.0");
+        upstream.metadata("com.foo", "leaf", "1.0", "1.5");
+        upstream.pomOnly("com.foo", "middle", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>middle</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>[1.0]</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        upstream.pomOnly("com.foo", "leaf", "1.0", MavenStub.emptyPom("com.foo", "leaf", "1.0"));
+        upstream.pomOnly("com.foo", "leaf", "1.5", MavenStub.emptyPom("com.foo", "leaf", "1.5"));
+
+        PubGrubResolver resolver = new PubGrubResolver(repoGroup(tempDir), Map.of());
+
+        assertThatThrownBy(() -> resolver.resolve(List.of(
+                        new Dependency("com.foo:middle", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:leaf", VersionSelector.parse(written)))))
+                .isInstanceOfSatisfying(UnsatisfiableException.class, e -> {
+                    assertThat(e.getMessage())
+                            .contains("The project depends on com.foo:leaf " + written)
+                            .doesNotContain("alpha-SNAPSHOT");
+                    assertThat(e.conflict().conclusion()).doesNotContain("alpha-SNAPSHOT");
+                    assertThat(e.conflict().facts())
+                            .filteredOn(f -> "com.foo:leaf".equals(f.pkg()) && f.from() == null)
+                            .extracting(f -> f.versions())
+                            .containsExactly(written);
+                });
     }
 
     private RepoGroup repoGroup(Path tempDir) {
