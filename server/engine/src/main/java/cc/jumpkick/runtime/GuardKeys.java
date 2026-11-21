@@ -51,6 +51,7 @@ import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ToolchainPolicy;
+import cc.jumpkick.test.StampTokens;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -188,7 +189,8 @@ final class GuardKeys {
                 }
                 return Optional.of(run("guards · lane evidence to restore"));
             }
-            return Optional.of(run("guards · " + load.rules().rules().size() + " rules to evaluate"));
+            return Optional.of(
+                    run(missed(actionCache, taskId, load.rules().rules().size() + " rules to evaluate")));
         } catch (IOException e) {
             return Optional.of(run("guards · " + e.getMessage()));
         }
@@ -405,7 +407,10 @@ final class GuardKeys {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_WORKSPACE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
-            return Optional.of(workspace("guards · workspace rules to evaluate"));
+            return Optional.of(workspace(missed(
+                    actionCache,
+                    ActionKey.qualifiedTaskId(TaskNames.GUARD_WORKSPACE, root),
+                    "workspace rules to evaluate")));
         } catch (IOException e) {
             return Optional.of(workspace("guards · " + e.getMessage()));
         }
@@ -509,7 +514,13 @@ final class GuardKeys {
                         TaskNames.GUARD_OUTPUT, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
             return Optional.of(new TaskForecast.Task(
-                    TaskNames.GUARD_OUTPUT, TaskForecast.Status.RUN, "guards · output rules to evaluate", ""));
+                    TaskNames.GUARD_OUTPUT,
+                    TaskForecast.Status.RUN,
+                    missed(
+                            actionCache,
+                            ActionKey.qualifiedTaskId(TaskNames.GUARD_OUTPUT, root),
+                            "output rules to evaluate"),
+                    ""));
         } catch (IOException e) {
             return Optional.of(new TaskForecast.Task(
                     TaskNames.GUARD_OUTPUT, TaskForecast.Status.RUN, "guards · " + e.getMessage(), ""));
@@ -550,10 +561,20 @@ final class GuardKeys {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_TREE, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
-            return Optional.of(tree("guards · tree rules to evaluate"));
+            return Optional.of(tree(missed(
+                    actionCache, ActionKey.qualifiedTaskId(TaskNames.GUARD_TREE, root), "tree rules to evaluate")));
         } catch (IOException e) {
             return Optional.of(tree("guards · " + e.getMessage()));
         }
+    }
+
+    /**
+     * Why lane {@code taskId} runs when its verdict misses: {@code jk changed} when its last verdict
+     * on this disk was another jk's, since every lane key names the jk that judged it; else {@code
+     * otherwise}.
+     */
+    static String missed(ActionCache actionCache, String taskId, String otherwise) {
+        return "guards · " + (actionCache.madeByAnotherJk(taskId) ? StampTokens.JK_CHANGED : otherwise);
     }
 
     private static TaskForecast.Task tree(String why) {
@@ -581,7 +602,8 @@ final class GuardKeys {
                 return Optional.of(new TaskForecast.Task(
                         TaskNames.GUARD_MODEL, TaskForecast.Status.CACHED, "", key.substring(0, 8)));
             }
-            return Optional.of(model("guards · model rules to evaluate"));
+            return Optional.of(model(missed(
+                    actionCache, ActionKey.qualifiedTaskId(TaskNames.GUARD_MODEL, root), "model rules to evaluate")));
         } catch (IOException e) {
             return Optional.of(model("guards · " + e.getMessage()));
         }

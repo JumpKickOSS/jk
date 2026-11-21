@@ -131,7 +131,7 @@ step as `cache`, for a workspace build's module steps as for a single module's.
 |--------|---------|
 | `no-record` | No earlier record of the step: a first build, or after the cache was cleaned |
 | `inputs-changed` | A source, dependency or setting moved; `changed` names up to five of them |
-| `toolchain-changed` | Only the compiler, the JDK or JumpKick changed |
+| `toolchain-changed` | Only the compiler, the JDK or JumpKick changed; `changed` says `jk` when another build of JumpKick made the last record |
 | `key-changed` | The inputs the last record names are the same; something else the key hashes moved |
 | `outputs-gone` | A record under this very key was there, its outputs were not |
 | `record-refused` | A record was refused as untrusted |
@@ -141,6 +141,10 @@ step as `cache`, for a workspace build's module steps as for a single module's.
 A suite's green or red marker names what its stamp hashed (the test sources, the main classes,
 the lock, the runtime classpath, the module's Java level and the suite's other tokens, environment variables
 by name only), so a suite that runs again says which of those moved, like any other step.
+
+`jk explain` says the same before the build: a jar, a fat jar or a guard lane whose last result
+on this machine another build of JumpKick made forecasts as `repackage · jk changed` or `guards · jk
+changed`, since their keys name the JumpKick that made them.
 
 The run's byte totals keep traffic with a remote build cache (`cacheUp`, `cacheDown`) apart from
 repository downloads and uploads (`remoteUp`, `remoteDown`).

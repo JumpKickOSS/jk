@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.guard.extract.FactsIndexing;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
@@ -23,7 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A module whose {@code src/guard} suite reads the tree's text forecasts its lane on that text, as
- * the lane runs on it: an edit to root text alone re-runs the suite without {@code --redo}.
+ * the lane runs on it: an edit to root text alone re-runs the suite without {@code --redo}, and a
+ * verdict another jk judged forecasts as {@code jk changed}.
  */
 class GuardSuiteForecastTextTest {
 
@@ -46,6 +48,51 @@ class GuardSuiteForecastTextTest {
 
     @Test
     void a_root_text_edit_turns_a_cached_text_suite_lane_into_a_run(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        Path notes = root.resolve(".jk/notes.txt");
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
+        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        String key = Objects.requireNonNull(
+                GuardKeys.probeModuleLane(root, root, layout, load, true).key(), "the lane's key");
+        cache.storeVerdict(ActionKey.qualifiedTaskId(TaskNames.GUARD, root), key, Map.of());
+        assertThat(lane(root, layout, cache).status()).isEqualTo(TaskForecast.Status.CACHED);
+
+        Files.writeString(notes, "two\n");
+
+        assertThat(GuardKeys.probeModuleLane(root, root, layout, load, true).key())
+                .isNotEqualTo(key);
+        TaskForecast.Task after = lane(root, layout, cache);
+        assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
+        assertThat(after.text()).contains("rules to evaluate");
+    }
+
+    /** Every lane key names the jk that judged it: a lane whose last verdict was another jk's says so. */
+    @Test
+    void a_lane_another_jk_judged_forecasts_jk_changed(@TempDir Path tmp) throws Exception {
+        Path root = tree(tmp);
+        BuildLayout layout = BuildLayout.of(root, JkBuildParser.parse(root.resolve("jk.toml")));
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
+        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
+        try {
+            BuildIdentity.overrideCacheKeyVersionForTests("jk-before-the-reinstall");
+            String key = Objects.requireNonNull(
+                    GuardKeys.probeModuleLane(root, root, layout, load, true).key(), "the lane's key");
+            cache.storeVerdict(ActionKey.qualifiedTaskId(TaskNames.GUARD, root), key, Map.of());
+            assertThat(lane(root, layout, cache).status()).isEqualTo(TaskForecast.Status.CACHED);
+
+            BuildIdentity.overrideCacheKeyVersionForTests("jk-after-the-reinstall");
+            TaskForecast.Task after = lane(root, layout, cache);
+
+            assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
+            assertThat(after.text()).isEqualTo("guards · jk changed");
+        } finally {
+            BuildIdentity.overrideCacheKeyVersionForTests(null);
+        }
+    }
+
+    /** A module with main classes and a text-reading guard suite, both compiled and indexed. */
+    private static Path tree(Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("tree"));
         Files.writeString(root.resolve("jk.toml"), "group = \"t\"\nname = \"m\"\nversion = \"0.0.1\"\njava = 25\n");
         Files.createDirectories(root.resolve("src/main/java/app"));
@@ -61,21 +108,7 @@ class GuardSuiteForecastTextTest {
         FactsIndexing.ensure(layout.classesDir(), FactsIndexing.indexPath(layout.buildDir(), "main"));
         compile(tmp.resolve("suite-src"), layout.guardClassesDir(), "fx", "ReadsText", SUITE);
         FactsIndexing.ensure(layout.guardClassesDir(), FactsIndexing.indexPath(layout.buildDir(), "guard"));
-
-        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cache/cas")), tmp.resolve("cache/actions"));
-        var load = PlannerGuards.rules(PlannerGuards.detectAt(root));
-        String key = Objects.requireNonNull(
-                GuardKeys.probeModuleLane(root, root, layout, load, true).key(), "the lane's key");
-        cache.storeVerdict(ActionKey.qualifiedTaskId(TaskNames.GUARD, root), key, Map.of());
-        assertThat(lane(root, layout, cache).status()).isEqualTo(TaskForecast.Status.CACHED);
-
-        Files.writeString(notes, "two\n");
-
-        assertThat(GuardKeys.probeModuleLane(root, root, layout, load, true).key())
-                .isNotEqualTo(key);
-        TaskForecast.Task after = lane(root, layout, cache);
-        assertThat(after.status()).isEqualTo(TaskForecast.Status.RUN);
-        assertThat(after.text()).contains("rules to evaluate");
+        return root;
     }
 
     private static TaskForecast.Task lane(Path root, BuildLayout layout, ActionCache cache) {

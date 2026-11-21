@@ -15,6 +15,7 @@ import cc.jumpkick.runtime.ForecastScope.Prepared;
 import cc.jumpkick.runtime.base.DokkaResolver;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.ActionKey;
+import cc.jumpkick.test.StampTokens;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -66,6 +67,11 @@ final class ForecastPackagingTails {
         if (hit) return new TaskForecast.Task(TaskNames.PACKAGE_ASSEMBLY, TaskForecast.Status.CACHED, "", null);
         // A fat jar is a heavy output: the cache may never have been allowed to keep the last one.
         String notCached = PackagingCache.heavyNotCached(s.cache, project);
+        if (notCached == null
+                && s.actionCache.madeByAnotherJk(
+                        ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, layout.assemblyJar()))) {
+            notCached = StampTokens.JK_CHANGED;
+        }
         return new TaskForecast.Task(
                 TaskNames.PACKAGE_ASSEMBLY,
                 TaskForecast.Status.RUN,

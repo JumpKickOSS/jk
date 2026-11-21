@@ -8,6 +8,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.IoLedger;
 import cc.jumpkick.config.Request;
 import cc.jumpkick.config.RequestScope;
+import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.run.BuildPlanKey;
 import cc.jumpkick.run.StepCache;
 import cc.jumpkick.run.StepScope;
@@ -59,6 +60,44 @@ class StepCacheNotesTest {
         assertThat(cache.lookup("k1").orElseThrow().meta().wallMillis()).isEqualTo(1234);
         assertThat(first.producerMillis()).isEqualTo(-1);
         assertThat(hit.bytesIn()).isEqualTo("class A".length());
+    }
+
+    @Test
+    void a_miss_whose_inputs_held_and_whose_jk_moved_names_jk(@TempDir Path tmp) throws Exception {
+        ActionCache cache = new ActionCache(new Cas(tmp.resolve("cas")), tmp.resolve("actions"));
+        Path out = Files.createDirectories(tmp.resolve("out"));
+        Files.writeString(out.resolve("app.jar"), "jar");
+        Map<String, String> jar = Map.of("classes", "c1", "manifest", "{}");
+        // A compile record names its jk among its inputs; its key hashes no other.
+        Map<String, String> compile = Map.of("src/A.java", "a", ActionKey.JK_INPUT, "1.0#13");
+        StepCache packaged;
+        StepCache recompiled;
+        StepCache sameJk;
+        try {
+            BuildIdentity.overrideCacheKeyVersionForTests("jk-before-the-reinstall");
+            cache.store("package-jar@x", "p1", jar, out);
+            cache.store("compile-main@x", "c1", compile, out);
+            assertThat(cache.madeByAnotherJk("package-jar@x")).isFalse();
+
+            BuildIdentity.overrideCacheKeyVersionForTests("jk-after-the-reinstall");
+            assertThat(cache.madeByAnotherJk("package-jar@x")).isTrue();
+            assertThat(cache.madeByAnotherJk("compile-main@x"))
+                    .as("its inputs say which jk keyed it")
+                    .isFalse();
+            assertThat(cache.madeByAnotherJk("guard@nothing-stored")).isFalse();
+            packaged = step(() -> cache.store("package-jar@x", "p2", jar, out));
+            recompiled = step(() -> cache.store("compile-main@x", "c2", compile, out));
+            sameJk = step(() -> cache.store("package-jar@x", "p3", jar, out));
+        } finally {
+            BuildIdentity.overrideCacheKeyVersionForTests(null);
+        }
+
+        assertThat(packaged.reason()).isEqualTo(StepCache.Reason.TOOLCHAIN_CHANGED);
+        assertThat(packaged.changed()).isEqualTo("jk");
+        assertThat(recompiled.reason()).isEqualTo(StepCache.Reason.KEY_CHANGED);
+        assertThat(sameJk.reason())
+                .as("the last record is this jk's: something else the key hashes moved")
+                .isEqualTo(StepCache.Reason.KEY_CHANGED);
     }
 
     @Test

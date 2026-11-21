@@ -37,6 +37,7 @@ import cc.jumpkick.task.InputGuard;
 import cc.jumpkick.task.KeyAudit;
 import cc.jumpkick.task.KeyOwner;
 import cc.jumpkick.task.ParsedBuild;
+import cc.jumpkick.test.StampTokens;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -446,8 +447,8 @@ final class PackageSteps {
         String contribTok = PackagedClasses.contributionsToken(
                 PackagingKeys.packagedContributions(prepared.parsed().pkgDecls(), layout, s.dir, s.project),
                 s.restored.identity());
-        String pkgKey = PackagingKeys.packageJar(jar, s.dir, s.project, classesTok, contribTok, sbom)
-                .key();
+        PackagingKeys.Keyed keyed = PackagingKeys.packageJar(jar, s.dir, s.project, classesTok, contribTok, sbom);
+        String pkgKey = keyed.key();
         Perf.end("  package-fingerprint", tp);
         boolean hit = ForecastSteps.present(s.actionCache, pkgKey);
         if (hit && !Files.isRegularFile(jar)) {
@@ -469,7 +470,11 @@ final class PackageSteps {
         // missing jar with no record is scheduled until it exists.
         String miss = s.mainResourceDrift
                 ? "repackage · resources changed"
-                : noSources ? "package · module has no sources" : "repackage";
+                : noSources
+                        ? "package · module has no sources"
+                        : s.actionCache.madeByAnotherJk(keyed.taskId())
+                                ? "repackage · " + StampTokens.JK_CHANGED
+                                : "repackage";
         return new TaskForecast.Task(TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, miss, null);
     }
 }

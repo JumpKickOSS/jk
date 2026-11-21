@@ -695,7 +695,10 @@ public final class ActionCache {
                 reason = StepCache.Reason.NO_RECORD;
             } else {
                 List<String> moved = ChangedInputs.of(previous.get().inputs(), inputs);
-                if (moved.isEmpty()) {
+                if (moved.isEmpty() && madeByAnotherJk(previous.get())) {
+                    reason = StepCache.Reason.TOOLCHAIN_CHANGED;
+                    changed = ActionKey.JK_INPUT;
+                } else if (moved.isEmpty()) {
                     reason = StepCache.Reason.KEY_CHANGED;
                 } else {
                     reason = moved.stream().allMatch(ActionCache::toolchainInput)
@@ -719,6 +722,26 @@ public final class ActionCache {
 
     /** How many changed inputs a miss names before it counts the rest. */
     private static final int MAX_CHANGED_NAMED = 5;
+
+    /**
+     * Whether the record task {@code taskId}'s pointer names on this disk was made by another jk,
+     * which its key hashes beside its inputs: a step whose inputs are all as they were misses only
+     * for that. False with no such record, or one whose inputs name the jk themselves ({@link
+     * ActionKey#JK_INPUT}), which says so by its inputs.
+     */
+    public boolean madeByAnotherJk(String taskId) {
+        try {
+            Optional<ActionRecord> previous = previousRecord(taskId);
+            return previous.isPresent() && madeByAnotherJk(previous.get());
+        } catch (IOException | RuntimeException unread) {
+            return false;
+        }
+    }
+
+    private static boolean madeByAnotherJk(ActionRecord record) {
+        String made = record.meta().producer();
+        return made != null && !record.inputs().containsKey(ActionKey.JK_INPUT) && !made.equals(producer());
+    }
 
     /** The record the task's pointer names on this disk, read without telling the step. */
     private Optional<ActionRecord> previousRecord(String task) throws IOException {

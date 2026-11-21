@@ -243,6 +243,36 @@ class JavaAbiCompileAvoidanceE2eTest {
     }
 
     /**
+     * A jar's key names the engine that packages it where a compile's does not: under a rebuilt
+     * engine with nothing else moved, the forecast keeps every compile and says why the jar is
+     * packaged again.
+     */
+    @Test
+    void a_jar_another_engine_packaged_forecasts_jk_changed(@TempDir Path tmp) throws Exception {
+        Path cache = TestCaches.dir("abi-upgrade-cache");
+        Path ws = workspace(tmp);
+        lock(ws, cache);
+        // Fresh identities: the cache directory outlives the run, and another run's records stay in it.
+        String run = Long.toHexString(System.nanoTime());
+        try {
+            BuildIdentity.overrideBuildIdForTests("engine-one-" + run);
+            build(ws, cache, "initial, under engine one");
+            assertThat(forecast(ws, cache, "lib", TaskNames.PACKAGE_JAR).status())
+                    .isEqualTo(TaskForecast.Status.CACHED);
+
+            BuildIdentity.overrideBuildIdForTests("engine-two-" + run);
+            TaskForecast.Task compile = forecast(ws, cache, "lib", TaskNames.COMPILE_JAVA);
+            TaskForecast.Task jar = forecast(ws, cache, "lib", TaskNames.PACKAGE_JAR);
+
+            assertThat(compile.status()).as(compile.toString()).isEqualTo(TaskForecast.Status.CACHED);
+            assertThat(jar.status()).isEqualTo(TaskForecast.Status.RUN);
+            assertThat(jar.text()).isEqualTo("repackage · jk changed");
+        } finally {
+            BuildIdentity.overrideBuildIdForTests(null);
+        }
+    }
+
+    /**
      * A class of the same package in another module sees lib's package-private members: javac
      * inlines a package-private constant into it, so the constant is part of lib's ABI.
      */
