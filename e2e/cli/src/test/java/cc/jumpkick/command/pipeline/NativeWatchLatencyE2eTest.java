@@ -93,8 +93,12 @@ class NativeWatchLatencyE2eTest {
                         lines.await("change detected", TimeUnit.SECONDS.toNanos(10)) - saved));
                 passes.add(TimeUnit.NANOSECONDS.toMillis(lines.await("Compiled", TimeUnit.MINUTES.toNanos(1)) - saved));
             }
-            assertThat(Collections.max(detected))
-                    .as("save to pass start %s ms, to compiled %s ms", detected, passes)
+            // The median, not the slowest: a polling watch is slow on every save, while one stall of
+            // a loaded host (a gate running every suite at once) says nothing about the watch.
+            List<Long> sorted = new ArrayList<>(detected);
+            Collections.sort(sorted);
+            assertThat(sorted.get(sorted.size() / 2))
+                    .as("median save to pass start of %s ms, to compiled %s ms", detected, passes)
                     .isLessThan(PROMPT_MILLIS);
         } finally {
             if (watch != null) {
