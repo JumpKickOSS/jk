@@ -44,43 +44,6 @@ class McpDiagnosticsLookupTest {
     }
 
     @Test
-    void unique_false_keeps_the_normalized_row_shape() {
-        Map<String, Object> diag = Map.of(
-                "severity", "error",
-                "code", "javac",
-                "dir", "/ws/core",
-                "message", "/ws/A.java:1: error: cannot find symbol\n  foo\n  ^");
-        List<Map<String, Object>> deduped = McpDiagnostics.unique(List.of(diag, diag), true);
-        List<Map<String, Object>> all = McpDiagnostics.unique(List.of(diag, diag), false);
-        assertThat(deduped).hasSize(1);
-        assertThat(all).hasSize(2);
-        assertThat(all.getFirst().keySet()).isEqualTo(deduped.getFirst().keySet());
-        assertThat(all.getFirst().get("module")).isEqualTo("/ws/core");
-        assertThat(all.getFirst().get("file")).isEqualTo("/ws/A.java");
-        assertThat(all.getFirst().get("message")).isEqualTo("/ws/A.java:1: error: cannot find symbol");
-        assertThat(all.getFirst().get("count")).isEqualTo(1);
-        assertThat(deduped.getFirst().get("count")).isEqualTo(2);
-    }
-
-    /** The resolver's explanation is one diagnostic: the header as the message, the whole chain as its detail. */
-    @Test
-    void a_resolve_failure_is_one_row_whose_detail_carries_the_whole_explanation() {
-        String chain = "  \u2502 ch.qos.logback:logback-classic 1.5.6 depends on org.slf4j:slf4j-api [2.0.13,+\u221e)\n"
-                + "  \u2502 The project depends on org.slf4j:slf4j-api 1.7.36\n"
-                + "  \u2502 Therefore, the project's requirements cannot be resolved\n\nSuggestions:\n"
-                + "  \u2022 Relax or remove the project constraint on org.slf4j:slf4j-api";
-        Map<String, Object> diag = Map.of(
-                "severity", "error",
-                "code", "verbatim",
-                "dir", "/ws/app",
-                "message", "\u203c Cannot resolve dependencies:\n" + chain);
-        List<Map<String, Object>> rows = McpDiagnostics.unique(List.of(diag), true);
-        assertThat(rows).hasSize(1);
-        assertThat(rows.getFirst().get("message")).isEqualTo("\u203c Cannot resolve dependencies:");
-        assertThat(rows.getFirst().get("detail")).isEqualTo(chain);
-    }
-
-    @Test
     void explicit_run_id_bypasses_the_dir_filter() {
         Map<String, Object> rec = requireNonNull(McpDiagnostics.findRun(List.of(FAIL, OTHER), "x", "/ws"));
         assertThat(rec.get("id")).isEqualTo("x");

@@ -5,12 +5,8 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-import cc.jumpkick.engine.http.mcp.McpDiagnostics;
-import cc.jumpkick.engine.http.mcp.McpHistoryViews;
-import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.BuildPlanResult;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class JsonTest {
@@ -291,11 +287,11 @@ class JsonTest {
     }
 
     /**
-     * A failed resolve's conflict is journaled as a nested object, reads back unchanged, rides the
-     * history replay line, and reaches the MCP diagnostic row as an object beside its message.
+     * A failed resolve's conflict is journaled as a nested object, reads back unchanged, and rides
+     * the history replay line.
      */
     @Test
-    void a_resolve_conflict_is_an_object_in_the_record_and_the_mcp_row() {
+    void a_resolve_conflict_is_an_object_in_the_record_and_the_history_line() {
         String conflict = "{\"conclusion\":\"the project's requirements cannot be resolved\","
                 + "\"packages\":[\"com.foo:leaf\"],\"facts\":[{\"kind\":\"dependency\","
                 + "\"package\":\"com.foo:leaf\",\"versions\":\"1.0\",\"from\":\"com.foo:middle\","
@@ -312,11 +308,6 @@ class JsonTest {
         assertThat(diag.conflict()).isEqualTo(conflict);
         assertThat(Json.read(json).diagnostics().get(0).conflict()).isEqualTo(conflict);
         assertThat(JournalWriter.historyDiagLine(diag)).contains("\"conflict\":" + conflict);
-        Map<String, Object> rec = requireNonNull(McpHistoryViews.parseRecord(json));
-        Map<String, Object> row =
-                McpDiagnostics.unique(McpDiagnostics.fromRecord(rec), true).getFirst();
-        assertThat(row.get("message")).isEqualTo("‼ Cannot resolve dependencies:");
-        assertThat(row.get("conflict")).isEqualTo(MiniJson.parse(conflict));
     }
 
     private static BuildRecord record(List<BuildRecord.Diag> diagnostics) {

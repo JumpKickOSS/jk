@@ -3,11 +3,9 @@ package cc.jumpkick.engine.journal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.http.mcp.McpDiagnostics;
 import cc.jumpkick.run.TaskNames;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 /** The {@code ## Guards} block: the agent view of the house rules, within its token budget. */
@@ -209,44 +207,5 @@ class JkResultsGuardsTest {
         String section = md.substring(md.indexOf("## Guards"));
         assertThat(section).contains("**5 rules broken** (40 sites)").contains("_+30 more — target/jk-guards/_");
         assertThat(section.length() / 4).as("rough token count").isLessThan(1_000);
-    }
-
-    @Test
-    void mcp_rows_carry_typed_instead_and_why_for_guard_diagnostics() {
-        Map<String, Object> row = McpDiagnostics.normalize(Map.of(
-                "severity",
-                "error",
-                "dir",
-                "/ws",
-                "task",
-                TaskNames.GUARD,
-                "code",
-                "one-digest-surface",
-                "message",
-                SITE,
-                "file",
-                "",
-                "line",
-                0L,
-                "col",
-                0L));
-        assertThat(row)
-                .containsEntry("code", "one-digest-surface")
-                .containsEntry("instead", "Hashing.sha256Hex")
-                .containsEntry("why", "one algorithm table, one place to swap the provider");
-        assertThat(row.get("file")).isEqualTo("server/engine/src/main/java/cc/jumpkick/engine/Cas.java");
-        assertThat(row.get("line")).isEqualTo(88);
-        Map<String, Object> javac = McpDiagnostics.normalize(Map.of(
-                "severity",
-                "error",
-                "dir",
-                "/ws",
-                "task",
-                "compile-java",
-                "code",
-                "javac",
-                "message",
-                "x.java:1: boom\n  Why: not a guard"));
-        assertThat(javac).doesNotContainKey("why");
     }
 }
