@@ -252,12 +252,15 @@ and skips the prerequisites, whose suites match nothing. A prerequisite compiles
 is judged from their class files, so it skips without a test JVM, warm engine or cold.
 The run's count is the whole cone's: `jk test -m clients/cli` reports that module's tests
 plus those of every module it builds on, and the Tests table of `jk-results.md` splits the total
-by module. `--exclusive` below counts the selected modules alone.
+by module. Piped or under an agent, the run report says how many modules the count spans:
+`OK test app · 3265 tests in 5 modules · 41s`. `--exclusive` below counts the selected modules alone.
+A guard suite's guards are no tests: they report under Guards in `jk-results.md`.
 
 `--exclusive` (`-X`) runs **exactly** the selected modules' suites. Prerequisites still compile,
 main and test, but their suites do not run: each one's `run-tests` step reads
 `prerequisite, tests not run (--exclusive)`, and the summary counts them apart (`Tests passed;
-3 prerequisites not tested (--exclusive)`). Use it while iterating on one module in a large
+3 prerequisites not tested (--exclusive)`), as does the run report piped or under an agent
+(`OK test app · 120 tests · 3 prerequisites not tested (--exclusive) · 9.1s`). Use it while iterating on one module in a large
 workspace, and run without it before you share the change: the default run is the one that
 proves a module against everything it builds on. It needs a selection, either `-m` or a member
 directory as the working directory; without one it is a usage error. It composes with `--class`,

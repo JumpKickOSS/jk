@@ -252,8 +252,10 @@ public final class JkResultsAgent {
         sb.append(outcome(r)).append(' ').append(kind(r));
         String name = name(r);
         if (!name.isEmpty()) sb.append(' ').append(name);
-        String counts = counts(r, loci, tests);
+        JkResultsTestSpan span = JkResultsTestSpan.of(r);
+        String counts = counts(r, loci, tests, span);
         if (!counts.isEmpty()) sb.append(" · ").append(counts);
+        if (!span.untested().isEmpty()) sb.append(" · ").append(span.untested());
         if (RecordUpToDate.of(r)) sb.append(" · ").append(UP_TO_DATE);
         // The time the engine was not running (the machine slept, the engine was stopped) is named
         // apart from the time the work took.
@@ -357,7 +359,11 @@ public final class JkResultsAgent {
         return p[0].isBlank() ? "" : p[0];
     }
 
-    private static String counts(BuildRecord r, List<Locus> loci, @Nullable List<MarkdownTestReport.ModuleRun> tests) {
+    private static String counts(
+            BuildRecord r,
+            List<Locus> loci,
+            @Nullable List<MarkdownTestReport.ModuleRun> tests,
+            JkResultsTestSpan span) {
         int failed = 0;
         int total = 0;
         int skipped = 0;
@@ -387,9 +393,10 @@ public final class JkResultsAgent {
         int errors = 0;
         for (Locus d : loci) if (!d.test()) errors++;
         String skips = skipped > 0 ? ", " + skipped + " skipped" : "";
-        if (total > 0 && failed > 0) return failed + " of " + total + " failed" + skips;
+        if (total > 0 && failed > 0) return failed + " of " + total + " failed" + span.modules() + skips;
         if (errors > 0) return errors + (errors == 1 ? " error" : " errors");
-        if (total > 0 && "test".equals(kind(r))) return total + (total == 1 ? " test" : " tests") + skips;
+        if (total > 0 && "test".equals(kind(r)))
+            return total + (total == 1 ? " test" : " tests") + span.modules() + skips;
         return "";
     }
 
