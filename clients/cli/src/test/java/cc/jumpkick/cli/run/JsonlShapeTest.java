@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.api.GlobalOptions;
 import cc.jumpkick.cli.testing.Capture;
+import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.TaskStatus;
 import cc.jumpkick.run.TestFailureInfo;
 import cc.jumpkick.wire.protocol.FailureTextRefs;
@@ -255,6 +256,24 @@ class JsonlShapeTest {
                 .contains("\"upToDate\":false");
         assertThat(JsonlShape.workspaceFinish(new WorkspaceResult(false, 1, List.of(), List.of("boom")), false, 9, 0))
                 .contains("\"upToDate\":false");
+    }
+
+    @Test
+    void workspace_finish_carries_the_lock_conflict_as_an_object() {
+        String conflict = "{\"packages\":[\"com.foo:lib\"]}";
+        WorkspaceResult refused =
+                new WorkspaceResult(false, 6, List.of(), List.of("Cannot resolve dependencies")).withConflict(conflict);
+
+        String row = JsonlShape.workspaceFinish(refused, false, 9, 0);
+
+        assertThat(Jsonl.nested(row, "conflict")).isEqualTo(conflict);
+        assertThat(Jsonl.strArray(row, "errors")).containsExactly("Cannot resolve dependencies");
+        assertThat(Jsonl.has(
+                        JsonlShape.workspaceFinish(
+                                new WorkspaceResult(false, 1, List.of(), List.of("boom")), false, 9, 0),
+                        "conflict"))
+                .as("a failure with no conflict behind it")
+                .isFalse();
     }
 
     private static GlobalOptions optsWithOutput(@Nullable String output) {

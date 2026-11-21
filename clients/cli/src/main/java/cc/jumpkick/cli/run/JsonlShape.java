@@ -528,11 +528,12 @@ public final class JsonlShape {
     }
 
     /**
-     * Workspace graph finished: the engine's result, with the run's wall time and module count, and
-     * whether it was up to date ({@link WorkspaceResult#upToDate}).
+     * Workspace graph finished: the engine's result, with the run's wall time and module count,
+     * whether it was up to date ({@link WorkspaceResult#upToDate}) and the lock's conflict as an
+     * object, not the string the wire carries it in, when its resolve had no solution.
      */
     public static String workspaceFinish(WorkspaceResult result, boolean success, long millis, int modules) {
-        return console(new WorkspaceFinishEvent(
+        String row = console(new WorkspaceFinishEvent(
                         success,
                         result.exitCode(),
                         result.errors(),
@@ -542,6 +543,7 @@ public final class JsonlShape {
                         modules,
                         success && result.upToDate())
                 .encode());
+        return result.conflict().isEmpty() ? row : Jsonl.append(row, "\"conflict\":" + result.conflict());
     }
 
     /** A workspace module is about to run its plan (brackets nested step events). */

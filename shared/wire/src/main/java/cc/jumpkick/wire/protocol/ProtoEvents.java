@@ -671,19 +671,31 @@ public final class ProtoEvents {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<Redacted> errors, boolean cancelled) {
-        return workspaceFinish(success, exitCode, errors, cancelled, null, false);
+        return workspaceFinish(success, exitCode, errors, cancelled, null, false, null);
     }
 
-    /** As above, with what a {@code jk sync} run settled and whether the run was up to date. */
+    /**
+     * As above, with what a {@code jk sync} run settled, whether the run was up to date, and the
+     * conflict of the lock's resolve with no solution ({@code null} when there is none).
+     */
     public static String workspaceFinish(
             boolean success,
             int exitCode,
             List<Redacted> errors,
             boolean cancelled,
             WorkspaceResult.@Nullable SyncCounts sync,
-            boolean upToDate) {
+            boolean upToDate,
+            @Nullable Redacted conflict) {
         return new WorkspaceFinishEvent(
-                        success, exitCode, errors.stream().map(Redacted::text).toList(), cancelled, sync, upToDate)
+                        success,
+                        exitCode,
+                        errors.stream().map(Redacted::text).toList(),
+                        cancelled,
+                        sync,
+                        -1,
+                        -1,
+                        upToDate,
+                        conflict == null ? "" : conflict.text())
                 .encode();
     }
 

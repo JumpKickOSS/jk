@@ -12,6 +12,8 @@ import org.jspecify.annotations.Nullable;
  * modules such as a {@code --class} selection that matched nothing anywhere
  * @param cancelled user/deadline cancel — distinct from a plain failure so clients can
  * render "cancelled" rather than "disconnected" / generic fail
+ * @param conflict the conflict of the workspace lock's resolve with no solution, as one JSON
+ * object; {@code ""} for any other result
  */
 public record WorkspaceResult(
         boolean success,
@@ -19,15 +21,16 @@ public record WorkspaceResult(
         List<ModuleOutcome> modules,
         List<String> errors,
         boolean cancelled,
-        @Nullable SyncCounts sync) {
+        @Nullable SyncCounts sync,
+        String conflict) {
 
     /** What a {@code jk sync} run settled: artifacts downloaded, and artifacts already on disk. */
     public record SyncCounts(int fetched, int upToDate) {}
 
-    /** No sync counts: every goal but {@code jk sync}. */
+    /** No sync counts and no conflict: every goal but {@code jk sync}, until a phase adds them. */
     public WorkspaceResult(
             boolean success, int exitCode, List<ModuleOutcome> modules, List<String> errors, boolean cancelled) {
-        this(success, exitCode, modules, errors, cancelled, null);
+        this(success, exitCode, modules, errors, cancelled, null, "");
     }
 
     /** Compatibility constructor — not cancelled. */
@@ -51,6 +54,11 @@ public record WorkspaceResult(
 
     /** This result with what the sync settled. */
     public WorkspaceResult withSync(SyncCounts counts) {
-        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts);
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, counts, conflict);
+    }
+
+    /** This result with the conflict of the lock's resolve with no solution. */
+    public WorkspaceResult withConflict(String conflict) {
+        return new WorkspaceResult(success, exitCode, modules, errors, cancelled, sync, conflict);
     }
 }

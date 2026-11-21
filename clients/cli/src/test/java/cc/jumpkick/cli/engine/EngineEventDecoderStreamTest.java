@@ -403,6 +403,34 @@ class EngineEventDecoderStreamTest {
         assertThat(rec.moduleWarnings).containsExactly("g:a:1 run-tests key-moved: the key of run-tests moved");
     }
 
+    /** A workspace lock with no solution ends the run with its conflict, for the client to print. */
+    @Test
+    void a_workspace_terminal_carries_the_lock_conflict_onto_the_result() throws Exception {
+        String conflict = "{\"packages\":[\"com.foo:lib\"]}";
+        WorkspaceResult result = EngineEventDecoder.streamWorkspaceEvents(
+                stream(
+                        ProtoLifecycle.jobStart(56, "build", "/w", 0),
+                        new WorkspaceFinishEvent(
+                                        false,
+                                        6,
+                                        List.of("Cannot resolve dependencies"),
+                                        false,
+                                        null,
+                                        -1,
+                                        -1,
+                                        false,
+                                        conflict)
+                                .encode(),
+                        ProtoLifecycle.jobFinish(56)),
+                new Recorder(),
+                Path.of("/cache"),
+                null);
+
+        assertThat(result.exitCode()).isEqualTo(6);
+        assertThat(result.errors()).containsExactly("Cannot resolve dependencies");
+        assertThat(result.conflict()).isEqualTo(conflict);
+    }
+
     /** A module fail-fast stopped reaches the client as stopped, apart from the one that failed. */
     @Test
     void a_module_finish_carries_that_the_module_was_stopped() throws Exception {

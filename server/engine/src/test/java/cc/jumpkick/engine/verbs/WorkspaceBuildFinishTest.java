@@ -193,6 +193,34 @@ class WorkspaceBuildFinishTest {
         assertThat(host.requestErrors.get(0)).doesNotContain(SECRET).contains(SecretRedactor.MASK);
     }
 
+    @Test
+    void a_lock_conflict_reaches_the_wire_with_its_dotenv_values_masked(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve(".env"), "REGISTRY_TOKEN=" + SECRET + "\n");
+        RecordingHost host = new RecordingHost();
+        String conflict = "{\"packages\":[\"com.foo:lib\"],\"conclusion\":\"" + SECRET + "\"}";
+
+        WorkspaceTerminal.finish(
+                host,
+                null,
+                project.toString(),
+                result(false, 6, List.of("Cannot resolve dependencies")).withConflict(conflict),
+                false);
+
+        String line = host.quietSends.getFirst();
+        assertThat(line).doesNotContain(SECRET);
+        assertThat(Jsonl.str(line, "conflict"))
+                .isEqualTo("{\"packages\":[\"com.foo:lib\"],\"conclusion\":\"" + SecretRedactor.MASK + "\"}");
+    }
+
+    @Test
+    void a_terminal_with_no_conflict_writes_none() {
+        RecordingHost host = new RecordingHost();
+
+        WorkspaceTerminal.finish(host, null, "/w", result(false, 1, List.of("boom")), false);
+
+        assertThat(Jsonl.has(host.quietSends.getFirst(), "conflict")).isFalse();
+    }
+
     /** Guards the two above: without the .env there is nothing to mask, so they could pass empty. */
     @Test
     void the_same_text_is_left_alone_when_no_dotenv_declares_it(@TempDir Path project) {

@@ -411,6 +411,16 @@ class EngineProtocolTest {
     }
 
     @Test
+    void a_workspace_finish_round_trips_its_lock_conflict() {
+        WorkspaceFinishEvent refused = new WorkspaceFinishEvent(
+                false, 6, List.of("no solution"), false, null, -1, -1, false, "{\"packages\":[\"g:a\"]}");
+        assertThat(WorkspaceFinishEvent.decode(refused.encode())).isEqualTo(refused);
+        assertThat(WorkspaceFinishEvent.decode(new WorkspaceFinishEvent(true, 0, List.of(), false).encode())
+                        .conflict())
+                .isEmpty();
+    }
+
+    @Test
     void a_sync_runs_workspace_finish_carries_what_it_settled() {
         WorkspaceFinishEvent synced =
                 new WorkspaceFinishEvent(true, 0, List.of(), false, new WorkspaceResult.SyncCounts(7, 42), false);

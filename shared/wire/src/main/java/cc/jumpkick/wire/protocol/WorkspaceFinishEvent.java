@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
 import java.util.List;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -13,7 +14,8 @@ import org.jspecify.annotations.Nullable;
  * crashed. The rows in {@code errors} are plain strings here: the mint is the {@link
  * ProtoEvents#workspaceFinish} factory, whose {@link cc.jumpkick.config.Redacted} parameter is what
  * makes forgetting to mask a compile error — nothing constructs this record from raw worker output
- * (see {@link EngineProtocol#WORKSPACE_FINISH}).
+ * (see {@link EngineProtocol#WORKSPACE_FINISH}). {@code conflict} is {@link
+ * WorkspaceResult#conflict}, the text of one JSON object, {@code ""} (left out) otherwise.
  */
 public record WorkspaceFinishEvent(
         boolean success,
@@ -23,7 +25,8 @@ public record WorkspaceFinishEvent(
         WorkspaceResult.@Nullable SyncCounts sync,
         long millis,
         int modules,
-        boolean upToDate) {
+        boolean upToDate,
+        String conflict) {
 
     /** No sync counts: every goal but {@code jk sync}. */
     public WorkspaceFinishEvent(boolean success, int exitCode, List<String> errors, boolean cancelled) {
@@ -38,7 +41,20 @@ public record WorkspaceFinishEvent(
             boolean cancelled,
             WorkspaceResult.@Nullable SyncCounts sync,
             boolean upToDate) {
-        this(success, exitCode, errors, cancelled, sync, -1, -1, upToDate);
+        this(success, exitCode, errors, cancelled, sync, -1, -1, upToDate, "");
+    }
+
+    /** The client's terminal, with no conflict behind it. */
+    public WorkspaceFinishEvent(
+            boolean success,
+            int exitCode,
+            List<String> errors,
+            boolean cancelled,
+            WorkspaceResult.@Nullable SyncCounts sync,
+            long millis,
+            int modules,
+            boolean upToDate) {
+        this(success, exitCode, errors, cancelled, sync, millis, modules, upToDate, "");
     }
 
     public String encode() {
@@ -58,6 +74,7 @@ public record WorkspaceFinishEvent(
                                         .finish())
                 .optionalNumber("millis", millis, -1)
                 .optionalNumber("modules", modules, -1)
+                .optionalNonEmptyString("conflict", conflict)
                 .finish();
     }
 
@@ -70,7 +87,8 @@ public record WorkspaceFinishEvent(
                 syncOf(Jsonl.nested(json, "sync")),
                 Jsonl.longValue(json, "millis", -1),
                 Jsonl.intValue(json, "modules", -1),
-                Jsonl.bool(json, "upToDate", false));
+                Jsonl.bool(json, "upToDate", false),
+                Objects.requireNonNullElse(Jsonl.str(json, "conflict"), ""));
     }
 
     private static WorkspaceResult.@Nullable SyncCounts syncOf(@Nullable String sync) {

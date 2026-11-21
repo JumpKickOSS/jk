@@ -41,7 +41,7 @@ final class WorkspaceTerminal {
      * published a spurious {@code request-error}. Nothing that happens to the socket after the
      * build has ruled may change what is journaled.
      *
-     * <p>The error rows are {@link Redacted} the whole way down, because
+     * <p>The error rows and the lock's conflict are {@link Redacted} the whole way down, because
      * {@link ProtoEvents#workspaceFinish} and {@link VerbHost#publishRequestError} are the wire,
      * SSE and journal sinks for raw worker output.
      *
@@ -90,10 +90,20 @@ final class WorkspaceTerminal {
         if (!succeeded && !cancelled && rid > 0) {
             host.accRunErrors(rid, errors.stream().map(Redacted::text).toList());
         }
+        @Nullable
+        Redacted conflict = result.conflict().isEmpty()
+                ? null
+                : host.redactErrors(dir, List.of(result.conflict())).getFirst();
         host.sendQuiet(
                 writer,
                 ProtoEvents.workspaceFinish(
-                        succeeded, exitCode, errors, cancelled, result.sync(), succeeded && result.upToDate()));
+                        succeeded,
+                        exitCode,
+                        errors,
+                        cancelled,
+                        result.sync(),
+                        succeeded && result.upToDate(),
+                        conflict));
         if (!succeeded && !cancelled) {
             for (Redacted error : errors.stream().limit(PUBLISHED_ERROR_ROWS).toList()) {
                 host.publishRequestError(rid, dir, error.text());
