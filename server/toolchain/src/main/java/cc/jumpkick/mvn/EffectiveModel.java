@@ -103,7 +103,8 @@ final class EffectiveModel {
      * Maven follow {@code <parent><relativePath>} and profile {@code <file>} activations; {@code
      * reactor} answers parent lookups from sibling POMs before any repository is asked; {@code
      * activeProfiles} are the ids activated by name, as Maven's {@code -P} activates them, beside
-     * the ones the POM activates itself. The bytes pass through jk's hardened XML parser first, so
+     * the ones the POM activates itself; {@code userProperties} are the build's {@code -D} options
+     * ({@link MavenConfig}), which fill a placeholder ahead of the POM's own properties. The bytes pass through jk's hardened XML parser first, so
      * a DOCTYPE is refused before Maven reads them.
      */
     @SuppressWarnings("deprecation") // StringModelSource is the source type ModelBuildingRequest still takes
@@ -112,7 +113,8 @@ final class EffectiveModel {
             @Nullable Path pomFile,
             ModelResolver resolver,
             @Nullable ReactorModelResolver reactor,
-            List<String> activeProfiles) {
+            List<String> activeProfiles,
+            Properties userProperties) {
         PomParser.parseXml(xml);
         DefaultModelBuildingRequest request = new DefaultModelBuildingRequest();
         request.setValidationLevel(ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL);
@@ -122,6 +124,7 @@ final class EffectiveModel {
         // imports are still listed, which is how they reach `[platform]` with resolved versions.
         request.setTwoPhaseBuilding(true);
         request.setSystemProperties(systemProperties());
+        request.setUserProperties(userProperties);
         request.setModelResolver(resolver);
         request.setWorkspaceModelResolver(reactor);
         if (pomFile != null) {

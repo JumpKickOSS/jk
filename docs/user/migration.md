@@ -208,9 +208,10 @@ in the Vert.x parents) is left out of the lookup the way Maven only fails on a f
 parent still hands its managed versions down; and a dependency an inactive profile declares without a
 version takes the one the POM's effective `dependencyManagement` supplies, so a `[features.<id>]`
 entry is pinned like the profile would be under `-P`. CI-friendly versions —
-`${revision}`, `${changelist}`, `${sha1}` — take their values from the POM chain's
-`<properties>`, which is where Maven reads them without `-D`; a placeholder no POM defines is
-written as `0.0.0-SNAPSHOT` with a row naming the property. A module list that lives only in
+`${revision}`, `${changelist}`, `${sha1}` — take their values from the `-D` options of
+`.mvn/maven.config` (in the `.mvn` directory nearest the POM, as Maven finds it), else from the POM
+chain's `<properties>`; a placeholder neither defines is written as `0.0.0-SNAPSHOT` with a row
+naming the property. A module list that lives only in
 profiles Maven would not activate here is a Tier-3 row naming them, and `jk import pom.xml -P
 <id>` activates a profile by name, as Maven's `-P` does — comma-separated or repeated — so a
 reactor whose profiles carry no `<activation>` at all (Baeldung's tutorials list every module
@@ -225,9 +226,9 @@ The project model is Maven's effective POM — parents flattened, managed versio
 properties interpolated — imported exactly as `jk import` imports it and rendered as a *shadow*
 manifest at `target/jk/shadow/jk.toml`, with the lock beside it at `target/jk/shadow/jk-lock.toml`.
 Nothing is written into the repository: no `jk.toml`, no `jk-lock.toml`. The shadow is a build
-artefact: its header lists the POM files it was rendered from — the module's own and every parent
-a `<relativePath>` reaches on disk — so editing a parent renders the child again, and `jk clean`
-removes it.
+artefact: its header lists the files it was rendered from — the module's own POM, every parent
+a `<relativePath>` reaches on disk and the build's `.mvn/maven.config`, present or not — so editing
+a parent or the config renders the child again, and `jk clean` removes it.
 
 ```bash
 cd my-maven-repo          # pom.xml, src/main/java, src/test/java — no jk.toml

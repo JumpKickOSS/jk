@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,7 +34,8 @@ import org.jspecify.annotations.Nullable;
  * fetched from the network, whether it is a parent, a BOM, or both.
  *
  * <p>A lookup matches the coordinates as written or with their placeholders filled: the version's
- * CI-friendly ones ({@code ${revision}} and friends) from the POM chain's properties, and {@code
+ * CI-friendly ones ({@code ${revision}} and friends) from the build's {@code -D} options or the POM
+ * chain's properties, and {@code
  * ${project.groupId}}, {@code ${project.version}}, {@code ${project.parent.groupId}} and {@code
  * ${project.parent.version}} from the POM's own coordinates and {@code <parent>} block, because
  * Maven asks for a parent with the raw version and for a BOM with the interpolated one.
@@ -59,6 +61,7 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
 
     private final ModelResolver repositories;
     private final List<String> activeProfiles;
+    private final Properties userProperties;
     private final Map<String, Entry> byRawGav = new LinkedHashMap<>();
     private final Map<Path, Entry> byFile = new HashMap<>();
     private final Map<Path, CompletableFuture<EffectiveModel>> effective = new ConcurrentHashMap<>();
@@ -68,11 +71,13 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
 
     /**
      * {@code repositories} answers what the reactor does not: published parents and BOMs; {@code
-     * activeProfiles} are the ids every model of the reactor is built with, as under {@code -P}.
+     * activeProfiles} are the ids every model of the reactor is built with, as under {@code -P}, and
+     * {@code userProperties} its {@code -D} options, which fill a placeholder before any POM does.
      */
-    ReactorModelResolver(ModelResolver repositories, List<String> activeProfiles) {
+    ReactorModelResolver(ModelResolver repositories, List<String> activeProfiles, Properties userProperties) {
         this.repositories = repositories;
         this.activeProfiles = List.copyOf(activeProfiles);
+        this.userProperties = userProperties;
     }
 
     /** Register one pom.xml of the reactor; {@code raw} is read, never written, from here on. */
@@ -174,8 +179,8 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
         if (memo != null && memo.isDone() && !memo.isCompletedExceptionally()) return memo.join();
         onStack.add(pomFile);
         try {
-            EffectiveModel built =
-                    EffectiveModel.build(read(pomFile), pomFile, repositories.newCopy(), this, activeProfiles);
+            EffectiveModel built = EffectiveModel.build(
+                    read(pomFile), pomFile, repositories.newCopy(), this, activeProfiles, userProperties);
             if (memo == null) mine.complete(built);
             return built;
         } catch (RuntimeException | Error e) {
@@ -287,6 +292,8 @@ final class ReactorModelResolver implements WorkspaceModelResolver {
     }
 
     private @Nullable String property(Model raw, String name, int depth) {
+        String defined = userProperties.getProperty(name);
+        if (defined != null) return defined;
         String own = raw.getProperties().getProperty(name);
         if (own != null) return own;
         Parent parent = raw.getParent();

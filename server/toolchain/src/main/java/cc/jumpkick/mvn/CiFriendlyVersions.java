@@ -10,15 +10,16 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Maven's CI-friendly versions: a {@code <version>} spelled {@code ${revision}}, {@code
- * ${changelist}}, {@code ${sha1}} or any other property takes its value from the POM chain's
- * {@code <properties>} or from {@code -D} on Maven's command line. An import has no command line,
- * so the chain is the only source and a placeholder it does not define stays as written.
+ * ${changelist}}, {@code ${sha1}} or any other property takes its value from {@code -D} on Maven's
+ * command line or in {@code .mvn/maven.config}, else from the POM chain's {@code <properties>}. An
+ * import has no command line, so the config and the chain are its sources and a placeholder neither
+ * defines stays as written.
  */
 final class CiFriendlyVersions {
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\$\\{([^}]+)}");
 
-    /** The version written when a placeholder has no value anywhere in the POM chain. */
+    /** The version written when a placeholder has no value in the config or the POM chain. */
     static final String FALLBACK = "0.0.0-SNAPSHOT";
 
     private CiFriendlyVersions() {}

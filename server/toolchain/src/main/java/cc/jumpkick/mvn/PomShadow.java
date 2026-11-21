@@ -35,11 +35,14 @@ public final class PomShadow {
         return ShadowStamp.isCurrent(shadow, moduleDir);
     }
 
-    /** A lone module's shadow; the header lists its POM and the relative-path parents on disk. */
+    /**
+     * A lone module's shadow; the header lists its POM, the relative-path parents on disk and the
+     * build's {@code .mvn/maven.config}.
+     */
     public static Shadow render(PomImporter importer, Path pom) throws IOException {
         PomImporter.Result imported = importer.importFrom(pom);
         Path moduleDir = Objects.requireNonNull(pom.toAbsolutePath().normalize().getParent(), "module dir");
-        return shadow(moduleDir, imported.jkBuild(), rows(imported.report(), null, Set.of()), ShadowStamp.chain(pom));
+        return shadow(moduleDir, imported.jkBuild(), rows(imported.report(), null, Set.of()), ShadowStamp.inputs(pom));
     }
 
     /**
@@ -53,6 +56,7 @@ public final class PomShadow {
                 Objects.requireNonNull(rootPom.toAbsolutePath().normalize().getParent(), "root dir");
         Set<Path> inputs = new LinkedHashSet<>();
         for (Path pom : imported.pomFiles()) inputs.addAll(ShadowStamp.chain(pom));
+        inputs.add(MavenConfig.file(rootPom));
         Set<String> paths = imported.modules().keySet();
         List<Shadow> out = new ArrayList<>();
         out.add(shadow(rootDir, imported.root(), rows(imported.report(), null, paths), inputs));

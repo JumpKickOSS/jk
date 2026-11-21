@@ -25,12 +25,15 @@ import org.apache.maven.model.Parent;
  * # shadow of pom.xml &lt;sha256&gt; jk &lt;version&gt;
  * # read pom.xml
  * # read ../pom.xml
+ * # read .mvn/maven.config
  * </pre>
  *
  * <p>The paths are relative to the module directory with {@code /} separators; the digest covers
- * their bytes in the listed order, so a shadow is current exactly when every file it read still
- * has the bytes it read and the running jk is the one that rendered it. {@link #chain} names the
- * files one POM reads from disk: itself and the parents its {@code <relativePath>} reaches.
+ * their bytes in the listed order, a file that was absent counting as absent, so a shadow is
+ * current exactly when every file it read still has the bytes it read, every file it found absent
+ * is still absent, and the running jk is the one that rendered it. {@link #inputs} names the files
+ * one POM's import reads from disk: itself, the parents its {@code <relativePath>} reaches, and
+ * the build's {@link MavenConfig}.
  */
 final class ShadowStamp {
 
@@ -42,8 +45,18 @@ final class ShadowStamp {
     /** Prefix of one input line. */
     static final String READ = "# read ";
 
+    /** What an input that does not exist contributes to the digest. */
+    private static final String ABSENT = "absent";
+
     /** Bounds the climb through {@code <parent>} blocks that point at each other. */
     private static final int MAX_DEPTH = 32;
+
+    /** The files an import of {@code pom} reads from disk: its {@link #chain} and its build's {@code maven.config}. */
+    static List<Path> inputs(Path pom) {
+        List<Path> out = chain(pom);
+        out.add(MavenConfig.file(pom));
+        return out;
+    }
 
     /**
      * The POM files {@code pom} reads from disk, nearest first: itself, then each parent whose
@@ -123,15 +136,19 @@ final class ShadowStamp {
         return first.equals(HEADER + digest(moduleDir, rels) + " jk " + JkVersion.VERSION);
     }
 
-    /** Hex SHA-256 over the listed files' paths and contents; a missing file yields a digest nothing matches. */
+    /**
+     * Hex SHA-256 over the listed files' paths and contents, an absent file contributing a marker no
+     * content hash equals; a file that exists but cannot be read yields a digest nothing matches.
+     */
     private static String digest(Path moduleDir, List<String> rels) {
         MessageDigest md = Hashing.newSha256();
         for (String rel : rels) {
             Path file = moduleDir.resolve(rel).normalize();
             try {
+                String content = Files.exists(file) ? Hashing.sha256Hex(file) : ABSENT;
                 md.update((rel + "\n").getBytes(StandardCharsets.UTF_8));
-                md.update((Hashing.sha256Hex(file) + "\n").getBytes(StandardCharsets.UTF_8));
-            } catch (IOException missing) {
+                md.update((content + "\n").getBytes(StandardCharsets.UTF_8));
+            } catch (IOException unreadable) {
                 return "unreadable:" + rel;
             }
         }

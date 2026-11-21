@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.maven.model.Model;
 import org.junit.jupiter.api.Test;
@@ -97,8 +98,8 @@ class ReactorModulesTest {
         // No Maven local-repository adoption: a copy a run before left there would answer without a read.
         Cas cas = new Cas(root.resolve("cache"));
         MavenRepo fixture = new MavenRepo("fixture", http.base(), new Http(), cas, RepoCredential.ANONYMOUS, false);
-        ReactorModelResolver reactor =
-                new ReactorModelResolver(new RepoModelResolver(RepoGroup.of(fixture), cas), List.of());
+        ReactorModelResolver reactor = new ReactorModelResolver(
+                new RepoModelResolver(RepoGroup.of(fixture), cas), List.of(), new Properties());
         List<String> visited = new ArrayList<>();
 
         ReactorModules.collect(
@@ -196,7 +197,8 @@ class ReactorModulesTest {
         Path rootPom = root.resolve("pom.xml");
         byte[] rootXml = Files.readAllBytes(rootPom);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
-        ReactorModelResolver reactor = new ReactorModelResolver(TestImporters.offline(root).resolver, List.of());
+        ReactorModelResolver reactor =
+                new ReactorModelResolver(TestImporters.offline(root).resolver, List.of(), new Properties());
         List<String> visited = new ArrayList<>();
         List<Path> retainedWhileVisiting = new ArrayList<>();
         ImportReport.Builder report = ImportReport.builder();

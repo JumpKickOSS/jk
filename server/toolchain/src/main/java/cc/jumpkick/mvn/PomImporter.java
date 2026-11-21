@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.jar.Attributes;
@@ -179,7 +180,8 @@ public final class PomImporter {
         Path file = pomXml.toAbsolutePath();
         byte[] xml = Files.readAllBytes(file);
         return watched(() -> importModel(
-                        EffectiveModel.build(xml, file, resolver.newCopy(), null, activeProfiles),
+                        EffectiveModel.build(
+                                xml, file, resolver.newCopy(), null, activeProfiles, MavenConfig.properties(file)),
                         remote,
                         settings,
                         null,
@@ -191,7 +193,7 @@ public final class PomImporter {
     public Result importFromBytes(byte[] xml) {
         try {
             return watched(() -> importModel(
-                            EffectiveModel.build(xml, null, resolver.newCopy(), null, activeProfiles),
+                            EffectiveModel.build(xml, null, resolver.newCopy(), null, activeProfiles, new Properties()),
                             remote,
                             settings,
                             null,
@@ -499,9 +501,11 @@ public final class PomImporter {
         Path rootFile = rootPom.toAbsolutePath();
         byte[] rootXml = Files.readAllBytes(rootFile);
         Model rootRaw = EffectiveModel.rawModel(rootXml);
+        Properties userProperties = MavenConfig.properties(rootFile);
         if (!ReactorModules.declaresModules(rootRaw)) {
             Result single = importModel(
-                            EffectiveModel.build(rootXml, rootFile, resolver.newCopy(), null, activeProfiles),
+                            EffectiveModel.build(
+                                    rootXml, rootFile, resolver.newCopy(), null, activeProfiles, userProperties),
                             remote,
                             settings,
                             null,
@@ -513,7 +517,7 @@ public final class PomImporter {
 
         ImportReport.Builder report = ImportReport.builder();
         reportUnknownProfiles(rootRaw, report);
-        ReactorModelResolver reactor = new ReactorModelResolver(resolver, activeProfiles);
+        ReactorModelResolver reactor = new ReactorModelResolver(resolver, activeProfiles, userProperties);
         // Each module is imported as the walk reaches it and its effective model is dropped right
         // after: what stays of a module is its JkBuild and its rows.
         Map<String, Imported> imported = new LinkedHashMap<>();
@@ -725,10 +729,10 @@ public final class PomImporter {
     }
 
     /**
-     * A CI-friendly version the effective model left uninterpolated names a property no POM in the
-     * chain defines (Maven takes it from {@code -D}); it is filled from the model's own properties
-     * where it can be, and what is left is written as {@link CiFriendlyVersions#FALLBACK} with a row
-     * naming the property.
+     * A CI-friendly version the effective model left uninterpolated names a property neither {@code
+     * .mvn/maven.config} nor any POM in the chain defines (Maven takes it from {@code -D}); it is
+     * filled from the model's own properties where it can be, and what is left is written as {@link
+     * CiFriendlyVersions#FALLBACK} with a row naming the property.
      */
     private static String concreteVersion(String version, Model model, ImportReport.Builder report) {
         if (!CiFriendlyVersions.hasPlaceholder(version)) return version;
@@ -736,7 +740,7 @@ public final class PomImporter {
         List<String> missing = CiFriendlyVersions.unresolved(filled);
         if (missing.isEmpty()) return filled;
         report.warning("<version>" + version + "</version>: " + String.join(", ", missing)
-                + " is undefined (Maven reads -D" + missing.getFirst() + "); written as version = \""
+                + " is undefined (set -D" + missing.getFirst() + " in .mvn/maven.config); written as version = \""
                 + CiFriendlyVersions.FALLBACK + "\"");
         return CiFriendlyVersions.FALLBACK;
     }

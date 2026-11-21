@@ -1070,8 +1070,8 @@ them is churn without a product gain. Instead:
   `dir/jk.toml` when that exists; otherwise, when `dir/pom.xml` exists, it answers the **shadow**
   `dir/target/jk/shadow/jk.toml` through the process's `ManifestPaths.ShadowSource`. The engine
   installs `ShadowManifests` at start-up, which renders the shadow on first read and again when
-  any POM file it read (or the running JumpKick) differs from what the shadow's header names; the native
-  client installs nothing and only names the path. Every read site resolves through
+  any POM file or `.mvn/maven.config` it read (or the running JumpKick) differs from what the
+  shadow's header names; the native client installs nothing and only names the path. Every read site resolves through
   `manifestIn(dir)`; `ManifestPaths.moduleOf(manifest)` maps a manifest back to its module, so a
   shadow parsed through `JkBuildParser.parse` resolves its workspace from the module, not from
   `target/jk/shadow`. The sites that write a `jk.toml` (`jk new`, `jk import`) keep the raw

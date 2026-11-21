@@ -16,8 +16,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Maven's CI-friendly versions: {@code ${revision}${changelist}} in {@code <version>} is filled
- * from the POM's own properties, for the project, for the reactor parent match and for a sibling
- * BOM a module imports by {@code ${project.version}}.
+ * from the POM's own properties or from the {@code -D} options of {@code .mvn/maven.config}, for
+ * the project, for the reactor parent match and for a sibling BOM a module imports by {@code
+ * ${project.version}}.
  */
 class PomCiFriendlyImportTest {
 
@@ -129,5 +130,105 @@ class PomCiFriendlyImportTest {
         assertThat(result.jkBuild().project().version()).isEqualTo("0.0.0-SNAPSHOT");
         assertThat(TestImporters.messages(result))
                 .anyMatch(m -> m.contains("revision is undefined") && m.contains("version = \"0.0.0-SNAPSHOT\""));
+    }
+
+    @Test
+    void a_reactor_versioned_by_maven_config_imports_with_its_revision(@TempDir Path root) throws Exception {
+        Files.createDirectories(root.resolve(".mvn"));
+        Files.writeString(root.resolve(".mvn/maven.config"), """
+                # release line
+                -Drevision=1.2.3 -Dchangelist=
+                --batch-mode
+                """);
+        Files.writeString(root.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>${revision}${changelist}</version>
+                  <packaging>pom</packaging>
+                  <modules>
+                    <module>bom</module>
+                    <module>core</module>
+                  </modules>
+                </project>
+                """);
+        Files.createDirectories(root.resolve("bom"));
+        Files.writeString(root.resolve("bom/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  %s
+                  <artifactId>bom</artifactId>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>guava</artifactId>
+                        <version>33.4.0-jre</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """.formatted(PARENT));
+        Files.createDirectories(root.resolve("core"));
+        Files.writeString(root.resolve("core/pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  %s
+                  <artifactId>core</artifactId>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.demo</groupId>
+                        <artifactId>bom</artifactId>
+                        <version>${project.version}</version>
+                        <type>pom</type>
+                        <scope>import</scope>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.google.guava</groupId>
+                      <artifactId>guava</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """.formatted(PARENT));
+
+        PomImporter.WorkspaceImportResult result = TestImporters.offline(root).importWorkspace(root.resolve("pom.xml"));
+
+        assertThat(result.report().issues())
+                .extracting(ImportReport.Issue::message)
+                .noneMatch(m -> m.contains("not resolved") || m.contains("undefined"));
+        assertThat(result.root().project().version()).isEqualTo("1.2.3");
+        JkBuild core = requireNonNull(result.modules().get("core"));
+        assertThat(core.project().version()).isEqualTo("1.2.3");
+        assertThat(core.dependencies().of(Scope.MAIN))
+                .extracting(d -> d.module() + "=" + d.version().raw())
+                .containsExactly("com.google.guava:guava=33.4.0-jre");
+    }
+
+    @Test
+    void maven_config_overrides_the_pom_property_and_is_found_above_the_module(@TempDir Path root) throws Exception {
+        Files.createDirectories(root.resolve(".mvn"));
+        Files.writeString(root.resolve(".mvn/maven.config"), "-Drevision=4.5.6\n");
+        Path module = Files.createDirectories(root.resolve("app"));
+        Files.writeString(module.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>org.demo</groupId>
+                  <artifactId>app</artifactId>
+                  <version>${revision}</version>
+                  <properties>
+                    <revision>0.1.0</revision>
+                  </properties>
+                </project>
+                """);
+
+        PomImporter.Result result = TestImporters.offline(root).importFrom(module.resolve("pom.xml"));
+
+        assertThat(result.jkBuild().project().version()).isEqualTo("4.5.6");
     }
 }
