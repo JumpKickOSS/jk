@@ -47,6 +47,28 @@ class ProcessesTest {
         });
     }
 
+    /** Only a stderr of its own needs a thread to drain it; a merged or redirected one has no pipe. */
+    @Test
+    void a_merged_or_redirected_stderr_is_not_drained() throws Exception {
+        assertThat(Processes.ownStderr(new ProcessBuilder(sh("true")).redirectErrorStream(true)))
+                .isFalse();
+        assertThat(Processes.ownStderr(new ProcessBuilder(sh("true")).redirectError(ProcessBuilder.Redirect.DISCARD)))
+                .isFalse();
+        assertThat(Processes.ownStderr(new ProcessBuilder(sh("true")))).isTrue();
+
+        Process discarded = new ProcessBuilder(sh("echo gone >&2"))
+                .redirectError(ProcessBuilder.Redirect.DISCARD)
+                .start();
+        Process own = new ProcessBuilder(sh("echo oops >&2")).start();
+        assertThat(Processes.piped(discarded.getErrorStream())).isFalse();
+        assertThat(Processes.piped(own.getErrorStream())).isTrue();
+        assertThat(Processes.capture(discarded, Duration.ofSeconds(10)).error()).isEmpty();
+        assertThat(Processes.capture(own, Duration.ofSeconds(10)).error()).isEqualTo("oops\n");
+        Processes.Captured merged = Processes.capture(sh("echo both >&2"), Duration.ofSeconds(10));
+        assertThat(merged.output()).isEqualTo("both\n");
+        assertThat(merged.error()).isEmpty();
+    }
+
     @Test
     void output_if_ok_is_no_answer_on_a_failure_or_a_timeout() {
         assertThat(Processes.outputIfOk(sh("echo yes"), Duration.ofSeconds(10))).isEqualTo("yes\n");

@@ -51,7 +51,7 @@ public final class Processes {
 
     /** As {@link #capture(List, Duration)} for a builder the caller configured (directory, environment, redirects). */
     public static Captured capture(ProcessBuilder builder, Duration timeout) throws IOException {
-        return capture(ChildEnv.start(builder), null, timeout, Integer.MAX_VALUE);
+        return captured(run(ChildEnv.start(builder), null, timeout, Integer.MAX_VALUE, ownStderr(builder)));
     }
 
     /** As {@link #capture(List, Duration)} for a child the caller started through its own launcher. */
@@ -66,16 +66,21 @@ public final class Processes {
      */
     public static Captured capture(Process child, byte @Nullable [] stdin, Duration timeout, int limit)
             throws IOException {
-        Ran ran = run(child, stdin, timeout, limit);
+        return captured(run(child, stdin, timeout, limit, piped(child.getErrorStream())));
+    }
+
+    private static Captured captured(Ran ran) {
         return new Captured(ran.exit(), ran.out().text(), ran.err().text(), ran.timedOut());
     }
 
     /** A finished or killed child and its two drained pipes. */
     private record Ran(int exit, Drain out, Drain err, boolean timedOut) {}
 
-    private static Ran run(Process child, byte @Nullable [] stdin, Duration timeout, int limit) throws IOException {
+    /** {@code ownStderr}: the child's stderr is a pipe of its own, drained on a thread of its own. */
+    private static Ran run(Process child, byte @Nullable [] stdin, Duration timeout, int limit, boolean ownStderr)
+            throws IOException {
         Drain out = Drain.start(child.getInputStream(), limit, "jk-process-stdout");
-        Drain err = Drain.start(child.getErrorStream(), limit, "jk-process-stderr");
+        Drain err = ownStderr ? Drain.start(child.getErrorStream(), limit, "jk-process-stderr") : Drain.none(child);
         feed(child.getOutputStream(), stdin);
         long deadline = Clock.SYSTEM.nanos() + timeout.toNanos();
         try {
@@ -95,6 +100,23 @@ public final class Processes {
         }
     }
 
+    /** Whether a child {@code builder} starts has a stderr pipe of its own: not merged, not redirected. */
+    static boolean ownStderr(ProcessBuilder builder) {
+        return !builder.redirectErrorStream() && builder.redirectError().type() == ProcessBuilder.Redirect.Type.PIPE;
+    }
+
+    /**
+     * The JDK's stream for a child's stderr redirected away from the parent: no pipe behind it. A
+     * merged stderr is not always this stream (on Linux it is a pipe already at its end), so a
+     * child known by its builder is judged by {@link #ownStderr} instead.
+     */
+    private static final String NO_PIPE = "java.lang.ProcessBuilder$NullInputStream";
+
+    /** False when {@code error}, a started child's stderr, is known to have no pipe behind it. */
+    static boolean piped(InputStream error) {
+        return !error.getClass().getName().equals(NO_PIPE);
+    }
+
     /**
      * {@code command}'s raw output (stderr merged) when it exits 0 within {@code timeout}, for a
      * child whose output is not UTF-8; {@code null} on every failure, as {@link #outputIfOk}.
@@ -105,7 +127,8 @@ public final class Processes {
                     ChildEnv.start(new ProcessBuilder(command).redirectErrorStream(true)),
                     null,
                     timeout,
-                    Integer.MAX_VALUE);
+                    Integer.MAX_VALUE,
+                    false);
             return ran.timedOut() || ran.exit() != 0 ? null : ran.out().bytes();
         } catch (IOException | RuntimeException e) {
             return null;
@@ -170,6 +193,9 @@ public final class Processes {
 
     /** Reads one pipe to its end on a platform daemon thread, keeping the first {@code limit} bytes. */
     private static final class Drain implements Runnable {
+        /** A pipe that is not there: read to its end already, with nothing kept. */
+        static final Drain EMPTY = new Drain(InputStream.nullInputStream(), 0, "jk-process-none");
+
         private final InputStream in;
         private final int limit;
         private final ByteArrayOutputStream kept = new ByteArrayOutputStream();
@@ -182,6 +208,16 @@ public final class Processes {
             // that holds its carrier for as long as the child is silent.
             this.thread = new Thread(this, name);
             thread.setDaemon(true);
+        }
+
+        /** For a stderr with nothing to read: closed at once, no thread started. */
+        static Drain none(Process child) {
+            try {
+                child.getErrorStream().close();
+            } catch (IOException alreadyClosed) {
+                // Nothing was going to be read from it.
+            }
+            return EMPTY;
         }
 
         static Drain start(InputStream in, int limit, String name) {
