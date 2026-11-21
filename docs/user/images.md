@@ -85,6 +85,27 @@ but not the jk-side sources above.
 A registry on `localhost` / `127.0.0.1` is reached over plain HTTP, the same default docker and
 podman apply.
 
+## SBOM and provenance on a push
+
+A push attaches two documents to the image it pushed, as OCI 1.1 referrers whose subject is the
+image's digest:
+
+- the module's **CycloneDX SBOM** (`application/vnd.cyclonedx+json`), the same bill of materials an
+  application jar embeds, read from the lock; a copy stays at `target/sbom/image.cdx.json`.
+- an unsigned **SLSA v1 provenance** statement (`application/vnd.in-toto+json`) naming the image
+  digest, the base image and every locked dependency with its SHA-256.
+
+```bash
+jk image --registry ghcr.io/acme
+oras discover ghcr.io/acme/app:1.0.0     # lists the SBOM and the provenance
+```
+
+A registry that serves the referrers API indexes them itself. For one that does not (a
+`registry:2`), JumpKick keeps the index at the tag `sha256-<image digest hex>`, the fallback the
+distribution spec names. They are written with the push credential. If the registry refuses them,
+the image stays pushed and the build prints a notice. A tarball or a daemon load attaches nothing,
+and neither does a node module's image or Dockerfile mode.
+
 ## In a workspace
 
 `jk image` from a member's directory builds that member's image. The member's `[image]` table

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.testing;
 
+import cc.jumpkick.jsonl.MiniJson;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -59,6 +60,7 @@ public final class RegistryStub implements AutoCloseable {
     private final List<String> refused = new CopyOnWriteArrayList<>();
     private final List<String> served = new CopyOnWriteArrayList<>();
     private final AtomicInteger uploadIds = new AtomicInteger();
+    private volatile boolean referrersApi;
 
     private RegistryStub(HttpServer server, ServerSocket door, @Nullable String expectedAuthorization) {
         this.server = server;
@@ -106,6 +108,24 @@ public final class RegistryStub implements AutoCloseable {
         thread.setDaemon(true);
         thread.start();
         return thread;
+    }
+
+    /**
+     * This registry serving the OCI 1.1 referrers API: a manifest PUT with a {@code subject} is
+     * answered with {@code OCI-Subject}, so a client keeps no referrers tag of its own.
+     */
+    public RegistryStub withReferrersApi() {
+        referrersApi = true;
+        return this;
+    }
+
+    /** The tags this registry holds in {@code repo}, digests excluded. */
+    public List<String> tags(String repo) {
+        return manifests.keySet().stream()
+                .filter(k -> k.startsWith(repo + ":") && !k.startsWith(repo + ":sha256:"))
+                .map(k -> k.substring(repo.length() + 1))
+                .sorted()
+                .toList();
     }
 
     /** {@code 127.0.0.1:<port>} — the registry half of an image reference. */
@@ -278,6 +298,11 @@ public final class RegistryStub implements AutoCloseable {
             throws IOException {
         if (method.equals("PUT")) {
             String digest = put(body);
+            String subject = referrersApi
+                    ? MiniJson.str(
+                            MiniJson.get(MiniJson.parse(new String(body, StandardCharsets.UTF_8)), "subject"), "digest")
+                    : null;
+            if (subject != null) exchange.getResponseHeaders().add("OCI-Subject", subject);
             manifests.put(repo + ":" + reference, digest);
             manifests.put(repo + ":" + digest, digest);
             exchange.getResponseHeaders().add("Docker-Content-Digest", digest);

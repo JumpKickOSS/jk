@@ -13,6 +13,7 @@ import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.engine.plugin.WorkerExit;
+import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.image.ImageConfig;
@@ -39,6 +40,7 @@ import cc.jumpkick.run.TaskKind;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.BuildPlanner;
 import cc.jumpkick.runtime.EffortWeights;
+import cc.jumpkick.runtime.PackagingKeys;
 import cc.jumpkick.runtime.PluginBuild;
 import cc.jumpkick.runtime.PluginTransfers;
 import cc.jumpkick.runtime.Tail;
@@ -83,6 +85,9 @@ public final class ImagePlans {
             BuildPlanKey.scalar("runtime-jars", RuntimeJars.class);
 
     public static final BuildPlanKey<String> IMAGE_REF = BuildPlanKey.scalar("image-ref", String.class);
+
+    /** The SBOM a push attaches to the image, under the module's {@link BuildLayout#sbomDir}. */
+    static final String IMAGE_SBOM = "image.cdx.json";
 
     /**
      * {@code jk image}'s tail: {@code image-plan} then {@code write-image} (a node module's own pair
@@ -368,6 +373,17 @@ public final class ImagePlans {
             sw.configString("tarball", tarballPath.toAbsolutePath().toString());
         if (config.dockerExecutable() != null) sw.configString("dockerExecutable", config.dockerExecutable());
         if (config.aotCache()) sw.configBool("aotCache", true);
+        if (tarballPath == null && !daemonMode) {
+            // The push attaches the SBOM the application jar embeds, read from the lock the same way.
+            byte[] sbom =
+                    PackagingKeys.assemblySbom(project, layout.moduleRoot(), LockPaths.lockFile(layout.moduleRoot()));
+            if (sbom != null) {
+                Path sbomFile = layout.sbomDir().resolve(IMAGE_SBOM);
+                Files.createDirectories(sbomFile.getParent());
+                AtomicWrites.replace(sbomFile, sbom);
+                sw.configString("sbom", sbomFile.toAbsolutePath().toString());
+            }
+        }
         if (!config.ports().isEmpty()) {
             sw.configList("ports", config.ports().stream().map(String::valueOf).toList());
         }

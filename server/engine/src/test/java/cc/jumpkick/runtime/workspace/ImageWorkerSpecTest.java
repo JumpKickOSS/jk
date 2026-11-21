@@ -8,6 +8,7 @@ import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.image.ImageConfig;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockfileReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -41,19 +42,25 @@ class ImageWorkerSpecTest {
     }
 
     private static List<String> spec(Path module, Path cache, String base) throws Exception {
+        return spec(module, cache, base, null, module.resolve("target/app.tar"));
+    }
+
+    /** The spec for a push to {@code registry}, a daemon load when it is null, or a tarball. */
+    private static List<String> spec(
+            Path module, Path cache, String base, @Nullable String registry, @Nullable Path tarball) throws Exception {
         var project = JkBuildParser.parse(module.resolve("jk.toml"));
         return ImagePlans.imageWorkerSpec(
                         cache,
                         project,
                         BuildLayout.of(module, project),
                         new ImageConfig(
-                                TAG, null, null, List.of(), Map.of(), Map.of(), Map.of(), null, null, List.of(), null,
-                                null, null, true),
+                                TAG, null, null, List.of(), Map.of(), Map.of(), Map.of(), registry, null, List.of(),
+                                null, null, null, true),
                         base,
                         "com.example.Main",
                         new ImagePlans.RuntimeJars(List.of(), List.of(), List.of(), Map.of()),
                         null,
-                        module.resolve("target/app.tar"))
+                        tarball)
                 .lines();
     }
 
@@ -100,5 +107,58 @@ class ImageWorkerSpecTest {
         assertThat(Path.of(jkCache).resolve(CacheTree.BASE_JRE.entry()).startsWith(target))
                 .as("%s is module build output — nothing reclaims it and `jk clean` deletes it", target)
                 .isFalse();
+    }
+
+    /** A push hands the worker the module's SBOM to attach; the bill is the lock's runtime closure. */
+    @Test
+    void a_push_hands_the_worker_the_modules_sbom(@TempDir Path tmp) throws Exception {
+        Path module = lockedModule(tmp);
+
+        String sbom = config(spec(module, tmp.resolve("cache"), PINNED, "registry.example:5000", null), "sbom");
+
+        assertThat(sbom).isNotNull();
+        assertThat(Path.of(sbom))
+                .isEqualTo(module.resolve("target/sbom/image.cdx.json").toAbsolutePath());
+        assertThat(Files.readString(Path.of(sbom)))
+                .contains("\"bomFormat\": \"CycloneDX\"")
+                .contains("pkg:maven/com.foo/leaf@1.0");
+    }
+
+    /** A tarball or a daemon load is not a registry push: there is nothing to attach the SBOM to. */
+    @Test
+    void a_tarball_build_hands_the_worker_no_sbom(@TempDir Path tmp) throws Exception {
+        Path module = lockedModule(tmp);
+
+        assertThat(config(spec(module, tmp.resolve("cache"), PINNED), "sbom")).isNull();
+        assertThat(config(spec(module, tmp.resolve("cache"), PINNED, null, null), "sbom"))
+                .isNull();
+        assertThat(module.resolve("target/sbom")).doesNotExist();
+    }
+
+    private static Path lockedModule(Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(module.resolve("jk.toml"), """
+            group = "t"
+            name = "app"
+            version = "0.1.0"
+            java = 25
+
+            [dependencies]
+            leaf = "com.foo:leaf:1.0"
+            """);
+        Files.writeString(module.resolve("jk-lock.toml"), """
+            version = 1
+            generated-by = "jk test"
+            resolution-algorithm = "pubgrub-v1"
+
+            [[artifact]]
+            name     = "com.foo:leaf"
+            version  = "1.0"
+            source   = "central+https://repo.maven.apache.org/maven2/"
+            checksum = "sha256:d65226949713c4c61a784f41c51167e7b0316f93764398ebba9e4336b3d954c2"
+            scopes   = ["main"]
+            """);
+        LockfileReader.clearCache();
+        return module;
     }
 }

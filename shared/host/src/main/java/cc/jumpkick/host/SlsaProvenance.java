@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.plugin.publish;
+package cc.jumpkick.host;
 
 import cc.jumpkick.jsonl.Jsonl;
 import java.nio.charset.StandardCharsets;
@@ -13,10 +13,16 @@ import java.util.TreeMap;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Hand-rolled SLSA v1 in-toto Statement JSON (unsigned; Sigstore bundling is layered via {@link
- * SigstoreSigner}).
+ * Hand-rolled SLSA v1 in-toto Statement JSON, unsigned: {@code jk publish} wraps it in a DSSE
+ * envelope when it signs, and {@code jk image} attaches it to a pushed image as it is.
  */
 public final class SlsaProvenance {
+
+    /** The {@code runDetails.builder.id} of every statement jk renders. */
+    public static final String BUILDER_ID = "https://github.com/JumpKickOSS/jk";
+
+    /** The {@code buildDefinition.buildType} of every statement jk renders. */
+    public static final String BUILD_TYPE = "https://jumpkick.build/jk-build/v1";
 
     /** A subject is one artifact being attested to. Maven uploads typically attest the main jar. */
     public record Subject(String name, String sha256) {

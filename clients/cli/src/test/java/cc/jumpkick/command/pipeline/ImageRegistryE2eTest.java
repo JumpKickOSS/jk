@@ -70,6 +70,14 @@ class ImageRegistryE2eTest {
         assertThat(registry.holdsManifest("acme/app", "1.0.0-SNAPSHOT")).isTrue();
         OciImages.Image pushed = OciImages.fromRegistry(registry, "acme/app", "1.0.0-SNAPSHOT");
         assertThat(pushed.files()).containsExactlyInAnyOrderElementsOf(built.files());
+        String referrers = registry.tags("acme/app").stream()
+                .filter(t -> t.startsWith("sha256-"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("the push attached no referrers"));
+        assertThat(registry.manifest("acme/app", referrers))
+                .as("the SBOM and the provenance, listed under the image's referrers tag")
+                .contains("\"artifactType\":\"application/vnd.cyclonedx+json\"")
+                .contains("\"artifactType\":\"application/vnd.in-toto+json\"");
     }
 
     @Test

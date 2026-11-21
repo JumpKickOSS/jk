@@ -10,6 +10,7 @@ import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.SlsaProvenance;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.OfflineException;
@@ -198,8 +199,8 @@ public final class Publisher implements Plugin, PublishExtension {
             // repository keeps an envelope it holds over the same statement.
             String jarSha = Hashing.sha256Hex(jar);
             SlsaProvenance.BuildContext buildCtx = new SlsaProvenance.BuildContext(
-                    "https://github.com/JumpKickOSS/jk",
-                    "https://jumpkick.build/jk-build/v1",
+                    SlsaProvenance.BUILDER_ID,
+                    SlsaProvenance.BUILD_TYPE,
                     UUID.nameUUIDFromBytes(("slsa\0" + jarSha).getBytes(StandardCharsets.UTF_8))
                             .toString(),
                     null,

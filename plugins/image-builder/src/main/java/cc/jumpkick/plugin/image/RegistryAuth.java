@@ -7,6 +7,7 @@ import cc.jumpkick.model.RepositorySpec;
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.Credential;
+import com.google.cloud.tools.jib.api.CredentialRetriever;
 import com.google.cloud.tools.jib.api.ImageReference;
 import com.google.cloud.tools.jib.api.InvalidImageReferenceException;
 import com.google.cloud.tools.jib.api.JibContainer;
@@ -16,8 +17,12 @@ import com.google.cloud.tools.jib.api.RegistryException;
 import com.google.cloud.tools.jib.api.RegistryImage;
 import com.google.cloud.tools.jib.frontend.CredentialRetrieverFactory;
 import com.google.cloud.tools.jib.global.JibSystemProperties;
+import com.google.cloud.tools.jib.registry.credentials.CredentialRetrievalException;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import org.jspecify.annotations.Nullable;
 
@@ -108,19 +113,39 @@ public final class RegistryAuth {
         return named(reference, push);
     }
 
+    /**
+     * The credential a write to {@code reference} carries outside Jib, found in {@link #target}'s
+     * order; null for anonymous.
+     */
+    @Nullable
+    Credential pushCredential(String reference) throws InvalidImageReferenceException, CredentialRetrievalException {
+        for (CredentialRetriever retriever : retrievers(ImageReference.parse(reference), push)) {
+            Optional<Credential> found = retriever.retrieve();
+            if (found.isPresent()) return found.get();
+        }
+        return null;
+    }
+
     private static RegistryImage named(String reference, RepoCredential credential)
             throws InvalidImageReferenceException {
         ImageReference parsed = ImageReference.parse(reference);
         RegistryImage image = RegistryImage.named(parsed);
-        CredentialRetrieverFactory retrievers = CredentialRetrieverFactory.forImage(parsed, RegistryAuth::log);
-        Credential resolved = jibCredential(credential);
-        if (resolved != null) image.addCredentialRetriever(retrievers.known(resolved, "jk"));
-        // Loopback is not a Docker-cred-store host; asking still spawns the configured helper.
-        if (!loopback(reference)) {
-            image.addCredentialRetriever(retrievers.dockerConfig());
-            image.addCredentialRetriever(retrievers.wellKnownCredentialHelpers());
-        }
+        for (CredentialRetriever retriever : retrievers(parsed, credential)) image.addCredentialRetriever(retriever);
         return image;
+    }
+
+    /** jk's credential first, then the Docker credential store, for one registry reference. */
+    private static List<CredentialRetriever> retrievers(ImageReference parsed, RepoCredential credential) {
+        CredentialRetrieverFactory factory = CredentialRetrieverFactory.forImage(parsed, RegistryAuth::log);
+        List<CredentialRetriever> retrievers = new ArrayList<>();
+        Credential resolved = jibCredential(credential);
+        if (resolved != null) retrievers.add(factory.known(resolved, "jk"));
+        // Loopback is not a Docker-cred-store host; asking still spawns the configured helper.
+        if (!RepositorySpec.loopbackAuthority(parsed.getRegistry())) {
+            retrievers.add(factory.dockerConfig());
+            retrievers.add(factory.wellKnownCredentialHelpers());
+        }
+        return retrievers;
     }
 
     /**
@@ -190,7 +215,7 @@ public final class RegistryAuth {
      * on every miss would bury the build — and none of it carries a credential value: Jib logs
      * which source answered, never what it answered with.
      */
-    private static void log(LogEvent event) {
+    static void log(LogEvent event) {
         if (event.getLevel() == LogEvent.Level.WARN || event.getLevel() == LogEvent.Level.ERROR) {
             System.err.println("jk: " + event.getMessage());
         }

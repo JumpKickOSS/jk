@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceResolve;
+import cc.jumpkick.host.SlsaProvenance;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.JkBuild;

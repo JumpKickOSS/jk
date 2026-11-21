@@ -3,7 +3,9 @@ package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.SlsaProvenance;
 import cc.jumpkick.image.ImageConfig;
+import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
@@ -18,6 +20,7 @@ import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -27,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -198,8 +202,88 @@ public final class OciImageBuilder implements Plugin, ImageExtension {
             return ImageResult.loaded(ref);
         }
         ctx.label("pushing " + ref);
-        noticeOf(ctx, ImageBuilder.pushToRegistry(plan, cacheRoot, auth));
+        ImageBuilder.Result pushed = ImageBuilder.pushToRegistry(plan, cacheRoot, auth);
+        noticeOf(ctx, pushed);
+        attach(ctx, pushed, base, auth);
         return ImageResult.pushed(ref);
+    }
+
+    /**
+     * Attach the module's SBOM, when the engine sent one, and a provenance statement to the image
+     * just pushed, as OCI referrers. The image is in the registry whatever happens here, so a
+     * registry that refuses an artifact manifest costs a notice, not the build.
+     */
+    static void attach(ImageContext ctx, ImageBuilder.Result pushed, @Nullable String base, RegistryAuth auth) {
+        String ref = pushed.imageReference();
+        try {
+            List<Referrers.Document> documents = new ArrayList<>();
+            Optional<String> sbomFile = ctx.config().stringOpt("sbom");
+            byte[] sbom = sbomFile.isPresent() ? Files.readAllBytes(Path.of(sbomFile.get())) : null;
+            if (sbom != null) documents.add(new Referrers.Document(Referrers.SBOM_TYPE, sbom));
+            documents.add(new Referrers.Document(
+                    Referrers.PROVENANCE_TYPE, provenance(ref, pushed.digest(), base, ctx.project(), sbom)));
+            ctx.label("attaching " + (sbom == null ? "provenance" : "SBOM and provenance") + " to " + ref);
+            Referrers.attach(ref, pushed.digest(), documents, auth);
+        } catch (IOException e) {
+            ctx.notice("[image] no SBOM or provenance attached to " + ref + ": " + Errors.text(e));
+        }
+    }
+
+    /**
+     * The SLSA provenance of the image {@code reference} pushed as {@code digest}: built on {@code
+     * base} from the components {@code sbom} lists. A function of its inputs, no clock and no random
+     * id, so a re-push of the same image attaches the same statement.
+     */
+    static byte[] provenance(
+            String reference, String digest, @Nullable String base, ProjectFacts project, byte @Nullable [] sbom) {
+        List<SlsaProvenance.Dependency> dependencies = new ArrayList<>();
+        if (base != null) dependencies.add(baseImage(base));
+        if (sbom != null) {
+            for (Object component :
+                    MiniJson.list(MiniJson.parse(new String(sbom, StandardCharsets.UTF_8)), "components")) {
+                String purl = MiniJson.str(component, "purl");
+                if (purl == null) continue;
+                String sha256 = null;
+                for (Object hash : MiniJson.list(component, "hashes")) {
+                    if ("SHA-256".equals(MiniJson.str(hash, "alg"))) sha256 = MiniJson.str(hash, "content");
+                }
+                dependencies.add(new SlsaProvenance.Dependency(purl, sha256));
+            }
+        }
+        SlsaProvenance.BuildContext build = new SlsaProvenance.BuildContext(
+                SlsaProvenance.BUILDER_ID,
+                SlsaProvenance.BUILD_TYPE,
+                UUID.nameUUIDFromBytes(("slsa\0" + digest).getBytes(StandardCharsets.UTF_8))
+                        .toString(),
+                null,
+                null,
+                Map.of("image", reference),
+                Map.of("group", project.group(), "artifact", project.name(), "version", project.version()),
+                dependencies);
+        return SlsaProvenance.generate(
+                List.of(new SlsaProvenance.Subject(repository(reference), digest.substring(digest.indexOf(':') + 1))),
+                build);
+    }
+
+    /**
+     * The base image as a resolved dependency: {@code pkg:docker/<name>}, with its digest when the
+     * engine pinned one and its tag otherwise.
+     */
+    private static SlsaProvenance.Dependency baseImage(String base) {
+        int at = base.indexOf("@sha256:");
+        if (at >= 0) {
+            return new SlsaProvenance.Dependency(
+                    "pkg:docker/" + repository(base.substring(0, at)), base.substring(at + "@sha256:".length()));
+        }
+        String name = repository(base);
+        String tag = base.length() > name.length() ? base.substring(name.length() + 1) : "latest";
+        return new SlsaProvenance.Dependency("pkg:docker/" + name + "@" + tag, null);
+    }
+
+    /** {@code reference} without its tag. */
+    private static String repository(String reference) {
+        int colon = reference.lastIndexOf(':');
+        return colon > reference.lastIndexOf('/') ? reference.substring(0, colon) : reference;
     }
 
     /** Pass on what the build owes the user: an AOT cache it was asked for and could not train. */
