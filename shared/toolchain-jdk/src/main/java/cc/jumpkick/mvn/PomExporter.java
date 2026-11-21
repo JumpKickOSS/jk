@@ -202,13 +202,16 @@ public final class PomExporter {
         Project p = jkBuild.project();
         List<Dependency> processors = jkBuild.dependencies().of(Scope.PROCESSOR);
         List<Dependency> testProcessors = jkBuild.dependencies().of(Scope.TEST_PROCESSOR);
-        boolean anyProcessor = !processors.isEmpty() || !testProcessors.isEmpty();
+        // Every module pins the compiler plugin: the one an older Maven binds by default predates
+        // <release> and would compile without --release. A workspace root is pom packaging and
+        // compiles nothing.
+        boolean compiler = !jkBuild.isWorkspaceRoot();
         boolean kotlin = p.kotlin() != null;
         boolean toolchain = p.jdk() != null && !p.jdk().isBlank();
         boolean assembly = jkBuild.assembly();
         boolean nativeImg = jkBuild.nativeMode() == JkBuild.NativeMode.ALWAYS;
         boolean jarManifest = jkBuild.mainClass() != null || !jkBuild.manifest().isEmpty();
-        boolean anyPlugin = anyProcessor || kotlin || toolchain || assembly || nativeImg || jarManifest;
+        boolean anyPlugin = compiler || kotlin || toolchain || assembly || nativeImg || jarManifest;
         boolean simple = layout == Layout.SIMPLE;
         if (!anyPlugin && !simple) return;
 
@@ -224,8 +227,8 @@ public final class PomExporter {
         if (anyPlugin) {
             sb.append("    <plugins>\n");
             if (kotlin) appendKotlinPlugin(sb, p, report);
-            if (anyProcessor) {
-                appendCompilerProcessorPlugin(
+            if (compiler) {
+                appendCompilerPlugin(
                         sb,
                         processors,
                         testProcessors,
@@ -260,6 +263,7 @@ public final class PomExporter {
     }
 
     /**
+     * The compiler plugin at a pinned version that reads {@code <release>}, with
      * {@code [processor-dependencies]} as the plugin's own {@code <annotationProcessorPaths>}, which
      * reach both compiles; {@code [test-processor-dependencies]} as a {@code testCompile} execution
      * whose paths replace the plugin's with the shared list plus its own, so compile-test alone
@@ -267,7 +271,7 @@ public final class PomExporter {
      * empty list when the table names none, which leaves testCompile discovering processors on its
      * classpath as jk's compile-test then does.
      */
-    private static void appendCompilerProcessorPlugin(
+    private static void appendCompilerPlugin(
             StringBuilder sb,
             List<Dependency> processors,
             List<Dependency> testProcessors,

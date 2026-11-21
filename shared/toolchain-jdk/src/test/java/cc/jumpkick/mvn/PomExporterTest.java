@@ -429,6 +429,41 @@ class PomExporterTest {
     }
 
     @Test
+    void a_module_without_processors_pins_the_compiler_plugin_that_reads_release() {
+        // A Maven older than 3.9 binds a compiler plugin that predates <release>, so the property
+        // alone would leave --release unset there.
+        JkBuild b = parse("""
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                java = 21
+                """);
+
+        String xml = PomExporter.export(b).xml();
+
+        assertThat(xml)
+                .containsPattern("<artifactId>maven-compiler-plugin</artifactId>\n"
+                        + " *<version>3\\.\\d+\\.\\d+</version>\n *<configuration>\n *<release>21</release>\n"
+                        + " *</configuration>\n *</plugin>")
+                .doesNotContain("annotationProcessorPaths");
+    }
+
+    @Test
+    void a_workspace_root_compiles_nothing_and_pins_no_compiler_plugin() {
+        JkBuild root = parse("""
+                group = "com.example"
+                name  = "root"
+                version = "1.0.0"
+                java = 25
+
+                [workspace]
+                modules = ["mod-a"]
+                """);
+
+        assertThat(PomExporter.export(root).xml()).doesNotContain("maven-compiler-plugin");
+    }
+
+    @Test
     void git_dependency_warns() {
         JkBuild b = parse("""
                 group = "com.example"

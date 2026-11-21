@@ -719,8 +719,9 @@ catalog layers. Keep `jk gradle` for modules that still need full Gradle.
 **Export** writes what the manifest says, at the versions `jk-lock.toml` holds: `jk export maven`
 writes `[export-dependencies]` and `[dependencies]` as compile-scope dependencies, each
 dependency's `exclude` list as `<exclusions>`, a `[managed-dependencies]` entry's included on its
-`<dependencyManagement>` row, `[processor-dependencies]` as the `<annotationProcessorPaths>` of a
-compiler plugin pinned to a version that reads them and `<release>`, and
+`<dependencyManagement>` row, `java` as `<release>` on a `maven-compiler-plugin` pinned in every
+module's POM (the plugin an older Maven binds by default ignores `maven.compiler.release`),
+`[processor-dependencies]` as that plugin's `<annotationProcessorPaths>`, and
 `[test-processor-dependencies]` as a `testCompile` execution whose
 paths are the shared table plus its own (its own alone under `inherit = false`, an empty list when
 it has none). `jk export gradle` writes `[export-dependencies]` as `api` under the `java-library`
