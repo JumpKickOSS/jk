@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>JumpKick — the agentic workbench for Java</title>
-  <meta name="description" content="JumpKick is the agentic workbench for Java: the fastest recompiles, the fastest re-tests, and an agent that understands your code. Code intelligence, builds, tests, and live feedback in one open-source toolkit for Java, Kotlin, and Groovy." />
-  <meta property="og:title" content="JumpKick — the agentic workbench for Java" />
-  <meta property="og:description" content="The fastest recompiles. The fastest re-tests. An agent that understands your code." />
+  <title>JumpKick — the Agent Workbench for Java</title>
+  <meta name="description" content="JumpKick is the Agent Workbench for Java. It puts your coding agent on rails: a compiler-exact code graph, safe refactoring, builds and tests that redo only what a change invalidated, guards and toolchains, in one open-source workbench for Java, Kotlin, and Groovy." />
+  <meta property="og:title" content="JumpKick — the Agent Workbench for Java" />
+  <meta property="og:description" content="Put your coding agent on rails: one fast, right way to understand, change, build and test your Java code." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://jumpkick.build/" />
   <meta name="theme-color" content="#090c11" />
@@ -1227,24 +1227,25 @@
     <div class="hero-inner">
       <div class="hero-copy">
         <div class="eyebrow"><b>NEW</b> Open source · Apache 2.0 · Java, Kotlin &amp; Groovy</div>
-        <h1>The <span class="grad">agentic workbench</span> for Java.</h1>
+        <h1>The <span class="grad">Agent Workbench</span> for Java.</h1>
         <ul class="punches">
           <li>
             <span class="punch-ico c1" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>
-            The fastest recompiles.
+            Builds and tests only what a change invalidated.
           </li>
           <li>
             <span class="punch-ico c2" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></span>
-            The fastest re-tests.
+            One right way to test, change, and hand work back.
           </li>
           <li>
             <span class="punch-ico c3" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="8" r="2.5"/><circle cx="10" cy="18" r="2.5"/><path d="M8.3 7 15.6 7.6M7 8.3l2.2 7.4M16.4 10.1l-4.6 6"/></svg></span>
-            An agent that understands your code.
+            A code graph that answers in one call.
           </li>
         </ul>
         <p class="hero-lede">
-          JumpKick brings code intelligence, builds, tests, and live feedback into one integrated
-          toolkit. Give your coding agent the tools to move faster — and see exactly what it's doing.
+          Put your coding agent on rails. JumpKick is everything it needs to work in a Java
+          codebase, with one fast, right way to do each common thing — and a live view of exactly
+          what it's doing.
         </p>
         <div class="hero-actions">
           <a class="btn btn-brand btn-lg" href="#install">Get JumpKick →</a>
@@ -1331,16 +1332,17 @@
   <section class="section" id="benefits">
     <div class="section-head reveal">
       <span class="kicker-label">Why JumpKick</span>
-      <h2>Spend your time making progress.<br /><span class="grad-text">Not waiting for it.</span></h2>
+      <h2>Put your agent on rails.<br /><span class="grad-text">Watch your throughput climb.</span></h2>
+      <p>An IDE made you faster because it knew your code and ran your build. This is that, for your agent: the common things cheap and easy, the wrong things hard.</p>
     </div>
 
     <div class="rows">
       <!-- 1. loop -->
       <article class="row reveal" style="--accent: var(--cn)">
         <div class="row-copy">
-          <div class="row-num">01 · Speed</div>
-          <h3>Change the code. Get the answer. Keep moving.</h3>
-          <p>Lightning-fast recompiles and re-tests keep your development loop moving. Reuse work across branches and worktrees instead of starting over. Never type <code>clean</code> again.</p>
+          <div class="row-num">01 · Only the work the change needs</div>
+          <h3>Change one file. Rebuild and re-test what it touched.</h3>
+          <p>JumpKick recompiles what a change invalidated and re-runs the test suites whose inputs changed, nothing else. Every step is keyed by its content, so a second branch, worktree, agent or CI runner reuses the work, and CI skips every step an earlier run already proved. Never type <code>clean</code> again.</p>
         </div>
         <div class="viz" aria-hidden="true">
           <div class="viz-title">one action cache · every checkout</div>
@@ -1359,9 +1361,9 @@
       <!-- 2. agent -->
       <article class="row reveal" style="--accent: var(--prog-b)">
         <div class="row-copy">
-          <div class="row-num">02 · Intelligence</div>
+          <div class="row-num">02 · Understanding</div>
           <h3>Give your agent understanding — not another search expedition.</h3>
-          <p>Built-in semantic navigation and MCP connect your agent directly to your code and development tools. Find callers. Follow relationships. Make informed changes.</p>
+          <p>A code graph from the compiled classes answers who calls a method in one call, complete, and renames it everywhere in one more. It knows what surrounds the code too: the route, the SQL column and the config key, and every file that names them.</p>
           <p class="row-proof"><!-- agents-claims:begin -->
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in <strong>66–91% fewer back-and-forth turns</strong> and used <strong>72–98% fewer tokens</strong> than without it. Renaming a method everywhere it is used took <strong>75–91% fewer turns</strong> and <strong>78–98% fewer tokens</strong>. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just <strong>83 lines of code</strong>.
 <!-- agents-claims:end --></p>
@@ -1425,9 +1427,9 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
       <!-- 4. toolkit -->
       <article class="row reveal" style="--accent: var(--warn)">
         <div class="row-copy">
-          <div class="row-num">04 · Batteries included</div>
+          <div class="row-num">04 · One right way</div>
           <h3>Build your application. Not your build system.</h3>
-          <p>Readable configuration. Managed JDKs. Built-in code generation, packaging, native executables, and containers. One coherent toolkit — not another integration project.</p>
+          <p>Readable configuration. Managed JDKs. Named test rungs and a gate that says the work is done. House rules that name the fix. Built-in code generation, packaging, native executables, and containers. One coherent workbench — not another integration project.</p>
         </div>
         <div class="viz" aria-hidden="true">
           <div class="viz-title">jk.toml · the whole build, data not a program</div>
@@ -1483,8 +1485,8 @@ We asked coding agents from 6 vendors questions like "who calls this method?" Wi
   <section class="section reveal" id="proof" aria-label="Measured against Gradle and Maven">
     <div class="section-head">
       <span class="kicker-label">Measured</span>
-      <h2>Built for speed. <span class="grad-text">Measured to prove it.</span></h2>
-      <p>The same work, every tool, on spring-petclinic.</p>
+      <h2>Agent experience, measured. <span class="grad-text">Builds included.</span></h2>
+      <p>Fewer turns and fewer tokens for your agent, above. Below, the same build work in every tool, on spring-petclinic.</p>
     </div>
     <!-- wall-strip:begin -->
 <div class="proof-strip">
@@ -1606,7 +1608,7 @@ jk web</code></pre>
     <section class="closer">
       <img class="pixel" src="jumpkick-logo.webp" alt="" width="179" height="120" />
       <div>
-        <h2>Your agent is ready to move faster.</h2>
+        <h2>Put your agent on rails.</h2>
         <p class="grad-text">Give it a JumpKick.</p>
         <div class="hero-actions">
           <a class="btn btn-brand btn-lg" href="#install">Get JumpKick →</a>

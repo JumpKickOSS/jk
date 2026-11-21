@@ -1,5 +1,9 @@
 # JumpKick user documentation
 
+JumpKick is the Agent Workbench for Java: a code graph, refactoring, builds, tests, guards and
+toolchains a coding agent drives through `jk` and MCP, with a dashboard for the person
+supervising it.
+
 How to **use** JumpKick. Written for humans who have never used `jk`, and for AI coding
 agents that need a fast path from “what is this tool?” to a specific flag or file.
 
@@ -15,7 +19,7 @@ If you are changing JumpKick itself, go to [../contributors/](../contributors/RE
 |------|-----------------|
 | **[Skill](skill.md)** | First stop. Live text is `jk skill` (MCP `skill`). Topics load one page at a time. |
 | **[Getting started](getting-started.md)** | Install, first project, first build. |
-| **[Why JumpKick](why.md)** | Seven reasons to switch from Maven or Gradle, with the evidence behind each. |
+| **[Why JumpKick](why.md)** | What an agent workbench is, the two clocks it shortens, and seven reasons to switch from Maven or Gradle, with the evidence behind each. |
 | **[Comparison](comparison.md)** | Feature matrix against Maven and Gradle: where JumpKick wins, and where it does not. |
 | **[The 1.0 plan](../contributors/plan-1.0.md)** | What lands before 1.0 and in what order: the inner loop first. |
 | **[Concepts](concepts.md)** | Lockfile is law, `jk.toml` is data, `java =` vs `jdk =`. |

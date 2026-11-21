@@ -1,14 +1,33 @@
 # Why JumpKick
 
-> **JumpKick is the JVM build system built for coding agents — and for the humans supervising
-> them.**
+> **JumpKick is the Agent Workbench for Java: everything a coding agent needs to work in a Java
+> codebase, and a live view for the human supervising it.**
 
-**Audience:** Maven or Gradle users evaluating a switch, and anyone building JVM software with
-coding agents. How to *use* JumpKick: [skill](skill.md) · [getting started](getting-started.md) ·
+**Audience:** anyone building JVM software with coding agents, and Maven or Gradle users
+evaluating a switch. How to *use* JumpKick: [skill](skill.md) · [getting started](getting-started.md) ·
 [agents](agents.md).
 
-The reason to leave Maven or Gradle is that the **edit → build → diagnose → fix → rebuild**
-loop gets shorter. An agent runs that loop hundreds of times a day, and the human watching it
+A developer can write Java in a plain text editor and does not, because an IDE knows the code
+and runs the build. A coding agent without a workbench is in that text editor: it greps, reads,
+guesses, rebuilds and waits. JumpKick gives it the IDE's knowledge as tools it can call, and puts
+it **on rails**: one fast, right way to find the callers, rename a method, add a dependency, run
+the tests and say the work is done. The common things are cheap, the wrong things are hard, and
+the agent finishes more work. That is agent experience (AX), and [it is measured](#agents-reach-green).
+
+An agent's task runs on two clocks. The **turn clock** is how many times the model goes back and
+forth; the code graph and `rename` cut it. The **build clock** is how long the build and the tests
+take to answer; the build system cuts it, in three places:
+
+- **The agent's loop.** One changed file recompiles what it invalidated and re-runs the test
+  suites whose inputs changed. A suite nothing touched is not run again.
+- **CI.** Every compile, generate, guard and test step is keyed by the content of its inputs, so a
+  runner skips each step an earlier run already proved ([CI](ci.md)).
+- **The team.** With a [shared cache](cache.md), what CI built is restored on every developer's
+  machine instead of being built again.
+
+The build system is therefore not beside the point of an agent's workbench; on a codebase with a
+long test suite it is most of the point. The reason to leave Maven or Gradle is that the
+**edit → build → diagnose → fix → rebuild** loop gets shorter. An agent runs that loop hundreds of times a day, and the human watching it
 needs to see what happened on every pass. Each feature below either shortens a step of that
 loop, removes a retry, or removes a tool you would otherwise install.
 
@@ -445,6 +464,16 @@ On 5 agents' top models, the graph's runs took at most 1 more turn across 7 task
 
 Each agent with the graph as `jk agents` sets it up, on the same tasks, its default model against its vendor's top model (or, for Vendor B, its model at the highest reasoning effort). Medians per task, summed.
 <!-- agents-models:end -->
+
+## Where it is going
+
+The workbench today is the graph with `callers` and `rename`, the build and test loop, guards, the
+dashboard and the batteries above. Next, in the order planned: more compiler-proved refactorings
+(change signature, move member, safe delete); lookup of a library's real API at the locked
+version, so an agent does not invent one; test selection per class from a change's cone; a ledger
+of the time, turns and tokens JumpKick saved; starting, watching and stopping the application
+over MCP; and JumpKick Dojo, a shared cache service for teams. None of these is described
+elsewhere in these pages until it ships.
 
 ## What is still open
 

@@ -1,17 +1,18 @@
 <img width="1760" height="576" alt="jumpkick-banner" src="docs/assets/jumpkick-banner.png" />
 
-# The agentic workbench for Java.
+# JumpKick: the Agent Workbench for Java
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-25-orange.svg)](https://openjdk.org/projects/jdk/25/)
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/user/README.md)
 
-**The fastest recompiles. The fastest re-tests. An agent that understands your code.**
+**Put your coding agent on rails.**
 
-**JumpKick** (CLI: **`jk`**) brings code intelligence, builds, tests, and live feedback into one
-integrated toolkit. Give your coding agent the tools to move faster — and see exactly what it's
-doing.
+**JumpKick** (CLI: **`jk`**) is everything a coding agent needs to work in a Java codebase: a
+compiler-exact code graph, safe refactoring, builds and tests that redo only what a change
+invalidated, guards, and every toolchain. One fast, right way to do each common thing, so your
+agent does more and gets less wrong. You get a live view of what it is doing.
 
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash     # Windows: irm https://jumpkick.build/install.ps1 | iex
@@ -26,7 +27,7 @@ On Windows, the [Windows setup guide](docs/user/windows.md) gets a stock Windows
 fast: Smart App Control, Defender, where to keep code, and the optional Dev Drive.
 
 `jk new` wires your agent in for you: Claude Code, Cursor, VS Code, Gemini CLI, and opencode. On
-an existing project, run `jk agents`.
+an existing project, run `jk agents`. Any other agent takes one command: `jk mcp`.
 
 Open source. Apache 2.0. Java, Kotlin, and Groovy. **[jumpkick.build](https://jumpkick.build)**
 
@@ -41,34 +42,65 @@ Open source. Apache 2.0. Java, Kotlin, and Groovy. **[jumpkick.build](https://ju
 
 ---
 
-## Spend your time making progress. Not waiting for it.
+## What an IDE did for you, for your agent
 
-### Change the code. Get the answer. Keep moving.
+You could write Java in a plain text editor. You do not, because an IDE knows your code and runs
+your build. Without a workbench your agent is in that text editor: grep, read, guess, rebuild,
+wait. JumpKick gives it the same things as tools it can call.
 
-Lightning-fast recompiles and re-tests keep your development loop moving. Every step is keyed by
-the content of its inputs, so a second branch, worktree, agent, or CI run reuses the work instead
-of starting over. Never type `clean` again.
+| What your IDE does for you | What JumpKick does for your agent |
+|---|---|
+| Find usages | `callers`: every call, field use and type use, exact, in one call |
+| Rename refactoring | `rename`: every use the compiler bound, proved by a compile, undone if it fails |
+| Red squiggles | A verdict: each error at `file:line` with the exact line to edit |
+| Run tests from the gutter | `run`: the cheapest test rung that can catch the bug, then the gate |
+| Incremental build | A content-addressed cache shared by every worktree, agent and CI runner |
+| Inspections | Guards: the rule, the sanctioned alternative, and why |
+| New project wizard | `new`: templates that ask only for what is missing |
+| SDK manager | JDKs and Node.js installed and pinned |
+| | Anchors: a route, a SQL column or a config key, and every file that names it |
+| | A dashboard of every agent run: who asked, what changed, why it failed |
 
-### Give your agent understanding — not another search expedition.
+## On rails: one fast, right way
 
-Built-in semantic navigation and MCP connect your agent directly to your code and development
-tools. Find callers. Follow relationships. Rename a method and every caller in one step. Make
-informed changes.
+### Understand the code in one call
+
+A code graph is built in: calls, overrides and references from the compiled classes, so an answer
+is complete, not a search result. It also knows what surrounds the code. Routes, SQL tables and
+columns, configuration keys, environment variables and ports are anchors that join the Java to the
+YAML, the migration, the Dockerfile and the test that name them.
 
 <!-- agents-claims:begin -->
 We asked coding agents from 6 vendors questions like "who calls this method?" With JumpKick's code graph, they answered in **66–91% fewer back-and-forth turns** and used **72–98% fewer tokens** than without it. Renaming a method everywhere it is used took **75–91% fewer turns** and **78–98% fewer tokens**. The graph pays off even on tiny projects: the smallest we tested, gs-multi-module, has just **83 lines of code**. ([The tables](docs/user/why.md#asking-about-the-code).)
 <!-- agents-claims:end -->
 
-### Know what's happening. Know what's next.
+### Change it safely
 
-Accurate progress and a live dashboard put builds, tests, failures, and recovery in view. `jk web`
-shows every run, who asked for it, what changed since the last attempt, and why it failed. Catch a
-wrong turn before it becomes another wasted session.
+`rename` renames a method, a field with its accessors, a type or a package, or moves a type, in
+one call. It edits every use the compiler bound, lists the rest, proves the result by a compile
+and undoes the edit if the proof fails.
 
-### Build your application. Not your build system.
+### Only the work the change needs
 
-Readable configuration. Managed JDKs. Built-in code generation, packaging, native executables, and
-containers. One coherent toolkit — not another integration project.
+Change one file and JumpKick recompiles what that change invalidated and re-runs the test suites
+whose inputs changed. A suite nothing touched is not run again, and after a failure only the
+classes that have not passed are. Every step is keyed by the content of its inputs, so a second
+branch, worktree, agent or CI runner reuses the work instead of starting over, and a CI job skips
+every compile, generate, guard and test step an earlier run already proved. Never type `clean`
+again.
+
+### Stay on the rails
+
+The default test run is the cheap unit rung; `--guard` is the named bar before work is handed
+back. House rules are data: a violation names the rule, the sanctioned alternative and why, so the
+fix is mechanical. A dependency coordinate no repository serves is refused before anything is
+written. You can leave the rails, with a script under `.jk/scripts/` or a plugin, and you will
+rarely need to.
+
+### Nothing to assemble
+
+Readable configuration. Managed JDKs. Built-in formatting, code generation, packaging, native
+executables, and containers. One coherent workbench, not another integration project.
 
 ```toml
 # jk.toml — the whole build. Data, not a program.
@@ -84,10 +116,15 @@ jackson3-databind = "3.0.0"
 spring-boot-dependencies = "4.1.0"
 ```
 
-### Bring your project. Leave the friction behind.
+### See what your agent is doing
 
-Import your Maven or Gradle build. Let your agent handle the finishing touches. Get back to
-building. Already on Maven? `cd` into the project and run `jk test` — no `jk.toml` needed.
+`jk web` shows every run, who asked for it, what changed since the last attempt, and why it
+failed. Catch a wrong turn before it becomes another wasted session.
+
+### Bring your project
+
+Import your Maven or Gradle build. Let your agent handle the finishing touches. Already on Maven?
+`cd` into the project and run `jk test` — no `jk.toml` needed.
 
 ---
 
@@ -108,6 +145,12 @@ The full story, with the numbers behind every claim: **[Why JumpKick](docs/user/
 
 ---
 
+## Where it is going
+
+More compiler-proved refactorings beyond `rename`; lookup of a library's real API at the locked
+version; test selection per class from a change's cone; a ledger of what JumpKick saved you; and
+JumpKick Dojo, a shared cache for teams, so nobody re-runs what CI already proved.
+
 ## Your agent is ready to move faster. Give it a JumpKick.
 
 | Doc | For |
@@ -115,6 +158,7 @@ The full story, with the numbers behind every claim: **[Why JumpKick](docs/user/
 | [**Getting started**](docs/user/getting-started.md) | Install, first project, first build |
 | [**User documentation**](docs/user/README.md) | People and coding agents *using* JumpKick |
 | [**Agents**](docs/user/agents.md) / [**MCP**](docs/user/mcp.md) / [**Skill**](docs/user/skill.md) | How agents talk to `jk` |
+| [**Code graph**](docs/user/graph.md) | Callers, anchors, rename |
 | [**Migration**](docs/user/migration.md) | From Maven or Gradle |
 | [**Security**](docs/user/security.md) | Report a vulnerability; trust boundaries |
 | [**Contributor documentation**](docs/contributors/README.md) · [**Contributing**](CONTRIBUTING.md) | Changing JumpKick itself |

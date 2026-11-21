@@ -1,8 +1,8 @@
 # JumpKick for VS Code
 
-**JumpKick is the build system and agentic workbench for Java, an alternative to Maven and
-Gradle.** The fastest recompiles and re-tests, plus code intelligence your coding agent can use,
-with live feedback on every build, test and agent run.
+**JumpKick is the Agent Workbench for Java, and a build system that replaces Maven and Gradle.**
+Builds and tests that redo only what a change invalidated, a code graph your coding agent can
+ask, and live feedback on every build, test and agent run.
 
 This extension connects VS Code to the JumpKick engine for any folder with a `jk.toml`.
 
