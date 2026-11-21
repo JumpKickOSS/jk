@@ -171,7 +171,7 @@ public final class TestWorkers {
 
     /**
      * The share to actually run a suite at, sampled when it dispatches rather than when the build was
-     * planned.
+     * planned, and again while an auto suite's classes are queued, so it widens as the build narrows.
      *
      * <p>{@link #autoShare} divides the jobs budget by the graph's widest point, which is right while
      * that many modules contend and wrong for the last module standing: on a 20-thread host with 38

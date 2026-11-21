@@ -21,8 +21,8 @@ class JUnitLauncherJqwikDatabaseTest {
     void every_worker_gets_a_database_in_its_own_temp_root(@TempDir Path tmp) throws Exception {
         JUnitLauncher launcher = new JUnitLauncher();
         Path moduleTmp = Files.createDirectories(tmp.resolve("target/tmp"));
-        Path one = requireNonNull(TestTmpDir.forWorker(moduleTmp, 1, 2));
-        Path two = requireNonNull(TestTmpDir.forWorker(moduleTmp, 2, 2));
+        Path one = requireNonNull(TestTmpDir.forWorker(moduleTmp, 1, true));
+        Path two = requireNonNull(TestTmpDir.forWorker(moduleTmp, 2, true));
 
         String first = only(launcher.jvmFlags(JvmRole.PULL_WORKER, 2, one));
         String second = only(launcher.jvmFlags(JvmRole.PULL_WORKER, 2, two));

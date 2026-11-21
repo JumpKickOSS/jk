@@ -24,6 +24,7 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.run.SessionCancel;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.base.RecentClassWalls;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.IntSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -179,6 +181,22 @@ public final class JUnitLauncher {
         this.autoShare = auto;
         return this;
     }
+
+    /** The auto share as it stands now; null when a running pool keeps the count it started with. */
+    private @Nullable IntSupplier widening;
+
+    /**
+     * Let an auto-sized pool widen while it runs: {@code share} answers the share the suite would
+     * start with now, and the pool grows to what the recorded class walls make of it ({@link
+     * PullWorkerPool#run}). Applies only with {@link #withAutoShare}.
+     */
+    public JUnitLauncher withWidening(@Nullable IntSupplier share) {
+        this.widening = share;
+        return this;
+    }
+
+    /** Workers the run's sharded pool started, the ones it widened to included. */
+    private int pooled;
 
     /** JDWP listener for the suite JVM ({@code --debug-jvm}); null for an ordinary run. */
     private @Nullable DebugJvm debug;
@@ -685,6 +703,7 @@ public final class JUnitLauncher {
 
         int resolvedWorkers = wanted;
         List<String> preDiscovered = null;
+        IntSupplier widen = null;
         // Auto (the share, or a bare 0) sizes from this selection's recorded walls. An explicit
         // count is capped by class count the way it always was.
         boolean auto = debug == null && (autoShare || wanted == 0);
@@ -697,9 +716,18 @@ public final class JUnitLauncher {
                 preDiscovered = discovery.classes();
             }
             int share = wanted > 0 ? wanted : TestWorkers.effectiveJobs();
-            resolvedWorkers = preDiscovered.isEmpty()
-                    ? 1
-                    : TestWorkers.autoCount(share, inferredModuleDir, preDiscovered, preDiscovered.size());
+            Map<String, Long> recorded = RecentClassWalls.forModule(inferredModuleDir);
+            List<String> selection = preDiscovered;
+            resolvedWorkers =
+                    selection.isEmpty() ? 1 : TestWorkers.autoCount(share, recorded, selection, selection.size());
+            IntSupplier live = widening;
+            // Worth a pool only when the whole jobs budget would make more of the suite than now.
+            if (live != null
+                    && selection.size() > 1
+                    && TestWorkers.autoCount(TestWorkers.effectiveJobs(), recorded, selection, selection.size())
+                            > resolvedWorkers) {
+                widen = () -> TestWorkers.autoCount(live.getAsInt(), recorded, selection, selection.size());
+            }
         } else if (!classNames.isEmpty()) {
             preDiscovered = classNames;
             resolvedWorkers = TestWorkers.resolve(wanted, preDiscovered.size(), TestWorkers.effectiveJobs());
@@ -713,7 +741,7 @@ public final class JUnitLauncher {
         // parallel pool merges per-worker aggregators built by a constructor that has no idea. Doing
         // it per-path recorded the concurrency for 2 modules out of 29, which is worse than not at
         // all — a forecast rescales the modules it has a count for and not the rest.
-        if (resolvedWorkers <= 1) {
+        if (resolvedWorkers <= 1 && widen == null) {
             listener.onWorkers(1);
             return runSingle(javaHome, classpath, testClassesDir, listener, testResultsDir)
                     .withWorkers(1);
@@ -722,12 +750,13 @@ public final class JUnitLauncher {
         List<Path> cpForDetect = new ArrayList<>();
         cpForDetect.add(testClassesDir);
         if (runtimeClasspath != null) cpForDetect.addAll(runtimeClasspath);
-        if (JupiterParallelDetect.enabled(cpForDetect)) {
+        if (resolvedWorkers > 1 && JupiterParallelDetect.enabled(cpForDetect)) {
             listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
         }
-        return runParallel(
-                        javaHome, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered)
-                .withWorkers(resolvedWorkers);
+        pooled = 0;
+        TestSummary summary = runParallel(
+                javaHome, classpath, testClassesDir, resolvedWorkers, widen, listener, testResultsDir, preDiscovered);
+        return summary.withWorkers(Math.max(resolvedWorkers, pooled));
     }
 
     // -------- single-worker ---------------------------------------------
@@ -1030,6 +1059,7 @@ public final class JUnitLauncher {
             String classpath,
             Path testClassesDir,
             int workers,
+            @Nullable IntSupplier widen,
             TestProgressListener listener,
             @Nullable Path testResultsDir,
             @Nullable List<String> preDiscovered)
@@ -1075,8 +1105,10 @@ public final class JUnitLauncher {
         PullWorkerPool pool = new PullWorkerPool(this, javaHome, classpath, testClassesDir, listener);
         TestSummary summary;
         try {
-            summary =
-                    classes.isEmpty() ? new TestSummary(0, 0, 0, 0, List.of()) : pool.run(workers, classes, xml, md, 0);
+            summary = classes.isEmpty()
+                    ? new TestSummary(0, 0, 0, 0, List.of())
+                    : pool.run(workers, classes, xml, md, 0, widen);
+            if (!classes.isEmpty()) pooled = pool.started();
         } catch (TestLauncherFailure e) {
             if (!SuiteRetry.planned(jvmArgs) || heapOverride != null) {
                 throw SuiteRetry.unplanned(e, moduleLabel, jvmArgs);
@@ -1093,7 +1125,7 @@ public final class JUnitLauncher {
                     pool.undispatched());
         }
         if (!serialClasses.isEmpty() && serialPoolRuns(summary, SessionCancel.cancelled())) {
-            TestSummary serial = pool.run(1, serialClasses, xml, md, workers);
+            TestSummary serial = pool.run(1, serialClasses, xml, md, Math.max(workers, pooled), null);
             summary = summary.plus(serial);
         }
         writeXml(xml, testResultsDir);

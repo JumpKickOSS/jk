@@ -591,9 +591,14 @@ keeps that wide build at one runner per module. A long-tailed module — petclin
 suite, one class near 18 s and the rest done in a few seconds — stays at two runners even when
 it is the only thing building, which is the inner loop.
 
+A suite that starts while the build is wide widens as the build narrows. While its classes are
+still queued, auto reads the share again every two seconds and starts another runner, up to what
+the formula gives at that share, whenever the engine has a free JVM slot and the memory for one
+more with nothing else waiting. It never stops a runner it started.
+
 An explicit `-w N` is never rescaled; it means N.
 
-When `W > 1`, each runner gets its own `java.io.tmpdir`, its own `JK_STATE_DIR` under the
+When a suite may run on more than one runner, each runner gets its own `java.io.tmpdir`, its own `JK_STATE_DIR` under the
 module's sandbox (nested-engine suites get distinct engine sockets) and its own jqwik
 failure-replay database (`jqwik.database`, under that temp root rather than `.jqwik-database`
 in the module root, so two runners never write one file).

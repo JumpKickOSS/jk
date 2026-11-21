@@ -207,6 +207,7 @@ final class TestSteps {
                     .withRecording(env.probe())
                     .withIntegrationResults(ctx.require(MODULE).layout().integrationResultsDir())
                     .withAutoShare(auto)
+                    .withWidening(auto ? TestLaunch.liveWorkers(in, projectUnderTest.build(), pluginDecls) : null)
                     .withRecording(reads.flag()));
             try {
                 result = ctx.get(COMPILED_TESTS)
