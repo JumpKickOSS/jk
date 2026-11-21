@@ -4,6 +4,7 @@ package cc.jumpkick.engine.plugin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.host.Os;
+import java.io.IOException;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** {@code /proc/meminfo} parsing and the live probe's invariants. */
 class MemoryProbeTest {
@@ -59,29 +61,48 @@ class MemoryProbeTest {
     }
 
     @Test
-    void linux_available_tracks_memavailable_not_memfree() throws Exception {
-        Assumptions.assumeTrue(Os.isLinux());
-        Path meminfoPath = Path.of("/proc/meminfo");
-        Assumptions.assumeTrue(Files.isReadable(meminfoPath));
-        String meminfo = Files.readString(meminfoPath);
-        long memFree = MemoryProbe.meminfoValueBytes(meminfo, "MemFree");
-        long memAvail = MemoryProbe.meminfoValueBytes(meminfo, "MemAvailable");
-        Assumptions.assumeTrue(memFree > 0 && memAvail > 0);
-        MemoryProbe.Memory m = MemoryProbe.current();
-        // On a typical busy host MemAvailable ≫ MemFree; probe must not report idle free alone.
-        // Allow cgroup clamping: available ≤ MemAvailable and much closer to it than to MemFree
-        // when the host is cache-heavy (MemAvailable > 2× MemFree).
-        // The probe re-reads /proc/meminfo, so this compares two samples of a counter that moves
-        // with system activity. A fixed 1 MiB epsilon failed whenever a build was running on the
-        // same machine; scale the slack to the host instead. The property under test is
-        // qualitative — "available tracks MemAvailable, not MemFree" — and the midpoint assertion
-        // below is what actually pins it.
-        long drift = Math.max(64L * 1024 * 1024, m.totalBytes() / 100);
-        assertThat(m.availableBytes()).isLessThanOrEqualTo(memAvail + drift);
-        if (memAvail > memFree * 2) {
-            long mid = memFree + (memAvail - memFree) / 2;
-            assertThat(m.availableBytes()).isGreaterThan(mid);
-        }
+    void linux_available_is_memavailable_not_memfree(@TempDir Path root) throws IOException {
+        write(root, "proc/meminfo", MEMINFO);
+
+        assertThat(MemoryProbe.measure(root))
+                .as("free + reclaimable cache, not idle pages alone")
+                .isEqualTo(new MemoryProbe.Memory(16004000L * 1024, 8000000L * 1024));
+    }
+
+    @Test
+    void a_cgroup_limit_below_the_host_caps_total_and_available(@TempDir Path root) throws IOException {
+        write(root, "proc/meminfo", MEMINFO);
+        write(root, "sys/fs/cgroup/memory.max", String.valueOf(4L << 30));
+        write(root, "sys/fs/cgroup/memory.current", String.valueOf(2L << 30));
+        write(root, "sys/fs/cgroup/memory.stat", "anon 1000\ninactive_file " + (1L << 30) + "\nactive_file 5\n");
+
+        assertThat(MemoryProbe.measure(root))
+                .as("the limit less what the box uses, inactive file cache counted as reclaimable")
+                .isEqualTo(new MemoryProbe.Memory(4L << 30, 3L << 30));
+    }
+
+    @Test
+    void a_cgroup_with_room_to_spare_still_answers_the_hosts_memavailable(@TempDir Path root) throws IOException {
+        write(root, "proc/meminfo", MEMINFO);
+        write(root, "sys/fs/cgroup/memory.max", String.valueOf(12L << 30));
+        write(root, "sys/fs/cgroup/memory.current", String.valueOf(1L << 30));
+
+        assertThat(MemoryProbe.measure(root)).isEqualTo(new MemoryProbe.Memory(12L << 30, 8000000L * 1024));
+    }
+
+    @Test
+    void an_unlimited_cgroup_leaves_the_host_numbers_alone(@TempDir Path root) throws IOException {
+        write(root, "proc/meminfo", MEMINFO);
+        write(root, "sys/fs/cgroup/memory.max", "max\n");
+        write(root, "sys/fs/cgroup/memory.current", String.valueOf(15L << 30));
+
+        assertThat(MemoryProbe.measure(root)).isEqualTo(new MemoryProbe.Memory(16004000L * 1024, 8000000L * 1024));
+    }
+
+    private static void write(Path root, String relative, String body) throws IOException {
+        Path file = root.resolve(relative);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, body);
     }
 
     @Test

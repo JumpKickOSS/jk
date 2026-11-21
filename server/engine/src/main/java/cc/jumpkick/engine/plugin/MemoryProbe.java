@@ -43,12 +43,15 @@ public final class MemoryProbe {
     /** A cgroup limit at/above this is treated as "unlimited" (kernel sentinel). */
     static final long CGROUP_UNLIMITED = Long.MAX_VALUE / 2;
 
-    private static final Path PROC_MEMINFO = Path.of("/proc/meminfo");
-    private static final Path CGROUP2_MAX = Path.of("/sys/fs/cgroup/memory.max");
-    private static final Path CGROUP2_CURRENT = Path.of("/sys/fs/cgroup/memory.current");
-    private static final Path CGROUP2_STAT = Path.of("/sys/fs/cgroup/memory.stat");
-    private static final Path CGROUP1_LIMIT = Path.of("/sys/fs/cgroup/memory/memory.limit_in_bytes");
-    private static final Path CGROUP1_USAGE = Path.of("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+    /** The file system root the Linux files below are read under; a test points it at fixtures. */
+    private static final Path HOST_ROOT = Path.of("/");
+
+    private static final String PROC_MEMINFO = "proc/meminfo";
+    private static final String CGROUP2_MAX = "sys/fs/cgroup/memory.max";
+    private static final String CGROUP2_CURRENT = "sys/fs/cgroup/memory.current";
+    private static final String CGROUP2_STAT = "sys/fs/cgroup/memory.stat";
+    private static final String CGROUP1_LIMIT = "sys/fs/cgroup/memory/memory.limit_in_bytes";
+    private static final String CGROUP1_USAGE = "sys/fs/cgroup/memory/memory.usage_in_bytes";
 
     /** {@code total} = physical/limit RAM; {@code available} = what we can still allocate. */
     public record Memory(long totalBytes, long availableBytes) {}
@@ -77,7 +80,7 @@ public final class MemoryProbe {
         synchronized (MemoryProbe.class) {
             r = cached;
             if (r != null && (r.pinned() || nowNanos - r.atNanos() < TTL_NANOS)) return r.memory();
-            Memory m = measure();
+            Memory m = measure(HOST_ROOT);
             cached = new Reading(m, nowNanos, false);
             return m;
         }
@@ -102,7 +105,7 @@ public final class MemoryProbe {
      * worker heaps so one planning pass reads one reading.
      */
     public static Memory current() {
-        return measure();
+        return measure(HOST_ROOT);
     }
 
     /** This process's resident bytes, uncached; {@code -1} when the OS will not say. See {@link ProcessMemory}. */
@@ -110,12 +113,14 @@ public final class MemoryProbe {
         return ProcessMemory.self().residentBytes();
     }
 
-    private static Memory measure() {
+    /** The memory read from {@code /proc} and {@code /sys} under {@code root}, uncached. */
+    static Memory measure(Path root) {
         long hostTotal = -1;
         long hostAvail = -1;
         try {
-            if (Files.isReadable(PROC_MEMINFO)) {
-                String meminfo = Files.readString(PROC_MEMINFO);
+            Path meminfoFile = root.resolve(PROC_MEMINFO);
+            if (Files.isReadable(meminfoFile)) {
+                String meminfo = Files.readString(meminfoFile);
                 hostTotal = meminfoValueBytes(meminfo, "MemTotal");
                 hostAvail = meminfoValueBytes(meminfo, "MemAvailable");
             }
@@ -124,10 +129,10 @@ public final class MemoryProbe {
             Log.debug("measure: fall through to the bean fallback below", e);
         }
 
-        long cgLimit = readLong(CGROUP2_MAX);
-        if (cgLimit < 0) cgLimit = readLong(CGROUP1_LIMIT);
-        long cgUsage = readLong(CGROUP2_CURRENT);
-        if (cgUsage < 0) cgUsage = readLong(CGROUP1_USAGE);
+        long cgLimit = readLong(root.resolve(CGROUP2_MAX));
+        if (cgLimit < 0) cgLimit = readLong(root.resolve(CGROUP1_LIMIT));
+        long cgUsage = readLong(root.resolve(CGROUP2_CURRENT));
+        if (cgUsage < 0) cgUsage = readLong(root.resolve(CGROUP1_USAGE));
 
         long total = hostTotal;
         long available = hostAvail;
@@ -137,7 +142,7 @@ public final class MemoryProbe {
         if (cgLimit > 0 && cgLimit < CGROUP_UNLIMITED && (total <= 0 || cgLimit < total)) {
             total = cgLimit;
             if (cgUsage >= 0) {
-                long cgAvail = cgLimit - Math.max(0, cgUsage - inactiveFileBytes(readText(CGROUP2_STAT)));
+                long cgAvail = cgLimit - Math.max(0, cgUsage - inactiveFileBytes(readText(root.resolve(CGROUP2_STAT))));
                 available = available > 0 ? Math.min(available, cgAvail) : cgAvail;
             }
         }
