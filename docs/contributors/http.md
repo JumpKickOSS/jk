@@ -1038,7 +1038,9 @@ submits detached. The reply is `202` with the `jid`; progress is the SSE stream.
 Every JSON request body (`POST /api/build`, `/api/cancel`, `/api/projects`, `/mcp`) is capped at
 64 KiB; past it the engine stops reading and answers **413**
 `{ "error": "request body too large", "maxBytes": 65536 }` — a body is never truncated and
-parsed. `PUT /api/project/file` has its own, larger cap.
+parsed. `PUT /api/project/file` has its own, larger cap. Every body, the front door's proxied
+ones included, must arrive whole within 30 s (`HttpRequests.BODY_DEADLINE`): the handler reads it
+holding its admission permit, so past the deadline the connection is closed and the permit let go.
 
 A detached job has no connection whose EOF would end it, so it always runs under a wall
 deadline: the request's `deadline_s` when present (`0` = none; a negative is a `400`), else the

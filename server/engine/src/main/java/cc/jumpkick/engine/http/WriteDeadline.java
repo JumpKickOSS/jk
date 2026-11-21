@@ -149,6 +149,12 @@ final class WriteDeadline extends FilterOutputStream {
     }
 
     private IOException expired(@Nullable IOException cause) {
-        return new IOException("the client took no bytes for " + limit.toSeconds() + " s; closed the response", cause);
+        return new IOException("the client took no bytes for " + spoken(limit) + "; closed the response", cause);
+    }
+
+    /** {@code limit} as a message says it: whole seconds as {@code 30 s}, anything finer in milliseconds. */
+    static String spoken(Duration limit) {
+        long millis = limit.toMillis();
+        return millis % 1000 == 0 ? millis / 1000 + " s" : millis + " ms";
     }
 }

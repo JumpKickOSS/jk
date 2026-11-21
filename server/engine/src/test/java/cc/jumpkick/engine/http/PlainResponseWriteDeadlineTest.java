@@ -95,7 +95,7 @@ class PlainResponseWriteDeadlineTest {
             }
         };
         OutputStream out = new WriteDeadline(stuck, LIMIT);
-        assertThatThrownBy(out::close).isInstanceOf(IOException.class).hasMessageContaining("took no bytes");
+        assertThatThrownBy(out::close).isInstanceOf(IOException.class).hasMessageContaining("took no bytes for 300 ms");
     }
 
     private static void pause(long millis) throws InterruptedIOException {

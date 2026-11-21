@@ -72,7 +72,8 @@ JumpKick shows you this page's new entries after it updates itself.
 - **A client that stops reading no longer holds its event stream or request slot for good.** A
   dashboard tab, MCP client or front-door browser that keeps its connection open but stops reading
   is cut off: each write to an event stream, to an MCP call answered as a stream and to a front-door
-  proxied answer must finish within 30 s. A dashboard that connects while another tab closes keeps
+  proxied answer must finish within 30 s. A client that sends part of a request body and then
+  stalls is cut off too: the whole body must arrive within 30 s. A dashboard that connects while another tab closes keeps
   its live status and cache figures; a sample taken in that window used to stop them for the life of
   the new tab.
 - **`jk publish --sign` works with a key file that holds only subkeys.** With a primary kept offline
