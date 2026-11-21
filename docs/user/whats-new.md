@@ -14,6 +14,11 @@ JumpKick shows you this page's new entries after it updates itself.
 
 - **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and
   `BuildConfig.VERSION_CODE`, which were always 1.
+- **The JRE `jk image` trains an AOT cache with keeps its base image's links.** A JDK package's
+  links into the image, such as `lib/security/cacerts -> /etc/ssl/certs/java/cacerts`, were dropped
+  when the JRE was extracted; they are kept now, and a link that leads out of the image is skipped.
+- **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and
+  `BuildConfig.VERSION_CODE`, which were always 1.
 - **A malformed version range in `jk.toml` fails when the file is read.** A range that names no
   version, such as `(1.0)`, `[]` or `[2.0,1.0]`, is refused naming the file, line and key, instead of
   failing the next `jk lock` with no place to look.

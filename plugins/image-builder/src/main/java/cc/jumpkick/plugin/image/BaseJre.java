@@ -289,6 +289,7 @@ final class BaseJre {
     /** Unpack a (possibly gzipped) tar, skipping anything that would escape {@code dest}. */
     static void unpack(Path archive, Path dest, boolean tolerate) throws IOException {
         dest = dest.toAbsolutePath().normalize();
+        Path realDest = dest.toRealPath();
         try (InputStream raw = Files.newInputStream(archive);
                 InputStream in = isGzip(archive) ? new GZIPInputStream(raw) : raw;
                 TarArchiveInputStream tar = new TarArchiveInputStream(in)) {
@@ -325,14 +326,19 @@ final class BaseJre {
                     if (victim.startsWith(dest) && !victim.equals(dest)) whiteout(victim, own);
                     continue;
                 }
-                // A symlink entry carries no content: writing it as a file leaves a 0-byte stub
-                // that execs successfully and does nothing, which is worse than not having it.
-                if (!entry.isDirectory() && (entry.isSymbolicLink() || entry.isLink() || !entry.isFile())) continue;
                 try {
+                    if (entry.isSymbolicLink() || entry.isLink()) {
+                        link(entry, target, own, dest, realDest);
+                        continue;
+                    }
+                    if (!entry.isDirectory() && !entry.isFile()) continue; // devices and fifos
                     if (entry.isDirectory()) {
-                        directory(target, own, dest);
+                        directory(target, own, dest, false);
+                        inside(target, realDest);
                     } else {
-                        directory(Objects.requireNonNull(target.getParent()), own, dest);
+                        Path parent = Objects.requireNonNull(target.getParent());
+                        directory(parent, own, dest, true);
+                        inside(parent, realDest);
                         file(tar, target, own);
                         if ((entry.getMode() & 0100) != 0) target.toFile().setExecutable(true, false);
                     }
@@ -345,11 +351,110 @@ final class BaseJre {
     }
 
     /**
+     * Recreate a link entry at {@code target}, or skip it when it would lead out of the image.
+     *
+     * <p>A symlink is kept when it resolves inside {@code dest}: an absolute target is read against
+     * the image root and written relative to the link, and a relative target may climb only before
+     * its first name, so no symlink a layer left on the way can turn a lexical path inside the tree
+     * into a real one outside it. A JDK package reaches its configuration and certificates through
+     * such links ({@code lib/security/cacerts -> /etc/ssl/certs/java/cacerts}). A hard link names
+     * another entry of the image and becomes a copy of that file.
+     */
+    private static void link(TarArchiveEntry entry, Path target, Set<Path> own, Path dest, Path realDest)
+            throws IOException {
+        Path parent = Objects.requireNonNull(target.getParent());
+        String name = entry.getLinkName();
+        if (entry.isLink()) {
+            Path source = dest.resolve(stripRoot(name)).normalize();
+            if (source.equals(target) || !source.startsWith(dest)) return;
+            if (!Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) return;
+            if (!source.toRealPath().startsWith(realDest)) return;
+            directory(parent, own, dest, true);
+            inside(parent, realDest);
+            clear(target, own);
+            Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES);
+            claim(own, target, dest);
+            return;
+        }
+        if (!withinImage(name)) return;
+        directory(parent, own, dest, true);
+        Path realParent = inside(parent, realDest);
+        String text;
+        if (name.startsWith("/")) {
+            text = realParent.relativize(realDest.resolve(stripRoot(name))).toString();
+            if (text.isEmpty()) text = ".";
+        } else {
+            if (!realParent.resolve(name).normalize().startsWith(realDest)) return;
+            text = name;
+        }
+        clear(target, own);
+        try {
+            Files.createSymbolicLink(target, Path.of(text));
+        } catch (UnsupportedOperationException noLinks) {
+            return;
+        }
+        claim(own, target, dest);
+    }
+
+    /**
+     * True when {@code name}'s segments are plain names, with {@code ..} only ahead of the first of
+     * them and none at all in an absolute name. Empty segments and {@code .} are no-ops.
+     */
+    static boolean withinImage(String name) {
+        if (name.isEmpty()) return false;
+        boolean absolute = name.startsWith("/");
+        boolean named = false;
+        for (String segment : name.split("/")) {
+            if (segment.isEmpty() || segment.equals(".")) continue;
+            if (segment.equals("..")) {
+                if (absolute || named) return false;
+            } else {
+                named = true;
+            }
+        }
+        return true;
+    }
+
+    /** {@code name} without its leading slashes, as a path under the image root. */
+    private static String stripRoot(String name) {
+        int i = 0;
+        while (i < name.length() && name.charAt(i) == '/') i++;
+        return name.substring(i);
+    }
+
+    /**
+     * {@code dir}'s real path, which must lie in {@code realDest}: a write through a directory
+     * reached by a link must still land in the tree.
+     */
+    private static Path inside(Path dir, Path realDest) throws IOException {
+        Path real = dir.toRealPath();
+        if (!real.startsWith(realDest)) throw new IOException(dir + " leads out of the image tree");
+        return real;
+    }
+
+    /** Remove a lower layer's entry at {@code target}; a directory this layer wrote there stays, and the caller fails. */
+    private static void clear(Path target, Set<Path> own) throws IOException {
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(target, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        } catch (IOException absent) {
+            return;
+        }
+        if (attrs.isDirectory()) {
+            if (own.contains(target)) throw new DirectoryNotEmptyException(target.toString());
+            PathUtil.deleteRecursivelyOrThrow(target);
+        } else {
+            Files.delete(target);
+        }
+    }
+
+    /**
      * {@code dir} exists as a directory when this returns. A lower layer's file sitting where
      * {@code dir} or one of its parents goes is replaced, the way a whiteout removes it; one this
-     * layer wrote stays, and the create fails.
+     * layer wrote stays, and the create fails. A link to a directory above {@code dir} is followed,
+     * and so is one at {@code dir} when {@code throughLink}.
      */
-    private static void directory(Path dir, Set<Path> own, Path dest) throws IOException {
+    private static void directory(Path dir, Set<Path> own, Path dest, boolean throughLink) throws IOException {
         for (Path p = dir; p != null && p.startsWith(dest) && !p.equals(dest); p = p.getParent()) {
             BasicFileAttributes attrs;
             try {
@@ -357,7 +462,11 @@ final class BaseJre {
             } catch (IOException absent) {
                 continue; // or below a file: the walk reaches that file next
             }
-            if (!attrs.isDirectory() && !own.contains(p)) Files.delete(p);
+            // A link to a directory is one to write through when the entry lies beneath it, as a
+            // container runtime does; a directory entry of its own replaces it.
+            boolean directory = attrs.isDirectory()
+                    || (attrs.isSymbolicLink() && (throughLink || !p.equals(dir)) && Files.isDirectory(p));
+            if (!directory && !own.contains(p)) Files.delete(p);
             break;
         }
         Files.createDirectories(dir);
@@ -389,6 +498,7 @@ final class BaseJre {
             PathUtil.deleteRecursivelyOrThrow(path);
             return;
         }
+        if (Files.isSymbolicLink(path)) return; // the layer's own link; what it points at is not searched
         // A file the layer wrote has no children; a directory it wrote into is searched.
         PathUtil.forEachChild(path, (child, attrs) -> {
             whiteout(child, own);
@@ -399,9 +509,9 @@ final class BaseJre {
     /**
      * A {@code bin/java} in the extracted tree that actually runs.
      *
-     * <p>Images carry several: {@code /usr/bin/java} is usually a symlink, which unpacks to
-     * nothing, and an empty file execs with status 0 and no output — a failure that looks like
-     * success. So candidates are ordered by depth (the real JVM lives under
+     * <p>Images carry several: {@code /usr/bin/java} is usually a symlink, which is skipped when it
+     * leads out of the tree, and an empty file execs with status 0 and no output — a failure that
+     * looks like success. So candidates are ordered by depth (the real JVM lives under
      * {@code lib/jvm/<dist>/bin}) and each is proven with {@code -version} before it is returned.
      */
     private static @Nullable Path findJava(Path root) throws IOException, InterruptedException {
