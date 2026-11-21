@@ -8,6 +8,7 @@ import cc.jumpkick.host.JkDirs;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpHeaders;
@@ -20,6 +21,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -380,6 +382,114 @@ class CentralMirrorTest {
 
             assertThat(response.statusCode()).isEqualTo(404);
             assertThat(hits).containsExactly("mirror");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * Under a rate limit, a file the mirror does not have is asked of Central once Central's cooldown
+     * has lapsed, so a release the mirror lags on is not unreachable for the whole window.
+     */
+    @Test
+    void under_a_rate_limit_a_file_the_mirror_lacks_is_asked_of_central(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(200, hits);
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            m.noteRateLimited();
+            URI jar = URI.create("http://127.0.0.1:" + port + "/maven2/a/b/1/b-1.jar");
+
+            var response = http(dir, m).getStream(jar, Map.of());
+            response.body().close();
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(hits).containsExactly("mirror", "central");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** Version enumeration stays on one source for the window: metadata the mirror lacks is not asked of Central. */
+    @Test
+    void under_a_rate_limit_metadata_the_mirror_lacks_is_not_asked_of_central(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(200, hits);
+        try {
+            int port = server.getAddress().getPort();
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            m.noteRateLimited();
+            URI metadata = URI.create("http://127.0.0.1:" + port + "/maven2/a/b/maven-metadata.xml");
+
+            assertThatThrownBy(() -> http(dir, m).get(metadata, Map.of()))
+                    .hasMessageContaining("Maven Central is rate-limiting this host (HTTP 429) and its mirror");
+            assertThat(hits).containsExactly("mirror");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * Central still cooling down from its refusal is not asked for a file the mirror lacks. Central
+     * and the mirror are named hosts reached through a proxy, since loopback never cools down.
+     */
+    @Test
+    void a_central_still_cooling_down_is_not_asked_for_a_file_the_mirror_lacks(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(200, hits);
+        try {
+            CentralMirror m = new CentralMirror(
+                    dir, Duration.ofHours(4), true, "central.example.test", "http://mirror.example.test/mirror");
+            m.noteRateLimited();
+            HostCooldown cooldown = new HostCooldown(dir.resolve("cooldown"));
+            cooldown.noteRateLimited("central.example.test", Optional.empty());
+            Http http = new Http(
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .proxy(ProxySelector.of(server.getAddress()))
+                            .build(),
+                    new Duration[] {Duration.ofMillis(1)},
+                    m,
+                    cooldown);
+            URI jar = URI.create("http://central.example.test/maven2/a/b/1/b-1.jar");
+
+            assertThatThrownBy(() -> http.getStream(jar, Map.of()))
+                    .hasMessage("could not fetch " + jar
+                            + ": Maven Central is rate-limiting this host (HTTP 429) and its mirror does not"
+                            + " have it; the artifact may exist");
+            assertThat(hits).containsExactly("mirror");
+
+            cooldown.clear("central.example.test");
+            var response = http.getStream(jar, Map.of());
+            response.body().close();
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(hits).containsExactly("mirror", "mirror", "central");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** A 429 is reissued against the mirror, and named, even when the window it opens cannot be recorded. */
+    @Test
+    void a_429_whose_window_cannot_be_recorded_still_goes_to_the_mirror(@TempDir Path dir) throws Exception {
+        var hits = new CopyOnWriteArrayList<String>();
+        HttpServer server = centralAndAMirrorWithout(429, hits);
+        try {
+            int port = server.getAddress().getPort();
+            Path notADirectory = Files.writeString(dir.resolve("cache"), "");
+            CentralMirror m = new CentralMirror(
+                    notADirectory, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
+            URI jar = URI.create("http://127.0.0.1:" + port + "/maven2/a/b/1/b-1.jar");
+
+            assertThatThrownBy(() -> http(dir, m).getStream(jar, Map.of()))
+                    .hasMessage("could not fetch " + jar
+                            + ": Maven Central is rate-limiting this host (HTTP 429) and its mirror does not"
+                            + " have it; the artifact may exist");
+            assertThat(hits).containsExactly("central", "mirror");
+            assertThat(m.active()).isFalse();
         } finally {
             server.stop(0);
         }

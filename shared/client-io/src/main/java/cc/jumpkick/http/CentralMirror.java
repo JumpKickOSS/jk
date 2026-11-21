@@ -194,12 +194,23 @@ public final class CentralMirror {
         return uri != null && uri.toString().startsWith(mirrorBase + "/");
     }
 
+    /** The refusal the open window records, or null while Central is asked directly. */
+    @Nullable
+    Cause window() {
+        return active() ? recordedCause() : null;
+    }
+
     /**
-     * Why a request asked of Central went to the mirror: the refusal the open window records, or
-     * Central's silence, the only other reroute.
+     * Whether {@code asked}, a Central file the mirror does not have while the window {@code why} is
+     * open, is asked of Central itself once Central's {@link HostCooldown} has lapsed. Only under a
+     * rate limit, where one request per mirror miss is a small cost against a file that cannot be
+     * fetched for hours; never under a Cloudflare block, which escalates on any traffic. Never for
+     * {@code maven-metadata.xml}, so version enumeration stays on one source for the window.
      */
-    String detour() {
-        return active() ? recordedCause().text : "Maven Central did not answer";
+    static boolean asksCentralFor(URI asked, Cause why) {
+        String path = asked.getPath();
+        if (why != Cause.RATE_LIMITED || path == null) return false;
+        return !path.substring(path.lastIndexOf('/') + 1).startsWith("maven-metadata.xml");
     }
 
     /** True when {@code uri} is a Maven Central request, using the canonical host. */
@@ -265,7 +276,8 @@ public final class CentralMirror {
                             + " until this file is older than " + window.toHours()
                             + "h. Delete it to retry Central immediately.\n");
         } catch (IOException e) {
-            // Losing the stamp only costs us the optimisation; never fail a build over it.
+            // Losing the stamp loses the window: the refused request is still reissued against
+            // the mirror, but the next one asks Central again. Never fail a build over it.
         }
     }
 
@@ -315,9 +327,10 @@ public final class CentralMirror {
      * for them: an unpinned file's bytes are checked against the {@code .sha1} Central publishes
      * (asked of Central through {@link #route}, so only a refusal moves the check to the mirror), and
      * a pinned one against the lock's sha256. A lagging mirror cannot serve stale content for a
-     * release coordinate, only a 404, which falls back to Central. Version <em>enumeration</em> is the
-     * opposite case: {@code maven-metadata.xml} changes, the mirror can lag, so it keeps asking Central
-     * and only falls back once refused.
+     * release coordinate, only a 404, which falls back to Central. While the window is open that
+     * fallback reaches Central only as {@link #asksCentralFor} allows, and otherwise fails naming the
+     * refusal. Version <em>enumeration</em> is the opposite case: {@code maven-metadata.xml} changes,
+     * the mirror can lag, so it keeps asking Central and only falls back once refused.
      *
      * <p>Also spends the mirror's much larger concurrency budget instead of Sonatype's per-IP quota, which
      * is the point of {@link HostRateLimiter#MIRROR_PERMITS}.

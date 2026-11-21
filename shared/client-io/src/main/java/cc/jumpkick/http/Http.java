@@ -559,22 +559,7 @@ public final class Http {
      */
     public HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
         checkOffline(uri);
-        URI asked = uri;
-        uri = centralMirror.route(uri);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
-        for (Map.Entry<String, String> e : forOrigin(asked, uri, headers).entrySet()) {
-            builder.header(e.getKey(), e.getValue());
-        }
-        // Opt into transport-level gzip unless the caller already set
-        // their own Accept-Encoding (e.g. testing without compression).
-        // The response body is transparently decompressed by
-        // `cappedBytes` when the server replies with
-        // Content-Encoding: gzip.
-        if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
-            builder.header("Accept-Encoding", "gzip");
-        }
-        HttpRequest request = withProxyAuthorization(builder, uri).build();
-        return centralsAnswer(asked, sendWithRetry("GET", uri, request, cappedBytes(uri), null), null);
+        return getAsked(uri, headers, this::cappedBytes, null);
     }
 
     /**
@@ -600,42 +585,83 @@ public final class Http {
     public HttpResponse<InputStream> getStream(URI uri, Map<String, String> headers)
             throws IOException, InterruptedException {
         checkOffline(uri);
-        URI asked = uri;
-        uri = centralMirror.route(uri);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(requestTimeout);
-        for (Map.Entry<String, String> e : forOrigin(asked, uri, headers).entrySet()) {
-            builder.header(e.getKey(), e.getValue());
-        }
-        if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
-            builder.header("Accept-Encoding", "gzip");
-        }
-        HttpRequest request = withProxyAuthorization(builder, uri).build();
         // Drain the streamed body before each retry so the connection can be reused.
         BodyDrain<InputStream> drain = response -> {
             try (var body = response.body()) {
                 body.transferTo(OutputStream.nullOutputStream());
             }
         };
-        return centralsAnswer(asked, sendWithRetry("GET", uri, request, streamedBody(uri, bodyIdle), drain), drain);
+        return getAsked(uri, headers, target -> streamedBody(target, bodyIdle), drain);
     }
 
     /**
-     * {@code response} to a GET asked of {@code asked}. When Central was asked and the mirror
-     * answered 404 in its place, because Central refused this host or said nothing, nobody said
-     * the file is absent: the mirror can lag Central. That is a failure naming why the mirror was
-     * asked, never a miss a caller would report as "not found".
+     * A GET asked of {@code asked}, sent to Central's mirror instead while the mirror window is open.
+     * When the mirror does not have the file, nobody said it is absent: the mirror can lag Central.
+     * Under a rate limit whose cooldown has lapsed, a file is asked of Central once more ({@link
+     * CentralMirror#asksCentralFor}); otherwise the failure names the refusal, never a miss a caller
+     * would report as "not found".
      */
-    private <T> HttpResponse<T> centralsAnswer(URI asked, HttpResponse<T> response, @Nullable BodyDrain<T> drain)
-            throws IOException {
-        if (response.statusCode() != 404
-                || !centralMirror.matches(asked)
-                || centralMirror.carries(asked)
-                || !centralMirror.carries(response.request().uri())) {
-            return response;
+    private <T> HttpResponse<T> getAsked(
+            URI asked,
+            Map<String, String> headers,
+            Function<URI, HttpResponse.BodyHandler<T>> handler,
+            @Nullable BodyDrain<T> drain)
+            throws IOException, InterruptedException {
+        CentralMirror.Cause window = centralMirror.matches(asked) ? centralMirror.window() : null;
+        if (window == null) {
+            return sendWithRetry("GET", asked, getRequest(asked, asked, headers), handler.apply(asked), drain);
         }
+        URI mirrored = centralMirror.toMirror(asked);
+        HttpResponse<T> response =
+                sendWithRetry("GET", mirrored, getRequest(asked, mirrored, headers), handler.apply(mirrored), drain);
+        if (response.statusCode() != 404) return response;
         if (drain != null) drain.handle(response);
-        throw new IOException("could not fetch " + SafeUri.forMessage(asked) + ": " + centralMirror.detour()
+        if (CentralMirror.asksCentralFor(asked, window)
+                && cooldown.until(asked.getHost()).isEmpty()) {
+            return sendWithRetry("GET", asked, getRequest(asked, asked, headers), handler.apply(asked), drain);
+        }
+        throw notOnTheMirror(asked, window.text);
+    }
+
+    /** A GET of {@code target} for a file asked of {@code asked}, carrying the caller's {@code headers} that may go there. */
+    private HttpRequest getRequest(URI asked, URI target, Map<String, String> headers) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(target).GET().timeout(requestTimeout);
+        for (Map.Entry<String, String> e : forOrigin(asked, target, headers).entrySet()) {
+            builder.header(e.getKey(), e.getValue());
+        }
+        // Opt into transport-level gzip unless the caller already set their own Accept-Encoding;
+        // the body is decompressed transparently when the server replies with Content-Encoding: gzip.
+        if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
+            builder.header("Accept-Encoding", "gzip");
+        }
+        return withProxyAuthorization(builder, target).build();
+    }
+
+    /**
+     * {@code response} to a request asked of Central and sent to its mirror for {@code detour}, the
+     * reason it went there (null when it went where it was asked). A 404 there is no miss: see {@link
+     * #getAsked}.
+     */
+    private static <T> HttpResponse<T> onTheMirror(
+            URI asked, HttpResponse<T> response, @Nullable String detour, @Nullable BodyDrain<T> drain)
+            throws IOException {
+        if (detour == null || response.statusCode() != 404) return response;
+        if (drain != null) drain.handle(response);
+        throw notOnTheMirror(asked, detour);
+    }
+
+    private static NotOnTheMirrorException notOnTheMirror(URI asked, String detour) {
+        return new NotOnTheMirrorException("could not fetch " + SafeUri.forMessage(asked) + ": " + detour
                 + " and its mirror does not have it; the artifact may exist");
+    }
+
+    /** A file asked of Central that its mirror, asked instead, does not have: an answer, not a fault to retry. */
+    private static final class NotOnTheMirrorException extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        NotOnTheMirrorException(String message) {
+            super(message);
+        }
     }
 
     /**
@@ -850,6 +876,8 @@ public final class Http {
         int lastStatus = -1;
         boolean answered = false;
         boolean rerouted = false;
+        // Why the request went to Central's mirror instead of Central, once it has.
+        @Nullable String detour = null;
         for (int attempt = 0; attempt < backoffs.length + 1; attempt++) {
             if (attempt > 0 && !rerouted) {
                 Thread.sleep(jittered(backoffs[attempt - 1]));
@@ -894,28 +922,28 @@ public final class Http {
                     if (drain != null) drain.handle(response);
                     throw new CentralMirror.BlockedException(request.uri());
                 }
-                // A request routed before another one opened the window is reissued too.
+                // A request routed before another one opened the window is reissued too, and so is
+                // one whose window could not be recorded: this refusal is reason enough.
                 if ((status == 429 || blocked) && centralMirror.matches(request.uri()) && centralMirror.enabled()) {
                     if (!centralMirror.active()) {
                         if (blocked) centralMirror.noteBlocked();
                         else centralMirror.noteRateLimited();
                     }
-                    URI mirrored = centralMirror.route(request.uri());
-                    if (!mirrored.equals(request.uri())) {
-                        // The refusal's body is abandoned like a retried 5xx's: a streamed one left
-                        // unread holds its connection open for as long as the caller holds the stream.
-                        if (drain != null) drain.handle(response);
-                        // Later attempts stay on the mirror: Central has just refused this host.
-                        request = reissue(request, mirrored).build();
-                        HttpResponse<T> reissued = send(request, handler, drain);
-                        if (reissued.statusCode() < 500) {
-                            return reissued;
-                        }
-                        if (drain != null) drain.handle(reissued);
-                        lastStatus = reissued.statusCode();
-                        answered = true;
-                        continue;
+                    detour = (blocked ? CentralMirror.Cause.BLOCKED : CentralMirror.Cause.RATE_LIMITED).text;
+                    // The refusal's body is abandoned like a retried 5xx's: a streamed one left
+                    // unread holds its connection open for as long as the caller holds the stream.
+                    if (drain != null) drain.handle(response);
+                    // Later attempts stay on the mirror: Central has just refused this host.
+                    request = reissue(request, centralMirror.toMirror(request.uri()))
+                            .build();
+                    HttpResponse<T> reissued = send(request, handler, drain);
+                    if (reissued.statusCode() < 500) {
+                        return onTheMirror(uri, reissued, detour, drain);
                     }
+                    if (drain != null) drain.handle(reissued);
+                    lastStatus = reissued.statusCode();
+                    answered = true;
+                    continue;
                 }
                 // A host that asks for a short pause gets it, and the request is asked again; the
                 // last attempt hands the 429 back.
@@ -932,7 +960,7 @@ public final class Http {
                     continue;
                 }
                 if (status < 500) {
-                    return response;
+                    return onTheMirror(uri, response, detour, drain);
                 }
                 if (drain != null) {
                     drain.handle(response);
@@ -941,6 +969,7 @@ public final class Http {
                 answered = true;
             } catch (RedirectRefusedException
                     | CentralMirror.BlockedException
+                    | NotOnTheMirrorException
                     | DeniedHostException
                     | AddressRefusedException e) {
                 throw e; // a policy answer, not a network fault: the same answer would come back
@@ -957,6 +986,7 @@ public final class Http {
                         : request.uri();
                 if (mirrored.equals(request.uri())) throw noAnswerWithin(verb, uri, request, e);
                 request = reissue(request, mirrored).build();
+                detour = "Maven Central did not answer";
                 rerouted = true;
                 attempt--;
             } catch (IOException e) {

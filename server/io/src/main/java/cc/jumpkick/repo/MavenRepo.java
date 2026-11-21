@@ -918,7 +918,10 @@ public final class MavenRepo {
                 download.note(coord + " from " + name + ": the mirror's " + relativePath
                         + " failed verification; downloaded from Maven Central instead");
             }
-            return download.run(coord, uri, relativePath, vouch, leg, expectedSha256, abort);
+            // Central's own copy is checked against Central's own .sha1, asked as the file is: a
+            // window open on the mirror cannot vouch for a file the mirror does not have.
+            DownloadLeg.Vouch central = vouch == null ? null : new DownloadLeg.Vouch(uri, true, false);
+            return download.run(coord, uri, relativePath, central, leg, expectedSha256, abort);
         }
     }
 

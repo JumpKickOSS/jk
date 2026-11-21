@@ -167,6 +167,20 @@ class CentralVouchesTest {
                 .startsWith("1 file from central verified by the mirror's checksums only");
     }
 
+    /** While Central rate-limits this host, a file the mirror lacks comes from Central, checked by Central's .sha1. */
+    @Test
+    void while_central_refuses_a_file_the_mirror_lacks_is_checked_by_centrals_sha1(@TempDir Path tmp) throws Exception {
+        transport.publish(CENTRAL + JAR, JAR_BYTES);
+        transport.publish(CENTRAL + JAR + ".sha1", sha1(JAR_BYTES));
+        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
+        window.noteRateLimited();
+
+        MavenRepo.Fetched fetched = repo(tmp, window).fetchArtifact(WIDGET);
+
+        assertThat(fetched.sha256()).isEqualTo(Hashing.sha256Hex(JAR_BYTES));
+        assertThat(transport.requests).contains(MIRROR + JAR, CENTRAL + JAR, CENTRAL + JAR + ".sha1");
+    }
+
     @Test
     void a_credential_for_central_goes_to_central_alone(@TempDir Path tmp) throws Exception {
         publishJar(JAR_BYTES, JAR_BYTES);
