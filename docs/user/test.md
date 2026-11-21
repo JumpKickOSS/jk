@@ -264,7 +264,8 @@ directory as the working directory; without one it is a usage error. It composes
 `--suite`, tag filters and `--guard`.
 
 `-X` is JumpKick's flag here, not the JVM's: `jk test -Xmx2g` is refused with a hint to pass JVM flags
-as `--jvm-arg=-Xmx2g`.
+as `--jvm-arg=-Xmx2g`. A value that starts with `-` always takes the `=` spelling, on every command:
+`--jvm-arg -Xmx2g` reads `-Xmx2g` as the next option, so it is refused naming `--jvm-arg=-Xmx2g`.
 
 ## Leave classes, sources and dependencies out (`[test] exclude-classes`, `exclude-src`, `exclude-dependencies`)
 

@@ -241,10 +241,14 @@ public final class ArgParser {
             } else if (opt.fallbackValue() != null) {
                 value = opt.fallbackValue();
             } else {
-                throw new ParseException(
-                        ParseException.Kind.MISSING_VALUE,
-                        opt.canonicalName(),
-                        "option " + opt.names().get(opt.names().size() - 1) + " requires a value");
+                String name = opt.names().getLast();
+                String message = "option " + name + " requires a value";
+                // A value that starts with '-' is never taken from the next token, so name the
+                // spelling that carries it: --jvm-arg=-Xmx2g, or -m-core for a short option.
+                if (i + 1 < args.size()) {
+                    message += "; write " + name + (name.startsWith("--") ? "=" : "") + args.get(i + 1);
+                }
+                throw new ParseException(ParseException.Kind.MISSING_VALUE, opt.canonicalName(), message);
             }
         }
         if (opt.split() != null && !opt.split().isEmpty()) {

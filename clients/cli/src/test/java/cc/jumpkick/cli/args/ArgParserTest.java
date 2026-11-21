@@ -154,6 +154,21 @@ class ArgParserTest {
     }
 
     @Test
+    void a_value_that_looks_like_an_option_is_refused_with_the_spelling_that_takes_it() throws Exception {
+        Command c = cmd(
+                List.of(Opt.value("<arg>", "jvm arg", "--jvm-arg").repeat(), Opt.value("<m>", "module", "-m")),
+                List.of());
+        ParseException ex = catchThrowableOfType(ParseException.class, () -> parse(c, "--jvm-arg", "-Xmx2g"));
+        assertThat(ex.kind()).isEqualTo(ParseException.Kind.MISSING_VALUE);
+        assertThat(ex.getMessage()).isEqualTo("option --jvm-arg requires a value; write --jvm-arg=-Xmx2g");
+        assertThat(parse(c, "--jvm-arg=-Xmx2g").values("jvm-arg")).containsExactly("-Xmx2g");
+
+        ParseException shortEx = catchThrowableOfType(ParseException.class, () -> parse(c, "-m", "-core"));
+        assertThat(shortEx.getMessage()).isEqualTo("option -m requires a value; write -m-core");
+        assertThat(parse(c, "-m-core").value("m")).contains("-core");
+    }
+
+    @Test
     void requiredOption_throwsWhenAbsent() {
         Command c = cmd(List.of(Opt.value("<url>", "repo", "--repo-url").require()), List.of());
         ParseException ex = catchThrowableOfType(ParseException.class, () -> parse(c));
