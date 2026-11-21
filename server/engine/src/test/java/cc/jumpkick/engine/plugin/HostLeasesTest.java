@@ -48,14 +48,8 @@ class HostLeasesTest {
     private final List<WorkerLeases.Ledger> ledgers = new ArrayList<>();
 
     @AfterEach
-    void awaitRecorded() throws InterruptedException {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        for (WorkerLeases.Ledger ledger : ledgers) {
-            while (!ledger.recorded()) {
-                if (System.nanoTime() > deadline) throw new AssertionError("a ledger's line was never recorded");
-                Thread.sleep(5);
-            }
-        }
+    void awaitEveryLineRecorded() throws InterruptedException {
+        awaitRecorded(ledgers.toArray(WorkerLeases.Ledger[]::new));
     }
 
     @Test
@@ -114,8 +108,11 @@ class HostLeasesTest {
         } finally {
             letGo.countDown();
         }
-        for (Thread thread : threads) thread.join(TimeUnit.SECONDS.toMillis(60));
+        for (Thread thread : threads)
+            assertThat(thread.join(Duration.ofSeconds(60))).isTrue();
         assertThat(failed.get()).isNull();
+        // Each engine reads the other's line from the shared file, recorded on a thread of its own.
+        awaitRecorded(draining, successor);
         assertThat(together)
                 .as("held together while %d waited", waiting)
                 .isGreaterThan(BUDGET)
@@ -226,7 +223,8 @@ class HostLeasesTest {
                 }
             }));
         }
-        for (Thread thread : threads) thread.join(TimeUnit.SECONDS.toMillis(60));
+        for (Thread thread : threads)
+            assertThat(thread.join(Duration.ofSeconds(60))).isTrue();
         assertThat(failed.get()).isNull();
         assertThat(peak.get()).isBetween(2, 4);
     }
@@ -551,6 +549,17 @@ class HostLeasesTest {
             throw new AssertionError("granted " + grant.bytes() + " bytes");
         } catch (ExecutionException e) {
             return Objects.requireNonNull(e.getCause());
+        }
+    }
+
+    /** Wait until no line of {@code ledgers} waits to be recorded in the shared file. */
+    private static void awaitRecorded(WorkerLeases.Ledger... ledgers) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        for (WorkerLeases.Ledger ledger : ledgers) {
+            while (!ledger.recorded()) {
+                if (System.nanoTime() > deadline) throw new AssertionError("a ledger's line was never recorded");
+                Thread.sleep(5);
+            }
         }
     }
 
