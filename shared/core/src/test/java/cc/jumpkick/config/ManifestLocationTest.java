@@ -23,6 +23,13 @@ class ManifestLocationTest {
             version = "0.1.0"
             """;
 
+    private static final String ANDROID = """
+            [android]
+            namespace = "com.example.app"
+            compile-sdk = 28
+            min-sdk = 24
+            """;
+
     @Test
     void a_syntax_error_is_located_where_toml_stopped(@TempDir Path dir) throws Exception {
         Path file = write(dir, HEAD + "java = 25\n\n[dependencies]\nfoo = { group = \"a\" \n");
@@ -46,6 +53,37 @@ class ManifestLocationTest {
         JkBuildParseException e = refusal(file);
         assertThat(e).hasMessageContaining("[generate.api].secret-evn").hasMessageContaining("secret-env");
         assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 8, 1));
+    }
+
+    @Test
+    void an_unknown_key_in_a_plugin_table_is_refused_at_the_key(@TempDir Path dir) throws Exception {
+        Path file = write(dir, HEAD + "java = 25\n\n" + ANDROID + "  min-skd = 24\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[android].min-skd is not a [android] key");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 10, 3));
+    }
+
+    @Test
+    void an_unknown_key_in_a_variant_overlay_is_refused_at_the_key(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir,
+                HEAD + "java = 25\n\n" + ANDROID
+                        + "\n[variants.build-type.release.android]\napplication-id-sufix = \".rel\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[variants.build-type.release.android].application-id-sufix");
+        assertThat(e.location()).isEqualTo(new SourceLocation(file.toString(), 12, 1));
+    }
+
+    @Test
+    void a_group_defined_in_a_variant_overlay_is_refused_at_the_group(@TempDir Path dir) throws Exception {
+        Path file = write(
+                dir,
+                HEAD + "java = 25\n\n" + ANDROID
+                        + "\n[variants.build-type.release.android.signing]\nkey-alias = \"upload\"\n");
+        JkBuildParseException e = refusal(file);
+        assertThat(e).hasMessageContaining("[variants.build-type.release.android.signing]: define");
+        assertThat(e.location()).isNotNull();
+        assertThat(Objects.requireNonNull(e.location()).line()).isEqualTo(11);
     }
 
     @Test

@@ -416,13 +416,19 @@ public final class PluginTableRegistry {
         for (String raw : table.keySet()) {
             // Group DEFINITIONS don't belong in overlays; the string REFERENCE spelling does.
             if (manifest.subTables().containsKey(raw) && readTable(table, raw) != null) {
-                throw new JkBuildParseException("[" + where + "." + raw + "]: define [" + manifest.table() + "." + raw
-                        + ".<name>] and write " + raw + " = \"<name>\" here");
+                throw JkBuildParseException.at(
+                        table,
+                        raw,
+                        "[" + where + "." + raw + "]: define [" + manifest.table() + "." + raw + ".<name>] and write "
+                                + raw + " = \"<name>\" here");
             }
             PluginDescriptor.SchemaKey key = manifest.schema().get(raw);
             if (key == null) {
-                throw new JkBuildParseException("[" + where + "]." + raw + " is not a [" + manifest.table()
-                        + "] key (schema: " + manifest.schema().keySet() + ")");
+                throw JkBuildParseException.at(
+                        table,
+                        raw,
+                        "[" + where + "]." + raw + " is not a [" + manifest.table() + "] key (schema: "
+                                + manifest.schema().keySet() + ")");
             }
             Object value = read(where, key, table);
             if (value != null) values.put(key.name(), value);
@@ -431,16 +437,19 @@ public final class PluginTableRegistry {
     }
 
     /**
-     * A key the plugin's schema does not declare is refused, as an overlay's is: a key nothing reads
-     * would otherwise pass for a setting that takes effect. Sub-table groups and, under an entry
-     * schema, entry tables are the table's other legal members.
+     * A key the plugin's schema does not declare is refused at the key, as an overlay's is: a key
+     * nothing reads would otherwise pass for a setting that takes effect. Sub-table groups and, under
+     * an entry schema, entry tables are the table's other legal members.
      */
     private static void rejectUnknownKeys(PluginDescriptor manifest, TomlTable table) {
         for (String raw : table.keySet()) {
             if (manifest.schema().containsKey(raw) || manifest.subTables().containsKey(raw)) continue;
             if (manifest.entrySchema() != null && readTable(table, raw) != null) continue;
-            throw new JkBuildParseException("[" + manifest.table() + "]." + raw + " is not a [" + manifest.table()
-                    + "] key (schema: " + manifest.schema().keySet() + ")");
+            throw JkBuildParseException.at(
+                    table,
+                    raw,
+                    "[" + manifest.table() + "]." + raw + " is not a [" + manifest.table() + "] key (schema: "
+                            + manifest.schema().keySet() + ")");
         }
     }
 
