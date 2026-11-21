@@ -16,8 +16,8 @@ import org.junit.jupiter.api.io.TempDir;
 class HttpHistoryApiTest {
 
     /**
-     * Lexical {@code dir} scan does not unescape JSON, so fixtures use forward slashes — valid on
-     * Windows for {@link Path#of} and free of {@code \U} escapes inside JSON string literals.
+     * Fixtures write {@code dir} with forward slashes, valid on Windows for {@link Path#of}, so the
+     * text blocks need no JSON escaping of backslashes.
      */
     private static String jsonDir(Path dir) {
         return dir.toString().replace('\\', '/');
@@ -91,13 +91,30 @@ class HttpHistoryApiTest {
     }
 
     @Test
+    void the_redactor_is_the_root_dirs_when_a_nested_object_carries_a_dir_first(@TempDir Path dir) throws Exception {
+        Path project = Files.createDirectory(dir.resolve("project"));
+        Files.writeString(project.resolve("jk.toml"), """
+                group = "g"
+                name = "demo"
+                version = "1"
+                """);
+        Files.writeString(project.resolve(".env"), "TOKEN=root-s3cret\n");
+        Path other = Files.createDirectory(dir.resolve("other"));
+        String raw = """
+                {"id":"x","origin":{"dir":"%s"},"kind":"build","dir":"%s","message":"leak root-s3cret"}""".formatted(jsonDir(other), jsonDir(project));
+        assertThat(HttpHistoryApi.redactRecordJson(raw, new HashMap<>()))
+                .doesNotContain("root-s3cret")
+                .contains("***");
+    }
+
+    @Test
     void records_with_no_env_pass_through_unchanged(@TempDir Path dir) throws Exception {
         Files.writeString(dir.resolve("jk.toml"), """
                 group = "g"
                 name = "demo"
                 version = "1"
                 """);
-        // Forward slashes keep the fixture parseable and match the lexical scan's returned value.
+        // Forward slashes keep the fixture parseable (see jsonDir).
         String raw = "{\"id\": \"x\", \"kind\": \"build\", \"dir\": \"" + jsonDir(dir) + "\", \"projectId\": \"abc\"}";
         assertThat(HttpHistoryApi.redactRecordJson(raw, new HashMap<>())).isEqualTo(raw);
     }

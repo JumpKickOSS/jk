@@ -126,7 +126,7 @@ final class HttpHistoryApi {
 
     static String redactRecordJson(String raw, Map<String, SecretRedactor> cache) {
         try {
-            String dir = scanStringField(raw, "dir");
+            String dir = Jsonl.str(raw, "dir");
             String key = dir == null ? "" : dir;
             SecretRedactor redactor = cache.computeIfAbsent(key, k -> {
                 try {
@@ -145,79 +145,22 @@ final class HttpHistoryApi {
         }
     }
 
-    /** True when a journal JSON blob's {@code kind} is a durable project build (lexical scan). */
+    /** True when a journal JSON blob's root {@code kind} is a durable project build. */
     private static boolean isBuildLikeHistoryJson(String raw) {
         if (raw == null || raw.isBlank()) return false;
-        String kind = scanStringField(raw, "kind");
+        String kind = Jsonl.str(raw, "kind");
         return kind != null && BuildHistoryKinds.isBuildLike(kind);
     }
 
     /**
      * True when {@link #enrichHistoryJson} could change this row: it is in-flight
-     * ({@code "running": true}) or lacks a non-blank {@code projectId}. Lexical and
-     * conservative — a false positive costs one parse, a finished stamped row costs zero.
+     * ({@code "running": true}) or lacks a non-blank {@code projectId}, both read off the root
+     * object without parsing it: a finished stamped row costs no parse.
      */
     private static boolean needsEnrichment(String raw) {
-        String pid = scanStringField(raw, "projectId");
+        String pid = Jsonl.str(raw, "projectId");
         if (pid == null || pid.isBlank()) return true;
-        return scanBooleanTrue(raw, "running");
-    }
-
-    /**
-     * The first {@code "name"} key's string value, scanned without parsing, or {@code null} when
-     * the key is absent or its value is not a string. Journal records write these keys top-level
-     * ahead of any free-text payload (see {@code journal.Json}), so the first occurrence is the
-     * real key in both compact and pretty output. JSON escapes are decoded, so a Windows
-     * {@code "dir"} comes back with single backslashes.
-     */
-    private static @Nullable String scanStringField(String raw, String name) {
-        int i = raw.indexOf('"' + name + '"');
-        if (i < 0) return null;
-        int j = i + name.length() + 2;
-        while (j < raw.length() && (raw.charAt(j) == ':' || Character.isWhitespace(raw.charAt(j)))) j++;
-        if (j >= raw.length() || raw.charAt(j) != '"') return null;
-        StringBuilder value = new StringBuilder();
-        int at = j + 1;
-        while (at < raw.length()) {
-            char c = raw.charAt(at);
-            if (c == '"') return value.toString();
-            if (c != '\\' || at + 1 >= raw.length()) {
-                value.append(c);
-                at++;
-                continue;
-            }
-            char e = raw.charAt(at + 1);
-            if (e == 'u' && at + 6 <= raw.length()) {
-                try {
-                    value.append((char) Integer.parseInt(raw.substring(at + 2, at + 6), 16));
-                    at += 6;
-                    continue;
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            value.append(
-                    switch (e) {
-                        case 'n' -> '\n';
-                        case 't' -> '\t';
-                        case 'r' -> '\r';
-                        case 'b' -> '\b';
-                        case 'f' -> '\f';
-                        default -> e;
-                    });
-            at += 2;
-        }
-        return null;
-    }
-
-    /** True when any {@code "name"} key is lexically followed by {@code true} (never misses the top-level one). */
-    private static boolean scanBooleanTrue(String raw, String name) {
-        String key = '"' + name + '"';
-        for (int i = raw.indexOf(key); i >= 0; i = raw.indexOf(key, i + 1)) {
-            int j = i + key.length();
-            while (j < raw.length() && (raw.charAt(j) == ':' || Character.isWhitespace(raw.charAt(j)))) j++;
-            if (raw.startsWith("true", j)) return true;
-        }
-        return false;
+        return Jsonl.bool(raw, "running", false);
     }
 
     /**
