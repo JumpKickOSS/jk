@@ -55,8 +55,18 @@ scratch_build() {
   (cd "$SCRATCH" && "$JK" lock --force && "$JK" build --skip-tests) >>"$log" 2>&1
 }
 
+# The verb that installs a tree as a snapshot, replaced on every run: a jk that still has `snapshot`
+# does that with it (its `install` installs the release, which would then hide every later snapshot
+# of that version on the home's shelf); on a newer jk, `install` is the snapshot. Asked of the jk
+# installed now, since every stage replaces it.
+install_verb() {
+  if "$JK" snapshot --help >/dev/null 2>&1; then echo snapshot; else echo install; fi
+}
+
 scratch_install() {
-  (cd "$SCRATCH" && "$JK" install --skip-tests) >>"$1" 2>&1
+  local verb
+  verb="$(install_verb)"
+  (cd "$SCRATCH" && "$JK" "$verb" --skip-tests) >>"$1" 2>&1
 }
 
 # The commit the installed jk was built from: the newest first-parent commit no later than its
@@ -159,11 +169,8 @@ while :; do
   [ "$stage" -le "$MAX_STAGES" ] || die "gave up after $MAX_STAGES stages"
   log="$LOGS/$stage-checkout.log"
   say "stage $stage: the checkout"
-  # The checkout is an unreleased version and must install as a snapshot, replaced on every run: a
-  # jk that still has `snapshot` does that with it (its `install` installs the release); on a newer
-  # jk, `install` is the snapshot.
-  verb=install
-  if "$JK" snapshot --help >/dev/null 2>&1; then verb=snapshot; fi
+  # The checkout is an unreleased version and must install as a snapshot.
+  verb="$(install_verb)"
   if (cd "$ROOT" && "$JK" "$verb" --skip-tests) >"$log" 2>&1; then
     chain+=("the checkout")
     say "installed in $stage stage(s): $(printf '%s → ' "${chain[@]}" | sed 's/ → $//')"

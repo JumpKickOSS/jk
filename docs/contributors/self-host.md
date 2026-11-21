@@ -134,7 +134,9 @@ When the failure is a table no installed plugin owns, it installs HEAD from a sc
 without the members that open that table, so the tree's own plugin for it is installed. Any other
 failure bisects the first-parent history after the installed JumpKick's source (its engine jar's
 `Build-Time`) for the newest commit the installed JumpKick builds, and installs that. Then it tries the
-checkout again. Scratch locks are forced and thrown away; the checkout is never edited.
+checkout again. Every stage installs the way the checkout does, as a snapshot (`jk snapshot` on a
+JumpKick old enough to have it, whose `install` would shelve the release). Scratch locks are forced
+and thrown away; the checkout is never edited.
 
 The failure mode names itself: a JumpKick older than the lock's writer refuses the lock with
 `written by JumpKick <newer> and this is JumpKick <older>; upgrade JumpKick, do not re-lock` instead of suggesting

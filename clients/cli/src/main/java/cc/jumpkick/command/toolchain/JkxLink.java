@@ -92,10 +92,14 @@ public final class JkxLink {
         AtomicWrites.replace(jkx, content);
     }
 
-    private static String posixShim(Path jkExe) {
+    /**
+     * The path is single-quoted (each {@code '} as {@code '\''}), so a {@code $}, {@code `} or
+     * {@code "} in it stays literal.
+     */
+    static String posixShim(Path jkExe) {
         return "#!/bin/sh\n"
                 + "# jkx — `jk tool run` launcher (" + MARKER + "; do not edit)\n"
-                + "exec \"" + jkExe + "\" tool run \"$@\"\n";
+                + "exec '" + jkExe.toString().replace("'", "'\\''") + "' tool run \"$@\"\n";
     }
 
     private static String cmdShim(Path jkExe) {

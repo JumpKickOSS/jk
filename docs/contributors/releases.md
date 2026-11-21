@@ -171,7 +171,8 @@ The pointer is the one mutable object under `releases/`, so it is the one a buck
 interposed `JK_RELEASES_URL` mirror would rewrite. Signing it stops an edited pointer; the floor
 stops a rolled-back one — a valid old pointer re-served as current. The installers refuse a
 pointer older than the release they ship with (`RELEASE_FLOOR` / `$ReleaseFloor`, equal to
-`JkVersion.VERSION`); `jk self update` refuses one older than the version it runs. The
+`JkVersion.VERSION`), and a pre-release of that release (`0.53.1-rc1` under `0.53.1`) is older;
+`jk self update` refuses one older than the version it runs. The
 committed wrappers refuse one below the lock's `jk-min` floor. `JK_VERSION` and
 `jk self update <version>` never read the pointer and remain the deliberate way to a specific
 release, down included.

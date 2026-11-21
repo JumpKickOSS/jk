@@ -67,6 +67,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 runs on .NET Framework, which on older Windows builds offers only TLS 1.0
+# and 1.1 unless asked; the release site, GitHub and the JDK feed need TLS 1.2. PowerShell 7
+# negotiates it already.
+if ($PSVersionTable.PSEdition -ne "Core") {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
+
 # ---- colors / logging ------------------------------------------------------
 #
 # ANSI escapes need PS 7+ (`e) or an explicit ESC char. Keep ASCII glyphs on
@@ -299,7 +306,7 @@ function Test-ReleaseSignature {
     )
     $signatureBytes = [IO.File]::ReadAllBytes($Signature)
     $signatureText = [Text.Encoding]::ASCII.GetString($signatureBytes)
-    if ($signatureText -notmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?$') {
+    if ($signatureText -cnotmatch '^[A-Za-z0-9+/]+={0,2}\r?\n?\z') {
         throw "$What signature is malformed"
     }
     try {
@@ -345,7 +352,7 @@ function Get-ReleasePointerVersion {
         if ($byte -gt 127) { throw "latest-release pointer is not ASCII" }
     }
     $text = [Text.Encoding]::ASCII.GetString($pointerBytes)
-    if (-not ($text -match '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued ([0-9]{1,18})\nsignature ([A-Za-z0-9+/]+={0,2})\n$')) {
+    if (-not ($text -cmatch '^version ([0-9]+\.[0-9]+\.[0-9]+(?:[-.][A-Za-z0-9]+)*)\nissued ([0-9]{1,18})\nsignature ([A-Za-z0-9+/]+={0,2})\n\z')) {
         throw "latest-release pointer is malformed; refusing"
     }
     $version = $Matches[1]
@@ -358,7 +365,12 @@ function Get-ReleasePointerVersion {
     } finally {
         Remove-Item -LiteralPath $signatureFile -Force -ErrorAction SilentlyContinue
     }
-    if ([version]($version -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1') -lt [version]($Floor -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1')) {
+    # Numeric cores compare first; on equal cores a pre-release (0.53.1-rc1) is below its release.
+    $core = $version -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1'
+    $floorCore = $Floor -replace '^([0-9]+\.[0-9]+\.[0-9]+).*', '$1'
+    $preRelease = '^[0-9]+\.[0-9]+\.[0-9]+-'
+    $older = ([version]$core -lt [version]$floorCore) -or ([version]$core -eq [version]$floorCore -and $version -cmatch $preRelease -and $Floor -cnotmatch $preRelease)
+    if ($older) {
         throw "latest-release pointer names $version, older than the $Floor this installer ships with; refusing a rolled-back pointer (set JK_VERSION to install a specific release)"
     }
     return $version
@@ -508,14 +520,14 @@ function Expand-JkArchive {
         New-Item -ItemType Directory -Force -Path $stage | Out-Null
         try {
             Expand-Archive -LiteralPath $Archive -DestinationPath $stage -Force
-            $exe = Get-ChildItem -Path $stage -Recurse -File -Filter "jk.exe" -ErrorAction SilentlyContinue |
+            $exe = Get-ChildItem -LiteralPath $stage -Recurse -File -Filter "jk.exe" -ErrorAction SilentlyContinue |
                 Select-Object -First 1
             if (-not $exe) {
-                $exe = Get-ChildItem -Path $stage -Recurse -File -Filter "jk" -ErrorAction SilentlyContinue |
+                $exe = Get-ChildItem -LiteralPath $stage -Recurse -File -Filter "jk" -ErrorAction SilentlyContinue |
                     Select-Object -First 1
             }
             if (-not $exe) {
-                Die "archive did not contain jk.exe: $Archive"
+                throw "archive did not contain jk.exe: $Archive"
             }
             Copy-Item -LiteralPath $exe.FullName -Destination $Destination -Force
         } finally {
@@ -526,7 +538,7 @@ function Expand-JkArchive {
     if ($ext -eq ".xz") {
         # PowerShell `>` redirects corrupt binaries (UTF-16). Windows releases ship .zip
         # for this installer; .xz is for self-update via the engine.
-        Die "'$Archive' is a .xz file. On Windows use the .zip release (or pass a plain jk.exe)."
+        throw "'$Archive' is a .xz file. On Windows use the .zip release (or pass a plain jk.exe)."
     }
     # Plain binary (local dist flow).
     Copy-Item -LiteralPath $Archive -Destination $Destination -Force
@@ -724,6 +736,18 @@ if ($env:JK_CLIENT -and $env:JK_CLIENT -notin @("native", "jvm")) {
 }
 $UseJvm = [bool]$Jvm -or ($env:JK_CLIENT -eq "jvm")
 
+# A remote install's inputs are checked before anything is fetched: the version is a path segment
+# of every URL below, and every URL below lives under the release root.
+if (-not $LocalPath) {
+    if ($env:JK_VERSION -and $env:JK_VERSION -cnotmatch '^[A-Za-z0-9._-]+\z') {
+        Die "invalid release version: $($env:JK_VERSION)"
+    }
+    $releasesUri = $null
+    if (-not [Uri]::TryCreate($ReleasesUrl, [UriKind]::Absolute, [ref] $releasesUri) -or $releasesUri.Scheme -cne "https") {
+        Die "JK_RELEASES_URL must be an absolute HTTPS URL: $ReleasesUrl"
+    }
+}
+
 if ($LocalPath) {
     if (-not (Test-Path -LiteralPath $LocalPath -PathType Leaf)) {
         Die "local file not found: $LocalPath"
@@ -846,7 +870,7 @@ if ($LocalPath) {
 }
 
 if ($IsRemote) {
-    if ($version -notmatch '^[A-Za-z0-9._-]+$') {
+    if ($version -cnotmatch '^[A-Za-z0-9._-]+\z') {
         Die "invalid release version: $version"
     }
     try {
@@ -973,9 +997,9 @@ try {
         }
         # One client jar: a launcher names exactly one. A jar a running client still maps cannot
         # be deleted; it is parked and swept by the next install.
-        Get-ChildItem -Path $jkLib -Filter "jk-*.jar.old*" -File -ErrorAction SilentlyContinue |
+        Get-ChildItem -LiteralPath $jkLib -Filter "jk-*.jar.old*" -File -ErrorAction SilentlyContinue |
             ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
-        Get-ChildItem -Path $jkLib -Filter "jk-*.jar" -File -ErrorAction SilentlyContinue |
+        Get-ChildItem -LiteralPath $jkLib -Filter "jk-*.jar" -File -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -ne $jkJar } |
             ForEach-Object {
                 try { Remove-Item -LiteralPath $_.FullName -Force } catch { Park-IfPresent $_.FullName }
@@ -1090,7 +1114,7 @@ REM jkx - jk tool run launcher (generated by jk; do not edit)
     # install carries none: the client fetches its own version's spy from the release directory,
     # verified against the same signed sums, on the first `jk mvn`.
     if ($LocalPath -and $engineJar) {
-        $spyJars = Get-ChildItem -Path (Split-Path -Parent $engineJar) -Filter "jk-maven-spy-*.jar" -ErrorAction SilentlyContinue
+        $spyJars = Get-ChildItem -LiteralPath (Split-Path -Parent $engineJar) -Filter "jk-maven-spy-*.jar" -ErrorAction SilentlyContinue
         foreach ($spy in $spyJars) {
             try {
                 $productLib = Join-Path $JkHome "lib"
@@ -1179,25 +1203,33 @@ REM jkx - jk tool run launcher (generated by jk; do not edit)
             -replace '\.git$', '' `
             -replace '[^a-z0-9._-]', '_')
         $tmplDest = Join-Path $storeTemplates $tmplKey
+        # Cloned beside the cache and swapped in only when the clone succeeds, so an offline install
+        # keeps the templates it already has.
+        $tmplStage = Join-Path $storeTemplates (".$tmplKey." + [guid]::NewGuid().ToString("N"))
         try {
-            $parent = Split-Path -Parent $tmplDest
-            New-Item -ItemType Directory -Force -Path $parent | Out-Null
-            if (Test-Path -LiteralPath $tmplDest) {
-                Remove-Item -LiteralPath $tmplDest -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            New-Item -ItemType Directory -Force -Path $storeTemplates | Out-Null
             $prevPrompt = $env:GIT_TERMINAL_PROMPT
             $env:GIT_TERMINAL_PROMPT = "0"
+            $cloned = $false
             try {
-                Invoke-NativeLines "git" @("clone", "--depth", "1", $templatesUrl, $tmplDest) | Out-Null
-                if ($LASTEXITCODE -ne 0) {
-                    Write-Note "templates prefetch skipped (git clone failed - will lazy-clone on jk new)"
-                }
+                Invoke-NativeLines "git" @("clone", "--depth", "1", $templatesUrl, $tmplStage) | Out-Null
+                $cloned = ($LASTEXITCODE -eq 0)
             } finally {
                 if ($null -eq $prevPrompt) { Remove-Item Env:GIT_TERMINAL_PROMPT -ErrorAction SilentlyContinue }
                 else { $env:GIT_TERMINAL_PROMPT = $prevPrompt }
             }
+            if ($cloned) {
+                if (Test-Path -LiteralPath $tmplDest) {
+                    Remove-Item -LiteralPath $tmplDest -Recurse -Force
+                }
+                Move-Item -LiteralPath $tmplStage -Destination $tmplDest
+            } else {
+                Write-Note "templates prefetch skipped (git clone failed - will lazy-clone on jk new)"
+            }
         } catch {
-            Write-Note "templates prefetch skipped (git clone failed - will lazy-clone on jk new)"
+            Write-Note "templates prefetch skipped (could not refresh $tmplDest - will lazy-clone on jk new)"
+        } finally {
+            Remove-Item -LiteralPath $tmplStage -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 

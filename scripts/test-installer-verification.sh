@@ -197,6 +197,56 @@ grep -qF -- "$WORK/user-home/.jk/bin/jk" "$WORK/user-home/.bashrc" || { echo "th
 seed_user_home "$WORK/user-home"
 pass "default-home-writes-block"
 
+# A misspelled flag is refused as one, not looked for as a local file, and installs nothing.
+INSTALLER_ARGS=(--rcc)
+assert_refused_unchanged "unknown-flag"
+INSTALLER_ARGS=()
+grep -qF -- "unknown option: --rcc" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "an unknown flag was not refused as one" >&2; exit 1; }
+pass "unknown-flag"
+
+# Where bin/ refuses hardlinks, jkx is a shim that names the client by its path. A home whose path
+# carries shell syntax still gets a shim that runs that client with the arguments it was given.
+mkdir -p "$WORK/no-ln-bin"
+printf '#!/bin/sh\nexit 1\n' >"$WORK/no-ln-bin/ln"
+chmod +x "$WORK/no-ln-bin/ln"
+odd_home="$WORK/home-odd \$HOME \"q\" \`x\` it's"
+rm -f "$WORK/jk-calls"
+run_installer "$odd_home" JK_VERSION=1.0.0 JK_ARCHIVE_URL="https://fixture/releases/1.0.0/$ARTIFACT" \
+  PATH="$WORK/no-ln-bin:$WORK/bin:$PATH" || {
+  cat "$WORK/last-install.log" >&2; echo "an install into a home with shell syntax in its path failed" >&2; exit 1; }
+rm -f "$WORK/jk-calls"
+FIXTURE_JK_LOG="$WORK/jk-calls" "$odd_home/bin/jkx" hello "two words" >/dev/null 2>&1 || {
+  cat "$odd_home/bin/jkx" >&2; echo "the jkx shim does not run" >&2; exit 1; }
+[[ "$(cat "$WORK/jk-calls")" == "tool run hello two words" ]] || {
+  cat "$odd_home/bin/jkx" "$WORK/jk-calls" >&2; echo "the jkx shim did not run the installed jk's tool run" >&2; exit 1; }
+rm -rf "$WORK/no-ln-bin" "$odd_home"
+pass "jkx-shim-quotes-home"
+
+# The templates cache is replaced only by a clone that succeeds: offline (the fixture git fails)
+# the cache stays; a clone that works takes its place and leaves no stage behind.
+tmpl_cache="$WORK/home-templates/store/templates/github.com_jumpkickoss_jk-templates"
+mkdir -p "$tmpl_cache"
+printf 'cached\n' >"$tmpl_cache/marker"
+run_installer "$WORK/home-templates" JK_STORE_DIR= JK_VERSION=1.0.0 JK_ARCHIVE_URL="https://fixture/releases/1.0.0/$ARTIFACT" || {
+  cat "$WORK/last-install.log" >&2; echo "an install with a failing git clone failed" >&2; exit 1; }
+[[ "$(cat "$tmpl_cache/marker" 2>/dev/null)" == "cached" ]] || {
+  echo "a failed templates clone removed the cached templates" >&2; exit 1; }
+mkdir -p "$WORK/clone-bin"
+# shellcheck disable=SC2016 # the fixture's own script text
+printf '#!/usr/bin/env bash\nfor last; do :; done\nmkdir -p "$last" && printf "fresh\\n" >"$last/marker"\n' >"$WORK/clone-bin/git"
+chmod +x "$WORK/clone-bin/git"
+run_installer "$WORK/home-templates" JK_STORE_DIR= JK_VERSION=1.0.0 JK_ARCHIVE_URL="https://fixture/releases/1.0.0/$ARTIFACT" \
+  PATH="$WORK/clone-bin:$WORK/bin:$PATH" || {
+  cat "$WORK/last-install.log" >&2; echo "an install with a working git clone failed" >&2; exit 1; }
+[[ "$(cat "$tmpl_cache/marker" 2>/dev/null)" == "fresh" ]] || {
+  echo "a successful templates clone did not replace the cache" >&2; exit 1; }
+if compgen -G "$WORK/home-templates/store/templates/.*.*" >/dev/null; then
+  ls -la "$WORK/home-templates/store/templates" >&2; echo "the templates clone left its stage behind" >&2; exit 1
+fi
+rm -rf "$WORK/clone-bin"
+pass "templates-cache-swapped-on-success"
+
 write_evidence
 printf 'tampered' >>"$RELEASE/$ARTIFACT"
 assert_refused_unchanged "tampered-artifact"
@@ -354,6 +404,11 @@ pass "tampered-pointer"
 write_pointer 0.9.0
 assert_pointer_refused "rolled-back-pointer" "names 0.9.0, older than the 1.0.0 this installer ships with"
 pass "rolled-back-pointer"
+
+# A pre-release of the floor's own version comes before it, so it is a rollback too.
+write_pointer 1.0.0-rc1
+assert_pointer_refused "pre-release-of-floor-pointer" "names 1.0.0-rc1, older than the 1.0.0 this installer ships with"
+pass "pre-release-of-floor-pointer"
 
 write_pointer 1.0.0 "$WORK/other-key.pem"
 assert_pointer_refused "untrusted-key-pointer" "latest-release pointer signature verification failed"

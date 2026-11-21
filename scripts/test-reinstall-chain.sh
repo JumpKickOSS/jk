@@ -19,8 +19,8 @@ mkdir -p "$REPO" "$STATE" "$JK_HOME/lib/jk-engine" "$WORK/bin" "$TMPDIR"
 # The fake jk knows build, install, snapshot and lock, answers --help on each and refuses anything
 # else. build: refuses a tree that needs a newer engine, an unowned table in a listed member, or an
 # edited jk.toml under an unforced lock. install (and snapshot): builds the same way, then raises the
-# level, adds the tree's plugin tables, stamps the engine jar with the commit time and logs what it
-# installed.
+# level, adds the tree's plugin tables, stamps the engine jar with the commit time and logs the verb
+# and what it installed.
 cat >"$WORK/bin/jk" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -54,7 +54,7 @@ with zipfile.ZipFile(sys.argv[1], "w") as jar:
     jar.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\nBuild-Time: " + sys.argv[2] + "\n")
 PY
     edited=""; git diff --quiet -- jk.toml || edited=" edited"
-    echo "$(git log -1 --format=%s)$edited" >>"$FAKE_STATE/installs"
+    echo "$1 $(git log -1 --format=%s)$edited" >>"$FAKE_STATE/installs"
     ;;
   lock) echo "# forced" >>jk-lock.toml ;;
   *) echo "E unknown command $1"; exit 2 ;;
@@ -106,7 +106,8 @@ cp "$ROOT/scripts/reinstall-chain.sh" "$REPO/scripts/"
 if ! "$REPO/scripts/reinstall-chain.sh" >"$WORK/chain.log" 2>&1; then
   echo "test-reinstall-chain: the chain failed:" >&2; cat "$WORK/chain.log" >&2; exit 1
 fi
-expected="$(printf 'c2\nc3\nc4 edited\nc4\n')"
+# This jk has `snapshot`, so every stage installs with it: its `install` would install the release.
+expected="$(printf 'snapshot c2\nsnapshot c3\nsnapshot c4 edited\nsnapshot c4\n')"
 if [ "$(cat "$STATE/installs")" != "$expected" ]; then
   echo "test-reinstall-chain: installed, in order:" >&2; cat "$STATE/installs" >&2
   echo "expected:" >&2; echo "$expected" >&2; cat "$WORK/chain.log" >&2; exit 1

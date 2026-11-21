@@ -6,6 +6,13 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **The installers refuse a pre-release of the release they ship with, and keep cached templates
+  when offline.** A latest-release pointer naming `0.53.1-rc1` is refused under a floor of `0.53.1`.
+  An offline reinstall keeps the cached templates instead of deleting them. `install.sh` refuses an
+  unknown option instead of taking it for a local file, and its fallback `jkx` script works when the
+  home path contains `$`, quotes or backticks. On Windows, `install.ps1` turns on TLS 1.2 under
+  PowerShell 5.1 and refuses a non-HTTPS `JK_RELEASES_URL` or a malformed `JK_VERSION` before
+  downloading anything.
 - **Spring Boot jars keep the AOT output's service registrations, and a minified library keeps its
   nested classes.** A Boot jar merges `META-INF/services` files, `spring.factories`, `aot.factories`
   and `*.imports` files that both the application and the Spring AOT output carry, instead of

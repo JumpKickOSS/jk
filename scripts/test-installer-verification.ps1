@@ -226,6 +226,17 @@ try {
     # Rollback: an older release's pointer, validly signed, re-served as the latest one.
     Write-Pointer "version 0.9.0`nissued 1757700000`n"
     Assert-PointerRefused "rolled-back pointer" "names 0.9.0, older than the 1.0.0 this installer ships with"
+    # A pre-release of the floor's own version comes before it, so it is a rollback too.
+    Write-Pointer "version 1.0.0-rc1`nissued 1757700000`n"
+    Assert-PointerRefused "pre-release of the floor" "names 1.0.0-rc1, older than the 1.0.0 this installer ships with"
+    if ((Resolve-Pointer -Floor "1.0.0-rc1") -cne "1.0.0-rc1") { throw "a pre-release floor refused its own pre-release" }
+
+    # The three lines and nothing after them, in the case the signer writes.
+    Write-Pointer "version 1.0.0`nissued 1757700000`n"
+    [IO.File]::AppendAllText($pointer, "`n", [Text.Encoding]::ASCII)
+    Assert-PointerRefused "pointer with a trailing blank line" "latest-release pointer is malformed"
+    Write-Pointer "VERSION 1.0.0`nissued 1757700000`n"
+    Assert-PointerRefused "upper-case pointer" "latest-release pointer is malformed"
 
     $foreign = New-Object Security.Cryptography.RSACryptoServiceProvider -ArgumentList 3072
     try {

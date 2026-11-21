@@ -3,12 +3,15 @@ package cc.jumpkick.command.toolchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.host.Processes;
 import cc.jumpkick.testing.Symlinks;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.time.Duration;
 import java.util.EnumSet;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -98,5 +101,27 @@ class JkxLinkTest {
         assertThat(JkxLink.ensure(bin(), null).status()).isEqualTo(JkxLink.Status.SKIPPED_NO_EXE);
         assertThat(JkxLink.ensure(bin(), tmp.resolve("missing")).status()).isEqualTo(JkxLink.Status.SKIPPED_NO_EXE);
         assertThat(JkxLink.ensure(bin(), Path.of("jk")).status()).isEqualTo(JkxLink.Status.SKIPPED_NO_EXE);
+    }
+
+    /** Where neither link can be made, the shim runs this jk however odd the home's path is. */
+    @Test
+    void the_shim_runs_a_jk_whose_path_carries_shell_syntax() throws Exception {
+        Path dir = tmp.resolve("home $HOME \"q\" `x` it's");
+        Files.createDirectories(dir);
+        Path jk = dir.resolve("jk");
+        Files.writeString(jk, "#!/bin/sh\nprintf '%s|' \"$@\"\n");
+        Files.setPosixFilePermissions(
+                jk,
+                EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE));
+        Path shim = tmp.resolve("jkx");
+        Files.writeString(shim, JkxLink.posixShim(jk));
+
+        Processes.Captured run =
+                Processes.capture(List.of("/bin/sh", shim.toString(), "a", "b c"), Duration.ofSeconds(30));
+        assertThat(run.exit()).as(run.error()).isZero();
+        assertThat(run.output()).isEqualTo("tool|run|a|b c|");
     }
 }
