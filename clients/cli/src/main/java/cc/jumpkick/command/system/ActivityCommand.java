@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Pill;
 import cc.jumpkick.cli.tui.RichText;
 import cc.jumpkick.cli.tui.Tree;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -82,7 +83,7 @@ public final class ActivityCommand implements CliCommand {
         if (entries.isEmpty()) {
             tree.child(Tree.node("No jobs yet"));
         } else {
-            long now = System.currentTimeMillis();
+            long now = Clock.SYSTEM.millis();
             Theme t = Theme.active();
             int buildNumberWidth = buildNumberWidth(entries);
             for (String entry : entries) {

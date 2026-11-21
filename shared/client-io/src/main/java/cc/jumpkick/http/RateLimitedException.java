@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.http;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -26,7 +27,7 @@ public final class RateLimitedException extends IOException {
     }
 
     private static String message(String host, Instant until) {
-        long secs = Math.max(0, Duration.between(Instant.now(), until).toSeconds());
+        long secs = Math.max(0, Duration.between(Clock.SYSTEM.instant(), until).toSeconds());
         String wait = secs >= 120 ? (secs / 60) + " minutes" : secs + "s";
         return host + " is rate-limiting this machine; waiting " + wait + ", until " + until + "\n"
                 + "  jk resumes on its own; retrying now makes the limit last longer";

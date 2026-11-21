@@ -3,6 +3,7 @@ package cc.jumpkick.jdk;
 
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -129,7 +130,7 @@ public final class JdkCatalogClient {
             HttpResponse<byte[]> response = http.documents().get(feedUri, headers);
             int status = response.statusCode();
             if (status == 304 && Files.isRegularFile(cacheFile)) {
-                Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));
+                Files.setLastModifiedTime(cacheFile, FileTime.from(Clock.SYSTEM.instant()));
                 return Files.readAllBytes(cacheFile);
             }
             if (status == 200) {
@@ -150,7 +151,7 @@ public final class JdkCatalogClient {
 
     private Duration cacheAge() throws IOException {
         Instant mtime = Files.getLastModifiedTime(cacheFile).toInstant();
-        return Duration.between(mtime, Instant.now());
+        return Duration.between(mtime, Clock.SYSTEM.instant());
     }
 
     private void writeCache(byte[] payload) throws IOException {

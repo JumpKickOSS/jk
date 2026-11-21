@@ -9,6 +9,7 @@ import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.engine.journal.BuildRecord;
 import cc.jumpkick.engine.listen.EventRedaction;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import com.sun.net.httpserver.HttpExchange;
@@ -190,7 +191,7 @@ final class HttpHistoryApi {
             if (match.startedAt() > 0) {
                 m.put("startedAt", match.startedAt());
                 // Engine "now" beside engine startedAt — skew-free elapsed for the SPA.
-                m.put("serverNow", System.currentTimeMillis());
+                m.put("serverNow", Clock.SYSTEM.millis());
             }
             if (!Double.isNaN(match.progress())) m.put("progress", match.progress());
             if (match.remainingMs() >= 0) m.put("remainingMs", match.remainingMs());

@@ -4,6 +4,7 @@ package cc.jumpkick.cli.run;
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.cli.engine.EngineProbe;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.EnginePaths;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -231,12 +232,12 @@ public final class DashboardCodeLink {
 
     /** Package-visible for tests — force a known HTTP base without talking to the engine. */
     static void putHttpCache(String httpUrl) {
-        httpCache = new HttpCache(httpUrl, System.nanoTime() + HTTP_TTL_NANOS);
+        httpCache = new HttpCache(httpUrl, Clock.SYSTEM.nanos() + HTTP_TTL_NANOS);
     }
 
     static @Nullable String resolveHttpBase() {
         HttpCache c = httpCache;
-        long now = System.nanoTime();
+        long now = Clock.SYSTEM.nanos();
         if (c != null && now - c.expiresAtNanos < 0) return c.url;
         String url = null;
         try {

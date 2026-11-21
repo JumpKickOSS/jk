@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -109,7 +110,7 @@ final class OutputCapture {
                 emit();
             } else {
                 buf.write(b);
-                lastWriteNanos = System.nanoTime();
+                lastWriteNanos = Clock.SYSTEM.nanos();
             }
         }
 
@@ -125,13 +126,13 @@ final class OutputCapture {
             }
             if (start < off + len) {
                 buf.write(b, start, off + len - start);
-                lastWriteNanos = System.nanoTime();
+                lastWriteNanos = Clock.SYSTEM.nanos();
             }
         }
 
         synchronized void maybeFlushStale(long ms) {
             if (buf.size() == 0) return;
-            if (System.nanoTime() - lastWriteNanos < ms * 1_000_000L) return;
+            if (Clock.SYSTEM.nanos() - lastWriteNanos < ms * 1_000_000L) return;
             emit();
         }
 

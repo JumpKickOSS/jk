@@ -3,6 +3,7 @@ package cc.jumpkick.builds;
 
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,8 +81,8 @@ public final class RunReaper {
      * walks the builds root trails the deletes.
      */
     public void awaitIdle(long timeoutMs) {
-        long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
-        while (busy() && System.currentTimeMillis() < deadline) {
+        long deadline = Clock.SYSTEM.millis() + Math.max(0L, timeoutMs);
+        while (busy() && Clock.SYSTEM.millis() < deadline) {
             try {
                 Thread.sleep(20);
             } catch (InterruptedException e) {
@@ -129,7 +130,7 @@ public final class RunReaper {
 
     /** Reap every project home under {@code buildsRoot} now (tests). */
     public void runOnce(Path buildsRoot) {
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) reapProject(home, now);
     }
 

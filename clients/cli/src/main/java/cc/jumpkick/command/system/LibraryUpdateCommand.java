@@ -11,6 +11,7 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
@@ -72,7 +73,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         this.source = in.value("source").map(URI::create).orElse(null);
         this.cacheFileOverride = in.value("cache-file").map(CliPaths::abs).orElse(null);
 
-        long startNanos = System.nanoTime();
+        long startNanos = Clock.SYSTEM.nanos();
         Path cacheFile = cacheFileOverride != null ? cacheFileOverride : JkDirs.libraryRegistry();
         Path previousBackup = cacheFile.resolveSibling(cacheFile.getFileName() + ".prev");
         Map<String, LibraryCatalog.Module> before = currentEntries(cacheFile);
@@ -108,7 +109,7 @@ public final class LibraryUpdateCommand implements CliCommand {
                     .token("changed", MiniJson.write(diff.changed())));
             return 0;
         }
-        printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos), fetched);
+        printSummary(after.size(), diff, Duration.ofNanos(Clock.SYSTEM.nanos() - startNanos), fetched);
         return 0;
     }
 

@@ -11,6 +11,7 @@ import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.HostPlatform;
 import cc.jumpkick.jdk.InstalledJdk;
 import cc.jumpkick.jdk.JdkEnsure;
@@ -403,7 +404,7 @@ public final class McpMachine {
                         if (result.success()) {
                             CacheMaintenanceLocks.stampLastPruned(
                                     cache,
-                                    System.currentTimeMillis(),
+                                    Clock.SYSTEM.millis(),
                                     plan.get(CachePlans.FINAL_ACTION_BYTES).orElse(-1L));
                         } else {
                             preview.put("error", "cache clean failed");

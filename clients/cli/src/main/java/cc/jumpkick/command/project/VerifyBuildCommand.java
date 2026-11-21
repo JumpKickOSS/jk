@@ -18,6 +18,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.HostTemp;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.ManifestPaths;
@@ -426,7 +427,7 @@ public final class VerifyBuildCommand implements CliCommand {
      * lock verbatim.
      */
     private static void touchLockfiles(Path root) throws IOException {
-        FileTime now = FileTime.fromMillis(System.currentTimeMillis());
+        FileTime now = FileTime.fromMillis(Clock.SYSTEM.millis());
         try (var stream = Files.walk(root)) {
             for (Path p : (Iterable<Path>) stream::iterator) {
                 if (p.getFileName() != null

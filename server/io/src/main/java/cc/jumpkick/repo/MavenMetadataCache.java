@@ -5,6 +5,7 @@ import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.http.HttpStatusException;
@@ -231,7 +232,7 @@ public final class MavenMetadataCache {
         if (ttl.isZero() || ttl.isNegative()) return false;
         if (!Files.isRegularFile(body) || Files.size(body) == 0) return false;
         Instant mtime = Files.getLastModifiedTime(body).toInstant();
-        return Duration.between(mtime, Instant.now()).compareTo(ttl) < 0;
+        return Duration.between(mtime, Clock.SYSTEM.instant()).compareTo(ttl) < 0;
     }
 
     /** Echo back the validators stored alongside a cached body (ETag, then Last-Modified). */
@@ -257,6 +258,6 @@ public final class MavenMetadataCache {
     }
 
     private static void touch(Path body) throws IOException {
-        Files.setLastModifiedTime(body, FileTime.from(Instant.now()));
+        Files.setLastModifiedTime(body, FileTime.from(Clock.SYSTEM.instant()));
     }
 }

@@ -334,12 +334,12 @@ public final class HttpEvents {
         /** The next frame, or {@code null} after {@code timeoutMillis} of quiet (heartbeat time). */
         @Nullable
         String next(long timeoutMillis) throws InterruptedException {
-            long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
+            long deadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(Math.max(0, timeoutMillis));
             lock.lock();
             try {
                 while (frames.isEmpty()) {
                     if (closed) return null;
-                    long wait = deadline - System.nanoTime();
+                    long wait = deadline - Clock.SYSTEM.nanos();
                     if (wait <= 0) return null;
                     notEmpty.awaitNanos(wait);
                 }

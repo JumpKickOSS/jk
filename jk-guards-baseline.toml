@@ -4,14 +4,18 @@
 [anchor-push-mcp-only]
 [anchor-push-mcp-only.populations]
 "server/engine" = { classes = 2084, sites = 147465 }
+"server/guard" = { classes = 209, sites = 0 }
+"server/io" = { classes = 83, sites = 0 }
 "server/resolver" = { classes = 138, sites = 0 }
 "server/toolchain" = { classes = 230, sites = 0 }
 
 [archive-instant-owner]
 [archive-instant-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -57,6 +61,7 @@ population = { files = 5722 }
 [blind-tree-walks]
 [blind-tree-walks.populations]
 "clients/cli" = { classes = 848, sites = 54944 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 2089 }
 "plugins/formatter" = { classes = 14, sites = 856 }
 "plugins/image-builder" = { classes = 13, sites = 1201 }
@@ -547,8 +552,10 @@ population = { files = 2215 }
 [case-conversion-locale]
 [case-conversion-locale.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -584,9 +591,11 @@ population = { examined = 1930 }
 [child-env-owner.populations]
 "plugins/android" = { classes = 30, sites = 2089 }
 "plugins/image-builder" = { classes = 19, sites = 1546 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
+"plugins/test-runner" = { classes = 28, sites = 1851 }
 "server/engine" = { classes = 1372, sites = 93555 }
 "server/guard" = { classes = 204, sites = 13606 }
 "server/io" = { classes = 75, sites = 4579 }
@@ -623,8 +632,12 @@ reason = "spawners that build a child's environment on purpose on 2026-10-28; ne
 [child-start-owner]
 [child-start-owner.populations]
 "server/engine" = { classes = 2084, sites = 147465 }
+"server/guard" = { classes = 209, sites = 14153 }
+"server/io" = { classes = 83, sites = 5117 }
 "server/resolver" = { classes = 138, sites = 9286 }
 "server/toolchain" = { classes = 230, sites = 17254 }
+"shared/client-io" = { classes = 319, sites = 16741 }
+"shared/core" = { classes = 631, sites = 38152 }
 "shared/toolchain-jdk" = { classes = 216, sites = 11470 }
 
 [ci-cadence]
@@ -656,481 +669,29 @@ population = { examined = 4 }
 
 [clock-owner]
 [clock-owner.populations]
-"clients/cli" = { classes = 827, sites = 53306 }
-"clients/cli-terminal" = { classes = 48, sites = 1630 }
+"clients/cli" = { classes = 887, sites = 58037 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 20, sites = 1681 }
-"plugins/java-compiler" = { classes = 25, sites = 1420 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
-"plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 2084, sites = 147465 }
-"server/guard" = { classes = 178, sites = 10898 }
-"server/io" = { classes = 78, sites = 4704 }
-"server/resolver" = { classes = 123, sites = 7334 }
+"plugins/test-runner" = { classes = 28, sites = 1851 }
+"server/engine" = { classes = 2084, sites = 147483 }
+"server/guard" = { classes = 209, sites = 14153 }
+"server/io" = { classes = 83, sites = 5117 }
+"server/resolver" = { classes = 138, sites = 9347 }
 "server/toolchain" = { classes = 205, sites = 15281 }
-"shared/client-io" = { classes = 244, sites = 12965 }
-"shared/core" = { classes = 506, sites = 31724 }
+"shared/client-io" = { classes = 319, sites = 16741 }
+"shared/core" = { classes = 631, sites = 38152 }
 "shared/dynamic-surface" = { classes = 11, sites = 612 }
 "shared/host" = { classes = 51, sites = 2014 }
 "shared/jk-api" = { classes = 221, sites = 10524 }
 "shared/plugin-sdk" = { classes = 74, sites = 2797 }
-"shared/toolchain-jdk" = { classes = 214, sites = 11356 }
+"shared/toolchain-jdk" = { classes = 218, sites = 11574 }
 "shared/wire" = { classes = 246, sites = 12211 }
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.CliFailure#appendLog([Ljava/lang/String;Ljava/lang/Throwable;)V -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineEventDecoder#streamSingleBuildPlanEvents(Ljava/io/BufferedReader;Ljava/util/function/Function;[Lcc/jumpkick/run/TestSummary;[Ljava/lang/String;Ljava/nio/channels/SocketChannel;)Lcc/jumpkick/run/BuildPlanResult; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineEventDecoder$#onLine(Ljava/lang/String;Ljava/lang/String;)Lcc/jumpkick/run/BuildPlanResult; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineFleet#waitGone(JJ)Z -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineProcessControl#lambda$hardKill$(Ljava/lang/ProcessHandle;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineProcessControl#waitForDeathOrKill(JLjava/time/Duration;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.engine.EngineSpawn#awaitStartup(Lcc/jumpkick/wire/EnginePaths$Paths;Ljava/lang/String;Ljava/time/Duration;Ljava/lang/Process;)Lcc/jumpkick/cli/engine/EngineSpawn$StartResult; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.run.CliSessionTranscript#finish(I)Ljava/util/Optional; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.run.DashboardCodeLink#putHttpCache(Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.run.DashboardCodeLink#resolveHttpBase()Ljava/lang/String; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.run.JsonlShape#nowMillis()J -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.DrainView#lines()[Ljava/lang/String; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.DrainView#start(ILcc/jumpkick/config/NerdFontCaps;)Lcc/jumpkick/cli/tui/DrainView; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JkManager#elapsedMillis()J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JkManager#plan(Ljava/io/PrintStream;Ljava/lang/String;Z)Lcc/jumpkick/cli/tui/JkManager; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JkManager#tick()V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JkManagerPlainView#maybeEmitHeartbeat()V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.JkManagerPlainView#printSnapshot(ILjava/lang/String;ZLjava/lang/String;Ljava/lang/String;Z)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.OutputCapture$LineSink#maybeFlushStale(J)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.OutputCapture$LineSink#write(I)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.OutputCapture$LineSink#write([BII)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.tui.WindowTitle#set(Ljava/lang/String;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.cli.watch.SourceWatch#pollChange(JLjava/util/concurrent/TimeUnit;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.BuildTails#elapsedMsSince(J)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.FormatCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.FormatCommand#runAnimated(Lcc/jumpkick/command/pipeline/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.FormatCommand#runPlain(Lcc/jumpkick/command/pipeline/FormatCommand$Run;)I -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.pipeline.SelectiveCommand#prepare(Ljava/nio/file/Path;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/nio/file/Path;)I -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.project.LockCommand#runHostedLive(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/cli/run/BuildPlanConsole$Mode;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.project.VerifyBuildCommand#touchLockfiles(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.ActivityCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.CacheCommand#lastPrunedLabel(Ljava/nio/file/Path;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.CleanCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.EngineStatusCommand#printFleet(Ljava/util/List;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.EngineStatusCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.EngineStopCommand#elapsed(J)J -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.HistoryCommand$HistoryListCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.HistoryCommand$HistoryShowCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.system.LibraryUpdateCommand#run(Lcc/jumpkick/model/command/Invocation;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.toolchain.WindowsExecutionPolicy#ensure(Ljava/time/Duration;Lcc/jumpkick/command/toolchain/WindowsExecutionPolicy$ProcessStarter;)Lcc/jumpkick/command/toolchain/WindowsExecutionPolicy$Result; -> java.lang.System#nanoTime()J"
-reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.toolchain.WindowsExecutionPolicy#remaining(J)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.toolchain.WindowsUserPath#ensure(Ljava/nio/file/Path;Ljava/time/Duration;Lcc/jumpkick/command/toolchain/WindowsUserPath$ProcessStarter;)Lcc/jumpkick/command/toolchain/WindowsUserPath$Result; -> java.lang.System#nanoTime()J"
-reason = "pure move: the command split re-keyed the sites into command.pipeline, command.system and command.toolchain; same reads, same count"
-[[clock-owner.entries]]
-in     = "clients/cli"
-at     = "cc.jumpkick.command.toolchain.WindowsUserPath#remaining(J)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli-terminal"
-at     = "cc.jumpkick.terminal.MemoryTerminal#drain(Ljava/time/Duration;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli-terminal"
-at     = "cc.jumpkick.terminal.MemoryTerminal#readKey(Ljava/time/Duration;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli-terminal"
-at     = "cc.jumpkick.terminal.MemoryTerminal#readRaw(Ljava/time/Duration;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli-terminal"
-at     = "cc.jumpkick.terminal.NativeTerminal#drain(Ljava/time/Duration;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli-terminal"
-at     = "cc.jumpkick.terminal.posix.PosixTty#readByte(Ljava/time/Duration;Ljava/util/function/BooleanSupplier;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "clients/cli-terminal"
-at     = "cc.jumpkick.terminal.windows.WindowsConsole#readByte(Ljava/time/Duration;Ljava/util/function/BooleanSupplier;)I -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/java-compiler"
-at     = "cc.jumpkick.java.compiler.ZincWorkdir#renameAside(Ljava/nio/file/Path;)Z -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/test-runner"
-at     = "cc.jumpkick.testrunner.LauncherPath$Adapter#executionFinished(Lorg/junit/platform/launcher/TestIdentifier;Lorg/junit/platform/engine/TestExecutionResult;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "plugins/test-runner"
-at     = "cc.jumpkick.testrunner.LauncherPath$Adapter#executionStarted(Lorg/junit/platform/launcher/TestIdentifier;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.EngineMaintenance#maintenanceDue()Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.EngineMaintenance#runMaintenanceCycle()V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.HostWarmup#needsCalibration()Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.SsePublisher#emitWorkspaceProgress(JLjava/io/BufferedWriter;ZZ)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.SsePublisher#shouldEmitWorkspaceProgress(JLcc/jumpkick/wire/runtime/WorkspaceProgressTracker$Snapshot;)Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.api.CoalescingLockPackages#flush()V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; five sites moved with their classes into engine.api and engine.plugin (pure move); the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.api.CoalescingLockPackages#scheduleLocked()V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; five sites moved with their classes into engine.api and engine.plugin (pure move); the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.HttpEvents$Subscription#next(J)Ljava/lang/String; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.HttpHistoryApi#enrichHistoryJson(Ljava/lang/String;)Ljava/lang/String; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.HttpProjectApi#handleTemplates(Lcom/sun/net/httpserver/HttpExchange;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.api.StatusSnapshot#vitals()Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
-reason = "StatusSnapshot moved to engine.http.api; the same site under its new path"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.mcp.McpJobRuns#run(Lcc/jumpkick/engine/http/mcp/McpCall;Ljava/lang/String;)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.mcp.McpJobRuns#waitForJournal(Lcc/jumpkick/engine/http/mcp/McpContext;J)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.http.mcp.McpMachine#lambda$diskAction$(Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/Map;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.jobs.JobSession#lastProgress(Ljava/lang/Double;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.jobs.JobSession#remaining(Lcc/jumpkick/wire/runtime/RemainingWork;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.journal.BuildJournal#complete(Ljava/lang/String;Lcc/jumpkick/engine/journal/BuildRecord;Lcc/jumpkick/engine/journal/BuildJournal$Snapshot;)Z -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.verbs.CalibrateVerb#run(Ljava/lang/String;Lcc/jumpkick/config/Session$CancelToken;Ljava/io/BufferedWriter;)Lcc/jumpkick/engine/jobs/JobOutcome; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.engine.verbs.VerbHost#nowMillis()J -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.giter8.Giter8TemplateIndex#picker(Ljava/util/List;)Ljava/util/List; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.HardwareProbe#measureDiskIo()J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.HardwareProbe#measureHashCpu()J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.HardwareProbe#timeProcess(Ljava/lang/ProcessBuilder;)J -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.TrainRunner#lambda$runUntilSettled$(Ljava/lang/StringBuilder;Ljava/util/concurrent/atomic/AtomicLong;Ljava/lang/String;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.TrainRunner#runUntilSettled(Ljava/lang/ProcessBuilder;Ljava/util/function/Consumer;)Lcc/jumpkick/runtime/TrainRunner$Output; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.BuildMetrics#fold(Lcc/jumpkick/builds/AggregatedMetrics;)Lcc/jumpkick/runtime/base/BuildMetrics; -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the session-aggregate fold and the file-hash memo gained per-window and stat-identity entry points; the same wall-clock reads moved into fold(), sessionMemo() and contentHash(Path,long,long,long), same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.ChromeTimeline#complete(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.Perf#end(Ljava/lang/String;J)V -> java.lang.System#nanoTime()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.Perf#start()J -> java.lang.System#nanoTime()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.StepTimings#fold(Lcc/jumpkick/builds/AggregatedMetrics;)Lcc/jumpkick/runtime/base/StepTimings; -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the session-aggregate fold and the file-hash memo gained per-window and stat-identity entry points; the same wall-clock reads moved into fold(), sessionMemo() and contentHash(Path,long,long,long), same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.base.WorkspaceScheduler#drainCancelled(Ljava/lang/Iterable;)V -> java.lang.System#nanoTime()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.runtime.workspace.WorkspaceFinalPhase#learn(Lcc/jumpkick/runtime/workspace/WorkspaceRunPhase$Run;)V -> java.lang.System#currentTimeMillis()J"
-reason = "pure move: the runtime split re-keyed the sites into runtime.workspace and runtime.base; same reads, same count"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.SyncManifest#write(Ljava/nio/file/Path;Ljava/nio/file/Path;Lcc/jumpkick/lock/Lockfile;)Ljava/nio/file/Path; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.task.TmpGc#sweep(Ljava/nio/file/Path;Ljava/time/Duration;Z)Lcc/jumpkick/task/TmpGc$Report; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/engine"
-at     = "cc.jumpkick.test.XmlTestReport#<init>()V -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.eval.DeadlineCharSequence#<init>(Ljava/lang/CharSequence;J)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.eval.DeadlineCharSequence#charAt(I)C -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.explain.RuleSummaries#write(Ljava/nio/file/Path;Ljava/lang/String;Lcc/jumpkick/guard/eval/LaneRun$Result;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/guard"
-at     = "cc.jumpkick.guard.explain.SarifWriter#document(Ljava/nio/file/Path;Lcc/jumpkick/guard/rules/RuleSet;Lcc/jumpkick/guard/baseline/Baseline;Ljava/util/List;Ljava/util/List;)Ljava/util/Map; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.MavenMetadataCache#fresh(Ljava/nio/file/Path;)Z -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/io"
-at     = "cc.jumpkick.repo.MavenMetadataCache#touch(Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.KmpRedirects#facts(Ljava/lang/String;Ljava/lang/String;)Lcc/jumpkick/resolver/KmpRedirects$ModuleFacts; -> java.lang.System#nanoTime()J"
-reason = "KmpRedirects' profiling nanoTime read moved from selectionFor into facts when the memo grew Gradle metadata constraints; same site, new owner method"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.LockProgress#<init>(Lcc/jumpkick/resolver/ResolveObserver;Lcc/jumpkick/resolver/LockProgress$Timings;)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.LockProgress#finished(I)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.LockProgress#graphPhase(I)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.LockProgress#materializePhase(I)V -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.MavenPackageSource#dependencies(Ljava/lang/String;Ljava/lang/String;)Ljava/util/List; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.pubgrub.PartialSolution#relationTo(Lcc/jumpkick/resolver/pubgrub/Incompatibility;)Lcc/jumpkick/resolver/pubgrub/PartialSolution$Relation; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "server/resolver"
-at     = "cc.jumpkick.resolver.pubgrub.PubGrubSolver#solve(Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Ljava/util/Map; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.cache.EngineInstall#displaceToOld(Ljava/nio/file/Path;)Ljava/util/Optional; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.forge.DeviceFlow#poll(Lcc/jumpkick/forge/DeviceCode;)Ljava/lang/String; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.http.HostCooldown#<init>(Ljava/nio/file/Path;)V -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.http.RateLimitedException#message(Ljava/lang/String;Ljava/time/Instant;)Ljava/lang/String; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.repo.LibraryRegistrySync#isFresh(Ljava/nio/file/Path;)Z -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.repo.s3.S3Transport#forGcs(Lcc/jumpkick/http/Http;Ljava/net/URI;Lcc/jumpkick/model/ObjectStoreConfig;Lcc/jumpkick/repo/s3/AwsCredentialChain;Ljava/util/function/Function;)Lcc/jumpkick/repo/s3/S3Transport; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/client-io"
-at     = "cc.jumpkick.repo.s3.S3Transport#forS3(Lcc/jumpkick/http/Http;Ljava/net/URI;Lcc/jumpkick/model/ObjectStoreConfig;Lcc/jumpkick/repo/s3/AwsCredentialChain;Ljava/util/function/Function;)Lcc/jumpkick/repo/s3/S3Transport; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.builds.RunReaper#awaitIdle(J)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/core"
-at     = "cc.jumpkick.builds.RunReaper#runOnce(Ljava/nio/file/Path;)V -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkCatalogClient#cacheAge()Ljava/time/Duration; -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkCatalogClient#loadBody(Z)[B -> java.time.Instant#now()Ljava/time/Instant;"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
-[[clock-owner.entries]]
-in     = "shared/toolchain-jdk"
-at     = "cc.jumpkick.jdk.JdkRegistry#listHits()Ljava/util/List; -> java.lang.System#nanoTime()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 
 [config-error-through-broad-catch]
 population = { examined = 159 }
@@ -1316,6 +877,8 @@ population = { examined = 15 }
 [env-key-owner]
 [env-key-owner.populations]
 "server/engine" = { classes = 2084, sites = 147465 }
+"server/guard" = { classes = 209, sites = 14153 }
+"server/io" = { classes = 83, sites = 5117 }
 "server/resolver" = { classes = 138, sites = 9286 }
 "server/toolchain" = { classes = 230, sites = 17254 }
 
@@ -1391,12 +954,15 @@ population = { files = 1888 }
 [jdk-installs-in-engine]
 [jdk-installs-in-engine.populations]
 "clients/cli" = { classes = 812, sites = 52432 }
+"clients/cli-terminal" = { classes = 59, sites = 0 }
 
 [jdk-removal-confined]
 [jdk-removal-confined.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 0 }
 "plugins/android" = { classes = 30, sites = 0 }
 "plugins/image-builder" = { classes = 19, sites = 0 }
+"plugins/java-compiler" = { classes = 66, sites = 0 }
 "plugins/micronaut" = { classes = 2, sites = 0 }
 "plugins/protobuf" = { classes = 4, sites = 0 }
 "plugins/publisher" = { classes = 16, sites = 0 }
@@ -1422,8 +988,14 @@ population = { examined = 1 }
 [json-concat]
 population = { files = 2240 }
 
+[junit-pin-parity]
+population = { examined = 111 }
+
 [local-repo-owner]
 population = { files = 2959 }
+
+[lock-list-complete]
+population = { examined = 20 }
 
 [lock-version-is-one]
 population = { files = 18 }
@@ -1709,8 +1281,10 @@ population = { examined = 5 }
 [null-marked-packages]
 [null-marked-packages.populations]
 "clients/cli" = { classes = 676, elements = 18 }
+"clients/cli-terminal" = { classes = 59, elements = 3 }
 "plugins/android" = { classes = 30, elements = 1 }
 "plugins/image-builder" = { classes = 19, elements = 1 }
+"plugins/java-compiler" = { classes = 66, elements = 1 }
 "plugins/micronaut" = { classes = 2, elements = 1 }
 "plugins/protobuf" = { classes = 4, elements = 1 }
 "plugins/publisher" = { classes = 16, elements = 1 }
@@ -1733,8 +1307,10 @@ population = { examined = 5 }
 [one-digest-surface]
 [one-digest-surface.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -1758,9 +1334,11 @@ population = { examined = 5 }
 [one-env-surface.populations]
 "plugins/android" = { classes = 30, sites = 2089 }
 "plugins/image-builder" = { classes = 20, sites = 1681 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 22, sites = 1625 }
+"plugins/test-runner" = { classes = 28, sites = 1851 }
 "server/engine" = { classes = 1387, sites = 100473 }
 "server/guard" = { classes = 204, sites = 13606 }
 "server/io" = { classes = 75, sites = 4579 }
@@ -1780,8 +1358,10 @@ population = { files = 208 }
 [one-hex-spelling]
 [one-hex-spelling.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -1804,8 +1384,10 @@ population = { files = 208 }
 [one-host-surface]
 [one-host-surface.populations]
 "clients/cli" = { classes = 676, sites = 31445 }
+"clients/cli-terminal" = { classes = 59, sites = 1864 }
 "plugins/android" = { classes = 30, sites = 1355 }
 "plugins/image-builder" = { classes = 19, sites = 1114 }
+"plugins/java-compiler" = { classes = 66, sites = 3183 }
 "plugins/micronaut" = { classes = 2, sites = 124 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
@@ -1828,8 +1410,10 @@ population = { files = 208 }
 [one-http-client]
 [one-http-client.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -1861,11 +1445,14 @@ population = { files = 3381 }
 [one-module-planner]
 [one-module-planner.populations]
 "clients/cli" = { classes = 812, sites = 0 }
+"clients/cli-terminal" = { classes = 59, sites = 0 }
 "plugins/android" = { classes = 30, sites = 0 }
 "plugins/image-builder" = { classes = 20, sites = 0 }
+"plugins/java-compiler" = { classes = 66, sites = 0 }
 "plugins/micronaut" = { classes = 2, sites = 0 }
 "plugins/publisher" = { classes = 24, sites = 0 }
 "plugins/quarkus" = { classes = 19, sites = 0 }
+"plugins/test-runner" = { classes = 28, sites = 0 }
 "server/engine" = { classes = 1342, sites = 90304 }
 "server/guard" = { classes = 204, sites = 0 }
 "server/io" = { classes = 59, sites = 0 }
@@ -1886,8 +1473,10 @@ population = { files = 2203 }
 [own-algorithm-by-name]
 [own-algorithm-by-name.populations]
 "clients/cli" = { classes = 676, sites = 31445 }
+"clients/cli-terminal" = { classes = 59, sites = 1864 }
 "plugins/android" = { classes = 30, sites = 1355 }
 "plugins/image-builder" = { classes = 19, sites = 1114 }
+"plugins/java-compiler" = { classes = 66, sites = 3183 }
 "plugins/micronaut" = { classes = 2, sites = 124 }
 "plugins/protobuf" = { classes = 4, sites = 115 }
 "plugins/publisher" = { classes = 16, sites = 447 }
@@ -1913,6 +1502,7 @@ population = { files = 2203 }
 "clients/cli-terminal" = { edges = 4, slices = 3 }
 "plugins/android" = { edges = 0, slices = 1 }
 "plugins/image-builder" = { edges = 0, slices = 1 }
+"plugins/java-compiler" = { edges = 0, slices = 1 }
 "plugins/micronaut" = { edges = 0, slices = 1 }
 "plugins/protobuf" = { edges = 0, slices = 1 }
 "plugins/publisher" = { edges = 0, slices = 1 }
@@ -1984,6 +1574,7 @@ population = { examined = 15 }
 [plugin-fork-owner.populations]
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -2000,8 +1591,10 @@ population = { files = 90 }
 [properties-render-owner]
 [properties-render-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -2033,8 +1626,12 @@ population = { poms = 38 }
 [redactor-owner]
 [redactor-owner.populations]
 "server/engine" = { classes = 2084, sites = 147465 }
+"server/guard" = { classes = 209, sites = 14153 }
+"server/io" = { classes = 83, sites = 5117 }
 "server/resolver" = { classes = 138, sites = 9286 }
 "server/toolchain" = { classes = 230, sites = 17254 }
+"shared/client-io" = { classes = 319, sites = 16741 }
+"shared/core" = { classes = 631, sites = 38152 }
 "shared/toolchain-jdk" = { classes = 216, sites = 11470 }
 
 [release-session-owner]
@@ -2071,8 +1668,10 @@ population = { files = 2335 }
 [runnable-owner]
 [runnable-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }
@@ -2551,6 +2150,9 @@ population = { files = 2203 }
 [variant-apply-owner.populations]
 "server/engine" = { classes = 1745, sites = 124284 }
 
+[wire-key-closure]
+population = { examined = 3269 }
+
 [wire-prefix-pairs]
 population = { files = 2257 }
 
@@ -2564,6 +2166,12 @@ population = { files = 204 }
 population = { examined = 3 }
 scope-reason = "the wall-measure workflow is gone: the scoreboard's night tier measures on the reference host"
 
+[workflow-runners-in-cost-order]
+population = { examined = 5 }
+
+[workflow-suites-under-checkout-jk]
+population = { examined = 5 }
+
 [workflow-tee-pipefail]
 population = { examined = 3 }
 scope-reason = "the wall-measure workflow is gone: the scoreboard's night tier measures on the reference host"
@@ -2574,8 +2182,10 @@ population = { files = 1 }
 [xml-parser-owner]
 [xml-parser-owner.populations]
 "clients/cli" = { classes = 676, sites = 41838 }
+"clients/cli-terminal" = { classes = 59, sites = 2417 }
 "plugins/android" = { classes = 30, sites = 1970 }
 "plugins/image-builder" = { classes = 19, sites = 1522 }
+"plugins/java-compiler" = { classes = 66, sites = 4380 }
 "plugins/micronaut" = { classes = 2, sites = 173 }
 "plugins/protobuf" = { classes = 4, sites = 184 }
 "plugins/publisher" = { classes = 16, sites = 690 }

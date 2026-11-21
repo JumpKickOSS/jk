@@ -149,7 +149,7 @@ public final class LibraryRegistrySync {
         try {
             if (!isNonEmptyFile(file)) return false;
             Instant mtime = Files.getLastModifiedTime(file).toInstant();
-            return Duration.between(mtime, Instant.now()).compareTo(FRESH_FOR) < 0;
+            return Duration.between(mtime, Clock.SYSTEM.instant()).compareTo(FRESH_FOR) < 0;
         } catch (IOException e) {
             return false;
         }

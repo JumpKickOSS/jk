@@ -8,6 +8,7 @@ import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Table;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -207,7 +208,7 @@ public final class HistoryCommand extends GroupCommand {
                 CliOutput.out("No build history yet");
                 return 0;
             }
-            long now = System.currentTimeMillis();
+            long now = Clock.SYSTEM.millis();
             // A project id with two live checkouts (two worktrees of one repository) gets a
             // Checkout column beside the number; one checkout per id keeps the plain timeline.
             Map<String, String> checkouts = checkoutLabels(entries);
@@ -317,7 +318,7 @@ public final class HistoryCommand extends GroupCommand {
             long suspended = Jsonl.longValue(record, "suspendedMillis", 0);
             CliOutput.out("  duration: " + duration(worked(Jsonl.longValue(record, "millis", -1), suspended))
                     + (suspended > 0 ? ", suspended " + duration(suspended) : "") + "   "
-                    + ago(Jsonl.longValue(record, "finishedAt", 0), System.currentTimeMillis()));
+                    + ago(Jsonl.longValue(record, "finishedAt", 0), Clock.SYSTEM.millis()));
             long savedMillis = Jsonl.longValue(record, "savedMillis", -1);
             long estMillis = Jsonl.longValue(record, "estimatedUncachedMillis", -1);
             if (savedMillis >= 0 && estMillis > 0) {

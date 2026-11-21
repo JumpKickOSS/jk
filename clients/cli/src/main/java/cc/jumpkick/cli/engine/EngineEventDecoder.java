@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanListener;
@@ -122,7 +123,7 @@ final class EngineEventDecoder {
         // The wire carries no duration; the summary's "took …" is this client-side
         // wall clock over the whole stream (spawn latency excluded — ensureRunning
         // already returned before the request was written).
-        long startNanos = System.nanoTime();
+        long startNanos = Clock.SYSTEM.nanos();
 
         return WireStream.pumpJob(reader, ch, new WireStream.Decoder<BuildPlanResult>() {
             private final List<Task> steps = new ArrayList<>();
@@ -149,7 +150,7 @@ final class EngineEventDecoder {
                         BuildPlanResult result = new BuildPlanResult(
                                 "test",
                                 e.success(),
-                                Duration.ofNanos(System.nanoTime() - startNanos),
+                                Duration.ofNanos(Clock.SYSTEM.nanos() - startNanos),
                                 List.of(),
                                 warnings,
                                 diagnostics,

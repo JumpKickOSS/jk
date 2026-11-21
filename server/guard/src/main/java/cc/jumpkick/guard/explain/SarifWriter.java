@@ -8,13 +8,13 @@ import cc.jumpkick.guard.rules.Rule;
 import cc.jumpkick.guard.rules.RuleSet;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.layout.BuildLayout;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -201,7 +201,7 @@ public final class SarifWriter {
         tool.put("driver", driver);
         Map<String, Object> invocation = new LinkedHashMap<>();
         invocation.put("executionSuccessful", executionSuccessful);
-        invocation.put("endTimeUtc", Instant.now().toString());
+        invocation.put("endTimeUtc", Clock.SYSTEM.instant().toString());
         if (!notifications.isEmpty()) invocation.put("toolExecutionNotifications", notifications);
         Map<String, Object> srcRoot = new LinkedHashMap<>();
         String uri = root.toAbsolutePath().normalize().toUri().toString();
@@ -213,7 +213,7 @@ public final class SarifWriter {
         automation.put(
                 "id",
                 "jk-guard/" + (name == null ? "workspace" : name.toString()) + "/"
-                        + Instant.now().toString());
+                        + Clock.SYSTEM.instant().toString());
         Map<String, Object> run = new LinkedHashMap<>();
         run.put("tool", tool);
         run.put("invocations", List.of(invocation));

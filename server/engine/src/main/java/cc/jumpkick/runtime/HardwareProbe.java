@@ -635,7 +635,7 @@ final class HardwareProbe {
             List<Long> samples = new ArrayList<>();
             for (int s = 0; s < WARM_SAMPLES + 1; s++) {
                 Files.deleteIfExists(f);
-                long t0 = System.nanoTime();
+                long t0 = Clock.SYSTEM.nanos();
                 try (FileChannel ch = FileChannel.open(
                         f, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
                     int left = DISK_BYTES;
@@ -650,7 +650,7 @@ final class HardwareProbe {
                     ByteBuffer buf = ByteBuffer.allocate(64 * 1024);
                     while (ch.read(buf) > 0) buf.clear();
                 }
-                samples.add(System.nanoTime() - t0);
+                samples.add(Clock.SYSTEM.nanos() - t0);
             }
             return Math.round(minWarm(samples) / 1e6);
         } finally {
@@ -664,11 +664,11 @@ final class HardwareProbe {
             for (int i = 0; i < data.length; i += 64) data[i] = (byte) i;
             List<Long> samples = new ArrayList<>();
             for (int s = 0; s < WARM_SAMPLES + 1; s++) {
-                long t0 = System.nanoTime();
+                long t0 = Clock.SYSTEM.nanos();
                 MessageDigest md = Hashing.newSha256();
                 md.update(data);
                 md.digest();
-                samples.add(System.nanoTime() - t0);
+                samples.add(Clock.SYSTEM.nanos() - t0);
             }
             return Math.round(minWarm(samples) / 1e6);
         } catch (Exception e) {
@@ -681,13 +681,13 @@ final class HardwareProbe {
     private static long timeProcess(ProcessBuilder pb) throws IOException, InterruptedException {
         pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
         pb.redirectError(ProcessBuilder.Redirect.DISCARD);
-        long t0 = System.nanoTime();
+        long t0 = Clock.SYSTEM.nanos();
         Process p = JobWorkers.start(pb);
         if (!p.waitFor(90, TimeUnit.SECONDS)) {
             p.destroyForcibly();
             return -1;
         }
-        long ms = (System.nanoTime() - t0) / 1_000_000;
+        long ms = (Clock.SYSTEM.nanos() - t0) / 1_000_000;
         return p.exitValue() == 0 ? ms : -1;
     }
 

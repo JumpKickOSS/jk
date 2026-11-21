@@ -7,6 +7,7 @@ import cc.jumpkick.config.StampedMemo;
 import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.util.DirKeys;
@@ -186,7 +187,7 @@ public final class BuildMetrics {
     private static BuildMetrics fold(AggregatedMetrics agg) {
         Map<String, Entry> inv = new LinkedHashMap<>();
         Map<String, Entry> steps = new LinkedHashMap<>();
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         // Project means first, then host means (fill host-tier gaps only).
         Map<String, Long> wall1 = new LinkedHashMap<>();
         foldAggregateEntries(agg.meanMap(), agg, inv, steps, wall1, now, false);

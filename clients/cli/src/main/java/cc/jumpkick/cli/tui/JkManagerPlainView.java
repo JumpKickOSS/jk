@@ -113,7 +113,7 @@ final class JkManagerPlainView {
         }
         if (!progressMode || !progressStarted) return;
         if (lastPrintedNanos == 0) return;
-        long elapsedNs = System.nanoTime() - lastPrintedNanos;
+        long elapsedNs = Clock.SYSTEM.nanos() - lastPrintedNanos;
         if (elapsedNs < HEARTBEAT_MS * 1_000_000L) return;
         if (firstActiveRow() == null) return;
         String status = currentStatus();
@@ -326,7 +326,7 @@ final class JkManagerPlainView {
         m.out.println(line);
         chromeStarted = true;
         progressStarted = true;
-        lastPrintedNanos = System.nanoTime();
+        lastPrintedNanos = Clock.SYSTEM.nanos();
         m.out.flush();
     }
 

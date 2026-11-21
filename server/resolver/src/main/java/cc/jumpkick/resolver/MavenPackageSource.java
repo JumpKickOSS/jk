@@ -709,7 +709,7 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
         if (workspaceModules.containsKey(PackageId.parse(pkg).ga())) return List.of();
-        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
+        long t0 = ResolveProfile.on() ? Clock.SYSTEM.nanos() : 0L;
         Map<String, Set<String>> view = exclusions.viewFor(pkg);
         Set<String> excl = view.keySet();
         List<RawEdge> raw = rawEdges(pkg, version);
@@ -756,7 +756,7 @@ public final class MavenPackageSource implements PackageSource {
         List<Term> immutable = List.copyOf(out);
         prefetchTransitiveAsync(immutable);
         if (ResolveProfile.on()) {
-            ResolveProfile.deps(System.nanoTime() - t0);
+            ResolveProfile.deps(Clock.SYSTEM.nanos() - t0);
         }
         return immutable;
     }

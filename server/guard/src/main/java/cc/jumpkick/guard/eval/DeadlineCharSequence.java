@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.guard.eval;
 
+import cc.jumpkick.host.time.Clock;
+
 /**
  * A view of a string that gives up after a deadline: a catastrophically backtracking regex is a
  * {@code scanner-failed} for its rule, never a stalled engine. Checks the clock every 4,096 chars
@@ -22,7 +24,7 @@ final class DeadlineCharSequence implements CharSequence {
     DeadlineCharSequence(CharSequence text, long budgetMillis) {
         this.text = text;
         this.budgetMillis = budgetMillis;
-        this.deadlineNanos = System.nanoTime() + budgetMillis * 1_000_000L;
+        this.deadlineNanos = Clock.SYSTEM.nanos() + budgetMillis * 1_000_000L;
     }
 
     @Override
@@ -32,7 +34,7 @@ final class DeadlineCharSequence implements CharSequence {
 
     @Override
     public char charAt(int index) {
-        if ((++reads & 4095) == 0 && System.nanoTime() - deadlineNanos > 0) throw new Expired(budgetMillis);
+        if ((++reads & 4095) == 0 && Clock.SYSTEM.nanos() - deadlineNanos > 0) throw new Expired(budgetMillis);
         return text.charAt(index);
     }
 

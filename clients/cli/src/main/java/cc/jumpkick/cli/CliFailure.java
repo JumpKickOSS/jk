@@ -8,6 +8,7 @@ import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import java.io.PrintWriter;
@@ -16,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,7 +126,8 @@ final class CliFailure {
             StringWriter sw = new StringWriter();
             PrintWriter pw = new PrintWriter(sw);
             // Option values are left out: one may be a password (jk publish -P …).
-            pw.println(Instant.now() + "  " + ChangeActor.shell(List.of(args)).label());
+            pw.println(Clock.SYSTEM.instant() + "  "
+                    + ChangeActor.shell(List.of(args)).label());
             t.printStackTrace(pw);
             pw.println();
             pw.flush();

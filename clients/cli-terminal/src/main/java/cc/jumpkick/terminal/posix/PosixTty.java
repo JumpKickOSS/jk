@@ -2,6 +2,7 @@
 package cc.jumpkick.terminal.posix;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.terminal.InputMode;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -191,7 +192,7 @@ public final class PosixTty implements AutoCloseable {
     public int readByte(Duration timeout, BooleanSupplier live) {
         DeadTerminalTimeout.check(timeout);
         boolean forever = timeout.isZero();
-        long deadline = forever ? Long.MAX_VALUE : System.nanoTime() + timeout.toNanos();
+        long deadline = forever ? Long.MAX_VALUE : Clock.SYSTEM.nanos() + timeout.toNanos();
         ensure();
         if (pollMh == null && selectMh == null) {
             return -1;
@@ -200,12 +201,12 @@ public final class PosixTty implements AutoCloseable {
             selectWait = true;
         }
         while (live.getAsBoolean() && open) {
-            if (!forever && System.nanoTime() >= deadline) {
+            if (!forever && Clock.SYSTEM.nanos() >= deadline) {
                 return -1;
             }
-            long remaining = forever ? Long.MAX_VALUE : Math.max(0, deadline - System.nanoTime());
+            long remaining = forever ? Long.MAX_VALUE : Math.max(0, deadline - Clock.SYSTEM.nanos());
             int timeoutMs = forever ? -1 : (int) Math.min(Integer.MAX_VALUE, remaining / 1_000_000L);
-            long t0 = System.nanoTime();
+            long t0 = Clock.SYSTEM.nanos();
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment state = arena.allocate(CAPTURED);
                 int ready = awaitReadable(arena, state, timeoutMs);
@@ -231,7 +232,7 @@ public final class PosixTty implements AutoCloseable {
                     continue;
                 }
                 if (err == eagain()) {
-                    long elapsed = System.nanoTime() - t0;
+                    long elapsed = Clock.SYSTEM.nanos() - t0;
                     if (elapsed < 1_000_000L) {
                         sleepSlice(forever ? SLICE_MS * 1_000_000L : Math.min(remaining, SLICE_MS * 1_000_000L));
                     }

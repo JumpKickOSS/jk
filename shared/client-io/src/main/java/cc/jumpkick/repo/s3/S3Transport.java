@@ -3,6 +3,7 @@ package cc.jumpkick.repo.s3;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.repo.RepoTransport;
@@ -76,7 +77,7 @@ public final class S3Transport implements RepoTransport {
         URI endpoint = endpointOverride != null
                 ? URI.create(endpointOverride.strip())
                 : URI.create("https://s3." + region + ".amazonaws.com");
-        return new S3Transport(http, endpoint, region, creds, Instant::now);
+        return new S3Transport(http, endpoint, region, creds, Clock.SYSTEM::instant);
     }
 
     /**
@@ -100,7 +101,7 @@ public final class S3Transport implements RepoTransport {
         URI endpoint = endpointOverride != null
                 ? URI.create(endpointOverride.strip())
                 : URI.create("https://storage.googleapis.com");
-        return new S3Transport(http, endpoint, "auto", creds, Instant::now);
+        return new S3Transport(http, endpoint, "auto", creds, Clock.SYSTEM::instant);
     }
 
     /**

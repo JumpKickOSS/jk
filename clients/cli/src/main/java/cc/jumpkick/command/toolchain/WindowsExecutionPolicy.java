@@ -3,6 +3,7 @@ package cc.jumpkick.command.toolchain;
 
 import cc.jumpkick.host.Executables;
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.time.Clock;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -97,7 +98,7 @@ final class WindowsExecutionPolicy {
         Future<byte[]> stdout = null;
         Future<byte[]> stderr = null;
         try {
-            long deadline = System.nanoTime() + timeout.toNanos();
+            long deadline = Clock.SYSTEM.nanos() + timeout.toNanos();
             p = starter.start();
             p.getOutputStream().close();
             Process running = p;
@@ -145,7 +146,7 @@ final class WindowsExecutionPolicy {
     }
 
     private static long remaining(long deadline) throws TimeoutException {
-        long nanos = deadline - System.nanoTime();
+        long nanos = deadline - Clock.SYSTEM.nanos();
         if (nanos <= 0) throw new TimeoutException();
         return nanos;
     }

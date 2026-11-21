@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.forge;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;
@@ -78,9 +79,10 @@ public final class DeviceFlow {
     }
 
     private String poll(DeviceCode dc) {
-        long deadline = System.nanoTime() + Duration.ofSeconds(dc.expiresIn()).toNanos();
+        long deadline =
+                Clock.SYSTEM.nanos() + Duration.ofSeconds(dc.expiresIn()).toNanos();
         int interval = Math.max(1, dc.interval());
-        while (System.nanoTime() < deadline) {
+        while (Clock.SYSTEM.nanos() < deadline) {
             sleep(interval);
             Object body = parseBody(post(
                     tokenUri,

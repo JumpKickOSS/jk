@@ -5,6 +5,7 @@ import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -66,7 +67,7 @@ public final class HostCooldown {
     private final Supplier<Instant> clock;
 
     public HostCooldown(Path stateRoot) {
-        this(stateRoot, Instant::now);
+        this(stateRoot, Clock.SYSTEM::instant);
     }
 
     HostCooldown(Path stateRoot, Supplier<Instant> clock) {

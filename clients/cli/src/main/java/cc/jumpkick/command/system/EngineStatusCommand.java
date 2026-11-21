@@ -105,7 +105,7 @@ public final class EngineStatusCommand implements CliCommand {
             return Exit.FAILURE;
         }
         EngineProbe.Status s = status.get();
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         long uptimeSeconds = Math.max(0, (now - s.startedAtMillis()) / 1000);
         if (global.outputIsJson()) {
             JsonlShape.rowOf(
@@ -347,7 +347,7 @@ public final class EngineStatusCommand implements CliCommand {
             StringBuilder line = new StringBuilder(" " + marker + " " + m.id() + "  pid " + pidStyled(m.pid()));
             if (m.responsive()) {
                 var status = Objects.requireNonNull(m.status(), "status");
-                long up = Math.max(0, (System.currentTimeMillis() - status.startedAtMillis()) / 1000);
+                long up = Math.max(0, (Clock.SYSTEM.millis() - status.startedAtMillis()) / 1000);
                 line.append("  up ").append(formatUptime(up));
                 if (status.draining()) {
                     line.append("  ")

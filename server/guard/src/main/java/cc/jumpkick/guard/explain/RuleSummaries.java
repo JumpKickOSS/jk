@@ -5,6 +5,7 @@ import cc.jumpkick.guard.eval.LaneRun;
 import cc.jumpkick.guard.eval.RuleReport;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.layout.BuildLayout;
@@ -50,7 +51,7 @@ public final class RuleSummaries {
         Path dir = dir(root);
         Files.createDirectories(dir);
         StringBuilder sb = new StringBuilder();
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         for (RuleReport r : result.reports()) {
             sb.append(JsonFields.object()
                             .string("code", r.id())

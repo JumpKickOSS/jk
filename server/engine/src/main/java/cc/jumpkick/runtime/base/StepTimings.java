@@ -8,6 +8,7 @@ import cc.jumpkick.config.StampedMemo.FileStamp;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.util.FileLocks;
 import cc.jumpkick.util.MinimalToml;
 import java.io.IOException;
@@ -90,7 +91,7 @@ public final class StepTimings {
 
     private static StepTimings fold(AggregatedMetrics agg) {
         Map<String, Entry> m = new HashMap<>();
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         for (var e : agg.hostMeanMap().entrySet()) {
             if (e.getValue() > 0) m.put(key(HOST_METHOD_MS_DIR, e.getKey()), new Entry(e.getValue(), now));
         }

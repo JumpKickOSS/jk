@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http.api;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.host.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -384,7 +385,7 @@ public record StatusSnapshot(
         m.put("version", version);
         m.put("pid", pid);
         m.put("startedAt", startedAtMillis);
-        m.put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - startedAtMillis) / 1000));
+        m.put("uptimeSeconds", Math.max(0, (Clock.SYSTEM.millis() - startedAtMillis) / 1000));
         m.put("activeRequests", activeRequests);
         m.put("activeBuildPlans", activeBuildPlans);
         m.put("queuedBuildPlans", queuedBuildPlans);

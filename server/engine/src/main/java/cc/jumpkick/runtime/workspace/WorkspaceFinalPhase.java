@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.workspace;
 
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.runtime.BuildGraph;
@@ -130,7 +131,7 @@ final class WorkspaceFinalPhase {
         WorkspaceResourcePhase.Resources resources = run.prepared().resources();
         WorkspaceRequest request = resources.request();
         BuildGraph.Result graph = resources.preflight().graph();
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
 
         // An estimate still being priced when the build ended has nothing to learn from: it was
         // never shown, and its schedule was never the one this run was measured against.

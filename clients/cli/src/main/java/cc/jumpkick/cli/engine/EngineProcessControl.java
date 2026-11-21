@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.engine;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.ByeFrame;
 import cc.jumpkick.wire.protocol.EngineProtocol;
@@ -189,8 +190,8 @@ public final class EngineProcessControl {
         if (pid <= 0 || pid == ProcessHandle.current().pid()) return;
         ProcessHandle.of(pid).ifPresent(h -> {
             h.destroy();
-            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
-            while (h.isAlive() && System.nanoTime() < deadline) {
+            long deadline = Clock.SYSTEM.nanos() + Duration.ofSeconds(30).toNanos();
+            while (h.isAlive() && Clock.SYSTEM.nanos() < deadline) {
                 try {
                     Thread.sleep(20);
                 } catch (InterruptedException e) {
@@ -269,8 +270,8 @@ public final class EngineProcessControl {
         if (pid <= 0 || pid == ProcessHandle.current().pid()) return;
         Optional<ProcessHandle> handle = ProcessHandle.of(pid);
         if (handle.isEmpty() || !handle.get().isAlive()) return;
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (System.nanoTime() < deadline) {
+        long deadline = Clock.SYSTEM.nanos() + timeout.toNanos();
+        while (Clock.SYSTEM.nanos() < deadline) {
             if (!handle.get().isAlive()) return;
             sleepQuietly(20);
         }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.terminal;
 
+import cc.jumpkick.host.time.Clock;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,9 +70,9 @@ public final class MemoryTerminal implements TerminalSession {
             return Optional.empty();
         }
         boolean forever = timeout.isZero();
-        long deadline = forever ? Long.MAX_VALUE : System.nanoTime() + timeout.toNanos();
+        long deadline = forever ? Long.MAX_VALUE : Clock.SYSTEM.nanos() + timeout.toNanos();
         while (live) {
-            if (!forever && System.nanoTime() >= deadline) {
+            if (!forever && Clock.SYSTEM.nanos() >= deadline) {
                 return Optional.empty();
             }
             int b = readNow();
@@ -81,7 +82,8 @@ public final class MemoryTerminal implements TerminalSession {
             if (b >= 0) {
                 return Optional.of(Keys.dispatch(b, feed));
             }
-            long remaining = forever ? SLICE_NANOS : Math.min(SLICE_NANOS, Math.max(0, deadline - System.nanoTime()));
+            long remaining =
+                    forever ? SLICE_NANOS : Math.min(SLICE_NANOS, Math.max(0, deadline - Clock.SYSTEM.nanos()));
             if (remaining == 0) {
                 return Optional.empty();
             }
@@ -93,9 +95,9 @@ public final class MemoryTerminal implements TerminalSession {
     @Override
     public void drain(Duration max) {
         DeadTerminal.requireTimeout(max);
-        long deadline = System.nanoTime() + (max.isZero() ? 0 : max.toNanos());
+        long deadline = Clock.SYSTEM.nanos() + (max.isZero() ? 0 : max.toNanos());
         try {
-            while (live && in.available() > 0 && System.nanoTime() <= deadline) {
+            while (live && in.available() > 0 && Clock.SYSTEM.nanos() <= deadline) {
                 if (in.read() < 0) {
                     break;
                 }
@@ -175,8 +177,8 @@ public final class MemoryTerminal implements TerminalSession {
         if (nanos <= 1) {
             return -1;
         }
-        long deadline = System.nanoTime() + nanos;
-        while (live && System.nanoTime() < deadline) {
+        long deadline = Clock.SYSTEM.nanos() + nanos;
+        while (live && Clock.SYSTEM.nanos() < deadline) {
             try {
                 if (in.available() > 0) {
                     int b = in.read();
@@ -186,7 +188,7 @@ public final class MemoryTerminal implements TerminalSession {
                 live = false;
                 return -2;
             }
-            LockSupport.parkNanos(Math.min(1_000_000L, deadline - System.nanoTime()));
+            LockSupport.parkNanos(Math.min(1_000_000L, deadline - Clock.SYSTEM.nanos()));
         }
         return -1;
     }

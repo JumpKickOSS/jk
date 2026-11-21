@@ -4,6 +4,7 @@ package cc.jumpkick.runtime.base;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -105,7 +106,7 @@ public final class ChromeTimeline {
      * @param durationMillis plan wall time for this step (same as metrics)
      */
     public void complete(String module, String step, String status, long durationMillis) {
-        long end = System.nanoTime();
+        long end = Clock.SYSTEM.nanos();
         long durNanos = Math.max(0L, durationMillis) * 1_000_000L;
         completeNanos(module, step, status, end - durNanos, end);
     }

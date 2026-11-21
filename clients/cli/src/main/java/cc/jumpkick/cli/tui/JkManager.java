@@ -7,6 +7,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.task.TransferBoard;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.RegionPainter;
@@ -172,7 +173,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
         JkManager cm = new JkManager(out, animate, size.cols(), ProgressBarMode.fromEnvironment());
         cm.height = size.rows();
         cm.name = name;
-        cm.startNanos = System.nanoTime();
+        cm.startNanos = Clock.SYSTEM.nanos();
         LiveRegion.setActive(cm);
         cm.view.ensureLeadingBlank(); // blank line before human chrome
         // config.build-output / JK_BUILD_OUTPUT: start with the process-output peek open.
@@ -582,7 +583,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
             if (done || !animate) return;
             view.paintBuildPlan();
             // OSC title swaps its half-circle glyph (◐↔◑) on its own 500ms cadence.
-            windowTitle.emitIfDue(System.currentTimeMillis());
+            windowTitle.emitIfDue(Clock.SYSTEM.millis());
             out.flush();
             // Frame counter for chip pulse and fill-circle tree rows; the title keeps its own time.
             frame++;
@@ -594,7 +595,7 @@ public final class JkManager implements AutoCloseable, LiveRegion, DownloadsView
     }
 
     long elapsedMillis() {
-        return (System.nanoTime() - startNanos) / 1_000_000L;
+        return (Clock.SYSTEM.nanos() - startNanos) / 1_000_000L;
     }
 
     /**

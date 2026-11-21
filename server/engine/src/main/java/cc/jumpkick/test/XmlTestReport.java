@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.test;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.JUnitUniqueIds;
 import cc.jumpkick.util.MinimalXml;
@@ -8,7 +9,6 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -65,7 +65,7 @@ public final class XmlTestReport {
     private final String hostname;
 
     public XmlTestReport() {
-        this.timestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+        this.timestamp = DateTimeFormatter.ISO_INSTANT.format(Clock.SYSTEM.instant());
         String host;
         try {
             host = InetAddress.getLocalHost().getHostName();

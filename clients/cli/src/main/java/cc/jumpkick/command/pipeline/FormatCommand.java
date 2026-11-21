@@ -18,6 +18,7 @@ import cc.jumpkick.cli.tui.JkManager;
 import cc.jumpkick.config.FormatStyles;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -94,7 +95,7 @@ public final class FormatCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        long startMs = System.currentTimeMillis();
+        long startMs = Clock.SYSTEM.millis();
         GlobalOptions global = GlobalOptions.from(in);
         boolean check = in.isSet("check");
         Path projectDir = global.workingDir();
@@ -236,7 +237,7 @@ public final class FormatCommand implements CliCommand {
             return 0;
         }
         if (!global.outputIsJson()) {
-            String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
+            String took = ConsoleSpec.took(Duration.ofMillis(Clock.SYSTEM.millis() - startMs));
             Summary summary = summarize(check, redo(global), counts[0], counts[1], counts[2], took);
             if (summary.failed()) {
                 CommandWedge.printFail("Format", summary.body());
@@ -311,7 +312,7 @@ public final class FormatCommand implements CliCommand {
             }
 
             cm.stepDone("", "fmt", counts[2] == 0, "Formatting files…");
-            String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
+            String took = ConsoleSpec.took(Duration.ofMillis(Clock.SYSTEM.millis() - startMs));
             if (counts[2] > 0) {
                 String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s");
                 cm.finishBuildPlanFailure(errTail);

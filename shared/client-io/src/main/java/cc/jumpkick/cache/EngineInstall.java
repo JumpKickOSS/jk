@@ -549,7 +549,7 @@ public final class EngineInstall {
         } catch (IOException occupied) {
             // The parked name is still mapped, or a scanner holds the live file it just saw written:
             // park beside it, retrying a Windows sharing denial the way every atomic replace does.
-            Path alt = live.resolveSibling(live.getFileName() + ".old-" + System.nanoTime());
+            Path alt = live.resolveSibling(live.getFileName() + ".old-" + Clock.SYSTEM.nanos());
             AtomicWrites.moveInto(live, alt);
             return Optional.of(alt);
         }

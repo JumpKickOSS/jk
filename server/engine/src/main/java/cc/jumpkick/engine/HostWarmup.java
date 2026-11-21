@@ -6,6 +6,7 @@ import cc.jumpkick.config.JkEngineConfig;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.ProcessEnv;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.model.JkVersion;
@@ -52,7 +53,7 @@ public final class HostWarmup {
      * identity (or the stored probe is stale).
      */
     public static boolean needsCalibration() {
-        return needsCalibration(System.currentTimeMillis());
+        return needsCalibration(Clock.SYSTEM.millis());
     }
 
     static boolean needsCalibration(long nowMillis) {

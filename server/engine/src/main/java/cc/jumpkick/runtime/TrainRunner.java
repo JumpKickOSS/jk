@@ -13,6 +13,7 @@ import cc.jumpkick.host.GraalLauncher;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.layout.BuildLayout;
@@ -416,24 +417,24 @@ public final class TrainRunner {
             throws IOException, InterruptedException {
         Process process = JobWorkers.start(pb);
         StringBuilder out = new StringBuilder();
-        AtomicLong lastOutput = new AtomicLong(System.nanoTime());
+        AtomicLong lastOutput = new AtomicLong(Clock.SYSTEM.nanos());
         Thread reader = SessionContext.startPlatform("jk-train-run-reader", () -> {
             try (var in = process.inputReader()) {
                 in.lines().forEach(line -> {
                     synchronized (out) {
                         out.append(line).append('\n');
                     }
-                    lastOutput.set(System.nanoTime());
+                    lastOutput.set(Clock.SYSTEM.nanos());
                 });
             } catch (IOException ignored) {
             }
         });
-        long started = System.nanoTime();
+        long started = Clock.SYSTEM.nanos();
         boolean asked = false;
         while (process.isAlive()) {
             if (process.waitFor(200, TimeUnit.MILLISECONDS)) break;
-            long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
-            long quietMs = (System.nanoTime() - lastOutput.get()) / 1_000_000L;
+            long elapsedMs = (Clock.SYSTEM.nanos() - started) / 1_000_000L;
+            long quietMs = (Clock.SYSTEM.nanos() - lastOutput.get()) / 1_000_000L;
             if (elapsedMs > TRAIN_TIMEOUT_SECONDS * 1000) {
                 log.accept("train run still busy after " + TRAIN_TIMEOUT_SECONDS + "s; stopping it");
                 asked = true;

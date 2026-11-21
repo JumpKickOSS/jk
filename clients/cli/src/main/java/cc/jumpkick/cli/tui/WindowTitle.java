@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.api.Osc;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.host.time.Clock;
 import java.io.PrintStream;
 import org.jspecify.annotations.Nullable;
 
@@ -55,7 +56,7 @@ final class WindowTitle {
         base = title == null ? "" : title;
         active = !base.isEmpty();
         lastGlyph = null; // force immediate emit with the first glyph
-        lastSwapMs = System.currentTimeMillis();
+        lastSwapMs = Clock.SYSTEM.millis();
         emitIfDue(lastSwapMs);
         out.flush();
     }

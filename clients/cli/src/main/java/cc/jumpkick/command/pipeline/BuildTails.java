@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Coord;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.JkManager;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.protocol.ProjectInfo;
 import cc.jumpkick.wire.runtime.ModuleOutcome;
 import cc.jumpkick.wire.runtime.WorkspaceResult;
@@ -93,7 +94,7 @@ final class BuildTails {
      * uses: what the monotonic clock moved while the engine was suspended does not count.
      */
     static long elapsedMsSince(long startNanos) {
-        return Math.max(0, (System.nanoTime() - startNanos) / 1_000_000 - RunSuspensions.monoMs());
+        return Math.max(0, (Clock.SYSTEM.nanos() - startNanos) / 1_000_000 - RunSuspensions.monoMs());
     }
 
     /** The phrase every settle line uses for a run that did no work: build, test, install and guard alike. */

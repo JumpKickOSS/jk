@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.SessionCancel;
@@ -532,9 +533,9 @@ public final class WorkspaceScheduler {
 
     /** Cancel path: wait (bounded) for in-flight tasks so their events precede our return. */
     private static void drainCancelled(Iterable<? extends CompletableFuture<?>> futures) {
-        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(CANCEL_DRAIN_MS);
+        long deadline = Clock.SYSTEM.nanos() + TimeUnit.MILLISECONDS.toNanos(CANCEL_DRAIN_MS);
         for (CompletableFuture<?> f : futures) {
-            long left = deadline - System.nanoTime();
+            long left = deadline - Clock.SYSTEM.nanos();
             if (left <= 0) return; // residual: a task outliving the drain may emit late events
             try {
                 f.get(left, TimeUnit.NANOSECONDS);

@@ -13,6 +13,7 @@ import cc.jumpkick.giter8.Giter8TemplateIndex;
 import cc.jumpkick.giter8.TemplateSpec;
 import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.lock.ManifestPaths;
@@ -67,9 +68,9 @@ final class HttpProjectApi {
     void handleTemplates(HttpExchange exchange) throws IOException {
         String lang = HttpQuery.queryParam(exchange.getRequestURI().getRawQuery(), "lang");
         TemplatesCache cached = templatesCache;
-        if (cached == null || System.nanoTime() - cached.atNanos() >= TEMPLATES_TTL_NANOS) {
+        if (cached == null || Clock.SYSTEM.nanos() - cached.atNanos() >= TEMPLATES_TTL_NANOS) {
             cached = new TemplatesCache(
-                    List.copyOf(Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots())), System.nanoTime());
+                    List.copyOf(Giter8TemplateIndex.picker(Giter8TemplateIndex.searchRoots())), Clock.SYSTEM.nanos());
             templatesCache = cached;
         }
         var arr = new StringBuilder("[");

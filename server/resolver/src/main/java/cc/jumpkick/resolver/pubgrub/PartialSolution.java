@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.resolve.ResolveProfile;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -584,7 +585,7 @@ public final class PartialSolution {
      * </ul>
      */
     public Relation relationTo(Incompatibility inco) {
-        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
+        long t0 = ResolveProfile.on() ? Clock.SYSTEM.nanos() : 0L;
         try {
             Term unsatisfied = null;
             int unsatisfiedCount = 0;
@@ -606,7 +607,7 @@ public final class PartialSolution {
             return new Relation(IncompatibilityRelation.ALMOST_SATISFIED, unsatisfied);
         } finally {
             if (ResolveProfile.on()) {
-                ResolveProfile.relation(System.nanoTime() - t0);
+                ResolveProfile.relation(Clock.SYSTEM.nanos() - t0);
             }
         }
     }

@@ -16,6 +16,7 @@ import cc.jumpkick.cli.tui.ProgressRow;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.NodeShape;
 import cc.jumpkick.lock.ManifestPaths;
@@ -90,7 +91,7 @@ public final class CleanCommand implements CliCommand {
             return 1;
         }
 
-        long startMs = System.currentTimeMillis();
+        long startMs = Clock.SYSTEM.millis();
         List<Path> roots = deleteRoots(workspaceRoot, projectDirs, keepArtifacts, force);
         var tally = new PathUtil.Removed();
 
@@ -116,7 +117,7 @@ public final class CleanCommand implements CliCommand {
             row.finish();
         }
 
-        long elapsedMs = System.currentTimeMillis() - startMs;
+        long elapsedMs = Clock.SYSTEM.millis() - startMs;
         long files = tally.files();
         String stats = String.format(
                 "%,d file%s, %s total", files, files == 1 ? "" : "s", CacheCommand.fmtBytes(tally.bytes()));

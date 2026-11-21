@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.lock.Lockfile;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -38,7 +39,7 @@ public final class SyncManifest {
         StringBuilder sb = new StringBuilder();
         sb.append("PROJECT ").append(fingerprint).append('\n');
         sb.append("LOCKFILE ").append(lockFile.toAbsolutePath().normalize()).append('\n');
-        sb.append("STAMP ").append(System.currentTimeMillis()).append('\n');
+        sb.append("STAMP ").append(Clock.SYSTEM.millis()).append('\n');
         for (String ref : refs) {
             sb.append("REF ").append(ref).append('\n');
         }

@@ -5,6 +5,7 @@ import cc.jumpkick.engine.plugin.StartupCaches;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.OwnerOnlyFiles;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.http.ProxyEnvironment;
 import cc.jumpkick.runtime.Calibration;
 import cc.jumpkick.templates.OfficialTemplatesFreshen;
@@ -162,7 +163,7 @@ public final class EngineMaintenance implements AutoCloseable {
             if (!Files.isRegularFile(stampFile)) return true;
             long last = Long.parseLong(
                     Files.readString(stampFile, StandardCharsets.UTF_8).trim());
-            return System.currentTimeMillis() - last >= MAINTENANCE_INTERVAL.toMillis();
+            return Clock.SYSTEM.millis() - last >= MAINTENANCE_INTERVAL.toMillis();
         } catch (Exception e) {
             return true;
         }
@@ -193,7 +194,7 @@ public final class EngineMaintenance implements AutoCloseable {
             Log.debug("runMaintenanceCycle: Throwable ignored", e);
         }
         try {
-            OwnerOnlyFiles.writeString(stampFile, Long.toString(System.currentTimeMillis()));
+            OwnerOnlyFiles.writeString(stampFile, Long.toString(Clock.SYSTEM.millis()));
         } catch (IOException ignored) {
         }
     }

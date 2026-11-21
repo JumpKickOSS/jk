@@ -779,7 +779,7 @@ final class LauncherPath {
 
         @Override
         public void executionStarted(TestIdentifier id) {
-            startNanos.put(id.getUniqueId(), System.nanoTime());
+            startNanos.put(id.getUniqueId(), Clock.SYSTEM.nanos());
             // The environment probe attributes each lookup to the class whose tests are running.
             id.getSource()
                     .filter(ClassSource.class::isInstance)
@@ -793,8 +793,8 @@ final class LauncherPath {
 
         @Override
         public void executionFinished(TestIdentifier id, TestExecutionResult result) {
-            long started = startNanos.getOrDefault(id.getUniqueId(), System.nanoTime());
-            long durationMs = Math.max(0, (System.nanoTime() - started) / 1_000_000);
+            long started = startNanos.getOrDefault(id.getUniqueId(), Clock.SYSTEM.nanos());
+            long durationMs = Math.max(0, (Clock.SYSTEM.nanos() - started) / 1_000_000);
             if (result.getStatus() == TestExecutionResult.Status.FAILED) {
                 failed.set(true);
             }

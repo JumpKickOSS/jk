@@ -2,6 +2,7 @@
 package cc.jumpkick.terminal.windows;
 
 import cc.jumpkick.host.Os;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.terminal.InputMode;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
@@ -219,14 +220,14 @@ public final class WindowsConsole implements AutoCloseable {
             return queued.removeFirst();
         }
         boolean forever = timeout.isZero();
-        long deadline = forever ? Long.MAX_VALUE : System.nanoTime() + timeout.toNanos();
+        long deadline = forever ? Long.MAX_VALUE : Clock.SYSTEM.nanos() + timeout.toNanos();
         ensure();
         MethodHandle wait = waitForSingleObject;
         if (wait == null || peekConsoleInputW == null || readConsoleInputW == null) {
             return -1;
         }
         while (live.getAsBoolean() && open) {
-            if (!forever && System.nanoTime() >= deadline) {
+            if (!forever && Clock.SYSTEM.nanos() >= deadline) {
                 return -1;
             }
             if (!queued.isEmpty()) {
@@ -234,8 +235,8 @@ public final class WindowsConsole implements AutoCloseable {
             }
             int waitMs = forever
                     ? INFINITE
-                    : (int) Math.min(Integer.MAX_VALUE, Math.max(0, (deadline - System.nanoTime()) / 1_000_000L));
-            long t0 = System.nanoTime();
+                    : (int) Math.min(Integer.MAX_VALUE, Math.max(0, (deadline - Clock.SYSTEM.nanos()) / 1_000_000L));
+            long t0 = Clock.SYSTEM.nanos();
             try (Arena arena = Arena.ofConfined()) {
                 int waited = (int) wait.invokeExact(conIn, waitMs);
                 if (waited == WAIT_TIMEOUT) {
@@ -252,7 +253,7 @@ public final class WindowsConsole implements AutoCloseable {
                     // A key-up, a modifier or a mouse record: the next record may already be waiting.
                     continue;
                 }
-                long elapsed = System.nanoTime() - t0;
+                long elapsed = Clock.SYSTEM.nanos() - t0;
                 if (waited == WAIT_OBJECT_0 && elapsed < 1_000_000L) {
                     Thread.sleep(SLICE_MS);
                 }

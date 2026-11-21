@@ -895,10 +895,10 @@ public final class EngineSpawn {
     static StartResult awaitStartup(
             EnginePaths.Paths paths, String clientVersion, Duration timeout, @Nullable Process spawned)
             throws InterruptedIOException {
-        long deadline = System.nanoTime() + timeout.toNanos();
+        long deadline = Clock.SYSTEM.nanos() + timeout.toNanos();
         Optional<String> pointer = pointerSha(clientVersion);
         boolean yielded = false;
-        while (System.nanoTime() < deadline) {
+        while (Clock.SYSTEM.nanos() < deadline) {
             Optional<EngineProbe.Handshake> h = serving(paths, clientVersion, pointer);
             if (h.isPresent()) return StartResult.up(h.get());
             if (!yielded && spawned != null && !spawned.isAlive()) {

@@ -709,8 +709,8 @@ public final class EngineFleet {
     /** Wait up to {@code withinMs} for {@code pid} to exit. True when it is gone. */
     static boolean waitGone(long pid, long withinMs) {
         if (pid <= 0) return true; // nothing addressable; treat as gone rather than claim a kill
-        long deadline = System.nanoTime() + Duration.ofMillis(withinMs).toNanos();
-        while (System.nanoTime() < deadline) {
+        long deadline = Clock.SYSTEM.nanos() + Duration.ofMillis(withinMs).toNanos();
+        while (Clock.SYSTEM.nanos() < deadline) {
             if (!alive(pid)) return true;
             try {
                 Thread.sleep(POLL_MS);

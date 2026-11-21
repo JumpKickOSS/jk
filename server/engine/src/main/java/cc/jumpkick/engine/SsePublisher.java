@@ -525,7 +525,7 @@ public final class SsePublisher implements SseEvents {
             long pctMillis = held != null
                     ? Math.round(held * 10.0)
                     : (snap.hasPercent() ? Math.round(snap.percent() * 10.0) : -1L);
-            setEmitState(requestId, new long[] {System.currentTimeMillis(), pctMillis});
+            setEmitState(requestId, new long[] {Clock.SYSTEM.millis(), pctMillis});
         }
     }
 
@@ -540,7 +540,7 @@ public final class SsePublisher implements SseEvents {
         if (cadence <= 0) return true;
         long[] prev = emitState(requestId);
         if (prev == null) return true;
-        long now = System.currentTimeMillis();
+        long now = Clock.SYSTEM.millis();
         return now - prev[0] >= cadence;
     }
 

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.api;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -72,7 +73,7 @@ public final class CoalescingLockPackages implements AutoCloseable {
         synchronized (lock) {
             cancelScheduledLocked();
             emitPendingLocked();
-            lastFlushNanos = System.nanoTime();
+            lastFlushNanos = Clock.SYSTEM.nanos();
         }
     }
 
@@ -96,7 +97,7 @@ public final class CoalescingLockPackages implements AutoCloseable {
      */
     private void scheduleLocked() {
         if (closed.get()) return;
-        long now = System.nanoTime();
+        long now = Clock.SYSTEM.nanos();
         if (lastFlushNanos == 0L) {
             lastFlushNanos = now;
             if (scheduled == null || scheduled.isDone()) {

@@ -15,6 +15,7 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.host.WorkingDirectory;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -32,7 +33,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -195,7 +195,7 @@ public final class SelectiveCommand implements CliCommand {
                         q(since == null ? "" : since),
                         q(modules == null ? "" : modules),
                         q(gitHead == null ? "" : gitHead),
-                        q(Instant.now().toString()),
+                        q(Clock.SYSTEM.instant().toString()),
                         String.join(",", rels.stream().map(SelectiveCommand::q).toList()),
                         hashesJson);
         Path parent = planPath.getParent();

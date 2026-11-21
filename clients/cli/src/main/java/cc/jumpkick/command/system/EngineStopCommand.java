@@ -387,7 +387,7 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     private static long elapsed(long startedAtMillis) {
-        return Math.max(0, System.currentTimeMillis() - startedAtMillis);
+        return Math.max(0, Clock.SYSTEM.millis() - startedAtMillis);
     }
 
     private static String stoppedWedge(long ranMs) {

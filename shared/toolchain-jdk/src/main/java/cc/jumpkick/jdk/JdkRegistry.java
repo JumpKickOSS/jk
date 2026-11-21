@@ -7,6 +7,7 @@ import cc.jumpkick.discovery.Probes;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -113,7 +114,7 @@ public final class JdkRegistry {
     public List<JdkHit> listHits() {
         Memo memo = hitsMemo;
         long rootMtime = rootMtime();
-        if (memo != null && memo.fresh(rootMtime, System.nanoTime())) return memo.hits();
+        if (memo != null && memo.fresh(rootMtime, Clock.SYSTEM.nanos())) return memo.hits();
         // Dispatch all probes at once.
         List<CompletableFuture<List<JdkHit>>> futures = new ArrayList<>(probes.size());
         for (LocalToolProbe probe : probes) {
@@ -156,7 +157,7 @@ public final class JdkRegistry {
             result.add(relabel(hit));
         }
         List<JdkHit> frozen = List.copyOf(result);
-        hitsMemo = new Memo(frozen, rootMtime, System.nanoTime());
+        hitsMemo = new Memo(frozen, rootMtime, Clock.SYSTEM.nanos());
         return frozen;
     }
 

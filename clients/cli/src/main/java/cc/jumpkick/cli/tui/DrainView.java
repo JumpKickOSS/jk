@@ -5,6 +5,7 @@ import cc.jumpkick.cli.run.DurationText;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.NerdFontCaps;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.terminal.Ansi;
 import cc.jumpkick.terminal.InputMode;
 import cc.jumpkick.terminal.Key;
@@ -63,7 +64,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
 
     /** Start the live drain region, or a silent no-op instance when non-interactive / no-progress. */
     public static DrainView start(int initialJobs, NerdFontCaps nerdFont) {
-        long now = System.nanoTime();
+        long now = Clock.SYSTEM.nanos();
         if (!interactive()) return new DrainView(null, null, initialJobs, nerdFont, now);
         try {
             TerminalSession t = Terminals.controlling();
@@ -124,7 +125,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private String[] lines() {
         int n = jobs;
         String elapsed = Theme.colorize(
-                "+" + DurationText.clockMillis((System.nanoTime() - startNanos) / 1_000_000),
+                "+" + DurationText.clockMillis((Clock.SYSTEM.nanos() - startNanos) / 1_000_000),
                 Theme.active().midGray());
         String l1 = JkWedge.chipLine(
                 Spinner.PULSE_GLYPH,

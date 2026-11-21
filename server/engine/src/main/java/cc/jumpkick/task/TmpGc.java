@@ -3,6 +3,7 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.cache.ToolsGc;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +38,7 @@ public final class TmpGc {
      */
     public static Report sweep(Path tmpDir, Duration ttl, boolean dryRun) throws IOException {
         if (!Files.isDirectory(tmpDir)) return new Report(0, 0L);
-        long cutoff = System.currentTimeMillis() - ttl.toMillis();
+        long cutoff = Clock.SYSTEM.millis() - ttl.toMillis();
 
         List<Path> doomed = new ArrayList<>();
         long total = 0;

@@ -4,6 +4,7 @@ package cc.jumpkick.engine.verbs;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.engine.jobs.JobKind;
 import cc.jumpkick.engine.jobs.JobOutcome;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.runtime.Calibration;
@@ -52,7 +53,7 @@ public final class CalibrateVerb implements HostedVerb {
                 long cold = Jsonl.longValue(requestLine, "engineColdStartMs", 0);
                 Calibration cal = Calibration.ensure(null, force, allowNetwork);
                 if (cold > 0) {
-                    cal = Calibration.recordEngineColdStart(cold, System.currentTimeMillis());
+                    cal = Calibration.recordEngineColdStart(cold, Clock.SYSTEM.millis());
                 }
                 host.sendQuiet(
                         writer,

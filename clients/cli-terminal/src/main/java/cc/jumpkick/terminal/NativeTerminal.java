@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.terminal;
 
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.terminal.posix.PosixTty;
 import cc.jumpkick.terminal.windows.WindowsConsole;
 import java.io.OutputStreamWriter;
@@ -111,8 +112,8 @@ final class NativeTerminal implements TerminalSession {
     @Override
     public void drain(Duration max) {
         DeadTerminal.requireTimeout(max);
-        long deadline = System.nanoTime() + (max.isZero() ? 0 : max.toNanos());
-        while (isLive() && System.nanoTime() < deadline) {
+        long deadline = Clock.SYSTEM.nanos() + (max.isZero() ? 0 : max.toNanos());
+        while (isLive() && Clock.SYSTEM.nanos() < deadline) {
             Optional<Key> k = readKey(Duration.ofMillis(1));
             if (k.isEmpty()) {
                 return;

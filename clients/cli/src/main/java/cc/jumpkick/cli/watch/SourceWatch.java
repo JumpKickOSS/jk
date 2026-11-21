@@ -194,9 +194,9 @@ public final class SourceWatch implements AutoCloseable {
      * interesting (caller can poll a child process, etc.).
      */
     public Optional<Changes> pollChange(long timeout, TimeUnit unit) throws IOException, InterruptedException {
-        long deadline = System.nanoTime() + unit.toNanos(timeout);
+        long deadline = Clock.SYSTEM.nanos() + unit.toNanos(timeout);
         while (true) {
-            long remaining = deadline - System.nanoTime();
+            long remaining = deadline - Clock.SYSTEM.nanos();
             if (remaining <= 0) return Optional.empty();
             WatchKey key = watcher.poll(remaining, TimeUnit.NANOSECONDS);
             if (key == null) return Optional.empty();

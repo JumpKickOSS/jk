@@ -423,7 +423,7 @@ public final class CliSessionTranscript {
                     openFile(target);
                 }
                 if (!bound || out == null) ensureLocalRun();
-                Instant finished = Instant.now();
+                Instant finished = Clock.SYSTEM.instant();
                 long durationMs = Duration.between(started, finished).toMillis();
                 if (exitCode == 0) LiveProgress.get().setPercent(100.0);
                 String finishLine = JsonlShape.withProgress(JsonlShape.sessionFinish(

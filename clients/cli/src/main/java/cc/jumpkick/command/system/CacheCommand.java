@@ -29,6 +29,7 @@ import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
@@ -348,7 +349,7 @@ public final class CacheCommand extends GroupCommand {
     static String lastPrunedLabel(Path root) {
         var stamp = CachePruneScheduler.read(root);
         if (stamp.isEmpty()) return "never";
-        long ageMs = System.currentTimeMillis() - stamp.get().millis();
+        long ageMs = Clock.SYSTEM.millis() - stamp.get().millis();
         long days = ageMs / (24L * 60 * 60 * 1000);
         if (days == 0) return "today";
         if (days == 1) return "1 day ago";

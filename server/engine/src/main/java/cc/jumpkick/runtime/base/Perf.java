@@ -21,12 +21,12 @@ public final class Perf {
     }
 
     public static long start() {
-        return enabled() ? System.nanoTime() : 0;
+        return enabled() ? Clock.SYSTEM.nanos() : 0;
     }
 
     public static void end(String label, long startNanos) {
         if (!enabled()) return;
-        long ms = (System.nanoTime() - startNanos) / 1_000_000;
+        long ms = (Clock.SYSTEM.nanos() - startNanos) / 1_000_000;
         Log.debug("perf " + label, "ms", ms);
     }
 

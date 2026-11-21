@@ -5,6 +5,7 @@ import cc.jumpkick.host.Errors;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Os;
 import cc.jumpkick.host.PathUtil;
+import cc.jumpkick.host.time.Clock;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -321,7 +322,7 @@ final class ZincWorkdir {
 
     /** Move {@code file} aside so a fresh one can take its name; false when even that is denied. */
     private static boolean renameAside(Path file) {
-        Path junk = file.resolveSibling(file.getFileName() + ".stale-" + System.nanoTime());
+        Path junk = file.resolveSibling(file.getFileName() + ".stale-" + Clock.SYSTEM.nanos());
         try {
             Files.move(file, junk, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {

@@ -28,7 +28,7 @@ final class LockProgress {
     static final long HEARTBEAT_NANOS = 5_000_000_000L;
 
     private final Set<String> graphSeen = new LinkedHashSet<>();
-    private final long lockStartNanos = System.nanoTime();
+    private final long lockStartNanos = Clock.SYSTEM.nanos();
     private int estimate;
     private long graphStartNanos;
     private long graphMs;
@@ -45,7 +45,7 @@ final class LockProgress {
         estimate = Math.max(10, declared * 12);
         observer.onTotal(estimate * 2);
         observer.onPhase("Resolving dependency graph…");
-        graphStartNanos = System.nanoTime();
+        graphStartNanos = Clock.SYSTEM.nanos();
         lastHeartbeatNanos = graphStartNanos;
     }
 
@@ -90,10 +90,10 @@ final class LockProgress {
 
     /** Announce the download phase with the exact remaining budget for {@code uniquePackages} rows. */
     void materializePhase(int uniquePackages) {
-        graphMs = (System.nanoTime() - graphStartNanos) / 1_000_000L;
+        graphMs = (Clock.SYSTEM.nanos() - graphStartNanos) / 1_000_000L;
         observer.onTotal(Math.max(estimate * 2, graphSeen.size() + uniquePackages));
         observer.onPhase("Downloading " + uniquePackages + " artifacts…");
-        materializeStartNanos = System.nanoTime();
+        materializeStartNanos = Clock.SYSTEM.nanos();
     }
 
     void materialized(String module, String version) {
@@ -102,8 +102,8 @@ final class LockProgress {
 
     /** The lock succeeded with {@code rows} rows: record the phase timings. Advisory — never fails a lock. */
     void finished(int rows) {
-        long materializeMs = (System.nanoTime() - materializeStartNanos) / 1_000_000L;
-        long totalMs = (System.nanoTime() - lockStartNanos) / 1_000_000L;
+        long materializeMs = (Clock.SYSTEM.nanos() - materializeStartNanos) / 1_000_000L;
+        long totalMs = (Clock.SYSTEM.nanos() - lockStartNanos) / 1_000_000L;
         try {
             timings.record(graphMs, Math.max(1, graphSeen.size()), materializeMs, Math.max(1, rows), totalMs);
         } catch (RuntimeException e) {

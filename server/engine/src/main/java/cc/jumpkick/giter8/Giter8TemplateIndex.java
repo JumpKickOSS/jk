@@ -4,6 +4,7 @@ package cc.jumpkick.giter8;
 import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.scaffold.NewProjectStep;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -59,7 +60,7 @@ public final class Giter8TemplateIndex {
     public static List<TemplateSpec> picker(List<Path> roots) {
         List<Path> key = roots == null ? List.of() : List.copyOf(roots);
         PickerMemo memo = PICKER_MEMO;
-        long now = System.nanoTime();
+        long now = Clock.SYSTEM.nanos();
         if (memo != null && memo.roots().equals(key) && now - memo.atNanos() < PICKER_TTL_NANOS) {
             return memo.specs();
         }

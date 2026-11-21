@@ -181,7 +181,7 @@ public final class LockCommand implements CliCommand {
     private int runHostedLive(Path dir, Path cache, BuildPlanConsole.Mode mode) {
         boolean animate = mode == BuildPlanConsole.Mode.AUTO && BuildPlanConsole.isInteractiveTerminal();
         JkManager view = JkManager.plan(CliOutput.stdout(), "Lock", animate);
-        long start = System.nanoTime();
+        long start = Clock.SYSTEM.nanos();
         LiveLockHandler handler = new LiveLockHandler(view, mode);
 
         EngineRequests.LockOutcome outcome;

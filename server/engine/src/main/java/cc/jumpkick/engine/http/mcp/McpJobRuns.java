@@ -86,7 +86,7 @@ public final class McpJobRuns {
         JobSpec spec = decode(in, pinnedKind);
         boolean wait = in.flagOr("wait", true);
         int timeoutS = timeoutS(in);
-        long triggeredAt = System.currentTimeMillis();
+        long triggeredAt = Clock.SYSTEM.millis();
         long jid = acceptedJid(in, spec);
         if (!wait) {
             return in.text(McpAgentText.running(spec.kind(), jid));
@@ -359,11 +359,11 @@ public final class McpJobRuns {
      * each poll is a memoized single-record read, never a full journal re-scan.
      */
     private static @Nullable Map<String, Object> waitForJournal(McpContext ctx, long jid) {
-        long deadline = System.currentTimeMillis() + ctx.journalSettleMs();
+        long deadline = Clock.SYSTEM.millis() + ctx.journalSettleMs();
         while (true) {
             String raw = ctx.finishedRecords().apply(jid);
             if (raw != null) return McpHistoryViews.parseRecord(raw);
-            if (System.currentTimeMillis() >= deadline) return null;
+            if (Clock.SYSTEM.millis() >= deadline) return null;
             try {
                 Thread.sleep(100);
             } catch (InterruptedException e) {

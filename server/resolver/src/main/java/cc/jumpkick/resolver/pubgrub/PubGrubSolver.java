@@ -256,7 +256,7 @@ public class PubGrubSolver {
      */
     public Map<String, String> solve(String rootPkg, String rootVersion, List<Term> rootDeps)
             throws IOException, InterruptedException {
-        long solveT0 = ResolveProfile.on() ? System.nanoTime() : 0L;
+        long solveT0 = ResolveProfile.on() ? Clock.SYSTEM.nanos() : 0L;
         this.rootPkg = rootPkg;
         this.decisionCount = 0;
         this.stepCount = 0;
@@ -327,7 +327,7 @@ public class PubGrubSolver {
             this.watch = null;
         }
         if (ResolveProfile.on()) {
-            ResolveProfile.solve(System.nanoTime() - solveT0);
+            ResolveProfile.solve(Clock.SYSTEM.nanos() - solveT0);
         }
         return solution.decisions();
     }

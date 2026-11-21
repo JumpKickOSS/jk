@@ -5,6 +5,7 @@ import cc.jumpkick.cli.run.jsonl.JobLine;
 import cc.jumpkick.cli.run.jsonl.SessionFinishLine;
 import cc.jumpkick.cli.run.jsonl.SlowestTestsLine;
 import cc.jumpkick.cli.run.jsonl.WorkspaceStartLine;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.jsonl.MiniJson;
@@ -47,7 +48,6 @@ import cc.jumpkick.wire.runtime.WorkspaceResult;
 import cc.jumpkick.wire.transcript.JsonlEnvelope;
 import cc.jumpkick.wire.transcript.SessionStartLine;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -586,6 +586,6 @@ public final class JsonlShape {
     }
 
     static long nowMillis() {
-        return Instant.now().toEpochMilli();
+        return Clock.SYSTEM.millis();
     }
 }

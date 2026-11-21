@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.jobs;
 
 import cc.jumpkick.engine.journal.BuildAccumulator;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.wire.runtime.RemainingWork;
 import cc.jumpkick.wire.runtime.WorkspaceProgressTracker;
 import cc.jumpkick.wire.runtime.progress.ProgressBarMode;
@@ -129,7 +130,7 @@ public final class JobSession {
      */
     public void remaining(@Nullable RemainingWork remaining) {
         this.remaining = remaining;
-        this.lastEventAt = System.currentTimeMillis();
+        this.lastEventAt = Clock.SYSTEM.millis();
         if (remaining == null) return;
         synchronized (remaining) {
             for (StepMark m : stepMarks) apply(remaining, m);
@@ -175,7 +176,7 @@ public final class JobSession {
 
     public void lastProgress(@Nullable Double p) {
         this.lastProgress = p;
-        this.lastEventAt = System.currentTimeMillis();
+        this.lastEventAt = Clock.SYSTEM.millis();
     }
 
     public @Nullable Double lastProgress() {

@@ -396,7 +396,7 @@ public final class BuildJournal {
             if (timestamp == null || timestamp.isBlank()) {
                 long stampMillis = finished.finishedAt() > 0
                         ? finished.finishedAt()
-                        : (finished.startedAt() > 0 ? finished.startedAt() : System.currentTimeMillis());
+                        : (finished.startedAt() > 0 ? finished.startedAt() : Clock.SYSTEM.millis());
                 timestamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
             }
             long n = finished.buildNumber() > 0 ? finished.buildNumber() : ProjectBuilds.runNumberOf(target);

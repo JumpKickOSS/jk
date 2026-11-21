@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.host.Log;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.GradleModuleMetadata;
@@ -147,13 +148,13 @@ public final class KmpRedirects {
         }
         String processKey = repos.processIdentity() + "\0" + jvmEnvironment + "\0" + javaLevel + "\0" + gaKey;
         // Single-flight: concurrent PubGrub prefetches must not re-parse the same .module.
-        long t0 = ResolveProfile.on() ? System.nanoTime() : 0L;
+        long t0 = ResolveProfile.on() ? Clock.SYSTEM.nanos() : 0L;
         ModuleFacts found = processMemoized(processKey, module, version);
         cache.put(gaKey, found);
         found.redirect().ifPresent(this::rememberDropped);
         if (ResolveProfile.on() && t0 != 0L) {
             // Count wall only when we may have done work (process miss is still inside computeIfAbsent).
-            ResolveProfile.kmp(System.nanoTime() - t0);
+            ResolveProfile.kmp(Clock.SYSTEM.nanos() - t0);
         }
         return found;
     }
