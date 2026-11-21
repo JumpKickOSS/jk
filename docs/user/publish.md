@@ -234,7 +234,10 @@ same code that embeds `META-INF/sbom/application.cdx.json` in every application 
 module's production runtime closure — the rows of `jk-lock.toml` its own dependencies and those of
 the workspace siblings it depends on reach, not every member's — each with its SHA-256 and named
 by its package URL, which carries a classifier and a type other than `jar` as qualifiers
-(`pkg:maven/org.lwjgl/lwjgl@3.3.6?classifier=natives-linux`), so every jar is its own component. Both
+(`pkg:maven/org.lwjgl/lwjgl@3.3.6?classifier=natives-linux`), so every jar is its own component;
+the group, name and version are percent-encoded as the purl spec asks (`1.0.0+build.5` reads
+`1.0.0%2Bbuild.5`). SPDX names such a variant Maven's way, `org.lwjgl:lwjgl:jar:natives-linux`
+beside the main jar's `org.lwjgl:lwjgl`. Both
 documents carry the dependency graph between them: CycloneDX as `dependencies`, SPDX as a
 `DESCRIBES` relationship from the document to the module and `DEPENDS_ON` relationships from the
 module and each package to what it depends on.

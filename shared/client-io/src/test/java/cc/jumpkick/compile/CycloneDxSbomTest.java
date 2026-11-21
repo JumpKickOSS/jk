@@ -241,6 +241,25 @@ class CycloneDxSbomTest {
     }
 
     @Test
+    void purl_percent_encodes_the_namespace_name_and_version() {
+        assertThat(CycloneDxSbom.purl("io.example", "app", "1.0.0+build.5"))
+                .as("a + in build metadata would read as a space")
+                .isEqualTo("pkg:maven/io.example/app@1.0.0%2Bbuild.5");
+        assertThat(new CycloneDxSbom.Component("g g", "a@b", "1.0#2", "x", "jar", null).purl())
+                .isEqualTo("pkg:maven/g%20g/a%40b@1.0%232?classifier=x");
+    }
+
+    @Test
+    void the_document_names_its_subject_by_the_encoded_purl() {
+        String json = new String(
+                CycloneDxSbom.write("io.example", "app", "1.0.0+build.5", CycloneDxSbom.Closure.NONE),
+                StandardCharsets.UTF_8);
+        assertThat(json)
+                .contains("\"purl\": \"pkg:maven/io.example/app@1.0.0%2Bbuild.5\"")
+                .contains("\"version\": \"1.0.0+build.5\"");
+    }
+
+    @Test
     void a_lock_row_is_a_component_of_its_own_classifier_and_type() {
         var natives = CycloneDxSbom.Component.of(
                 row("org.lwjgl:lwjgl:jar:natives-linux", "3.3.6", "bbbb", List.of(), Scope.MAIN));

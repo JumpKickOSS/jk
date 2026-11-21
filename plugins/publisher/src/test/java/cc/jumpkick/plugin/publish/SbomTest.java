@@ -106,11 +106,22 @@ class SbomTest {
         String b = "SPDXRef-Package-com.example-b-2.0.0-2";
         assertThat(json)
                 .contains("\"referenceLocator\":\"pkg:maven/com.example/a@1.0.0?classifier=linux\"")
+                .contains("{\"SPDXID\":\"" + a + "\",\"name\":\"com.example:a\",")
+                .contains("{\"SPDXID\":\"" + n + "\",\"name\":\"com.example:a:jar:linux\",")
                 .contains("{\"spdxElementId\":\"SPDXRef-Package-Root\",\"relationshipType\":\"DEPENDS_ON\","
                         + "\"relatedSpdxElement\":\"" + n + "\"}")
                 .contains("{\"spdxElementId\":\"" + n + "\",\"relationshipType\":\"DEPENDS_ON\","
                         + "\"relatedSpdxElement\":\"" + b + "\"}")
                 .doesNotContain("{\"spdxElementId\":\"" + a + "\",\"relationshipType\":\"DEPENDS_ON\"");
+    }
+
+    @Test
+    void spdx_names_a_type_other_than_jar_in_the_package_name() {
+        var aar = new CycloneDxSbom.Component("androidx.core", "core", "1.0", null, "aar", "dddd");
+        String json = new String(
+                Sbom.spdx(PROJECT, new CycloneDxSbom.Closure(List.of(aar), List.of(aar.purl()), Map.of())),
+                StandardCharsets.UTF_8);
+        assertThat(json).contains("\"name\":\"androidx.core:core:aar\"");
     }
 
     @Test

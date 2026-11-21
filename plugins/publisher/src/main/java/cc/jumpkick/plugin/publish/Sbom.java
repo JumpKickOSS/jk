@@ -47,8 +47,7 @@ public final class Sbom {
         appendSpdxPackage(
                 packages,
                 ROOT,
-                project.project().group(),
-                project.project().name(),
+                project.project().group() + ":" + project.project().name(),
                 project.project().version(),
                 CycloneDxSbom.purl(
                         project.project().group(),
@@ -61,7 +60,7 @@ public final class Sbom {
             String id = "SPDXRef-Package-" + sanitizeId(c.group() + "-" + c.artifact() + "-" + c.version()) + "-" + i++;
             ids.putIfAbsent(c.purl(), id);
             packages.append(',');
-            appendSpdxPackage(packages, id, c.group(), c.artifact(), c.version(), c.purl(), c.sha256());
+            appendSpdxPackage(packages, id, spdxName(c), c.version(), c.purl(), c.sha256());
         }
         packages.append(']');
         StringBuilder relationships = new StringBuilder(256);
@@ -120,17 +119,11 @@ public final class Sbom {
     // --- helpers ----------------------------------------------------------
 
     private static void appendSpdxPackage(
-            StringBuilder sb,
-            String spdxId,
-            String group,
-            String artifact,
-            String version,
-            String purl,
-            @Nullable String sha256Hex) {
+            StringBuilder sb, String spdxId, String name, String version, String purl, @Nullable String sha256Hex) {
         sb.append('{');
         kv(sb, "SPDXID", spdxId);
         comma(sb);
-        kv(sb, "name", group + ":" + artifact);
+        kv(sb, "name", name);
         comma(sb);
         kv(sb, "versionInfo", version);
         comma(sb);
@@ -154,6 +147,18 @@ public final class Sbom {
             sb.append("}]");
         }
         sb.append('}');
+    }
+
+    /**
+     * A package's SPDX name, Maven's {@code group:artifact[:type[:classifier]]}: a classifier variant
+     * or a type other than {@code jar} is named apart from the main jar of the same version.
+     */
+    private static String spdxName(CycloneDxSbom.Component c) {
+        String name = c.group() + ":" + c.artifact();
+        boolean classified = c.classifier() != null && !c.classifier().isEmpty();
+        if (!classified && c.type().equals("jar")) return name;
+        name += ":" + c.type();
+        return classified ? name + ":" + c.classifier() : name;
     }
 
     private static void appendRelationship(StringBuilder sb, String from, String type, String to) {

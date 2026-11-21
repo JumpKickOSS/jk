@@ -246,12 +246,16 @@ public final class CycloneDxSbom {
         sb.append("] }");
     }
 
-    /** The package URL of a Maven coordinate, the reference both SBOM formats and provenance use. */
+    /**
+     * The package URL of a Maven coordinate, the reference both SBOM formats and provenance use. The
+     * group, artifact and version are percent-encoded as the purl spec asks, so a {@code +} of build
+     * metadata reads as itself and not as a space.
+     */
     public static String purl(String group, String artifact, String version) {
-        return "pkg:maven/" + group + "/" + artifact + "@" + version;
+        return "pkg:maven/" + encode(group) + "/" + encode(artifact) + "@" + encode(version);
     }
 
-    /** A purl qualifier value: unreserved characters as they are, every other byte percent-encoded. */
+    /** A purl component: unreserved characters as they are, every other byte percent-encoded. */
     private static String encode(String value) {
         StringBuilder sb = new StringBuilder(value.length());
         for (byte b : value.getBytes(StandardCharsets.UTF_8)) {
