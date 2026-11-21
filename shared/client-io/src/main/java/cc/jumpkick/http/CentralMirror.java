@@ -197,7 +197,7 @@ public final class CentralMirror {
     }
 
     /** True when {@code uri} is a file on the mirror. */
-    boolean carries(URI uri) {
+    public boolean carries(URI uri) {
         return uri != null && uri.toString().startsWith(mirrorBase + "/");
     }
 

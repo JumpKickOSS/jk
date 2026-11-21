@@ -48,16 +48,16 @@ final class ChecksumSidecars {
         }
     }
 
-    /** One published digest: which algorithm, and its lower-case hex. */
-    record Published(Algorithm algorithm, String hex) {}
+    /** One published digest: which algorithm, its lower-case hex, and the URL that answered with it. */
+    record Published(Algorithm algorithm, String hex, URI from) {}
 
     private final RepoTransport transport;
     private final RepoCredential credential;
     private final URI artifact;
     /** Null in {@linkplain #startSha1First sha1-first} mode, where it is read only when no {@code .sha1} is. */
-    private final @Nullable Future<Optional<String>> sha256;
+    private final @Nullable Future<Optional<Published>> sha256;
 
-    private final Future<Optional<String>> sha1;
+    private final Future<Optional<Published>> sha1;
 
     private ChecksumSidecars(RepoTransport transport, RepoCredential credential, URI artifact, boolean sha1First) {
         this.transport = transport;
@@ -89,13 +89,13 @@ final class ChecksumSidecars {
     Optional<Published> strongestSha() throws IOException, InterruptedException {
         try {
             if (sha256 == null) {
-                Optional<String> weak = join(sha1);
-                if (weak.isPresent()) return Optional.of(new Published(Algorithm.SHA1, weak.get()));
-                return read(Algorithm.SHA256).map(hex -> new Published(Algorithm.SHA256, hex));
+                Optional<Published> weak = join(sha1);
+                if (weak.isPresent()) return weak;
+                return read(Algorithm.SHA256);
             }
-            Optional<String> strong = join(sha256);
-            if (strong.isPresent()) return Optional.of(new Published(Algorithm.SHA256, strong.get()));
-            return join(sha1).map(hex -> new Published(Algorithm.SHA1, hex));
+            Optional<Published> strong = join(sha256);
+            if (strong.isPresent()) return strong;
+            return join(sha1);
         } finally {
             cancel();
         }
@@ -111,17 +111,19 @@ final class ChecksumSidecars {
     Optional<Published> strongest() throws IOException, InterruptedException {
         Optional<Published> sha = strongestSha();
         if (sha.isPresent()) return sha;
-        return read(Algorithm.MD5).map(hex -> new Published(Algorithm.MD5, hex));
+        return read(Algorithm.MD5);
     }
 
-    private Optional<String> read(Algorithm algorithm) throws IOException, InterruptedException {
+    private Optional<Published> read(Algorithm algorithm) throws IOException, InterruptedException {
         URI sidecar = URI.create(artifact + algorithm.suffix);
-        Optional<byte[]> body = DownloadLeg.rateLimited(sidecar, () -> transport.fetch(sidecar, credential));
-        if (body.isEmpty()) return Optional.empty();
-        return Hashing.checksumFromSidecar(new String(body.get(), StandardCharsets.UTF_8), algorithm.hexLength);
+        Optional<RepoTransport.Answer> answer =
+                DownloadLeg.rateLimited(sidecar, () -> transport.fetchAnswer(sidecar, credential));
+        if (answer.isEmpty()) return Optional.empty();
+        return Hashing.checksumFromSidecar(new String(answer.get().body(), StandardCharsets.UTF_8), algorithm.hexLength)
+                .map(hex -> new Published(algorithm, hex, answer.get().from()));
     }
 
-    private static Optional<String> join(Future<Optional<String>> read) throws IOException, InterruptedException {
+    private static Optional<Published> join(Future<Optional<Published>> read) throws IOException, InterruptedException {
         try {
             return read.get();
         } catch (ExecutionException e) {

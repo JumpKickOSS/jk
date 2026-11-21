@@ -50,6 +50,12 @@ record RequestGate(Admission admit, Consumer<IOException> failed) {
             }
 
             @Override
+            public Optional<Answer> fetchAnswer(URI uri, RepoCredential credential)
+                    throws IOException, InterruptedException {
+                return send(() -> transport.fetchAnswer(uri, credential));
+            }
+
+            @Override
             public Optional<InputStream> fetchStream(URI uri, RepoCredential credential)
                     throws IOException, InterruptedException {
                 return send(() -> transport.fetchStream(uri, credential));

@@ -902,7 +902,7 @@ public final class MavenRepo {
             }
             // Central's own copy is checked against Central's own .sha1, asked as the file is: a
             // window open on the mirror cannot vouch for a file the mirror does not have.
-            DownloadLeg.Vouch central = vouch == null ? null : new DownloadLeg.Vouch(uri, true, false);
+            DownloadLeg.Vouch central = vouch == null ? null : new DownloadLeg.Vouch(uri, true, centralMirror);
             return download.run(coord, uri, relativePath, central, leg, expectedSha256, abort);
         }
     }
@@ -955,13 +955,13 @@ public final class MavenRepo {
      * Where the checksum for the file at {@code uri} — this repository's own URL for it — is read.
      * For Central, Central's {@code .sha1} alone: one request, and Central publishes one for every
      * file. While Central is refusing this host the read goes to the mirror instead, which then
-     * vouches for its own bytes; that is counted for the run's note rather than failing a build
-     * Central cannot serve. Any other repository is read beside the file, strongest first.
+     * vouches for its own bytes; each checksum the mirror answers with is counted for the run's
+     * note rather than failing a build Central cannot serve. Any other repository is read beside
+     * the file, strongest first.
      */
     private DownloadLeg.Vouch vouchFor(URI uri) {
         if (!centralMirror.matches(uri)) return DownloadLeg.Vouch.beside(uri);
-        URI at = centralMirror.route(uri);
-        return new DownloadLeg.Vouch(at, true, !at.equals(uri));
+        return new DownloadLeg.Vouch(centralMirror.route(uri), true, centralMirror);
     }
 
     /**

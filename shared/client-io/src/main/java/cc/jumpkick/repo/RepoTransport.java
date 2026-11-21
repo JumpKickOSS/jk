@@ -24,6 +24,22 @@ public interface RepoTransport {
     Optional<byte[]> fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException;
 
     /**
+     * A fetched body and the URL that answered it. That is {@code uri} itself unless the transport
+     * sent the request elsewhere: {@link HttpTransport} sends a request for Central to Central's mirror
+     * while Central refuses this host, deciding so as the request goes out, and follows redirects.
+     */
+    record Answer(byte[] body, URI from) {}
+
+    /**
+     * As {@link #fetch}, naming the URL that answered, for a caller that must know who said what the
+     * bytes are. The default answers from {@code uri}, for transports that never send a request
+     * elsewhere.
+     */
+    default Optional<Answer> fetchAnswer(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+        return fetch(uri, credential).map(body -> new Answer(body, uri));
+    }
+
+    /**
      * Fetch the bytes at {@code uri} as a stream, so the caller can pump them to disk (e.g. the CAS)
      * without ever holding the whole payload in memory. Returns empty on not-found, mirroring {@link
      * #fetch}; the caller owns closing the returned stream.

@@ -72,7 +72,9 @@ class ChecksumSidecarsPermitTest {
             release.countDown();
             assertThat(sidecars.strongestSha())
                     .contains(new ChecksumSidecars.Published(
-                            ChecksumSidecars.Algorithm.SHA1, Hashing.hashHex("SHA-1", REAL)));
+                            ChecksumSidecars.Algorithm.SHA1,
+                            Hashing.hashHex("SHA-1", REAL),
+                            URI.create(repo.baseUrl() + REL + ".sha1")));
             assertThat(repo.requested()).contains("/" + REL + ".sha1");
         } finally {
             release.countDown();

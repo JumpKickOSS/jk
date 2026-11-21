@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterEach;
@@ -167,6 +168,42 @@ class CentralVouchesTest {
                 .startsWith("1 file from central verified by the mirror's checksums only");
     }
 
+    /**
+     * The window opens after the checksum read was addressed to Central: another request's refusal
+     * landed first, or this read drew the 429 itself. The transport sends it to the mirror, and the
+     * mirror's answer is counted, since it is the mirror that vouched.
+     */
+    @Test
+    void a_checksum_asked_of_central_and_answered_by_the_mirror_is_counted(@TempDir Path tmp) throws Exception {
+        publishJar(JAR_BYTES, JAR_BYTES);
+        transport.publish(MIRROR + JAR + ".sha1", sha1(JAR_BYTES));
+        transport.reroute(CENTRAL + JAR + ".sha1");
+
+        MavenRepo repo = repo(tmp, true);
+        repo.fetchArtifact(WIDGET);
+
+        assertThat(transport.requests).containsExactlyInAnyOrder(MIRROR + JAR, CENTRAL + JAR + ".sha1");
+        assertThat(repo.checksumNotes())
+                .singleElement()
+                .asString()
+                .startsWith("1 file from central verified by the mirror's checksums only");
+    }
+
+    /** The checksum read addressed to the mirror but answered by Central is Central's word, not counted. */
+    @Test
+    void a_checksum_central_answers_is_not_counted_as_the_mirrors(@TempDir Path tmp) throws Exception {
+        publishJar(JAR_BYTES, JAR_BYTES);
+        CentralMirror window = CentralMirror.isolated(tmp.resolve("cache"), true);
+        window.noteRateLimited();
+        transport.reroute(MIRROR + JAR + ".sha1");
+
+        MavenRepo repo = repo(tmp, window);
+        repo.fetchArtifact(WIDGET);
+
+        assertThat(transport.requests).containsExactlyInAnyOrder(MIRROR + JAR, MIRROR + JAR + ".sha1");
+        assertThat(repo.checksumNotes()).isEmpty();
+    }
+
     /** While Central rate-limits this host, a file the mirror lacks comes from Central, checked by Central's .sha1. */
     @Test
     void while_central_refuses_a_file_the_mirror_lacks_is_checked_by_centrals_sha1(@TempDir Path tmp) throws Exception {
@@ -301,15 +338,34 @@ class CentralVouchesTest {
         final List<String> requests = new CopyOnWriteArrayList<>();
         final Map<String, RepoCredential> credentials = new ConcurrentHashMap<>();
 
+        /** URLs answered by the other side of Central and its mirror, as Http answers a request it reroutes. */
+        private final Set<String> rerouted = ConcurrentHashMap.newKeySet();
+
         void publish(String url, byte[] body) {
             files.put(url, body);
         }
 
+        void reroute(String url) {
+            rerouted.add(url);
+        }
+
         @Override
         public Optional<byte[]> fetch(URI uri, RepoCredential credential) {
+            return fetchAnswer(uri, credential).map(Answer::body);
+        }
+
+        @Override
+        public Optional<Answer> fetchAnswer(URI uri, RepoCredential credential) {
             requests.add(uri.toString());
             credentials.put(uri.toString(), credential);
-            return Optional.ofNullable(files.get(uri.toString()));
+            String from = uri.toString();
+            if (rerouted.contains(from)) {
+                from = from.startsWith(MIRROR)
+                        ? CENTRAL + from.substring(MIRROR.length())
+                        : MIRROR + from.substring(CENTRAL.toString().length());
+            }
+            URI answered = URI.create(from);
+            return Optional.ofNullable(files.get(from)).map(body -> new Answer(body, answered));
         }
 
         @Override

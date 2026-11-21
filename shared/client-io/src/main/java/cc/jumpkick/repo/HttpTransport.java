@@ -31,13 +31,18 @@ public final class HttpTransport implements RepoTransport {
 
     @Override
     public Optional<byte[]> fetch(URI uri, RepoCredential credential) throws IOException, InterruptedException {
+        return fetchAnswer(uri, credential).map(Answer::body);
+    }
+
+    @Override
+    public Optional<Answer> fetchAnswer(URI uri, RepoCredential credential) throws IOException, InterruptedException {
         HttpResponse<byte[]> response = http.get(uri, AuthHeaders.of(credential));
         int status = response.statusCode();
         if (status == 404) return Optional.empty();
         if (!success(status)) {
             throw new HttpStatusException(status, uri);
         }
-        return Optional.of(response.body());
+        return Optional.of(new Answer(response.body(), response.uri()));
     }
 
     @Override

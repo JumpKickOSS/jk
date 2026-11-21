@@ -79,6 +79,9 @@ class HttpRetryTest {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo("<metadata/>");
+        assertThat(m.carries(response.uri()))
+                .as("the response names the mirror that answered, not Central that was asked")
+                .isTrue();
     }
 
     /** A Central credential does not travel to the mirror the window sends the request to. */
@@ -94,6 +97,7 @@ class HttpRetryTest {
                         Map.of("Authorization", "Bearer central-only"));
 
         assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(m.carries(response.uri())).isTrue();
         assertThat(mirror.headersFor("/mirror/g/a/1/a-1.pom"))
                 .get()
                 .extracting(h -> h.get("Authorization"))

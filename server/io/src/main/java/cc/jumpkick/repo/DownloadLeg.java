@@ -7,6 +7,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.host.time.Clock;
+import cc.jumpkick.http.CentralMirror;
 import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.SafeUri;
 import cc.jumpkick.model.Coordinate;
@@ -108,13 +109,22 @@ final class DownloadLeg {
      * Where the checksum that vouches for a download is read, and how. {@code artifact} is the file's
      * URL at the repository that vouches — Central's own for a file the mirror carries, so Central
      * and not the mirror says what the bytes are. {@code sha1First} asks for the {@code .sha1} alone
-     * ({@link ChecksumSidecars#startSha1First}). {@code mirrorOnly} marks a check the mirror answers
-     * for itself because Central is refusing this host; it is counted for the run's note.
+     * ({@link ChecksumSidecars#startSha1First}). {@code mirror} is set for a check made on Central's
+     * behalf: a checksum its mirror answers with is the mirror vouching for itself, because Central
+     * is refusing this host, and is counted for the run's note. It is counted by the URL that
+     * answered, not by where the read was addressed: the transport may send a read for Central to
+     * the mirror as it goes out, when the window opened after the read was addressed or the read
+     * itself was refused.
      */
-    record Vouch(URI artifact, boolean sha1First, boolean mirrorOnly) {
+    record Vouch(URI artifact, boolean sha1First, @Nullable CentralMirror mirror) {
         /** The repository's own sidecars beside {@code artifact}, strongest first. */
         static Vouch beside(URI artifact) {
-            return new Vouch(artifact, false, false);
+            return new Vouch(artifact, false, null);
+        }
+
+        /** Whether {@code published} is the mirror's word rather than Central's. */
+        boolean mirrorVouched(ChecksumSidecars.Published published) {
+            return mirror != null && mirror.carries(published.from());
         }
 
         ChecksumSidecars start(RepoTransport transport, RepoCredential credential) {
@@ -391,7 +401,7 @@ final class DownloadLeg {
                         + published.get().algorithm().label + " "
                         + published.get().hex() + " but got " + differing.get());
             }
-            accept(coord, published.get().algorithm(), leg, vouch);
+            accept(coord, published.get(), leg, vouch);
             return;
         }
         unpublished(coord, relativePath, leg);
@@ -436,7 +446,7 @@ final class DownloadLeg {
                     + published.get().hex() + "; downloaded it again");
             return false;
         }
-        accept(coord, published.get().algorithm(), leg, vouch);
+        accept(coord, published.get(), leg, vouch);
         return true;
     }
 
@@ -453,9 +463,9 @@ final class DownloadLeg {
      * Bytes a published checksum matched: counted, noted when only an {@code .md5} vouched, and
      * counted again when the mirror vouched for itself.
      */
-    private void accept(Coordinate coord, ChecksumSidecars.Algorithm algorithm, MavenRepo.Leg leg, Vouch vouch) {
-        if (vouch.mirrorOnly()) mirrorVouched.incrementAndGet();
-        if (algorithm == ChecksumSidecars.Algorithm.MD5) {
+    private void accept(Coordinate coord, ChecksumSidecars.Published published, MavenRepo.Leg leg, Vouch vouch) {
+        if (vouch.mirrorVouched(published)) mirrorVouched.incrementAndGet();
+        if (published.algorithm() == ChecksumSidecars.Algorithm.MD5) {
             checksumNotes.add(coord + " from " + name + " verified by .md5 only; the repository publishes no"
                     + " .sha256 or .sha1, the lock pins it by sha256");
         }
