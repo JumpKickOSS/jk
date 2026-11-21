@@ -59,11 +59,14 @@ class ScriptModeAllowlistTest {
     void no_command_begins_its_own_envelope() throws IOException {
         Path main = MainSources.locate();
         Pattern anti = Pattern.compile("CliOutput\\.beginCommand\\(");
-        Path dispatch = main.resolve("cc/jumpkick/cli/CommandDispatch.java");
+        // Dispatch, and the plugin commands it runs in place of a registry command.
+        Set<Path> dispatch = Set.of(
+                main.resolve("cc/jumpkick/cli/CommandDispatch.java"),
+                main.resolve("cc/jumpkick/cli/PluginCommandDispatch.java"));
         List<String> offenders = new ArrayList<>();
         try (Stream<Path> walk = Files.walk(main)) {
             walk.filter(p -> p.toString().endsWith(".java"))
-                    .filter(p -> !p.equals(dispatch))
+                    .filter(p -> !dispatch.contains(p))
                     .forEach(p -> {
                         try {
                             if (anti.matcher(Files.readString(p)).find()) {

@@ -380,13 +380,13 @@ class CommandDispatchTest {
 
     @Test
     void plugin_arg_scan_honors_output_flags() {
-        assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "json"))).isTrue();
-        assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output", "jsonl")))
+        assertThat(PluginCommandDispatch.argsAskJson(List.of("-O", "json"))).isTrue();
+        assertThat(PluginCommandDispatch.argsAskJson(List.of("--output", "jsonl")))
                 .isTrue();
-        assertThat(CommandDispatch.pluginArgsAskJson(List.of("--output=json", "x")))
+        assertThat(PluginCommandDispatch.argsAskJson(List.of("--output=json", "x")))
                 .isTrue();
-        assertThat(CommandDispatch.pluginArgsAskJson(List.of("-O", "text"))).isFalse();
-        assertThat(CommandDispatch.pluginArgsAskJson(List.of("build", "--fast")))
+        assertThat(PluginCommandDispatch.argsAskJson(List.of("-O", "text"))).isFalse();
+        assertThat(PluginCommandDispatch.argsAskJson(List.of("build", "--fast")))
                 .isFalse();
     }
 

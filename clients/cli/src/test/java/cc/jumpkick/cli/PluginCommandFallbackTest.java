@@ -44,7 +44,7 @@ class PluginCommandFallbackTest {
         @Nullable Integer[] exit = new Integer[1];
 
         String err = Capture.stderr(() -> {
-            exit[0] = CommandDispatch.tryPluginCommand(project, "frobnicate", List.of());
+            exit[0] = PluginCommandDispatch.tryRun(project, "frobnicate", List.of());
         });
 
         assertThat(exit[0]).isEqualTo(Exit.CONFIG);
@@ -57,7 +57,7 @@ class PluginCommandFallbackTest {
         @Nullable Integer[] exit = new Integer[] {-1};
 
         String err = Capture.stderr(() -> {
-            exit[0] = CommandDispatch.tryPluginCommand(project, "frobnicate", List.of());
+            exit[0] = PluginCommandDispatch.tryRun(project, "frobnicate", List.of());
         });
 
         assertThat(exit[0]).isNull();

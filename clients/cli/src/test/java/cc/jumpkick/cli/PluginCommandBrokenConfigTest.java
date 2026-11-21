@@ -47,7 +47,7 @@ class PluginCommandBrokenConfigTest {
 
         @Nullable Integer[] inProject = new Integer[1];
         String inProjectErr = Capture.stderr(() -> {
-            inProject[0] = CommandDispatch.tryPluginCommand(dir, command, List.of());
+            inProject[0] = PluginCommandDispatch.tryRun(dir, command, List.of());
         });
         int[] withDir = new int[1];
         Capture.Streams withDirConsole = Capture.both(() -> {

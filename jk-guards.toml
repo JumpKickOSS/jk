@@ -1920,7 +1920,7 @@ instead  = "ManifestPaths.manifestIn(dir); a writer or a boundary probe is an al
 why      = "a directory built from its pom.xml has no jk.toml; manifestIn is what answers its shadow"
 
 [[guards.manifest-reader-owner.allow]]
-in     = "clients/cli/src/main/java/cc/jumpkick/cli/CommandDispatch.java"
+in     = "clients/cli/src/main/java/cc/jumpkick/cli/PluginCommandDispatch.java"
 reason = "a plugin-declared command is offered only where a written jk.toml declares plugins; the probe is the cwd's file"
 
 [[guards.manifest-reader-owner.allow]]
