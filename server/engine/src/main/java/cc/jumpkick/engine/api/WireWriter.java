@@ -621,8 +621,16 @@ public final class WireWriter {
                     return;
                 }
                 List<CompletableFuture<Void>> landedNow = new ArrayList<>(1);
+                boolean ended = false;
                 synchronized (this) {
-                    if (p != null) {
+                    if (dead != null) {
+                        // Dropped during the write: the counters and the spill are already reset, and
+                        // only this line's own waiter, off the queue, is left; its line did land.
+                        CompletableFuture<Void> landed = p == null ? null : p.landed();
+                        if (landed != null) landedNow.add(landed);
+                        endDrainer();
+                        ended = true;
+                    } else if (p != null) {
                         queuedBytes -= p.bytes();
                         CompletableFuture<Void> landed = p.landed();
                         if (landed != null) landedNow.add(landed);
@@ -639,6 +647,7 @@ public final class WireWriter {
                     notifyAll();
                 }
                 for (CompletableFuture<Void> landed : landedNow) landed.complete(null);
+                if (ended) return;
             }
         }
 

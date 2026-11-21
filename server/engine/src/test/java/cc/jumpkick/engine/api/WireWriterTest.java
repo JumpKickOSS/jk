@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.StringWriter;
 import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.Pipe;
@@ -21,7 +22,10 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
@@ -497,6 +501,123 @@ class WireWriterTest {
         long waitedMs = (System.nanoTime() - started) / 1_000_000;
         assertThat(waitedMs).as("bounded by the bound set after binding").isLessThan(5_000);
         Await.until(Duration.ofSeconds(5), () -> !pipe.sink().isOpen());
+    }
+
+    /**
+     * A client dropped while the writer thread is writing a spilled line: the write still finishes,
+     * the writer thread ends and closes the socket, and the stream's counters stay at zero.
+     */
+    @Test
+    @Timeout(60)
+    void a_drop_during_a_spilled_write_ends_the_writer_cleanly() throws Exception {
+        GatedSink sink = new GatedSink("first", "spilled");
+        BufferedWriter writer = new BufferedWriter(sink);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
+        WireWriter.sendQuiet(writer, "first");
+        sink.awaitHeld("first");
+        WireWriter.sendQuiet(writer, "m".repeat((int) WireWriter.MAX_QUEUED_BYTES - 8));
+        WireWriter.sendQuiet(writer, "spilled");
+        assertThat(WireWriter.spilledBytes(writer)).as("past the memory bound").isPositive();
+
+        sink.release("first");
+        sink.awaitHeld("spilled");
+        dropWhileHeld(writer);
+        sink.release("spilled");
+
+        Await.until(Duration.ofSeconds(10), sink::closed, () -> "the writer thread closed the socket");
+        assertThat(WireWriter.queuedBytes(writer)).isZero();
+        assertThat(WireWriter.spilledBytes(writer)).isZero();
+    }
+
+    /** The same drop while the writer thread writes a line from memory leaves the byte count at zero. */
+    @Test
+    @Timeout(60)
+    void a_drop_during_an_in_memory_write_ends_the_writer_cleanly() throws Exception {
+        GatedSink sink = new GatedSink("first");
+        BufferedWriter writer = new BufferedWriter(sink);
+        WireWriter.bind(writer, 0, spillDir, WireWriter.MAX_SPILL_BYTES, bytes -> true);
+        WireWriter.sendQuiet(writer, "first");
+        sink.awaitHeld("first");
+        dropWhileHeld(writer);
+        sink.release("first");
+
+        Await.until(Duration.ofSeconds(10), sink::closed, () -> "the writer thread closed the socket");
+        assertThat(WireWriter.queuedBytes(writer)).isZero();
+    }
+
+    /** Drop the stream for reading nothing while its writer thread is held in the sink. */
+    private static void dropWhileHeld(BufferedWriter writer) {
+        WireWriter.idleBound(writer, 1);
+        assertThatThrownBy(() -> WireWriter.send(writer, "late"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("stopped reading");
+    }
+
+    /**
+     * A sink that holds the writer thread in {@code flush} for each named line until the test lets
+     * it go, ignoring the interrupt a drop sends, as a socket write that already got its bytes out does.
+     */
+    private static final class GatedSink extends Writer {
+        private final StringBuilder pending = new StringBuilder();
+        private final Map<String, Gate> gates = new ConcurrentHashMap<>();
+        private volatile boolean closed;
+
+        /** {@code held} opens when the writer thread reaches the line, {@code go} lets it through. */
+        private record Gate(CountDownLatch held, CountDownLatch go) {}
+
+        GatedSink(String... gated) {
+            for (String line : gated) gates.put(line, new Gate(new CountDownLatch(1), new CountDownLatch(1)));
+        }
+
+        void awaitHeld(String line) throws InterruptedException {
+            assertThat(gate(line).held().await(30, TimeUnit.SECONDS))
+                    .as("writer holds " + line)
+                    .isTrue();
+        }
+
+        void release(String line) {
+            gate(line).go().countDown();
+        }
+
+        private Gate gate(String line) {
+            return Objects.requireNonNull(gates.get(line), line);
+        }
+
+        boolean closed() {
+            return closed;
+        }
+
+        @Override
+        public synchronized void write(char[] buf, int off, int len) {
+            pending.append(buf, off, len);
+        }
+
+        @Override
+        public void flush() {
+            String text;
+            synchronized (this) {
+                text = pending.toString();
+                pending.setLength(0);
+            }
+            Gate gate = gates.get(text.strip());
+            if (gate == null) return;
+            gate.held().countDown();
+            boolean interrupted = false;
+            while (true) {
+                try {
+                    if (gate.go().await(30, TimeUnit.SECONDS)) break;
+                    throw new IllegalStateException("never released: " + text.strip());
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                }
+            }
+            if (interrupted) Thread.currentThread().interrupt();
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+        }
     }
 
     /** Releasing a stream lands what it still holds first, so a job-finish handed over last is read. */
