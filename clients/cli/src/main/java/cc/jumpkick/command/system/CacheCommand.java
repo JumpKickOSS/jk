@@ -32,13 +32,11 @@ import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.model.command.CliCommand;
-import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.run.BuildPlanResult;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.CacheInventoryAck;
 import java.io.IOException;
@@ -50,7 +48,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.LongSupplier;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -691,149 +688,6 @@ public final class CacheCommand extends GroupCommand {
             out.add(String.format(Locale.ROOT, "  %-7s %9s %9s %9s %10s %10s", (Object[]) r));
         }
         return out;
-    }
-
-    /** Project-scoped clear UI for {@code jk clean -F}. */
-    static ConsoleSpec clearSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
-        return new ConsoleSpec(
-                "Cache",
-                r -> {
-                    long f = Math.max(0, files.getAsLong());
-                    long b = Math.max(0, bytes.getAsLong());
-                    if (f == 0) {
-                        return dryRun
-                                ? "Dry run: nothing cached for this project."
-                                : "Build cache already clear for this project.";
-                    }
-                    String noun = f == 1 ? "entry" : "entries";
-                    return dryRun
-                            ? "Dry run: would invalidate " + fmtCount(f) + " " + noun + ", " + fmtBytes(b)
-                                    + " reclaimable."
-                            : "Invalidated " + fmtCount(f) + " cache " + noun + ", " + fmtBytes(b) + " freed.";
-                },
-                r -> "Failed to clear the build cache.",
-                true);
-    }
-
-    public static final class CacheCleanCommand implements CliCommand {
-        @Override
-        public String name() {
-            return "clean";
-        }
-
-        @Override
-        public List<String> aliases() {
-            return List.of("prune"); // pre-rename
-        }
-
-        @Override
-        public String description() {
-            return "Reclaim cache space to the configured budget (oldest first)";
-        }
-
-        @Override
-        public List<Opt> options() {
-            return List.of(
-                    CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "-U", "--dry-run"),
-                    Opt.flag("Clean JumpKick's unused downloads from ~/.m2 instead of the cache.", "-m", "--m2"),
-                    Opt.value(
-                            "<DAYS>", "With --m2: days unused (default: [m2] clean-after-days)", "-t", "--older-than"));
-        }
-
-        @Override
-        public MachineOutput machineOutput() {
-            return MachineOutput.JSONL;
-        }
-
-        @Override
-        public int run(Invocation in) throws IOException {
-            Path cacheDir = in.value("cache-dir").map(CliPaths::abs).orElse(null);
-            boolean dryRun = in.isSet("dry-run");
-            GlobalOptions global = GlobalOptions.from(in);
-
-            Path root = resolveCacheRoot(cacheDir);
-            if (in.isSet("m2")) {
-                int days = in.value("older-than").map(Integer::parseInt).orElse(0);
-                return runHosted(root, false, dryRun, global, "m2", CliPaths.abs(""), days);
-            }
-            if (!Files.isDirectory(root)) {
-                CliOutput.out("Nothing to clean: " + root + " does not exist");
-                return 0;
-            }
-
-            return runHosted(root, cacheDir == null, dryRun, global, "prune", null, 0);
-        }
-
-        /** The engine-hosted foreground path: send the request, explain any wait, render the stream. */
-        private static int runHosted(
-                Path root,
-                boolean defaultCacheDir,
-                boolean dryRun,
-                GlobalOptions global,
-                String op,
-                @Nullable Path projectRoot,
-                int olderThanDays) {
-            // Settled from the terminal plan-finish before the console listener renders the line.
-            var summary = new EngineRequests.CacheMaintSummary[1];
-            ConsoleSpec spec = cleanSpec(
-                    dryRun,
-                    () -> summary[0] != null ? summary[0].files() : 0L,
-                    () -> summary[0] != null ? summary[0].bytes() : 0L,
-                    "m2".equals(op) ? "the Maven local repository" : "cache");
-            BuildPlanConsole.Mode mode = BuildPlanConsole.modeFor(global);
-            BuildPlanResult result;
-            try {
-                result = EngineClient.runCacheMaintenance(
-                        EnginePaths.current(),
-                        new EngineRequests.CacheMaintRequest(
-                                op, root, dryRun, defaultCacheDir, projectRoot, olderThanDays),
-                        steps -> BuildPlanConsole.chooseConsoleListener(steps, mode, spec, "Cache"),
-                        CacheCommand::printWait,
-                        summary);
-            } catch (IOException e) {
-                CommandWedge.printFail("Cache", e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            long files = summary[0] != null ? summary[0].files() : 0L;
-            if (result.success() && !dryRun && files > 0) {
-                boolean m2 = "m2".equals(op);
-                ChangeJournal.note(
-                        m2 ? "Maven local repository" : "cache tier",
-                        Change.CLEAN,
-                        "cleaned " + (m2 ? "JumpKick's unused downloads from ~/.m2" : "the cache tier") + ": "
-                                + fmtCount(files) + " files, " + fmtBytes(summary[0].bytes()) + " freed",
-                        null);
-            }
-            return result.success() ? 0 : 1;
-        }
-
-        /** The Cache chip spec; counts are read lazily, at result-line render time. */
-        static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes) {
-            return cleanSpec(dryRun, files, bytes, "cache");
-        }
-
-        /** As above, naming what is being cleaned. */
-        static ConsoleSpec cleanSpec(boolean dryRun, LongSupplier files, LongSupplier bytes, String what) {
-            return new ConsoleSpec(
-                    "Cache",
-                    r -> {
-                        long f = Math.max(0, files.getAsLong());
-                        long b = Math.max(0, bytes.getAsLong());
-                        if (dryRun) {
-                            if (f == 0) return "Dry run: nothing to clean up.";
-                            return "Dry run: would remove "
-                                    + f + " " + (f == 1 ? "file" : "files")
-                                    + ", " + fmtBytes(b) + " reclaimable.";
-                        }
-                        if (f == 0) return "Finished cleaning " + what + ". Nothing to clean up.";
-                        return "Finished cleaning " + what + ". "
-                                + f + " " + (f == 1 ? "file" : "files")
-                                + " removed, " + fmtBytes(b) + " reclaimed.";
-                    },
-                    r -> "Failed to clean " + what + ".",
-                    true);
-        }
     }
 
     public static final class CacheNukeCommand implements CliCommand {
