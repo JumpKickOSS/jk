@@ -5,6 +5,7 @@ import cc.jumpkick.host.Log;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.GradleModuleMetadata;
+import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
@@ -66,7 +67,11 @@ public final class KmpRedirects {
 
     private static final int PROCESS_CACHE_MAX = 8_192;
 
-    /** Test seam: drop process-wide selection memo. */
+    static {
+        MavenMetadataCache.onForceRevalidate(KmpRedirects::clearProcessCache);
+    }
+
+    /** Drop the process-wide selection memo; a forced revalidation does too. */
     public static void clearProcessCache() {
         PROCESS_CACHE.clear();
     }

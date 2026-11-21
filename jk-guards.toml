@@ -2235,6 +2235,10 @@ in     = "cc.jumpkick.compat.ToolInstaller#IN_FLIGHT"
 reason = "live registry: scratch this process is writing now, reaped on cancel"
 
 [[guards.engine-static-memo.allow]]
+in     = "cc.jumpkick.repo.MavenMetadataCache#FORCE_CLEARS"
+reason = "engine-process fact: one clear per memo class above io, added once as that class loads; never a fetched answer"
+
+[[guards.engine-static-memo.allow]]
 in     = "cc.jumpkick.repo.EffectivePomBuilder#IN_FLIGHT"
 reason = "live registry: the POM walks running now"
 

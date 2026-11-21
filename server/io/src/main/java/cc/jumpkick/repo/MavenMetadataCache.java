@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * On-disk {@code maven-metadata.xml} cache (mutable index — not content-addressed).
@@ -85,6 +86,17 @@ public final class MavenMetadataCache {
         this.gate = Objects.requireNonNull(gate, "gate");
     }
 
+    /** What a forced revalidation clears beyond this module: process memos of the layers above it. */
+    private static final List<Runnable> FORCE_CLEARS = new CopyOnWriteArrayList<>();
+
+    /**
+     * Have {@link #withForceRevalidate} run {@code clear}. A memo registers from its owner's static
+     * initializer: until that class loads, the memo holds nothing a revalidation could distrust.
+     */
+    public static void onForceRevalidate(Runnable clear) {
+        FORCE_CLEARS.add(clear);
+    }
+
     /**
      * Run {@code body} under a session that {@linkplain cc.jumpkick.config.Session#revalidate
      * revalidates}: metadata TTL bypassed (conditional GET still applies) on this thread and the
@@ -92,17 +104,9 @@ public final class MavenMetadataCache {
      */
     public static <T> T withForceRevalidate(Callable<T> body) throws Exception {
         // Force means do not trust process-wide resolve memos computed against a prior view.
-        // Concrete clears live on the types themselves so this module stays free of resolver deps.
         EffectivePomBuilder.clearProcessCache();
         GradleModuleMetadata.clearParseCache();
-        // KMP process cache is in resolver — clear via reflective no-op if absent (tests/io-only).
-        try {
-            Class.forName("cc.jumpkick.resolver.KmpRedirects")
-                    .getMethod("clearProcessCache")
-                    .invoke(null);
-        } catch (ReflectiveOperationException ignored) {
-            // io unit tests without resolver on classpath
-        }
+        for (Runnable clear : FORCE_CLEARS) clear.run();
         return SessionContext.where(SessionContext.current().withRevalidate(true), body);
     }
 

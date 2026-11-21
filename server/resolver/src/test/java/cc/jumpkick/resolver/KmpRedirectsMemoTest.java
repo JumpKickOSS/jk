@@ -9,6 +9,7 @@ import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.GradleModuleMetadata;
+import cc.jumpkick.repo.MavenMetadataCache;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.testing.Await;
@@ -198,6 +199,21 @@ class KmpRedirectsMemoTest {
         assertThat(new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.flaky:widget", "1.0.0"))
                 .as("and is asked again, not remembered as no module metadata")
                 .isPresent();
+    }
+
+    @Test
+    void a_forced_revalidation_drops_the_memo(@TempDir Path tmp) throws Exception {
+        registerKmpRoot("com.example.forced", "widget", "1.0.0");
+        RepoGroup repos = repoGroup(tmp);
+
+        new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.forced:widget", "1.0.0");
+        GradleMarkerAnswers.drop();
+        assertThat(KmpRedirects.dropProcessMemo()).as("the lookup was memoized").isPositive();
+
+        new KmpRedirects(repos, "standard-jvm").selectionFor("com.example.forced:widget", "1.0.0");
+        MavenMetadataCache.withForceRevalidate(() -> null);
+        GradleMarkerAnswers.drop();
+        assertThat(KmpRedirects.dropProcessMemo()).isZero();
     }
 
     // --- fixtures ----------------------------------------------------------
