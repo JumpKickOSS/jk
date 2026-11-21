@@ -180,6 +180,11 @@ JumpKick shows you this page's new entries after it updates itself.
   and again when the engine reads the plugin's declarations, so no plugin can put a directory from
   elsewhere on disk into a module's classes, resources, sources or test classpath, or point test JVM
   arguments at a file outside it.
+- **Groovy build-logic scripts compile once.** A `.groovy` script under `.jk/scripts/` was
+  compiled on every run that executed it. Its classes are now cached under
+  `$JK_CACHE_DIR/groovy-scripts/` by the script's content, and a run from the cache never loads the
+  Groovy compiler: about 40% faster and 28% less memory per script on a typical one
+  ([Build logic](build-logic.md#how-groovy-scripts-run)).
 - **A README cannot reach outside the dashboard's Markdown preview.** A Markdown file could write
   the fixed text that marked where a Mermaid diagram goes into an attribute and turn the rest of
   that attribute into markup the sanitizer never saw. Diagrams now go in by an unguessable marker,

@@ -17,7 +17,7 @@ jk self nuke          # jk-owned product dirs (not PATH, not JDKs)
 
 | Tier | Holds | Wipe |
 |------|--------|------|
-| **Cache** (`JK_CACHE_DIR`) | Action index + cache CAS (classes, tests, jars, natives, OCI, stamps, the [code graph](graph.md)'s fragments), and compiled build-logic `.kts` under `kts/` | `jk cache nuke` |
+| **Cache** (`JK_CACHE_DIR`) | Action index + cache CAS (classes, tests, jars, natives, OCI, stamps, the [code graph](graph.md)'s fragments), and compiled build-logic scripts under `kts/` and `groovy-scripts/` | `jk cache nuke` |
 | **Store** (`JK_STORE_DIR`) | Maven-layout `repos/<origin>/` + `.jk` memos (deps, workers) — one tree per repository *origin*, never per name ([Repositories](repositories.md#store-layout-one-tree-per-origin)); `libs.global.toml`, cloned Giter8 catalogs under `templates/`, provisioned build tools under `tools/` (Kotlin, Maven, Gradle, the build-logic `.kts` host). A digest-matching file already in the Maven local repo is used where it is for Maven Central and your `settings.xml` repositories, with only its `.jk` memo here; under `[m2] integration = "share"` their downloads go to the Maven local repo too ([Repositories](repositories.md#sharing-with-maven)). | `jk storage nuke` (does **not** delete `~/.m2`) |
 | **Project `target/`** | This checkout’s outputs | `jk clean` |
 

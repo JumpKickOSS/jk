@@ -76,6 +76,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.BUN, root -> overStoreBudget(root, CacheTree.BUN, "react@19.0.0@@@1/package.json", 2L << 30));
         m.put(CacheTree.YARN, root -> overStoreBudget(root, CacheTree.YARN, "cache/react-npm-19.0.0.zip", 2L << 30));
         m.put(CacheTree.KTS, root -> in(root, CacheTree.KTS, "dead.jar", "x", OLD));
+        m.put(CacheTree.GROOVY_SCRIPTS, root -> in(root, CacheTree.GROOVY_SCRIPTS, "dead.jar", "x", OLD));
         m.put(CacheTree.TOOL_SCRIPTS, root -> subtree(root, CacheTree.TOOL_SCRIPTS, "deadkey", OLD));
         m.put(CacheTree.ENV_READS, root -> in(root, CacheTree.ENV_READS, "dead.reads", "x", OLD));
         // Bookkeeping entries seed a file that must SURVIVE; see the dedicated test below.
@@ -215,6 +216,28 @@ class CacheRetentionCoverageTest {
         Path used = in(root, CacheTree.KTS, "used.jar", "x", Duration.ofDays(29).toMillis());
         Path unused =
                 in(root, CacheTree.KTS, "unused.jar", "x", Duration.ofDays(31).toMillis());
+
+        CacheRetention.sweep(root, new Cas(root), Set.of(), false);
+
+        assertThat(used).exists();
+        assertThat(unused).doesNotExist();
+    }
+
+    /** A compiled Groovy build-logic script ages the same way as a compiled .kts one. */
+    @Test
+    void a_compiled_groovy_script_goes_only_after_a_month_unused(@TempDir Path root) throws IOException {
+        Path used = in(
+                root,
+                CacheTree.GROOVY_SCRIPTS,
+                "used.jar",
+                "x",
+                Duration.ofDays(29).toMillis());
+        Path unused = in(
+                root,
+                CacheTree.GROOVY_SCRIPTS,
+                "unused.jar",
+                "x",
+                Duration.ofDays(31).toMillis());
 
         CacheRetention.sweep(root, new Cas(root), Set.of(), false);
 

@@ -99,6 +99,19 @@ differ in how much else they share — see below.
 Compiled `.java` / `.kt` under `.jk/scripts/` is rejected. Put reusable tools in a
 [plugin](plugins.md).
 
+## How `.groovy` scripts run
+
+Each `.groovy` script runs in a JVM of its own, and each script is **compiled once**. The
+compiled classes are cached under `$JK_CACHE_DIR/groovy-scripts/`, keyed by the script's own bytes
+and the Groovy version, so an unchanged script is not recompiled, not on the next build
+either, and the same script in several modules or checkouts compiles once. A run from the
+cache never loads the Groovy compiler: on a template-copying script with Ant it took about
+0.5 s and 315 MB, against 0.9 s and 440 MB for compiling it every time. A cached script nobody
+has run for 30 days is removed.
+
+Every script keeps its own process and working directory, so a `System.exit` or a heap
+exhausted in one script fails only that script.
+
 ## How `.kts` scripts run
 
 Every `.kts` of a build shares **one** child JVM, and each script is **compiled once**.
@@ -118,7 +131,7 @@ Three consequences worth knowing:
 
 - **A `.kts` that calls `System.exit` (or exhausts the heap) takes the shared host with
   it.** The build fails against that script, and the next script gets a fresh host. Groovy
-  scripts still fork per script, so they keep per-script isolation.
+  scripts run one per process, so they keep per-script isolation.
 - **A `.kts` has no per-script working directory.** Resolve paths from `projectDir`.
 - **A cancelled build cancels its script.** Ctrl-C, or a sibling step's failure, interrupts
   the script in the host; the run reports as cancelled, not as a script failure. A script that

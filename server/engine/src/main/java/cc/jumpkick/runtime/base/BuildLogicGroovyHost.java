@@ -9,9 +9,12 @@ import cc.jumpkick.engine.plugin.PluginProcess;
 import cc.jumpkick.engine.plugin.WorkerAotCache;
 import cc.jumpkick.engine.plugin.WorkerContainment;
 import cc.jumpkick.host.AtomicWrites;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.JkDirs;
+import cc.jumpkick.host.Processes;
+import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
 import cc.jumpkick.model.Coordinate;
@@ -24,6 +27,8 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -33,18 +38,21 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Evaluates project build-logic {@code .groovy} scripts in a forked JVM ({@code groovy.ui.GroovyMain}),
- * one per script, started from a recorded startup cache when jk's own JDK can map one.
+ * Evaluates project build-logic {@code .groovy} scripts in a forked JVM, one per script, started from
+ * a recorded startup cache when jk's own JDK can map one.
  *
- * <p>Groovy is not linked into the engine fat jar — jars are fetched once into the product tool
- * cache. The child process is the isolation boundary: {@code System.exit} / OOM in a script cannot
- * take the engine down. Bindings exposed to scripts:
+ * <p>The fork runs {@link GroovyHostJar}'s runner. A script is compiled once into a jar under {@code
+ * <cache>/groovy-scripts/}, keyed by its bytes and everything its classes depend on, and every later run
+ * loads that jar without loading the Groovy compiler. Groovy is not linked into the engine fat jar;
+ * its jars are fetched once into the product tool cache. The child process is the isolation
+ * boundary: {@code System.exit} / OOM in a script cannot take the engine down. Bindings exposed to
+ * scripts:
  *
  * <ul>
- *   <li>{@code projectDir} — {@link Path} project root
- *   <li>{@code outDir} — {@link Path} action-cached task output
- *   <li>{@code properties} — mutable {@link java.util.Map}{@code <String,Object>}
- *   <li>{@code ant} — {@code groovy.ant.AntBuilder} when groovy-ant + Ant resolve
+ *   <li>{@code projectDir}: {@link Path} project root
+ *   <li>{@code outDir}: {@link Path} action-cached task output
+ *   <li>{@code properties}: mutable {@link java.util.Map}{@code <String,Object>}
+ *   <li>{@code ant}: {@code groovy.ant.AntBuilder} when groovy-ant + Ant resolve
  * </ul>
  *
  * <p>{@code @Grab} is available when Ivy is on the child classpath (Grape lives in groovy.jar).
@@ -76,64 +84,91 @@ public final class BuildLogicGroovyHost {
             Path script, Path projectDir, Path outDir, BooleanSupplier cancelled, Supplier<RepoGroup> repos)
             throws Exception {
         Path[] jars = ensureJars(repos);
-        Path wrapper = Files.createTempFile("jk-logic-", ".groovy");
-        try {
-            Files.writeString(wrapper, wrap(script, projectDir, outDir), StandardCharsets.UTF_8);
-            String javaBin = JdkFingerprint.java(JavaHomes.runningJavaHome()).toString();
-            List<Path> cp = new ArrayList<>(jars.length);
-            for (Path jar : jars) cp.add(jar);
-            String classpath = Classpaths.join(cp);
-            List<String> cmd = new ArrayList<>();
-            cmd.add(javaBin);
-            // The fork is most of a script's cost: a JVM, Groovy and Ant loading from cold, ~0.6 s
-            // against ~0.3 s from a startup cache. Each script keeps its own process and working
-            // directory; only the classes it starts with come mapped.
-            cmd.addAll(WorkerAotCache.flags(
-                    AOT_TOOL,
-                    JavaHomes.runningJavaHome(),
-                    classpath,
-                    List.of(),
-                    (aotOut, scratch) -> trainerCommand(javaBin, classpath, aotOut, scratch)));
-            cmd.add("-cp");
-            cmd.add(classpath);
-            cmd.add("groovy.ui.GroovyMain");
-            cmd.add(wrapper.toString());
-            ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
-            pb.redirectErrorStream(true);
-            pb.directory(projectDir.toFile());
-            Process p = JobWorkers.start(pb);
-            // A script that reads System.in reads end-of-input rather than waiting on an open pipe.
-            PluginProcess.closeStdin(p);
-            // Drained on a thread of its own so this one can watch the cancel probe between
-            // polls; a blocking read would see the cancel only once the script chose to exit.
-            ByteArrayOutputStream captured = new ByteArrayOutputStream();
-            Thread pump = startPump(p, captured);
-            while (!p.waitFor(CANCEL_POLL_MS, TimeUnit.MILLISECONDS)) {
-                if (cancelled.getAsBoolean()) {
-                    p.destroyForcibly();
-                    p.waitFor();
-                    pump.join();
-                    throw new IllegalStateException(
-                            "[build] logic: " + script.getFileName() + " cancelled with its build");
-                }
+        String classpath = childClasspath(jars);
+        Path compiled = compiledJar(script);
+        touch(compiled);
+        String javaBin = JdkFingerprint.java(JavaHomes.runningJavaHome()).toString();
+        List<String> cmd = new ArrayList<>();
+        cmd.add(javaBin);
+        // Once a script's classes are cached, the fork is most of its cost: a JVM, Groovy and Ant
+        // loading. A startup cache maps the classes it starts with.
+        cmd.addAll(WorkerAotCache.flags(
+                AOT_TOOL,
+                JavaHomes.runningJavaHome(),
+                classpath,
+                List.of(),
+                (aotOut, scratch) -> trainerCommand(javaBin, classpath, aotOut, scratch)));
+        cmd.addAll(List.of("-cp", classpath, GroovyHostJar.MAIN, "run"));
+        cmd.add(script.toAbsolutePath().normalize().toString());
+        cmd.add(compiled.toString());
+        cmd.add(projectDir.toAbsolutePath().normalize().toString());
+        cmd.add(outDir.toAbsolutePath().normalize().toString());
+        ProcessBuilder pb = JavaHomes.underJdk(new ProcessBuilder(cmd), JavaHomes.runningJavaHome());
+        pb.redirectErrorStream(true);
+        pb.directory(projectDir.toFile());
+        Process p = JobWorkers.start(pb);
+        // A script that reads System.in reads end-of-input rather than waiting on an open pipe.
+        PluginProcess.closeStdin(p);
+        // Drained on a thread of its own so this one can watch the cancel probe between
+        // polls; a blocking read would see the cancel only once the script chose to exit.
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        Thread pump = startPump(p, captured);
+        while (!p.waitFor(CANCEL_POLL_MS, TimeUnit.MILLISECONDS)) {
+            if (cancelled.getAsBoolean()) {
+                p.destroyForcibly();
+                p.waitFor();
+                pump.join();
+                throw new IllegalStateException("[build] logic: " + script.getFileName() + " cancelled with its build");
             }
-            pump.join();
-            String log = captured.toString(StandardCharsets.UTF_8);
-            int exit = p.exitValue();
-            if (exit != 0) {
-                // The compiler dump is the message, verbatim — its first error line already names
-                // file and line. A kernel memory kill is named even when the dump is empty.
-                String detail = log.strip();
-                if (WorkerContainment.killedForMemory(exit)) {
-                    throw new IllegalStateException(
-                            detail.isEmpty() ? "groovy killed for memory" : "groovy killed for memory\n" + detail);
-                }
+        }
+        pump.join();
+        String log = captured.toString(StandardCharsets.UTF_8);
+        int exit = p.exitValue();
+        if (exit != 0) {
+            // The compiler dump is the message, verbatim: its first error line already names file
+            // and line. A kernel memory kill is named even when the dump is empty.
+            String detail = log.strip();
+            if (WorkerContainment.killedForMemory(exit)) {
                 throw new IllegalStateException(
-                        detail.isEmpty() ? "groovy exited " + exit + " with no output" : detail);
+                        detail.isEmpty() ? "groovy killed for memory" : "groovy killed for memory\n" + detail);
             }
-            return log;
-        } finally {
-            Files.deleteIfExists(wrapper);
+            throw new IllegalStateException(detail.isEmpty() ? "groovy exited " + exit + " with no output" : detail);
+        }
+        return log;
+    }
+
+    /** The pinned jars, then the runner compiled against them. */
+    static String childClasspath(Path[] jars) throws IOException {
+        List<Path> cp = new ArrayList<>(List.of(jars));
+        cp.add(GroovyHostJar.ensure(jars[0]));
+        return Classpaths.join(cp);
+    }
+
+    /**
+     * Where {@code script}'s compiled jar lives: {@code <cache>/groovy-scripts/<key>.jar}. The key is the
+     * script's bytes, the pinned jars and the runner (which carries the Groovy version and the JDK
+     * release); never a path, so every checkout of the same script shares one entry.
+     */
+    static Path compiledJar(Path script) throws IOException {
+        return CacheTree.GROOVY_SCRIPTS.under(JkDirs.cache()).resolve(scriptKey(Files.readAllBytes(script)) + ".jar");
+    }
+
+    /** The cache key of a script whose bytes are {@code bytes}. */
+    static String scriptKey(byte[] bytes) throws IOException {
+        StringBuilder key =
+                new StringBuilder("script:").append(Hashing.sha256Hex(bytes)).append('\n');
+        for (PinnedJar jar : PINNED_JARS)
+            key.append("jar:").append(jar.sha256()).append('\n');
+        key.append("host:").append(GroovyHostJar.hash()).append('\n');
+        return Hashing.sha256Hex(key.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Stamps a cached jar as used, which is the age the cache retention reads. Never throws. */
+    static void touch(Path jar) {
+        try {
+            if (Files.isRegularFile(jar)) Files.setLastModifiedTime(jar, FileTime.fromMillis(Clock.SYSTEM.millis()));
+        } catch (IOException ignored) {
+            // A missed stamp costs one recompile a month early.
         }
     }
 
@@ -142,8 +177,8 @@ public final class BuildLogicGroovyHost {
 
     /**
      * What the startup cache is recorded from: never a user's script, which may write anywhere, but
-     * a synthetic one through the same wrapper and bindings, touching what a build-logic script
-     * usually does — a tree walk, text read and written, closures and strings, and Ant.
+     * a synthetic one through the same runner and bindings, touching what a build-logic script
+     * usually does: a tree walk, text read and written, closures and strings, and Ant.
      */
     static final String TRAINING_SCRIPT = """
             def templates = projectDir.resolve('src/main/templates')
@@ -158,17 +193,39 @@ public final class BuildLogicGroovyHost {
             println "trained ${properties.trained}"
             """;
 
-    /** The trainer: {@link #TRAINING_SCRIPT} through {@link #wrap}, recording into {@code aotOut}. */
+    /** How long compiling the training script may take before the recording is abandoned. */
+    private static final Duration TRAINING_COMPILE_TIMEOUT = Duration.ofSeconds(120);
+
+    /**
+     * The trainer: {@link #TRAINING_SCRIPT} through the runner, recording into {@code aotOut}. A fork
+     * of its own compiles the script first, so the recording sees a cache hit, the common run, and
+     * maps no compiler class.
+     */
     static List<String> trainerCommand(String javaBin, String classpath, Path aotOut, Path scratch) throws IOException {
         Path project = scratch.resolve("project");
         Path templates = Files.createDirectories(project.resolve("src/main/templates/demo"));
         Files.writeString(templates.resolve("Version.java"), "class Version { String v = \"${project.version}\"; }\n");
         Path script = scratch.resolve("train.groovy");
         Files.writeString(script, TRAINING_SCRIPT, StandardCharsets.UTF_8);
-        Path wrapper = scratch.resolve("wrapper.groovy");
-        Files.writeString(wrapper, wrap(script, project, scratch.resolve("out")), StandardCharsets.UTF_8);
+        Path jar = scratch.resolve("train.jar");
+        Processes.Captured compiled = Processes.capture(
+                List.of(javaBin, "-cp", classpath, GroovyHostJar.MAIN, "compile", script.toString(), jar.toString()),
+                TRAINING_COMPILE_TIMEOUT);
+        if (compiled.timedOut() || compiled.exit() != 0) {
+            throw new IOException("compiling the Groovy training script failed: "
+                    + compiled.output().strip());
+        }
         return List.of(
-                javaBin, "-XX:AOTCacheOutput=" + aotOut, "-cp", classpath, "groovy.ui.GroovyMain", wrapper.toString());
+                javaBin,
+                "-XX:AOTCacheOutput=" + aotOut,
+                "-cp",
+                classpath,
+                GroovyHostJar.MAIN,
+                "run",
+                script.toString(),
+                jar.toString(),
+                project.toString(),
+                scratch.resolve("out").toString());
     }
 
     /**
@@ -191,30 +248,6 @@ public final class BuildLogicGroovyHost {
      * Child-side driver: bind the same variables {@code GroovyShell} used to, then evaluate the
      * user file so {@code @Grab} / imports on that file stay intact.
      */
-    static String wrap(Path script, Path projectDir, Path outDir) {
-        return """
-                import java.nio.file.Path
-                def binding = new groovy.lang.Binding()
-                binding.setVariable('projectDir', Path.of(%s))
-                binding.setVariable('outDir', Path.of(%s))
-                binding.setVariable('properties', new java.util.HashMap())
-                try {
-                  binding.setVariable('ant', new groovy.ant.AntBuilder())
-                } catch (Throwable ignored) {
-                  // no Ant on the child's classpath: the script has no `ant` binding
-                }
-                new groovy.lang.GroovyShell(binding).evaluate(new File(%s))
-                """.formatted(
-                        groovyString(projectDir.toAbsolutePath().normalize().toString()),
-                        groovyString(outDir.toAbsolutePath().normalize().toString()),
-                        groovyString(script.toAbsolutePath().normalize().toString()));
-    }
-
-    /** Groovy single-quoted string literal. */
-    static String groovyString(String s) {
-        return "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'";
-    }
-
     /** One child-classpath jar: Maven coordinate plus the sha256 jk pins for it. */
     record PinnedJar(String group, String artifact, String version, String sha256) {
         Coordinate coordinate() {

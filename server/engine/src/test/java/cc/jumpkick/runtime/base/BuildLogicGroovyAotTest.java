@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.JvmOptions;
-import cc.jumpkick.host.Classpaths;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.jdk.JdkFingerprint;
@@ -13,7 +12,6 @@ import cc.jumpkick.runtime.RepoGroupBuilder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,10 +21,10 @@ import org.junit.jupiter.api.io.TempDir;
 class BuildLogicGroovyAotTest {
 
     @Test
-    void the_trainer_runs_its_synthetic_script_through_the_wrapper_and_records_a_cache(@TempDir Path dir)
+    void the_trainer_runs_its_synthetic_script_through_the_runner_and_records_a_cache(@TempDir Path dir)
             throws Exception {
         Path[] jars = BuildLogicGroovyHost.ensureJars(() -> RepoGroupBuilder.buildDefault(JkStores.storeCas()));
-        String classpath = Classpaths.join(List.of(jars));
+        String classpath = BuildLogicGroovyHost.childClasspath(jars);
         Path home = JavaHomes.runningJavaHome();
         String java = JdkFingerprint.java(home).toString();
         Path aot = dir.resolve("groovy.aot");
@@ -40,6 +38,9 @@ class BuildLogicGroovyAotTest {
         assertThat(log).contains("trained 12");
         assertThat(scratch.resolve("out/demo/Version.java")).content().contains("1.2");
         assertThat(scratch.resolve("out/ant")).isDirectory();
+        assertThat(scratch.resolve("train.jar"))
+                .as("compiled before the recording")
+                .isNotEmptyFile();
         if (JvmOptions.hostFeature(home) >= 25) {
             assertThat(aot).as("JDK 25 records the cache at exit").isNotEmptyFile();
         }

@@ -3,10 +3,10 @@ package cc.jumpkick.runtime.base;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.host.Hashing;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -18,38 +18,31 @@ import org.junit.jupiter.api.io.TempDir;
 class BuildLogicGroovyHostTest {
 
     @Test
-    void wrap_points_the_child_at_the_user_script_with_escaped_paths(@TempDir Path dir) throws Exception {
-        Path script = dir.resolve("after-resources.groovy");
-        Files.writeString(script, "outDir.resolve('x.txt').toFile().text = 'ok'\n");
-        Path project = dir.resolve("proj");
-        Path out = dir.resolve("o");
-        String wrapped = BuildLogicGroovyHost.wrap(script, project, out);
-        assertTrue(wrapped.contains("setVariable('projectDir'"));
-        assertTrue(wrapped.contains("setVariable('outDir'"));
-        assertTrue(wrapped.contains("setVariable('properties'"));
-        assertTrue(wrapped.contains("GroovyShell"));
-        assertTrue(wrapped.contains(BuildLogicGroovyHost.groovyString(
-                script.toAbsolutePath().normalize().toString())));
-        assertTrue(wrapped.contains(BuildLogicGroovyHost.groovyString(
-                project.toAbsolutePath().normalize().toString())));
+    void a_scripts_key_is_its_bytes_and_moves_with_them() throws Exception {
+        byte[] a = "println 'a'\n".getBytes(StandardCharsets.UTF_8);
+        byte[] b = "println 'b'\n".getBytes(StandardCharsets.UTF_8);
+        assertThat(BuildLogicGroovyHost.scriptKey(a)).isEqualTo(BuildLogicGroovyHost.scriptKey(a.clone()));
+        assertThat(BuildLogicGroovyHost.scriptKey(a)).isNotEqualTo(BuildLogicGroovyHost.scriptKey(b));
     }
 
-    /**
-     * The wrapper runs in a child JVM whose classpath is Groovy and Ant alone; a call into jk's
-     * own logging there is an unresolved symbol, and the catch that hides a missing Ant would
-     * itself be the script's failure.
-     */
+    /** The key holds no path, so two checkouts of one script share its compiled jar. */
     @Test
-    void the_wrapper_names_nothing_the_child_cannot_resolve(@TempDir Path dir) {
-        String wrapped = BuildLogicGroovyHost.wrap(dir.resolve("s.groovy"), dir.resolve("p"), dir.resolve("o"));
-        assertThat(wrapped).doesNotContain("Log.");
-        assertThat(wrapped).contains("catch (Throwable ignored)");
+    void the_same_script_in_two_checkouts_shares_one_compiled_jar(@TempDir Path dir) throws Exception {
+        Path one = Files.writeString(
+                Files.createDirectories(dir.resolve("one/.jk/scripts")).resolve("before-compile.groovy"),
+                "println 1\n");
+        Path two = Files.writeString(
+                Files.createDirectories(dir.resolve("two/.jk/scripts")).resolve("before-compile.groovy"),
+                "println 1\n");
+        assertThat(BuildLogicGroovyHost.compiledJar(one)).isEqualTo(BuildLogicGroovyHost.compiledJar(two));
     }
 
+    /** The runner's child classpath is Groovy and Ant alone: its source names nothing of jk's. */
     @Test
-    void groovyString_escapes_quotes_and_backslashes() {
-        assertTrue(BuildLogicGroovyHost.groovyString("a'b\\c").contains("\\'"));
-        assertTrue(BuildLogicGroovyHost.groovyString("a'b\\c").contains("\\\\"));
+    void the_runner_names_nothing_the_child_cannot_resolve() throws Exception {
+        String source = GroovyHostJar.source();
+        assertThat(source).doesNotContain("cc.jumpkick").doesNotContain("Log.");
+        assertThat(source).contains("catch (Throwable noAnt)");
     }
 
     // The child classpath jars are code the user's script runs under, so bytes are trusted only

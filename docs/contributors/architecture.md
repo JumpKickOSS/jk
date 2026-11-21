@@ -1002,7 +1002,11 @@ to residual so both end on time with `R → 0`. See [progress-contract.md](progr
 only `.jk/scripts/` next to a module's `jk.toml` is build logic (overridable via `[build].logic`):
 `before-compile.groovy` / `.kts` and sibling stems. Scripts left at the top of `.jk/` do not run;
 the build names them once (`BuildLogicToml.strayScripts`).
-`.kts` wins a same-stem `.groovy`. Groovy scripts fork one process per script. Every `.kts`
+`.kts` wins a same-stem `.groovy`. Groovy scripts fork one process per script, running
+`JkGroovyHost` (a Java resource that `GroovyHostJar` compiles once with this JDK's javac against
+the pinned `groovy.jar`): a script compiles once into `cache/groovy-scripts/<key>.jar`, keyed by its
+bytes, the pinned jars and the runner, and a run that finds the jar never loads the parser or
+the bytecode generator. Every `.kts`
 runs in one resident child JVM per engine (`KtsSession` ↔ `JkKtsHost.kt`, a line protocol:
 requests over a `WorkerCommands` loopback socket, replies on the host's stdout; its stdin is
 closed, so a script that reads `System.in` reads end-of-input): requests are serialised on one lock, a script compiles once into

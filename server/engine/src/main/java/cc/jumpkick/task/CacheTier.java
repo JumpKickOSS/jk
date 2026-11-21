@@ -100,9 +100,9 @@ public final class CacheTier {
             // The same for bun's and Yarn's caches: their own layouts, no use clock jk can read.
             case BUN, YARN -> Bound.files(null, Bound.resetOverBytes(2L * 1024 * 1024 * 1024));
 
-            // One self-contained jar per script content hash, stamped by the kts host on every hit, so
-            // mtime is a use clock: a script nobody has run for a month goes, and costs one recompile.
-            case KTS -> Bound.files(Duration.ofDays(30), Bound.countCap(256));
+            // One self-contained jar per script key, stamped by every run that uses it, so mtime is a
+            // use clock: a script nobody has run for a month goes, and costs one recompile.
+            case KTS, GROOVY_SCRIPTS -> Bound.files(Duration.ofDays(30), Bound.countCap(256));
 
             // One classes tree per script key, its `.used` stamped on every run, so the newest mtime
             // in a tree is its last use: a script nobody has run for a month goes, and costs one
