@@ -25,7 +25,8 @@ import org.jspecify.annotations.Nullable;
  * Peak heap of a worker. The GC log's largest before-occupancy ({@code 128M->40M}) misses a spike
  * between collections, so the process high-water RSS minus {@link #NON_HEAP_RSS} is kept too, and
  * the larger one is the peak. The high-water resident set is recorded as well: it is what {@link
- * LearnedHeaps#price} leases the next run of the worker at.
+ * LearnedHeaps#price} leases the next run of the worker at. Where the worker ran in its own group,
+ * that group's {@link WorkerContainment#residentPeak} counts the memory its children held too.
  */
 public final class WorkerGc {
 
@@ -189,6 +190,7 @@ public final class WorkerGc {
         private final @Nullable LearnedHeaps heaps;
         private final AtomicBoolean done = new AtomicBoolean();
         private final AtomicLong rssPeak = new AtomicLong();
+        private volatile long pid = -1L;
         private @Nullable Thread sampler;
 
         private Watch(
@@ -211,6 +213,7 @@ public final class WorkerGc {
         void observe(Process process) {
             if (process == null || log == null || key == null) return;
             long pid = process.pid();
+            this.pid = pid;
             sampler = SessionContext.startVirtual("jk-worker-rss", () -> sample(process, pid));
         }
 
@@ -250,7 +253,8 @@ public final class WorkerGc {
                 if (rss > NON_HEAP_RSS) fromRss = rss - NON_HEAP_RSS;
                 long seen = Math.max(peak(log), fromRss);
                 if (seen > 0 && heaps != null) heaps.note(key, seen);
-                if (heaps != null) heaps.noteResident(key, rss);
+                long group = pid > 0 ? WorkerContainment.residentPeak(pid) : 0L;
+                if (heaps != null) heaps.noteResident(key, Math.max(rss, group));
             } finally {
                 try {
                     Files.deleteIfExists(log);

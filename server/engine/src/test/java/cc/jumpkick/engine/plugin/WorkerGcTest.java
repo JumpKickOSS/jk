@@ -8,8 +8,13 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
 /** The GC log's largest before-occupancy, not region counts. */
 class WorkerGcTest {
@@ -54,5 +59,43 @@ class WorkerGcTest {
         assertThat(old).doesNotExist();
         assertThat(fresh).exists();
         assertThat(other).exists();
+    }
+
+    /**
+     * A worker's own group counts what its children held. The resident peak it teaches is that
+     * group's peak less its page cache, not the worker's own high-water mark alone.
+     */
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    @ResourceLock("jk-worker-containment")
+    void a_worker_teaches_the_anonymous_peak_of_its_own_group(@TempDir Path dir) throws Exception {
+        long mib = 1024L * 1024L;
+        Path workers = Files.createDirectories(dir.resolve("workers"));
+        LearnedHeaps heaps = new LearnedHeaps(dir.resolve("heaps"));
+        HeapScope.Key key = new HeapScope.Key(dir.resolve("ws"), "g:app", HeapScope.TEST, 25);
+        List<String> command = List.of("/opt/jdk/bin/java", "-cp", "app.jar", "app.Main");
+        WorkerGc.Watch watch =
+                HeapScope.call(key, () -> WorkerGc.watch(command, JvmOptions.HeapChoice.inspect(command), heaps));
+        Process worker = new ProcessBuilder("sleep", "30").start();
+        Path own = workers.resolve(WorkerContainment.CHILD_PREFIX + worker.pid());
+        try {
+            Files.createDirectories(own);
+            Files.writeString(own.resolve("memory.max"), "max\n");
+            Files.writeString(own.resolve("cgroup.procs"), "");
+            WorkerContainment.armForTest(workers, 8192 * mib, 0, true);
+            WorkerContainment.contain(worker, 4096 * mib, "test JVM");
+            watch.observe(worker);
+            worker.destroyForcibly();
+            worker.waitFor(5, TimeUnit.SECONDS);
+            Files.writeString(own.resolve("memory.peak"), (1024 * mib) + "\n");
+            Files.writeString(own.resolve("memory.stat"), "anon 0\nfile " + (256 * mib) + "\n");
+            watch.finish();
+        } finally {
+            worker.destroyForcibly();
+            WorkerContainment.resetForTest();
+        }
+        assertThat(heaps.price(key))
+                .as("768 MiB of anonymous peak, leased at 1.25x")
+                .isEqualTo(960 * mib);
     }
 }

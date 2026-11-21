@@ -65,6 +65,9 @@ public final class WorkerContainment {
     /** Cap kills {@link #memoryKill} has not yet been asked about; older ones are dropped. */
     private static final int MAX_PENDING_CAP_KILLS = 16;
 
+    /** Resident peaks {@link #residentPeak} has not yet been asked about; older ones are dropped. */
+    private static final int MAX_PENDING_PEAKS = 64;
+
     /**
      * Set by the client when this process was not started in a delegated scope. Appended to a
      * score-only reason. Not a user setting; {@code JK_ENGINE_SCOPE=0} is the switch.
@@ -439,9 +442,25 @@ public final class WorkerContainment {
     }
 
     /**
+     * The anonymous peak of the exited worker {@code pid}'s own group, its children's memory
+     * included: {@code memory.peak} less the page cache {@code memory.stat} still charges it. {@code
+     * 0} when the worker had no own group or the kernel keeps no peak. One call consumes it.
+     */
+    public static long residentPeak(long pid) {
+        State s = state;
+        if (s == null || !s.perWorker) return 0L;
+        synchronized (s) {
+            sweep(s);
+            Long peak = s.residentPeaks.remove(pid);
+            return peak == null ? 0L : peak;
+        }
+    }
+
+    /**
      * Settle the groups of workers that have exited. A group whose {@code memory.events} counts an
-     * {@code oom_kill} is a cap kill: logged, and kept by pid for {@link #memoryKill}. An empty group is
-     * removed; one a lingering descendant still occupies is tried again on the next sweep.
+     * {@code oom_kill} is a cap kill: logged, and kept by pid for {@link #memoryKill}. Its anonymous
+     * peak is kept by pid for {@link #residentPeak}. An empty group is removed; one a lingering
+     * descendant still occupies is tried again on the next sweep.
      */
     public static void sweep() {
         State s = state;
@@ -461,6 +480,14 @@ public final class WorkerContainment {
             if (ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)) continue;
             if (!child.settled) {
                 child.settled = true;
+                long peak = anonymousPeak(child.dir);
+                if (peak > 0) {
+                    if (s.residentPeaks.size() >= MAX_PENDING_PEAKS) {
+                        s.residentPeaks.remove(
+                                s.residentPeaks.keySet().iterator().next());
+                    }
+                    s.residentPeaks.put(pid, peak);
+                }
                 long kills = readCounter(child.dir.resolve("memory.events"), "oom_kill");
                 if (kills > 0) {
                     // memory.events is hierarchical: the same kill shows on workers, already counted here.
@@ -479,6 +506,18 @@ public final class WorkerContainment {
                 Log.debug("worker containment rmdir " + child.dir + ": " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * {@code memory.peak} of {@code group} less its {@code file} bytes in {@code memory.stat}; {@code
+     * -1} when the kernel keeps no peak. Raw {@code memory.peak} counts page cache, which a worker
+     * reading many jars runs up without holding it.
+     */
+    private static long anonymousPeak(Path group) {
+        long peak = OwnCgroup.limit(readQuiet(group.resolve("memory.peak")));
+        if (peak <= 0) return -1L;
+        long file = readCounter(group.resolve("memory.stat"), "file");
+        return Math.max(0L, peak - Math.max(0L, file));
     }
 
     /**
@@ -754,6 +793,9 @@ public final class WorkerContainment {
         /** The cap of each worker killed at it, by pid, oldest first, not yet asked about. */
         final Map<Long, Long> capKills = new LinkedHashMap<>();
 
+        /** The anonymous peak of each settled worker group, by pid, oldest first, not yet asked about. */
+        final Map<Long, Long> residentPeaks = new LinkedHashMap<>();
+
         private State(
                 Mode mode, String reason, long max, @Nullable Path workers, long oomKills, BudgetSource budgetSource) {
             this.mode = mode;
@@ -792,7 +834,7 @@ public final class WorkerContainment {
         }
     }
 
-    /** A worker's own group. {@code settled}: its kill count was read after the worker exited. */
+    /** A worker's own group. {@code settled}: its kill count and peak were read after the worker exited. */
     private static final class Child {
         final Path dir;
         final long capBytes;

@@ -771,7 +771,8 @@ format` keeps one row per project, not per module. The record is
 one file per project, `<state>/worker-heaps/<project-id>` (the same project id as the build
 history under `~/.jk/state`). It is not in the source tree. Delete that file to forget every
 peak and go back to the first heap. Each row also keeps the worker's last ten resident-set
-peaks (a native-image build's include its builder JVM), which price its lease; each kind's
+peaks (a native-image build's include its builder JVM; on Linux, where a worker runs in its own
+cgroup, the memory its child processes held, page cache left out), which price its lease; each kind's
 peaks across every project are kept in `<state>/worker-heaps/host`, which prices a module's
 first run.
 

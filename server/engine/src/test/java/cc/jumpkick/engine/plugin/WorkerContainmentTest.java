@@ -269,6 +269,38 @@ class WorkerContainmentTest {
     }
 
     @Test
+    @EnabledOnOs(OS.LINUX)
+    void a_sweep_keeps_an_exited_workers_anonymous_peak_until_it_is_asked_for() throws Exception {
+        Path workers = Files.createDirectories(root.resolve("workers"));
+        Process child = new ProcessBuilder("sleep", "30").start();
+        Path own = workers.resolve(WorkerContainment.CHILD_PREFIX + child.pid());
+        try {
+            Files.createDirectories(own);
+            Files.writeString(own.resolve("memory.max"), "max\n");
+            Files.writeString(own.resolve("cgroup.procs"), "");
+            WorkerContainment.armForTest(workers, 1000, 0, true);
+            WorkerContainment.contain(child, 750, "test JVM");
+            Files.writeString(own.resolve("memory.peak"), "600\n");
+            Files.writeString(own.resolve("memory.stat"), "anon 0\nfile 200\nfile_mapped 50\n");
+            assertThat(WorkerContainment.residentPeak(child.pid()))
+                    .as("a live worker's group is not settled")
+                    .isZero();
+            child.destroyForcibly();
+            child.waitFor(5, TimeUnit.SECONDS);
+
+            WorkerContainment.sweep();
+            assertThat(WorkerContainment.residentPeak(child.pid())).isEqualTo(400);
+            assertThat(WorkerContainment.residentPeak(child.pid()))
+                    .as("one call consumes it")
+                    .isZero();
+            assertThat(WorkerContainment.residentPeak(NOT_A_WORKER)).isZero();
+        } finally {
+            child.destroyForcibly();
+            WorkerContainment.resetForTest();
+        }
+    }
+
+    @Test
     void per_worker_groups_need_an_empty_workers_group() throws Exception {
         Path workers = root.resolve("workers");
         Files.createDirectories(workers);
