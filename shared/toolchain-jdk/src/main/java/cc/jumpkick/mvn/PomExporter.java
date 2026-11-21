@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.mvn;
 
+import static cc.jumpkick.compat.ExportTarget.MAVEN;
+
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
@@ -85,7 +86,7 @@ public final class PomExporter {
                 report);
         appendDependencies(sb, p, jkBuild.dependencies(), siblings, locked, report);
         appendBuild(sb, jkBuild, layout, locked, report);
-        warnAboutDroppedConcerns(jkBuild, report);
+        MAVEN.warnDropped(jkBuild, report);
 
         sb.append("</project>\n");
         return new Result(sb.toString(), report.build());
@@ -152,9 +153,9 @@ public final class PomExporter {
         sb.append('\n'); // export POM separates sections with a blank line (publish POM does not)
         List<Dependency> mappable = new ArrayList<>(managed.size());
         for (Dependency d : managed) {
-            if (!warnIfUnmappable(d, report)) mappable.add(d);
+            if (!MAVEN.dropped(d, report)) mappable.add(d);
         }
-        PomXml.appendManagedDependencies(sb, platforms, d -> resolveVersion(d, locked, report), mappable);
+        PomXml.appendManagedDependencies(sb, platforms, d -> MAVEN.version(d, locked, report), mappable);
     }
 
     private static void appendDependencies(
@@ -180,49 +181,16 @@ public final class PomExporter {
         sb.append("  <dependencies>\n");
         for (Scope s : order) {
             for (Dependency d : deps.of(s)) {
-                if (warnIfUnmappable(d, report)) continue;
+                if (MAVEN.dropped(d, report)) continue;
                 String version = siblings.contains(d.module())
                                 && d.version() instanceof VersionSelector.Exact e
                                 && e.version().equals(p.version())
                         ? "${project.version}"
-                        : resolveVersion(d, locked, report);
+                        : MAVEN.version(d, locked, report);
                 PomXml.appendDependency(sb, d, version, PomXml.mavenScope(s));
             }
         }
         sb.append("  </dependencies>\n");
-    }
-
-    /** Git / content-addressed deps and a workspace edge that names nothing have no Maven equivalent — warn and skip. */
-    private static boolean warnIfUnmappable(Dependency d, ImportReport.Builder report) {
-        if (d.isWorkspace()) {
-            report.warning(d.workspaceName() + ": no workspace member or shared dependency; dropped");
-            return true;
-        }
-        if (d.isGit()) {
-            report.warning(d.module() + ": git source dropped; jk install it, then add a <dependency>");
-            return true;
-        }
-        if (d.isPath()) {
-            report.warning(Objects.requireNonNull(d.pathSource()).rawPath()
-                    + ": path dependency dropped; jk install it, then add a <dependency>");
-            return true;
-        }
-        if (d.isFile()) {
-            report.warning(d.module() + ": sha256 file dependency dropped");
-            return true;
-        }
-        return false;
-    }
-
-    /** Locked exact version when known, else the collapsed selector (with a warning). */
-    private static String resolveVersion(Dependency d, Map<String, String> locked, ImportReport.Builder report) {
-        // Lock rows key on the full package id (g:a:type:classifier) — packageKey() hits both
-        // the plain jar (g:a:jar:) and a tests-kind dep (g:a:jar:tests). Bare GA stays as a
-        // fallback for hand-built maps.
-        String fromLock = locked.get(d.packageKey());
-        if (fromLock == null || fromLock.isBlank()) fromLock = locked.get(d.module());
-        if (fromLock != null && !fromLock.isBlank()) return fromLock;
-        return extractVersion(d.version(), d.module(), report);
     }
 
     // Plugin coordinates baked into exported POMs — bump as upstreams release.
@@ -283,7 +251,7 @@ public final class PomExporter {
     }
 
     private static void appendKotlinPlugin(StringBuilder sb, Project p, ImportReport.Builder report) {
-        String ver = extractVersion(Objects.requireNonNull(p.kotlin()), "kotlin", report);
+        String ver = MAVEN.version(Objects.requireNonNull(p.kotlin()), "kotlin", report);
         sb.append("      <plugin>\n");
         sb.append("        <groupId>org.jetbrains.kotlin</groupId>\n");
         sb.append("        <artifactId>kotlin-maven-plugin</artifactId>\n");
@@ -364,7 +332,7 @@ public final class PomExporter {
                     .append("</artifactId>\n");
             sb.append(indent)
                     .append("    <version>")
-                    .append(PomXml.escape(resolveVersion(d, locked, report)))
+                    .append(PomXml.escape(MAVEN.version(d, locked, report)))
                     .append("</version>\n");
             sb.append(indent).append("  </path>\n");
         }
@@ -445,53 +413,5 @@ public final class PomExporter {
                     .append("</mainClass></configuration>\n");
         }
         sb.append("      </plugin>\n");
-    }
-
-    private static void warnAboutDroppedConcerns(JkBuild jkBuild, ImportReport.Builder report) {
-        if (!jkBuild.features().isEmpty()) {
-            report.warning("[features] dropped");
-        }
-        if (jkBuild.profiles() != null && !jkBuild.profiles().byName().isEmpty()) {
-            report.warning("[profiles] dropped");
-        }
-        for (Scope s : new Scope[] {Scope.DEV, Scope.TEST_DEV}) {
-            if (!jkBuild.dependencies().of(s).isEmpty()) report.warning("[" + s.tomlSection() + "] dropped");
-        }
-        BuildBlock.War war = jkBuild.build().war();
-        if (war != null && (war.name() != null || !BuildBlock.War.DEFAULT_WEBAPP.equals(war.webapp()))) {
-            report.warning("[war] name and webapp dropped; the war plugin reads " + BuildBlock.War.DEFAULT_WEBAPP);
-        }
-    }
-
-    /**
-     * Extract a Maven-compatible version string from a {@link VersionSelector}. Maven publishes exact
-     * pins; non-exact selectors collapse to their version with a fidelity warning.
-     */
-    private static String extractVersion(VersionSelector v, String module, ImportReport.Builder report) {
-        return switch (v) {
-            case VersionSelector.Exact e -> e.version();
-            case VersionSelector.Caret c -> {
-                report.warning(module + ": ^" + c.version() + " pinned to " + c.version());
-                yield c.version();
-            }
-            case VersionSelector.Tilde t -> {
-                report.warning(module + ": ~" + t.version() + " pinned to " + t.version());
-                yield t.version();
-            }
-            case VersionSelector.Range r -> {
-                // jk range expressions usually look enough like Maven ranges to pass through,
-                // but emit a warning so the user reviews.
-                report.warning(module + ": range " + r.raw() + " written as is; check Maven's syntax");
-                yield r.raw();
-            }
-            case VersionSelector.Latest l -> {
-                report.warning(module + ": latest written as LATEST, which Maven 3 deprecates");
-                yield "LATEST";
-            }
-            case VersionSelector.Snapshot sn -> {
-                report.warning(module + ": snapshot written as LATEST, which Maven 3 deprecates");
-                yield "LATEST";
-            }
-        };
     }
 }

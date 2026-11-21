@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.gradle;
 
+import static cc.jumpkick.compat.ExportTarget.GRADLE;
+
 import cc.jumpkick.compat.ImportReport;
-import cc.jumpkick.model.BuildBlock;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Layout;
@@ -142,7 +143,7 @@ public final class GradleExporter {
         sb.append(jk.dependencies().of(Scope.EXPORT).isEmpty() ? "    java\n" : "    `java-library`\n");
         if (kotlin) {
             sb.append("    kotlin(\"jvm\") version \"")
-                    .append(kEsc(extractVersion(Objects.requireNonNull(kotlinVersion), "kotlin", report)))
+                    .append(kEsc(GRADLE.version(Objects.requireNonNull(kotlinVersion), "kotlin", report)))
                     .append("\"\n");
         }
         if (jk.build().war() != null) sb.append("    war\n");
@@ -171,7 +172,7 @@ public final class GradleExporter {
                     .append("\"\n}\n");
         }
         appendManifest(sb, jk.manifest());
-        warnDropped(jk, report);
+        GRADLE.warnDropped(jk, report);
         return sb.toString();
     }
 
@@ -201,14 +202,14 @@ public final class GradleExporter {
         };
         sb.append("dependencies {\n");
         for (Dependency d : jk.dependencies().of(Scope.PLATFORM)) {
-            if (warnIfUnmappable(d, report)) continue;
+            if (GRADLE.dropped(d, report)) continue;
             sb.append("    implementation(platform(\"")
                     .append(kEsc(gav(d, locked, report)))
                     .append("\"))\n");
         }
         for (Pair pr : order) {
             for (Dependency d : jk.dependencies().of(pr.scope())) {
-                if (warnIfUnmappable(d, report)) continue;
+                if (GRADLE.dropped(d, report)) continue;
                 String projectPath = exporting.projectPaths().get(d.module());
                 if (projectPath != null && (d.isTestsKind() || d.fixtures())) {
                     report.warning(d.module() + ": tests of a workspace member written as the member itself");
@@ -230,7 +231,7 @@ public final class GradleExporter {
         if (!managed.isEmpty()) {
             sb.append("    constraints {\n");
             for (Dependency d : managed) {
-                if (warnIfUnmappable(d, report)) continue;
+                if (GRADLE.dropped(d, report)) continue;
                 sb.append("        implementation(\"")
                         .append(kEsc(gav(d, locked, report)))
                         .append("\")\n");
@@ -312,81 +313,15 @@ public final class GradleExporter {
         sb.append("        ))\n    }\n}\n");
     }
 
-    private static boolean warnIfUnmappable(Dependency d, ImportReport.Builder report) {
-        if (d.isWorkspace()) {
-            report.warning(d.workspaceName() + ": no workspace member or shared dependency; dropped");
-            return true;
-        }
-        if (d.isGit()) {
-            report.warning(d.module() + ": git source dropped; includeBuild a local checkout");
-            return true;
-        }
-        if (d.isPath()) {
-            report.warning(Objects.requireNonNull(d.pathSource()).rawPath()
-                    + ": path dependency dropped; includeBuild that directory");
-            return true;
-        }
-        if (d.isFile()) {
-            report.warning(d.module() + ": sha256 file dependency dropped");
-            return true;
-        }
-        return false;
-    }
-
     /**
      * {@code group:artifact:version}, plus {@code :classifier} for a classified or tests-kind edge.
      * Lock rows key on the package id ({@code g:a:jar:classifier}); a bare {@code group:artifact}
      * key is read when no row matches.
      */
     private static String gav(Dependency d, Map<String, String> locked, ImportReport.Builder report) {
-        String v = locked.get(d.packageKey());
-        if (v == null || v.isBlank()) v = locked.get(d.module());
-        if (v == null || v.isBlank()) v = extractVersion(d.version(), d.module(), report);
+        String v = GRADLE.version(d, locked, report);
         String classifier = d.isTestsKind() ? PackageId.TESTS_CLASSIFIER : d.classifier();
         return d.module() + ":" + v + (classifier == null || classifier.isBlank() ? "" : ":" + classifier);
-    }
-
-    private static void warnDropped(JkBuild jk, ImportReport.Builder report) {
-        if (!jk.features().isEmpty()) {
-            report.warning("[features] dropped; consider Gradle feature variants");
-        }
-        if (jk.profiles() != null && !jk.profiles().byName().isEmpty()) {
-            report.warning("[profiles] dropped");
-        }
-        for (Scope s : new Scope[] {Scope.DEV, Scope.TEST_DEV}) {
-            if (!jk.dependencies().of(s).isEmpty()) report.warning("[" + s.tomlSection() + "] dropped");
-        }
-        BuildBlock.War war = jk.build().war();
-        if (war != null && (war.name() != null || !BuildBlock.War.DEFAULT_WEBAPP.equals(war.webapp()))) {
-            report.warning("[war] name and webapp dropped; the war plugin reads " + BuildBlock.War.DEFAULT_WEBAPP);
-        }
-    }
-
-    private static String extractVersion(VersionSelector v, String module, ImportReport.Builder report) {
-        return switch (v) {
-            case VersionSelector.Exact e -> e.version();
-            case VersionSelector.Caret c -> {
-                report.warning(module + ": ^" + c.version() + " pinned to " + c.version());
-                yield c.version();
-            }
-            case VersionSelector.Tilde t -> {
-                report.warning(module + ": ~" + t.version() + " pinned to " + t.version());
-                yield t.version();
-            }
-            case VersionSelector.Range r -> {
-                report.warning(module + ": range " + r.raw() + " written as is; check Gradle's syntax");
-                yield r.raw();
-            }
-            case VersionSelector.Latest l -> {
-                report.warning(module + ": latest written as latest.release");
-                yield "latest.release";
-            }
-            case VersionSelector.Snapshot s -> {
-                // Gradle's own name for the same intent: newest, pre-releases included.
-                report.warning(module + ": snapshot written as latest.integration");
-                yield "latest.integration";
-            }
-        };
     }
 
     /** Escape a Kotlin string literal: {@code \}, {@code "}, the template {@code $}, line breaks and tabs. */
