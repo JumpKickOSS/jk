@@ -9,7 +9,7 @@ public final class Budget {
 
     private Budget() {}
 
-    static final int CHARS_PER_TOKEN = 3;
+    public static final int CHARS_PER_TOKEN = 3;
 
     /**
      * A query's symbol lines, then its connection lines, under {@code budget}; the first {@code seeds}

@@ -176,4 +176,38 @@ class SymbolReaderTest {
         assertThat(read("NoSuchThing", null, 2000)).isEqualTo("No symbol 'NoSuchThing'.");
         assertThatThrownBy(() -> View.of("diff")).hasMessageContaining("content, structure or headline");
     }
+
+    @Test
+    void withDocCommentsTheContentViewStartsAtTheDocAboveTheDeclaration() {
+        String src = """
+                package a;
+                public class Owner {
+                    /*
+                     * Not a doc comment.
+                     */
+                    public String name() {
+                        return "";
+                    }
+
+                    /**
+                     * By name.
+                     */
+                    @Deprecated
+                    public String pet(String name) {
+                        return name;
+                    }
+                }
+                """;
+        CodeGraph g = Linker.link(List.of(Objects.requireNonNull(Extractors.forPath("src/main/java/a/Owner.java"))
+                .extract("src/main/java/a/Owner.java", src)));
+        SymbolReader reader = new SymbolReader(g, Scope.ALL, rel -> src);
+        assertThat(reader.read("Owner.pet", View.CONTENT, 2000))
+                .startsWith("== Owner.pet  src/main/java/a/Owner.java:14-16");
+        assertThat(reader.withDocComments().read("Owner.pet", View.CONTENT, 2000))
+                .startsWith("== Owner.pet  src/main/java/a/Owner.java:10-16")
+                .contains("10|     /**")
+                .contains("13|     @Deprecated");
+        assertThat(reader.withDocComments().read("Owner.name", View.CONTENT, 2000))
+                .startsWith("== Owner.name  src/main/java/a/Owner.java:6-8");
+    }
 }

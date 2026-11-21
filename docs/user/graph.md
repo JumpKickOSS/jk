@@ -418,9 +418,12 @@ nullability is claimed. A source edited since its classes were built, or a modul
 classes, shows the declaration as written, with no type claimed.
 
 A name several files declare is refused with the candidates; qualify it. A type no workspace file
-declares is read from the jars `jk-lock.toml` pins, at the version the lock pins:
-`jk graph read ObjectMapper.readValue` shows that method's public overloads with their generic
-signatures. Each jar's type list is read once and kept under the store.
+declares is read from the jars `jk-lock.toml` pins, and the answer opens with the locked version
+it read. When the library's `-sources.jar` is on this machine (`jk sync --sources` fetches every
+one a library publishes), `jk graph read ObjectMapper.readValue` answers from it in the same views,
+each overload's source in `content` starting at its Javadoc. Without one, the answer says so and
+shows the public signatures the class file holds, generics included, without Javadoc. Each jar's
+type list is read once and kept under the store.
 
 ## Finding declarations
 

@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.graph;
 
+import cc.jumpkick.codegraph.Budget;
+import cc.jumpkick.codegraph.CodeGraph;
+import cc.jumpkick.codegraph.Linker;
+import cc.jumpkick.codegraph.Scope;
+import cc.jumpkick.codegraph.SymbolReader;
+import cc.jumpkick.codegraph.extract.Extractor;
+import cc.jumpkick.codegraph.extract.Extractors;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.Log;
@@ -39,13 +46,21 @@ import org.jspecify.annotations.Nullable;
  * The public API of the jars the lockfile pins, for a type the workspace does not declare. Each
  * jar's public and protected type names are read once and kept in {@code cache} under a key of the
  * jar's path, size and modification time (store jars never change in place), and in memory while
- * the worker is served; a type's members are read from the jar when asked for. Nothing here enters
- * the graph.
+ * the worker is served; a type's members are read from the jar when asked for, and their source and
+ * Javadoc from the jar's sources jar when this machine holds one. Nothing here enters the graph.
  */
 final class LibraryApi {
 
-    /** A locked jar: its coordinate as the lock spells it and where the store holds it. */
-    record Jar(String coord, Path path) {}
+    /**
+     * A locked jar: its coordinate as the lock spells it, where the store holds it, and its {@code
+     * -sources.jar}, {@code null} when none is on disk.
+     */
+    record Jar(String coord, Path path, @Nullable Path sources) {
+
+        Jar(String coord, Path path) {
+            this(coord, path, null);
+        }
+    }
 
     /** A type a jar declares: binary name with {@code $} for nesting, and its access flags. */
     record Type(String binary, int access, Jar jar) {
@@ -106,11 +121,13 @@ final class LibraryApi {
     }
 
     /**
-     * The structure of the library type {@code target} names ({@code Type} or {@code Type.member}),
-     * or {@code null} when no locked jar declares it.
+     * The library type or member {@code target} names ({@code Type} or {@code Type.member}) in {@code
+     * view} ({@code null} for the richest that fits {@code budget}), or {@code null} when no locked
+     * jar declares it. With a sources jar the answer is the source, Javadoc included, in the views a
+     * workspace symbol reads in; without one it is the signatures the class file holds.
      */
     @Nullable
-    String describe(String target) {
+    String read(String target, SymbolReader.@Nullable View view, int budget) {
         List<Type> found = resolve(target);
         String member = null;
         if (found.isEmpty() && target.lastIndexOf('.') > 0) {
@@ -130,7 +147,73 @@ final class LibraryApi {
         Type t = found.getFirst();
         ClassModel model = model(t);
         if (model == null) return null;
-        return render(t, model, member);
+        String coord = t.jar().coord();
+        Path sources = t.jar().sources();
+        String why;
+        if (sources == null) {
+            why = "no sources jar on this machine (jk sync --sources fetches one when published)";
+        } else {
+            String file = sourceFile(t, model);
+            String text = entry(sources, file);
+            String answer = text == null ? null : fromSource(t, member, file, text, view, budget);
+            if (answer != null) return answer;
+            why = text == null ? "its sources jar has no " + file : "its source does not declare it";
+        }
+        List<String> out = new ArrayList<>();
+        out.add("[i] " + coord + " is the locked version; " + why + ", so these are signatures from the class file,"
+                + " without Javadoc.");
+        out.add("");
+        out.addAll(render(t, model, member).lines().toList());
+        return Budget.lines(out, budget, "Name one member: Type.member");
+    }
+
+    /**
+     * The answer {@code text}, the type's source file in its sources jar, gives for the type or its
+     * {@code member}; {@code null} when that source does not declare it.
+     */
+    private static @Nullable String fromSource(
+            Type t, @Nullable String member, String file, String text, SymbolReader.@Nullable View view, int budget) {
+        Extractor extractor = Extractors.forPath(file);
+        if (extractor == null || !Extractors.isJvmSource(file)) return null;
+        CodeGraph g = Linker.link(List.of(extractor.extract(file, text)));
+        String head = "[i] " + t.jar().coord() + " is the locked version; source and Javadoc from its sources jar.";
+        String address = member == null ? t.dotted() : t.dotted() + "." + member;
+        String body = new SymbolReader(g, Scope.ALL, rel -> rel.equals(file) ? text : null)
+                .withDocComments()
+                .read(address, view, Math.max(1, budget - head.length() / Budget.CHARS_PER_TOKEN - 1));
+        if (body.startsWith("No symbol") || body.startsWith("Nothing at")) return null;
+        return head + "\n\n" + body;
+    }
+
+    /**
+     * The path of {@code t}'s source in a sources jar: its package directory and the file its class
+     * file names, else the outermost type's name with {@code .java}.
+     */
+    private static String sourceFile(Type t, ClassModel m) {
+        String binary = t.binary();
+        int dot = binary.lastIndexOf('.');
+        String dir = dot < 0 ? "" : binary.substring(0, dot).replace('.', '/') + "/";
+        String named = m.findAttribute(Attributes.sourceFile())
+                .map(a -> a.sourceFile().stringValue())
+                .orElse("");
+        if (!named.isEmpty() && named.indexOf('/') < 0) return dir + named;
+        String simple = binary.substring(dot + 1);
+        int dollar = simple.indexOf('$');
+        return dir + (dollar > 0 ? simple.substring(0, dollar) : simple) + ".java";
+    }
+
+    /** The UTF-8 text of {@code name} in {@code jar}, {@code null} when it is absent or unreadable. */
+    private static @Nullable String entry(Path jar, String name) {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry e = zip.getEntry(name);
+            if (e == null) return null;
+            try (InputStream in = zip.getInputStream(e)) {
+                return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        } catch (IOException unreadable) {
+            Log.debug("graph: cannot read " + name + " from " + jar, unreadable);
+            return null;
+        }
     }
 
     /** One line per library type whose simple name matches {@code glob} and whose kind is in {@code kinds} (any when empty). */
@@ -455,12 +538,14 @@ final class LibraryApi {
         return s.replace('$', '.');
     }
 
-    /** The jars a spec lists as {@code coord \t path}. */
+    /** The jars a spec lists as {@code coord \t path}, with {@code \t sources} when a sources jar is on disk. */
     static List<Jar> jars(List<String> rows) {
         List<Jar> out = new ArrayList<>();
         for (String row : rows) {
-            int tab = row.indexOf('\t');
-            if (tab > 0) out.add(new Jar(row.substring(0, tab), Path.of(row.substring(tab + 1))));
+            String[] cols = row.split("\t", -1);
+            if (cols.length < 2 || cols[0].isEmpty()) continue;
+            Path sources = cols.length > 2 && !cols[2].isEmpty() ? Path.of(cols[2]) : null;
+            out.add(new Jar(cols[0], Path.of(cols[1]), sources));
         }
         return out;
     }

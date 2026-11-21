@@ -2,11 +2,13 @@
 package cc.jumpkick.engine.graph;
 
 import cc.jumpkick.builds.GraphRefreshSlot;
+import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.GraphCacheKeys;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.GraphConfig;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.JkM2Config;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.UserConfigParseException;
@@ -46,6 +48,7 @@ import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.runtime.ModuleInputProvenance;
 import cc.jumpkick.runtime.PlannerTest;
 import cc.jumpkick.runtime.base.PluginLaunch;
@@ -991,8 +994,9 @@ public final class GraphRunner {
     }
 
     /**
-     * {@code coord \t jar} for every jar of the workspace lock the store holds, every scope: what
-     * {@code read} and {@code find} answer a type the workspace does not declare from.
+     * {@code coord \t jar \t sources} for every jar of the workspace lock the store holds, every
+     * scope, {@code sources} empty when no {@code -sources.jar} is on disk: what {@code read} and
+     * {@code find} answer a type the workspace does not declare from.
      */
     static List<String> libraryRows(Path root) {
         Path lock = root.resolve(ManifestNames.LOCK);
@@ -1000,11 +1004,16 @@ public final class GraphRunner {
         List<String> out = new ArrayList<>();
         try {
             Lockfile locked = LockfileReader.read(lock);
+            Cas cas = JkStores.storeCas();
+            boolean m2 = JkM2Config.resolve().integration()
+                    && locked.modules().stream().noneMatch(m -> Boolean.FALSE.equals(m.m2integration()));
+            ArtifactLocator locator = new ArtifactLocator(cas.root(), m2);
             for (ClasspathResolver.Entry e :
-                    new ClasspathResolver(JkStores.storeCas()).entriesOnDisk(locked, EnumSet.allOf(Scope.class))) {
+                    new ClasspathResolver(cas).entriesOnDisk(locked, EnumSet.allOf(Scope.class))) {
                 Path jar = e.jar();
                 if (jar != null && jar.getFileName().toString().endsWith(".jar")) {
-                    out.add(e.artifact().displayCoord() + "\t" + jar);
+                    Path sources = locator.locateSources(e.artifact()).orElse(null);
+                    out.add(e.artifact().displayCoord() + "\t" + jar + "\t" + (sources == null ? "" : sources));
                 }
             }
         } catch (IOException | RuntimeException unreadable) {

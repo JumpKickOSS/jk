@@ -64,8 +64,9 @@ public final class SymbolReader {
     private final CodeGraph graph;
     private final Scope scope;
     private final Function<String, @Nullable String> files;
-    private final Function<String, @Nullable String> library;
+    private final Library library;
     private final Function<GraphNode, @Nullable String> inferred;
+    private final boolean docComments;
 
     /** The Kotlin sources a headline view read to see whether a declaration writes its type. */
     private final Map<String, List<String>> kotlinText = new HashMap<>();
@@ -73,20 +74,24 @@ public final class SymbolReader {
     /** The graph's nodes by source file, built when a span without a recorded end needs its neighbours. */
     private @Nullable Map<String, List<GraphNode>> byFile;
 
-    /** A reader over {@code graph} whose source text {@code files} returns by repo-relative path. */
-    public SymbolReader(CodeGraph graph, Scope scope, Function<String, @Nullable String> files) {
-        this(graph, scope, files, name -> null);
+    /** The answer for a symbol no workspace file declares. */
+    @FunctionalInterface
+    public interface Library {
+        /**
+         * The answer for {@code target} in {@code view} ({@code null} picks one) within {@code budget}
+         * tokens, or {@code null} when no library declares it.
+         */
+        @Nullable
+        String read(String target, @Nullable View view, int budget);
     }
 
-    /**
-     * A reader that answers a single symbol the workspace does not declare from {@code library}: the
-     * locked jars' description of the type or member it names, {@code null} when none declares it.
-     */
-    public SymbolReader(
-            CodeGraph graph,
-            Scope scope,
-            Function<String, @Nullable String> files,
-            Function<String, @Nullable String> library) {
+    /** A reader over {@code graph} whose source text {@code files} returns by repo-relative path. */
+    public SymbolReader(CodeGraph graph, Scope scope, Function<String, @Nullable String> files) {
+        this(graph, scope, files, (target, view, budget) -> null);
+    }
+
+    /** A reader that answers a single symbol the workspace does not declare from {@code library}. */
+    public SymbolReader(CodeGraph graph, Scope scope, Function<String, @Nullable String> files, Library library) {
         this(graph, scope, files, library, n -> null);
     }
 
@@ -99,13 +104,29 @@ public final class SymbolReader {
             CodeGraph graph,
             Scope scope,
             Function<String, @Nullable String> files,
-            Function<String, @Nullable String> library,
+            Library library,
             Function<GraphNode, @Nullable String> inferred) {
+        this(graph, scope, files, library, inferred, false);
+    }
+
+    private SymbolReader(
+            CodeGraph graph,
+            Scope scope,
+            Function<String, @Nullable String> files,
+            Library library,
+            Function<GraphNode, @Nullable String> inferred,
+            boolean docComments) {
         this.graph = graph;
         this.scope = scope;
         this.files = files;
         this.library = library;
         this.inferred = inferred;
+        this.docComments = docComments;
+    }
+
+    /** This reader, with the {@code content} view of a declaration starting at the doc comment above it. */
+    public SymbolReader withDocComments() {
+        return new SymbolReader(graph, scope, files, library, inferred, true);
     }
 
     /** One span to show: a node, or a whole file when {@code node} is null, cut to {@code from..to}. */
@@ -143,8 +164,8 @@ public final class SymbolReader {
             }
             String error = symbols(target, from, to, spans);
             if (error != null && error.startsWith("No symbol") && spans.isEmpty() && !address.contains(";")) {
-                String api = library.apply(target);
-                if (api != null) return Budget.lines(api.lines().toList(), budget, "Name one member: Type.member");
+                String api = library.read(target, view, budget);
+                if (api != null) return api;
             }
             if (error != null) return error;
         }
@@ -403,7 +424,7 @@ public final class SymbolReader {
 
     private void content(Span s, Map<String, List<String>> text, List<String> out) {
         List<String> lines = lines(s.file(), text);
-        int from = Math.max(1, s.from());
+        int from = Math.max(1, docComments ? docStart(s, lines) : s.from());
         int to = Math.min(lines.size(), s.to());
         out.add(title(s, from, to));
         if (lines.isEmpty()) {
@@ -413,6 +434,27 @@ public final class SymbolReader {
         int width = String.valueOf(to).length();
         for (int i = from; i <= to; i++) out.add(number(i, width) + lines.get(i - 1));
         out.add("");
+    }
+
+    /**
+     * Where the doc comment above a declaration span opens, past any annotations between them;
+     * {@code s.from()} when the span does not start at its declaration or no doc comment precedes it.
+     */
+    private static int docStart(Span s, List<String> lines) {
+        GraphNode n = s.node();
+        if (n == null) return s.from();
+        boolean declared =
+                s.from() == Math.max(Decl.line(n), 1) || Decl.more(n).stream().anyMatch(r -> r[0] == s.from());
+        if (!declared) return s.from();
+        int i = s.from() - 1;
+        while (i >= 1 && i <= lines.size() && lines.get(i - 1).strip().startsWith("@")) i--;
+        if (i < 1 || i > lines.size() || !lines.get(i - 1).strip().endsWith("*/")) return s.from();
+        for (int j = i; j >= 1; j--) {
+            String l = lines.get(j - 1).strip();
+            if (l.startsWith("/**")) return j;
+            if (l.startsWith("/*") || j < i && l.contains("*/")) return s.from();
+        }
+        return s.from();
     }
 
     private void structure(Span s, Map<String, List<String>> text, List<String> out) {
