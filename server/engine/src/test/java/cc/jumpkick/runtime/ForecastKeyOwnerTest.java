@@ -414,7 +414,7 @@ class ForecastKeyOwnerTest {
         Path classes = Files.createDirectories(layout.classesDir());
         Files.write(classes.resolve("Main.class"), new byte[] {1, 2, 3});
 
-        byte[] sbom = PackagingKeys.assemblySbom(project, module.resolve("jk-lock.toml"));
+        byte[] sbom = PackagingKeys.assemblySbom(project, module, module.resolve("jk-lock.toml"));
         List<String> expectedTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "contrib:" + PackagedClasses.contributionsToken(List.of()),

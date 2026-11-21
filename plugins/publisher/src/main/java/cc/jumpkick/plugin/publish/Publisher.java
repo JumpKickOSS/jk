@@ -2,6 +2,7 @@
 package cc.jumpkick.plugin.publish;
 
 import cc.jumpkick.cache.SourcesJar;
+import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.config.SessionContext;
@@ -17,6 +18,7 @@ import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.command.Exit;
@@ -174,7 +176,11 @@ public final class Publisher implements Plugin, PublishExtension {
         boolean central = c.bool("centralPortal", false);
         libraryArtifacts(ctx, project, projectDir, layout, central, artifacts);
 
-        if (c.bool("slsa", false)) {
+        boolean slsa = c.bool("slsa", false);
+        boolean sbom = c.bool("sbom", false);
+        CycloneDxSbom.Closure closure = slsa || sbom ? runtimeClosure(projectDir, project) : CycloneDxSbom.Closure.NONE;
+
+        if (slsa) {
             String jarFilename = jar.getFileName().toString();
             // A function of the jar, no clock and no random id: a re-run after a partial publish
             // renders the same bytes, so the provenance already uploaded is recognised as the same.
@@ -194,7 +200,8 @@ public final class Publisher implements Plugin, PublishExtension {
                             "jdk",
                                     project.project().jdk() == null
                                             ? ""
-                                            : project.project().jdk()));
+                                            : project.project().jdk()),
+                    resolvedDependencies(closure));
             byte[] provenance =
                     SlsaProvenance.generate(List.of(new SlsaProvenance.Subject(jarFilename, jarSha)), buildCtx);
             artifacts.add(new MavenPublisher.Artifact(".intoto.json", provenance));
@@ -203,7 +210,7 @@ public final class Publisher implements Plugin, PublishExtension {
         }
 
         List<Path> written = new ArrayList<>();
-        if (c.bool("sbom", false)) sbom(ctx, projectDir, project, artifacts, written);
+        if (sbom) sbom(ctx, projectDir, project, closure, artifacts, written);
 
         if (central) return publishCentral(ctx, c, project, layout, artifacts, written);
 
@@ -416,6 +423,26 @@ public final class Publisher implements Plugin, PublishExtension {
     }
 
     /**
+     * The module's runtime closure, read from the lock as the module reads it: what its SBOM
+     * sidecars and its provenance name, the same rows its application jar embeds.
+     */
+    static CycloneDxSbom.Closure runtimeClosure(Path projectDir, JkBuild project) throws IOException {
+        Path lockPath = LockPaths.lockFile(projectDir);
+        if (!Files.exists(lockPath)) return CycloneDxSbom.Closure.NONE;
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockPath), lockPath, projectDir);
+        return CycloneDxSbom.closure(lock, project, projectDir);
+    }
+
+    /** The closure's components as SLSA resolved dependencies: purl and locked SHA-256. */
+    static List<SlsaProvenance.Dependency> resolvedDependencies(CycloneDxSbom.Closure closure) {
+        List<SlsaProvenance.Dependency> out = new ArrayList<>();
+        for (CycloneDxSbom.Component c : closure.components()) {
+            out.add(new SlsaProvenance.Dependency(c.purl(), c.sha256()));
+        }
+        return out;
+    }
+
+    /**
      * The SBOM sidecars: uploaded beside the artifact, and the same documents left under the
      * module's target/ so a release takes the bill of materials from disk — with or without an
      * upload — instead of unzipping a jar.
@@ -424,13 +451,12 @@ public final class Publisher implements Plugin, PublishExtension {
             PublishContext ctx,
             Path projectDir,
             JkBuild project,
+            CycloneDxSbom.Closure closure,
             List<MavenPublisher.Artifact> artifacts,
             List<Path> written)
             throws IOException {
-        Path lockPath = LockPaths.lockFile(projectDir);
-        Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
-        byte[] cdx = Sbom.cyclonedx(project, lock);
-        byte[] spdxBytes = Sbom.spdx(project, lock);
+        byte[] cdx = Sbom.cyclonedx(project, closure);
+        byte[] spdxBytes = Sbom.spdx(project, closure);
         artifacts.add(new MavenPublisher.Artifact("-cyclonedx.json", cdx));
         artifacts.add(new MavenPublisher.Artifact("-spdx.json", spdxBytes));
         ctx.label("artifact cyclonedx+spdx (" + (cdx.length + spdxBytes.length) + " bytes)");

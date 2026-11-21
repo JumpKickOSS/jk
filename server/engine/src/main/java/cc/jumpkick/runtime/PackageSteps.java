@@ -126,7 +126,7 @@ final class PackageSteps {
                     if (project.isApplication()) {
                         Lockfile sbomLock =
                                 ctx.get(PARSED_BUILD).map(ParsedBuild::lockfile).orElse(null);
-                        if (sbomLock != null) sbom = applicationSbom(project, sbomLock);
+                        if (sbomLock != null) sbom = applicationSbom(project, in.dir(), sbomLock);
                     }
                     List<Path> guarded = new ArrayList<>(List.of(classes));
                     guarded.addAll(contributed);
@@ -415,7 +415,7 @@ final class PackageSteps {
         if (s.project.isApplication()) {
             try {
                 sbom = PlannerPlugin.applicationSbom(
-                        s.project, prepared.parsed().lock());
+                        s.project, s.dir, prepared.parsed().lock());
             } catch (Exception e) {
                 // best-effort: a missing SBOM keys an empty sbom: token, like a null one
                 Log.debug("forecastJar: best-effort", e);

@@ -228,7 +228,15 @@ jk publish -S -U
 The CycloneDX document is deterministic (no serial number, no timestamp) and is written by the
 same code that embeds `META-INF/sbom/application.cdx.json` in every application jar
 ([Packaging](packaging.md)), so the sidecar of a module is the document its jar carries: the
-production runtime rows of `jk-lock.toml`, one per module, each with its SHA-256.
+module's production runtime closure — the rows of `jk-lock.toml` its own dependencies and those of
+the workspace siblings it depends on reach, not every member's — each with its SHA-256. Both
+documents carry the dependency graph between them: CycloneDX as `dependencies`, SPDX as a
+`DESCRIBES` relationship from the document to the module and `DEPENDS_ON` relationships from the
+module and each package to what it depends on.
+
+`--slsa` uploads an SLSA v1 provenance statement (`.intoto.json`) whose
+`resolvedDependencies` are the same closure: each component's purl as `uri` and its locked
+SHA-256 as `digest.sha256`.
 
 ## Deny policy
 

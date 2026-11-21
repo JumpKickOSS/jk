@@ -5,6 +5,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -26,8 +27,18 @@ public final class SlsaProvenance {
     }
 
     /**
-     * All parameters the statement encodes. {@link #externalParameters} / {@link #internalParameters}
-     * may be empty.
+     * One artifact the build consumed: its package URL and, when the lock pins one, its SHA-256 —
+     * an SLSA {@code ResourceDescriptor} under {@code resolvedDependencies}.
+     */
+    public record Dependency(String uri, @Nullable String sha256) {
+        public Dependency {
+            Objects.requireNonNull(uri, "uri");
+        }
+    }
+
+    /**
+     * All parameters the statement encodes. {@link #externalParameters}, {@link #internalParameters}
+     * and {@link #resolvedDependencies} may be empty; the dependencies render sorted by uri.
      */
     public record BuildContext(
             String builderId,
@@ -36,13 +47,17 @@ public final class SlsaProvenance {
             @Nullable Instant startedOn,
             @Nullable Instant finishedOn,
             Map<String, String> externalParameters,
-            Map<String, String> internalParameters) {
+            Map<String, String> internalParameters,
+            List<Dependency> resolvedDependencies) {
 
         public BuildContext {
             Objects.requireNonNull(builderId, "builderId");
             Objects.requireNonNull(buildType, "buildType");
             externalParameters = externalParameters == null ? Map.of() : Map.copyOf(externalParameters);
             internalParameters = internalParameters == null ? Map.of() : Map.copyOf(internalParameters);
+            List<Dependency> sorted = new ArrayList<>(resolvedDependencies == null ? List.of() : resolvedDependencies);
+            sorted.sort(Comparator.comparing(Dependency::uri).thenComparing(d -> d.sha256() == null ? "" : d.sha256()));
+            resolvedDependencies = List.copyOf(sorted);
         }
     }
 
@@ -89,7 +104,21 @@ public final class SlsaProvenance {
         sb.append("\"internalParameters\":");
         renderStringMap(sb, context.internalParameters());
         sb.append(',');
-        sb.append("\"resolvedDependencies\":[]");
+        sb.append("\"resolvedDependencies\":[");
+        List<Dependency> deps = context.resolvedDependencies();
+        for (int i = 0; i < deps.size(); i++) {
+            if (i > 0) sb.append(',');
+            Dependency d = deps.get(i);
+            sb.append('{');
+            kv(sb, "uri", d.uri());
+            if (d.sha256() != null) {
+                sb.append(",\"digest\":{");
+                kv(sb, "sha256", d.sha256());
+                sb.append('}');
+            }
+            sb.append('}');
+        }
+        sb.append(']');
         sb.append('}');
         sb.append(',');
 

@@ -973,7 +973,7 @@ public final class PlannerPlugin {
         }
 
         // SBOM (always on): free and deterministic straight from the lockfile.
-        byte[] sbom = applicationSbom(project, lock);
+        byte[] sbom = applicationSbom(project, in.dir(), lock);
         Path sbomFile = Files.createTempFile("jk-plugin-sbom-", ".cdx.json");
         Files.write(sbomFile, sbom);
 
@@ -1088,16 +1088,17 @@ public final class PlannerPlugin {
     }
 
     /**
-     * The application SBOM entry + manifest headers shared by every packager: the lockfile's
-     * production RUNTIME components as CycloneDX (see {@link CycloneDxSbom}), the same document
-     * {@code jk publish -S} writes beside the module.
+     * The application SBOM every packager embeds: the module's runtime closure as CycloneDX (see
+     * {@link CycloneDxSbom#closure}), the same document {@code jk publish -S} writes beside it.
+     *
+     * @param lock the lock as the module at {@code moduleDir} reads it
      */
-    static byte[] applicationSbom(JkBuild project, Lockfile lock) {
+    static byte[] applicationSbom(JkBuild project, Path moduleDir, Lockfile lock) {
         return CycloneDxSbom.write(
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),
-                CycloneDxSbom.components(lock));
+                CycloneDxSbom.closure(lock, project, moduleDir));
     }
 
     /** SBOM path inside plain/assembly application jars (jar root = classpath root). */

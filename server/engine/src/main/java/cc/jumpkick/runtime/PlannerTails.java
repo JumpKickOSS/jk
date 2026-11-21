@@ -274,7 +274,7 @@ public final class PlannerTails {
                     guarded.addAll(contributed);
                     guarded.addAll(depJars);
                     InputGuard guard = InputGuard.of(guarded);
-                    byte @Nullable [] assemblySbom = PackagingKeys.assemblySbom(project, lockFile);
+                    byte @Nullable [] assemblySbom = PackagingKeys.assemblySbom(project, layout.moduleRoot(), lockFile);
                     PackagingKeys.Keyed keyed = PackagingKeys.assembly(
                             assemblyJar,
                             layout.moduleRoot(),

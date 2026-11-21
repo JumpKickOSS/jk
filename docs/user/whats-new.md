@@ -34,6 +34,12 @@ JumpKick shows you this page's new entries after it updates itself.
 - **A plugin's `[contribute.lib-dir]` reads `[native] enabled = false` as no native image**, as
   every other contribution's `native-declared` condition does.
 
+- **A workspace member's SBOM names its own dependencies.** The SBOM an application jar embeds
+  and the sidecars `jk publish -S` writes list the member's runtime closure, not every runtime row
+  of the workspace lock, with the graph between them: CycloneDX `dependencies`, SPDX `DEPENDS_ON`.
+  `--slsa` provenance lists the same closure under `resolvedDependencies`. A member's packaged
+  jar is rebuilt once, as its SBOM changed.
+
 
 - **`[audit] ignore` matches an advisory's aliases.** An entry written for `CVE-2026-1234` now
   covers the `GHSA-…` advisory OSV reports for it, and `-O jsonl` lists each finding's `aliases`.

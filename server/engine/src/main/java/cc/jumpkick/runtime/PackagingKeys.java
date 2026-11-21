@@ -11,8 +11,10 @@ import cc.jumpkick.host.Hashing;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.layout.ModuleLayout;
 import cc.jumpkick.layout.ModuleLayoutPlugins;
+import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.lock.MemberRows;
 import cc.jumpkick.model.BuildIdentity;
 import cc.jumpkick.model.JavadocMode;
 import cc.jumpkick.model.JkBuild;
@@ -141,8 +143,10 @@ public final class PackagingKeys {
     }
 
     /** The SBOM the fat jar embeds, from {@code lockFile}; {@code null} when there is no lockfile. */
-    public static byte @Nullable [] assemblySbom(JkBuild project, Path lockFile) throws IOException {
-        return Files.exists(lockFile) ? PlannerPlugin.applicationSbom(project, LockfileReader.read(lockFile)) : null;
+    public static byte @Nullable [] assemblySbom(JkBuild project, Path moduleDir, Path lockFile) throws IOException {
+        if (!Files.exists(lockFile)) return null;
+        Lockfile lock = MemberRows.view(LockfileReader.read(lockFile), lockFile, moduleDir);
+        return PlannerPlugin.applicationSbom(project, moduleDir, lock);
     }
 
     /**
@@ -252,7 +256,7 @@ public final class PackagingKeys {
                 classesTok,
                 PackagedClasses.contributionsToken(PackagedClasses.packagedDirs(pkgDecls, layout, project)),
                 fingerprintDepJars(depJars, actionCache, restoredJarShas),
-                assemblySbom(project, lockFile));
+                assemblySbom(project, dir, lockFile));
         boolean hit = ForecastSteps.present(actionCache, keyed.key());
         if (Perf.enabled() && !hit) {
             // The tokens beside the record's own INPUT line are what tell a wiped jar nobody

@@ -22,7 +22,8 @@ class SlsaProvenanceTest {
                 Instant.parse("2026-05-22T12:00:00Z"),
                 Instant.parse("2026-05-22T12:00:01Z"),
                 Map.of("configRef", "jk.toml"),
-                Map.of("jdk", "21"));
+                Map.of("jdk", "21"),
+                List.of());
 
         String json = new String(SlsaProvenance.generate(List.of(subject), ctx), StandardCharsets.UTF_8);
 
@@ -41,14 +42,16 @@ class SlsaProvenanceTest {
     @Test
     void escapes_special_characters_in_values() {
         var subject = new SlsaProvenance.Subject("a\"b\\c.jar", "0");
-        var ctx = new SlsaProvenance.BuildContext("x", "y", null, Instant.EPOCH, Instant.EPOCH, Map.of(), Map.of());
+        var ctx = new SlsaProvenance.BuildContext(
+                "x", "y", null, Instant.EPOCH, Instant.EPOCH, Map.of(), Map.of(), List.of());
         String json = new String(SlsaProvenance.generate(List.of(subject), ctx), StandardCharsets.UTF_8);
         assertThat(json).contains("\"name\":\"a\\\"b\\\\c.jar\"");
     }
 
     @Test
     void rejects_empty_subject_list() {
-        var ctx = new SlsaProvenance.BuildContext("x", "y", "i", Instant.EPOCH, Instant.EPOCH, Map.of(), Map.of());
+        var ctx = new SlsaProvenance.BuildContext(
+                "x", "y", "i", Instant.EPOCH, Instant.EPOCH, Map.of(), Map.of(), List.of());
         assertThatThrownBy(() -> SlsaProvenance.generate(List.of(), ctx)).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -61,7 +64,8 @@ class SlsaProvenanceTest {
                 null,
                 null,
                 Map.of(),
-                Map.of());
+                Map.of(),
+                List.of());
         String json = new String(
                 SlsaProvenance.generate(List.of(new SlsaProvenance.Subject("a.jar", "ab")), ctx),
                 StandardCharsets.UTF_8);
@@ -81,7 +85,8 @@ class SlsaProvenanceTest {
                 "beta", "b",
                 "omega", "o",
                 "alpha", "a");
-        var ctx = new SlsaProvenance.BuildContext("x", "y", null, null, null, Map.of("b", "2", "a", "1"), internal);
+        var ctx = new SlsaProvenance.BuildContext(
+                "x", "y", null, null, null, Map.of("b", "2", "a", "1"), internal, List.of());
 
         String json = new String(
                 SlsaProvenance.generate(List.of(new SlsaProvenance.Subject("a.jar", "ab")), ctx),
@@ -92,5 +97,28 @@ class SlsaProvenanceTest {
                 .contains("\"internalParameters\":{\"alpha\":\"a\",\"artifact\":\"widget\",\"beta\":\"b\","
                         + "\"group\":\"com.example\",\"jdk\":\"\",\"omega\":\"o\",\"version\":\"1.0.0\","
                         + "\"zeta\":\"z\"}");
+    }
+
+    @Test
+    void resolved_dependencies_render_as_resource_descriptors_in_uri_order() {
+        var ctx = new SlsaProvenance.BuildContext(
+                "x",
+                "y",
+                null,
+                null,
+                null,
+                Map.of(),
+                Map.of(),
+                List.of(
+                        new SlsaProvenance.Dependency("pkg:maven/com.foo/zed@1.0", "ffff"),
+                        new SlsaProvenance.Dependency("pkg:maven/com.foo/alpha@2.0", null)));
+
+        String json = new String(
+                SlsaProvenance.generate(List.of(new SlsaProvenance.Subject("a.jar", "ab")), ctx),
+                StandardCharsets.UTF_8);
+
+        assertThat(json)
+                .contains("\"resolvedDependencies\":[{\"uri\":\"pkg:maven/com.foo/alpha@2.0\"},"
+                        + "{\"uri\":\"pkg:maven/com.foo/zed@1.0\",\"digest\":{\"sha256\":\"ffff\"}}]");
     }
 }

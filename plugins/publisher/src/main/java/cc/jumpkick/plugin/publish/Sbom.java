@@ -1,66 +1,81 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
-import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.host.DeterministicZip;
 import cc.jumpkick.jsonl.Jsonl;
-import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The SBOM sidecars of a publish, from {@link JkBuild} + optional {@link Lockfile} (root-only when
- * no lock): CycloneDX through the writer every application jar embeds ({@link CycloneDxSbom}), so a
- * module's sidecar is the document its jar carries, and SPDX 2.3 over the same runtime rows.
+ * The SBOM sidecars of a publish, from {@link JkBuild} and its runtime {@link
+ * CycloneDxSbom.Closure}: CycloneDX through the writer every application jar embeds, so a module's
+ * sidecar is the document its jar carries, and SPDX 2.3 over the same components and edges.
  * Hand-rolled JSON for a lean worker.
  */
 public final class Sbom {
 
+    private static final String ROOT = "SPDXRef-Package-Root";
+
     private Sbom() {}
 
-    /** Render the CycloneDX JSON SBOM; deterministic for a given project and lock. */
-    public static byte[] cyclonedx(JkBuild project, @Nullable Lockfile lock) {
+    /** Render the CycloneDX JSON SBOM; deterministic for a given project and closure. */
+    public static byte[] cyclonedx(JkBuild project, CycloneDxSbom.Closure closure) {
         return CycloneDxSbom.write(
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),
-                lock == null ? List.of() : CycloneDxSbom.components(lock));
+                closure);
     }
 
     /**
-     * Render an SPDX 2.3 JSON SBOM; deterministic like {@link #cyclonedx}: the namespace is a
-     * name-based UUID over the packages it lists and {@code created} is the instant every entry of a
-     * jk jar carries, so a re-run of a publish renders the same bytes.
+     * Render an SPDX 2.3 JSON SBOM; deterministic like {@link #cyclonedx}: the document {@code
+     * DESCRIBES} the root package, which {@code DEPENDS_ON} what the module depends on directly,
+     * and each package {@code DEPENDS_ON} its own dependencies. The namespace is a name-based UUID
+     * over the packages and relationships, and {@code created} is the instant every entry of a jk
+     * jar carries, so a re-run of a publish renders the same bytes.
      */
-    public static byte[] spdx(JkBuild project, @Nullable Lockfile lock) {
+    public static byte[] spdx(JkBuild project, CycloneDxSbom.Closure closure) {
         StringBuilder packages = new StringBuilder(256);
         packages.append("\"packages\":[");
         appendSpdxPackage(
                 packages,
-                "SPDXRef-Package-Root",
+                ROOT,
                 project.project().group(),
                 project.project().name(),
                 project.project().version(),
                 null);
-        if (lock != null) {
-            int i = 0;
-            for (Lockfile.Artifact pkg : ClasspathResolver.artifactsFor(lock, ClasspathResolver.RUNTIME)) {
-                packages.append(',');
-                appendSpdxPackage(
-                        packages,
-                        "SPDXRef-Package-" + sanitizeId(pkg.name()) + "-" + i++,
-                        pkg.moduleGroup(),
-                        pkg.moduleArtifact(),
-                        pkg.version(),
-                        pkg.checksumHex());
-            }
+        Map<String, String> ids = new HashMap<>();
+        int i = 0;
+        for (CycloneDxSbom.Component c : closure.components()) {
+            String id = "SPDXRef-Package-" + sanitizeId(c.group() + "-" + c.artifact() + "-" + c.version()) + "-" + i++;
+            ids.putIfAbsent(c.purl(), id);
+            packages.append(',');
+            appendSpdxPackage(packages, id, c.group(), c.artifact(), c.version(), c.sha256());
         }
         packages.append(']');
+        StringBuilder relationships = new StringBuilder(256);
+        relationships.append("\"relationships\":[");
+        appendRelationship(relationships, "SPDXRef-DOCUMENT", "DESCRIBES", ROOT);
+        for (String to : closure.direct()) {
+            String target = ids.get(to);
+            if (target != null) appendRelationship(relationships.append(','), ROOT, "DEPENDS_ON", target);
+        }
+        for (Map.Entry<String, List<String>> e : closure.edges().entrySet()) {
+            String from = ids.get(e.getKey());
+            if (from == null) continue;
+            for (String to : e.getValue()) {
+                String target = ids.get(to);
+                if (target != null) appendRelationship(relationships.append(','), from, "DEPENDS_ON", target);
+            }
+        }
+        relationships.append(']');
         String docNamespace = "https://jumpkick.build/sbom/"
                 + project.project().group()
                 + "/"
@@ -68,7 +83,7 @@ public final class Sbom {
                 + "/"
                 + project.project().version()
                 + "/"
-                + UUID.nameUUIDFromBytes(packages.toString().getBytes(StandardCharsets.UTF_8));
+                + UUID.nameUUIDFromBytes((packages + "," + relationships).getBytes(StandardCharsets.UTF_8));
         StringBuilder sb = new StringBuilder(512);
         sb.append('{');
         kv(sb, "spdxVersion", "SPDX-2.3");
@@ -89,10 +104,9 @@ public final class Sbom {
         sb.append('}');
         comma(sb);
 
-        sb.append("\"documentDescribes\":[\"SPDXRef-Package-Root\"]");
-        comma(sb);
-
         sb.append(packages);
+        comma(sb);
+        sb.append(relationships);
 
         sb.append('}');
         sb.append('\n');
@@ -134,6 +148,16 @@ public final class Sbom {
             kv(sb, "checksumValue", sha256Hex);
             sb.append("}]");
         }
+        sb.append('}');
+    }
+
+    private static void appendRelationship(StringBuilder sb, String from, String type, String to) {
+        sb.append('{');
+        kv(sb, "spdxElementId", from);
+        comma(sb);
+        kv(sb, "relationshipType", type);
+        comma(sb);
+        kv(sb, "relatedSpdxElement", to);
         sb.append('}');
     }
 

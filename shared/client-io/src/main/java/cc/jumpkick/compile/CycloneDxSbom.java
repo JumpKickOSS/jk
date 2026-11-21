@@ -3,17 +3,28 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.JkBuild;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The CycloneDX bill of materials jk writes of an artifact: lockfile coordinates plus each locked
- * jar's SHA-256. The one writer behind the SBOM every application jar embeds and the sidecar {@code
- * jk publish -S} uploads, so the two name the same spec version and the same components.
+ * The CycloneDX bill of materials jk writes of an artifact: its module's runtime closure ({@link
+ * #closure}), each locked jar with its SHA-256 and what it depends on. The one writer behind the
+ * SBOM every application jar embeds and the sidecar {@code jk publish -S} uploads, so the two name
+ * the same spec version and the same components.
  * Deterministic — no serial number, no timestamp — so a reproducible jar stays byte-stable and a
  * module's publish sidecar equals the copy its jar carries.
  *
@@ -48,38 +59,99 @@ public final class CycloneDxSbom {
             return new Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex());
         }
 
-        String purl() {
+        /** The component's package URL. */
+        public String purl() {
             return CycloneDxSbom.purl(group, artifact, version);
         }
     }
 
+    /**
+     * What a module ships, as a bill of materials: the components of its runtime closure, the ones
+     * the module itself depends on, and each component's own dependencies, every reference a purl.
+     * Canonical — components sorted, edges sorted and deduplicated — so two builds of one closure
+     * render the same bytes whichever order the lock listed its rows in.
+     *
+     * @param direct the purls the module depends on directly
+     * @param edges each component's purl to the purls it depends on; a component with no
+     *     dependencies maps to an empty list
+     */
+    public record Closure(List<Component> components, List<String> direct, Map<String, List<String>> edges) {
+
+        /** The closure of a module with no lock: nothing beside the module itself. */
+        public static final Closure NONE = new Closure(List.of(), List.of(), Map.of());
+
+        public Closure {
+            List<Component> ordered = new ArrayList<>(components);
+            ordered.sort(ORDER);
+            components = List.copyOf(ordered);
+            direct = List.copyOf(new TreeSet<>(direct));
+            Map<String, List<String>> sorted = new TreeMap<>();
+            for (Component c : components) sorted.put(c.purl(), List.of());
+            for (Map.Entry<String, List<String>> e : edges.entrySet()) {
+                sorted.put(e.getKey(), List.copyOf(new TreeSet<>(e.getValue())));
+            }
+            edges = Collections.unmodifiableMap(sorted);
+        }
+    }
+
+    private static final Comparator<Component> ORDER = Comparator.comparing(Component::group)
+            .thenComparing(Component::artifact)
+            .thenComparing(Component::version)
+            .thenComparing(c -> c.sha256() == null ? "" : c.sha256());
+
     private CycloneDxSbom() {}
 
     /**
-     * The components of an artifact's runtime closure: the lock rows on the production RUNTIME
-     * classpath, one per module ({@link ClasspathResolver#artifactsFor}). The jar's embedded copy
-     * and the publish sidecar are read from these same rows.
+     * The runtime closure of {@code module}: the rows its production RUNTIME classpath is made of
+     * ({@link ClasspathResolver#moduleRows}), so a workspace member names its own dependencies and
+     * not its siblings', with the lock's {@code deps} edges between them. POM-only rows (no
+     * checksum) ship nothing; an edge through one lands on the rows it stands for.
+     *
+     * @param lock the lock as the module reads it ({@code MemberRows.view})
+     * @param moduleDir the module's directory, which places it in its workspace
      */
-    public static List<Component> components(Lockfile lock) {
-        List<Component> out = new ArrayList<>();
-        for (Lockfile.Artifact a : ClasspathResolver.artifactsFor(lock, ClasspathResolver.RUNTIME)) {
-            out.add(Component.of(a));
+    public static Closure closure(Lockfile lock, JkBuild module, Path moduleDir) {
+        List<Lockfile.Artifact> rows = ClasspathResolver.moduleRows(lock, ClasspathResolver.RUNTIME, module, moduleDir);
+        Map<String, Lockfile.Artifact> byKey = ClasspathResolver.indexArtifacts(rows);
+        List<Component> components = new ArrayList<>();
+        Map<String, List<String>> edges = new HashMap<>();
+        for (Lockfile.Artifact row : rows) {
+            if (row.checksum() == null) continue;
+            Component c = Component.of(row);
+            components.add(c);
+            List<String> to = edges.computeIfAbsent(c.purl(), k -> new ArrayList<>());
+            for (String dep : row.deps()) shipped(byKey, dep, to, new HashSet<>());
         }
-        return out;
+        Set<String> roots =
+                new LinkedHashSet<>(ModuleRoots.own(module, moduleDir, ClasspathResolver.RUNTIME, lock.artifacts()));
+        roots.addAll(ModuleRoots.inherited(module, moduleDir, ClasspathResolver.RUNTIME, lock.artifacts()));
+        List<String> direct = new ArrayList<>();
+        for (String root : roots) shipped(byKey, root, direct, new HashSet<>());
+        return new Closure(components, direct, edges);
+    }
+
+    /** Adds the purls of the shipped rows {@code ref} stands for: its own row, or a POM-only row's edges. */
+    private static void shipped(
+            Map<String, Lockfile.Artifact> byKey, String ref, List<String> out, Set<Lockfile.Artifact> seen) {
+        Lockfile.Artifact row = ClasspathResolver.lookup(byKey, ClasspathResolver.stripVersion(ref));
+        if (row == null || !seen.add(row)) return;
+        if (row.checksum() != null) {
+            out.add(Component.of(row).purl());
+            return;
+        }
+        for (String dep : row.deps()) shipped(byKey, dep, out, seen);
     }
 
     /**
-     * The CycloneDX JSON document for an application and its resolved runtime components. The
-     * subject is {@code metadata.component}, identified by its purl; jk names itself under {@code
-     * metadata.tools} as the writer, without its own version, so the bytes depend on the artifact
-     * and its locked components alone and every jk that builds a tree embeds the same document.
+     * The CycloneDX JSON document for an artifact and its runtime closure. The subject is {@code
+     * metadata.component}, identified by its purl; {@code dependencies} lists it and every
+     * component with what each depends on. jk names itself under {@code metadata.tools} as the
+     * writer, without its own version, so the bytes depend on the artifact and its closure alone
+     * and every jk that builds a tree embeds the same document.
      */
-    public static byte[] write(String group, String artifact, String version, List<Component> components) {
-        List<Component> ordered = new ArrayList<>(components);
-        ordered.sort(Comparator.comparing(Component::group)
-                .thenComparing(Component::artifact)
-                .thenComparing(Component::version)
-                .thenComparing(c -> c.sha256() == null ? "" : c.sha256()));
+    public static byte[] write(String group, String artifact, String version, Closure closure) {
+        List<Component> ordered = closure.components();
+        String self = purl(group, artifact, version);
         StringBuilder sb = new StringBuilder(1024 + ordered.size() * 256);
         sb.append("{\n");
         sb.append("  \"$schema\": ").append(quote(SCHEMA_URL)).append(",\n");
@@ -98,15 +170,11 @@ public final class CycloneDxSbom {
         sb.append("    },\n");
         sb.append("    \"component\": {\n");
         sb.append("      \"type\": \"application\",\n");
-        sb.append("      \"bom-ref\": ")
-                .append(quote(purl(group, artifact, version)))
-                .append(",\n");
+        sb.append("      \"bom-ref\": ").append(quote(self)).append(",\n");
         sb.append("      \"group\": ").append(quote(group)).append(",\n");
         sb.append("      \"name\": ").append(quote(artifact)).append(",\n");
         sb.append("      \"version\": ").append(quote(version)).append(",\n");
-        sb.append("      \"purl\": ")
-                .append(quote(purl(group, artifact, version)))
-                .append("\n");
+        sb.append("      \"purl\": ").append(quote(self)).append("\n");
         sb.append("    }\n");
         sb.append("  },\n");
         sb.append("  \"components\": [");
@@ -127,12 +195,28 @@ public final class CycloneDxSbom {
             }
             sb.append("\n    }");
         }
-        sb.append(ordered.isEmpty() ? "]\n" : "\n  ]\n");
+        sb.append(ordered.isEmpty() ? "],\n" : "\n  ],\n");
+        sb.append("  \"dependencies\": [\n");
+        appendDependency(sb, self, closure.direct());
+        for (Map.Entry<String, List<String>> e : closure.edges().entrySet()) {
+            sb.append(",\n");
+            appendDependency(sb, e.getKey(), e.getValue());
+        }
+        sb.append("\n  ]\n");
         sb.append("}\n");
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static String purl(String group, String artifact, String version) {
+    private static void appendDependency(StringBuilder sb, String ref, List<String> dependsOn) {
+        sb.append("    { \"ref\": ").append(quote(ref)).append(", \"dependsOn\": [");
+        for (int i = 0; i < dependsOn.size(); i++) {
+            sb.append(i == 0 ? "" : ", ").append(quote(dependsOn.get(i)));
+        }
+        sb.append("] }");
+    }
+
+    /** The package URL of a Maven coordinate, the reference both SBOM formats and provenance use. */
+    public static String purl(String group, String artifact, String version) {
         return "pkg:maven/" + group + "/" + artifact + "@" + version;
     }
 

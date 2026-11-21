@@ -369,7 +369,7 @@ public final class ClasspathResolver {
         return result;
     }
 
-    private static Lockfile.@Nullable Artifact lookup(Map<String, Lockfile.Artifact> byKey, String moduleOrKey) {
+    static Lockfile.@Nullable Artifact lookup(Map<String, Lockfile.Artifact> byKey, String moduleOrKey) {
         Lockfile.Artifact direct = byKey.get(moduleOrKey);
         if (direct != null) return direct;
         if (!PackageId.isMavenPackageKey(moduleOrKey)) return null;
