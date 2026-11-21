@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -80,6 +81,9 @@ final class EffectiveModel {
     private final List<Dependency> assembledManagement;
     private final Model raw;
     private final List<Ancestor> ancestors;
+    /** Each management key an ancestor's own non-import entry pins, to the nearest such ancestor. */
+    private final Map<String, Ancestor> pinnedBy;
+
     private final List<Profile> activeProfiles;
     private final Properties userProperties;
     private final @Nullable String failure;
@@ -99,6 +103,12 @@ final class EffectiveModel {
         this.ancestors = List.copyOf(ancestors);
         this.activeProfiles = List.copyOf(activeProfiles);
         this.failure = failure;
+        this.pinnedBy = new HashMap<>();
+        for (Ancestor a : this.ancestors) {
+            for (Dependency d : a.managed()) {
+                if (!isImport(d)) pinnedBy.putIfAbsent(key(d), a);
+            }
+        }
     }
 
     /**
@@ -295,9 +305,7 @@ final class EffectiveModel {
 
     /** The nearest ancestor whose own dependencyManagement pins {@code key} (a management key). */
     Optional<Ancestor> managedBy(String key) {
-        return ancestors.stream()
-                .filter(a -> a.managed().stream().anyMatch(d -> !isImport(d) && key.equals(key(d))))
-                .findFirst();
+        return Optional.ofNullable(pinnedBy.get(key));
     }
 
     /** The nearest ancestor whose own dependencyManagement imports a BOM. */
