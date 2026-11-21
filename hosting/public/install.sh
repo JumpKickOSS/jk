@@ -209,10 +209,21 @@ main() {
     [ "$a" != "$b" ] || [ "$1" = "$a" ] || [ "$2" != "$b" ]
   }
 
-  # Pick a downloader (not needed when a local file is provided).
+  # Pick a downloader (not needed when a local file is provided). A remote install reads HTTPS
+  # only, as install.ps1 does, and curl follows no redirect to anything else: downloads are
+  # signature-checked either way, and HTTPS keeps a host on the path from choosing which signed
+  # release, or none, arrives.
   if [ -z "$LOCAL_FILE" ]; then
+    case "$RELEASES_URL" in
+      https://?*) ;;
+      *) die "JK_RELEASES_URL must be an absolute HTTPS URL: $RELEASES_URL" ;;
+    esac
+    case "${JK_ARCHIVE_URL:-https://-}" in
+      https://?*) ;;
+      *) die "JK_ARCHIVE_URL must be an absolute HTTPS URL: $JK_ARCHIVE_URL" ;;
+    esac
     if have curl; then
-      download() { curl -fsSL "$1" -o "$2"; }
+      download() { curl -fsSL --proto =https --proto-redir =https "$1" -o "$2"; }
     elif have wget; then
       download() { wget -q "$1" -O "$2"; }
     else

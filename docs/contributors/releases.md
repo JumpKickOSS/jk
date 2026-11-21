@@ -93,7 +93,9 @@ with the commit, the tool versions and the host, and the headline numbers in the
 
 The product only knows `https://jumpkick.build/releases/`. Hosting 302s that prefix to
 the current object store (GCS today). Override with `JK_RELEASES_URL` for a mirror
-or an air-gapped origin — never bake a bucket hostname into the client.
+or an air-gapped origin — never bake a bucket hostname into the client. Both installers
+refuse a `JK_RELEASES_URL` or `JK_ARCHIVE_URL` that is not HTTPS for a remote install, and
+`install.sh`, when it downloads with curl, follows no redirect off HTTPS.
 
 ```bash
 curl -fsSL https://jumpkick.build/install.sh | bash
@@ -672,7 +674,7 @@ scripts/release-lane.sh /var/tmp/lane      # from a checkout of the tag: this ho
 # inspect /var/tmp/lane/out/release-<version>-<os>-<arch>/ (unsigned)
 ```
 
-To install that tree the way users will, serve it (and `out/repo/`) from a local web server with
+To install that tree the way users will, serve it (and `out/repo/`) over HTTPS from a local web server with
 `SHA256SUMS` and `latest/LATEST` signed by a throwaway key, run a copy of `install.sh` whose
 `RELEASE_RSA_SPKI` is the throwaway key with `JK_RELEASES_URL` pointing at the server, and give that
 home `[release] trusted-keys = "<throwaway SPKI>"` and a `[repositories.<id>]` table with

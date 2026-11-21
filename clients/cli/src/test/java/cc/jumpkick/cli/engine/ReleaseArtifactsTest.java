@@ -84,6 +84,17 @@ class ReleaseArtifactsTest {
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("refusing")
                 .hasMessageContaining("0.13.0");
+        // A pre-release of the running release ranks below it, and a snapshot build of the next
+        // release ranks above its pre-releases and below the release itself.
+        byte[] candidate = pointer(pair, "0.13.3-rc1");
+        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, candidate, "0.13.3"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("refusing latest release 0.13.3-rc1");
+        assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, candidate, "0.13.3-SNAPSHOT"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("refusing latest release 0.13.3-rc1");
+        assertThat(ReleaseArtifacts.latestVersion(verifier, same, "0.13.3-SNAPSHOT"))
+                .isEqualTo("0.13.3");
         // Tampered after signing: the two lines changed, the signature line did not.
         byte[] tampered = object(body("0.14.0"), signBase64(pair, body("0.13.0")));
         assertThatThrownBy(() -> ReleaseArtifacts.latestVersion(verifier, tampered, "0.13.3"))

@@ -102,9 +102,14 @@ public final class JkxLink {
                 + "exec '" + jkExe.toString().replace("'", "'\\''") + "' tool run \"$@\"\n";
     }
 
-    private static String cmdShim(Path jkExe) {
+    /**
+     * The path is double-quoted with each {@code %} doubled: {@code cmd} expands {@code %NAME%} in a
+     * batch line even inside quotes and drops a lone {@code %}, so a home such as {@code C:\50%off}
+     * would launch some other path.
+     */
+    static String cmdShim(Path jkExe) {
         return "@echo off\r\n"
                 + "rem jkx — `jk tool run` launcher (" + MARKER + "; do not edit)\r\n"
-                + "\"" + jkExe + "\" tool run %*\r\n";
+                + "\"" + jkExe.toString().replace("%", "%%") + "\" tool run %*\r\n";
     }
 }

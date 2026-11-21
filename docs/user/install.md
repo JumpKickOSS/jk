@@ -37,7 +37,7 @@ is unchanged`, and the next run clears what an interrupted one left.
 
 `JK_ARCHIVE_URL` is an advanced remote override and requires `JK_VERSION`; checksum and signature
 evidence comes from `JK_RELEASES_URL/<version>/`, so an arbitrary archive URL cannot choose its
-own trust metadata.
+own trust metadata. Both URLs must be HTTPS; the installers refuse any other scheme.
 
 Windows PATH install dir: `%USERPROFILE%\.jk\bin` — the same `bin/` every other platform
 uses. `install.ps1` prepends it to your **User PATH** (visible from cmd and PowerShell) and runs
