@@ -7,8 +7,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import cc.jumpkick.engine.http.EngineHttpJobs;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
+import cc.jumpkick.engine.http.mcp.tools.McpPrompts;
+import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;

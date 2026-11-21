@@ -14,7 +14,6 @@ import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.CompiledTests;
 import cc.jumpkick.task.MirroredOutputs;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.JUnitLauncher;
 import cc.jumpkick.test.SuiteFilter;
 import java.io.IOException;

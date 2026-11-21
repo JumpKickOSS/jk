@@ -6,6 +6,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.SessionExpiry;
 import cc.jumpkick.engine.decisions.Dashboards;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.SessionJournal;

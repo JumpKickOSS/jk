@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http.mcp;
+package cc.jumpkick.engine.http.mcp.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -8,8 +8,15 @@ import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.SessionExpiry;
-import cc.jumpkick.engine.http.EngineHttpJobs;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
+import cc.jumpkick.engine.http.mcp.McpCall;
+import cc.jumpkick.engine.http.mcp.McpConnection;
+import cc.jumpkick.engine.http.mcp.McpContext;
+import cc.jumpkick.engine.http.mcp.McpElicitModes;
+import cc.jumpkick.engine.http.mcp.McpError;
+import cc.jumpkick.engine.http.mcp.McpSchemas;
+import cc.jumpkick.engine.http.mcp.McpTool;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.sessions.EpisodeInference;
 import cc.jumpkick.engine.sessions.SessionLog;

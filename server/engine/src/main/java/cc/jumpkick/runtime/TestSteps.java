@@ -39,7 +39,6 @@ import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
 import cc.jumpkick.task.ToolchainPolicy;
 import cc.jumpkick.task.WorkerClosure;
-import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.StampTokens;
 import cc.jumpkick.test.SuiteEnvDelivery;
 import cc.jumpkick.test.SuiteFilter;

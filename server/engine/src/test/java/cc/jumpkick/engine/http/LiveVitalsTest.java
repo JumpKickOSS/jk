@@ -4,6 +4,8 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobRow;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;

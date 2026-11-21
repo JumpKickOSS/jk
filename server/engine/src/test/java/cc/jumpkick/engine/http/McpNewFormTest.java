@@ -8,8 +8,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.docs.AgentSetup;
-import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.NewProjectWizard;
+import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.engine.http.mcp.tools.NewTool;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;

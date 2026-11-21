@@ -8,6 +8,8 @@ import static cc.jumpkick.engine.http.JsonFields.string;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.MiniJson;
 import java.io.IOException;

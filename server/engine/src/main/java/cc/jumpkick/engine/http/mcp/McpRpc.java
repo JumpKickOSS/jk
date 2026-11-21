@@ -114,13 +114,8 @@ public final class McpRpc {
     /**
      * The {@code initialize} handshake. Capabilities must name every method the router implements
      * and nothing else: a declared capability with no method is a client that calls it and gets
-     * {@code -32601}.
+     * {@code -32601}. {@code instructions} is the playbook this connection gets.
      */
-    public static Map<String, Object> initialize(String protocolVersion, String serverName, String version) {
-        return initialize(protocolVersion, serverName, version, McpTools.INSTRUCTIONS);
-    }
-
-    /** As above, with the playbook this connection gets. */
     public static Map<String, Object> initialize(
             String protocolVersion, String serverName, String version, String instructions) {
         Map<String, Object> caps = new LinkedHashMap<>();

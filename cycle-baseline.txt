@@ -56,6 +56,13 @@
 # the leaf `resolver.stall`, the cache control lives in `resolver`, and the module has no `resolve`
 # package left: the line is gone.
 #
+# 2026-11-21, server/engine: the affected-test ranking (AffectedTestRun, AffectedTestsCompute)
+# read the planner core and only the core runs it, so it lives in `runtime`; `test` reads
+# `runtime.base` and never the core. The MCP tool registry, its prompts and its call log moved into
+# `http.mcp.tools`, and the five types the router and the tools read from the HTTP front (the job
+# and admission seams, the progress-token registry, the status and cache snapshots) into the leaf
+# `http.api`. Left: compile/task/runtime.base and jobs/journal, so the line is 5.
+#
 # Measured at landing: 1,432 main sources, 95 packages, 29 module source roots, 195 resolved
 # package edges. Method: per module, resolve each `import cc.jumpkick.*` to the longest declared
 # package prefix WITHIN that module, then Tarjan over the resulting package graph. Imports that
@@ -65,7 +72,7 @@
 # Shrinking any of these is per-module follow-up work. This file makes the number one the build
 # defends.
 
-server/engine 7
+server/engine 5
 clients/cli 5
 shared/core 8
 clients/cli-terminal 3

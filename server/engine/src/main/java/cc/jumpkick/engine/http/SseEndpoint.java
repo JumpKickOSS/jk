@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.decisions.Dashboards;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
 import cc.jumpkick.host.time.Clock;
 import cc.jumpkick.jsonl.MiniJson;
 import cc.jumpkick.wire.protocol.EventCatalog;

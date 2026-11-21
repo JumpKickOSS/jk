@@ -4,10 +4,10 @@ package cc.jumpkick.engine.http.mcp;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
-import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.McpHandler;
-import cc.jumpkick.engine.http.ProgressTokenRegistry;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import java.nio.file.Path;
 import java.util.List;

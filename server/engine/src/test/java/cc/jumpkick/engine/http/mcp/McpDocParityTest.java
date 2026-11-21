@@ -5,6 +5,8 @@ import static cc.jumpkick.engine.http.JsonFields.objects;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.docs.JkSkill;
+import cc.jumpkick.engine.http.mcp.tools.McpPrompts;
+import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

@@ -45,7 +45,6 @@ import cc.jumpkick.task.CacheStats;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.TestRun;
 import cc.jumpkick.task.TestStamp;
-import cc.jumpkick.test.AffectedTestRun;
 import cc.jumpkick.test.CoverageAgent;
 import cc.jumpkick.test.CoverageResults;
 import cc.jumpkick.test.JUnitLauncher;

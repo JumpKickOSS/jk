@@ -7,11 +7,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.config.JkHttpConfig;
-import cc.jumpkick.engine.http.CacheSnapshot;
-import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.BuildJournal;
 import cc.jumpkick.testing.RepoRoot;

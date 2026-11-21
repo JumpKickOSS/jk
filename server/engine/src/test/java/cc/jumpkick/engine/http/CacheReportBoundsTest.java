@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.api.CacheSnapshot;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.task.Bound;
 import cc.jumpkick.task.CacheTier;

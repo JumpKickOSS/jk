@@ -3,6 +3,7 @@
 
 [anchor-push-mcp-only]
 [anchor-push-mcp-only.populations]
+"server/engine" = { classes = 2084, sites = 147465 }
 "server/resolver" = { classes = 138, sites = 0 }
 "server/toolchain" = { classes = 230, sites = 0 }
 
@@ -621,6 +622,7 @@ reason = "spawners that build a child's environment on purpose on 2026-10-28; ne
 
 [child-start-owner]
 [child-start-owner.populations]
+"server/engine" = { classes = 2084, sites = 147465 }
 "server/resolver" = { classes = 138, sites = 9286 }
 "server/toolchain" = { classes = 230, sites = 17254 }
 "shared/toolchain-jdk" = { classes = 216, sites = 11470 }
@@ -664,7 +666,7 @@ population = { examined = 4 }
 "plugins/publisher" = { classes = 24, sites = 1324 }
 "plugins/quarkus" = { classes = 16, sites = 1277 }
 "plugins/test-runner" = { classes = 15, sites = 1099 }
-"server/engine" = { classes = 1792, sites = 127117 }
+"server/engine" = { classes = 2084, sites = 147465 }
 "server/guard" = { classes = 178, sites = 10898 }
 "server/io" = { classes = 78, sites = 4704 }
 "server/resolver" = { classes = 123, sites = 7334 }
@@ -927,8 +929,8 @@ at     = "cc.jumpkick.engine.http.HttpProjectApi#handleTemplates(Lcom/sun/net/ht
 reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
 [[clock-owner.entries]]
 in     = "server/engine"
-at     = "cc.jumpkick.engine.http.StatusSnapshot#vitals()Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
-reason = "wall-clock reads on 2026-09-07; the ratchet lowers the count as callers take a Clock"
+at     = "cc.jumpkick.engine.http.api.StatusSnapshot#vitals()Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
+reason = "StatusSnapshot moved to engine.http.api; the same site under its new path"
 [[clock-owner.entries]]
 in     = "server/engine"
 at     = "cc.jumpkick.engine.http.mcp.McpJobRuns#run(Lcc/jumpkick/engine/http/mcp/McpCall;Ljava/lang/String;)Ljava/util/Map; -> java.lang.System#currentTimeMillis()J"
@@ -1313,6 +1315,7 @@ population = { examined = 15 }
 
 [env-key-owner]
 [env-key-owner.populations]
+"server/engine" = { classes = 2084, sites = 147465 }
 "server/resolver" = { classes = 138, sites = 9286 }
 "server/toolchain" = { classes = 230, sites = 17254 }
 
@@ -1943,7 +1946,7 @@ population = { files = 2203 }
 "plugins/publisher" = { edges = 0, slices = 1 }
 "plugins/quarkus" = { edges = 0, slices = 1 }
 "plugins/test-runner" = { edges = 0, slices = 1 }
-"server/engine" = { edges = 93, slices = 20 }
+"server/engine" = { edges = 156, slices = 29 }
 "server/guard" = { edges = 13, slices = 8 }
 "server/io" = { edges = 0, slices = 1 }
 "server/resolver" = { edges = 2, slices = 3 }
@@ -1975,19 +1978,9 @@ value  = 3
 reason = "banked from cycle-baseline.txt on 2026-09-06 — the facts edges found the same 9 components the import regex did; per-module follow-up work shrinks them"
 [[package-cycles.entries]]
 in     = "server/engine"
-unit   = "server/engine:engine.http"
-value  = 3
-reason = "banked 2026-09-07 after the engine root stopped being a hub: the 15-slice engine component is now three (runtime/task/compile/test; http/http.mcp/http.mcp.tools; jobs/journal) — the count only goes down from here"
-[[package-cycles.entries]]
-in     = "server/engine"
 unit   = "server/engine:engine.jobs"
 value  = 2
 reason = "banked 2026-09-07 after the engine root stopped being a hub: the 15-slice engine component is now three (runtime/task/compile/test; http/http.mcp/http.mcp.tools; jobs/journal) — the count only goes down from here"
-[[package-cycles.entries]]
-in     = "server/engine"
-unit   = "server/engine:runtime"
-value  = 2
-reason = "banked 2026-09-08 after the runtime split: the planner cycle is runtime+test now that compile and task read runtime.base instead of the core — the count only goes down from here"
 [[package-cycles.entries]]
 in     = "server/toolchain"
 unit   = "server/toolchain:compat"
@@ -2067,6 +2060,7 @@ population = { poms = 38 }
 
 [redactor-owner]
 [redactor-owner.populations]
+"server/engine" = { classes = 2084, sites = 147465 }
 "server/resolver" = { classes = 138, sites = 9286 }
 "server/toolchain" = { classes = 230, sites = 17254 }
 "shared/toolchain-jdk" = { classes = 216, sites = 11470 }
@@ -2176,13 +2170,13 @@ reason = "PlannerTest's steps become per-plan TestCompileSteps (compile-test) an
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestLaunch"
-value  = 20
-reason = "PlannerTest's steps become per-plan TestCompileSteps (compile-test) and TestSteps (run-tests), each body beside its predictor, which removes PlannerTest's entry of 36, PlannerTestForecast's of 18 and the PlannerTest~TestLaunch mutual pair; the two step classes read the test owners PlannerTest and PlannerTestForecast read between them, and CorePlan builds both"
+value  = 21
+reason = "AffectedTestRun moved into runtime to cut the runtime-test cycle: TestSteps 27 to 28, TestLaunch 20 to 21, the dependencies they had before"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.TestSteps"
-value  = 27
-reason = "PlannerTest's steps become per-plan TestCompileSteps (compile-test) and TestSteps (run-tests), each body beside its predictor, which removes PlannerTest's entry of 36, PlannerTestForecast's of 18 and the PlannerTest~TestLaunch mutual pair; the two step classes read the test owners PlannerTest and PlannerTestForecast read between them, and CorePlan builds both"
+value  = 28
+reason = "AffectedTestRun moved into runtime to cut the runtime-test cycle: TestSteps 27 to 28, TestLaunch 20 to 21, the dependencies they had before"
 [[runtime-efferent-coupling.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.workspace.WorkspacePreflightPhase"
@@ -2409,8 +2403,8 @@ reason = "the runtime packages as the coupling guard first measured them"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.BuildPlanner"
-value  = 49
-reason = "the guard lanes run in the per-plan GuardSteps, which reads the plan keys from BuildPlanner as PlannerGuards' step bodies did, and PlannerGuards still reads them for the output lane the packaging tails plan"
+value  = 50
+reason = "AffectedTestRun moved into runtime to cut the runtime-test cycle: BuildPlanner 49 to 50"
 [[runtime-static-holder-fan-in.entries]]
 in     = "server/engine"
 unit   = "server/engine:cc.jumpkick.runtime.EffortWeights"

@@ -26,7 +26,7 @@ import cc.jumpkick.engine.http.FrontDoor;
 import cc.jumpkick.engine.http.HttpEngineServer;
 import cc.jumpkick.engine.http.HttpEvents;
 import cc.jumpkick.engine.http.SelfUpdateControl;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobEnvelope;
 import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.engine.jobs.JobSessions;

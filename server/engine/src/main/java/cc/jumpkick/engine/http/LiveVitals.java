@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.engine.http.api.CacheSnapshot;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.host.Log;
 import java.util.List;
 import java.util.Map;

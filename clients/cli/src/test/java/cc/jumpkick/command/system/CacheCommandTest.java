@@ -14,7 +14,7 @@ import cc.jumpkick.cli.engine.IsolatedStore;
 import cc.jumpkick.cli.testing.Capture;
 import cc.jumpkick.cli.testing.ForcedAnsi;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.engine.http.CacheSnapshot;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
 import cc.jumpkick.host.ActionTree;
 import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Hashing;

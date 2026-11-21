@@ -5,6 +5,7 @@ import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.task.ClassAbi;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -301,6 +302,39 @@ public final class AffectedTestRanker {
             return false;
         }
         return true;
+    }
+
+    /**
+     * The module-relative path of a dirty main source that is newer than its compiled class, or
+     * {@code null} when every dirty class file is at least as fresh as its source (or absent —
+     * ranking from sources is honest, stale bytecode is not).
+     */
+    public static @Nullable String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
+        Path module = moduleDir.toAbsolutePath().normalize();
+        Path base = root.toAbsolutePath().normalize();
+        SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
+        for (String raw : dirty) {
+            if (raw == null || raw.isBlank()) continue;
+            Path p = Path.of(raw);
+            if (!p.isAbsolute()) p = base.resolve(p);
+            p = p.normalize();
+            if (!p.startsWith(module) || !Files.isRegularFile(p)) continue;
+            String name = p.getFileName() == null ? "" : p.getFileName().toString();
+            if (!isClassSource(name)) continue;
+            String rel = module.relativize(p).toString().replace('\\', '/');
+            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
+            if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
+            Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
+            try {
+                if (Files.isRegularFile(classFile)
+                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0) {
+                    return rel;
+                }
+            } catch (IOException e) {
+                // unreadable timestamps never fabricate a refuse
+            }
+        }
+        return null;
     }
 
     /** A source file whose compilation produces classes — the grain the ranker reasons in. */

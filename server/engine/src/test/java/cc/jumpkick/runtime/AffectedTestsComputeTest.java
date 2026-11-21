@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.TestSelection;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.test.TestClassIndex;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;

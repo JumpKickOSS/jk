@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.builds.ProjectIdentity;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
 import cc.jumpkick.host.PathUtil;
 import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.runtime.base.BuildMetrics;

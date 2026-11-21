@@ -6,6 +6,9 @@ import static cc.jumpkick.engine.http.JsonFields.object;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.api.CacheSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.jsonl.MiniJson;
 import java.util.List;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
-import cc.jumpkick.engine.http.ProgressTokenRegistry;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;

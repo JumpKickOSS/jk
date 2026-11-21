@@ -396,12 +396,17 @@ and `listen` read it instead of reaching back up. Worker-process budgeting (`Job
 the worker launcher in `engine.plugin`, below `runtime`, `compile`, `test` and `git`, which all use it.
 The build runtime is three packages in one direction: `runtime.base` (what the planner reads and
 nothing reads back — metrics and priors, compile and tool support, lock primitives, identities; no
-class there names the core or imports `task`, `compile`, `test` or `git`), `runtime` (the planner core:
-the plan builders, forecast, effort weights, lock pipeline — one strongly connected component of
-about fifty classes) and `runtime.workspace` (the workspace phases, the build service, the ETA and
-the plan builders that compose the core). The remaining package cycles are the three the guard's
-`cycle-baseline.txt` line counts: the planner core (`runtime` and `test`, joined by `AffectedTestRun`
-reading `BuildPlanner`), the MCP front (`http`, `http.mcp`, `http.mcp.tools`) and the job/journal pair.
+class there names the core or imports `test` or `git`), `runtime` (the planner core:
+the plan builders, forecast, effort weights, lock pipeline, and the affected-test ranking it runs
+before a suite — one strongly connected component of about fifty classes) and `runtime.workspace`
+(the workspace phases, the build service, the ETA and the plan builders that compose the core).
+`test` reads `runtime.base` and never the core. The MCP front is three packages in one direction
+too: `http` hosts `http.mcp.tools` (the tools, their registry and prompts), which reads `http.mcp`
+(the router and the owners a tool delegates to), and all three read the leaf `http.api` (the job and
+admission seams, the progress-token registry, the status and cache snapshots). The remaining package
+cycles are the two the guard's `package-cycles` band counts: `compile`, `task` and `runtime.base`
+(`task`'s action key reads `compile`'s requests, `runtime.base` reads `task`'s action cache and
+`compile`'s classpath resolver) and the job/journal pair.
 
 The CLI's verbs are five families under `cc.jumpkick.command` — `pipeline`, `project`, `toolchain`,
 `interop`, `system` — each with a package charter, over a root that holds only what more than one

@@ -5,9 +5,9 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
-import cc.jumpkick.engine.http.EngineHttpJobs;
 import cc.jumpkick.engine.http.McpHandler;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.verbs.Updates;
 import cc.jumpkick.jsonl.Jsonl;

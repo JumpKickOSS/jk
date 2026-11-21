@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -70,17 +71,6 @@ class McpSchemaReadsTest {
         assertThat(properties(
                         Objects.requireNonNull(tools.tool("diagnostics")).spec().inputSchema()))
                 .contains("run");
-    }
-
-    @Test
-    void a_prompt_that_names_a_tool_off_the_default_list_says_how_to_list_it() {
-        for (String prompt : McpPrompts.names()) {
-            String text = McpPrompts.playbook(prompt).orElseThrow();
-            if (!McpPrompts.offList(text).isEmpty()) {
-                assertThat(text).as(prompt).contains("extended=true");
-            }
-        }
-        assertThat(McpPrompts.playbook("stall-or-cancel").orElseThrow()).contains("extended=true");
     }
 
     @SuppressWarnings("unchecked")

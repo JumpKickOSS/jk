@@ -3,7 +3,7 @@ package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.changes.Change;
 import cc.jumpkick.changes.ChangeJournal;
-import cc.jumpkick.engine.http.CacheSnapshot;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpContext;
 import cc.jumpkick.engine.http.mcp.McpDecisions;

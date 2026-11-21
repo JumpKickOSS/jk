@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.JsonOut;
 import cc.jumpkick.engine.decisions.Dashboards;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;

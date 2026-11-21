@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.test;
+package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.AffectedChanged;
 import cc.jumpkick.config.AffectedSelection;
@@ -14,9 +14,15 @@ import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.runtime.PlannerTest;
-import cc.jumpkick.runtime.TestStampInputs;
 import cc.jumpkick.task.ClassAbi;
+import cc.jumpkick.test.AbiIndex;
+import cc.jumpkick.test.AffectedChangedPublish;
+import cc.jumpkick.test.AffectedTestRanker;
+import cc.jumpkick.test.AffectedTests;
+import cc.jumpkick.test.ClassTags;
+import cc.jumpkick.test.SourceClassNames;
+import cc.jumpkick.test.SuiteFilter;
+import cc.jumpkick.test.TestClassIndex;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -97,7 +103,7 @@ public final class AffectedTestsCompute {
                 var row = List.of(new AffectedTests.ModuleRow(rel, coord, "dirty"));
                 // No compile happens on this path: a dirty source newer than its compiled class
                 // means the bytecode is a lie — refuse rather than rank from it.
-                String stale = staleDirtyMain(root, modDir, dirty, layout.classesDir());
+                String stale = AffectedTestRanker.staleDirtyMain(root, modDir, dirty, layout.classesDir());
                 if (stale != null) {
                     return AffectedTests.refused(
                             new AffectedTests.Refuse("stale", stale + " is newer than its compiled class; build first"),
@@ -169,39 +175,6 @@ public final class AffectedTestsCompute {
             acc = acc.merge(slice);
         }
         return capGlobal(acc);
-    }
-
-    /**
-     * The module-relative path of a dirty main source that is newer than its compiled class, or
-     * {@code null} when every dirty class file is at least as fresh as its source (or absent —
-     * ranking from sources is honest, stale bytecode is not).
-     */
-    static @Nullable String staleDirtyMain(Path root, Path moduleDir, List<String> dirty, Path classesDir) {
-        Path module = moduleDir.toAbsolutePath().normalize();
-        Path base = root.toAbsolutePath().normalize();
-        SourceFqcs fqcs = SourceFqcs.of(module, Set.of(TestSuites.DEFAULT));
-        for (String raw : dirty) {
-            if (raw == null || raw.isBlank()) continue;
-            Path p = Path.of(raw);
-            if (!p.isAbsolute()) p = base.resolve(p);
-            p = p.normalize();
-            if (!p.startsWith(module) || !Files.isRegularFile(p)) continue;
-            String name = p.getFileName() == null ? "" : p.getFileName().toString();
-            if (!AffectedTestRanker.isClassSource(name)) continue;
-            String rel = module.relativize(p).toString().replace('\\', '/');
-            SourceFqcs.Hit hit = fqcs.classify(rel, Set.of(TestSuites.DEFAULT));
-            if (hit.kind() != SourceFqcs.Kind.MAIN || hit.fqc() == null) continue;
-            Path classFile = classesDir.resolve(hit.fqc().replace('.', '/') + ".class");
-            try {
-                if (Files.isRegularFile(classFile)
-                        && Files.getLastModifiedTime(classFile).compareTo(Files.getLastModifiedTime(p)) < 0) {
-                    return rel;
-                }
-            } catch (IOException e) {
-                // unreadable timestamps never fabricate a refuse
-            }
-        }
-        return null;
     }
 
     static boolean hasLocalDirty(Path root, Path module, List<String> dirty) {

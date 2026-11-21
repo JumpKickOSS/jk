@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http.mcp;
 
 import cc.jumpkick.engine.api.HttpLive;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.host.time.Suspensions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

@@ -2275,7 +2275,7 @@ in     = "cc.jumpkick.engine.graph.GraphRunner#compiler"
 reason = "seam: the engine's job submitter, installed once as the server starts"
 
 [[guards.engine-static-memo.allow]]
-in     = "cc.jumpkick.engine.http.CacheSnapshot#m2Reading"
+in     = "cc.jumpkick.engine.http.api.CacheSnapshot#m2Reading"
 reason = "TTL 3600s: the size of ~/.m2, which jk neither budgets nor prunes, walked at most hourly for the dashboard"
 
 [[guards.engine-static-memo.allow]]

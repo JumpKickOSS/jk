@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobRow;
 import cc.jumpkick.jsonl.Jsonl;
 import java.net.http.HttpResponse;

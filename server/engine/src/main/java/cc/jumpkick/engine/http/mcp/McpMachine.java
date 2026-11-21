@@ -6,7 +6,7 @@ import cc.jumpkick.changes.ChangeJournal;
 import cc.jumpkick.config.EffectiveUserConfig;
 import cc.jumpkick.config.NerdFontMode;
 import cc.jumpkick.config.UserConfigEditor;
-import cc.jumpkick.engine.http.CacheSnapshot;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
 import cc.jumpkick.engine.verbs.CacheMaintenanceLocks;
 import cc.jumpkick.host.AtomicWrites;
 import cc.jumpkick.host.Errors;

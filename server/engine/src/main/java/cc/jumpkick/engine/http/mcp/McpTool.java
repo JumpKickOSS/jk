@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One MCP tool. Not sealed — the set grows and tests need fakes. Not {@code ServiceLoader}: the
- * set is {@link McpTools#standard()}, an explicit list, so adding a tool is one class and one
+ * set is {@code McpTools.standard()}, an explicit list, so adding a tool is one class and one
  * line there.
  *
  * <p>{@link #spec()} is the only place the wire name is written. {@code tools/list} and
@@ -46,7 +46,7 @@ public interface McpTool {
         }
 
         /** The {@code tools/list} row. */
-        Map<String, Object> listed() {
+        public Map<String, Object> listed() {
             Map<String, Object> t = new LinkedHashMap<>();
             t.put("name", name);
             t.put("description", description);

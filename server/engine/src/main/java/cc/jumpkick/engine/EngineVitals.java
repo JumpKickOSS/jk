@@ -4,7 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.engine.api.WireWriter;
 import cc.jumpkick.engine.http.EngineIdentity;
 import cc.jumpkick.engine.http.HttpEngineServer;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.http.mcp.McpConnections;
 import cc.jumpkick.engine.jobs.MemoryAdmission;
 import cc.jumpkick.engine.plugin.MemoryProbe;

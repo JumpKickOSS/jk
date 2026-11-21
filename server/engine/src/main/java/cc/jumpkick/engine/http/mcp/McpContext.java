@@ -5,11 +5,11 @@ import cc.jumpkick.engine.api.HttpLive;
 import cc.jumpkick.engine.decisions.Dashboards;
 import cc.jumpkick.engine.decisions.DecisionQueue;
 import cc.jumpkick.engine.decisions.Decisions;
-import cc.jumpkick.engine.http.AdmissionYield;
-import cc.jumpkick.engine.http.CacheSnapshot;
-import cc.jumpkick.engine.http.EngineHttpJobs;
-import cc.jumpkick.engine.http.ProgressTokenRegistry;
-import cc.jumpkick.engine.http.StatusSnapshot;
+import cc.jumpkick.engine.http.api.AdmissionYield;
+import cc.jumpkick.engine.http.api.CacheSnapshot;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.machine.MachineEnvironments;
 import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.jsonl.MiniJson;
@@ -30,8 +30,8 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Everything an {@link McpTool} may reach: the engine collaborators the handler was built with.
- * Constructor args are the DI framework, so a tool holds no state of its own and {@link
- * McpTools#standard()} can be a list of singletons. The project a call targets is the call's own
+ * Constructor args are the DI framework, so a tool holds no state of its own and {@code
+ * McpTools.standard()} can be a list of singletons. The project a call targets is the call's own
  * ({@link McpCall#dir()}): its argument, else the bind of the connection it rode in on — never a
  * process-wide default two agents could overwrite for each other.
  *

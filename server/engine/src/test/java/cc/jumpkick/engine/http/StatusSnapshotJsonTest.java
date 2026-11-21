@@ -3,6 +3,7 @@ package cc.jumpkick.engine.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.testing.RepoRoot;
 import java.io.IOException;
 import java.lang.reflect.RecordComponent;

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.engine.api.JsonOut;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.function.Supplier;

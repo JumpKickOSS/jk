@@ -7,6 +7,10 @@ import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.engine.api.HttpLive;
+import cc.jumpkick.engine.http.api.AdmissionYield;
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
+import cc.jumpkick.engine.http.api.ProgressTokenRegistry;
+import cc.jumpkick.engine.http.api.StatusSnapshot;
 import cc.jumpkick.engine.jobs.JobSpec;
 import cc.jumpkick.engine.journal.JkResultsAgent;
 import cc.jumpkick.engine.journal.JkResultsMarkdown;

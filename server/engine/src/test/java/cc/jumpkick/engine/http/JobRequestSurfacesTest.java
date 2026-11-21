@@ -4,12 +4,13 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cc.jumpkick.engine.http.api.EngineHttpJobs;
 import cc.jumpkick.engine.http.mcp.McpCall;
 import cc.jumpkick.engine.http.mcp.McpConnection;
 import cc.jumpkick.engine.http.mcp.McpContext;
 import cc.jumpkick.engine.http.mcp.McpError;
 import cc.jumpkick.engine.http.mcp.McpJobRuns;
-import cc.jumpkick.engine.http.mcp.McpTools;
+import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.engine.jobs.JobOrigin;
 import cc.jumpkick.engine.jobs.JobRequests;
 import cc.jumpkick.engine.jobs.JobSpec;

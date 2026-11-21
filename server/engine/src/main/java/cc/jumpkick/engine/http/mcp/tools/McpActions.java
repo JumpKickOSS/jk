@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.engine.http.mcp;
+package cc.jumpkick.engine.http.mcp.tools;
 
 import cc.jumpkick.engine.api.BuildJobFingerprint;
+import cc.jumpkick.engine.http.mcp.McpCall;
+import cc.jumpkick.engine.http.mcp.McpConnection;
+import cc.jumpkick.engine.http.mcp.McpSchemas;
 import cc.jumpkick.engine.sessions.ActionRecord;
 import cc.jumpkick.engine.sessions.Fact;
 import cc.jumpkick.engine.sessions.SessionLog;

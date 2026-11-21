@@ -10,6 +10,7 @@ import cc.jumpkick.docs.AgentSetup;
 import cc.jumpkick.docs.AgentsGuide;
 import cc.jumpkick.docs.JkSkill;
 import cc.jumpkick.engine.decisions.DecisionQueue;
+import cc.jumpkick.engine.http.mcp.tools.McpTools;
 import cc.jumpkick.engine.verbs.InertVerbHost;
 import cc.jumpkick.engine.verbs.VerbRegistry;
 import cc.jumpkick.jsonl.MiniJson;

@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import cc.jumpkick.config.JkHttpConfig;
+import cc.jumpkick.engine.http.api.AdmissionYield;
 import com.sun.net.httpserver.HttpExchange;
 import java.util.Locale;
 import java.util.concurrent.Semaphore;
