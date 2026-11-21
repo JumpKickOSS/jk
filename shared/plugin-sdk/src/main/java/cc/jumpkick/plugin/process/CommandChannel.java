@@ -97,13 +97,18 @@ public final class CommandChannel {
         }
     }
 
-    /** Connect to {@code address} and send {@code token} as the first line. */
+    /** Connect to {@code address}, a loopback address, and send {@code token} as the first line. */
     private static Socket open(String address, String token) throws IOException {
         int colon = address.lastIndexOf(':');
         if (colon <= 0) throw new IllegalArgumentException("not <host>:<port>: " + address);
         String host = address.substring(0, colon).replace("[", "").replace("]", "");
         int port = Integer.parseInt(address.substring(colon + 1));
-        Socket socket = new Socket(InetAddress.getByName(host), port);
+        InetAddress engine = InetAddress.getByName(host);
+        // The token proves the worker to its engine; sent anywhere else, it hands that proof away.
+        if (!engine.isLoopbackAddress()) {
+            throw new IllegalArgumentException("the command channel must be a loopback address: " + address);
+        }
+        Socket socket = new Socket(engine, port);
         try {
             Writer hello = new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.US_ASCII);
             hello.write(token + "\n");

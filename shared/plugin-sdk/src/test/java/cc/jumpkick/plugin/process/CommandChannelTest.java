@@ -49,4 +49,15 @@ class CommandChannelTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(CommandChannel.TOKEN_ENV);
     }
+
+    /** The token goes to a loopback address alone: a channel argument naming another host is refused before any connect. */
+    @Test
+    void a_channel_off_this_host_is_refused() {
+        assertThatThrownBy(() -> CommandChannel.connect(List.of(CommandChannel.COMMANDS + "192.0.2.1:9"), "abc123"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("loopback");
+        assertThatThrownBy(() -> CommandChannel.connect(List.of(CommandChannel.COMMANDS + "[2001:db8::1]:9"), "abc123"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("loopback");
+    }
 }

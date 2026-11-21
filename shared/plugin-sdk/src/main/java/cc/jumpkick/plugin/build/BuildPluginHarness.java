@@ -508,7 +508,10 @@ public final class BuildPluginHarness {
             return out;
         }
 
-        /** A {@code config} line: a top-level value, or one leaf of a nested entry: key → entry → field. */
+        /**
+         * A {@code config} line: a top-level value, one leaf of a nested entry (key → entry → field),
+         * or an entry with no fields (an {@code entry} and no {@code field}).
+         */
         private static void addConfig(String line, Map<String, Object> configValues) throws IOException {
             String key = required(Jsonl.str(line, "key"), "config.key");
             @Nullable String entry = Jsonl.str(line, "entry");
@@ -519,8 +522,9 @@ public final class BuildPluginHarness {
             @SuppressWarnings("unchecked")
             Map<String, Map<String, Object>> nested = (Map<String, Map<String, Object>>)
                     configValues.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
-            nested.computeIfAbsent(entry, k -> new LinkedHashMap<>())
-                    .put(required(Jsonl.str(line, "field"), "config.field"), configValue(line));
+            Map<String, Object> fields = nested.computeIfAbsent(entry, k -> new LinkedHashMap<>());
+            @Nullable String field = Jsonl.str(line, "field");
+            if (field != null) fields.put(field, configValue(line));
         }
 
         /**

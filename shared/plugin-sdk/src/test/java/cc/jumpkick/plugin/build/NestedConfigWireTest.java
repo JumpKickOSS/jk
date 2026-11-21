@@ -55,4 +55,26 @@ class NestedConfigWireTest {
                 .containsEntry("lite", Boolean.TRUE)
                 .containsEntry("depth", 3L);
     }
+
+    /** An entry that sets nothing is still an entry: the table named it, and the worker must see it. */
+    @Test
+    void an_entry_with_no_fields_crosses_the_wire(@TempDir Path dir) throws Exception {
+        Map<String, Map<String, Object>> entries = new LinkedHashMap<>();
+        entries.put("plain", Map.of());
+        entries.put("api", Map.of("tool", "org.acme:gen:1.0"));
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put(PluginConfig.ENTRIES, entries);
+
+        Path spec = dir.resolve("spec.jsonl");
+        Files.write(
+                spec,
+                new SpecWriter()
+                        .op("describe", null, "gen")
+                        .configValues(values)
+                        .lines());
+
+        PluginConfig read = BuildPluginHarness.Spec.read(spec).config();
+        assertThat(read.entries().keySet()).containsExactly("plain", "api");
+        assertThat(read.entries().get("plain")).isEmpty();
+    }
 }

@@ -54,7 +54,8 @@ public final class SpecWriter {
      * Same as {@link #config(PluginConfig)} from a raw table (front-end {@code model.PluginConfig}).
      * A {@code string-map} value is one {@code map} line; a group of entries (the table's
      * {@code [entries]}, a value whose values are themselves maps) is one line per leaf, addressed
-     * by {@code entry} and {@code field}, so the worker rebuilds the same nested map.
+     * by {@code entry} and {@code field}, so the worker rebuilds the same nested map; an entry with
+     * no fields is one line with {@code entry} and no {@code field}.
      */
     public SpecWriter configValues(Map<String, Object> values) {
         for (Map.Entry<String, Object> e : values.entrySet()) {
@@ -62,6 +63,15 @@ public final class SpecWriter {
             if (v instanceof Map<?, ?> m && m.values().stream().anyMatch(x -> x instanceof Map)) {
                 for (Map.Entry<?, ?> entry : m.entrySet()) {
                     if (!(entry.getValue() instanceof Map<?, ?> fields)) continue;
+                    if (fields.isEmpty()) {
+                        // An entry that sets nothing is still named: one line with no field says so.
+                        lines.add(JsonFields.object()
+                                .string("t", "config")
+                                .string("key", e.getKey())
+                                .string("entry", String.valueOf(entry.getKey()))
+                                .finish());
+                        continue;
+                    }
                     for (Map.Entry<?, ?> field : fields.entrySet()) {
                         configValue(
                                 e.getKey(),
