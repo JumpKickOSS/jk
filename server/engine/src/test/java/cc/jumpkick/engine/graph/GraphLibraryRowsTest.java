@@ -9,6 +9,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.wire.protocol.GraphRequest;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -60,5 +61,37 @@ class GraphLibraryRowsTest {
         Path sources = repo.resolve("org/example/graph/lib/1.0/lib-1.0-sources.jar");
         Files.writeString(sources, "sources");
         assertThat(GraphRunner.libraryRows(root)).containsExactly("org.example.graph:lib:1.0\t" + jar + "\t" + sources);
+    }
+
+    @Test
+    void aQuestionReadsTheLockedJarsAndCompilesNothingOnlyWhenItNamesALibrary() {
+        assertThat(GraphRunner.readsLibraries(request("query", List.of("library=jackson-databind"))))
+                .isTrue();
+        assertThat(GraphRunner.readsLibraries(request("query", List.of()))).isFalse();
+        assertThat(GraphRunner.readsLibraries(request("read", List.of()))).isTrue();
+        assertThat(GraphRunner.readsLibraries(request("callers", List.of()))).isFalse();
+        assertThat(GraphRunner.asksALibrary(request("query", List.of("library=guava"))))
+                .isTrue();
+        assertThat(GraphRunner.asksALibrary(request("read", List.of()))).isFalse();
+    }
+
+    private static GraphRequest request(String op, List<String> options) {
+        return new GraphRequest(
+                "/w",
+                op,
+                List.of("x"),
+                "bfs",
+                3,
+                2000,
+                List.of(),
+                false,
+                8,
+                null,
+                false,
+                false,
+                null,
+                null,
+                null,
+                options);
     }
 }

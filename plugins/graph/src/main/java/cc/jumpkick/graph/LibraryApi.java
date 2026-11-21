@@ -93,6 +93,16 @@ final class LibraryApi {
         return jars.isEmpty();
     }
 
+    List<Jar> jars() {
+        return jars;
+    }
+
+    /** Where indexes of the jars are kept; {@code null} keeps them in memory only. */
+    @Nullable
+    Path cache() {
+        return cache;
+    }
+
     /** Every public type of every jar, in jar order. */
     List<Type> types() {
         List<Type> have = types;
@@ -189,7 +199,7 @@ final class LibraryApi {
      * The path of {@code t}'s source in a sources jar: its package directory and the file its class
      * file names, else the outermost type's name with {@code .java}.
      */
-    private static String sourceFile(Type t, ClassModel m) {
+    static String sourceFile(Type t, ClassModel m) {
         String binary = t.binary();
         int dot = binary.lastIndexOf('.');
         String dir = dot < 0 ? "" : binary.substring(0, dot).replace('.', '/') + "/";
@@ -203,7 +213,7 @@ final class LibraryApi {
     }
 
     /** The UTF-8 text of {@code name} in {@code jar}, {@code null} when it is absent or unreadable. */
-    private static @Nullable String entry(Path jar, String name) {
+    static @Nullable String entry(Path jar, String name) {
         try (ZipFile zip = new ZipFile(jar.toFile())) {
             ZipEntry e = zip.getEntry(name);
             if (e == null) return null;
@@ -336,16 +346,30 @@ final class LibraryApi {
         List<String> out = new ArrayList<>();
         out.add("== " + t.dotted() + "  (" + t.jar().coord() + ", library)");
         out.add(header(t, m));
+        for (Member each : members(t, m)) {
+            if (member == null || each.name().equals(member)) out.add("  " + each.signature());
+        }
+        if (member != null && out.size() == 2) out.add("  (no public member '" + member + "')");
+        return String.join("\n", out);
+    }
+
+    /** A public or protected field, constructor or method: its name (a constructor's is the type's) and signature. */
+    record Member(String name, String signature, boolean method) {}
+
+    /** {@code m}'s public and protected fields, then its constructors and methods, in class-file order. */
+    static List<Member> members(Type t, ClassModel m) {
+        List<Member> out = new ArrayList<>();
         String simple = t.simple();
         for (FieldModel f : m.fields()) {
             int a = f.flags().flagsMask();
             if (!visible(a) || (a & ClassFile.ACC_SYNTHETIC) != 0) continue;
-            if (member != null && !f.fieldName().stringValue().equals(member)) continue;
             String type = f.findAttribute(Attributes.signature())
                     .map(s -> type(Signature.parseFrom(s.signature().stringValue())))
                     .orElseGet(() -> simple(ClassDesc.ofDescriptor(f.fieldType().stringValue())));
-            out.add("  " + modifiers(a, false) + type + " " + f.fieldName().stringValue());
+            String name = f.fieldName().stringValue();
+            out.add(new Member(name, modifiers(a, false) + type + " " + name, false));
         }
+        boolean inInterface = (m.flags().flagsMask() & ClassFile.ACC_INTERFACE) != 0;
         for (MethodModel method : m.methods()) {
             int a = method.flags().flagsMask();
             String name = method.methodName().stringValue();
@@ -353,20 +377,14 @@ final class LibraryApi {
                 continue;
             }
             boolean ctor = name.equals("<init>");
-            if (member != null && !(ctor ? simple : name).equals(member)) continue;
-            out.add("  "
-                    + method(
-                            method,
-                            a,
-                            ctor ? simple : name,
-                            ctor,
-                            (m.flags().flagsMask() & ClassFile.ACC_INTERFACE) != 0));
+            String shown = ctor ? simple : name;
+            out.add(new Member(shown, method(method, a, shown, ctor, inInterface), true));
         }
-        if (member != null && out.size() == 2) out.add("  (no public member '" + member + "')");
-        return String.join("\n", out);
+        return out;
     }
 
-    private static String header(Type t, ClassModel m) {
+    /** The type's declaration line: modifiers, kind, name, type parameters and supertypes. */
+    static String header(Type t, ClassModel m) {
         int a = t.access();
         String kind = kind(a);
         StringBuilder h = new StringBuilder(modifiers(a, true));

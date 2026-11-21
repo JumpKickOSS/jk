@@ -376,6 +376,32 @@ the closest names.
 | `-s`, `--dfs` | Walk depth-first |
 | `-c`, `--context call,field,…` | Follow only edges with these contexts; a question that says "calls" or "imports" sets it, and one that says "returns", "member" or "template" sets it unless that leaves fewer than ten symbols (the first line then says every edge was followed) |
 | `-n`, `--no-refresh` | Answer from the last graph without looking at the tree |
+| `-l`, `--library <name>` | Ask a locked library's public API instead of the workspace ([below](#asking-a-library)) |
+
+### Asking a library
+
+`jk graph query -l <name> <question>` answers "what in this library does X" from the jars
+`jk-lock.toml` pins, for when the type's name is not known yet. `<name>` is an artifact
+(`jackson-databind`), a `group:artifact`, a whole coordinate or a glob over any of them
+(`'com.fasterxml.jackson.*'`); a name no locked jar matches lists the ones whose coordinate
+contains it.
+
+The question's words are matched as above against every public type and member name, and against
+each one's Javadoc summary when the library's `-sources.jar` is on this machine (`jk sync --sources`
+fetches it); without one the answer says only names were matched. Each match shows its qualified
+name, its Javadoc summary and its signatures, the first four overloads of a member and a count of the
+rest, best match first, as many as the budget holds. A member name that matches on many types
+(`toString`) is shown three times and counted after that. The answer opens with the locked version
+it read; `jk graph read` on a name it lists shows the source.
+
+```bash
+jk graph query -l jackson-databind "read json into a tree"
+jk graph query -l guava "split a string" -b 4000
+```
+
+A jar's API is indexed the first time a question asks about it, and again only when the jar or its
+sources jar changes; the index is kept under the store. A library question compiles nothing, and the
+walk and scope options do not apply to it.
 
 ## Scope
 

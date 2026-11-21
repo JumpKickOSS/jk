@@ -96,6 +96,18 @@ class GraphCommandTest {
     }
 
     @Test
+    void aLibraryQuestionNamesItsLibrary() {
+        Invocation in = Invocation.builder()
+                .addPositional("parse")
+                .addPositional("json")
+                .putValue("library", "jackson-databind")
+                .build();
+        GraphRequest r = op("query").request(Path.of("/w"), in, false);
+        assertThat(r.args()).containsExactly("parse", "json");
+        assertThat(r.options()).containsExactly("library=jackson-databind");
+    }
+
+    @Test
     void aNonNumberIsRefusedByName() {
         Invocation in = Invocation.builder().putValue("depth", "deep").build();
         assertThatThrownBy(() -> op("query").request(Path.of("/w"), in, false))

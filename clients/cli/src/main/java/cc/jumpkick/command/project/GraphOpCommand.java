@@ -157,7 +157,7 @@ final class GraphOpCommand implements CliCommand {
 
     /** Options passed through to the worker by name. */
     static final List<String> SETTINGS =
-            List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "module");
+            List.of("view", "kind", "visibility", "extends", "implements", "annotated", "also", "module", "library");
 
     private static int number(Invocation in, String option, int fallback) {
         String raw = in.value(option).orElse(null);

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
 class LibraryApiTest {
 
     /** A small library compiled with parameter names, packed into a jar. */
-    private static Path jar(Path dir) throws IOException {
+    static Path jar(Path dir) throws IOException {
         Path src = Files.createDirectories(dir.resolve("src/org/lib"));
         Files.writeString(src.resolve("Mapper.java"), """
                 package org.lib;
@@ -86,7 +86,7 @@ class LibraryApiTest {
     }
 
     /** The sources jar of {@link #jar}: the one source file at its package path. */
-    private static Path sourcesJar(Path dir) throws IOException {
+    static Path sourcesJar(Path dir) throws IOException {
         Path jar = dir.resolve("lib-1.0-sources.jar");
         try (OutputStream out = Files.newOutputStream(jar);
                 JarOutputStream j = new JarOutputStream(out)) {

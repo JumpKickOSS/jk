@@ -101,8 +101,8 @@ public final class GraphService {
      * What the engine knows about the workspace: its root, where this checkout keeps its linked
      * graph ({@code out}) and the cache root whose action index holds the fragments ({@code cache}), every module's
      * class facts index, its modules, the script reader, the {@code [graph.aliases]} (term → outside words), for {@code rules} the guard rules
-     * the engine matched to the file (one JSON object each), for {@code read} and {@code find} the
-     * locked jars and where their API indexes are kept, the modules and test suites with sources
+     * the engine matched to the file (one JSON object each), for {@code read}, {@code find} and a
+     * library {@code query} the locked jars and where their API indexes are kept, the modules and test suites with sources
      * the engine has no compiled classes of ({@code uncompiled}), whose calls no answer holds, and
      * for a rename, a delete or callers which modules see which ({@code reach}).
      */
@@ -238,9 +238,14 @@ public final class GraphService {
         List<String> a = r.args();
         return switch (r.op()) {
             case "build" -> "";
-            case "query" ->
-                new GraphQuery(g, scope, w.aliases())
-                        .query(String.join(" ", a), mode(r.mode()), r.depth(), r.budget(), r.contexts());
+            case "query" -> {
+                String library = r.options().get("library");
+                yield library != null
+                        ? new LibraryQuery(new LibraryApi(w.libraries(), w.apiCache()))
+                                .answer(library, String.join(" ", a), r.budget())
+                        : new GraphQuery(g, scope, w.aliases())
+                                .query(String.join(" ", a), mode(r.mode()), r.depth(), r.budget(), r.contexts());
+            }
             case "path" ->
                 tools.shortestPath(arg(a, 0, "a source"), arg(a, 1, "a target"), r.maxHops(), r.undirected());
             case "neighbors" ->

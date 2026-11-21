@@ -64,6 +64,11 @@ public final class GraphCommand extends GroupCommand {
                                                 "-c",
                                                 "--context")
                                         .splitOn(","),
+                                Opt.value(
+                                        "<library>",
+                                        "Ask a locked library's public API instead (artifact or glob).",
+                                        "-l",
+                                        "--library"),
                                 NO_REFRESH),
                         List.of(Param.of("question", Arity.ONE_OR_MORE, "words or symbol names"))),
                 new GraphOpCommand(

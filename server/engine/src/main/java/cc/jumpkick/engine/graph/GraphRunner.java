@@ -119,12 +119,12 @@ public final class GraphRunner {
 
     /**
      * One graph operation. A question answered from compiled facts (callers, a rename, …) compiles
-     * what is stale or never compiled first; building the graph ({@code jk graph build}, the first
+     * what is stale or never compiled first, a question about a locked library does not; building the graph ({@code jk graph build}, the first
      * graph {@code jk new} writes) reads the classes as they are.
      */
     public static GraphAck run(GraphRequest req, Consumer<GraphProgress> progress)
             throws IOException, InterruptedException {
-        return run(req, progress, readsCompiledFacts(String.valueOf(req.op())));
+        return run(req, progress, readsCompiledFacts(String.valueOf(req.op())) && !asksALibrary(req));
     }
 
     /**
@@ -728,7 +728,7 @@ public final class GraphRunner {
         List<String> rules = "rules".equals(r.op()) && !r.args().isEmpty()
                 ? GraphRules.rows(root, relative(root, r.args().getFirst()), allModulePrefixes(root))
                 : List.of();
-        boolean apis = "read".equals(r.op()) || "find".equals(r.op());
+        boolean apis = readsLibraries(r);
         return specWriter(root, r, indexes.rows(), modules, scripts)
                 .configString("cache", cache.toString())
                 .configList(
@@ -741,6 +741,16 @@ public final class GraphRunner {
                 .configList("aliases", aliasRows(graphConfig(root)))
                 .configList("moduleEdges", RenameCheck.EDITS.contains(r.op()) ? GraphModuleEdges.rows(root) : List.of())
                 .writeTempSpec();
+    }
+
+    /** Whether {@code r} may answer from the locked jars: a {@code read}, a {@code find}, or a {@code query} with a library. */
+    static boolean readsLibraries(GraphRequest r) {
+        return "read".equals(r.op()) || "find".equals(r.op()) || asksALibrary(r);
+    }
+
+    /** Whether {@code r} is a question about a locked library's API, which no workspace class answers. */
+    static boolean asksALibrary(GraphRequest r) {
+        return "query".equals(r.op()) && r.options().stream().anyMatch(o -> o.startsWith("library="));
     }
 
     /** The spec of one operation on {@code root}: the worker's whole input. */
