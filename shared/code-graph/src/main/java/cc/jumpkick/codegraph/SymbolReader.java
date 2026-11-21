@@ -113,6 +113,9 @@ public final class SymbolReader {
         List<Span> spans = new ArrayList<>();
         List<String> includes = new ArrayList<>();
         List<String> excludes = new ArrayList<>();
+        // A path with a line range waits for the whole address: an exclusion may follow it.
+        record Ranged(String glob, int from, int to) {}
+        List<Ranged> ranged = new ArrayList<>();
         for (String raw : address.split(";")) {
             String target = raw.strip();
             if (target.isEmpty()) continue;
@@ -131,11 +134,8 @@ public final class SymbolReader {
             }
             if (isPath(target)) {
                 if (!target.contains("/")) target = "**/" + target;
-                includes.add(target);
-                if (from > 0) {
-                    for (String file : files(target, List.of())) spans.add(new Span(null, file, from, to));
-                    includes.removeLast();
-                }
+                if (from > 0) ranged.add(new Ranged(target, from, to));
+                else includes.add(target);
                 continue;
             }
             String error = symbols(target, from, to, spans);
@@ -144,6 +144,9 @@ public final class SymbolReader {
                 if (api != null) return Budget.lines(api.lines().toList(), budget, "Name one member: Type.member");
             }
             if (error != null) return error;
+        }
+        for (Ranged r : ranged) {
+            for (String file : files(r.glob(), excludes)) spans.add(new Span(null, file, r.from(), r.to()));
         }
         if (!includes.isEmpty()) {
             for (String file : files(String.join(";", includes), excludes)) {

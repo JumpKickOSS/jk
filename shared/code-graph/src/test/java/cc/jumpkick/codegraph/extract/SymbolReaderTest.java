@@ -104,6 +104,17 @@ class SymbolReaderTest {
                 .doesNotContain("OrderService.java");
     }
 
+    /** An exclusion holds for a line range too, wherever it stands in the address. */
+    @Test
+    void exclusionsApplyToLineRanges() {
+        assertThat(read("src/main/java/**#line=1,2;!OrderService.java", View.CONTENT, 4000))
+                .contains("BaseService.java")
+                .doesNotContain("OrderService.java");
+        assertThat(read("!OrderService.java;src/main/java/**#line=1,2", View.CONTENT, 4000))
+                .contains("BaseService.java")
+                .doesNotContain("OrderService.java");
+    }
+
     @Test
     void aTypeNameIsNotAmbiguousWithItsConstructor() {
         CodeGraph g = Linker.link(List.of(Objects.requireNonNull(Extractors.forPath("src/main/java/a/Pet.java"))
