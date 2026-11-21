@@ -506,7 +506,7 @@ class FrontDoorProxyTest extends HttpEngineServerHarness {
         assertThat(post("/api/project/file", HttpRequests.MAX_BODY_BYTES * 4).statusCode())
                 .as("a file save takes the direct endpoint's larger cap")
                 .isEqualTo(200);
-        assertThat(post("/api/project/file", HttpProjectApi.MAX_FILE_PUT_BODY_BYTES + 1)
+        assertThat(post("/api/project/file", HttpProjectFilesApi.MAX_FILE_PUT_BODY_BYTES + 1)
                         .statusCode())
                 .isEqualTo(413);
         assertThat(bodies).containsExactly(1024, HttpRequests.MAX_BODY_BYTES * 4);

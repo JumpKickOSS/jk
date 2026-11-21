@@ -714,7 +714,7 @@ public final class FrontDoor {
     /** The body cap the engine puts on {@code method} at {@code path}. */
     private static int maxBody(String method, String path) {
         return method.equals("PUT") && path.equals("/api/project/file")
-                ? HttpProjectApi.MAX_FILE_PUT_BODY_BYTES
+                ? HttpProjectFilesApi.MAX_FILE_PUT_BODY_BYTES
                 : HttpRequests.MAX_BODY_BYTES;
     }
 
