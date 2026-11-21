@@ -2,16 +2,23 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.HeavyTtl;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SnapshotQualifier;
+import cc.jumpkick.host.CacheTree;
 import cc.jumpkick.host.Processes;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.BuildPlan;
 import cc.jumpkick.run.BuildPlanResult;
+import cc.jumpkick.run.TaskForecast;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.run.TaskStatus;
+import cc.jumpkick.runtime.workspace.ForecastWalk;
+import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.testing.TestCaches;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -65,6 +72,12 @@ class MinifiedPluginTest {
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
         assertMinifiedStep(result, TaskStatus.SUCCESS, "R8 must have run — this test's subject is its output");
+        assertThat(minifiedVerdict(project, cache))
+                .as("explain prices the minified jar by the key the build stored it under")
+                .isEqualTo(
+                        HeavyTtl.caches(HeavyTtl.resolve())
+                                ? "CACHED"
+                                : "RUN minify · not cached: [cache] heavy-ttl = 0");
 
         // Artifacts are additive: the thin jar always, the fat jar because minified implies it,
         // and the minified jar itself. The fat jar beside it is what makes the two comparable.
@@ -106,6 +119,7 @@ class MinifiedPluginTest {
      */
     @Test
     void the_mapping_file_survives_a_packaging_cache_hit(@TempDir Path tmp) throws Exception {
+        assumeTrue(HeavyTtl.caches(HeavyTtl.resolve()), "heavy outputs are not cached here at all (CI or heavy-ttl 0)");
         Path project = writeObfuscatedProject(tmp);
         Path cache = spikeCache();
 
@@ -136,6 +150,47 @@ class MinifiedPluginTest {
                 .as("an obfuscated jar whose map vanished on a cache hit can never be de-obfuscated")
                 .exists();
         assertThat(Files.readString(mapping)).isEqualTo(mapped);
+    }
+
+    /**
+     * A minified jar is a heavy output whatever its size, so a module that keeps its heavy outputs
+     * out of the cache gets none stored, and explain says why the jar will be minified again.
+     */
+    @Test
+    void explain_says_why_a_minified_jar_the_cache_refused_runs_again(@TempDir Path tmp) throws Exception {
+        Path project = writeObfuscatedProject(tmp);
+        Path toml = project.resolve("jk.toml");
+        Files.writeString(toml, Files.readString(toml).replace("[test-dependencies]", """
+                [build]
+                cache-heavy-outputs = false
+
+                [test-dependencies]"""));
+        Path cache = spikeCache();
+
+        BuildPlanResult result = build(project, cache);
+        assertThat(result.errors()).isEmpty();
+        assertMinifiedStep(result, TaskStatus.SUCCESS, "R8 must have run for the cache to refuse its output");
+
+        assertThat(minifiedVerdict(project, cache))
+                .isIn(
+                        "RUN minify · not cached: [build] cache-heavy-outputs = false",
+                        "RUN minify · not cached: [cache] heavy-ttl = 0");
+    }
+
+    /** The minified jar's forecast as {@code <status> <why>}. */
+    private static String minifiedVerdict(Path project, Path cache) throws Exception {
+        BuildGraph.Result graph = BuildGraph.resolve(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        assertThat(graph.hasErrors()).isFalse();
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cache), CacheTree.ACTIONS.under(cache), JkStores.storeCas());
+        TaskForecast.Module module = ForecastWalk.of(graph, JkStores.cacheCas(cache), actionCache, cache, true).stream()
+                .findFirst()
+                .orElseThrow();
+        TaskForecast.Task minified = module.steps().stream()
+                .filter(t -> t.name().equals(TaskNames.PACKAGE_MINIFIED))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("explain forecasts no minified jar: " + module.steps()));
+        return (minified.status() + " " + minified.text()).strip();
     }
 
     /**

@@ -63,10 +63,11 @@ JumpKick shows you this page's new entries after it updates itself.
   links into the image, such as `lib/security/cacerts -> /etc/ssl/certs/java/cacerts`, were dropped
   when the JRE was extracted; they are kept now, and a link that leads out of the image is skipped.
 
-- **`jk explain` says why a heavy step will run again.** Beside a native image, fat jar or jlink
-  image that misses the cache, it names `[cache] heavy-ttl = 0` (the default on CI) or `[build]
-  cache-heavy-outputs = false` when either keeps the output out of the cache, as it already named a
-  nearly full disk. It now forecasts the jlink image at all, with the reason it relinks.
+- **`jk explain` says why a heavy step will run again.** Beside a native image, fat jar, minified
+  jar or jlink image that misses the cache, it names `[cache] heavy-ttl = 0` (the default on CI) or
+  `[build] cache-heavy-outputs = false` when either keeps the output out of the cache, as it already
+  named a nearly full disk. It now forecasts the jlink image and the minified jar at all, with the
+  reason each runs, and the build says once that a setting kept its heavy outputs out of the cache.
 
 - **The engine sees a memory limit set on its systemd unit or slice.** Worker memory, the
   overbooking check and the memory the engine reports now follow the tightest cgroup limit on the

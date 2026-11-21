@@ -194,7 +194,7 @@ public final class PlannerTails {
      */
     static Task minifiedStep(BuildPlanner.Inputs in, @Nullable Path graalHome) {
         return Task.builder(TaskNames.PACKAGE_MINIFIED)
-                .forecast(StepForecast.RIDES)
+                .forecast(StepForecast.priced(s -> ForecastPackagingTails.minified(ForecastScope.of(s))))
                 .stage(BuildStage.PACKAGE)
                 .label("Minify")
                 .kind(TaskKind.CPU)
@@ -203,11 +203,7 @@ public final class PlannerTails {
                 .execute(ctx -> {
                     JkBuild project = ctx.require(MODULE).project();
                     BuildLayout layout = ctx.require(MODULE).layout();
-                    // The minifier packages beside the main artifact, so among the module's plugins
-                    // it is the one with a [packaging] table that does not replace that artifact.
-                    ActivePlugin minifier = ActivePlugins.of(project, layout.moduleRoot()).stream()
-                            .filter(a -> a.manifest().packaging() != null && !ActivePlugins.packagesMainArtifact(a))
-                            .findFirst()
+                    ActivePlugin minifier = ActivePlugins.besideMainArtifact(project, layout.moduleRoot())
                             .orElseThrow(() -> new IllegalStateException(
                                     "[application] minified = true requires the minified plugin"
                                             + " — add a [minified] table or remove `minified`"));

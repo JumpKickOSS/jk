@@ -105,6 +105,16 @@ public final class ActivePlugins {
         return Optional.empty();
     }
 
+    /**
+     * The plugin that packages beside the module's main artifact (the minifier): the one with a
+     * {@code [packaging]} table that does not replace that artifact.
+     */
+    public static Optional<ActivePlugin> besideMainArtifact(JkBuild project, Path moduleDir) {
+        return of(project, moduleDir).stream()
+                .filter(a -> a.manifest().packaging() != null && !packagesMainArtifact(a))
+                .findFirst();
+    }
+
     /** True when the plugin's {@code [packaging]} replaces the main artifact rather than writing beside it. */
     public static boolean packagesMainArtifact(ActivePlugin active) {
         var packaging = active.manifest().packaging();

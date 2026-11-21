@@ -357,7 +357,7 @@ public final class PackagingKeys {
      * own identity and code. Any config, classes, dependency-set, step-output, extra-artifact,
      * JDK or manifest change re-packages; nothing else does.
      */
-    @KeyOwner(step = TaskNames.PACKAGE_JAR)
+    @KeyOwner(step = {TaskNames.PACKAGE_JAR, TaskNames.PACKAGE_MINIFIED})
     public static PackagerKey pluginPackager(Packager p) throws IOException, InterruptedException {
         // The packager's runtime view IS its entry jars — coordinate-named lock artifacts plus
         // workspace sibling jars, the SAME set steps see via In.runtimeEntries(). Packaging from
@@ -439,9 +439,42 @@ public final class PackagingKeys {
             tokens.add("train:"
                     + (Files.isRegularFile(trainSurface) ? ClasspathFingerprint.entry(trainSurface) : "absent"));
         }
-        String taskId = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_JAR, p.artifact());
+        // A packager that writes beside the main artifact is the minified tail, a heavy output.
+        String step = ActivePlugins.packagesMainArtifact(active) ? TaskNames.PACKAGE_JAR : TaskNames.PACKAGE_MINIFIED;
+        String taskId = ActionKey.qualifiedTaskId(step, p.artifact());
         String pkgKey = ActionKey.forArtifact(taskId, BuildIdentity.cacheKeyVersion(), tokens);
         return new PackagerKey(new Keyed(taskId, tokens, pkgKey), facts, entries, extras, repositories);
+    }
+
+    /**
+     * The minified jar's key, by the body the live {@code package-minified} step keys with: the
+     * module's minifier ({@link ActivePlugins#besideMainArtifact}) packaging its classes into
+     * {@link BuildLayout#minifiedJar}. Null when the module has no minifier with a packager.
+     */
+    static @Nullable Keyed minified(
+            JkBuild project, Path dir, Path cache, Path lockFile, Cas cas, BuildLayout layout, Path javaHome)
+            throws IOException, InterruptedException {
+        ActivePlugin minifier =
+                ActivePlugins.besideMainArtifact(project, layout.moduleRoot()).orElse(null);
+        if (minifier == null) return null;
+        PluginDeclarations decls =
+                PluginBuild.declarations(minifier, project, layout.moduleRoot(), cache, layout.moduleTargetDir());
+        if (decls.packager() == null) return null;
+        return pluginPackager(new Packager(
+                        project,
+                        dir,
+                        cache,
+                        lockFile,
+                        cas,
+                        new PluginBuild.StepTools(),
+                        layout,
+                        layout.classesDir(),
+                        layout.minifiedJar(),
+                        javaHome,
+                        minifier,
+                        decls,
+                        BuildEnv.ambient()))
+                .keyed();
     }
 
     /**

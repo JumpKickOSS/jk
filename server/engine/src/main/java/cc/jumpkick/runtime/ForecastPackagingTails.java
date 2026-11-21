@@ -4,6 +4,8 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.JavadocTool;
 import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.host.Errors;
+import cc.jumpkick.host.Log;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.InstallDestination;
 import cc.jumpkick.model.JkBuild;
@@ -21,7 +23,7 @@ import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
- * The forecasts of the packaging tails beside {@code package-jar}: the fat jar,
+ * The forecasts of the packaging tails beside {@code package-jar}: the fat jar, the minified jar,
  * the javadoc jar, the native image and the install, each keyed by the same {@link PackagingKeys} body its live step calls and
  * read against the action cache. {@code null} when the module plans no such tail.
  */
@@ -71,6 +73,39 @@ final class ForecastPackagingTails {
                 TaskForecast.Status.RUN,
                 notCached == null ? "repackage" : "repackage · " + notCached,
                 null);
+    }
+
+    /**
+     * {@code package-minified}'s price, under the key {@link PackagingKeys#minified} derives for the
+     * live step. Classes this build rewrites leave the key unknowable until it has, so the jar is
+     * minified again; a miss says why the cache could not have kept the last one when it could not.
+     */
+    static TaskForecast.@Nullable Task minified(ForecastScope s) throws Exception {
+        s.projectOwnOutputs();
+        if (s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty) return minify("minify · compile changed");
+        // The minified jar shrinks the runtime siblings' jars together with the module's classes.
+        if (s.runtimeDepDirty) return minify("minify · runtime dependency changed");
+        Prepared p = s.prepared();
+        BuildLayout layout = p.parsed().layout();
+        try {
+            PackagingKeys.Keyed keyed =
+                    PackagingKeys.minified(s.project, s.dir, s.cache, s.lockFile, s.cas, layout, p.javaHome());
+            if (keyed == null) return minify("minify · no [minified] packager");
+            if (ForecastSteps.present(s.actionCache, keyed.key())) {
+                return new TaskForecast.Task(
+                        TaskNames.PACKAGE_MINIFIED, TaskForecast.Status.CACHED, "", ForecastSteps.key8(keyed.key()));
+            }
+        } catch (IOException | RuntimeException e) {
+            Log.debug("minified forecast: an input could not be read", e);
+            return minify("minify · provisional: " + Errors.text(e));
+        }
+        // A minified jar is a heavy output: the cache may never have been allowed to keep the last one.
+        String notCached = PackagingCache.heavyNotCached(s.cache, s.project);
+        return minify(notCached == null ? "minify · action cache miss" : "minify · " + notCached);
+    }
+
+    private static TaskForecast.Task minify(String why) {
+        return new TaskForecast.Task(TaskNames.PACKAGE_MINIFIED, TaskForecast.Status.RUN, why, null);
     }
 
     /** {@code package-javadoc} — a library tail; the key is {@link PlannerJavadoc}'s. */
