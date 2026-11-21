@@ -9,7 +9,15 @@
 # members a range changed (none for docs and scripts, every one for a root build file), one install
 # that runs the fast tier, the integration suite of the changed members and the curated lane in the
 # others, a red run excused only when it failed in quarantine, and none of the Full tier's steps.
+# Last of all it runs itself once more under a gate's environment, as the gate's own fixture run
+# does, and must pass there too.
 set -euo pipefail
+
+# A gate runs this file among its fixtures with its own settings exported (GATE_TIER=queue, its
+# log directory, its checkout), and gate.sh and flaky.sh would read them in place of the defaults
+# each case here is written against. Neither the settings nor the stand-ins' switches carry in.
+unset "${!GATE_@}" "${!FLAKY_@}" "${!PRE_@}" POST_SCRIPTS FAIL_PUSHGATE FAIL_REINSTALL FAIL_INTEG \
+  RERUN_JSONL JK_CALLS KA_STATE
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/jk-gate.XXXXXX")"
@@ -275,4 +283,13 @@ got="$(grep -E '^test' "$WORK/calls-8")"
 gate 9 GATE_TIER=fast
 [[ "$(verdict 9)" == "RED (GATE_TIER is 'fast'; full or queue)" ]] || fail "an unknown tier was gated: $(cat "$WORK/logs/integ-gate-9.log")"
 
-echo "test-gate: ok (flaky record and quarantine; 9 gate runs)"
+# Under a Queue-tier gate's environment, every case above still holds.
+if [[ -z "${TEST_GATE_NESTED:-}" ]]; then
+  env TEST_GATE_NESTED=1 GATE_TIER=queue GATE_BASE="$qbase" GATE_LOG_DIR="$WORK/outer-logs" \
+    GATE_CHECKOUT="$WORK/outer" GATE_BRANCH=main FLAKY_HISTORY="$WORK/outer-history.tsv" \
+    FLAKY_THRESHOLD=1 PRE_MODULES=mod/a PRE_SCRIPTS=false POST_SCRIPTS=false FAIL_INTEG=1 \
+    bash "$ROOT/scripts/test-gate.sh" >"$WORK/nested.log" 2>&1 ||
+    fail "under a Queue-tier gate's environment: $(cat "$WORK/nested.log")"
+fi
+
+echo "test-gate: ok (flaky record and quarantine; 9 gate runs; again under a gate's environment)"
