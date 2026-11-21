@@ -44,9 +44,33 @@ final class ByNameIndex {
 
     private ByNameIndex() {}
 
-    /** Every class named by a service file or marker index across {@code jars}. */
-    static Set<String> referencedClasses(Collection<Path> jars) throws IOException {
-        Set<String> out = new TreeSet<>();
+    /**
+     * What one pass over {@code jars} found: every class named by a service file or marker index
+     * ({@code named}, sorted), every class present ({@code classes}), and the GraalVM metadata the
+     * jars publish under {@code META-INF/native-image} ({@code composed}).
+     *
+     * <p>Libraries already describe their own reflective surface in that metadata for {@code
+     * native-image}, which finds it on the classpath unaided. R8 has no equivalent, so the same
+     * facts have to reach it as keep rules; reading them costs no application run.
+     */
+    record Scan(Set<String> named, Set<String> classes, DynamicSurface composed) {
+
+        /**
+         * The classes the jars name by text that the jars also carry, sorted. A name no input
+         * resolves belongs to an optional dependency nobody bundled and is left out.
+         */
+        Set<String> presentNamed() {
+            Set<String> present = new TreeSet<>(named);
+            present.retainAll(classes);
+            return present;
+        }
+    }
+
+    /** Read {@code jars} once each for everything {@link Scan} holds. */
+    static Scan scan(Collection<Path> jars) throws IOException {
+        Set<String> named = new TreeSet<>();
+        Set<String> classes = new LinkedHashSet<>();
+        DynamicSurface composed = DynamicSurface.empty();
         for (Path jar : jars) {
             if (!Files.isRegularFile(jar)) continue;
             try (JarFile jf = new JarFile(jar.toFile(), false)) {
@@ -55,72 +79,22 @@ final class ByNameIndex {
                     JarEntry entry = entries.nextElement();
                     if (entry.isDirectory()) continue;
                     String name = entry.getName();
-                    if (name.startsWith("META-INF/services/")) {
-                        readServiceFile(jf, entry, out);
-                    } else {
-                        markerClassName(name).ifPresent(out::add);
-                    }
-                }
-            }
-        }
-        return out;
-    }
-
-    /**
-     * The GraalVM metadata {@code jars} publish under {@code META-INF/native-image}, as a surface.
-     *
-     * <p>Libraries already describe their own reflective surface there for {@code native-image},
-     * which finds it on the classpath unaided. R8 has no equivalent, so the same facts have to
-     * reach it as keep rules. Reading them costs a jar scan and no application run.
-     */
-    static DynamicSurface composedFromLibraries(Collection<Path> jars) throws IOException {
-        DynamicSurface surface = DynamicSurface.empty();
-        for (Path jar : jars) {
-            if (!Files.isRegularFile(jar)) continue;
-            try (JarFile jf = new JarFile(jar.toFile(), false)) {
-                Enumeration<JarEntry> entries = jf.entries();
-                while (entries.hasMoreElements()) {
-                    JarEntry entry = entries.nextElement();
-                    if (!NativeImageMetadata.isMetadataFile(entry.getName())) continue;
-                    String body;
-                    try (var in = jf.getInputStream(entry)) {
-                        body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
-                    }
-                    surface = surface.merge(NativeImageMetadata.parse(entry.getName(), body, "library"));
-                }
-            }
-        }
-        return surface;
-    }
-
-    /**
-     * The classes {@code jars} name by text that {@code jars} also carry, sorted. A name no input
-     * resolves belongs to an optional dependency nobody bundled and is left out.
-     */
-    static Set<String> presentReferencedClasses(Collection<Path> jars) throws IOException {
-        Set<String> named = referencedClasses(jars);
-        named.retainAll(classesIn(jars));
-        return named;
-    }
-
-    /** Fully-qualified names of every class present in {@code jars}. */
-    static Set<String> classesIn(Collection<Path> jars) throws IOException {
-        Set<String> out = new LinkedHashSet<>();
-        for (Path jar : jars) {
-            if (!Files.isRegularFile(jar)) continue;
-            try (JarFile jf = new JarFile(jar.toFile(), false)) {
-                Enumeration<JarEntry> entries = jf.entries();
-                while (entries.hasMoreElements()) {
-                    JarEntry entry = entries.nextElement();
-                    String name = entry.getName();
-                    if (!entry.isDirectory() && name.endsWith(".class")) {
-                        out.add(name.substring(0, name.length() - ".class".length())
+                    if (name.endsWith(".class")) {
+                        classes.add(name.substring(0, name.length() - ".class".length())
                                 .replace('/', '.'));
                     }
+                    if (name.startsWith("META-INF/services/")) {
+                        readServiceFile(jf, entry, named);
+                    } else {
+                        markerClassName(name).ifPresent(named::add);
+                    }
+                    if (NativeImageMetadata.isMetadataFile(name)) {
+                        composed = composed.merge(NativeImageMetadata.parse(name, text(jf, entry), "library"));
+                    }
                 }
             }
         }
-        return out;
+        return new Scan(named, classes, composed);
     }
 
     /**
@@ -164,12 +138,14 @@ final class ByNameIndex {
         return new DynamicSurface(entries);
     }
 
-    private static void readServiceFile(JarFile jf, JarEntry entry, Set<String> sink) throws IOException {
-        String body;
+    private static String text(JarFile jf, JarEntry entry) throws IOException {
         try (var in = jf.getInputStream(entry)) {
-            body = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
-        for (String line : body.split("\n")) {
+    }
+
+    private static void readServiceFile(JarFile jf, JarEntry entry, Set<String> sink) throws IOException {
+        for (String line : text(jf, entry).split("\n")) {
             String candidate = line.split("#", 2)[0].trim();
             if (isClassName(candidate)) sink.add(candidate);
         }

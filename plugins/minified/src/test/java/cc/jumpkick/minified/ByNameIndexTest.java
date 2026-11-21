@@ -29,7 +29,7 @@ class ByNameIndexTest {
                                 "",
                         "com/acme/Impl.class", "x"));
 
-        assertThat(ByNameIndex.referencedClasses(List.of(jar)))
+        assertThat(ByNameIndex.scan(List.of(jar)).named())
                 .containsExactlyInAnyOrder("com.acme.Impl", "com.acme.Other", "com.example.$Foo$Definition");
     }
 
@@ -39,7 +39,7 @@ class ByNameIndexTest {
                 dir.resolve("in.jar"),
                 Map.of("META-INF/services/com.acme.Spi", "# a comment\n\n  com.acme.Impl  \n#com.acme.Commented\n"));
 
-        assertThat(ByNameIndex.referencedClasses(List.of(jar))).containsExactly("com.acme.Impl");
+        assertThat(ByNameIndex.scan(List.of(jar)).named()).containsExactly("com.acme.Impl");
     }
 
     @Test
@@ -52,7 +52,7 @@ class ByNameIndexTest {
                         "META-INF/maven/com.acme/thing/pom.properties", "a=b",
                         "META-INF/INDEX.LIST", "JarIndex-Version: 1.0\n"));
 
-        assertThat(ByNameIndex.referencedClasses(List.of(jar))).isEmpty();
+        assertThat(ByNameIndex.scan(List.of(jar)).named()).isEmpty();
     }
 
     @Test
@@ -91,7 +91,24 @@ class ByNameIndexTest {
         Path a = jar(dir.resolve("a.jar"), Map.of("com/acme/A.class", "x"));
         Path b = jar(dir.resolve("b.jar"), Map.of("com/acme/sub/B.class", "x", "not/a/class.txt", "x"));
 
-        assertThat(ByNameIndex.classesIn(List.of(a, b))).containsExactlyInAnyOrder("com.acme.A", "com.acme.sub.B");
+        assertThat(ByNameIndex.scan(List.of(a, b)).classes()).containsExactlyInAnyOrder("com.acme.A", "com.acme.sub.B");
+    }
+
+    /** One read of a jar yields its named classes, its classes and its native-image metadata. */
+    @Test
+    void one_scan_reads_names_classes_and_library_metadata(@TempDir Path dir) throws Exception {
+        Path jar = jar(
+                dir.resolve("lib.jar"),
+                Map.of(
+                        "META-INF/services/com.acme.Spi", "com.acme.Impl\ncom.optional.Missing\n",
+                        "META-INF/native-image/com.acme/lib/reflect-config.json", "[{\"name\":\"com.acme.Reflected\"}]",
+                        "com/acme/Impl.class", "x"));
+
+        ByNameIndex.Scan scan = ByNameIndex.scan(List.of(jar));
+        assertThat(scan.named()).containsExactly("com.acme.Impl", "com.optional.Missing");
+        assertThat(scan.classes()).containsExactly("com.acme.Impl");
+        assertThat(scan.presentNamed()).containsExactly("com.acme.Impl");
+        assertThat(scan.composed().entries()).extracting(e -> e.name()).containsExactly("com.acme.Reflected");
     }
 
     @Test

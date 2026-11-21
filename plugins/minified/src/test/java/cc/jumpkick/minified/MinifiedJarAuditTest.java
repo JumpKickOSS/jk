@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import org.jspecify.annotations.Nullable;
@@ -40,7 +41,7 @@ class MinifiedJarAuditTest {
                 jar(dir.resolve("out.jar"), Map.of("META-INF/micronaut/com.acme.Spi/com.acme.$Bean$Definition", ""));
 
         assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(
-                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
+                        ByNameIndex.scan(List.of(input)).presentNamed(), kept(output)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("com.acme.$Bean$Definition")
                 .hasMessageContaining("-keep class com.acme.$Bean$Definition { *; }");
@@ -58,7 +59,7 @@ class MinifiedJarAuditTest {
                 Map.of("META-INF/services/org.slf4j.spi.SLF4JServiceProvider", "com.acme.Provider\n"));
 
         assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(
-                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
+                        ByNameIndex.scan(List.of(input)).presentNamed(), kept(output)))
                 .hasMessageContaining("com.acme.Provider");
     }
 
@@ -69,8 +70,9 @@ class MinifiedJarAuditTest {
                 "com/acme/Impl.class", "x");
 
         assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(
-                        ByNameIndex.presentReferencedClasses(List.of(jar(dir.resolve("in.jar"), both))),
-                        jar(dir.resolve("out.jar"), both)))
+                        ByNameIndex.scan(List.of(jar(dir.resolve("in.jar"), both)))
+                                .presentNamed(),
+                        kept(jar(dir.resolve("out.jar"), both))))
                 .doesNotThrowAnyException();
     }
 
@@ -82,7 +84,7 @@ class MinifiedJarAuditTest {
         Path output = jar(dir.resolve("out.jar"), Map.of("META-INF/services/com.acme.Spi", "com.optional.Missing\n"));
 
         assertThatCode(() -> MinifiedJarPackager.auditByNameIndexes(
-                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
+                        ByNameIndex.scan(List.of(input)).presentNamed(), kept(output)))
                 .doesNotThrowAnyException();
     }
 
@@ -99,9 +101,31 @@ class MinifiedJarAuditTest {
         Path output = jar(dir.resolve("out.jar"), Map.of("META-INF/services/com.acme.Spi", serviceBody.toString()));
 
         assertThatThrownBy(() -> MinifiedJarPackager.auditByNameIndexes(
-                        ByNameIndex.presentReferencedClasses(List.of(input)), output))
+                        ByNameIndex.scan(List.of(input)).presentNamed(), kept(output)))
                 .hasMessageContaining("R8 removed 25 classes")
                 .hasMessageContaining("… and 5 more");
+    }
+
+    /** Every class R8's output carries, as the packager reads it. */
+    private static Set<String> kept(Path output) throws Exception {
+        return signatures(output).keySet();
+    }
+
+    private static Map<String, @Nullable String> signatures(Path output) throws Exception {
+        return MinifiedJarPackager.classSignatures(List.of(output), null);
+    }
+
+    /** The inputs are read only for classes the output kept: a stripped class is never parsed. */
+    @Test
+    void only_classes_the_output_kept_are_read_from_the_inputs(@TempDir Path dir) throws Exception {
+        Path input = classJar(
+                dir.resolve("in.jar"),
+                Map.of(
+                        "com/acme/Box.class", classBytes("com.acme.Box", BOX_SIG),
+                        "com/acme/Gone.class", classBytes("com.acme.Gone", BOX_SIG)));
+
+        assertThat(MinifiedJarPackager.classSignatures(List.of(input), Set.of("com.acme.Box")))
+                .containsOnlyKeys("com.acme.Box");
     }
 
     // ------------------------------------------------------------ generic signatures
@@ -113,7 +137,7 @@ class MinifiedJarAuditTest {
         Path input = classJar(dir.resolve("in.jar"), Map.of("com/acme/Box.class", classBytes("com.acme.Box", BOX_SIG)));
         Path output = classJar(dir.resolve("out.jar"), Map.of("com/acme/Box.class", classBytes("com.acme.Box", null)));
 
-        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), output);
+        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), signatures(output));
         assertThat(audit.compared()).isEqualTo(1);
         assertThat(audit.degraded()).hasSize(1);
         var drift = audit.degraded().getFirst();
@@ -139,7 +163,7 @@ class MinifiedJarAuditTest {
         Path input = classJar(dir.resolve("in.jar"), both);
         Path output = classJar(dir.resolve("out.jar"), both);
 
-        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), output);
+        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), signatures(output));
         assertThat(audit.compared()).isEqualTo(1);
         assertThat(audit.degraded()).isEmpty();
     }
@@ -149,7 +173,7 @@ class MinifiedJarAuditTest {
         Path input = classJar(dir.resolve("in.jar"), Map.of("com/acme/Box.class", classBytes("com.acme.Box", BOX_SIG)));
         Path output = classJar(dir.resolve("out.jar"), Map.of());
 
-        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), output);
+        var audit = MinifiedJarPackager.auditGenericSignatures(List.of(input), signatures(output));
         assertThat(audit.compared()).isZero();
         assertThat(audit.degraded()).isEmpty();
     }

@@ -115,12 +115,10 @@ final class MinifiedJarPackager {
             // exactly, so deriving the rules beats any pattern a user could write: it covers
             // hand-written framework internals that match no naming convention, and it tracks
             // whatever the project actually depends on.
-            Set<String> derived = ByNameIndex.presentReferencedClasses(program);
-
-            // Libraries describe their own reflective surface in META-INF/native-image for
-            // native-image, which reads it unaided. R8 has no equivalent, so the same facts reach
-            // it as keep rules. Free: the data is already in the jars, no run involved.
-            DynamicSurface composed = ByNameIndex.composedFromLibraries(program);
+            // One read of every input serves both, and libraries' own native-image metadata too.
+            ByNameIndex.Scan inputs = ByNameIndex.scan(program);
+            Set<String> derived = inputs.presentNamed();
+            DynamicSurface composed = inputs.composed();
             DynamicSurface surface = ByNameIndex.surface(derived).merge(composed);
             // Optional train observations from `jk train` (target/train/merged/dynamic-surface.json).
             Path trainSurface = io.artifactPath()
@@ -209,8 +207,9 @@ final class MinifiedJarPackager {
                         + " not bundled; -v lists them, [minified] strict-warnings = true fails");
             }
 
-            auditByNameIndexes(derived, shrunk);
-            SignatureAudit signatures = auditGenericSignatures(program, shrunk);
+            Map<String, @Nullable String> kept = classSignatures(List.of(shrunk), null);
+            auditByNameIndexes(derived, kept.keySet());
+            SignatureAudit signatures = auditGenericSignatures(program, kept);
             if (!signatures.degraded().isEmpty()) {
                 // A warning, never a failure (and deliberately outside strict-warnings): plenty of
                 // applications do no runtime generic matching, and unlike the by-name audit the
@@ -234,13 +233,13 @@ final class MinifiedJarPackager {
      * logging that would report the damage. A build error naming the classes is the only place
      * this is cheap to catch.
      *
-     * <p>{@code named} is {@link ByNameIndex#presentReferencedClasses} over the inputs: a name an
-     * input already failed to resolve belongs to an optional dependency nobody bundled, and is not
-     * R8's doing.
+     * <p>{@code named} is {@link ByNameIndex.Scan#presentNamed} over the inputs: a name an input
+     * already failed to resolve belongs to an optional dependency nobody bundled, and is not R8's
+     * doing. {@code kept} is every class in R8's output.
      */
-    static void auditByNameIndexes(Set<String> named, Path shrunk) throws IOException {
+    static void auditByNameIndexes(Set<String> named, Set<String> kept) {
         Set<String> expected = new TreeSet<>(named);
-        expected.removeAll(ByNameIndex.classesIn(List.of(shrunk)));
+        expected.removeAll(kept);
         if (expected.isEmpty()) return;
 
         StringBuilder message = new StringBuilder("R8 removed ")
@@ -283,9 +282,10 @@ final class MinifiedJarPackager {
      * are needed.
      */
     // Package-private for MinifiedJarAuditTest.
-    static SignatureAudit auditGenericSignatures(List<Path> program, Path shrunk) throws IOException {
-        Map<String, String> before = classSignatures(program);
-        Map<String, String> after = classSignatures(List.of(shrunk));
+    static SignatureAudit auditGenericSignatures(List<Path> program, Map<String, @Nullable String> after)
+            throws IOException {
+        // Only what R8 kept is compared, so a class it stripped is never parsed.
+        Map<String, @Nullable String> before = classSignatures(program, after.keySet());
         int compared = 0;
         List<SignatureDrift> degraded = new ArrayList<>();
         for (Map.Entry<String, String> e : before.entrySet()) {
@@ -327,12 +327,14 @@ final class MinifiedJarPackager {
     }
 
     /**
-     * Class-level {@code Signature} per class ({@code null} when the class carries none). First
-     * occurrence wins, matching the classpath's shadowing rule. Malformed class files have
-     * nothing to compare and are skipped.
+     * Class-level {@code Signature} per class ({@code null} when the class carries none), only for
+     * classes in {@code only} when it is given. First occurrence wins, matching the classpath's
+     * shadowing rule. A malformed class file counts as present with no signature.
      */
-    private static Map<String, String> classSignatures(Collection<Path> jars) throws IOException {
-        Map<String, String> out = new HashMap<>();
+    // Package-private for MinifiedJarAuditTest.
+    static Map<String, @Nullable String> classSignatures(Collection<Path> jars, @Nullable Set<String> only)
+            throws IOException {
+        Map<String, @Nullable String> out = new HashMap<>();
         for (Path jar : jars) {
             if (!Files.isRegularFile(jar)) continue;
             try (JarFile jf = new JarFile(jar.toFile(), false)) {
@@ -345,7 +347,7 @@ final class MinifiedJarPackager {
                     }
                     String fqcn =
                             name.substring(0, name.length() - ".class".length()).replace('/', '.');
-                    if (out.containsKey(fqcn)) continue;
+                    if (out.containsKey(fqcn) || (only != null && !only.contains(fqcn))) continue;
                     try (InputStream in = jf.getInputStream(entry)) {
                         String signature = null;
                         for (var attr : ClassFile.of().parse(in.readAllBytes()).attributes()) {
@@ -356,7 +358,8 @@ final class MinifiedJarPackager {
                         }
                         out.put(fqcn, signature);
                     } catch (RuntimeException malformed) {
-                        // not a parseable class file — nothing to compare
+                        // Not a parseable class file: present, with no signature to compare.
+                        out.put(fqcn, null);
                     }
                 }
             }
