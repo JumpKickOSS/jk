@@ -152,6 +152,8 @@ final class IdeGoldenFixture {
                 List.of("java", "java"),
                 List.of("", ""),
                 List.of(),
+                List.of(),
+                List.of(),
                 List.of());
         return new Built(ws, wire, ideConfig, inputs);
     }

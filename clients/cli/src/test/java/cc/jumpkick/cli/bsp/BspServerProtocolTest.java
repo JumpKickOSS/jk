@@ -466,6 +466,40 @@ class BspServerProtocolTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void the_test_environment_carries_the_module_s_test_jvm_settings_and_its_suite_s(@TempDir Path dir)
+            throws Exception {
+        Path app = module(dir, "app");
+        Files.writeString(dir.resolve("jk.toml"), "[workspace]\nmodules = [\"app\"]\n");
+        IdeWireModel model = IdeWireModel.decode("{"
+                + array("moduleDirs", List.of(app.toString())) + ","
+                + array("names", List.of("app")) + ","
+                + array("runJvmArgs", List.of("0|-Xmx512m")) + ","
+                + array("testJvmArgs", List.of("0||-Xmx1g", "0||-Dprofile=test", "0|it|-Dmode=it")) + ","
+                + array("testEnv", List.of("0||TZ=UTC", "0||DB=mem", "0|it|DB=h2")) + "}");
+        String suite = BspServer.pathUri(dir) + "#app" + BspTargets.SUITE_SEPARATOR + "it";
+
+        List<Map<String, Object>> frames = serve(
+                fake(dir, model),
+                request(2, "buildTarget/jvmTestEnvironment", target(dir, "app")),
+                request(3, "buildTarget/jvmTestEnvironment", "{\"targets\":[{\"uri\":\"" + suite + "\"}]}"),
+                request(4, "buildTarget/jvmRunEnvironment", target(dir, "app")));
+
+        Map<String, Object> module = itemOf(result(frames, 2));
+        assertThat((List<Object>) module.get("jvmOptions")).containsExactly("-Xmx1g", "-Dprofile=test");
+        assertThat((Map<String, Object>) module.get("environmentVariables"))
+                .containsExactlyInAnyOrderEntriesOf(Map.of("TZ", "UTC", "DB", "mem"));
+        Map<String, Object> ofSuite = itemOf(result(frames, 3));
+        assertThat((List<Object>) ofSuite.get("jvmOptions")).containsExactly("-Xmx1g", "-Dprofile=test", "-Dmode=it");
+        assertThat((Map<String, Object>) ofSuite.get("environmentVariables"))
+                .as("a suite's env wins a name the module's also sets")
+                .containsExactlyInAnyOrderEntriesOf(Map.of("TZ", "UTC", "DB", "h2"));
+        assertThat((List<Object>) itemOf(result(frames, 4)).get("jvmOptions"))
+                .as("[test] settings are the test JVMs', not the app's")
+                .containsExactly("-Xmx512m");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void a_model_naming_no_modules_has_the_root_target_s_sources(@TempDir Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src/main/java"));
         IdeWireModel model = IdeWireModel.decode("{" + array("moduleDirs", List.of()) + "}");

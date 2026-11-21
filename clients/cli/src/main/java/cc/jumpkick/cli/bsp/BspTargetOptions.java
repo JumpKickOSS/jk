@@ -245,20 +245,24 @@ final class BspTargetOptions {
      * {@code JvmEnvironmentItem}: the classpath ({@link #runtimeClasspath}) and working directory
      * ({@code dir}, the module's) a JVM running module {@code i}'s main needs, or with {@code test}
      * its tests. A run also gets what {@code jk run} gives the app: the module's {@code [application]
-     * jvm-args}, and the values of its {@code .env} files ({@link EnvLookup#dotEnv}) that this
-     * server's own environment, the IDE's, does not set; and the main class when the module declares
-     * one.
+     * jvm-args} and its packaging plugin's system properties, and the values of its {@code .env}
+     * files ({@link EnvLookup#dotEnv}) that this server's own environment, the IDE's, does not set;
+     * and the main class when the module declares one. A test JVM gets what the module's manifest
+     * gives {@code jk test}'s: its {@code [test]} locale, time zone, {@code jvm-args}, {@code
+     * system-properties} and {@code env}, then those of the suite {@code tid} names.
      */
     static String jvmEnvironmentItem(String tid, IdeWireModel model, int i, Path dir, boolean test) {
         JsonFields env = JsonFields.object();
-        if (!test) {
+        if (test) {
+            model.testEnvOf(i, BspTargets.suiteOf(tid)).forEach(env::string);
+        } else {
             EnvLookup.dotEnv(dir).forEach((name, value) -> {
                 if (ProcessEnv.get(name) == null) env.string(name, value);
             });
         }
         JsonFields item = BspServer.itemFor(tid)
                 .array("classpath", runtimeClasspath(model, i, test))
-                .array("jvmOptions", test ? List.of() : model.runJvmArgsOf(i))
+                .array("jvmOptions", test ? model.testJvmArgsOf(i, BspTargets.suiteOf(tid)) : model.runJvmArgsOf(i))
                 .string("workingDirectory", uri(dir))
                 .token("environmentVariables", env.finish());
         String main = test || i >= model.mainClasses().size()

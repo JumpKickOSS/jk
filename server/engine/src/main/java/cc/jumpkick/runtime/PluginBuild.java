@@ -74,16 +74,7 @@ public final class PluginBuild {
 
     /** The active packager's static artifact descriptor, or empty — manifest data, no fork. */
     public static Optional<PluginDescriptor.Packaging> shape(JkBuild project, Path moduleDir) {
-        for (PluginDescriptor m : PluginTableRegistry.manifestsFor(moduleDir, project.plugins())) {
-            if (m.packaging() == null) continue;
-            Optional<PluginConfig> config = project.pluginConfig(m.id());
-            if (config.isPresent()) {
-                // Config-conditional variants ([[packaging.variant]]): an [android] library
-                // packages an AAR while an app packages an APK — same plugin, one manifest.
-                return Optional.of(m.packaging().resolve(config.get()));
-            }
-        }
-        return Optional.empty();
+        return PluginTableRegistry.packaging(project, moduleDir);
     }
 
     // ---- declarations (describe, file-cached) -------------------------------------------------

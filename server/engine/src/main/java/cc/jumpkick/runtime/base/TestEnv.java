@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime.base;
 
 import cc.jumpkick.config.BuildEnv;
+import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.SearchCeiling;
 import cc.jumpkick.config.SelfUpdatePolicy;
 import cc.jumpkick.config.TestEnvValues;
@@ -11,6 +12,7 @@ import cc.jumpkick.host.Os;
 import cc.jumpkick.host.SearchPath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.EnvConfig;
+import cc.jumpkick.model.EnvDecl;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.TestJvm;
@@ -19,6 +21,7 @@ import cc.jumpkick.util.TestHomes;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -239,6 +242,26 @@ public final class TestEnv {
         out.putAll(testEnv);
         out.putIfAbsent(SearchCeiling.ENV, ceilings(out.get(TMPDIR)));
         return WorkerEnv.policy(policy).with(out);
+    }
+
+    /**
+     * The values {@code project}'s {@code [test] env} sets, with {@code ${target}}, {@code ${module}}
+     * and {@code ${VAR}} expanded as a launch expands them, for a test JVM another program starts (an
+     * IDE). A name the table only forwards is that program's own to pass, and a value naming a
+     * variable that is not set is left out: {@code jk test} names it when it runs.
+     */
+    public static Map<String, String> declaredValues(JkBuild project, Path moduleDir, Path target) {
+        TestEnvValues.Mode launch = new TestEnvValues.Mode.Launch(BuildEnv.forModule(moduleDir)::apply);
+        Map<String, String> out = new LinkedHashMap<>();
+        for (EnvDecl decl : project.build().testEnv()) {
+            if (!(decl instanceof EnvDecl.Set set)) continue;
+            try {
+                out.putAll(TestEnvValues.resolve("[test].env", List.of(set), moduleDir, target, launch));
+            } catch (JkBuildParseException unset) {
+                out.remove(set.name());
+            }
+        }
+        return out;
     }
 
     /**

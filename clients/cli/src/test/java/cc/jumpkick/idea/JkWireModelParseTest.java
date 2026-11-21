@@ -89,7 +89,9 @@ class JkWireModelParseTest {
                 List.of("java", "java,scala"),
                 List.of("", "3.8.4"),
                 List.of("1|/cache/scala3-compiler_3-3.8.4.jar"),
-                List.of("1|-Xmx1g"));
+                List.of("1|-Xmx1g"),
+                List.of(),
+                List.of());
         JkWireModel parsed = JkWireModel.parse(model.encode());
         assertThat(parsed.error).isNull();
         assertThat(parsed.wsRoot).isEqualTo("/ws");

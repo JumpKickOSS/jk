@@ -6,6 +6,7 @@ import cc.jumpkick.config.ManifestSelectors;
 import cc.jumpkick.config.WorkspaceScan;
 import cc.jumpkick.host.Log;
 import cc.jumpkick.lock.ManifestPaths;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PluginConfig;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.VersionSelector;
@@ -342,6 +343,21 @@ public final class PluginTableRegistry {
     }
 
     /** The manifest owning jk.toml table {@code table}, when a plugin declares it. */
+    /**
+     * The packaging of the module's active packager, its config-conditional variant resolved
+     * ({@code [[packaging.variant]]}: an {@code [android]} library packages an AAR, an app an APK),
+     * or empty when no plugin it configures packages it. Manifest data only, no fork.
+     */
+    public static Optional<PluginDescriptor.Packaging> packaging(JkBuild project, Path moduleDir) {
+        for (PluginDescriptor m : manifestsFor(moduleDir, project.plugins())) {
+            PluginDescriptor.Packaging packaging = m.packaging();
+            if (packaging == null) continue;
+            Optional<PluginConfig> config = project.pluginConfig(m.id());
+            if (config.isPresent()) return Optional.of(packaging.resolve(config.get()));
+        }
+        return Optional.empty();
+    }
+
     public static Optional<PluginDescriptor> byTable(String table) {
         return Optional.ofNullable(BY_TABLE.get(table));
     }

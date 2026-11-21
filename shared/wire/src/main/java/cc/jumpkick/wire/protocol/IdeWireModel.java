@@ -3,7 +3,9 @@ package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -18,8 +20,12 @@ import org.jspecify.annotations.Nullable;
  * ({@code java,scala}); {@code scalaVersions} its Scala compiler version, {@code ""} for a module
  * that compiles no Scala; {@code scalaJars} the {@code i|path} rows of the Scala compiler closure
  * the store holds for it, empty until a build fetched one. {@code runJvmArgs} holds the {@code i|flag}
- * rows of each module's {@code [application] jvm-args}, the flags {@code jk run} puts on the app's
- * JVM. {@code error} non-null means the model could not be computed; its message is ready to print.
+ * rows of the flags {@code jk run} puts on each module's app JVM: its {@code [application] jvm-args},
+ * then a {@code -D} per system property its packaging plugin runs the app with. {@code testJvmArgs}
+ * holds the {@code i|suite|flag} rows and {@code testEnv} the {@code i|suite|NAME=value} rows a
+ * module's test JVMs get from its manifest: {@code [test]}'s under the empty suite, then each
+ * declared suite's own. {@code error} non-null means the model could not be computed; its message
+ * is ready to print.
  */
 public record IdeWireModel(
         @Nullable String error,
@@ -57,7 +63,9 @@ public record IdeWireModel(
         List<String> languages,
         List<String> scalaVersions,
         List<String> scalaJars,
-        List<String> runJvmArgs) {
+        List<String> runJvmArgs,
+        List<String> testJvmArgs,
+        List<String> testEnv) {
 
     /** Sibling-ref scope: on the main (and thus test) classpath. */
     public static final String SCOPE_COMPILE = "COMPILE";
@@ -83,7 +91,7 @@ public record IdeWireModel(
                 message, "", "", false, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", "", 0, "", "", List.of(),
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     /** The languages module {@code i} compiles, in the order {@code java, kotlin, groovy, scala}. */
@@ -111,6 +119,43 @@ public record IdeWireModel(
             if (row.startsWith(prefix)) out.add(row.substring(prefix.length()));
         }
         return out;
+    }
+
+    /**
+     * The flags {@code jk test} puts on module {@code i}'s test JVMs beyond jk's own tuning, in
+     * order: {@code [test]}'s, then {@code suite}'s own when it names a declared suite.
+     */
+    public List<String> testJvmArgsOf(int i, @Nullable String suite) {
+        List<String> out = new ArrayList<>();
+        for (String[] row : suiteRows(testJvmArgs, i, suite)) out.add(row[2]);
+        return out;
+    }
+
+    /** The variables module {@code i}'s {@code [test] env} sets, with {@code suite}'s own on top. */
+    public Map<String, String> testEnvOf(int i, @Nullable String suite) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String[] row : suiteRows(testEnv, i, suite)) {
+            int eq = row[2].indexOf('=');
+            if (eq > 0) out.put(row[2].substring(0, eq), row[2].substring(eq + 1));
+        }
+        return out;
+    }
+
+    /** The {@code i|suite|value} rows of module {@code i}: the module's own ({@code ""}) first, then {@code suite}'s. */
+    private static List<String[]> suiteRows(@Nullable List<String> rows, int i, @Nullable String suite) {
+        if (rows == null) return List.of();
+        List<String[]> own = new ArrayList<>();
+        List<String[]> suites = new ArrayList<>();
+        String prefix = i + "|";
+        for (String row : rows) {
+            if (!row.startsWith(prefix)) continue;
+            String[] parts = row.split("\\|", 3);
+            if (parts.length < 3) continue;
+            if (parts[1].isEmpty()) own.add(parts);
+            else if (parts[1].equals(suite)) suites.add(parts);
+        }
+        own.addAll(suites);
+        return own;
     }
 
     public String encode() {
@@ -151,6 +196,8 @@ public record IdeWireModel(
                 .array("scalaVersions", scalaVersions)
                 .array("scalaJars", scalaJars)
                 .array("runJvmArgs", runJvmArgs)
+                .array("testJvmArgs", testJvmArgs)
+                .array("testEnv", testEnv)
                 .finish();
     }
 
@@ -191,7 +238,9 @@ public record IdeWireModel(
                 Jsonl.strArray(line, "languages"),
                 Jsonl.strArray(line, "scalaVersions"),
                 Jsonl.strArray(line, "scalaJars"),
-                Jsonl.strArray(line, "runJvmArgs"));
+                Jsonl.strArray(line, "runJvmArgs"),
+                Jsonl.strArray(line, "testJvmArgs"),
+                Jsonl.strArray(line, "testEnv"));
     }
 
     private static String orEmpty(@Nullable String s) {

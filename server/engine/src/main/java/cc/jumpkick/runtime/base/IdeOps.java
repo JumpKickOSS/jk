@@ -27,9 +27,12 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.ManifestPaths;
 import cc.jumpkick.lock.MemberRows;
+import cc.jumpkick.model.DeclaredSuite;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import cc.jumpkick.model.TestJvm;
+import cc.jumpkick.plugin.manifest.PluginTableRegistry;
 import cc.jumpkick.repo.ArtifactLocator;
 import cc.jumpkick.resolver.CacheSync;
 import cc.jumpkick.scala.ScalaResolver;
@@ -168,15 +171,68 @@ public final class IdeOps {
                 m.languages(),
                 m.scalaVersions(),
                 scalaJars,
-                runJvmArgs(dirs, allModules));
+                runJvmArgs(dirs, allModules),
+                testJvmArgs(dirs, allModules),
+                testEnv(dirs, allModules));
     }
 
-    /** {@code i|flag} rows of each module's {@code [application] jvm-args}, in the order it lists them. */
+    /**
+     * {@code i|flag} rows of the flags {@code jk run} puts on each module's app JVM run from its
+     * classes: its {@code [application] jvm-args} in the order it lists them, then a {@code -D} per
+     * system property its packaging plugin runs the app with.
+     */
     public static List<String> runJvmArgs(List<Path> dirs, Map<Path, JkBuild> allModules) {
         List<String> rows = new ArrayList<>();
         for (int i = 0; i < dirs.size(); i++) {
             JkBuild module = Objects.requireNonNull(allModules.get(dirs.get(i)), "module");
             for (String flag : module.applicationJvmArgs()) rows.add(i + "|" + flag);
+            int row = i;
+            PluginTableRegistry.packaging(module, dirs.get(i)).ifPresent(shape -> shape.runSystemProperties()
+                    .forEach((k, v) -> rows.add(row + "|-D" + k + "=" + v)));
+        }
+        return rows;
+    }
+
+    /**
+     * {@code i|suite|flag} rows of the flags each module's manifest gives its test JVMs: {@code
+     * [test]}'s ({@link TestJvm#flags}) under the empty suite, then each declared suite's own.
+     */
+    public static List<String> testJvmArgs(List<Path> dirs, Map<Path, JkBuild> allModules) {
+        List<String> rows = new ArrayList<>();
+        for (int i = 0; i < dirs.size(); i++) {
+            JkBuild module = Objects.requireNonNull(allModules.get(dirs.get(i)), "module");
+            for (String flag : module.build().testJvm().flags()) rows.add(i + "||" + flag);
+            for (Map.Entry<String, DeclaredSuite> suite :
+                    module.build().runSuites().entrySet()) {
+                for (String flag : suite.getValue().settings().forkArgs()) {
+                    rows.add(i + "|" + suite.getKey() + "|" + flag);
+                }
+            }
+        }
+        return rows;
+    }
+
+    /**
+     * {@code i|suite|NAME=value} rows of the variables each module's manifest sets for its test
+     * JVMs: {@code [test] env}'s ({@link TestEnv#declaredValues}) under the empty suite, then each
+     * declared suite's {@code env}.
+     */
+    public static List<String> testEnv(List<Path> dirs, Map<Path, JkBuild> allModules) {
+        List<String> rows = new ArrayList<>();
+        for (int i = 0; i < dirs.size(); i++) {
+            int row = i;
+            Path dir = dirs.get(i);
+            JkBuild module = Objects.requireNonNull(allModules.get(dir), "module");
+            Path target = BuildLayout.of(dir, module).moduleTargetDir();
+            TestEnv.declaredValues(module, dir, target)
+                    .forEach((name, value) -> rows.add(row + "||" + name + "=" + value));
+            for (Map.Entry<String, DeclaredSuite> suite :
+                    module.build().runSuites().entrySet()) {
+                suite.getValue()
+                        .settings()
+                        .env()
+                        .forEach((name, value) -> rows.add(row + "|" + suite.getKey() + "|" + name + "=" + value));
+            }
         }
         return rows;
     }

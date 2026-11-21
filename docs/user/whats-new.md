@@ -31,8 +31,9 @@ JumpKick shows you this page's new entries after it updates itself.
   usage error.
 - **`jk bsp serve` answers `buildTarget/inverseSources`, `resources`, `jvmRunEnvironment` and
   `jvmTestEnvironment`**, so an IDE can find a file's target and run a main or a test class with
-  the classpath JumpKick builds; a main runs with its `[application] jvm-args` and `.env` values,
-  as under `jk run`.
+  the classpath JumpKick builds; a main runs with its `[application] jvm-args`, its packaging
+  plugin's system properties and `.env` values, as under `jk run`, and a test with its `[test]` and
+  suite's `jvm-args`, `system-properties` and `env`, as under `jk test`.
 - **A value that starts with `-` is refused naming the `=` spelling.** `--jvm-arg -Xmx2g` says
   to write `--jvm-arg=-Xmx2g`, instead of only that the option needs a value.
 - **`jk export` writes a workspace sibling as a project reference.** `jk export gradle` writes a
