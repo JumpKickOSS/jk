@@ -243,6 +243,27 @@ module and each package to what it depends on.
 `resolvedDependencies` are the same closure: each component's purl as `uri` and its locked
 SHA-256 as `digest.sha256`.
 
+With `--sign`, the statement goes up inside a [DSSE](https://github.com/secure-systems-lab/dsse)
+envelope signed by the same key (`.intoto.jsonl`, one JSON line) instead of bare: the base64
+statement as `payload`, `payloadType` `application/vnd.in-toto+json`, and one signature whose
+`sig` is a binary OpenPGP signature and whose `keyid` is the signing key's fingerprint. The
+signature covers DSSE's pre-authentication encoding of the payload, so `gpg` verifies it like
+this:
+
+```bash
+f=widget-1.0.0.intoto.jsonl
+type=application/vnd.in-toto+json
+jq -r .payload "$f" | base64 -d > statement.json
+jq -r '.signatures[0].sig' "$f" | base64 -d > statement.sig
+{ printf 'DSSEv1 %d %s %d ' ${#type} "$type" "$(wc -c < statement.json)"; cat statement.json; } > pae.bin
+gpg --verify statement.sig pae.bin
+```
+
+The envelope's signature is new each time it is made, so a re-run after a partial publish keeps
+the envelope the repository already holds over the same statement, and refuses one over another.
+`--sigstore` alone leaves the statement bare, with its `.sigstore` bundle beside it like every
+other file.
+
 ## Deny policy
 
 ```toml

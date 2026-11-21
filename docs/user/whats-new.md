@@ -6,6 +6,10 @@ JumpKick shows you this page's new entries after it updates itself.
 
 ## 0.54.0
 
+- **A signed `--slsa` publish uploads its provenance in a DSSE envelope.** With `--sign`, the
+  in-toto statement goes up as `.intoto.jsonl`, signed by the release key, where it was a bare
+  `.intoto.json` only the `.asc` beside it vouched for
+  ([Publish: SBOM](publish.md#sbom)).
 - **`jk cache gc` keeps the outputs its records name.** The sweep did not read an output written
   with its size, the form every record has had since 0.52.0, so it could delete cached outputs that
   were still in use and the prune did not count them; a build then ran the step again.

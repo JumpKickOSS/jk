@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
+import cc.jumpkick.host.Hashing;
 import cc.jumpkick.host.time.Clock;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -160,22 +162,36 @@ public final class GpgSigner {
      * returned bytes are what gets uploaded as the {@code .asc} file.
      */
     public byte[] signArmored(Path file) throws IOException {
+        PGPSignature sig;
+        try (InputStream in = Files.newInputStream(file)) {
+            sig = sign(in);
+        }
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ArmoredOutputStream aos = new ArmoredOutputStream(baos)) {
+            sig.encode(aos);
+        }
+        // RFC 4880 ASCII armor is LF-terminated; BouncyCastle may emit CRLF on Windows.
+        return lfOnly(baos.toByteArray());
+    }
+
+    /** A detached signature over {@code data} as one binary OpenPGP signature packet, unarmored. */
+    public byte[] signBinary(byte[] data) throws IOException {
+        return sign(new ByteArrayInputStream(data)).getEncoded();
+    }
+
+    /** The fingerprint of the key that signs, in lowercase hex. */
+    public String fingerprint() {
+        return Hashing.hex(publicKey.getFingerprint());
+    }
+
+    private PGPSignature sign(InputStream in) throws IOException {
         try {
             PGPSignatureGenerator gen = new PGPSignatureGenerator(
                     new BcPGPContentSignerBuilder(publicKey.getAlgorithm(), HashAlgorithmTags.SHA256), publicKey);
             gen.init(PGPSignature.BINARY_DOCUMENT, privateKey);
-            try (InputStream in = Files.newInputStream(file)) {
-                byte[] buf = new byte[64 * 1024];
-                for (int n; (n = in.read(buf)) > 0; ) gen.update(buf, 0, n);
-            }
-            PGPSignature sig = gen.generate();
-
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            try (ArmoredOutputStream aos = new ArmoredOutputStream(baos)) {
-                sig.encode(aos);
-            }
-            // RFC 4880 ASCII armor is LF-terminated; BouncyCastle may emit CRLF on Windows.
-            return lfOnly(baos.toByteArray());
+            byte[] buf = new byte[64 * 1024];
+            for (int n; (n = in.read(buf)) > 0; ) gen.update(buf, 0, n);
+            return gen.generate();
         } catch (PGPException e) {
             throw new IOException("GPG signing failed: " + e.getMessage(), e);
         }

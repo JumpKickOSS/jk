@@ -323,6 +323,60 @@ class MavenPublisherTest {
     }
 
     @Test
+    void a_rerun_keeps_the_signed_provenance_already_published_over_the_same_statement(@TempDir Path tempDir)
+            throws Exception {
+        GpgSigner signer = signer(tempDir.resolve("first"));
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        byte[] jar = "jar".getBytes(StandardCharsets.UTF_8);
+        byte[] statement = "{\"_type\":\"https://in-toto.io/Statement/v1\"}\n".getBytes(StandardCharsets.UTF_8);
+        String at = "/repo/com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl";
+        publisher.publish(
+                project, List.of(artifact(".jar", jar), envelope(statement, signer)), SigningOptions.of(signer));
+        byte[] published = requireNonNull(received.get(at));
+        // Run 1 died before the envelope's signature went up.
+        received.remove(at + ".asc");
+        putLog.clear();
+
+        // Another signature over the same statement: an envelope's bytes are new each time it is signed.
+        MavenPublisher.Artifact again = envelope(statement, signer(tempDir.resolve("second")));
+        assertThat(Files.readAllBytes(again.file())).isNotEqualTo(published);
+        MavenPublisher.Result rerun =
+                publisher.publish(project, List.of(artifact(".jar", jar), again), SigningOptions.of(signer));
+
+        assertThat(rerun.alreadyThere()).contains("com/example/widget/1.0.0/widget-1.0.0.intoto.jsonl");
+        assertThat(putLog).contains(at + ".asc").doesNotContain(at);
+        assertThat(Files.readAllBytes(again.file())).isEqualTo(published);
+    }
+
+    @Test
+    void signed_provenance_published_over_another_statement_is_refused(@TempDir Path tempDir) throws Exception {
+        GpgSigner signer = signer(tempDir);
+        MavenPublisher publisher = new MavenPublisher(base, null, null);
+        Project project = new Project("com.example", "widget", "1.0.0", 21);
+        publisher.publish(project, List.of(envelope("{\"first\":1}".getBytes(StandardCharsets.UTF_8), signer)));
+        putLog.clear();
+
+        assertThatThrownBy(() -> publisher.publish(
+                        project, List.of(envelope("{\"second\":2}".getBytes(StandardCharsets.UTF_8), signer))))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("widget-1.0.0.intoto.jsonl is already published over another statement")
+                .hasMessageContaining("raise the version in jk.toml");
+        assertThat(putLog).isEmpty();
+    }
+
+    private static GpgSigner signer(Path dir) throws Exception {
+        Files.createDirectories(dir);
+        return GpgSigner.fromKeyFile(GpgTestFixture.generate(dir, "pass").secretKeyFile(), "pass".toCharArray());
+    }
+
+    private MavenPublisher.Artifact envelope(byte[] statement, GpgSigner signer) throws IOException {
+        Path file = Files.write(
+                Files.createTempFile(artifactFiles, "artifact", ".intoto.jsonl"), Dsse.envelope(statement, signer));
+        return new MavenPublisher.Artifact(".intoto.jsonl", file, true);
+    }
+
+    @Test
     void a_repository_that_will_not_answer_a_read_is_left_to_the_upload() {
         MavenPublisher publisher = new MavenPublisher(base, null, null);
         getFailureStatus = 403;

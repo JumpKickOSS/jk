@@ -50,6 +50,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The {@code jk-publisher} plugin: the terminal {@link PublishExtension} goal for Maven publishing.
@@ -178,6 +179,13 @@ public final class Publisher implements Plugin, PublishExtension {
         boolean central = c.bool("centralPortal", false);
         libraryArtifacts(ctx, project, projectDir, layout, publishDir, central, artifacts);
 
+        // The key loads before anything is rendered: it signs the provenance as well as every file.
+        GpgSigner gpg = c.bool("signGpg", false)
+                ? GpgSigner.fromKeyFile(
+                        Path.of(c.string("gpgKeyFile")),
+                        ctx.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]))
+                : null;
+
         boolean slsa = c.bool("slsa", false);
         boolean sbom = c.bool("sbom", false);
         CycloneDxSbom.Closure closure = slsa || sbom ? runtimeClosure(projectDir, project) : CycloneDxSbom.Closure.NONE;
@@ -185,7 +193,9 @@ public final class Publisher implements Plugin, PublishExtension {
         if (slsa) {
             String jarFilename = jar.getFileName().toString();
             // A function of the jar, no clock and no random id: a re-run after a partial publish
-            // renders the same bytes, so the provenance already uploaded is recognised as the same.
+            // renders the same statement, so the provenance already uploaded is recognised as the
+            // same. A signed one rides in a DSSE envelope, whose signature is new each run, so the
+            // repository keeps an envelope it holds over the same statement.
             String jarSha = Hashing.sha256Hex(jar);
             SlsaProvenance.BuildContext buildCtx = new SlsaProvenance.BuildContext(
                     "https://github.com/JumpKickOSS/jk",
@@ -204,17 +214,19 @@ public final class Publisher implements Plugin, PublishExtension {
                                             ? ""
                                             : project.project().jdk()),
                     resolvedDependencies(closure));
-            byte[] provenance =
+            byte[] statement =
                     SlsaProvenance.generate(List.of(new SlsaProvenance.Subject(jarFilename, jarSha)), buildCtx);
-            Path provenanceFile = Files.write(publishDir.resolve(stem + ".intoto.json"), provenance);
-            artifacts.add(new MavenPublisher.Artifact(".intoto.json", provenanceFile));
-            ctx.label("artifact " + stem + ".intoto.json");
+            String suffix = gpg == null ? ".intoto.json" : ".intoto.jsonl";
+            Path provenanceFile = Files.write(
+                    publishDir.resolve(stem + suffix), gpg == null ? statement : Dsse.envelope(statement, gpg));
+            artifacts.add(new MavenPublisher.Artifact(suffix, provenanceFile, gpg != null));
+            ctx.label("artifact " + stem + suffix);
         }
 
         List<Path> written = new ArrayList<>();
         if (sbom) sbom(ctx, projectDir, project, closure, artifacts, written);
 
-        if (central) return publishCentral(ctx, c, project, publishDir, artifacts, written);
+        if (central) return publishCentral(ctx, c, gpg, project, publishDir, artifacts, written);
 
         if (c.bool("dryRun", false)) {
             return PublishResult.dryRun(artifacts.size()).withWritten(written);
@@ -229,15 +241,8 @@ public final class Publisher implements Plugin, PublishExtension {
             throw new OfflineException(repoUrl);
         }
 
-        // Load signing.
-        SigningOptions signing;
-        GpgSigner gpg = c.bool("signGpg", false)
-                ? GpgSigner.fromKeyFile(
-                        Path.of(c.string("gpgKeyFile")),
-                        ctx.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]))
-                : null;
         SigstoreSigner sigstoreSigner = c.bool("signSigstore", false) ? KeylessSigstoreSigner.sigstorePublic() : null;
-        signing = new SigningOptions(gpg, sigstoreSigner);
+        SigningOptions signing = new SigningOptions(gpg, sigstoreSigner);
 
         // Upload.
         try {
@@ -357,15 +362,13 @@ public final class Publisher implements Plugin, PublishExtension {
     private static PublishResult publishCentral(
             PublishContext ctx,
             PluginConfig c,
+            @Nullable GpgSigner gpg,
             JkBuild project,
             Path publishDir,
             List<MavenPublisher.Artifact> artifacts,
             List<Path> written)
             throws IOException, InterruptedException {
-        if (!c.bool("signGpg", false)) throw new IOException(SIGNING_REQUIRED);
-        GpgSigner gpg = GpgSigner.fromKeyFile(
-                Path.of(c.string("gpgKeyFile")),
-                ctx.secret("gpgPassphrase").map(String::toCharArray).orElse(new char[0]));
+        if (gpg == null) throw new IOException(SIGNING_REQUIRED);
         if (c.bool("dryRun", false)) {
             Path zip = publishDir.resolve("central-bundle.zip");
             CentralBundle.Bundle bundle = CentralBundle.build(project.project(), artifacts, gpg, zip);

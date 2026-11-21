@@ -7,6 +7,7 @@ import cc.jumpkick.jsonl.Jsonl;
 import cc.jumpkick.plugin.protocol.PluginProtocol;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import cc.jumpkick.plugin.protocol.SpecWriter;
+import cc.jumpkick.plugin.publish.testkit.GpgTestFixture;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -102,5 +104,59 @@ class PublisherDryRunTest {
                 .contains("\"written\":[")
                 .contains(Jsonl.quote(cdx.toString()))
                 .contains(Jsonl.quote(spdx.toString()));
+    }
+
+    @Test
+    void a_signed_dry_run_wraps_the_provenance_in_an_envelope_its_key_verifies(@TempDir Path dir) throws Exception {
+        var key = GpgTestFixture.generate(Files.createDirectories(dir.resolve("key")), "pass");
+        Path out = slsaDryRun(dir, spec -> spec.configBool("signGpg", true)
+                .configString("gpgKeyFile", key.secretKeyFile().toString())
+                .secret("gpgPassphrase", "pass"));
+
+        Path envelope = out.resolve("widget-1.2.3.intoto.jsonl");
+        assertThat(out.resolve("widget-1.2.3.intoto.json")).doesNotExist();
+        String statement = new String(
+                GpgTestFixture.verifyEnvelope(Files.readAllBytes(envelope), key.publicRing()), StandardCharsets.UTF_8);
+        assertThat(statement)
+                .contains("\"predicateType\":\"https://slsa.dev/provenance/v1\"")
+                .contains("\"name\":\"widget-1.2.3.jar\"");
+    }
+
+    @Test
+    void an_unsigned_dry_run_writes_the_bare_statement(@TempDir Path dir) throws Exception {
+        Path out = slsaDryRun(dir, spec -> spec);
+
+        assertThat(out.resolve("widget-1.2.3.intoto.jsonl")).doesNotExist();
+        assertThat(Files.readString(out.resolve("widget-1.2.3.intoto.json")))
+                .startsWith("{\"_type\":\"https://in-toto.io/Statement/v1\"");
+    }
+
+    /** A {@code --slsa --dry-run} of a stand-in project; returns the directory the provenance is written to. */
+    private static Path slsaDryRun(Path dir, UnaryOperator<SpecWriter> signing) throws Exception {
+        Files.writeString(dir.resolve("jk.toml"), """
+                group   = "com.example"
+                name    = "widget"
+                version = "1.2.3"
+                """);
+        Path jar = dir.resolve("widget-1.2.3.jar");
+        Files.write(jar, new byte[] {0x50, 0x4b, 0x05, 0x06});
+        Path spec = dir.resolve("publish.spec");
+        Files.write(
+                spec,
+                signing.apply(new SpecWriter()
+                                .op(PluginProtocol.OP_PUBLISH, null, "jk-publisher")
+                                .configString("repoAuthType", "anonymous")
+                                .configBool("dryRun", true)
+                                .configBool("slsa", true)
+                                .artifact(jar)
+                                .layout(Map.of("moduleDir", dir)))
+                        .lines());
+
+        var buffer = new ByteArrayOutputStream();
+        ProtocolWriter out = new ProtocolWriter(new PrintStream(buffer, true, StandardCharsets.UTF_8), "##JKPU:");
+        assertThat(new Publisher().run(List.of(spec.toString()), out))
+                .as(buffer.toString(StandardCharsets.UTF_8))
+                .isZero();
+        return dir.resolve("target/publish");
     }
 }

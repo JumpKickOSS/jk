@@ -91,8 +91,14 @@ public final class MavenPublisher {
      * or {@code -<classifier>.<extension>}. The extension runs from the first dot, so {@code
      * .intoto.json} is the extension {@code intoto.json}, not {@code json}. Its bytes stay in {@code
      * file}: checksums, signatures and the upload each stream it, so a large jar never sits in memory.
+     * An {@code envelope} is a {@link Dsse} envelope, whose signature differs from one signing to the
+     * next: one the repository holds over the same payload is kept, as a held {@code .asc} is.
      */
-    public record Artifact(String filenameSuffix, Path file) {
+    public record Artifact(String filenameSuffix, Path file, boolean envelope) {
+        public Artifact(String filenameSuffix, Path file) {
+            this(filenameSuffix, file, false);
+        }
+
         public Artifact {
             Objects.requireNonNull(filenameSuffix, "filenameSuffix");
             Objects.requireNonNull(file, "file");
@@ -166,8 +172,9 @@ public final class MavenPublisher {
             // alone and so is each sidecar already beside it, which makes a re-run after a partial
             // publish (or one that adds signing) upload exactly what is missing; one it holds at
             // other bytes is a version somebody already used.
+            boolean kept = a.envelope() && keepHeldEnvelope(relPath, a.file());
             Checksums.Set sums = Checksums.of(a.file());
-            boolean there = presence(relPath, sums.sha1()) == Presence.SAME;
+            boolean there = a.envelope() ? kept : presence(relPath, sums.sha1()) == Presence.SAME;
             if (there) {
                 alreadyThere.add(relPath);
                 putMissingChecksums(relPath, sums, results, bytes);
@@ -344,6 +351,24 @@ public final class MavenPublisher {
                     e);
         }
         putWithChecksums(relPath, existing.withVersion(project.version()).render(), "application/xml", results, bytes);
+    }
+
+    /**
+     * Whether the repository already holds the envelope at {@code relPath} over the payload of the
+     * one in {@code file}; when it does, its bytes replace {@code file}'s, so the sidecars and the
+     * signatures beside it are of the copy that is published.
+     *
+     * @throws IOException when the repository holds an envelope over another payload
+     */
+    private boolean keepHeldEnvelope(String relPath, Path file) throws IOException, InterruptedException {
+        Optional<byte[]> held = readable(relPath);
+        if (held.isEmpty()) return false;
+        if (!Dsse.samePayload(held.get(), Files.readAllBytes(file))) {
+            throw new IOException(repoBase.resolve(relPath)
+                    + " is already published over another statement; raise the version in jk.toml");
+        }
+        Files.write(file, held.get());
+        return true;
     }
 
     /** Signs on demand: a signature already published beside a published body is not re-signed. */

@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish.testkit;
 
+import cc.jumpkick.host.Hashing;
+import cc.jumpkick.jsonl.Jsonl;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import org.bouncycastle.bcpg.ArmoredOutputStream;
@@ -191,5 +196,33 @@ public final class GpgTestFixture {
         if (!sig.verify()) {
             throw new IllegalStateException("signature did not verify");
         }
+    }
+
+    /**
+     * Verify a DSSE envelope as its consumer would: rebuild the pre-authentication encoding from the
+     * payload type and the decoded payload, check the one signature against {@code publicRing}, and
+     * check its keyid is the fingerprint of the key that made it. Returns the decoded payload.
+     */
+    public static byte[] verifyEnvelope(byte[] envelope, PGPPublicKeyRing publicRing) throws IOException, PGPException {
+        String json = new String(envelope, StandardCharsets.UTF_8);
+        String type = Jsonl.requiredStr(json, "payloadType");
+        byte[] payload = Base64.getDecoder().decode(Jsonl.requiredStr(json, "payload"));
+        List<String> signatures = Jsonl.objectArray(json, "signatures");
+        if (signatures.size() != 1) {
+            throw new IllegalStateException("expected one signature, got " + signatures.size());
+        }
+        byte[] sig = Base64.getDecoder().decode(Jsonl.requiredStr(signatures.get(0), "sig"));
+        ByteArrayOutputStream pae = new ByteArrayOutputStream();
+        pae.writeBytes(
+                ("DSSEv1 " + type.getBytes(StandardCharsets.UTF_8).length + " " + type + " " + payload.length + " ")
+                        .getBytes(StandardCharsets.UTF_8));
+        pae.writeBytes(payload);
+        verifyDetached(pae.toByteArray(), sig, publicRing);
+        String fingerprint =
+                Hashing.hex(publicRing.getPublicKey(signerKeyId(sig)).getFingerprint());
+        if (!fingerprint.equals(Jsonl.requiredStr(signatures.get(0), "keyid"))) {
+            throw new IllegalStateException("keyid is not the signing key's fingerprint " + fingerprint);
+        }
+        return payload;
     }
 }
