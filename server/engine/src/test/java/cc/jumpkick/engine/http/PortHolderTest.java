@@ -42,10 +42,10 @@ class PortHolderTest {
     @Test
     void a_jk_engine_of_another_home_is_named_by_its_home() throws Exception {
         int port = answering(200, "{\"id\":\"0be7a1e5c0de\",\"role\":\"host\",\"jkHome\":\"/scratch/.jk\",\"port\":1}");
-        assertThat(PortHolder.describe(port, "/Users/me/.jk"))
+        assertThat(PortHolder.describe(port, PortHolder.homeAt(port), "/Users/me/.jk"))
                 .isEqualTo("port " + port + " is held by the jk engine of home /scratch/.jk; run jk engine stop with"
                         + " JK_HOME set to that home to free it");
-        assertThat(PortHolder.describe(port, "/scratch/.jk"))
+        assertThat(PortHolder.describe(port, PortHolder.homeAt(port), "/scratch/.jk"))
                 .isEqualTo("port " + port + " is held by another engine of this home");
     }
 
@@ -58,7 +58,7 @@ class PortHolderTest {
             held.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
             closed = held.getLocalPort();
             for (int port : new int[] {notJk, noHome, closed}) {
-                assertThat(PortHolder.describe(port, "/Users/me/.jk"))
+                assertThat(PortHolder.describe(port, PortHolder.homeAt(port), "/Users/me/.jk"))
                         .as("port " + port)
                         .isEqualTo("port " + port + " is held by another program");
             }

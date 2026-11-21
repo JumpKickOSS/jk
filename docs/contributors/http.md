@@ -43,8 +43,14 @@ would be 8910, by default or named, takes the band the same way, sticky in its o
 clients never assumed 8910: `jk web`, `jk mcp` and `jk engine status` read the URL from the home's own
 socket. The front door's discovery leaves out a band port answering with role `host`, since that is
 such an engine and no guest to pair with. When the own home's engine cannot bind 8910 after the
-retries, it reads `/api/identity` there (`PortHolder`) and reports the holder's `jkHome` (or "another
-program") as its `httpError`, which `jk engine status` prints on the Web UI line. Taking a band port
+retries, it reads `/api/identity` there (`PortHolder`). A JumpKick engine answering names its `jkHome`, which
+becomes the `httpError` `jk engine status` prints on the Web UI line, and nothing is served: stopping
+that engine is the cure. When nothing answers as an engine, no `jk engine stop` frees the port (a
+Windows host with WSL's mirrored networking can refuse a port a WSL process held, with no holder
+visible), so the engine takes a band port as a guest does, sticky in its `http-port` file, and keeps
+"port 8910 is held by another program" as its `httpError` while it serves; `jk engine status` prints
+it beside the URL. It does not move back to 8910 while it runs; the next engine tries 8910 first.
+Taking a band port
 was chosen over stepping aside on request: step-aside is authorized with a pairing token, which an
 engine of another home does not have, and an engine that moved while serving would leave its own
 clients holding a dead URL.

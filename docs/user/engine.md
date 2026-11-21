@@ -184,10 +184,18 @@ dashboard and MCP endpoint on a port between 8911 and 8999 that it keeps across 
 8910 is free and even when its config names 8910, so a scratch, test or gate home's engine never
 keeps yours from serving there. Everything run under that home finds it where it is: `jk web`, `jk
 mcp` and `jk engine status` read the URL from that home's own engine. When your engine still finds
-8910 taken, the Web UI line of `jk engine status` says by what: `port 8910 is held by the jk engine
-of home /var/tmp/x/.jk` (an engine of another home from an older JumpKick), or `by another program`.
-Stop that engine with `jk engine stop` run with `JK_HOME` set to its home, then `jk engine stop`
-here; your next `jk` command starts an engine that binds 8910.
+8910 taken by another JumpKick engine, it serves no dashboard, and the Web UI line of `jk engine status`
+says whose: `port 8910 is held by the jk engine of home /var/tmp/x/.jk` (an engine of another home
+from an older JumpKick). Stop that engine with `jk engine stop` run with `JK_HOME` set to its home,
+then `jk engine stop` here; your next `jk` command starts an engine that binds 8910.
+
+When 8910 is taken by a program that is not a JumpKick engine, your engine serves on a port between 8911
+and 8999 instead, keeps it across restarts, and the Web UI line shows that URL with the reason
+beside it: `http://127.0.0.1:8937/  (port 8910 is held by another program)`; `jk doctor` warns with
+the same words. `jk web`, `jk mcp` and the MCP setup `jk agents` writes (which runs `jk mcp`) follow
+it. An MCP client you pointed at `http://localhost:8910/mcp` by hand cannot be told; give it the MCP
+URL `jk engine status` prints, or free 8910 and run `jk engine stop`, and the next engine binds 8910
+again. To choose the port yourself, set `[http] port` in `~/.jk/config.toml` or `JK_HTTP_PORT`.
 
 JumpKick for Windows installs JumpKick into the WSL distros you name: `jk self setup-wsl Ubuntu-26.10`
 (`--status` shows each distro, the JumpKick it has and whether its engine is paired; `--remove` takes

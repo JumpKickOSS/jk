@@ -148,8 +148,8 @@ public final class EngineHttpFront {
      * ({@link BandPort}), moving to the next free one when another process holds it. 8910 is the
      * person's own home's: an engine of any other home ({@code JK_HOME} naming a test, scratch or
      * gate home, with or without a {@code HOME} beside it) that would bind it, named or not, takes a
-     * band port instead, so it never keeps the
-     * default home's engine, and the MCP and dashboard clients that call it at 8910, from serving.
+     * band port instead, so it never keeps the default home's engine, and the MCP and dashboard
+     * clients that call it at 8910, from serving.
      */
     public void start() {
         // The hub and the config are created together: no [http] table, neither of them.
@@ -169,7 +169,7 @@ public final class EngineHttpFront {
         HttpEngineServer candidate = candidate(first, hub, id);
         try {
             candidate.start(1);
-            serve(candidate, bandFile);
+            serve(candidate, bandFile, null);
         } catch (BindException busy) {
             // Someone holds the port: a predecessor still letting go, or another engine. The bind
             // retries for seconds, and engine startup — the first build's wait — must not.
@@ -183,7 +183,9 @@ public final class EngineHttpFront {
 
     /**
      * The retrying bind, off the startup path; a stop that lands meanwhile lets the port go. A guest
-     * whose band port stays taken tries the rest of the band and keeps the one it gets.
+     * whose band port stays taken tries the rest of the band and keeps the one it gets. The own
+     * home's engine finding 8910 still taken names the jk engine holding it and serves nothing; held
+     * by another program, which no {@code jk engine stop} frees, it serves on a band port as well.
      */
     private void bindLater(
             HttpEngineServer candidate,
@@ -198,29 +200,48 @@ public final class EngineHttpFront {
                 log.accept("jk engine: asked the WSL engine holding port " + first.port() + " to give it back");
             }
             candidate.start();
-            serve(candidate, bandFile);
+            serve(candidate, bandFile, null);
             return;
         } catch (BindException taken) {
             candidate.close();
-            if (bandFile == null) {
-                if (first.port() != frontDoorPort) {
-                    failed(candidate, taken);
-                    return;
-                }
-                // Say who holds the front door, so the person stops that engine (often another home's).
-                error = PortHolder.describe(first.port(), id.jkHome());
+            if (bandFile != null) {
+                inBand(BandPort.next(first.port()), first, hub, id, bandFile, null);
+                return;
+            }
+            if (first.port() != frontDoorPort) {
+                failed(candidate, taken);
+                return;
+            }
+            // An engine holding the front door is named, so the person stops it (often another home's).
+            String holder = PortHolder.homeAt(first.port());
+            String held = PortHolder.describe(first.port(), holder, id.jkHome());
+            if (holder != null) {
+                error = held;
                 log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
                 return;
             }
+            // No engine to stop: serve on a band port, kept for the next start, and say why.
+            log.accept("jk engine: " + held + "; serving on a band port");
+            Path kept = paths.dir().resolve(BandPort.FILE);
+            inBand(BandPort.preferred(kept, id.id()), first, hub, id, kept, held);
         } catch (IOException | RuntimeException e) {
             failed(candidate, e);
-            return;
         }
-        for (int port = BandPort.next(first.port()); port != first.port() && !stopped; port = BandPort.next(port)) {
+    }
+
+    /**
+     * Binds the first free band port from {@code from}, wrapping, until it is back at {@code
+     * first}'s port or at {@code from}; {@code note} stays as the error, saying why it is not 8910.
+     */
+    private void inBand(
+            int from, JkHttpConfig first, HttpEvents hub, EngineIdentity id, Path bandFile, @Nullable String note) {
+        int port = from;
+        do {
+            if (stopped) return;
             HttpEngineServer next = candidate(first.withPort(port), hub, id);
             try {
                 next.start(1);
-                serve(next, bandFile);
+                serve(next, bandFile, note);
                 return;
             } catch (BindException taken) {
                 next.close();
@@ -228,8 +249,9 @@ public final class EngineHttpFront {
                 failed(next, e);
                 return;
             }
-        }
-        error = "no free port in " + BandPort.FIRST + "-" + BandPort.LAST;
+            port = BandPort.next(port);
+        } while (port != from && port != first.port());
+        error = (note == null ? "" : note + "; ") + "no free port in " + BandPort.FIRST + "-" + BandPort.LAST;
         log.accept("jk engine: http failed to start (" + error + ") — continuing without http");
     }
 
@@ -271,8 +293,11 @@ public final class EngineHttpFront {
         return candidate;
     }
 
-    /** Serve {@code candidate}; a guest's band port is kept for the next start. */
-    private void serve(HttpEngineServer candidate, @Nullable Path bandFile) throws IOException {
+    /**
+     * Serve {@code candidate}; a band port is kept for the next start. {@code note}, when set, is
+     * the error {@code jk engine status} shows beside the URL: why this is not the port it wanted.
+     */
+    private void serve(HttpEngineServer candidate, @Nullable Path bandFile, @Nullable String note) throws IOException {
         if (stopped) {
             candidate.close();
             return;
@@ -281,7 +306,7 @@ public final class EngineHttpFront {
         if (frontDoor) pairWith.accept(candidate);
         Files.writeString(paths.http(), candidate.url());
         server = candidate;
-        error = null;
+        error = note;
         if (stopped) {
             close();
             return;

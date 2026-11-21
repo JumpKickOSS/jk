@@ -23,6 +23,10 @@ JumpKick shows you this page's new entries after it updates itself.
 - **The dashboard opens with no network.** Vue, and the Markdown renderer and sanitizer behind file
   previews, now ship inside JumpKick instead of loading from a CDN, so the dashboard and Markdown
   previews work offline. Diagrams, AsciiDoc and the code editor still load from the CDN when first used.
+- **Your engine serves its dashboard and MCP even when another program holds port 8910.** It
+  takes a port between 8911 and 8999, keeps it across restarts, and `jk engine status` shows that
+  URL with `(port 8910 is held by another program)` beside it. `jk mcp` and `jk web` follow it; an
+  MCP client set to `http://localhost:8910/mcp` by hand needs the new URL.
 - **`[resolve] pom-repositories = "ignore"` keeps the resolve on your own repositories.** No
   repository a dependency's POM declares is asked anything; `jk lock` notes each one it passed over.
 - **A dependency's POM cannot send the resolve into your network.** A repository a POM declares

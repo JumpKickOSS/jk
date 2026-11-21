@@ -15,9 +15,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * Who holds a loopback port this engine could not bind, in words {@code jk engine status} shows: the
  * home of the jk engine that answers {@code GET /api/identity} there, or another program. The
- * default home's engine asks when 8910 stays taken. Its usual holder is an engine of another home
- * from a jk older than the rule that keeps such engines off 8910, and stopping that engine is the
- * cure, so the line names the home to stop it in.
+ * default home's engine asks when 8910 stays taken. When an engine of another home holds it,
+ * stopping that engine is the cure, so the line names the home to stop it in; when no engine
+ * answers, the default home's engine serves on a band port instead.
  */
 public final class PortHolder {
 
@@ -25,9 +25,11 @@ public final class PortHolder {
 
     private PortHolder() {}
 
-    /** Why {@code port} could not be bound, naming its holder; {@code ownHome} is this engine's {@code JK_HOME}. */
-    public static String describe(int port, String ownHome) {
-        String home = homeAt(port);
+    /**
+     * Why {@code port} could not be bound, naming its holder: {@code home} is the {@link #homeAt} of
+     * the engine there, null for another program; {@code ownHome} is this engine's {@code JK_HOME}.
+     */
+    public static String describe(int port, @Nullable String home, String ownHome) {
         if (home == null) return "port " + port + " is held by another program";
         if (home.equals(ownHome)) return "port " + port + " is held by another engine of this home";
         return "port " + port + " is held by the jk engine of home " + home
@@ -35,7 +37,7 @@ public final class PortHolder {
     }
 
     /** The {@code jkHome} the jk engine on {@code port} names; null when none answers there. */
-    static @Nullable String homeAt(int port) {
+    public static @Nullable String homeAt(int port) {
         HttpRequest req = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + HttpEngineServer.IDENTITY))
                 .timeout(PROBE)
                 .GET()

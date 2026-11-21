@@ -179,6 +179,8 @@ public final class EngineStatusCommand implements CliCommand {
         String webUi = s.httpUrl() != null
                 ? Osc.hyperlink(http, Theme.paint(http, Theme.active().brightWhite()))
                 : http;
+        // Serving, with an error: the port it wanted is held, and this one stands in.
+        if (s.httpUrl() != null && s.httpError() != null) webUi += "  (" + s.httpError() + ")";
         detail("Web UI", webUi);
         if (s.mcpUrl() != null) {
             detail("MCP", s.mcpUrl() + "  (POST JSON-RPC; Bearer token)");

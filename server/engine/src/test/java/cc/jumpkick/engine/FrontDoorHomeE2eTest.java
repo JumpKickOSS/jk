@@ -35,7 +35,8 @@ import org.junit.jupiter.api.Test;
  * Port 8910 is the person's own home's. An engine of any other home (a test, scratch or gate
  * {@code JK_HOME}) that would bind it serves on a band port instead, and everything its own clients
  * use (the URL file, the status the socket answers, the MCP URL derived from it, the token) names
- * that port; the default home's engine, finding 8910 held, says which home holds it. Each test puts a
+ * that port. The default home's engine, finding 8910 held by an engine, says which home holds it;
+ * held by another program, it serves on a band port and says why. Each test puts a
  * free port in 8910's place, so the real front door, and the engine of whoever runs the suite, is
  * never touched.
  */
@@ -120,6 +121,55 @@ class FrontDoorHomeE2eTest extends EngineServerHarness {
         } finally {
             server.close();
             serverThread.join(10_000);
+        }
+    }
+
+    @Test
+    void the_default_homes_engine_serves_on_a_band_port_when_another_program_holds_the_front_door_port()
+            throws Exception {
+        // A program that is no jk engine: it holds the port and answers nothing.
+        try (ServerSocket other = new ServerSocket(0, 1, LOOPBACK)) {
+            int frontDoor = other.getLocalPort();
+            EnginePaths.Paths p = paths(shortTempDir());
+            EngineServer server = engine(p, frontDoor, true);
+            Thread serverThread = runInBackground(server);
+            try {
+                waitUntil(Duration.ofSeconds(30), () -> hasContent(p.http()));
+                String url = Files.readString(p.http()).strip();
+                int port = URI.create(url).getPort();
+                assertThat(port).as("a band port").isBetween(BandPort.FIRST, BandPort.LAST);
+                assertThat(Files.readString(p.dir().resolve(BandPort.FILE)).strip())
+                        .as("kept for the next start")
+                        .isEqualTo(Integer.toString(port));
+                String mcpUrl;
+                try (Client c = new Client(EnginePaths.activeSocket(p))) {
+                    String ack = c.send(ProtoLifecycle.statusRequest());
+                    assertThat(Jsonl.str(ack, "httpUrl")).isEqualTo(url);
+                    assertThat(Jsonl.str(ack, "httpError"))
+                            .as("why jk engine status shows a band port")
+                            .isEqualTo("port " + frontDoor + " is held by another program");
+                    mcpUrl = Jsonl.str(ack, "mcpUrl");
+                }
+                String token = Files.readString(p.httpToken()).strip();
+                HttpResponse<String> hello = HttpClient.newHttpClient()
+                        .send(
+                                HttpRequest.newBuilder(URI.create(String.valueOf(mcpUrl)))
+                                        .header("Authorization", "Bearer " + token)
+                                        .header("Content-Type", "application/json")
+                                        .header("Accept", "application/json, text/event-stream")
+                                        .POST(HttpRequest.BodyPublishers.ofString(
+                                                "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":"
+                                                        + "{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},"
+                                                        + "\"clientInfo\":{\"name\":\"probe\",\"version\":\"1\"}}}"))
+                                        .build(),
+                                HttpResponse.BodyHandlers.ofString());
+                assertThat(hello.statusCode())
+                        .as("MCP at the URL status gives: " + hello.body())
+                        .isEqualTo(200);
+            } finally {
+                server.close();
+                serverThread.join(10_000);
+            }
         }
     }
 
