@@ -39,6 +39,13 @@ public final class EffectivePomBuilder {
     private final Map<String, Built> cache = new ConcurrentHashMap<>();
 
     /**
+     * The memoised sources this builder's group is known to serve, by identity: a parent or BOM
+     * shared by many models (a platform BOM under every starter) is asked of the group once per
+     * builder, not once per memo hit.
+     */
+    private final Set<Source> served = Collections.synchronizedSet(Collections.newSetFromMap(new IdentityHashMap<>()));
+
+    /**
      * A model and whether it rests on a non-unique snapshot other than its own POM: a parent or an
      * imported BOM, at any depth, that a re-install or a deploy replaces in place. The memo's key
      * names only the POM's own file, so such a model is never kept past the builder that made it.
@@ -316,11 +323,12 @@ public final class EffectivePomBuilder {
         List<Source> pending = new ArrayList<>(source.inputs());
         while (!pending.isEmpty()) {
             Source input = pending.removeLast();
-            if (!checked.add(input)) continue;
-            RepoGroup.RepoFetched served = repos.tryFetchPom(input.coord()).orElse(null);
-            if (served == null || !processKey(served).equals(input.file())) return false;
+            if (served.contains(input) || !checked.add(input)) continue;
+            RepoGroup.RepoFetched hit = repos.tryFetchPom(input.coord()).orElse(null);
+            if (hit == null || !processKey(hit).equals(input.file())) return false;
             pending.addAll(input.inputs());
         }
+        served.addAll(checked);
         return true;
     }
 
