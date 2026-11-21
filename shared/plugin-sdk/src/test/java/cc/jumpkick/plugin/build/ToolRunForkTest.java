@@ -79,6 +79,27 @@ class ToolRunForkTest {
         assertThat(Files.readString(log, StandardCharsets.UTF_8)).isEqualTo("kept\narg=logged\nenv=<unset>\n");
     }
 
+    /**
+     * A command line past the argfile threshold (a long classpath, a list of class files) reaches
+     * the child whole and unchanged on every OS, well under Windows' 32 K command-line cap.
+     */
+    @Test
+    void a_command_too_long_for_one_command_line_reaches_the_child_intact() throws Exception {
+        List<String> args = new ArrayList<>(List.of("with space", "with \"quote\"", "C:\\dir\\file.jar", "#hash"));
+        while (args.size() < 400) args.add("x".repeat(100) + args.size());
+
+        TaskExec.ToolRun run = probe();
+        for (String arg : args) run.arg(arg);
+        TaskExec.ToolRun.Result result = run.run();
+
+        assertThat(String.join(" ", run.command()).length()).isGreaterThan(32_767);
+        assertThat(result.exit()).isZero();
+        List<String> expected = new ArrayList<>();
+        for (String arg : args) expected.add("arg=" + arg);
+        expected.add("env=<unset>");
+        assertThat(result.output().lines()).containsExactlyElementsOf(expected);
+    }
+
     /** {@code java -cp <test classpath> EnvEchoMain} on the JVM running the test. */
     private static TaskExec.ToolRun probe() {
         Path javaHome = Path.of(Objects.requireNonNull(System.getProperty("java.home"), "java.home"));
