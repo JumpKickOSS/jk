@@ -59,7 +59,7 @@ import org.jspecify.annotations.Nullable;
  *
  * <p>Java Spotless pipeline: {@code importOrder} → {@code removeUnusedImports} → Palantir / Google
  * / AOSP. Kotlin is ktfmt. Groovy is semicolon removal. Scala is scalafmt. FQCN shortening is a
- * first-party index pass (no compiler) that runs before Spotless.
+ * first-party index pass (no compiler) that runs before Spotless, on Java files only.
  *
  * <p>Every file runs under a wall bound ({@link FormatWatchdog}): one pathological source cannot
  * dominate the run, and a file that is merely slow is named while it is still in flight.

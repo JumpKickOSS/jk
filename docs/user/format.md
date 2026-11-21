@@ -31,8 +31,9 @@ source). Gradle Groovy DSL (`*.gradle`) is not formatted.
 **Optimize imports** (optional extra pass, before Spotless, default on): shorten
 fully-qualified class names and add import statements. Preferred style is short names +
 imports; keep an FQCN only when there is a real collision. See
-[what it can shorten](#what-optimize-imports-can-shorten). Applies to every language `jk
-format` walks.
+[what it can shorten](#what-optimize-imports-can-shorten). Runs on Java files only: Kotlin,
+Groovy and Scala files keep their FQCNs, since their import aliases and string literals need a
+lexer per language that the pass does not have.
 
 Unchanged files are skipped: an mtime/size index skips the fork when nothing moved, and a
 per-file stamp keyed by content skips files the worker has already settled. `jk format -r`
@@ -46,9 +47,9 @@ them, so the next plain `jk format` is fast again. Its summary counts what it vi
 | Language | Formatter | Default style | Import hygiene |
 |----------|-----------|---------------|----------------|
 | **Java** | Spotless (Palantir / Google / AOSP) | `palantir` | Yes (order + unused + FQCN shorten) |
-| **Kotlin** | Spotless ktfmt | `kotlinlang` | FQCN shorten; ktfmt style (Java import-order / unused flags do not apply) |
-| **Groovy** | Spotless removeSemicolons | — | FQCN shorten |
-| **Scala** | Spotless scalafmt | 4-space / 120-col | FQCN shorten |
+| **Kotlin** | Spotless ktfmt | `kotlinlang` | ktfmt style (none of the three import toggles apply) |
+| **Groovy** | Spotless removeSemicolons | — | None |
+| **Scala** | Spotless scalafmt | 4-space / 120-col | None |
 
 Java compact source files (unnamed classes: no type, package or module declaration) are skipped
 silently, since Palantir and Google cannot format them; `package-info.java` and
@@ -110,7 +111,7 @@ Per language: **CLI `--java-style` / `--kotlin-style` → CLI `--style` alias �
 
 | Toggle | What it does | Default | Languages |
 |--------|----------------|---------|-----------|
-| **optimize-imports** | Shorten FQCNs and add imports | on | Java, Kotlin, Groovy, Scala |
+| **optimize-imports** | Shorten FQCNs and add imports | on | Java |
 | **import-order** | Spotless `importOrder` | on | Java |
 | **remove-unused-imports** | Spotless `removeUnusedImports` | on | Java |
 
@@ -134,7 +135,8 @@ Environment: `JK_FORMAT_OPTIMIZE_IMPORTS`, `JK_FORMAT_IMPORT_ORDER`,
 
 Shortening `com.example.Widget.of()` to `Widget.of()` uses a **type index**, not a compiler:
 project sources (package + type declarations in `.java` / `.kt` / `.groovy` / `.scala`) plus
-public JDK classes from `jrt:/`. No build is required first.
+public JDK classes from `jrt:/`. No build is required first. The index reads all four languages,
+so a Java file can shorten a type declared in Kotlin; only Java files are rewritten.
 
 | Source of types | Shortened? |
 |-----------------|------------|

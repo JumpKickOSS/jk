@@ -62,7 +62,7 @@ public final class FormatCommand implements CliCommand {
                 Opt.value("<style>", "Java style: palantir | google | aosp.", "-s", "--java-style"),
                 Opt.value("<style>", "Kotlin style: kotlinlang | google | meta.", "-S", "--kotlin-style"),
                 Opt.value("<preset>", "Cross-language preset for both: standard.", "-t", "--style"),
-                Opt.flag("Shorten FQCNs and add imports (default on).", "-I", "--optimize-imports"),
+                Opt.flag("Shorten FQCNs and add imports in Java files (default on).", "-I", "--optimize-imports"),
                 Opt.flag("Skip FQCN-to-import optimization.", "-N", "--no-optimize-imports"),
                 Opt.flag("Sort imports (default on).", "-i", "--import-order"),
                 Opt.flag("Skip import sorting.", "-n", "--no-import-order"),

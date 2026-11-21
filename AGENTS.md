@@ -349,8 +349,8 @@ its length. Do not add new noise.
 
 The root `jk.toml` sets `[format] enforce = true`, so formatting is a step of `jk guard`, not a
 command to remember: before it builds, guard formats every source that changed since the formatter
-last settled it (Spotless plus the first-party FQCN shortener, every language it formats), and under
-CI it fails naming each file that is not formatted. There is no separate `jk format` step.
+last settled it (Spotless for every language it formats, plus the first-party FQCN shortener on
+Java), and under CI it fails naming each file that is not formatted. There is no separate `jk format` step.
 
 - **Run `jk guard` before every commit that touches code** (commit, amend, or any equivalent) and let it
   finish green. A docs-only commit (Markdown, no source) runs `jk guard docs` instead: the text rules
