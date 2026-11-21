@@ -987,7 +987,11 @@ public final class PlannerPlugin {
         // says them again.
         StepDiagnostics said =
                 new StepDiagnostics(ctx, in.dir(), project.project().name(), packager.name());
-        if (restorePackaged(in.cache(), pkgKey, jarPath.getParent(), said)) {
+        Path outBase = Objects.requireNonNull(jarPath.getParent(), "artifact dir")
+                .toAbsolutePath()
+                .normalize();
+        String owner = active.manifest().id();
+        if (restorePackaged(in.cache(), pkgKey, outBase, said, owner)) {
             ctx.label(jarPath.getFileName() + " up-to-date");
             ctx.cached();
             ctx.progress(1);
@@ -1043,6 +1047,27 @@ public final class PlannerPlugin {
         }
         // An artifact written anew is a build, whatever the compile step found cached.
         ctx.put(BUILD_OUTCOME, "built");
+        List<Path> produced = packagedOutputs(jarPath, outBase, workerLines);
+        PackagingCache.settleRoots(outBase, owner, relativeTo(outBase, produced));
+        storePackaged(
+                ctx,
+                guard,
+                in.cache(),
+                pkgTask,
+                pkgKey,
+                packaging.keyed().tokens(),
+                jarPath.getParent(),
+                produced,
+                !in.ephemeralActions(),
+                said.said());
+        ctx.progress(1);
+    }
+
+    /**
+     * What a plugin packager laid down under {@code outBase}, its artifact's directory: the artifact,
+     * and the extras its {@code produced} lines in {@code workerLines} declared.
+     */
+    private static List<Path> packagedOutputs(Path jarPath, Path outBase, List<String> workerLines) throws IOException {
         // A container packager (an AAR) may also emit the conventional classes jar next to the
         // main artifact — the host-classpath view workspace siblings compile against. Both cache
         // under the same key so a hit restores the pair.
@@ -1058,9 +1083,6 @@ public final class PlannerPlugin {
         // multi-file layout must cache whole or a hit after `jk clean` restores a broken
         // artifact. Directories expand recursively; escapes of the artifact dir
         // are a packager bug.
-        Path outBase = Objects.requireNonNull(jarPath.getParent(), "artifact dir")
-                .toAbsolutePath()
-                .normalize();
         for (String line : workerLines) {
             if (!"produced".equals(Jsonl.str(line, "t"))) continue;
             Path p = Path.of(String.valueOf(Jsonl.str(line, "path")))
@@ -1075,18 +1097,16 @@ public final class PlannerPlugin {
                 PathUtil.forEachRegularFile(p, (file, attrs) -> produced.add(file));
             }
         }
-        storePackaged(
-                ctx,
-                guard,
-                in.cache(),
-                pkgTask,
-                pkgKey,
-                packaging.keyed().tokens(),
-                jarPath.getParent(),
-                produced,
-                !in.ephemeralActions(),
-                said.said());
-        ctx.progress(1);
+        return produced;
+    }
+
+    /** {@code files} relative to {@code base}, {@code /} separated. */
+    private static List<String> relativeTo(Path base, List<Path> files) {
+        List<String> rels = new ArrayList<>();
+        for (Path f : files) {
+            rels.add(base.relativize(f.toAbsolutePath().normalize()).toString().replace('\\', '/'));
+        }
+        return rels;
     }
 
     /**

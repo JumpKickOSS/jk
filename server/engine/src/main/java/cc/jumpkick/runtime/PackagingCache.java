@@ -13,6 +13,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.run.TaskContext;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.task.ActionCache.ActionRecord;
 import cc.jumpkick.task.ChangedInputs;
 import cc.jumpkick.task.FileHashMemo;
 import cc.jumpkick.task.HeavyActionPolicy;
@@ -24,9 +25,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -61,13 +66,59 @@ final class PackagingCache {
      */
     static boolean restorePackaged(Path cacheRoot, String key, @Nullable Path baseDir, @Nullable StepDiagnostics said)
             throws IOException {
+        return restored(cacheRoot, key, baseDir, said) != null;
+    }
+
+    /**
+     * As {@link #restorePackaged(Path, String, Path, StepDiagnostics)} for a package of plugin {@code
+     * owner}, and once restored, removes what {@link #settleRoots} removes.
+     */
+    static boolean restorePackaged(
+            Path cacheRoot, String key, Path baseDir, @Nullable StepDiagnostics said, String owner) throws IOException {
+        ActionRecord hit = restored(cacheRoot, key, baseDir, said);
+        if (hit == null) return false;
+        settleRoots(baseDir, owner, hit.outputs().keySet());
+        return true;
+    }
+
+    /** The record restored into {@code baseDir} for {@code key}, or null when none was. */
+    private static @Nullable ActionRecord restored(
+            Path cacheRoot, String key, @Nullable Path baseDir, @Nullable StepDiagnostics said) throws IOException {
         // rebuildOr already subsumes force (JkConfig: force implies rebuild).
-        if (SessionContext.current().config().rebuildOr(false)) return false;
+        if (SessionContext.current().config().rebuildOr(false)) return null;
         ActionCache ac = packagingActionCache(cacheRoot);
         var hit = ac.lookup(key);
-        if (baseDir == null || hit.isEmpty() || !ac.restoreArtifacts(hit.get(), baseDir)) return false;
+        if (baseDir == null || hit.isEmpty() || !ac.restoreArtifacts(hit.get(), baseDir)) return null;
         if (said != null) said.replay(hit.get());
-        return true;
+        return hit.get();
+    }
+
+    /**
+     * Remove each top-level directory under {@code baseDir} that the previous package of plugin
+     * {@code owner} laid files in and this one, whose {@code baseDir}-relative {@code outputs} are
+     * given, lays none in. A restore replaces only the directories its own record holds files in, so
+     * without this a debug APK restored after a minified release build keeps the release's R8
+     * mapping beside it. Those directories are listed one per line in {@code .jk/packaged/<owner>}
+     * under {@code baseDir}.
+     */
+    static void settleRoots(Path baseDir, String owner, Collection<String> outputs) throws IOException {
+        Set<String> roots = new TreeSet<>();
+        for (String rel : outputs) {
+            int slash = rel.indexOf('/');
+            if (slash > 0) roots.add(rel.substring(0, slash));
+        }
+        Path list = baseDir.resolve(".jk").resolve("packaged").resolve(owner.replaceAll("[^A-Za-z0-9._-]", "_"));
+        if (Files.isRegularFile(list)) {
+            for (String root : Files.readAllLines(list, StandardCharsets.UTF_8)) {
+                // A line that is not one plain name names nothing this method wrote.
+                if (roots.contains(root) || !root.matches("[^/\\\\]+") || root.equals(".") || root.equals("..")) {
+                    continue;
+                }
+                PathUtil.deleteRecursivelyOrThrow(baseDir.resolve(root));
+            }
+        }
+        Files.createDirectories(list.getParent());
+        AtomicWrites.replaceIfChanged(list, roots.stream().map(r -> r + "\n").collect(Collectors.joining()));
     }
 
     /**

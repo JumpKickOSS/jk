@@ -125,7 +125,9 @@ public interface PackageIo {
     /**
      * Declare an extra produced file or directory (beyond {@link #artifactPath()}) that the
      * engine must cache and restore with the artifact — e.g. the quarkus fast-jar {@code lib/}
-     * siblings. Must live under the artifact's directory. Directories are stored recursively.
+     * siblings. Must live under the artifact's directory. Directories are stored recursively, and a
+     * top-level directory an earlier package declared and this one does not is removed, whether this
+     * one is packaged or restored.
      */
     default void produced(Path path) {}
 }
