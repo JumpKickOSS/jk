@@ -468,13 +468,24 @@ public final class PackagingKeys {
                         cas,
                         new PluginBuild.StepTools(),
                         layout,
-                        layout.classesDir(),
+                        packagedClasses(project, layout, cache),
                         layout.minifiedJar(),
                         javaHome,
                         minifier,
                         decls,
                         BuildEnv.ambient()))
                 .keyed();
+    }
+
+    /**
+     * The classes a plugin packager packs, as {@link BuildPlanner#mainClasses} hands them to the
+     * live step: the output of the module's classes transform when a plugin declares one, else the
+     * compiled tree. A transform output not written yet keys as missing, so the forecast runs.
+     */
+    static Path packagedClasses(JkBuild project, BuildLayout layout, Path cache)
+            throws IOException, InterruptedException {
+        Path transformed = PluginBuild.transformOutput(project, layout, cache);
+        return transformed != null ? transformed : layout.classesDir();
     }
 
     /**
@@ -591,8 +602,9 @@ public final class PackagingKeys {
      * anything is missing the answer is RUN with the reason, which is pessimistic and therefore
      * safe — the failure mode this replaces was a confident forecast of a different step.
      *
-     * <p>A transform step's re-pointed classes dir is an input the forecast cannot know; it makes
-     * the key miss and the module forecast RUN — never a hit against the wrong bytes.
+     * <p>The classes are {@link #packagedClasses}: a classes transform's output, as the live step
+     * packs them. A transform that runs this build leaves them unknown, so the caller forecasts RUN
+     * before asking.
      */
     static TaskForecast.Task pluginPackagerStep(
             JkBuild project,
@@ -618,7 +630,7 @@ public final class PackagingKeys {
                             cas,
                             new PluginBuild.StepTools(),
                             layout,
-                            layout.classesDir(),
+                            packagedClasses(project, layout, cache),
                             artifact,
                             javaHome,
                             packagerPlugin,

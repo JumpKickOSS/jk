@@ -35,8 +35,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * A packaging step's heavy output (a runtime image, a native executable, a fat jar) stays out of a
- * cache whose volume is nearly full, and the step says so with the volume's figures; with room it
- * is stored. The volume is pinned, so neither case depends on the host's free space. {@code jk
+ * cache whose volume is nearly full, and the build says so once with the volume's figures; with
+ * room it is stored. The volume is pinned, so neither case depends on the host's free space. {@code jk
  * explain} names whichever of the disk, {@code [cache] heavy-ttl} and {@code [build]
  * cache-heavy-outputs} keeps a heavy output out, and the build says once which setting did.
  */
@@ -50,15 +50,23 @@ class PackagingCacheDiskGuardTest {
     }
 
     @Test
-    void a_heavy_image_on_a_nearly_full_volume_is_not_stored_and_the_step_says_why(@TempDir Path tmp) throws Exception {
+    void a_heavy_image_on_a_nearly_full_volume_is_not_stored(@TempDir Path tmp) throws Exception {
         Recording ctx = new Recording();
         String key = store(tmp, new JkCacheConfig.DiskSpace(100 * GIB, GIB), ctx);
 
         assertThat(cache(tmp).lookup(key)).as("the image stays in target/ only").isEmpty();
-        assertThat(ctx.warnings)
+        assertThat(ctx.warnings).as("the build says it, not the step").isEmpty();
+    }
+
+    @Test
+    void a_build_says_once_that_a_nearly_full_disk_keeps_heavy_outputs_out(@TempDir Path tmp) throws Exception {
+        List<String> notices = refusals(tmp, null, HeavyTtl.DEFAULT, new JkCacheConfig.DiskSpace(100 * GIB, GIB), 2);
+
+        assertThat(notices)
+                .as("two heavy outputs, one notice")
                 .containsExactly(PackagingCache.DISK_LOW
-                        + "=not cached: the disk is nearly full (1.0 GiB free of 100.0 GiB (1%)); the output"
-                        + " stays where it was built and JumpKick is reclaiming space");
+                        + "=heavy outputs not cached: the disk is nearly full (1.0 GiB free of 100.0 GiB (1%));"
+                        + " they stay where they were built and JumpKick is reclaiming space");
     }
 
     @Test
@@ -112,13 +120,11 @@ class PackagingCacheDiskGuardTest {
 
     @Test
     void a_build_says_once_that_the_machine_keeps_heavy_outputs_out(@TempDir Path tmp) throws Exception {
-        Recording ctx = new Recording();
-        List<String> notices = refusals(tmp, null, Duration.ZERO, ctx, 2);
+        List<String> notices = refusals(tmp, null, Duration.ZERO, ROOM, 2);
 
         assertThat(notices)
                 .as("two heavy outputs, one notice")
                 .containsExactly(PackagingCache.HEAVY_NOT_CACHED + "=heavy outputs not cached: [cache] heavy-ttl = 0");
-        assertThat(ctx.warnings).as("no step repeats it").isEmpty();
     }
 
     @Test
@@ -132,31 +138,33 @@ class PackagingCacheDiskGuardTest {
                 [build]
                 cache-heavy-outputs = false
                 """));
-        Recording ctx = new Recording();
-        List<String> notices = refusals(tmp, optedOut, HeavyTtl.DEFAULT, ctx, 2);
+        List<String> notices = refusals(tmp, optedOut, HeavyTtl.DEFAULT, ROOM, 2);
 
         assertThat(notices)
                 .containsExactly(PackagingCache.HEAVY_NOT_CACHED
                         + ":app=app: heavy outputs not cached: [build] cache-heavy-outputs = false");
-        assertThat(ctx.warnings).isEmpty();
     }
+
+    private static final JkCacheConfig.DiskSpace ROOM = new JkCacheConfig.DiskSpace(100 * GIB, 50 * GIB);
 
     /**
      * Offers {@code times} Class-C outputs of {@code project} to the cache in one run under {@code
-     * heavyTtl}, each refused, and returns the run's notices as {@code key=message}.
+     * heavyTtl} on a volume with {@code space}, each refused, and returns the run's notices as
+     * {@code key=message}.
      */
     private static List<String> refusals(
-            Path tmp, @Nullable JkBuild project, Duration heavyTtl, Recording ctx, int times) throws Exception {
+            Path tmp, @Nullable JkBuild project, Duration heavyTtl, JkCacheConfig.DiskSpace space, int times)
+            throws Exception {
         Path cache = tmp.resolve("cache");
         Path base = Files.createDirectories(tmp.resolve("target"));
         List<String> notices = new ArrayList<>();
-        try (DiskGuard.Pin room = DiskGuard.pinForTest(cache, new JkCacheConfig.DiskSpace(100 * GIB, 50 * GIB))) {
+        try (DiskGuard.Pin pin = DiskGuard.pinForTest(cache, space)) {
             SessionContext.where(Session.defaults().withCacheDir(cache), () -> {
                 RunNotices.openSink(SessionContext.current().io(), (key, message) -> notices.add(key + "=" + message));
                 for (int i = 0; i < times; i++) {
-                    Path jar = Files.writeString(base.resolve("app-" + i + "-all.jar"), "fat " + i);
+                    Path jar = heavy(base.resolve("app-" + i + "-all.jar"));
                     String task = ActionKey.qualifiedTaskId(TaskNames.PACKAGE_ASSEMBLY, jar);
-                    assertThat(PackagingCache.admitted(ctx, cache, List.of(jar), task, project, heavyTtl))
+                    assertThat(PackagingCache.admitted(cache, List.of(jar), task, project, heavyTtl))
                             .isFalse();
                 }
                 return null;

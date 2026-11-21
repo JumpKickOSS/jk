@@ -497,9 +497,9 @@ totals live in `cache-stats.toml` in the state directory and survive engine rest
 JumpKick does not fill a disk. A volume is **critical** when less than **2 GiB** is free, or
 less than **10%** of it and less than **10 GiB**: 20 GiB free on a 250 GiB laptop disk is room,
 not an emergency. On a critical volume no heavy output (32 MiB or more: a native image, a fat jar,
-a jlink image, a large node bundle) goes into the cache: it stays where it was built, the step
-warns `disk-low`, and the step runs again on the next build. `jk explain` gives the disk as the
-reason a native image, fat jar or jlink image will run. A high-priority thread in the engine looks
+a jlink image, a large node bundle) goes into the cache: it stays where it was built, the build
+warns once that the disk is nearly full, and the step runs again on the next build. `jk explain`
+gives the disk as the reason a native image, fat jar or jlink image will run. A high-priority thread in the engine looks
 at the cache, store and state volumes every 15 seconds, and at once when a write was refused; on
 a critical volume it collects the artifact store at emergency windows on the spot (safe beside a
 build, since nothing younger than an hour is touched) and prunes the cache now, or at the build

@@ -406,6 +406,10 @@ final class PackageSteps {
             // Packaging owned by a plugin (spring-boot, grails, quarkus, minified, android): the
             // build runs the packager under its own token bag, so the key comes from the same body
             // the build calls; anything that stops us reproducing it forecasts RUN, never a hit.
+            if (PlannerPlugin.transformRuns(s)) {
+                return new TaskForecast.Task(
+                        TaskNames.PACKAGE_JAR, TaskForecast.Status.RUN, "repackage · classes transform runs", null);
+            }
             return PackagingKeys.pluginPackagerStep(
                     s.project, s.dir, layout, s.cache, s.lockFile, s.cas, prepared.javaHome(), plugin, s.actionCache);
         }

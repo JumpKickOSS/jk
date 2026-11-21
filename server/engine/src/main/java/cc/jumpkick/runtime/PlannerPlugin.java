@@ -556,6 +556,15 @@ public final class PlannerPlugin {
         return beforeCompile(step) ? s.defer(price) : price.call();
     }
 
+    /**
+     * True when the module's classes transform runs: what it writes, which is what the module's
+     * packagers pack, is unknown until it has.
+     */
+    static boolean transformRuns(ForecastScope s) throws Exception {
+        TaskDecl transform = transformStep(s.prepared().parsed().pkgDecls());
+        return transform != null && s.runs("plugin-" + transform.name());
+    }
+
     static TaskForecast.Task cachedForecast(TaskDecl step) {
         String note = step.keyProbe() != null ? step.name() + " · its live input is probed when the step runs" : "";
         return new TaskForecast.Task("plugin-" + step.name(), TaskForecast.Status.CACHED, note, null);

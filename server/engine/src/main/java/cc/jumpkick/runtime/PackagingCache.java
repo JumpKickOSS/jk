@@ -157,19 +157,18 @@ final class PackagingCache {
     /**
      * True when {@code artifacts} may go into the cache under {@code cacheRoot}: a heavy artifact
      * enters only while the machine keeps heavy outputs and the module has not opted out ({@link
-     * #heavyRefused}), which the build says once, and jk never fills a disk, so on a nearly full
-     * volume ({@link DiskGuard}) a heavy artifact stays in target/ only, the step says so, and the
-     * engine is woken to reclaim space.
+     * #heavyRefused}), and jk never fills a disk, so on a nearly full volume ({@link DiskGuard}) a
+     * heavy artifact stays in target/ only and the engine is woken to reclaim space. The build says
+     * each refusal once, however many steps meet it.
      */
     static boolean admitted(TaskContext ctx, Path cacheRoot, List<Path> artifacts, @Nullable String taskId) {
         JkBuild project =
                 ctx.get(BuildPlanner.MODULE).map(ModuleIdentity::project).orElse(null);
-        return admitted(ctx, cacheRoot, artifacts, taskId, project, HeavyTtl.resolve());
+        return admitted(cacheRoot, artifacts, taskId, project, HeavyTtl.resolve());
     }
 
     /** As {@link #admitted(TaskContext, Path, List, String)} for {@code project} under the heavy window {@code heavyTtl}. */
     static boolean admitted(
-            TaskContext ctx,
             Path cacheRoot,
             List<Path> artifacts,
             @Nullable String taskId,
@@ -189,9 +188,10 @@ final class PackagingCache {
             }
         }
         if (DiskGuard.admits(cacheRoot, artifacts)) return true;
-        ctx.warn(
+        RunNotices.warnOnce(
                 DISK_LOW,
-                diskFull(cacheRoot) + "; the output stays where it was built and JumpKick is reclaiming space");
+                () -> "heavy outputs " + diskFull(cacheRoot)
+                        + "; they stay where they were built and JumpKick is reclaiming space");
         return false;
     }
 
@@ -227,7 +227,7 @@ final class PackagingCache {
         return "not cached: the disk is nearly full (" + DiskGuard.describe(DiskGuard.space(cacheRoot)) + ")";
     }
 
-    /** The warning a packaging step carries when the disk guard kept its artifact out of the cache. */
+    /** The notice a build gives once when the disk guard keeps its heavy outputs out of the cache. */
     static final String DISK_LOW = "disk-low";
 
     /** The notice a build gives once when a setting keeps its heavy outputs out of the cache. */

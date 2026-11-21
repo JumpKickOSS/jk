@@ -86,7 +86,10 @@ JumpKick shows you this page's new entries after it updates itself.
   jar or jlink image that misses the cache, it names `[cache] heavy-ttl = 0` (the default on CI) or
   `[build] cache-heavy-outputs = false` when either keeps the output out of the cache, as it already
   named a nearly full disk. It now forecasts the jlink image and the minified jar at all, with the
-  reason each runs, and the build says once that a setting kept its heavy outputs out of the cache.
+  reason each runs, and the build says once that a setting or a nearly full disk kept its heavy
+  outputs out of the cache, where each refused step warned of the disk. A plugin-packaged or
+  minified jar whose classes a plugin transforms is forecast on the transformed classes, as the
+  build packs them, so `jk explain` no longer forecasts one the build restores as running.
 
 - **The engine sees a memory limit set on its systemd unit or slice.** Worker memory, the
   overbooking check and the memory the engine reports now follow the tightest cgroup limit on the

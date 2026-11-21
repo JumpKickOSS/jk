@@ -85,6 +85,7 @@ final class ForecastPackagingTails {
         if (s.runs(TaskNames.PACKAGE_JAR) || s.compileDirty) return minify("minify · compile changed");
         // The minified jar shrinks the runtime siblings' jars together with the module's classes.
         if (s.runtimeDepDirty) return minify("minify · runtime dependency changed");
+        if (PlannerPlugin.transformRuns(s)) return minify("minify · classes transform runs");
         Prepared p = s.prepared();
         BuildLayout layout = p.parsed().layout();
         try {
