@@ -54,11 +54,12 @@ export function savingsTiles(row) {
       tip: 'Test classes a re-run left out because they passed under the same inputs' },
     { key: 'graph', label: 'graph answers', value: row.graphCalls || 0,
       tip: 'Code-graph questions an agent asked instead of reading files' },
-    { key: 'renames', label: 'renames · edits', value: (row.renames || 0) + ' · ' + (row.edits || 0),
-      tip: 'Renames applied and dependency edits made through jk' },
+    { key: 'refactorings', label: 'refactorings · edits',
+      value: (row.refactorings || 0) + ' · ' + (row.edits || 0),
+      tip: 'Refactorings the code graph applied and dependency edits made through jk' },
     { key: 'guards', label: 'guard stops', value: row.guardViolations || 0,
       note: stops ? 'in ' + stops + (stops === 1 ? ' run' : ' runs') : '',
-      tip: 'Guard-rule violations a run stopped before they reached a commit' },
+      tip: 'Guard rules broken and stopped before a commit, each rule in each file counted once' },
   ];
 }
 
@@ -73,7 +74,7 @@ export function receiptTiles(row) {
     steps: row.stepsSkipped,
     classes: row.testClassesNotRerun,
     graph: row.graphCalls,
-    renames: (row.renames || 0) + (row.edits || 0),
+    refactorings: (row.refactorings || 0) + (row.edits || 0),
     guards: row.guardViolations,
   };
   return savingsTiles(row).filter((t) => (counted[t.key] || 0) > 0);

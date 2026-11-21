@@ -27,7 +27,7 @@ import org.jspecify.annotations.Nullable;
  * @param buildNumber a run's build number; 0 for an action or an unnumbered run
  * @param edits the changes it wrote: the coordinates a {@code deps} call added, removed or pinned,
  *     1 for an applied {@code update} or {@code workspace} change; 0 for a run, a question, a
- *     rename, a preview or a failed call
+ *     refactoring, a preview or a failed call
  */
 public record ActionRecord(
         long seq,
@@ -43,7 +43,11 @@ public record ActionRecord(
         int edits) {
 
     public static final String RUN = "run";
-    public static final String RENAME = "rename";
+    /**
+     * The refactorings the code graph applies through MCP; {@code rename} is the one exposed so far,
+     * and also moves a type or a package.
+     */
+    public static final Set<String> REFACTORINGS = Set.of("rename");
 
     /** The code-graph questions: {@code query}, {@code usages}, {@code read}, {@code find}. */
     public static final Set<String> GRAPH = Set.of("query", "usages", "read", "find");

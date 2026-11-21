@@ -8,18 +8,25 @@ import cc.jumpkick.engine.sessions.SessionLog;
 import cc.jumpkick.run.TaskNames;
 import cc.jumpkick.runtime.TestsNotRerun;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Adds up what jk saved: the cache's estimate and its skipped steps, suites and test classes from
- * each run's record, guard violations from its errors, and the graph questions, renames and edits
- * from the sessions' actions. Nothing new is recorded for it; it reads what the journal keeps, so a
- * period reaches back only as far as {@code [history]} retention.
+ * each run's record, guard violations from its errors, and the graph questions, refactorings and
+ * edits from the sessions' actions. Nothing new is recorded for it; it reads what the journal
+ * keeps, so a period reaches back only as far as {@code [history]} retention.
  */
 public final class SavingsLedger {
+
+    /** The {@code file:line: } a guard site's message starts with. */
+    private static final Pattern SITE = Pattern.compile("([^\\n:][^\\n]*?):\\d+: ");
 
     private SavingsLedger() {}
 
@@ -94,12 +101,12 @@ public final class SavingsLedger {
             if (TaskNames.isRunTests(t.name())) suites++;
         }
         long classes = 0;
-        long violations = 0;
+        Set<String> violations = new HashSet<>();
         for (BuildRecord.Diag d : r.diagnostics()) {
             if ("warning".equals(d.severity()) && TestsNotRerun.CODE.equals(d.code())) {
                 classes += TestsNotRerun.count(d.message());
             } else if ("error".equals(d.severity()) && TaskNames.isGuardLane(d.step())) {
-                violations++;
+                violations.add(violation(r, d));
             }
         }
         return new Savings(
@@ -121,15 +128,48 @@ public final class SavingsLedger {
                 0,
                 0,
                 violations,
-                violations > 0 ? 1 : 0);
+                violations.isEmpty() ? 0 : 1);
     }
 
-    /** One action's contribution: a question answered, a rename applied, edits made, or nothing. */
+    /**
+     * What makes guard error {@code d} of run {@code r} one violation: its rule and the file it
+     * names in its module of the checkout the run built, so a rule a file breaks in run after run
+     * counts once. A guard site names its file only at the head of its message ({@code
+     * src/Main.java:3: …}); an error with no file is its rule's one violation in that module.
+     */
+    static String violation(BuildRecord r, BuildRecord.Diag d) {
+        String file = d.file();
+        if (file.isEmpty()) {
+            Matcher m = SITE.matcher(d.message());
+            if (m.lookingAt()) file = m.group(1);
+        }
+        return d.code() + '\0' + (r.dir() == null ? "" : r.dir()) + '\0' + d.dir() + '\0' + file;
+    }
+
+    /** One action's contribution: a question answered, a refactoring applied, edits made, or nothing. */
     static Savings of(ActionRecord a) {
         boolean ok = ActionRecord.OK.equals(a.outcome());
         long graph = ok && ActionRecord.GRAPH.contains(a.kind()) ? 1 : 0;
-        long rename = ok && ActionRecord.RENAME.equals(a.kind()) ? 1 : 0;
+        long refactoring = ok && ActionRecord.REFACTORINGS.contains(a.kind()) ? 1 : 0;
         return new Savings(
-                Savings.ALL, null, null, null, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, graph, rename, ok ? a.edits() : 0, 0, 0);
+                Savings.ALL,
+                null,
+                null,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                graph,
+                refactoring,
+                ok ? a.edits() : 0,
+                Set.of(),
+                0);
     }
 }

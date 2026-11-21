@@ -15,20 +15,30 @@ import cc.jumpkick.model.command.MachineOutput;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.wire.EnginePaths;
 import cc.jumpkick.wire.protocol.EngineProtocol;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@code jk stats}: what the cache, the code graph and the guards saved over the last days, overall
- * and per project, added up by the engine from the build history and the agent sessions it keeps.
+ * {@code jk stats}: what the cache, the code graph and the guards saved over a period, overall and
+ * per project, added up by the engine from the build history and the agent sessions it keeps.
  * {@code -O jsonl} prints the same rows the dashboard's panel reads from {@code GET /api/stats}.
  */
 public final class StatsCommand implements CliCommand {
 
-    static final int DEFAULT_DAYS = 7;
+    static final String DEFAULT_SINCE = "7d";
 
-    private static final long DAY_MILLIS = 86_400_000L;
+    /** {@code --since} for every run and action the engine keeps. */
+    static final String ALL = "all";
+
+    private static final Pattern DURATION = Pattern.compile("(\\d{1,6})([hdw])");
+
+    private static final long HOUR_MILLIS = 3_600_000L;
 
     /** Projects the text table lists; the rest are in the total. */
     private static final int PROJECT_ROWS = 10;
@@ -51,26 +61,29 @@ public final class StatsCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(Opt.value(
-                "<N>", "The last N days (default: " + DEFAULT_DAYS + "; 0: all the history kept).", "-d", "--days"));
+                "<when>",
+                "A duration back from now (12h, 7d, 2w), a date (2026-11-01) or " + ALL + " (default: " + DEFAULT_SINCE
+                        + ").",
+                "--since"));
     }
 
     @Override
     public int run(Invocation in) throws Exception {
-        String raw = in.value("days").orElse(null);
-        @Nullable Integer days = raw == null ? Integer.valueOf(DEFAULT_DAYS) : parseDays(raw);
-        if (days == null) {
-            CommandWedge.printFail("Stats", "--days takes a whole number of days, not " + raw);
+        String raw = in.value("since").orElse(DEFAULT_SINCE);
+        @Nullable Period p = period(raw, Clock.SYSTEM.millis(), ZoneId.systemDefault());
+        if (p == null) {
+            CommandWedge.printFail(
+                    "Stats", "--since takes a duration (12h, 7d, 2w), a date (2026-11-01) or " + ALL + ", not " + raw);
             return Exit.USAGE;
         }
-        long since = since(days, Clock.SYSTEM.millis());
-        List<String> rows = EngineJournalReads.stats(EnginePaths.current(), since).stream()
+        List<String> rows = EngineJournalReads.stats(EnginePaths.current(), p.since()).stream()
                 .filter(l -> EngineProtocol.STATS.equals(EngineProtocol.typeOf(l)))
                 .toList();
         if (CliOutput.jsonMode()) {
             for (String row : rows) JsonlShape.rowOf(EngineProtocol.STATS, row);
             return 0;
         }
-        String period = period(days);
+        String period = p.text();
         if (rows.isEmpty() || nothing(rows.getFirst())) {
             CliOutput.out("Nothing saved " + period + ": no runs or agent actions");
             return 0;
@@ -83,7 +96,7 @@ public final class StatsCommand implements CliCommand {
         if (!projects.isEmpty()) {
             for (String line : Table.render(
                     "By project",
-                    List.of("Project", "Time", "Skipped", "Graph", "Renames", "Edits", "Guards"),
+                    List.of("Project", "Time", "Skipped", "Graph", "Refactorings", "Edits", "Guards"),
                     projectRows(projects))) {
                 CliOutput.out(line);
             }
@@ -91,29 +104,51 @@ public final class StatsCommand implements CliCommand {
         return 0;
     }
 
-    /** The start of the last {@code days} days before {@code now}; 0 (every run kept) for 0 days. */
-    static long since(int days, long now) {
-        return days == 0 ? 0 : Math.max(0, now - days * DAY_MILLIS);
-    }
+    /**
+     * The period's start, epoch millis (0 for every run kept), and how the output names it: {@code
+     * in the last 7 days}.
+     */
+    record Period(long since, String text) {}
 
-    /** {@code raw} as a day count, or null when it is not a whole number of zero or more. */
-    static @Nullable Integer parseDays(String raw) {
+    /**
+     * {@code --since}'s value read at {@code now}: a duration back from it in hours, days or weeks,
+     * the start of a date in {@code zone}, or {@link #ALL}; null when it is none of them.
+     */
+    static @Nullable Period period(String raw, long now, ZoneId zone) {
+        String v = raw.strip();
+        if (ALL.equals(v)) return new Period(0, "in all the history kept");
+        Matcher m = DURATION.matcher(v);
+        if (m.matches()) {
+            long n = Long.parseLong(m.group(1));
+            if (n == 0) return null;
+            String unit =
+                    switch (m.group(2)) {
+                        case "h" -> "hour";
+                        case "d" -> "day";
+                        default -> "week";
+                    };
+            long hours =
+                    switch (unit) {
+                        case "hour" -> 1;
+                        case "day" -> 24;
+                        default -> 168;
+                    };
+            return new Period(
+                    Math.max(0, now - n * hours * HOUR_MILLIS),
+                    "in the last " + (n == 1 ? unit : n + " " + unit + "s"));
+        }
         try {
-            int n = Integer.parseInt(raw.strip());
-            return n < 0 ? null : n;
-        } catch (NumberFormatException e) {
+            LocalDate day = LocalDate.parse(v);
+            return new Period(Math.max(0, day.atStartOfDay(zone).toInstant().toEpochMilli()), "since " + day);
+        } catch (DateTimeParseException e) {
             return null;
         }
-    }
-
-    static String period(int days) {
-        return days == 0 ? "in all the history kept" : days == 1 ? "in the last day" : "in the last " + days + " days";
     }
 
     private static boolean nothing(String row) {
         return Jsonl.longValue(row, "runs", 0) == 0
                 && Jsonl.longValue(row, "graphCalls", 0) == 0
-                && Jsonl.longValue(row, "renames", 0) == 0
+                && Jsonl.longValue(row, "refactorings", 0) == 0
                 && Jsonl.longValue(row, "edits", 0) == 0;
     }
 
@@ -125,7 +160,7 @@ public final class StatsCommand implements CliCommand {
         out.add(List.of("Test suites not re-run", count(row, "suitesSkipped")));
         out.add(List.of("Test classes not re-run", count(row, "testClassesNotRerun")));
         out.add(List.of("Code-graph questions answered", count(row, "graphCalls")));
-        out.add(List.of("Renames applied", count(row, "renames")));
+        out.add(List.of("Refactorings applied", count(row, "refactorings")));
         out.add(List.of("Dependency edits made", count(row, "edits")));
         long stops = Jsonl.longValue(row, "guardStops", 0);
         out.add(List.of(
@@ -143,7 +178,7 @@ public final class StatsCommand implements CliCommand {
                     HistoryCommand.duration(Jsonl.longValue(p, "savedMillis", 0)),
                     count(p, "stepsSkipped"),
                     count(p, "graphCalls"),
-                    count(p, "renames"),
+                    count(p, "refactorings"),
                     count(p, "edits"),
                     count(p, "guardViolations")));
         }

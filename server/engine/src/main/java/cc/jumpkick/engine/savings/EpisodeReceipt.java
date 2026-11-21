@@ -129,7 +129,7 @@ public record EpisodeReceipt(String episode, String title, Savings saved) {
         }
         if (s.testClassesNotRerun() > 0) lines.add("Test classes not re-run: " + s.testClassesNotRerun());
         if (s.graphCalls() > 0) lines.add("Code-graph questions answered: " + s.graphCalls());
-        if (s.renames() > 0) lines.add("Renames applied: " + s.renames());
+        if (s.refactorings() > 0) lines.add("Refactorings applied: " + s.refactorings());
         if (s.edits() > 0) lines.add("Dependency edits made: " + s.edits());
         if (s.guardViolations() > 0) {
             lines.add("Guard violations stopped: " + s.guardViolations() + " in " + s.guardStops()

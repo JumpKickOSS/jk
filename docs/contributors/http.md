@@ -944,9 +944,10 @@ project (`projectId`, its newest `dir` and `coord`), the one with the most saved
 `?since=<epoch ms>` opens the period (absent: every run the journal keeps); a value that is not a
 number is a **400**. Each row is `Savings.toMap()`: the run count, the cache's `savedMillis` and
 `estimatedUncachedMillis` with the `coveredSkips` / `estimatedSkips` behind them, `stepsSkipped`,
-`suitesSkipped`, `testClassesNotRerun`, `graphCalls`, `renames`, `edits`, `guardViolations` and
-`guardStops`. `SavingsLedger` adds them up from `BuildJournal.finishedSince` and
-`SessionLog.actionsSince`; the socket's `stats` rows (`jk stats -O jsonl`) carry the same fields.
+`suitesSkipped`, `testClassesNotRerun`, `graphCalls`, `refactorings`, `edits`, `guardViolations`
+(each guard rule broken in each file once in the period) and `guardStops` (the runs they stopped).
+`SavingsLedger` adds them up from `BuildJournal.finishedSince` and `SessionLog.actionsSince`; the
+socket's `stats` rows (`jk stats -O jsonl`) carry the same fields.
 
 ### `GET /api/config`
 

@@ -107,14 +107,14 @@ class SavingsLedgerTest {
     }
 
     @Test
-    void an_action_counts_a_question_answered_a_rename_applied_or_its_edits_and_a_failed_one_nothing() {
-        assertThat(SavingsLedger.of(
-                                acted("usages", ActionRecord.OK, "/ws", 0, null).action())
+    void an_action_counts_a_question_answered_a_refactoring_applied_or_its_edits_and_a_failed_one_nothing() {
+        assertThat(SavingsLedger.of(acted("usages", ActionRecord.OK, "/ws", 0, null)
+                                .action())
                         .graphCalls())
                 .isEqualTo(1);
         assertThat(SavingsLedger.of(
                                 acted("rename", ActionRecord.OK, "/ws", 0, null).action())
-                        .renames())
+                        .refactorings())
                 .isEqualTo(1);
         assertThat(SavingsLedger.of(
                                 acted("deps", ActionRecord.OK, "/ws", 2, null).action())
@@ -125,7 +125,34 @@ class SavingsLedgerTest {
         assertThat(failed.nothing()).isTrue();
         Savings failedRename = SavingsLedger.of(
                 acted("rename", ActionRecord.ERROR, "/ws", 0, null).action());
-        assertThat(failedRename.renames()).isZero();
+        assertThat(failedRename.refactorings()).isZero();
+    }
+
+    @Test
+    void a_guard_rule_a_file_breaks_counts_once_however_many_runs_it_stopped() {
+        BuildRecord.Diag mainPrintln = diag(
+                "error", "guard", "no-println", "src/Main.java:3: System.out\n  Why:      logs go through the logger");
+        BuildRecord.Diag mainPrintlnLater = diag("error", "guard", "no-println", "src/Main.java:9: System.out");
+        BuildRecord.Diag otherFile = diag("error", "guard", "no-println", "src/Cli.java:3: System.out");
+        BuildRecord.Diag otherRule = diag("error", "guard", "no-wildcards", "src/Main.java:1: import java.util.*");
+        BuildRecord.Diag noFile = diag("error", "guard-tree", "layers", "GUARD layers  blind");
+        List<BuildRecord> runs = List.of(
+                run("p-app", "/ws/app", T + 3, null, List.of(), List.of(), List.of(mainPrintlnLater, noFile)),
+                run("p-app", "/ws/app", T + 2, null, List.of(), List.of(), List.of(mainPrintln, otherFile, noFile)),
+                run("p-app", "/ws/app", T + 1, null, List.of(), List.of(), List.of(mainPrintln, otherRule)),
+                run("p-lib", "/ws/lib", T, null, List.of(), List.of(), List.of(mainPrintln)));
+
+        List<Savings> rows = SavingsLedger.fold(runs, List.of(), T - 1, T + 10);
+
+        Savings all = rows.getFirst();
+        assertThat(all.guardViolations())
+                .as(
+                        "no-println in app's Main and Cli, no-wildcards in app's Main, layers in app, no-println in lib's Main")
+                .isEqualTo(5);
+        assertThat(all.guardStops()).as("every run it stopped").isEqualTo(4);
+        assertThat(all.toMap()).containsEntry("guardViolations", 5L);
+        assertThat(rows.get(1).guardViolations()).isEqualTo(4);
+        assertThat(rows.get(2).guardViolations()).isEqualTo(1);
     }
 
     @Test
@@ -170,7 +197,7 @@ class SavingsLedgerTest {
         assertThat(all.runs()).isEqualTo(4);
         assertThat(all.savedMillis()).isEqualTo(105);
         assertThat(all.graphCalls()).isEqualTo(1);
-        assertThat(all.renames()).isEqualTo(1);
+        assertThat(all.refactorings()).isEqualTo(1);
         assertThat(all.edits()).isEqualTo(1);
         assertThat(all.since()).isEqualTo(T - 1);
         assertThat(all.until()).isEqualTo(T + 10);
@@ -189,7 +216,7 @@ class SavingsLedgerTest {
         assertThat(app.savedMillis()).isEqualTo(100);
         assertThat(app.graphCalls()).isEqualTo(1);
         Savings lib = rows.get(2);
-        assertThat(lib.renames())
+        assertThat(lib.refactorings())
                 .as("an action with no id joins the project its directory ran")
                 .isEqualTo(1);
     }
@@ -230,7 +257,7 @@ class SavingsLedgerTest {
                         "suitesSkipped",
                         "testClassesNotRerun",
                         "graphCalls",
-                        "renames",
+                        "refactorings",
                         "edits",
                         "guardViolations",
                         "guardStops")

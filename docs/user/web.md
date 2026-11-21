@@ -194,13 +194,15 @@ same panel for that project. Both cover the last 7 days and show what `jk stats`
 | steps from cache | Steps whose result came from the cache instead of running, and of those, test suites |
 | classes not re-run | Test classes a red re-run left out because they passed under the same inputs ([Test](test.md)) |
 | graph answers | Code-graph questions an agent asked through MCP (`query`, `usages`, `read`, `find`) |
-| renames · edits | Renames applied, and dependency edits made: each coordinate a `deps` call added, removed or pinned, each applied `update` or `workspace` change |
-| guard stops | Guard-rule violations a run stopped, and the runs they stopped |
+| refactorings · edits | Refactorings the code graph applied (`rename`, which also moves a type or a package), and dependency edits made: each coordinate a `deps` call added, removed or pinned, each applied `update` or `workspace` change |
+| guard stops | Guard-rule violations a run stopped before a commit, each rule broken in each file counted once however many runs it stopped, and the runs they stopped |
 
 ```bash
-jk stats            # the last 7 days
-jk stats -d 30      # the last 30 days; -d 0 reads all the history kept
-jk stats -O jsonl   # one `stats` object per row: `scope` `all` first, then one per project
+jk stats                      # the last 7 days
+jk stats --since 30d          # the last 30 days; also 12h, 2w
+jk stats --since 2026-11-01   # since midnight that day, where you are
+jk stats --since all          # all the history kept
+jk stats -O jsonl             # one `stats` object per row: `scope` `all` first, then one per project
 ```
 
 The same figures, over one episode's runs and actions, end that episode on the console and the

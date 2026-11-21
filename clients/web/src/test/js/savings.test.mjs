@@ -13,7 +13,7 @@ const { fmtDuration } = await spa('format.js');
 const all = {
   scope: 'all', since: 0, until: 9, runs: 12, savedMillis: 125_000, estimatedUncachedMillis: 300_000,
   coveredSkips: 3, estimatedSkips: 4, stepsSkipped: 40, suitesSkipped: 2, testClassesNotRerun: 6,
-  graphCalls: 9, renames: 1, edits: 3, guardViolations: 2, guardStops: 1,
+  graphCalls: 9, refactorings: 1, edits: 3, guardViolations: 2, guardStops: 1,
 };
 const app = { ...all, scope: 'project', projectId: 'p-app', dir: '/ws/app', savedMillis: 100_000 };
 const loose = { ...all, scope: 'project', dir: '/tmp/loose', savedMillis: 25_000 };
@@ -39,13 +39,13 @@ test('the time saved is marked as an estimate with the share that was measured',
 
 test('every figure jk stats prints has a tile, in its order', () => {
   const tiles = savingsTiles(all);
-  assert.deepEqual(tiles.map((t) => t.key), ['saved', 'steps', 'classes', 'graph', 'renames', 'guards']);
+  assert.deepEqual(tiles.map((t) => t.key), ['saved', 'steps', 'classes', 'graph', 'refactorings', 'guards']);
   const by = Object.fromEntries(tiles.map((t) => [t.key, t]));
   assert.equal(by.steps.value, 40);
   assert.equal(by.steps.note, '2 test suites');
   assert.equal(by.classes.value, 6);
   assert.equal(by.graph.value, 9);
-  assert.equal(by.renames.value, '1 · 3');
+  assert.equal(by.refactorings.value, '1 · 3');
   assert.equal(by.guards.value, 2);
   assert.equal(by.guards.note, 'in 1 run');
   assert.deepEqual(savingsTiles(null), []);
@@ -61,11 +61,11 @@ test('the computed rows read the overall row and the open project', () => {
 test("an episode's receipt shows the panel's tiles for what it counted, and none when it saved nothing", () => {
   const episode = {
     ...all, scope: 'episode', runs: 3, savedMillis: 0, coveredSkips: 0, estimatedSkips: 0, stepsSkipped: 5,
-    suitesSkipped: 1, testClassesNotRerun: 0, graphCalls: 4, renames: 0, edits: 0, guardViolations: 0, guardStops: 0,
+    suitesSkipped: 1, testClassesNotRerun: 0, graphCalls: 4, refactorings: 0, edits: 0, guardViolations: 0, guardStops: 0,
   };
   assert.deepEqual(receiptTiles(episode).map((t) => t.key), ['steps', 'graph']);
   assert.equal(receiptTiles(episode)[0].note, '1 test suites');
-  assert.deepEqual(receiptTiles({ ...episode, edits: 2 }).map((t) => t.key), ['steps', 'graph', 'renames']);
+  assert.deepEqual(receiptTiles({ ...episode, edits: 2 }).map((t) => t.key), ['steps', 'graph', 'refactorings']);
   assert.deepEqual(receiptTiles({ ...all }).map((t) => t.key), savingsTiles(all).map((t) => t.key));
   assert.deepEqual(receiptTiles({ scope: 'episode', runs: 1 }), []);
   assert.deepEqual(receiptTiles(null), []);

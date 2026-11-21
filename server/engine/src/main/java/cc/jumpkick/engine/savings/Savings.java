@@ -2,7 +2,9 @@
 package cc.jumpkick.engine.savings;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,10 +31,11 @@ import org.jspecify.annotations.Nullable;
  *     inputs
  * @param graphCalls code-graph questions answered ({@code query}, {@code usages}, {@code read},
  *     {@code find})
- * @param renames renames applied
+ * @param refactorings refactorings applied ({@link cc.jumpkick.engine.sessions.ActionRecord#REFACTORINGS})
  * @param edits dependency and workspace edits made ({@link
  *     cc.jumpkick.engine.sessions.ActionRecord#edits})
- * @param guardViolations guard-rule violations a run stopped
+ * @param violations the guard-rule violations a run stopped, each rule in each file once however
+ *     many runs it stopped ({@link SavingsLedger#violation}); {@link #guardViolations} counts them
  * @param guardStops runs that stopped on at least one
  */
 public record Savings(
@@ -51,14 +54,18 @@ public record Savings(
         long suitesSkipped,
         long testClassesNotRerun,
         long graphCalls,
-        long renames,
+        long refactorings,
         long edits,
-        long guardViolations,
+        Set<String> violations,
         long guardStops) {
 
     public static final String ALL = "all";
     public static final String PROJECT = "project";
     public static final String EPISODE = "episode";
+
+    public Savings {
+        violations = Set.copyOf(violations);
+    }
 
     /** Nothing saved yet, in {@code scope} over {@code since}..{@code until}. */
     static Savings empty(
@@ -68,7 +75,7 @@ public record Savings(
             @Nullable String coord,
             long since,
             long until) {
-        return new Savings(scope, projectId, dir, coord, since, until, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        return new Savings(scope, projectId, dir, coord, since, until, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, Set.of(), 0);
     }
 
     /** This row with {@code o}'s counts added to its own; its identity and period stay. */
@@ -89,15 +96,28 @@ public record Savings(
                 suitesSkipped + o.suitesSkipped,
                 testClassesNotRerun + o.testClassesNotRerun,
                 graphCalls + o.graphCalls,
-                renames + o.renames,
+                refactorings + o.refactorings,
                 edits + o.edits,
-                guardViolations + o.guardViolations,
+                union(violations, o.violations),
                 guardStops + o.guardStops);
+    }
+
+    /** The guard-rule violations stopped: distinct rule and file pairs, not one per run. */
+    public long guardViolations() {
+        return violations.size();
+    }
+
+    private static Set<String> union(Set<String> a, Set<String> b) {
+        if (b.isEmpty() || a.containsAll(b)) return a;
+        if (a.isEmpty()) return b;
+        Set<String> out = new LinkedHashSet<>(a);
+        out.addAll(b);
+        return out;
     }
 
     /** Whether nothing in the period counted toward any figure. */
     public boolean nothing() {
-        return runs == 0 && graphCalls == 0 && renames == 0 && edits == 0;
+        return runs == 0 && graphCalls == 0 && refactorings == 0 && edits == 0;
     }
 
     public Map<String, Object> toMap() {
@@ -117,9 +137,9 @@ public record Savings(
         m.put("suitesSkipped", suitesSkipped);
         m.put("testClassesNotRerun", testClassesNotRerun);
         m.put("graphCalls", graphCalls);
-        m.put("renames", renames);
+        m.put("refactorings", refactorings);
         m.put("edits", edits);
-        m.put("guardViolations", guardViolations);
+        m.put("guardViolations", guardViolations());
         m.put("guardStops", guardStops);
         return m;
     }
