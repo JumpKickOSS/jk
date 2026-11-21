@@ -4,7 +4,9 @@
 # its number; every line of the gate's own list names a test class that exists once in its module,
 # so a renamed class fails here instead of turning a gate's pre-run red. Then the gate runs in a
 # scratch repository against a stand-in `jk`: green on a clean tip, one `jk test` per module of the
-# list, red at the pre-run when a class fails, and refused on a dirty checkout.
+# list, one install that runs tests (the fast tier once, under the engine the reinstall before it
+# installed), red at the pre-run when a class fails, red at the reinstall when it fails, and refused
+# on a dirty checkout.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,8 +53,8 @@ done < <("$PLAN")
 [[ "$checked" -gt 0 ]] || fail "the gate's class list names no class"
 
 # --- the gate, against a stand-in jk ---
-# The stand-in logs each call, fails `jk test` for a class named in FAIL_CLASS, and reports the
-# checkout's HEAD as the engine's commit.
+# The stand-in logs each call, fails `jk test` for a class named in FAIL_CLASS and the reinstall
+# without tests when FAIL_REINSTALL is set, and reports the checkout's HEAD as the engine's commit.
 export HOME="$WORK/home"
 mkdir -p "$HOME/.jk/bin"
 cat >"$HOME/.jk/bin/jk" <<'EOF'
@@ -62,6 +64,7 @@ case "$1" in
   --version) echo "jk 0.0.0" ;;
   engine) [[ "${2:-}" == status ]] && echo "Version  0.0.0 (commit $(git rev-parse --short=12 HEAD))" ;;
   test) [[ -n "${FAIL_CLASS:-}" && " $* " == *" $FAIL_CLASS "* ]] && { echo "FAIL $FAIL_CLASS"; exit 1; } ;;
+  install) [[ -n "${FAIL_REINSTALL:-}" && " $* " == *" -S "* ]] && { echo "error: compile failed"; exit 1; } ;;
 esac
 exit 0
 EOF
@@ -96,14 +99,26 @@ gate 1
 [[ "$(verdict 1)" == "GREEN $tip" ]] || fail "a clean tip was not green: $(cat "$WORK/logs/integ-gate-1.log")"
 grep -qx 'test -m mod/a -S ATest -S CTest -s test -s integration' "$WORK/calls-1" || fail "mod/a was not run once with both classes: $(cat "$WORK/calls-1")"
 grep -qx 'test -m mod/b -S BTest -s test -s integration' "$WORK/calls-1" || fail "mod/b was not run: $(cat "$WORK/calls-1")"
-grep -qx 'install -g -c' "$WORK/calls-1" || fail "the push gate did not run: $(cat "$WORK/calls-1")"
+# The reinstall runs no tests, the engine it ran on stops, and the push gate is the one install that
+# runs the fast tier.
+got="$(sed -n '/^install /,$p' "$WORK/calls-1" | grep -E '^(install |engine stop)')"
+want="$(printf '%s\n' 'install -S' 'engine stop' 'install -g -c')"
+[[ "$got" == "$want" ]] || fail "the installs were:
+$got
+want:
+$want"
 
 gate 2 FAIL_CLASS=BTest
 [[ "$(verdict 2)" == "RED (pre)" ]] || fail "a failing pre-run class did not stop the gate: $(cat "$WORK/logs/integ-gate-2.log")"
 if grep -q '^guard' "$WORK/calls-2"; then fail "the gate went on past a red pre-run"; fi
 
-touch "$repo/stray"
-gate 3
-[[ "$(verdict 3)" == "CHECKOUT DIRTY" ]] || fail "a dirty checkout was gated: $(cat "$WORK/logs/integ-gate-3.log")"
+gate 3 FAIL_REINSTALL=1
+[[ "$(verdict 3)" == "RED (reinstall)" ]] || fail "a failed reinstall did not stop the gate: $(cat "$WORK/logs/integ-gate-3.log")"
+grep -q 'compile failed' "$WORK/logs/integ-gate-3.log" || fail "the gate log does not say why the reinstall failed"
+if grep -q '^install -g' "$WORK/calls-3"; then fail "the push gate ran after a failed reinstall"; fi
 
-echo "test-gate: ok ($checked listed classes; 3 gate runs)"
+touch "$repo/stray"
+gate 4
+[[ "$(verdict 4)" == "CHECKOUT DIRTY" ]] || fail "a dirty checkout was gated: $(cat "$WORK/logs/integ-gate-4.log")"
+
+echo "test-gate: ok ($checked listed classes; 4 gate runs)"

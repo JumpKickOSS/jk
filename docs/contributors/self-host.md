@@ -23,10 +23,11 @@ jk install -g                    # the push gate: engine, e2e and worker suites 
 The fleet's gate hosts run the whole gate from a checkout as `scripts/gate/run.sh <n> <sha>`. It
 takes the host's gate lock (`GATE_LOCK`, default `/var/tmp/fleet-gate.lock`), detaches the checkout
 at the tip, runs the classes listed in `scripts/gate/pre-classes.txt` first so a class that failed
-an earlier gate fails this one in a minute, then `jk guard`, `jk install`, `jk install -g` under a
-freshly started engine, a check that the engine which served it is the tip's, `jk test -s release`,
-the shell fixtures and the release notes, and writes `GREEN <sha>` or `RED` to
-`integ-gate-<n>.log` under `GATE_LOG_DIR`. It never pushes. The header of `scripts/gate/gate.sh`
+an earlier gate fails this one in a minute, then `jk guard`, `jk install -S` (the reinstall without
+tests), `jk install -g` under a freshly started engine (the one run of the fast tier, with the gated
+tiers), a check that the engine which served it is the tip's, `jk test -s release`, the shell
+fixtures and the release notes, and writes `GREEN <sha>` or `RED` to `integ-gate-<n>.log` under
+`GATE_LOG_DIR`. It never pushes. The header of `scripts/gate/gate.sh`
 lists its settings; `scripts/test-gate.sh` holds the class list to classes that exist.
 
 `jk install` must not rewrite the committed `jk-lock.toml`: the manifests pin exactly, so a build

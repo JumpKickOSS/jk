@@ -217,8 +217,9 @@ work on something else and read answers with `ka inbox`. Stopping without finish
   A push whose commits since `origin/main` touch nothing JumpKick builds (Markdown, the website under
   `hosting/`, scripts and results under `bench/`) needs no push gate: `jk guard docs` is enough.
   The fleet's gate hosts run it as `scripts/gate/run.sh <n> <sha>` from a checkout: the pre-run
-  classes in `scripts/gate/pre-classes.txt`, `jk guard`, `jk install`, `jk install -g`, the release
-  suite and the shell fixtures, under the host's gate lock
+  classes in `scripts/gate/pre-classes.txt`, `jk guard`, `jk install -S` (the reinstall without
+  tests), `jk install -g` (which runs the fast tier once, with the gated tiers), the release suite
+  and the shell fixtures, under the host's gate lock
   ([self-host](docs/contributors/self-host.md#the-gate)).
 - **Prove it cheaply first** — before any run that takes more than a few minutes, however it is
   spelled (a gate, a whole suite, an integration or slow tier, an uncached build of this tree),

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # The gate a tip must pass before it is pushed to origin/main: the pre-run classes, `jk guard`,
-# the merge gate (`jk install -c`), the push gate (`jk install -g -c`) under a freshly started
-# engine, the engine check, the release suite, the shell fixtures and the release notes. It
-# detaches a checkout at the tip and never pushes. Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one
-# line per step, the verdict `GREEN <sha>` or a line starting `RED` (or the checkout's refusal), and
-# `GATE<n> DONE` last. Per-step output lands beside it as g<n>-<step>.log. Run it through scripts/gate/run.sh, which takes the host's
+# the reinstall without tests (`jk install -S`), the push gate (`jk install -g -c`, the fast tier
+# with the gated tiers, run once) under a freshly started engine, the engine check, the release
+# suite, the shell fixtures and the release notes. It detaches a checkout at the tip and never
+# pushes. Its log is $GATE_LOG_DIR/integ-gate-<n>.log: one line per step, the verdict `GREEN <sha>`
+# or a line starting `RED` (or the checkout's refusal), and `GATE<n> DONE` last. Per-step output
+# lands beside it as g<n>-<step>.log. Run it through scripts/gate/run.sh, which takes the host's
 # gate lock first.
 #
 # Usage: scripts/gate/gate.sh <n> <tip-sha>
@@ -106,14 +107,19 @@
     red "RED (guard)"
   fi
 
-  jk install -c >"$D/g$n-merge.log" 2>&1
+  # Reinstall without tests: the push gate below runs the fast tier with the gated tiers. A merge
+  # gate here would run the fast tier twice: a reinstall that changes the engine jar changes the stamp
+  # of every module's test run, so the push gate would not reuse a single verdict of it.
+  jk install -S >"$D/g$n-reinstall.log" 2>&1
   m=$?
-  echo "MERGEGATE_EXIT=$m $(date +%H:%M:%S)" >>"$L"
-  noansi "$D/g$n-merge.log" | grep -E "^(FAIL|T |OK|E )" | tail -8 >>"$L"
-  [ "$m" -ne 0 ] && noansi "$D/g$n-merge.log" | grep -a "FAILED " >>"$L"
-  # Stop the engine the merge gate ran on so it cannot serve the push gate; the push gate starts a
-  # fresh one from the jar the merge gate installed.
-  [ "$m" -eq 0 ] && jk engine stop >/dev/null 2>&1
+  echo "REINSTALL_EXIT=$m $(date +%H:%M:%S)" >>"$L"
+  if [ "$m" -ne 0 ]; then
+    noansi "$D/g$n-reinstall.log" | grep -vE '^\s*$' | tail -20 >>"$L"
+    red "RED (reinstall)"
+  fi
+  # Stop the engine the steps above ran on so it cannot serve the push gate; the push gate starts a
+  # fresh one from the jar just installed.
+  jk engine stop >/dev/null 2>&1
 
   jk install -g -c >"$D/g$n-snapshot.log" 2>&1
   s=$?
