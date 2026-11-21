@@ -6,17 +6,15 @@ import cc.jumpkick.engine.plugin.MemoryHolds;
 import cc.jumpkick.engine.plugin.WorkerLeases;
 import cc.jumpkick.host.time.Suspensions;
 import cc.jumpkick.run.SlowestTests;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.jspecify.annotations.Nullable;
 
 /**
  * A job on hold for memory ({@link MemoryHolds}), as an agent learns of it: a parked call's
- * progress notifications say when the hold starts, keep coming while it lasts (so the client does
- * not time the call out as stalled) and say when it resumes; {@code status} names each held job;
+ * progress notifications ({@link McpCallProgress}) say when the hold starts, keep coming while it
+ * lasts (so the client does not time the call out as stalled) and say when it resumes; {@code status} names each held job;
  * the final verdict names the time held in all, and the time suspended, so a slow build can be told
  * from a starved host or a machine that slept.
  */
@@ -30,64 +28,22 @@ final class McpHolds {
 
     private McpHolds() {}
 
-    /**
-     * One parked call's notifier for job {@code jid}: {@link #tick} on each poll sends what changed.
-     * Silent when the call has no progress token or no way back to its client.
-     */
-    static final class Notifier {
-        private final @Nullable String token;
-        private final @Nullable McpOutbound out;
-        private final long jid;
-        private boolean held;
-        private long lastSentMs;
-        private long sent;
+    /** The note a parked call gets as its job's hold starts, with the memory it waits for when known. */
+    static String startLine(long jid) {
+        long[] need = MemoryHolds.holdNeed(jid);
+        return need == null
+                ? WAITING
+                : WAITING + " (need " + WorkerLeases.format(need[0]) + ", free " + WorkerLeases.format(need[1]) + ")";
+    }
 
-        Notifier(McpCall call, long jid) {
-            this(call.progressToken(), call.outbound(), jid);
-        }
+    /** The note a parked call gets while its job's hold lasts. */
+    static String holdLine(long jid) {
+        return "On hold " + seconds(MemoryHolds.heldMillis(jid)) + " waiting for system memory";
+    }
 
-        Notifier(@Nullable String token, @Nullable McpOutbound out, long jid) {
-            this.token = token;
-            this.out = out;
-            this.jid = jid;
-        }
-
-        void tick(long nowMs) {
-            if (token == null || out == null) return;
-            boolean now = MemoryHolds.onHold(jid);
-            if (now && !held) {
-                long[] need = MemoryHolds.holdNeed(jid);
-                send(
-                        need == null
-                                ? WAITING
-                                : WAITING + " (need " + WorkerLeases.format(need[0]) + ", free "
-                                        + WorkerLeases.format(need[1]) + ")");
-                lastSentMs = nowMs;
-            } else if (now && nowMs - lastSentMs >= HELD_EVERY_MS) {
-                send("On hold " + seconds(MemoryHolds.heldMillis(jid)) + " waiting for system memory");
-                lastSentMs = nowMs;
-            } else if (!now && held) {
-                send("Resumed: the build was on hold " + seconds(MemoryHolds.totalHeldMillis(jid)) + " for memory");
-                lastSentMs = nowMs;
-            }
-            held = now;
-        }
-
-        private void send(String message) {
-            Map<String, Object> params = new LinkedHashMap<>();
-            params.put("progressToken", token);
-            params.put("progress", ++sent);
-            params.put("message", message);
-            Map<String, Object> note = new LinkedHashMap<>();
-            note.put("jsonrpc", "2.0");
-            note.put("method", "notifications/progress");
-            note.put("params", params);
-            try {
-                if (out != null) out.send(note);
-            } catch (IOException | RuntimeException ignored) {
-                // The client stopped listening; the verdict still answers the call.
-            }
-        }
+    /** The note a parked call gets as its job resumes. */
+    static String resumeLine(long jid) {
+        return "Resumed: the build was on hold " + seconds(MemoryHolds.totalHeldMillis(jid)) + " for memory";
     }
 
     /**

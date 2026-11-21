@@ -59,7 +59,7 @@ public final class McpJobRuns {
             } catch (JobEnvelope.AlreadyRunning running) {
                 requestId = running.jid();
             }
-            String progressToken = in.progressToken();
+            String progressToken = in.progressKey();
             if (progressToken != null) ctx.progressTokens().bind(sessionId(in.connection()), progressToken, requestId);
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("kind", spec.kind());
@@ -92,9 +92,9 @@ public final class McpJobRuns {
             return in.text(McpAgentText.running(spec.kind(), jid));
         }
         // Parked waits yield their RPC admission permit — 16 waiting agents must not 503 the surface.
-        McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
+        McpCallProgress progress = new McpCallProgress(in, jid);
         boolean done =
-                ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), holds));
+                ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), progress));
         if (!done) {
             return in.text(McpAgentText.timeout(spec.kind(), jid));
         }
@@ -110,12 +110,12 @@ public final class McpJobRuns {
      */
     public static Map<String, Object> await(McpCall in, long jid) {
         McpContext ctx = in.ctx();
-        String progressToken = in.progressToken();
+        String progressToken = in.progressKey();
         if (progressToken != null) ctx.progressTokens().bind(sessionId(in.connection()), progressToken, jid);
         int timeoutS = timeoutS(in);
-        McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
+        McpCallProgress progress = new McpCallProgress(in, jid);
         boolean done =
-                ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), holds));
+                ctx.admissionYield().yielding(() -> waitUntilGone(ctx, jid, timeoutS * ctx.waitSecondMs(), progress));
         if (!done) {
             return in.text(McpAgentText.timeout(McpVitals.liveKind(ctx, jid), jid));
         }
@@ -255,6 +255,7 @@ public final class McpJobRuns {
         }
         Set<Path> broken = new HashSet<>();
         int failed = 0;
+        @Nullable McpCallProgress progress = null;
         for (WorkspaceGroup.Member m : selection.run()) {
             Path blocker = selection.prerequisites(m).stream()
                     .filter(broken::contains)
@@ -278,9 +279,11 @@ public final class McpJobRuns {
             long triggeredAt = Clock.SYSTEM.millis();
             long jid = acceptedJid(in, spec);
             McpContext ctx = in.ctx();
-            McpHolds.Notifier holds = new McpHolds.Notifier(in, jid);
+            if (progress == null) progress = new McpCallProgress(in, jid);
+            else progress.follow(jid);
+            McpCallProgress following = progress;
             boolean done = ctx.admissionYield()
-                    .yielding(() -> waitUntilGone(ctx, jid, timeoutS(in) * ctx.waitSecondMs(), holds));
+                    .yielding(() -> waitUntilGone(ctx, jid, timeoutS(in) * ctx.waitSecondMs(), following));
             if (!done) {
                 text.append(McpAgentText.timeout(spec.kind(), jid));
                 return in.text(text.toString());
@@ -377,7 +380,7 @@ public final class McpJobRuns {
      * has one, and one still queued (behind the workspace's previous job, or waiting for memory) is
      * not live yet and has none, and a wait that gave up on it answered FAIL for a build that passed.
      */
-    private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs, McpHolds.Notifier holds) {
+    private static boolean waitUntilGone(McpContext ctx, long jid, long timeoutMs, McpCallProgress progress) {
         long start = Clock.SYSTEM.millis();
         Suspensions watch = Suspensions.system();
         long cursor = watch.cursor();
@@ -385,7 +388,7 @@ public final class McpJobRuns {
         // The wait's window restarts when the engine resumes from a suspend or a stop: the client
         // that waits slept too, and its own tool-call timer did not run either.
         while (Clock.SYSTEM.millis() - Math.max(start, watch.resumedAt(cursor)) < timeoutMs) {
-            holds.tick(Clock.SYSTEM.millis());
+            progress.tick(Clock.SYSTEM.millis());
             boolean live = McpVitals.isLive(ctx, jid);
             if (live) seen = true;
             if (seen && !live) return true;

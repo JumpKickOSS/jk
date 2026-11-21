@@ -164,7 +164,7 @@ class McpContractTest {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"run\",\"arguments\":"
                 + "{\"kind\":\"build\",\"dir\":\"/tmp\",\"wait\":false,\"aot_cache\":true}}}");
-        assertThat(body).contains("-32602");
+        assertThat(body).contains("\"isError\":true").doesNotContain("-32602");
         assertThat(body).contains("aot_cache");
         String schema = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
         assertThat(schema).doesNotContain("aot_cache");

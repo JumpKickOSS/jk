@@ -84,7 +84,9 @@ minutes of quiet only marks a session idle and starts a new episode on its next 
 The loop tools (`run`, `diagnostics`, `deps`, `callers`, `rename`, `skill`) and `why` answer `content` text only;
 for `run` and `diagnostics` that text **is** the verdict (below). They send no
 `structuredContent`, because hosts that get one show the model that instead of the text. A
-failure the agent must act on (a bad `deps` coord, a failed relock) sets `isError`. The extended
+failure the agent must act on (a bad `deps` coord, a failed relock) sets `isError`, and so does an
+argument a tool refuses (a missing `dir`, an unknown field, a value of the wrong kind): the text
+says what to send instead. An unknown tool is a JSON-RPC error. The extended
 tools answer `structuredContent` (`schema` + `type`, like the rest of the machine model;
 `schema` stays **1** until 1.0) with a one-line text summary.
 
@@ -171,12 +173,13 @@ keeps going. The default sits under the shortest tool-call timeout among common 
 (some stop a call after 300 s whatever it reports), so a default wait always answers before the
 client gives up. A client with a longer timeout can pass a larger `timeout_s`.
 
-When a `tools/call` carries `_meta.progressToken`, `jk mcp` follows that job's progress and writes
-`notifications/progress` for the token while the call is outstanding: the step, the running test
-and the percent (`progress` of `total` 100), at least every 5 s, with the last known state when
-the engine is quiet. MCP clients that reset their timeout on progress (the spec allows it) keep a
-long wait alive; the rest still get the `TIMEOUT` continuation. Over HTTP, read the same facts
-from the event stream (below).
+When a `tools/call` carries `_meta.progressToken`, the engine sends `notifications/progress` for
+the token while the call waits on its job: the running step and the percent (`progress` of
+`total` 100), within a second of a change and at least every 5 s, and the job's hold for memory.
+Over HTTP they come on the call's own response, which turns into an event stream when the request
+accepts `text/event-stream`; `jk mcp` passes them on. MCP clients that reset their timeout on
+progress (the spec allows it) keep a long wait alive; the rest still get the `TIMEOUT`
+continuation. The engine's event stream (below) carries the same job's every event.
 
 `jk mcp` handles requests concurrently: while a `run` waits, a `ping`, a `status` or a second call
 answers at once. A `notifications/cancelled` naming an outstanding `run` cancels its job, and the
@@ -298,7 +301,7 @@ depends on the client:
 |---|---|
 | Form elicitation | asks the human for exactly the missing fields, one step at a time (the name, then the template's questions; a question whose condition names one being asked comes in the next round), then scaffolds. Declining creates nothing and says so |
 | URL elicitation only | asks the host to open the dashboard's [new-project wizard](web.md#new-project), pre-filled with every answer the call gave, and waits up to five minutes for the human to create the project there; the call then returns that project as if it had created it. Declining, or leaving the wizard unfinished, creates nothing and says so; a project created through the link afterwards is still wired for the calling client's agent, and the wizard says the call had ended |
-| No elicitation | fails (`-32602`) with one line per missing question and the values it takes, so the agent can fill them in `params` and call again rather than guess |
+| No elicitation | answers `isError` with one line per missing question and the values it takes, so the agent can fill them in `params` and call again rather than guess |
 
 A misfit answer (`database=oracle`) fails at once with the values the question takes, whatever the
 client declared.

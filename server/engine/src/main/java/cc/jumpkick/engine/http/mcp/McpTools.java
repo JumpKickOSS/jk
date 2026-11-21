@@ -4,7 +4,6 @@ package cc.jumpkick.engine.http.mcp;
 import cc.jumpkick.changes.ChangeActor;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.Request;
-import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import cc.jumpkick.engine.http.mcp.tools.AffectedTestsTool;
 import cc.jumpkick.engine.http.mcp.tools.BindTool;
 import cc.jumpkick.engine.http.mcp.tools.CancelTool;
@@ -300,8 +299,12 @@ public final class McpTools {
         McpTool tool = byName.get(name);
         if (tool == null) throw new McpError(-32602, "unknown tool: " + name);
         Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
-        if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
         McpCall call = new McpCall(ctx, args, progressTokenOf(params), connection, outbound);
+        try {
+            if (!BIND.equals(name)) implicitBind(connection, args.get("dir"));
+        } catch (McpError e) {
+            return refused(call, e);
+        }
         // An agent's every call about a checkout is that project being worked on.
         ProjectActivity.touch(call.dir());
         noteGoal(name, call);
@@ -312,15 +315,40 @@ public final class McpTools {
                 call.str(McpSchemas.GOAL),
                 name);
         if (ctx.sessions() == null || !McpActions.LOGGED.contains(name))
-            return Request.actingAs(actor, () -> tool.call(call));
+            return Request.actingAs(actor, () -> invoke(tool, call));
         long at = Clock.SYSTEM.millis();
         Map<String, Object> result = null;
         try {
-            result = Request.actingAs(actor, () -> tool.call(call));
+            result = Request.actingAs(actor, () -> invoke(tool, call));
             return result;
         } finally {
             logAction(name, call, result, at);
         }
+    }
+
+    /** The JSON-RPC code of an argument a tool refuses. */
+    static final int INVALID_PARAMS = -32602;
+
+    /** {@code tool}'s answer to {@code call}; an argument it refuses is a {@link #refused} result. */
+    private static Map<String, Object> invoke(McpTool tool, McpCall call) {
+        try {
+            return tool.call(call);
+        } catch (McpError e) {
+            return refused(call, e);
+        }
+    }
+
+    /**
+     * An argument the tool refused, as a result flagged {@code isError} that the model reads and
+     * corrects, not a protocol error; any other {@link McpError} is rethrown. An unknown tool and a
+     * call with no name stay protocol errors.
+     *
+     * @see <a href="https://modelcontextprotocol.io/specification/2025-11-25/server/tools#error-handling">Tool error handling</a>
+     */
+    private static Map<String, Object> refused(McpCall call, McpError e) {
+        if (e.code() != INVALID_PARAMS) throw e;
+        String message = String.valueOf(e.getMessage());
+        return call.error(message.endsWith("\n") ? message : message + "\n");
     }
 
     /** Let the call's goal title its session's episode; a goal that cannot be noted never costs the call. */
@@ -356,16 +384,15 @@ public final class McpTools {
     }
 
     /**
-     * MCP progress token from {@code params._meta.progressToken} (string or number). Numeric
-     * tokens are canonicalized to their integral form, so a token sent as {@code 5.0} matches the
-     * client's {@code ?progressToken=5} query.
+     * MCP progress token from {@code params._meta.progressToken}, a string or a number as the
+     * client sent it: its {@code notifications/progress} must carry the same value back. Null when
+     * absent or blank.
      */
-    private static @Nullable String progressTokenOf(Map<String, Object> params) {
+    private static @Nullable Object progressTokenOf(Map<String, Object> params) {
         Object meta = params.get("_meta");
         if (!(meta instanceof Map<?, ?> m)) return null;
         Object tok = m.get("progressToken");
-        if (tok == null) return null;
-        String s = ProgressTokenRegistry.canonicalText(String.valueOf(tok));
-        return s.isEmpty() || "null".equals(s) ? null : s;
+        if (tok instanceof Number) return tok;
+        return tok instanceof String s && !s.isBlank() ? s : null;
     }
 }

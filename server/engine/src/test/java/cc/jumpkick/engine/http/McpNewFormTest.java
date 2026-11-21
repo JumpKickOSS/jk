@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.http;
 
 import static cc.jumpkick.engine.http.JsonFields.object;
+import static cc.jumpkick.engine.http.JsonFields.objects;
 import static cc.jumpkick.engine.http.JsonFields.parseObject;
 import static java.util.Objects.requireNonNull;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -138,10 +139,9 @@ class McpNewFormTest {
     @Test
     void without_elicitation_the_error_lists_each_missing_key_and_what_it_takes() {
         String session = initialize("2025-11-25", "{}");
-        Map<String, Object> error = error(mcp.handle(call(Map.of("name", "widget")), session));
+        String refusal = refusal(mcp.handle(call(Map.of("name", "widget")), session));
 
-        assertThat(error.get("code")).isEqualTo(-32602L);
-        assertThat(String.valueOf(error.get("message")))
+        assertThat(refusal)
                 .contains("motto: text /[a-z]+/ (required)  # Motto")
                 .contains("native: true|false (required)")
                 .contains("database: none|postgres (required)")
@@ -245,10 +245,9 @@ class McpNewFormTest {
     @Test
     void a_misfit_answer_is_refused_with_the_values_the_field_takes() {
         String session = initialize("2025-11-25", "{}");
-        Map<String, Object> error =
-                error(mcp.handle(call(Map.of("name", "widget", "params", Map.of("database", "oracle"))), session));
-        assertThat(String.valueOf(error.get("message")))
-                .contains("database must be one of none, postgres; got 'oracle' (none|postgres)");
+        String refusal =
+                refusal(mcp.handle(call(Map.of("name", "widget", "params", Map.of("database", "oracle"))), session));
+        assertThat(refusal).contains("database must be one of none, postgres; got 'oracle' (none|postgres)");
     }
 
     @Test
@@ -591,6 +590,13 @@ class McpNewFormTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":" + Jsonl.quote(String.valueOf(request.get("id")))
                         + ",\"result\":{\"action\":\"accept\",\"content\":" + MiniJson.write(content) + "}}",
                 session);
+    }
+
+    /** The text of a call's result flagged {@code isError}: an argument the tool refused. */
+    private static String refusal(McpHandler.Reply reply) {
+        Map<String, Object> result = object(parseObject(reply.body()), "result");
+        assertThat(result).as(reply.body()).containsEntry("isError", true);
+        return String.valueOf(objects(result, "content").getFirst().get("text"));
     }
 
     private static Map<String, Object> error(McpHandler.Reply reply) {

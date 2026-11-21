@@ -162,12 +162,12 @@ class McpConnectionTest {
         String b = initialize("codex");
         call(a, "run", "{\"run\":\"latest\",\"dir\":\"/ws-a\"}");
 
-        // Connection B is still unbound: a call with no dir is a protocol error, not A's dir.
+        // Connection B is still unbound: a call with no dir is refused, not run against A's dir.
         McpHandler.Reply reply = mcp.handle(
                 "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
                         + "\"arguments\":{\"kind\":\"build\",\"wait\":false}}}",
                 b);
-        assertThat(reply.body()).contains("-32602").contains("requires arguments.dir");
+        assertThat(reply.body()).contains("\"isError\":true").contains("requires arguments.dir");
 
         // B binds itself; A's bind is untouched.
         call(b, "run", "{\"run\":\"latest\",\"dir\":\"/ws-b\"}");
@@ -193,7 +193,7 @@ class McpConnectionTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"run\","
                         + "\"arguments\":{\"kind\":\"build\",\"wait\":false}}}",
                 null);
-        assertThat(reply.body()).contains("-32602").contains("requires arguments.dir");
+        assertThat(reply.body()).contains("\"isError\":true").contains("requires arguments.dir");
     }
 
     @Test
@@ -231,7 +231,7 @@ class McpConnectionTest {
                 "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"bind\","
                         + "\"arguments\":{\"dir\":\"/ws-c\"}}}",
                 null);
-        assertThat(reply.body()).contains("-32602").contains("needs a connection");
+        assertThat(reply.body()).contains("\"isError\":true").contains("needs a connection");
         assertThat(resource(two, a, "jk://project")).contains("\"dir\":\"/ws-a\"");
     }
 

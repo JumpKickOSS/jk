@@ -114,7 +114,7 @@ class McpActionsTest {
         McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
         String id = log.open("mcp", "claude-code", connection.label(), project.toString());
         McpTools tools = new McpTools(List.of(tool("query", in -> {
-            throw new McpError(-32602, "requires arguments.question");
+            throw new McpError(-32000, "the graph could not be read");
         })));
 
         assertThatThrownBy(() -> tools.call(ctx, call("query", Map.of("dir", project.toString())), connection, null))
@@ -124,6 +124,28 @@ class McpActionsTest {
                 .satisfies(a -> assertThat(a)
                         .containsEntry("outcome", "error")
                         .containsEntry("headline", "failed")
+                        .containsEntry("summary", "query \"\""));
+    }
+
+    @Test
+    void a_refused_argument_answers_is_error_for_the_model_to_correct_and_is_logged_as_failed() {
+        McpContext ctx = context();
+        McpConnection connection = ctx.connections().open("claude-code", null, McpRevision.LATEST, McpElicitModes.NONE);
+        String id = log.open("mcp", "claude-code", connection.label(), project.toString());
+        McpTools tools = new McpTools(List.of(tool("query", in -> {
+            throw new McpError(-32602, "requires arguments.question");
+        })));
+
+        Map<String, Object> result =
+                tools.call(ctx, call("query", Map.of("dir", project.toString())), connection, null);
+
+        assertThat(result).containsEntry("isError", true);
+        assertThat(String.valueOf(result.get("content"))).contains("requires arguments.question");
+        assertThat(log.session(id, 0, 10).orElseThrow().actions())
+                .singleElement()
+                .satisfies(a -> assertThat(a)
+                        .containsEntry("outcome", "error")
+                        .containsEntry("headline", "requires arguments.question")
                         .containsEntry("summary", "query \"\""));
     }
 

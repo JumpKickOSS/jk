@@ -1020,7 +1020,9 @@ is the bridge staying a relay. Everything else belongs in the engine. The bridge
 - `id` and `method` (to tell requests, responses and notifications apart, and to key outstanding
   calls), and a `tools/call`'s `params._meta.progressToken` (which it adds when absent);
 - the transport: `Mcp-Session-Id`, `MCP-Protocol-Version`, `Jk-Project`, the bearer token, a **404**
-  that means the session is gone, and the event stream of a call's response.
+  that means the session is gone, and the event stream of a call's response;
+- a `notifications/progress`'s `params.progressToken`, to drop one for a token the bridge added,
+  which its client never sent.
 
 Every other method, field, result and notification passes through byte for byte, apart from line
 breaks between JSON tokens (`McpBridgeTest#an_unknown_method_and_unknown_fields_pass_through_untouched`).
@@ -1061,7 +1063,7 @@ connection). The fields:
 | `major` | boolean | `kind=update` only: let a pin cross its major |
 
 A field outside the table (MCP `run` adds its own `goal`, `wait`, `timeout_s`, `jid`, `run`,
-`decision`) is refused, `400` naming it (`-32602` on MCP), as is a value of the wrong type. The
+`decision`) is refused, `400` naming it (an `isError` result on MCP), as is a value of the wrong type. The
 spec resolves to the hosted verb, decodes to the same wire request line the CLI would send, and
 submits detached. The reply is `202` with the `jid`; progress is the SSE stream. `409` carries the
 `jid` of a same-project job already in flight, `400` a body the verb cannot run.

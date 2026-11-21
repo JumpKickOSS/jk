@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http.mcp;
 
+import cc.jumpkick.engine.http.ProgressTokenRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,7 +16,7 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * One {@code tools/call}: the engine context, the client's {@code arguments}, the MCP progress
- * token bound from {@code params._meta}, and the {@link McpConnection connection} the call rode in
+ * token from {@code params._meta} as the client sent it (a string or a number), and the {@link McpConnection connection} the call rode in
  * on (null when the client sent no {@code Mcp-Session-Id}), and the {@link McpOutbound way back}
  * to that client while the call is outstanding (null when the transport has none). The argument
  * readers live here so every tool decodes {@code dir} / {@code limit} / {@code apply} the same way
@@ -24,12 +25,12 @@ import org.jspecify.annotations.Nullable;
 public record McpCall(
         McpContext ctx,
         Map<String, Object> args,
-        @Nullable String progressToken,
+        @Nullable Object progressToken,
         @Nullable McpConnection connection,
         @Nullable McpOutbound outbound) {
 
     /** A call from no identified connection. */
-    public McpCall(McpContext ctx, Map<String, Object> args, @Nullable String progressToken) {
+    public McpCall(McpContext ctx, Map<String, Object> args, @Nullable Object progressToken) {
         this(ctx, args, progressToken, null, null);
     }
 
@@ -37,7 +38,7 @@ public record McpCall(
     public McpCall(
             McpContext ctx,
             Map<String, Object> args,
-            @Nullable String progressToken,
+            @Nullable Object progressToken,
             @Nullable McpConnection connection) {
         this(ctx, args, progressToken, connection, null);
     }
@@ -45,6 +46,14 @@ public record McpCall(
     /** This call with other arguments: same connection, token and way back. */
     public McpCall withArgs(Map<String, Object> other) {
         return new McpCall(ctx, other, progressToken, connection, outbound);
+    }
+
+    /**
+     * The progress token as the engine keys it ({@link ProgressTokenRegistry#canonicalText}), or
+     * null when the call carries none.
+     */
+    public @Nullable String progressKey() {
+        return progressToken == null ? null : ProgressTokenRegistry.canonicalText(String.valueOf(progressToken));
     }
 
     /**

@@ -331,7 +331,7 @@ class McpHandlerTest {
                 + "\"params\":{\"name\":\"ide\",\"arguments\":{\"dir\":"
                 + Jsonl.quote(dir.toString())
                 + ",\"kind\":\"eclipse\"}}}");
-        assertThat(body).contains("-32602");
+        assertThat(body).contains("\"isError\":true").contains("kind must be").doesNotContain("-32602");
         assertThat(body).contains("kind must be idea | vscode | all");
     }
 

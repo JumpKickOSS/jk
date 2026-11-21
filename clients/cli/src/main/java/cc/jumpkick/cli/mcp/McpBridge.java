@@ -10,7 +10,6 @@ import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.net.ConnectException;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
@@ -42,8 +41,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Every outstanding {@code tools/call} carries a progress token, the client's or one the bridge
  * adds, and the engine binds the job a call starts to it. A {@code notifications/cancelled} naming
  * an outstanding call is forwarded with that token, so the engine cancels the call's job and the
- * parked call answers with its verdict. While a call that carries the client's own token is
- * outstanding, {@link McpProgress} writes {@code notifications/progress} lines for it.
+ * parked call answers with its verdict. The engine sends the call's {@code notifications/progress}
+ * on its response stream; one for a token the bridge added is dropped, since the client never
+ * asked for it.
  *
  * <p>The engine may ask the client something while a call is outstanding ({@code
  * elicitation/create}). It then answers that call's POST as an event stream: each request or
@@ -79,12 +79,6 @@ public final class McpBridge {
     /** Longer than any parked {@code run}: the engine's own wait cap answers first. */
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(65);
 
-    /** The longest a call with a progress token goes without a notification. */
-    private static final Duration HEARTBEAT = Duration.ofSeconds(5);
-
-    /** The shortest gap between two notifications, and how long a call runs before it is followed. */
-    private static final Duration GAP = Duration.ofSeconds(1);
-
     /** Requests in flight at once; a line past this waits for one to answer. */
     static final int MAX_IN_FLIGHT = 32;
 
@@ -99,8 +93,6 @@ public final class McpBridge {
     private final Endpoints endpoints;
     private final @Nullable String project;
     private final HttpClient http;
-    private final Duration heartbeat;
-    private final Duration gap;
     private volatile @Nullable Endpoint endpoint;
     private volatile @Nullable String session;
     private volatile @Nullable String protocolVersion;
@@ -118,15 +110,8 @@ public final class McpBridge {
     private volatile Consumer<String> toClient = line -> {};
 
     public McpBridge(Endpoints endpoints, @Nullable String project) {
-        this(endpoints, project, HEARTBEAT, GAP);
-    }
-
-    /** As {@link #McpBridge(Endpoints, String)} with the progress pacing; tests shorten it. */
-    McpBridge(Endpoints endpoints, @Nullable String project, Duration heartbeat, Duration gap) {
         this.endpoints = endpoints;
         this.project = project;
-        this.heartbeat = heartbeat;
-        this.gap = gap;
         this.http = Http.proxiedClientBuilder()
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(10))
@@ -170,7 +155,7 @@ public final class McpBridge {
                     Call call = Call.of(this, m, line);
                     calls.execute(() -> {
                         try {
-                            write(lines, call.send(this, lines));
+                            write(lines, call.send(this));
                         } finally {
                             room.release();
                         }
@@ -201,34 +186,26 @@ public final class McpBridge {
         return reply;
     }
 
-    /**
-     * One request on its way: the message as sent and, for a {@code tools/call}, the key it is
-     * outstanding under and the client's own progress token, when it sent one.
-     */
-    private record Call(
-            String sent, @Nullable String key, @Nullable Object clientToken) {
+    /** One request on its way: the message as sent and, for a {@code tools/call}, the key it is outstanding under. */
+    private record Call(String sent, @Nullable String key) {
 
         /** {@code line} ready to send; a {@code tools/call} gets a progress token and is recorded as outstanding. */
         static Call of(McpBridge bridge, Message m, String line) {
             Object id = m.id();
-            if (!m.method().equals("tools/call") || id == null) return new Call(line, null, null);
-            Object clientToken = McpProgress.tokenOf(line);
+            if (!m.method().equals("tools/call") || id == null) return new Call(line, null);
+            Object clientToken = progressToken(m.json());
             String token = clientToken != null
                     ? String.valueOf(clientToken)
                     : bridge.tokenPrefix + bridge.tokens.incrementAndGet();
             String key = idKey(id);
             bridge.outstanding.put(key, token);
-            return new Call(clientToken != null ? line : withProgressToken(line, token), key, clientToken);
+            return new Call(clientToken != null ? line : withProgressToken(line, token), key);
         }
 
-        /** {@link #forward}, followed for progress when the client sent the token; no longer outstanding after. */
-        String send(McpBridge bridge, Consumer<String> lines) {
+        /** {@link #forward}; no longer outstanding after. */
+        String send(McpBridge bridge) {
             try {
-                if (clientToken == null) return bridge.forward(sent);
-                try (McpProgress ignored =
-                        McpProgress.start(clientToken, bridge::events, lines, bridge.heartbeat, bridge.gap)) {
-                    return bridge.forward(sent);
-                }
+                return bridge.forward(sent);
             } finally {
                 if (key != null) bridge.outstanding.remove(key);
             }
@@ -244,6 +221,22 @@ public final class McpBridge {
         Object requestId = params.get("requestId");
         String token = requestId == null ? null : outstanding.get(idKey(requestId));
         return token == null ? message : withProgressToken(message, token);
+    }
+
+    /** {@code params._meta.progressToken} of a request, or null when it carries none. */
+    private static @Nullable Object progressToken(Map<String, Object> request) {
+        if (!(request.get("params") instanceof Map<?, ?> params)) return null;
+        if (!(params.get("_meta") instanceof Map<?, ?> meta)) return null;
+        Object token = meta.get("progressToken");
+        return token instanceof String || token instanceof Number ? token : null;
+    }
+
+    /** True for a {@code notifications/progress} about a token the bridge added, which its client never sent. */
+    private boolean minted(Message m) {
+        if (!m.method().equals("notifications/progress")) return false;
+        return m.json().get("params") instanceof Map<?, ?> params
+                && params.get("progressToken") instanceof String token
+                && token.startsWith(tokenPrefix);
     }
 
     /**
@@ -353,27 +346,6 @@ public final class McpBridge {
             }
             return new Message("", null, Map.of());
         }
-    }
-
-    /** The engine's MCP event stream for one progress token, on the session the call went out on. */
-    private InputStream events(String token) throws IOException, InterruptedException {
-        Endpoint target = endpoint;
-        if (target == null) target = endpoints.current();
-        String url = target.url().toString();
-        URI uri = URI.create(url + (url.contains("?") ? "&" : "?") + "progressToken="
-                + URLEncoder.encode(token, StandardCharsets.UTF_8));
-        HttpRequest.Builder request = Http.proxiedRequest(uri)
-                .header("Authorization", "Bearer " + target.token())
-                .header("Accept", "text/event-stream")
-                .GET();
-        String sent = session;
-        if (sent != null) request.header(SESSION_HEADER, sent);
-        HttpResponse<InputStream> response = http.send(request.build(), HttpResponse.BodyHandlers.ofInputStream());
-        if (response.statusCode() / 100 != 2) {
-            response.body().close();
-            throw new IOException("jk engine event stream answered HTTP " + response.statusCode());
-        }
-        return response.body();
     }
 
     /**
@@ -510,7 +482,9 @@ public final class McpBridge {
             if (!line.isEmpty() || data.isEmpty()) continue;
             String json = data.toString();
             data.setLength(0);
-            if (Message.of(json).method().isEmpty()) return oneLine(json);
+            Message m = Message.of(json);
+            if (m.method().isEmpty()) return oneLine(json);
+            if (minted(m)) continue;
             toClient.accept(oneLine(json));
         }
         return data.isEmpty() ? "" : oneLine(data.toString());
