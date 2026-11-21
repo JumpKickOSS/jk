@@ -30,6 +30,12 @@ import org.tomlj.TomlTable;
  * module's test index carries all compiled suites together. Fingerprint: the class. A module with
  * no test classes is clean with no bite: the rule has nothing to say there, and a workspace has
  * modules like that.
+ *
+ * <p>{@code suite} judges every class of the test tree, helpers included: a helper puts the type it
+ * uses on its suite's classpath as surely as a test does. {@code tag} judges only the classes the
+ * JUnit Platform reads a tag from, a test class and the test-tree types it extends or implements;
+ * a tag on any other helper selects nothing. A class's tags include those of its supertypes, since
+ * {@code @Tag} is inherited.
  */
 final class TiersEvaluator implements Evaluator {
 
@@ -50,6 +56,7 @@ final class TiersEvaluator implements Evaluator {
         for (String g : uses) typeGlobs.add(typeGlob(g));
         boolean compact = ModuleLayout.isCompact(moduleDir);
         List<String> suites = TestSuites.discover(moduleDir, compact);
+        Set<String> tagReaders = tag == null ? Set.of() : tagReaders(ctx, test);
 
         Map<Allow, Boolean> allowUsed = new LinkedHashMap<>();
         for (Allow a : rule.allow()) allowUsed.put(a, false);
@@ -58,7 +65,8 @@ final class TiersEvaluator implements Evaluator {
         for (ClassFacts c : test.classList()) {
             if (c.isPackageInfo()) continue;
             examined++;
-            String cause = cause(c, typeGlobs, tagged);
+            Set<String> tags = tags(c, test);
+            String cause = cause(c, tags, typeGlobs, tagged);
             if (cause == null) continue;
             Allow allowed = ForbidEvaluator.allowing(rule.allow(), c, ctx.module());
             if (allowed != null) {
@@ -74,7 +82,7 @@ final class TiersEvaluator implements Evaluator {
                         source(ctx, c, home),
                         0,
                         c.binaryName() + " " + cause + " but lives in " + where + ", not src/" + suite));
-            } else if (tag != null && !tags(c).contains(tag)) {
+            } else if (tag != null && tagReaders.contains(c.name()) && !tags.contains(tag)) {
                 sites.add(Observation.site(
                         c.binaryName(),
                         source(ctx, c, home),
@@ -98,25 +106,49 @@ final class TiersEvaluator implements Evaluator {
         return Evaluation.of(population, sites);
     }
 
-    private static @Nullable String cause(ClassFacts c, List<Pattern> typeGlobs, List<String> tagged) {
+    private static @Nullable String cause(
+            ClassFacts c, Set<String> tags, List<Pattern> typeGlobs, List<String> tagged) {
         for (String ref : c.typeRefs()) {
             String binary = ref.replace('/', '.');
             for (Pattern p : typeGlobs) if (p.matcher(binary).matches()) return "uses " + binary;
         }
-        if (!tagged.isEmpty()) {
-            Set<String> own = tags(c);
-            for (String want : tagged) if (own.contains(want)) return "is tagged \"" + want + "\"";
-        }
+        for (String want : tagged) if (tags.contains(want)) return "is tagged \"" + want + "\"";
         return null;
     }
 
-    /** Class-level tags plus any method's — a class with one slow test is in part a slow class. */
-    static Set<String> tags(ClassFacts c) {
+    /** Internal names of the test classes and of the test-tree types they extend or implement. */
+    private static Set<String> tagReaders(EvalContext ctx, FactsIndex test) {
+        var testClasses = AnnotateEvaluator.testClasses(ctx, test);
         Set<String> out = new LinkedHashSet<>();
-        for (AnnotationFacts a : c.annotations()) if (a.typeName().equals(TAG)) out.addAll(a.value());
-        for (MethodFacts m : c.methods())
-            for (AnnotationFacts a : m.annotations()) if (a.typeName().equals(TAG)) out.addAll(a.value());
+        for (ClassFacts c : test.classList()) {
+            if (!c.isPackageInfo() && testClasses.isTestClass(c)) supertypes(c, test, out);
+        }
         return out;
+    }
+
+    /**
+     * Class-level tags plus any method's — a class with one slow test is in part a slow class — and
+     * those of the test-tree types it extends or implements, which it inherits.
+     */
+    static Set<String> tags(ClassFacts c, FactsIndex test) {
+        Set<String> chain = new LinkedHashSet<>();
+        supertypes(c, test, chain);
+        Set<String> out = new LinkedHashSet<>();
+        for (String name : chain) {
+            ClassFacts k = test.classNamed(name).orElseThrow();
+            for (AnnotationFacts a : k.annotations()) if (a.typeName().equals(TAG)) out.addAll(a.value());
+            for (MethodFacts m : k.methods())
+                for (AnnotationFacts a : m.annotations()) if (a.typeName().equals(TAG)) out.addAll(a.value());
+        }
+        return out;
+    }
+
+    /** {@code c} and every type of {@code test} it extends or implements, by internal name, into {@code out}. */
+    private static void supertypes(ClassFacts c, FactsIndex test, Set<String> out) {
+        if (!out.add(c.name())) return;
+        String superName = c.superName();
+        if (superName != null) test.classNamed(superName).ifPresent(s -> supertypes(s, test, out));
+        for (String i : c.interfaces()) test.classNamed(i).ifPresent(s -> supertypes(s, test, out));
     }
 
     /** The suite whose source root holds a class's source file, and that root. */

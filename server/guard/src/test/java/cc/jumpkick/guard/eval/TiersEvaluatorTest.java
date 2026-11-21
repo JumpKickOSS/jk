@@ -46,8 +46,20 @@ class TiersEvaluatorTest {
     }
 
     private static ClassFacts testClassFrom(String simple, String sourceFile, String fieldType, String... tags) {
+        return classFacts(simple, sourceFile, Opcodes.ACC_PUBLIC, "java/lang/Object", true, fieldType, tags);
+    }
+
+    /** A class in package {@code p} extending {@code superName}, with one {@code @Test} method when {@code test}. */
+    private static ClassFacts classFacts(
+            String simple,
+            String sourceFile,
+            int access,
+            String superName,
+            boolean test,
+            String fieldType,
+            String... tags) {
         ClassWriter cw = new ClassWriter(0);
-        cw.visit(Opcodes.V17, Opcodes.ACC_PUBLIC, "p/" + simple, null, "java/lang/Object", null);
+        cw.visit(Opcodes.V17, access, "p/" + simple, null, superName, null);
         cw.visitSource(sourceFile, null);
         for (String tag : tags) {
             AnnotationVisitor av = cw.visitAnnotation("Lorg/junit/jupiter/api/Tag;", true);
@@ -58,7 +70,7 @@ class TiersEvaluatorTest {
             cw.visitField(Opcodes.ACC_PRIVATE, "c", "L" + fieldType + ";", null, null)
                     .visitEnd();
         MethodVisitor mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "runs", "()V", null, null);
-        mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
+        if (test) mv.visitAnnotation("Lorg/junit/jupiter/api/Test;", true).visitEnd();
         mv.visitCode();
         mv.visitInsn(Opcodes.RETURN);
         mv.visitMaxs(0, 1);
@@ -193,6 +205,59 @@ class TiersEvaluatorTest {
         Evaluation t = eval(root, byTag, index(spring, tagged, quick));
         assertThat(t.observations()).extracting(Observation::key).containsExactly("p.BootTest");
         assertThat(t.observations().get(0).detail()).contains("carries no @Tag(\"slow\")");
+    }
+
+    @Test
+    void a_helper_must_live_in_the_suite_but_need_not_carry_the_tag(@TempDir Path root) throws Exception {
+        ClassFacts helper = classFacts(
+                "BootSupport",
+                "BootSupport.java",
+                Opcodes.ACC_PUBLIC,
+                "java/lang/Object",
+                false,
+                "org/springframework/boot/test/context/SpringBootTest");
+        source(root, "test", "BootSupport");
+        Evaluation bySuite = eval(
+                root, rule(root, "uses  = [\"org.springframework.boot.test.**\"]\nsuite = \"e2e\"\n"), index(helper));
+        assertThat(bySuite.observations()).extracting(Observation::key).containsExactly("p.BootSupport");
+
+        Evaluation byTag = eval(
+                root, rule(root, "uses = [\"org.springframework.boot.test.**\"]\ntag  = \"slow\"\n"), index(helper));
+        assertThat(byTag.outcome()).isEqualTo(Outcome.CLEAN);
+        assertThat(byTag.population()).containsEntry("test-classes", 1L);
+    }
+
+    @Test
+    void a_base_test_class_carries_the_tag_its_subclasses_inherit(@TempDir Path root) throws Exception {
+        String boot = "org/springframework/boot/test/context/SpringBootTest";
+        Rule byTag = rule(root, "uses = [\"org.springframework.boot.test.**\"]\ntag  = \"slow\"\n");
+        ClassFacts untaggedBase = classFacts(
+                "BootBase",
+                "BootBase.java",
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
+                "java/lang/Object",
+                false,
+                boot);
+        ClassFacts child = classFacts("ChildTest", "ChildTest.java", Opcodes.ACC_PUBLIC, "p/BootBase", true, boot);
+        source(root, "test", "BootBase");
+        source(root, "test", "ChildTest");
+        assertThat(eval(root, byTag, index(untaggedBase, child)).observations())
+                .extracting(Observation::key)
+                .containsExactly("p.BootBase", "p.ChildTest");
+
+        ClassFacts taggedBase = classFacts(
+                "BootBase",
+                "BootBase.java",
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_ABSTRACT,
+                "java/lang/Object",
+                false,
+                boot,
+                "slow");
+        assertThat(eval(root, byTag, index(taggedBase, child)).outcome()).isEqualTo(Outcome.CLEAN);
+
+        Evaluation bySuite =
+                eval(root, rule(root, "tagged = [\"slow\"]\nsuite  = \"e2e\"\n"), index(taggedBase, child));
+        assertThat(bySuite.observations()).extracting(Observation::key).containsExactly("p.BootBase", "p.ChildTest");
     }
 
     @Test
