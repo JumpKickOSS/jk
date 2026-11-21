@@ -18,9 +18,9 @@ import java.util.List;
 /**
  * Writes Maven-compatible artifacts and sidecars into {@code ~/.m2/repository}. SHA-1 and MD5 are
  * named here because Maven's sidecar contract names them — they are the {@code .sha1} / {@code .md5}
- * files Maven clients refuse to read an artifact without, not jk's own content hash. {@link #streamToM2}
- * is atomic (temp-then-rename) and propagates I/O errors; sidecar / {@code _remote.repositories}
- * writes are best-effort and must never fail a successful download.
+ * files Maven clients refuse to read an artifact without, not jk's own content hash. Artifact writes
+ * are staged and published through {@link RepoArtifactStore#publishIntoM2} and propagate I/O errors;
+ * sidecar / {@code _remote.repositories} writes are best-effort and must never fail a successful download.
  */
 public final class M2CompatWriter {
 
@@ -46,44 +46,6 @@ public final class M2CompatWriter {
         return Files.readString(sidecar, StandardCharsets.UTF_8)
                 .strip()
                 .equalsIgnoreCase(hashesOf(file).sha1());
-    }
-
-    /** Hashes and size from {@link #streamToM2}. */
-    public record StreamResult(String sha256, String sha1, String md5, long size) {}
-
-    /**
-     * Stream {@code in} to {@code target} with SHA-256/SHA-1/MD5 in one pass (temp-then-rename).
-     */
-    public static StreamResult streamToM2(InputStream in, Path target) throws IOException {
-        Files.createDirectories(target.getParent());
-        // Unique temp so concurrent writers of the same artifact don't share an inode.
-        Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".part");
-        MessageDigest sha256 = Hashing.newSha256();
-        MessageDigest sha1 = Hashing.newDigest("SHA-1");
-        MessageDigest md5 = Hashing.newDigest("MD5");
-        long size = 0;
-        try {
-            try (OutputStream out = Files.newOutputStream(tmp)) {
-                byte[] buf = new byte[64 * 1024];
-                int n;
-                while ((n = in.read(buf)) > 0) {
-                    out.write(buf, 0, n);
-                    sha256.update(buf, 0, n);
-                    sha1.update(buf, 0, n);
-                    md5.update(buf, 0, n);
-                    size += n;
-                }
-            }
-            AtomicWrites.moveInto(tmp, target);
-        } catch (IOException | RuntimeException e) {
-            try {
-                Files.deleteIfExists(tmp);
-            } catch (IOException ignored) {
-            }
-            throw e;
-        }
-        return new StreamResult(
-                Hashing.hex(sha256.digest()), Hashing.hex(sha1.digest()), Hashing.hex(md5.digest()), size);
     }
 
     /**
