@@ -61,6 +61,20 @@ class JkInstallConfigTest {
                 .isEqualTo(InstallDestination.M2);
     }
 
+    /** The documented ladder is the whole ladder: a JVM property reaches only the {@code [m2]} default. */
+    @Test
+    void no_jvm_property_names_the_destination(@TempDir Path tmp) {
+        Path absent = tmp.resolve("absent.toml");
+        Map<String, String> none = Map.of();
+
+        assertThat(JkInstallConfig.resolve(absent, none::get, Map.of("jk.install.destination", "m2")::get)
+                        .destination())
+                .isEqualTo(InstallDestination.JK);
+        assertThat(JkInstallConfig.resolve(absent, none::get, Map.of("jk.m2.integration", "share")::get)
+                        .destination())
+                .isEqualTo(InstallDestination.M2);
+    }
+
     @Test
     void an_unknown_word_falls_through_to_the_layer_below(@TempDir Path tmp) throws Exception {
         Path f = toml(tmp, "[install]\ndestination = \"jk\"\n");

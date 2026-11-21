@@ -11,8 +11,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * Machine-scoped {@code [install]} policy from {@code ~/.jk/config.toml}: where {@code jk install}
  * puts a project's jar and POM when neither the command line nor the project's {@code jk.toml}
- * says. Precedence: JVM system property &gt; {@code JK_INSTALL_DESTINATION} env &gt; user file &gt;
- * what {@code [m2] integration} implies, laid out in rank order by {@link MachineConfig}: the Maven
+ * says. Precedence: {@code JK_INSTALL_DESTINATION} env &gt; user file &gt; what {@code [m2]
+ * integration} implies ({@link JkM2Config}), laid out in rank order by {@link MachineConfig}: the Maven
  * local repository on a machine that shares its downloads with Maven ({@code "share"}), else jk's
  * own {@code repos/jk-local}, so that nothing is written into {@code ~/.m2} unasked. An unknown word
  * falls through.
@@ -32,6 +32,7 @@ public record JkInstallConfig(InstallDestination destination) {
         return resolve(userConfig, env, name -> null);
     }
 
+    /** {@code property} reaches only the {@code [m2]} ladder that the implied destination reads. */
     static JkInstallConfig resolve(
             Path userConfig, Function<String, @Nullable String> env, Function<String, @Nullable String> property) {
         TomlScan scan = TomlScan.scan(userConfig, "install.destination");
@@ -39,7 +40,6 @@ public record JkInstallConfig(InstallDestination destination) {
                 JkM2Config.resolve(userConfig, env, property).share() ? InstallDestination.M2 : InstallDestination.JK;
         return new JkInstallConfig(DESTINATION.layerOver(
                 implied,
-                word(property.apply("jk.install.destination")),
                 word(EnvValues.string(env, "JK_INSTALL_DESTINATION").orElse(null)),
                 word(scan.get("install.destination"))));
     }
