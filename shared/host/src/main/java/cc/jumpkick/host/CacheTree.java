@@ -68,6 +68,12 @@ public enum CacheTree {
      */
     JIB_LAYERS("jib-layers"),
 
+    /**
+     * Release-dependency image layers, one tree per layer content key: the jars and the compressed
+     * layer Jib built from them, written by the image-builder worker.
+     */
+    IMAGE_LAYERS("image-layers"),
+
     /** A materialized Maven repo per path-dependency, keyed by source path then by fingerprint. */
     PATH_ARTIFACTS("path-artifacts"),
 

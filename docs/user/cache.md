@@ -560,7 +560,9 @@ writes — it can legitimately report “Nothing to clean up.” on a large cach
   `~/.cache/google-cloud-tools-java`, which nothing bounds and other Jib tools may still use): they
   go on the heavy window from when they were pulled, and the tree resets past 2 GiB. The JRE an AOT
   image build extracts from its base image (`base-jre/`, 50–200 MB each, two at most) goes on the
-  heavy window from its last use.
+  heavy window from its last use. An image's release-jar layer (`image-layers/`, a copy of the jars and
+  their compressed layer, four sets at most) goes on the same window from the last image that
+  shipped it.
 - **The Maven local repository** (`~/.m2/repository`): JumpKick downloads into it only under
   `[m2] integration = "share"`, and never removes from it on its own
   account. `jk cache clean --m2` (MCP: `disk` `action=m2-clean`) removes files unused for

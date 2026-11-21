@@ -28,6 +28,11 @@ sibling modules' externals, and the siblings' thin jars — exactly what `jk bui
 never the whole workspace lock. The entrypoint is
 `java <JAVA_OPTS…> -cp /app/classpath/*:/app/libs/* <main>`.
 
+The release layer is kept in the cache root's `image-layers/`, keyed by the sha256 of each jar it
+holds and the path it ships at, so the next `jk image` of the same releases uses it as built
+instead of compressing the jars again. The snapshot and application layers are built every time:
+a rebuilt jar under its old name always ships its new bytes.
+
 With no `base`, the image is built on `bellsoft/liberica-runtime-container:jre-<N>-slim-glibc`,
 where `<N>` is the module's Java level: its `java`, else its `jdk` major, else the major of the JDK
 that compiles it. The templates write no base, so a project made at `java = 27` gets a JRE 27 and

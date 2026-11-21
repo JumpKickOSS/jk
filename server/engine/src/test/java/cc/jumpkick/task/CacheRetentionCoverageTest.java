@@ -65,6 +65,7 @@ class CacheRetentionCoverageTest {
         m.put(CacheTree.JSHELL_CP, root -> in(root, CacheTree.JSHELL_CP, "alias.jar", "x", FRESH));
         m.put(CacheTree.BASE_JRE, root -> subtree(root, CacheTree.BASE_JRE, "sha256-dead", OLD));
         m.put(CacheTree.JIB_LAYERS, root -> in(root, CacheTree.JIB_LAYERS, "layers/sha256/abc/layer.tar", "x", OLD));
+        m.put(CacheTree.IMAGE_LAYERS, root -> subtree(root, CacheTree.IMAGE_LAYERS, "deadkey", OLD));
         m.put(CacheTree.PATH_ARTIFACTS, root -> subtree(root, CacheTree.PATH_ARTIFACTS, "pathhash/fp", OLD));
         m.put(CacheTree.GIT_ARTIFACTS, root -> subtree(root, CacheTree.GIT_ARTIFACTS, "urlhash/sha", OLD));
         m.put(CacheTree.GENERATED, root -> subtree(root, CacheTree.GENERATED, "compile-test@dead", OLD));

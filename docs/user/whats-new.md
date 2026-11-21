@@ -52,6 +52,9 @@ JumpKick shows you this page's new entries after it updates itself.
   in the cache's `osv-vulns/` until OSV reports it modified.
 - **`[android] version-code` sets the app's versionCode.** It reaches the APK or AAB manifest and
   `BuildConfig.VERSION_CODE`, which were always 1.
+- **A repeat `jk image` reuses its release-jar layer.** The layer is kept in the cache's
+  `image-layers/` by the jars' content, so an image whose releases have not changed skips
+  compressing them again; snapshot and sibling jars are still packed on every build.
 - **The JRE `jk image` trains an AOT cache with keeps its base image's links.** A JDK package's
   links into the image, such as `lib/security/cacerts -> /etc/ssl/certs/java/cacerts`, were dropped
   when the JRE was extracted; they are kept now, and a link that leads out of the image is skipped.
