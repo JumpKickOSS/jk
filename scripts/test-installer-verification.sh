@@ -205,6 +205,133 @@ grep -qF -- "unknown option: --rcc" "$WORK/last-install.log" || {
   cat "$WORK/last-install.log" >&2; echo "an unknown flag was not refused as one" >&2; exit 1; }
 pass "unknown-flag"
 
+# ---- a host with wget and no curl ----------------------------------------------------------------
+#
+# NOCURL_PATH is this PATH with curl taken out of every directory that has one: each such directory
+# is replaced by a shadow of links to everything else in it.
+NOCURL_PATH=""
+shadow=0
+IFS=: read -r -a path_dirs <<<"$PATH"
+for dir in "${path_dirs[@]}"; do
+  [[ -n "$dir" ]] || continue
+  if [[ -e "$dir/curl" ]]; then
+    shadow=$((shadow + 1))
+    mkdir -p "$WORK/nocurl/$shadow"
+    for f in "$dir"/*; do
+      [[ "${f##*/}" == curl ]] || ln -s "$f" "$WORK/nocurl/$shadow/" 2>/dev/null || true
+    done
+    dir="$WORK/nocurl/$shadow"
+  fi
+  NOCURL_PATH="${NOCURL_PATH:+$NOCURL_PATH:}$dir"
+done
+# A GNU wget fixture, answering from FIXTURE_HTTP_ROOT whatever the scheme. A file beside the one
+# asked for, named <file>.redirect, makes that URL a 302 to the Location it holds; with
+# --max-redirect=0 wget stops there as GNU wget does (headers on stderr under -S, exit 8), and
+# without it the fixture follows, to any scheme, as GNU wget does with or without --https-only.
+mkdir -p "$WORK/wget-bin" "$WORK/http/mirror/1.0.0"
+cp "$WORK/bin/git" "$WORK/wget-bin/git"
+cat >"$WORK/wget-bin/wget" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out="" url="" follow=1 show=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --version) echo "GNU Wget 1.25.0 built on linux-gnu."; exit 0 ;;
+    -O) out="$2"; shift 2 ;;
+    --max-redirect=0) follow=0; shift ;;
+    -S) show=1; shift ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if [[ -n "${FIXTURE_WGET_LOG:-}" ]]; then printf '%s\n' "$url" >>"$FIXTURE_WGET_LOG"; fi
+  path="${url#*://fixture}"
+  src="${FIXTURE_HTTP_ROOT}${path%%\?*}"
+  : >"$out"
+  if [[ -f "$src.redirect" ]]; then
+    location="$(cat "$src.redirect")"
+    if [[ "$show" -eq 1 ]]; then printf '  HTTP/1.1 302 Found\r\n  Location: %s\r\n' "$location" >&2; fi
+    [[ "$follow" -eq 1 ]] || exit 8
+    case "$location" in
+      *://*) url="$location" ;;
+      //*) url="${url%%://*}:$location" ;;
+      /*) url="${url%%://*}://fixture$location" ;;
+      *) url="${url%/*}/$location" ;;
+    esac
+    continue
+  fi
+  if [[ ! -f "$src" ]]; then
+    if [[ "$show" -eq 1 ]]; then printf '  HTTP/1.1 404 Not Found\r\n' >&2; fi
+    exit 8
+  fi
+  if [[ "$show" -eq 1 ]]; then printf '  HTTP/1.1 200 OK\r\n' >&2; fi
+  cp "$src" "$out"
+  exit 0
+done
+exit 8
+SH
+chmod +x "$WORK/wget-bin/wget"
+run_wget_installer() {
+  local home="$1" location="$2"
+  shift 2
+  printf '%s' "$location" >"$WORK/http/mirror/1.0.0/$ARTIFACT.redirect"
+  run_installer "$home" JK_VERSION=1.0.0 JK_ARCHIVE_URL="https://fixture/mirror/1.0.0/$ARTIFACT" \
+    PATH="$WORK/wget-bin:$NOCURL_PATH" FIXTURE_WGET_LOG="$WORK/wget-calls" "$@"
+}
+
+# A mirror's archive URL that redirects and stays on HTTPS is followed, whether its Location is
+# absolute, network-path, absolute-path or relative; the archive is the signed one.
+for location in "https://fixture/releases/1.0.0/$ARTIFACT" "//fixture/releases/1.0.0/$ARTIFACT" \
+    "/releases/1.0.0/$ARTIFACT" "../../releases/1.0.0/$ARTIFACT"; do
+  rm -rf "$WORK/home-wget" "$WORK/wget-calls"
+  run_wget_installer "$WORK/home-wget" "$location" || {
+    cat "$WORK/last-install.log" >&2; echo "a wget install redirected to $location failed" >&2; exit 1; }
+  cmp -s "$RELEASE/$ARTIFACT" "$WORK/home-wget/bin/jk" || {
+    echo "a wget install redirected to $location did not install the release" >&2; exit 1; }
+  grep -qx "https://fixture/.*releases/1\.0\.0/$ARTIFACT" "$WORK/wget-calls" || {
+    cat "$WORK/wget-calls" >&2; echo "a wget install did not follow $location to the archive" >&2; exit 1; }
+done
+pass "wget-follows-https-redirect"
+
+# A redirect off HTTPS is refused before it is fetched, and the prior install stays.
+rm -rf "$WORK/home-wget-http" "$WORK/wget-calls"
+mkdir -p "$WORK/home-wget-http/bin"
+printf 'prior-install' >"$WORK/home-wget-http/bin/jk"
+if run_wget_installer "$WORK/home-wget-http" "http://fixture/releases/1.0.0/$ARTIFACT"; then
+  cat "$WORK/last-install.log" >&2; echo "a wget install followed a redirect to http" >&2; exit 1
+fi
+[[ "$(cat "$WORK/home-wget-http/bin/jk")" == "prior-install" ]] || {
+  echo "a refused wget redirect changed the prior installation" >&2; exit 1; }
+grep -qF "refusing to fetch http://fixture/releases/1.0.0/$ARTIFACT: not HTTPS" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "a refused wget redirect does not say why" >&2; exit 1; }
+if grep -q '^http://' "$WORK/wget-calls"; then
+  cat "$WORK/wget-calls" >&2; echo "a wget install requested a non-HTTPS URL" >&2; exit 1
+fi
+pass "wget-refuses-redirect-off-https"
+
+# A wget that is not GNU Wget (BusyBox's) cannot be stopped from following a redirect, so a remote
+# install refuses it and says what would do.
+mkdir -p "$WORK/busybox-bin"
+cp "$WORK/bin/git" "$WORK/busybox-bin/git"
+# shellcheck disable=SC2016 # the fixture's own script text
+printf '#!/bin/sh\n[ "$1" = --version ] && { echo "wget: unrecognized option: version" >&2; exit 1; }\nexit 8\n' \
+  >"$WORK/busybox-bin/wget"
+chmod +x "$WORK/busybox-bin/wget"
+mkdir -p "$WORK/home-busybox/bin"
+printf 'prior-install' >"$WORK/home-busybox/bin/jk"
+if run_installer "$WORK/home-busybox" JK_VERSION=1.0.0 JK_ARCHIVE_URL="https://fixture/releases/1.0.0/$ARTIFACT" \
+    PATH="$WORK/busybox-bin:$NOCURL_PATH"; then
+  cat "$WORK/last-install.log" >&2; echo "a remote install ran on a wget that cannot refuse a redirect" >&2; exit 1
+fi
+[[ "$(cat "$WORK/home-busybox/bin/jk")" == "prior-install" ]] || {
+  echo "a refused BusyBox wget install changed the prior installation" >&2; exit 1; }
+grep -qF "install curl or GNU Wget" "$WORK/last-install.log" || {
+  cat "$WORK/last-install.log" >&2; echo "a BusyBox wget refusal does not say what to install" >&2; exit 1; }
+rm -rf "$WORK/nocurl" "$WORK/wget-bin" "$WORK/busybox-bin" "$WORK/home-wget" "$WORK/home-wget-http" "$WORK/home-busybox" \
+  "$WORK/http/mirror" "$WORK/wget-calls"
+pass "busybox-wget-refused"
+
 # Where bin/ refuses hardlinks, jkx is a shim that names the client by its path. A home whose path
 # carries shell syntax still gets a shim that runs that client with the arguments it was given.
 mkdir -p "$WORK/no-ln-bin"

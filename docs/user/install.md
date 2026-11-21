@@ -29,6 +29,10 @@ require one exact checksum entry, and hash the archive before replacing or execu
 Unix needs stock-compatible OpenSSL; Windows uses .NET RSA in PowerShell 5.1. Positional local
 file installs remain available for development and do not require release evidence.
 
+`install.sh` downloads with curl, or with GNU Wget where there is no curl, and follows a redirect
+only to another HTTPS URL. BusyBox's `wget` (Alpine's only downloader until curl is installed)
+cannot be told to stop at a redirect, so a remote install refuses it and asks for curl or GNU Wget.
+
 An install that stops part way leaves the JumpKick you had. The installer unpacks the new client
 beside the live one, runs its `--version`, and only a client that answers takes the live one's
 place, in one rename; `install.ps1` puts the old `jk.exe` back if that swap fails. A truncated

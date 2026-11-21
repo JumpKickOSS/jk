@@ -209,10 +209,60 @@ main() {
     [ "$a" != "$b" ] || [ "$1" = "$a" ] || [ "$2" != "$b" ]
   }
 
-  # Pick a downloader (not needed when a local file is provided). A remote install reads HTTPS
-  # only, as install.ps1 does, and curl follows no redirect to anything else: downloads are
-  # signature-checked either way, and HTTPS keeps a host on the path from choosing which signed
-  # release, or none, arrives.
+  # True when `wget` is GNU Wget (or Wget2), the only wget that can be told not to follow a
+  # redirect. BusyBox's wget follows any redirect and has no switch to stop it.
+  gnu_wget() {
+    have wget && wget --version 2>/dev/null | awk 'NR == 1 && /^GNU Wget/ { ok = 1 } END { exit !ok }'
+  }
+
+  # Fetches the HTTPS URL $1 into $2 with GNU wget, following redirects by hand so that each
+  # hop is HTTPS too. wget has no switch for that: --https-only governs only recursive links, and
+  # a redirect to http:// is followed with it set. So every request is made with
+  # --max-redirect=0, the Location of a 3xx is resolved against the URL that answered, and a
+  # target that is not https:// ends the download.
+  wget_https() {
+    local url="$1" dest="$2" hops=0 rc status location origin
+    local headers="$2.headers"
+    while :; do
+      case "$url" in
+        [Hh][Tt][Tt][Pp][Ss]://?*) ;;
+        *) err "refusing to fetch $url: not HTTPS"; return 1 ;;
+      esac
+      rc=0
+      LC_ALL=C wget -q -S --max-redirect=0 "$url" -O "$dest" 2>"$headers" || rc=$?
+      # -S writes each response header to stderr, indented; the last status and Location are
+      # this response's. A 3xx is a redirect whatever wget's exit status says.
+      status="$(tr -d '\r' < "$headers" | awk '{ sub(/^[ \t]+/, "") } /^HTTP\/[0-9.]+ [0-9][0-9][0-9]/ { s = $2 } END { print s }')"
+      location="$(tr -d '\r' < "$headers" | awk '{ sub(/^[ \t]+/, "") } tolower($0) ~ /^location:/ { sub(/^[^:]*:[ \t]*/, ""); l = $0 } END { print l }')"
+      rm -f "$headers"
+      case "$status" in
+        3??) ;;
+        *) return "$rc" ;;
+      esac
+      [ -n "$location" ] || return 1
+      hops=$((hops + 1))
+      [ "$hops" -le 10 ] || { err "too many redirects fetching $1"; return 1; }
+      origin="$(printf '%s' "$url" | awk '{ match($0, /^[^:]+:\/\/[^\/?#]*/); print substr($0, 1, RLENGTH) }')"
+      case "$location" in
+        //*) url="https:$location" ;;
+        /*) url="$origin$location" ;;
+        [A-Za-z]*:*)
+          # A scheme is letters, digits, + - . up to the first colon; anything else is a
+          # relative path that holds a colon.
+          if printf '%s' "$location" | awk '{ exit !/^[A-Za-z][A-Za-z0-9+.-]*:/ }'; then
+            url="$location"
+          else
+            url="${url%%[?#]*}"; url="${url%/*}/$location"
+          fi
+          ;;
+        *) url="${url%%[?#]*}"; url="${url%/*}/$location" ;;
+      esac
+    done
+  }
+
+  # Pick a downloader (not needed when a local file is provided). Every hop of a download,
+  # redirects included, is HTTPS: curl refuses any other protocol, and GNU wget follows redirects
+  # through wget_https.
   if [ -z "$LOCAL_FILE" ]; then
     case "$RELEASES_URL" in
       https://?*) ;;
@@ -224,8 +274,10 @@ main() {
     esac
     if have curl; then
       download() { curl -fsSL --proto =https --proto-redir =https "$1" -o "$2"; }
+    elif gnu_wget; then
+      download() { wget_https "$1" "$2"; }
     elif have wget; then
-      download() { wget -q "$1" -O "$2"; }
+      die "this wget cannot refuse a redirect away from HTTPS; install curl or GNU Wget to download jk."
     else
       die "neither curl nor wget found on PATH; cannot download jk."
     fi
@@ -741,13 +793,13 @@ main() {
     _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml}"
     _jk_libs_dest="${_jk_store_root}/libs.global.toml"
     mkdir -p "$(dirname "$_jk_libs_dest")" || true
-    curl -fsSL "$_jk_libs_url" -o "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
+    curl -fsSL --proto =https --proto-redir =https "$_jk_libs_url" -o "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
     unset _jk_libs_url _jk_libs_dest
-  elif have wget; then
+  elif gnu_wget; then
     _jk_libs_url="${JK_LIBRARIES_URL:-https://raw.githubusercontent.com/JumpKickOSS/jk-libraries/refs/heads/main/libraries.toml}"
     _jk_libs_dest="${_jk_store_root}/libs.global.toml"
     mkdir -p "$(dirname "$_jk_libs_dest")" || true
-    wget -q "$_jk_libs_url" -O "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
+    wget_https "$_jk_libs_url" "$_jk_libs_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_libs_dest.tmp" "$_jk_libs_dest" 2>/dev/null || rm -f "$_jk_libs_dest.tmp" 2>/dev/null || true
     unset _jk_libs_url _jk_libs_dest
   fi
   # jdks.json: one-shot fetch to store (JdkCatalogClient will revalidate with If-Modified-Since)
@@ -755,13 +807,13 @@ main() {
     _jk_jdks_url="${JK_JDKS_URL:-https://download.jetbrains.com/jdk/feed/v1/jdks.json}"
     _jk_jdks_dest="${_jk_store_root}/jdks.json"
     mkdir -p "$(dirname "$_jk_jdks_dest")" || true
-    curl -fsSL "$_jk_jdks_url" -o "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
+    curl -fsSL --proto =https --proto-redir =https "$_jk_jdks_url" -o "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
     unset _jk_jdks_url _jk_jdks_dest
-  elif have wget; then
+  elif gnu_wget; then
     _jk_jdks_url="${JK_JDKS_URL:-https://download.jetbrains.com/jdk/feed/v1/jdks.json}"
     _jk_jdks_dest="${_jk_store_root}/jdks.json"
     mkdir -p "$(dirname "$_jk_jdks_dest")" || true
-    wget -q "$_jk_jdks_url" -O "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
+    wget_https "$_jk_jdks_url" "$_jk_jdks_dest.tmp" >/dev/null 2>&1 && mv -f "$_jk_jdks_dest.tmp" "$_jk_jdks_dest" 2>/dev/null || rm -f "$_jk_jdks_dest.tmp" 2>/dev/null || true
     unset _jk_jdks_url _jk_jdks_dest
   fi
   unset _jk_store_root
