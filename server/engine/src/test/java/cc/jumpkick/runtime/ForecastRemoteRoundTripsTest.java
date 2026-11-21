@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -40,7 +41,11 @@ import org.junit.jupiter.api.io.TempDir;
  * as the hit the build will take, without one blob fetched, because each record carries the
  * interface token its consumers key on; and the forecast costs one lookup round trip per link in
  * the chain of keys, not one per step.
+ *
+ * <p>A whole workspace build is the integration tier's (about 8 s alone; the fast tier stops a
+ * method at 20 s, which a loaded host reaches).
  */
+@Tag("integration")
 class ForecastRemoteRoundTripsTest {
 
     @Test

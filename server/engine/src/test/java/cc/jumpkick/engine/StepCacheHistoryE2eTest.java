@@ -26,13 +26,18 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
  * Build history says why a step ran, end to end through a real engine: a build, an edit to one
  * source, a rebuild, and the rebuild's record names that source as the input that moved, in the
  * journal and on the HTTP API the dashboard reads.
+ *
+ * <p>Two whole builds through a real engine are the integration tier's (about 8 s alone; the fast
+ * tier stops a method at 20 s, which a loaded host reaches).
  */
+@Tag("integration")
 class StepCacheHistoryE2eTest extends EngineServerHarness {
 
     private static final String HELLO = """
