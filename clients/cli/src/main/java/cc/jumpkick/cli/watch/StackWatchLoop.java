@@ -74,6 +74,47 @@ final class StackWatchLoop {
     /** A started member: its process and the probe of that process. */
     private record Run(Process process, ReadyProbe probe) {}
 
+    /**
+     * What a stack runs, by name: its runnable members' directories and every sidecar under its
+     * supervisor. A session starts one and keeps it; a {@code jk.toml} edit can only report a new one.
+     */
+    record Shape(Map<String, String> members, Map<String, ExecPlan.Sidecar> sidecars) {
+
+        /**
+         * The shape of {@code stack} running {@code wanted}, whose JVM members plan {@code memberPlans}:
+         * the stack's sidecars (a node member's only when it is wanted, none of the others under
+         * {@code noSidecars}), then each JVM member's own not already named. A plan that is not a
+         * stack, a root left with one runnable member, has no members.
+         */
+        static Shape of(ExecPlan stack, Set<String> wanted, List<ExecPlan> memberPlans, boolean noSidecars) {
+            if (!ExecPlan.DEV_STACK.equals(stack.kind())) return new Shape(Map.of(), Map.of());
+            Map<String, String> members = stack.members();
+            Map<String, ExecPlan.Sidecar> sidecars = new LinkedHashMap<>();
+            for (ExecPlan.Sidecar s : stack.sidecars()) {
+                boolean member = members.containsKey(s.name());
+                if (member ? wanted.contains(s.name()) : !noSidecars) sidecars.put(s.name(), s);
+            }
+            if (!noSidecars) {
+                for (ExecPlan plan : memberPlans) {
+                    for (ExecPlan.Sidecar s : plan.sidecars()) sidecars.putIfAbsent(s.name(), s);
+                }
+            }
+            return new Shape(members, sidecars);
+        }
+    }
+
+    /** The members the session runs; set once they are planned. */
+    private Set<String> wanted = Set.of();
+
+    /** The JVM members the session runs; set once they are planned. */
+    private List<Member> apps = List.of();
+
+    /** The shape the session started; it runs that one until it ends. */
+    private @Nullable Shape running;
+
+    /** The last shape a re-plan reported as not running, so one edit says so once, not once per member. */
+    private @Nullable Shape reported;
+
     int run(Path cache, List<String> appArgs) throws IOException, InterruptedException {
         Map<String, String> members = stack.members();
         for (String name : selected) {
@@ -84,12 +125,9 @@ final class StackWatchLoop {
             }
         }
         Set<String> wanted = new LinkedHashSet<>(selected.isEmpty() ? members.keySet() : selected);
-        Map<String, ExecPlan.Sidecar> sidecars = new LinkedHashMap<>();
         Set<String> nodeMembers = new LinkedHashSet<>();
         for (ExecPlan.Sidecar s : stack.sidecars()) {
-            boolean member = members.containsKey(s.name());
-            if (member) nodeMembers.add(s.name());
-            if (member ? wanted.contains(s.name()) : !loop.noSidecars()) sidecars.put(s.name(), s);
+            if (members.containsKey(s.name())) nodeMembers.add(s.name());
         }
         List<Member> apps = new ArrayList<>();
         for (String name : wanted) {
@@ -104,9 +142,12 @@ final class StackWatchLoop {
                 CliOutput.err(loop.logPrefix() + ": " + name + " deploys to a device; run jk dev in " + dir);
                 return Exit.USAGE;
             }
-            if (!loop.noSidecars()) for (ExecPlan.Sidecar s : plan.sidecars()) sidecars.putIfAbsent(s.name(), s);
             apps.add(new Member(name, dir, plan));
         }
+        this.wanted = wanted;
+        this.apps = apps;
+        running = shape(stack);
+        Map<String, ExecPlan.Sidecar> sidecars = running.sidecars();
 
         loop.attachKeys();
         Map<String, String> urls = new LinkedHashMap<>(DevUrls.of(List.copyOf(sidecars.values())));
@@ -224,6 +265,7 @@ final class StackWatchLoop {
                 return Exit.SOFTWARE;
             }
             m.plan = plan;
+            replanned(loop.devPlan(Path.of(stack.workingDir()), cache));
         }
         if (m.plan.hotReload() && !changes.manifest()) {
             CliOutput.err(loop.logPrefix() + ": " + m.name + ": " + pass.done + "; DevTools restarts the context");
@@ -239,6 +281,31 @@ final class StackWatchLoop {
             return Exit.SOFTWARE;
         }
         return null;
+    }
+
+    /**
+     * Say when {@code replanned}, the stack planned again after a {@code jk.toml} edit, no longer runs
+     * the members and sidecars the session does: those start once, so the change waits for the next
+     * session, as it does for {@code jk dev} in one app.
+     */
+    private void replanned(ExecPlan replanned) {
+        if (replanned.error() != null) {
+            CliOutput.err(loop.logPrefix() + ": " + replanned.error());
+            return;
+        }
+        Shape now = shape(replanned);
+        if (now.equals(running)) {
+            reported = null;
+        } else if (!now.equals(reported)) {
+            reported = now;
+            CliOutput.err(loop.logPrefix() + ": the workspace's members or sidecars changed; restart jk dev to apply");
+        }
+    }
+
+    private Shape shape(ExecPlan plan) {
+        List<ExecPlan> plans = new ArrayList<>();
+        for (Member m : apps) plans.add(m.plan);
+        return Shape.of(plan, wanted, plans, loop.noSidecars());
     }
 
     private static List<String> names(List<Member> apps) {

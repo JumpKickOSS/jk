@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.bsp;
 
+import cc.jumpkick.config.EnvLookup;
+import cc.jumpkick.host.ProcessEnv;
 import cc.jumpkick.host.WorkingDirectory;
 import cc.jumpkick.jsonl.JsonFields;
 import cc.jumpkick.wire.protocol.IdeWireModel;
@@ -242,14 +244,23 @@ final class BspTargetOptions {
     /**
      * {@code JvmEnvironmentItem}: the classpath ({@link #runtimeClasspath}) and working directory
      * ({@code dir}, the module's) a JVM running module {@code i}'s main needs, or with {@code test}
-     * its tests; the main class when the module declares one and {@code test} is false.
+     * its tests. A run also gets what {@code jk run} gives the app: the module's {@code [application]
+     * jvm-args}, and the values of its {@code .env} files ({@link EnvLookup#dotEnv}) that this
+     * server's own environment, the IDE's, does not set; and the main class when the module declares
+     * one.
      */
     static String jvmEnvironmentItem(String tid, IdeWireModel model, int i, Path dir, boolean test) {
+        JsonFields env = JsonFields.object();
+        if (!test) {
+            EnvLookup.dotEnv(dir).forEach((name, value) -> {
+                if (ProcessEnv.get(name) == null) env.string(name, value);
+            });
+        }
         JsonFields item = BspServer.itemFor(tid)
                 .array("classpath", runtimeClasspath(model, i, test))
-                .array("jvmOptions", List.of())
+                .array("jvmOptions", test ? List.of() : model.runJvmArgsOf(i))
                 .string("workingDirectory", uri(dir))
-                .token("environmentVariables", JsonFields.object().finish());
+                .token("environmentVariables", env.finish());
         String main = test || i >= model.mainClasses().size()
                 ? null
                 : model.mainClasses().get(i);

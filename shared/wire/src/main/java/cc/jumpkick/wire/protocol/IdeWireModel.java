@@ -2,6 +2,7 @@
 package cc.jumpkick.wire.protocol;
 
 import cc.jumpkick.jsonl.Jsonl;
+import java.util.ArrayList;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
@@ -16,8 +17,9 @@ import org.jspecify.annotations.Nullable;
  * and JDK paths are absolute. {@code languages} is each module's comma-joined language set
  * ({@code java,scala}); {@code scalaVersions} its Scala compiler version, {@code ""} for a module
  * that compiles no Scala; {@code scalaJars} the {@code i|path} rows of the Scala compiler closure
- * the store holds for it, empty until a build fetched one. {@code error} non-null means the model
- * could not be computed; its message is ready to print.
+ * the store holds for it, empty until a build fetched one. {@code runJvmArgs} holds the {@code i|flag}
+ * rows of each module's {@code [application] jvm-args}, the flags {@code jk run} puts on the app's
+ * JVM. {@code error} non-null means the model could not be computed; its message is ready to print.
  */
 public record IdeWireModel(
         @Nullable String error,
@@ -54,7 +56,8 @@ public record IdeWireModel(
         List<String> sdkEntries,
         List<String> languages,
         List<String> scalaVersions,
-        List<String> scalaJars) {
+        List<String> scalaJars,
+        List<String> runJvmArgs) {
 
     /** Sibling-ref scope: on the main (and thus test) classpath. */
     public static final String SCOPE_COMPILE = "COMPILE";
@@ -80,7 +83,7 @@ public record IdeWireModel(
                 message, "", "", false, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), "", "", 0, "", "", List.of(),
-                List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of());
     }
 
     /** The languages module {@code i} compiles, in the order {@code java, kotlin, groovy, scala}. */
@@ -97,6 +100,17 @@ public record IdeWireModel(
         if (scalaVersions == null || i < 0 || i >= scalaVersions.size()) return null;
         String v = scalaVersions.get(i);
         return v == null || v.isBlank() ? null : v;
+    }
+
+    /** The flags {@code [application] jvm-args} puts on module {@code i}'s JVM, in order. */
+    public List<String> runJvmArgsOf(int i) {
+        if (runJvmArgs == null) return List.of();
+        List<String> out = new ArrayList<>();
+        String prefix = i + "|";
+        for (String row : runJvmArgs) {
+            if (row.startsWith(prefix)) out.add(row.substring(prefix.length()));
+        }
+        return out;
     }
 
     public String encode() {
@@ -136,6 +150,7 @@ public record IdeWireModel(
                 .array("languages", languages)
                 .array("scalaVersions", scalaVersions)
                 .array("scalaJars", scalaJars)
+                .array("runJvmArgs", runJvmArgs)
                 .finish();
     }
 
@@ -175,7 +190,8 @@ public record IdeWireModel(
                 Jsonl.strArray(line, "sdkEntries"),
                 Jsonl.strArray(line, "languages"),
                 Jsonl.strArray(line, "scalaVersions"),
-                Jsonl.strArray(line, "scalaJars"));
+                Jsonl.strArray(line, "scalaJars"),
+                Jsonl.strArray(line, "runJvmArgs"));
     }
 
     private static String orEmpty(@Nullable String s) {

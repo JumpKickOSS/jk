@@ -151,6 +151,7 @@ final class IdeGoldenFixture {
                 List.of("jk-temurin-25|" + jdk25 + "|25.0.3", "jk-temurin-17|" + jdk17 + "|17.0.16"),
                 List.of("java", "java"),
                 List.of("", ""),
+                List.of(),
                 List.of());
         return new Built(ws, wire, ideConfig, inputs);
     }

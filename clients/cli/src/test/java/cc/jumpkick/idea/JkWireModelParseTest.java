@@ -88,7 +88,8 @@ class JkWireModelParseTest {
                 List.of("jk-temurin-25|/jdks/25|25.0.3"),
                 List.of("java", "java,scala"),
                 List.of("", "3.8.4"),
-                List.of("1|/cache/scala3-compiler_3-3.8.4.jar"));
+                List.of("1|/cache/scala3-compiler_3-3.8.4.jar"),
+                List.of("1|-Xmx1g"));
         JkWireModel parsed = JkWireModel.parse(model.encode());
         assertThat(parsed.error).isNull();
         assertThat(parsed.wsRoot).isEqualTo("/ws");

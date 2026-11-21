@@ -167,7 +167,18 @@ public final class IdeOps {
                 sdkEntries,
                 m.languages(),
                 m.scalaVersions(),
-                scalaJars);
+                scalaJars,
+                runJvmArgs(dirs, allModules));
+    }
+
+    /** {@code i|flag} rows of each module's {@code [application] jvm-args}, in the order it lists them. */
+    public static List<String> runJvmArgs(List<Path> dirs, Map<Path, JkBuild> allModules) {
+        List<String> rows = new ArrayList<>();
+        for (int i = 0; i < dirs.size(); i++) {
+            JkBuild module = Objects.requireNonNull(allModules.get(dirs.get(i)), "module");
+            for (String flag : module.applicationJvmArgs()) rows.add(i + "|" + flag);
+        }
+        return rows;
     }
 
     /**

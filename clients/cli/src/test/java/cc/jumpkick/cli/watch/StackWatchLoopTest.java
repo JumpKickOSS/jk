@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -47,5 +48,50 @@ class StackWatchLoopTest {
                 () -> new StackWatchLoop(loop, stack, List.of()).run(dir.resolve("cache"), List.of()),
                 "the loop returns once its only process has exited");
         assertThat(exit).isEqualTo(Exit.SOFTWARE);
+    }
+
+    @Test
+    void a_re_planned_stack_differs_when_a_member_or_a_sidecar_comes_or_goes(@TempDir Path dir) {
+        ExecPlan.Sidecar db = sidecar(dir, "db");
+        Map<String, String> one = Map.of("api", dir.resolve("api").toString());
+        Map<String, String> two = Map.of(
+                "api",
+                dir.resolve("api").toString(),
+                "admin",
+                dir.resolve("admin").toString());
+        // Shape reads a member's plan for its sidecars alone.
+        List<ExecPlan> apiPlans = List.of(ExecPlan.devStack(dir.resolve("api"), Map.of(), List.of(sidecar(dir, "mq"))));
+        Set<String> wanted = Set.of("api");
+        StackWatchLoop.Shape started =
+                StackWatchLoop.Shape.of(ExecPlan.devStack(dir, one, List.of(db)), wanted, apiPlans, false);
+
+        assertThat(StackWatchLoop.Shape.of(ExecPlan.devStack(dir, one, List.of(db)), wanted, apiPlans, false))
+                .isEqualTo(started);
+        assertThat(started.sidecars()).containsOnlyKeys("db", "mq");
+        assertThat(StackWatchLoop.Shape.of(ExecPlan.devStack(dir, two, List.of(db)), wanted, apiPlans, false))
+                .as("a member added at the root")
+                .isNotEqualTo(started);
+        assertThat(StackWatchLoop.Shape.of(ExecPlan.devStack(dir, one, List.of()), wanted, apiPlans, false))
+                .as("a root sidecar removed")
+                .isNotEqualTo(started);
+        assertThat(StackWatchLoop.Shape.of(ExecPlan.devStack(dir, one, List.of(db)), wanted, List.of(), false))
+                .as("a member's own sidecar removed")
+                .isNotEqualTo(started);
+        assertThat(StackWatchLoop.Shape.of(ExecPlan.devStack(dir, one, List.of()), wanted, apiPlans, true))
+                .as("under --no-sidecars a sidecar edit changes nothing that runs")
+                .isEqualTo(StackWatchLoop.Shape.of(ExecPlan.devStack(dir, one, List.of(db)), wanted, apiPlans, true));
+    }
+
+    private static ExecPlan.Sidecar sidecar(Path dir, String name) {
+        return new ExecPlan.Sidecar(
+                name,
+                List.of("sh", "-c", "true"),
+                dir.toString(),
+                Map.of(),
+                Map.of(),
+                new ExecPlan.Probe("", "", 5_000L),
+                false,
+                false,
+                Sidecar.Restart.NEVER);
     }
 }

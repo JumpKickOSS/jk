@@ -434,6 +434,52 @@ class BspServerProtocolTest {
                         BspServer.pathUri(Path.of(coreClasses)));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void the_run_environment_carries_the_module_s_jvm_args_and_its_env_files(@TempDir Path dir) throws Exception {
+        Path app = module(dir, "app");
+        Files.writeString(dir.resolve("jk.toml"), "[workspace]\nmodules = [\"app\"]\n");
+        Files.writeString(dir.resolve(".env"), "JK_BSP_RUN_FROM_ROOT=root\nJK_BSP_RUN_BOTH=root\n");
+        Files.writeString(app.resolve(".env"), "JK_BSP_RUN_BOTH=module\n");
+        IdeWireModel model = IdeWireModel.decode("{"
+                + array("moduleDirs", List.of(app.toString())) + ","
+                + array("names", List.of("app")) + ","
+                + array("mainClasses", List.of("t.Main")) + ","
+                + array("runJvmArgs", List.of("0|-Xmx1g", "0|--enable-preview")) + "}");
+
+        List<Map<String, Object>> frames = serve(
+                fake(dir, model),
+                request(2, "buildTarget/jvmRunEnvironment", target(dir, "app")),
+                request(3, "buildTarget/jvmTestEnvironment", target(dir, "app")));
+
+        Map<String, Object> run = itemOf(result(frames, 2));
+        assertThat((List<Object>) run.get("jvmOptions")).containsExactly("-Xmx1g", "--enable-preview");
+        assertThat((Map<String, Object>) run.get("environmentVariables"))
+                .containsEntry("JK_BSP_RUN_FROM_ROOT", "root")
+                .containsEntry("JK_BSP_RUN_BOTH", "module");
+        Map<String, Object> test = itemOf(result(frames, 3));
+        assertThat((List<Object>) test.get("jvmOptions"))
+                .as("[application] jvm-args are the app's, not its test JVMs'")
+                .isEmpty();
+        assertThat((Map<String, Object>) test.get("environmentVariables")).isEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void a_model_naming_no_modules_has_the_root_target_s_sources(@TempDir Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src/main/java"));
+        IdeWireModel model = IdeWireModel.decode("{" + array("moduleDirs", List.of()) + "}");
+
+        List<Map<String, Object>> frames =
+                serve(fake(dir, model), request(2, "buildTarget/sources", target(dir, "root")));
+
+        Map<String, Object> item = itemOf(result(frames, 2));
+        assertThat(item).containsEntry("target", Map.of("uri", BspServer.pathUri(dir) + "#root"));
+        assertThat((List<Map<String, Object>>) item.get("sources"))
+                .extracting(s -> s.get("uri"))
+                .contains(BspServer.pathUri(dir.resolve("src/main/java")));
+    }
+
     private static Path module(Path ws, String name) throws IOException {
         Path dir = Files.createDirectories(ws.resolve(name));
         Files.writeString(dir.resolve("jk.toml"), "name = \"" + name + "\"\nversion = \"0.0.1\"\njava = 25\n");

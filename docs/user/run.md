@@ -100,10 +100,10 @@ jar (`Resources copied` in the loop's output).
 
 ### Keys
 
-On a terminal `jk dev` (and `jk watch run`) answers three keys, except when it redeploys to an
-Android device: **`r`** rebuilds and restarts the app (every member at
-a workspace root), as a `jk.toml` edit does; **`c`** clears the screen; **`q`** stops the session
-and every process in it, exit code 0. Ctrl-C still stops it too. While the keys are read the
+On a terminal `jk dev` (and `jk watch run`) answers three keys: **`r`** rebuilds and restarts the
+app (every member at a workspace root; rebuilds and redeploys an Android app to its device), as a
+`jk.toml` edit does; **`c`** clears the screen; **`q`** stops the session and every process in it,
+exit code 0. Ctrl-C still stops it too. While the keys are read the
 terminal's input is JumpKick's, so the app's stdin is not the terminal; under `-O jsonl`, or with
 no terminal, there are no keys and the app reads the stdin `jk dev` was given.
 
@@ -173,7 +173,10 @@ plan, restarted when its own sources change, and each node module's dev server, 
 supervisor. Every line is prefixed with the member that wrote it, one `ready ·` line lists every
 front door (each node module's dev server, unless the root's `[dev.sidecars]` names one), and one
 Ctrl-C stops everything. `-m api,admin` narrows it to those members and the node modules they
-depend on. A root with only one runnable member runs it as `jk dev` in it would.
+depend on. A root with only one runnable member runs it as `jk dev` in it would. The members and
+sidecars start once per session: an edit to a `jk.toml` that adds or removes a member, or changes a
+`[dev.sidecars]` table, is reported (`the workspace's members or sidecars changed; restart jk dev to
+apply`), not applied.
 
 ### Output
 

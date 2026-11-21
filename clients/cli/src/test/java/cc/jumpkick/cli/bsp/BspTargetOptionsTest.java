@@ -47,6 +47,7 @@ class BspTargetOptionsTest {
                 List.of(),
                 List.of("java", "java"),
                 List.of("", ""),
+                List.of(),
                 List.of());
     }
 

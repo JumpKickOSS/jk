@@ -307,11 +307,19 @@ public final class AppWatchLoop {
         int deployed = deploy(projectDir, cache, plan.deployCommand(), appArgs);
         if (deployed != 0) return deployed;
 
+        attachKeys();
+        hintKeys();
         try (SourceWatch watch = SourceWatch.open(projectDir, watchRoots)) {
             while (true) {
-                SourceWatch.Changes changes = watch.awaitChange();
-                if (ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
-                if (changes.manifest()) {
+                Optional<SourceWatch.Changes> maybe = watch.pollChange(keys == null ? 500 : 100, TimeUnit.MILLISECONDS);
+                DevKeys.Action key = key();
+                if (key == DevKeys.Action.QUIT) return quit();
+                boolean redeploy = key == DevKeys.Action.RESTART;
+                if (maybe.isEmpty() && !redeploy) continue;
+                if (maybe.isPresent() && ClientUpdate.updatedBetweenPasses()) return Exit.SUCCESS;
+                if (redeploy) {
+                    CliOutput.err(logPrefix + ": rebuilding and redeploying");
+                } else if (maybe.get().manifest()) {
                     CliOutput.err(logPrefix + ": jk.toml changed; rebuilding and redeploying");
                 }
                 if (!build(projectDir, cache)) {

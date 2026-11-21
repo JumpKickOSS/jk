@@ -598,16 +598,11 @@ public final class BspServer {
         List<String> requested = extractTargetUris(requestJson);
         List<String> items = new ArrayList<>();
         String rootUri = pathUri(ide.projectDir());
-        if (model != null && model.moduleDirs() != null) {
-            List<String> dirs = model.moduleDirs();
-            List<String> names = model.names() != null ? model.names() : List.of();
-            for (int i = 0; i < dirs.size(); i++) {
-                String name = i < names.size()
-                        ? names.get(i)
-                        : Path.of(dirs.get(i)).getFileName().toString();
-                String tid = rootUri + "#" + name;
+        if (model != null) {
+            for (int i = 0; i < BspTargetOptions.moduleCount(model); i++) {
+                String tid = rootUri + "#" + BspTargetOptions.targetName(model, i);
                 if (!requested.isEmpty() && !requested.contains(tid)) continue;
-                Path mod = Path.of(dirs.get(i));
+                Path mod = BspTargetOptions.moduleDir(model, i, ide.projectDir());
                 items.add(BspSources.sourcesItem(tid, mod, model, i));
             }
         } else {

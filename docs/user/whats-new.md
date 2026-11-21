@@ -10,16 +10,20 @@ JumpKick shows you this page's new entries after it updates itself.
   with its size, the form every record has had since 0.52.0, so it could delete cached outputs that
   were still in use and the prune did not count them; a build then ran the step again.
 - **`jk dev` answers `r`, `c` and `q`.** On a terminal, `r` rebuilds and restarts the app (every
-  member at a workspace root), `c` clears the screen and `q` stops the session. While the keys are
+  member at a workspace root; an Android app is rebuilt and redeployed), `c` clears the screen and
+  `q` stops the session. While the keys are
   read, the app's stdin is not the terminal.
 - **`jk dev` re-plans when the workspace root's or a sibling member's `jk.toml` changes**, as it
-  does for the app's own; `jk watch` in a member rebuilds on an edit to the root's.
+  does for the app's own; `jk watch` in a member rebuilds on an edit to the root's. At a workspace
+  root, an edit that adds or removes a member or changes a `[dev.sidecars]` table says to restart
+  `jk dev`, as one app's sidecar edit does.
 - **`jk doctor` has a `path` row.** It warns when the first `jk` on `PATH` is not the one in
   `~/.jk/bin`, so an update would not be the `jk` that runs. `--engine` with `--no-engine` is now a
   usage error.
 - **`jk bsp serve` answers `buildTarget/inverseSources`, `resources`, `jvmRunEnvironment` and
   `jvmTestEnvironment`**, so an IDE can find a file's target and run a main or a test class with
-  the classpath JumpKick builds.
+  the classpath JumpKick builds; a main runs with its `[application] jvm-args` and `.env` values,
+  as under `jk run`.
 - **A value that starts with `-` is refused naming the `=` spelling.** `--jvm-arg -Xmx2g` says
   to write `--jvm-arg=-Xmx2g`, instead of only that the option needs a value.
 - **`jk export` writes a workspace sibling as a project reference.** `jk export gradle` writes a
