@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
@@ -13,6 +14,7 @@ import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
 import cc.jumpkick.testing.LoopbackHttp;
 import cc.jumpkick.testing.MavenStub;
 import java.io.IOException;
@@ -144,6 +146,52 @@ class LockOrchestratorScopeTest {
                 .contains("com.foo:shared: tests use the main version 2.0, not 3.0")
                 .contains("(asked by com.foo:lib-test@1.0 ([3.0,3.0]))")
                 .contains("declare com.foo:shared 3.0 in [dependencies]");
+    }
+
+    /**
+     * Main pins shared 2.0, so a test dependency's edge onto shared takes 2.0; a test range above it
+     * cannot be met, and the conflict says the main dependencies pinned that edge.
+     */
+    @Test
+    void a_conflict_on_a_test_edge_held_at_the_main_pin_names_the_main_dependencies(@TempDir Path tempDir) {
+        upstream.metadata("com.foo", "shared", "2.0", "3.0");
+        upstream.metadata("com.foo", "lib-test", "1.0");
+        for (String v : new String[] {"2.0", "3.0"}) {
+            upstream.pom("com.foo", "shared", v, MavenStub.emptyPom("com.foo", "shared", v));
+        }
+        upstream.pom("com.foo", "lib-test", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId><artifactId>lib-test</artifactId><version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>shared</artifactId><version>3.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        JkBuild project = jkBuild(Map.of(
+                Scope.MAIN,
+                List.of(new Dependency("com.foo:shared", VersionSelector.parse("=2.0"))),
+                Scope.TEST,
+                List.of(
+                        new Dependency("com.foo:lib-test", VersionSelector.parse("=1.0")),
+                        new Dependency("com.foo:shared", VersionSelector.parse("[3.0,4.0)")))));
+
+        LockOrchestrator orchestrator = new LockOrchestrator(repoGroup(tempDir));
+        assertThatThrownBy(() -> orchestrator.lock(project, "test"))
+                .isInstanceOfSatisfying(UnsatisfiableException.class, e -> {
+                    assertThat(e.getMessage())
+                            .contains("com.foo:lib-test 1.0 depends on com.foo:shared 2.0 (pinned by [dependencies])");
+                    assertThat(e.conflict().facts())
+                            .filteredOn(f -> "com.foo:lib-test".equals(f.from()))
+                            .extracting(f -> f.pinnedBy())
+                            .containsExactly("[dependencies]");
+                    assertThat(e.conflict().facts())
+                            .filteredOn(f -> f.from() == null && "com.foo:shared".equals(f.pkg()))
+                            .extracting(f -> f.pinnedBy())
+                            .as("the test range is the project's own say")
+                            .containsOnlyNulls();
+                });
     }
 
     private static ResolveObserver recording(List<String> overrides) {

@@ -72,9 +72,9 @@ public interface PackageSource {
 
     /**
      * What decided {@code constraint}, the versions an edge onto {@code pkg} allows, when the edge's
-     * own version did not: a BOM as {@code group:artifact:version} or a {@code
-     * [managed-dependencies]} entry as {@code jk.toml:<handle>}. Diagnostics name it beside the
-     * edge. Default: {@code null}, the edge decided.
+     * own version did not: a BOM as {@code group:artifact:version}, a {@code
+     * [managed-dependencies]} entry as {@code jk.toml:<handle>}, or {@code [dependencies]} for a
+     * test edge held at the main graph's pin. Diagnostics name it beside the edge. Default: {@code null}, the edge decided.
      */
     default @Nullable String pinnedBy(String pkg, VersionSet constraint) {
         return null;

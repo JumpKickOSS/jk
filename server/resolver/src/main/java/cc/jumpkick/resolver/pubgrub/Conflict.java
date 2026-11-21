@@ -36,8 +36,9 @@ public record Conflict(String conclusion, List<String> packages, List<Fact> fact
      * @param from the package whose dependency this is, {@code null} for the project's own and for
      *     every kind but {@code dependency} and {@code constraint}
      * @param fromVersions the versions of {@code from} the dependency holds for
-     * @param pinnedBy the BOM ({@code group:artifact:version}) or managed entry ({@code
-     *     jk.toml:<handle>}) that decided {@code versions}, or {@code null}
+     * @param pinnedBy the BOM ({@code group:artifact:version}), managed entry ({@code
+     *     jk.toml:<handle>}) or main pin ({@code [dependencies]}) that decided {@code versions}, or
+     *     {@code null}
      * @param available a sample of the versions repositories advertise, highest first
      * @param notes the source's reasons, or the budget that ran out
      */

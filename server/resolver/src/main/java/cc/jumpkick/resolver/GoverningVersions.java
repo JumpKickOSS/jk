@@ -22,6 +22,9 @@ import org.jspecify.annotations.Nullable;
  */
 final class GoverningVersions {
 
+    /** What a conflict names behind an edge held at a governing version: the main graph's own pins. */
+    static final String ORIGIN = "[dependencies]";
+
     private Map<String, String> pins = Map.of();
 
     /** Overrides recorded across every scope solve; one entry per distinct (parent, module). */
@@ -77,6 +80,17 @@ final class GoverningVersions {
             overrides.add(new Override(PackageId.parse(parentPkg).ga() + " " + parentVersion, module, asked, pin));
         }
         return VersionSet.exact(pin);
+    }
+
+    /**
+     * {@link #ORIGIN} when {@code constraint} is the governing version of {@code depPkg}'s module,
+     * which is what {@link #constraintFor} made of every edge onto it; otherwise {@code null}.
+     */
+    @Nullable
+    String pinnedBy(String depPkg, VersionSet constraint) {
+        if (pins.isEmpty()) return null;
+        String pin = pins.get(PackageId.parse(depPkg).ga());
+        return pin != null && PinOrigins.sameVersions(constraint, VersionSet.exact(pin)) ? ORIGIN : null;
     }
 
     /** Every override recorded so far, one line per governed module, sorted by module. */

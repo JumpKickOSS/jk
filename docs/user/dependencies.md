@@ -261,7 +261,8 @@ The test classpath is the main classpath plus the test rows, so an exact pin in 
 version on it too: a test dependency's edge onto the pinned module takes the
 pin, the edge records what it asked for, and the lock carries one row with both scopes rather than
 a test row above the pin. A test-scope pin of its own stays a test fact — it has no say on the main
-classpath.
+classpath. A conflict on such an edge names the main pin behind it, as `(pinned by [dependencies])`
+and `pinnedBy` `[dependencies]` in the structured conflict.
 
 A dependency POM that asks for Maven's `LATEST` or `RELEASE` metaversion gets what Maven reads from
 the repository's metadata: `RELEASE` is the newest release, `LATEST` the newest version of any

@@ -325,7 +325,8 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * Where each platform pin came from, {@code group:artifact →} a BOM's {@code group:artifact:version}
-     * or a managed entry's {@code jk.toml:<handle>}: what {@link #pinnedBy} names.
+     * or a managed entry's {@code jk.toml:<handle>}: what {@link #pinnedBy} names, after a
+     * {@link GoverningVersions governing version}.
      */
     void setPinOrigins(Map<String, String> gaToOrigin) {
         this.pinOrigins = new PinOrigins(gaToOrigin);
@@ -333,6 +334,8 @@ public final class MavenPackageSource implements PackageSource {
 
     @Override
     public @Nullable String pinnedBy(String pkg, VersionSet constraint) {
+        String governed = governing.pinnedBy(pkg, constraint);
+        if (governed != null) return governed;
         if (pinOrigins.byModule().isEmpty()) return null;
         String ga = PackageId.parse(pkg).ga();
         return pinOrigins.of(

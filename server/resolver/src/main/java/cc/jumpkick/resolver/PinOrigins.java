@@ -29,9 +29,13 @@ record PinOrigins(Map<String, String> byModule) {
         String origin = byModule.get(ga);
         if (origin == null || pin == null) return null;
         VersionSet pinned = policy == PlatformPolicy.FLOOR ? VersionSet.atLeast(pin, true) : VersionSet.exact(pin);
-        boolean same = constraint.equals(pinned)
-                || (constraint.intersect(pinned.complement()).isEmpty()
-                        && pinned.intersect(constraint.complement()).isEmpty());
-        return same ? origin : null;
+        return sameVersions(constraint, pinned) ? origin : null;
+    }
+
+    /** True when {@code a} and {@code b} allow the same versions, however each is spelled. */
+    static boolean sameVersions(VersionSet a, VersionSet b) {
+        return a.equals(b)
+                || (a.intersect(b.complement()).isEmpty()
+                        && b.intersect(a.complement()).isEmpty());
     }
 }

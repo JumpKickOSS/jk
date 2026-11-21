@@ -190,6 +190,25 @@ class MavenPackageSourceConstraintTest {
                 .isNull();
     }
 
+    /** A test edge held at main's version names the main dependencies, over the BOM that pinned another. */
+    @Test
+    void an_edge_held_at_a_governing_version_names_the_main_dependencies(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.2.3"));
+        src.setPinOrigins(Map.of("com.foo:widget", "com.foo:bom:7"));
+        src.setGoverningVersions(Map.of("com.foo:widget", "2.0", "com.foo:gadget", "3.0"));
+
+        assertThat(src.pinnedBy("com.foo:widget:jar:", VersionSet.exact("2.0"))).isEqualTo("[dependencies]");
+        assertThat(src.pinnedBy(
+                        "com.foo:gadget:jar:",
+                        VersionSet.exact("3.0").complement().complement()))
+                .isEqualTo("[dependencies]");
+        assertThat(src.pinnedBy("com.foo:widget:jar:", VersionSet.exact("1.2.3")))
+                .isEqualTo("com.foo:bom:7");
+        assertThat(src.pinnedBy("com.foo:gadget:jar:", VersionSet.atLeast("3.0", true)))
+                .as("a range the test graph wrote itself")
+                .isNull();
+    }
+
     @Test
     void under_floor_a_pin_names_itself_only_where_it_is_the_floor(@TempDir Path tmp) {
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.2.0"), PlatformPolicy.FLOOR);

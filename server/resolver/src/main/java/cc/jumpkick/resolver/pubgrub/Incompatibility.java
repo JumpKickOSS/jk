@@ -33,8 +33,9 @@ public record Incompatibility(List<Term> terms, Cause cause) {
         /**
          * "Package {@code from} {@code fromVersions} depends on {@code to}." {@code pinnedBy} names
          * what decided {@code to}'s versions when the edge's own did not: a BOM as {@code
-         * group:artifact:version} or a {@code [managed-dependencies]} entry as {@code
-         * jk.toml:<handle>}; {@code null} otherwise.
+         * group:artifact:version}, a {@code [managed-dependencies]} entry as {@code
+         * jk.toml:<handle>}, or {@code [dependencies]} for a test edge held at the main graph's pin;
+         * {@code null} otherwise.
          */
         record Dependency(Term from, Term to, @Nullable String pinnedBy) implements Cause {
             /** An edge whose own version decides the target's. */
