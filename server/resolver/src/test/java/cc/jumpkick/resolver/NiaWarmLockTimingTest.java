@@ -9,6 +9,7 @@ import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.host.HostProcessors;
+import cc.jumpkick.host.JkDirs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
@@ -16,6 +17,8 @@ import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.GradleModuleMetadata;
+import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolve.ResolveProfile;
@@ -84,6 +87,12 @@ class NiaWarmLockTimingTest {
         System.out.println("JVM_CPUS=" + jvmCpus + " HOST_CPUS=" + hostCpus + " LOADAVG=" + startLoad);
         String budgetSkipReason = budgetSkipReason(startLoad, jvmCpus, hostCpus);
 
+        // The overlay names libraries by short names that only the downloaded registry knows
+        // (kotlinx-datetime, ...). This JVM's store is a test sandbox's that holds none, so fetch it
+        // first, as `jk lock` does; without it the parse reads the bundled catalog alone.
+        Http http = new Http();
+        LibraryRegistrySync.ensurePresent(false, LibraryRegistryClient.DEFAULT_SOURCE, http, JkDirs.libraryRegistry());
+
         // The overlay lives in jk-examples, not this repo — when its jk.toml lags a manifest
         // format change, that is fixture bit-rot, not a resolver regression: skip, don't fail.
         JkBuild root;
@@ -101,7 +110,6 @@ class NiaWarmLockTimingTest {
         System.out.println("JVM_ENV=" + jvmEnv + " modules=" + modules.size());
 
         Cas cas = new Cas(store);
-        Http http = new Http();
         RepoGroup repos = new RepoGroup(List.of(
                 new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), http, cas),
                 new MavenRepo("google", URI.create("https://dl.google.com/dl/android/maven2/"), http, cas)));
